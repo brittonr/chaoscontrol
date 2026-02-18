@@ -316,10 +316,43 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
 
     let mut modified = 0u32;
 
+    // Check if leaf 0x15 (TSC/Crystal Clock) exists in the host CPUID.
+    // AMD CPUs don't provide this leaf, but we need it for deterministic
+    // TSC calibration when faking an Intel identity.
+    let has_leaf_15 = cpuid
+        .as_slice()
+        .iter()
+        .any(|e| e.function == CPUID_LEAF_TSC_INFO);
+
     for entry in cpuid.as_mut_slice() {
         if filter_entry(entry, config) {
             modified += 1;
         }
+    }
+
+    // If leaf 0x15 is missing (AMD host), inject it so the kernel can
+    // determine the exact TSC frequency from CPUID instead of doing
+    // non-deterministic PIT-based calibration.
+    if !has_leaf_15 {
+        let (denominator, numerator) = tsc_crystal_ratio(config.tsc_khz);
+        let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+        entries.push(kvm_cpuid_entry2 {
+            function: CPUID_LEAF_TSC_INFO,
+            index: 0,
+            flags: 0,
+            eax: denominator,
+            ebx: numerator,
+            ecx: CRYSTAL_CLOCK_HZ,
+            edx: 0,
+            padding: [0; 3],
+        });
+        cpuid = CpuId::from_entries(&entries)
+            .map_err(|_| CpuError::GetCpuid(kvm_ioctls::Error::new(libc::ENOMEM)))?;
+        modified += 1;
+        info!(
+            "Injected CPUID leaf 0x15: crystal={}Hz, ratio={}/{}",
+            CRYSTAL_CLOCK_HZ, numerator, denominator,
+        );
     }
 
     info!(
@@ -503,9 +536,29 @@ pub struct VirtualTscSnapshot {
 /// Returns `true` if any register in the entry was modified.
 fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
     match entry.function {
+        // ── Leaf 0x0: Vendor ID + max leaf ──────────────────────
+        // When fixed_family is set to an Intel family (6), override the
+        // vendor string so the kernel's native_calibrate_tsc() trusts
+        // CPUID leaf 0x15 for exact TSC frequency. Without this, AMD
+        // hosts fall back to non-deterministic PIT-based calibration.
+        // Also ensure max standard leaf (EAX) >= 0x15 so the kernel
+        // knows leaf 0x15 is available.
+        0x0 if config.fixed_family == Some(6) => {
+            let orig = (entry.eax, entry.ebx, entry.ecx, entry.edx);
+            // "GenuineIntel" = EBX:EDX:ECX
+            entry.ebx = u32::from_le_bytes(*b"Genu");
+            entry.edx = u32::from_le_bytes(*b"ineI");
+            entry.ecx = u32::from_le_bytes(*b"ntel");
+            // Ensure max standard CPUID leaf >= 0x15 (TSC info)
+            if entry.eax < CPUID_LEAF_TSC_INFO {
+                entry.eax = CPUID_LEAF_TSC_INFO;
+            }
+            (entry.eax, entry.ebx, entry.ecx, entry.edx) != orig
+        }
+
         // ── Leaf 0x1: Processor Info and Feature Bits ───────────
         CPUID_LEAF_FEATURES => {
-            let (orig_eax, orig_ecx) = (entry.eax, entry.ecx);
+            let orig = (entry.eax, entry.ebx, entry.ecx);
 
             // Unconditionally strip non-deterministic / timing-sensitive
             // features.
@@ -515,6 +568,11 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
             if config.hide_hypervisor {
                 entry.ecx &= !CPUID_1_ECX_HYPERVISOR;
             }
+
+            // Fix Initial APIC ID (EBX bits 31:24) to 0.
+            // Without this, the host's physical APIC ID leaks through,
+            // causing non-deterministic "APIC ID mismatch" warnings.
+            entry.ebx &= 0x00FF_FFFF; // clear Initial APIC ID (bits 31:24)
 
             // Optionally lock down the processor identity so that
             // snapshots are portable across CPU generations.
@@ -528,12 +586,14 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
                 encode_stepping(&mut entry.eax, stepping);
             }
 
-            entry.eax != orig_eax || entry.ecx != orig_ecx
+            (entry.eax, entry.ebx, entry.ecx) != orig
         }
 
         // ── Leaf 0x7 sub-leaf 0: Structured Extended Features ──
         CPUID_LEAF_STRUCTURED_EXT if entry.index == 0 => {
             let orig = entry.ebx;
+            let orig_ecx = entry.ecx;
+            let orig_edx = entry.edx;
 
             // RDSEED is always stripped (hardware entropy).
             entry.ebx &= !CPUID_7_EBX_RDSEED;
@@ -545,9 +605,30 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
             }
             if !config.allow_avx512 {
                 entry.ebx &= !CPUID_7_EBX_AVX512F;
+                // Also strip all AVX-512 sub-features to avoid
+                // "avx512ifma enabled but avx512f disabled" warnings.
+                // AVX-512 sub-features in EBX: bits 17,21,26,27,28,30,31
+                entry.ebx &= !(1 << 17); // AVX512_VBMI (EBX bit 17 is actually in ECX for sub-leaf 0)
+                entry.ebx &= !(1 << 21); // AVX512_IFMA
+                entry.ebx &= !(1 << 26); // AVX512PF
+                entry.ebx &= !(1 << 27); // AVX512ER
+                entry.ebx &= !(1 << 28); // AVX512CD
+                entry.ebx &= !(1 << 30); // AVX512BW
+                entry.ebx &= !(1 << 31); // AVX512VL
+                // Sub-features in ECX (leaf 7, sub-leaf 0)
+                entry.ecx &= !(1 << 1);  // AVX512_VBMI
+                entry.ecx &= !(1 << 6);  // AVX512_VBMI2
+                entry.ecx &= !(1 << 11); // AVX512_VNNI
+                entry.ecx &= !(1 << 12); // AVX512_BITALG
+                entry.ecx &= !(1 << 14); // AVX512_VPOPCNTDQ
+                // Sub-features in EDX (leaf 7, sub-leaf 0)
+                entry.edx &= !(1 << 2);  // AVX512_4VNNIW
+                entry.edx &= !(1 << 3);  // AVX512_4FMAPS
+                entry.edx &= !(1 << 8);  // AVX512_VP2INTERSECT
+                entry.edx &= !(1 << 23); // AVX512_FP16
             }
 
-            entry.ebx != orig
+            entry.ebx != orig || entry.ecx != orig_ecx || entry.edx != orig_edx
         }
 
         // ── Leaf 0x15: TSC / Crystal Clock ─────────────────────
@@ -580,6 +661,14 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
             entry.ecx = 0;
             entry.edx = 0;
             true
+        }
+
+        // ── Leaf 0xB / 0x1F: Extended Topology ─────────────────
+        // Fix x2APIC ID (EDX) to 0 so it matches our fixed APIC ID.
+        0xB | 0x1F => {
+            let orig = entry.edx;
+            entry.edx = 0;
+            entry.edx != orig
         }
 
         // ── Leaf 0x80000001: Extended Features ─────────────────

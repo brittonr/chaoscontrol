@@ -24,7 +24,8 @@ use crate::memory::{
 };
 
 use kvm_bindings::{
-    kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region, KVM_PIT_SPEAKER_DUMMY,
+    kvm_clock_data, kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region,
+    KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -80,9 +81,33 @@ impl Default for VmConfig {
     fn default() -> Self {
         Self {
             memory_size: 256 * 1024 * 1024,
-            cpu: CpuConfig::default(),
-            cmdline: b"console=ttyS0 earlyprintk=serial nokaslr noapic nosmp \
-                       randomize_kstack_offset=off norandmaps panic=-1\0"
+            cpu: CpuConfig {
+                // Hide KVM so guest doesn't use kvm-clock (reads host wall time).
+                // Set fixed family=6 (Intel) so kernel's native_calibrate_tsc()
+                // trusts CPUID leaf 0x15 for exact TSC frequency instead of
+                // doing non-deterministic PIT-based calibration.
+                hide_hypervisor: true,
+                fixed_family: Some(6),
+                fixed_model: Some(85),    // Skylake-SP
+                fixed_stepping: Some(4),
+                ..CpuConfig::default()
+            },
+            // Deterministic boot parameters:
+            // clocksource=tsc tsc=reliable: use our pinned TSC as main clock
+            // no-kvmclock: prevent kvm-clock from being registered as clocksource
+            // lpj=6000000: fixed loops_per_jiffy, skip runtime calibration
+            // nokaslr norandmaps: disable address randomization
+            // nosmp noapic: single CPU, no APIC probing
+            // kfence.sample_interval=0: disable kfence (timing-dependent)
+            // no_hash_pointers: make pointer output deterministic
+            cmdline: b"console=ttyS0 earlyprintk=serial \
+                       clocksource=tsc tsc=reliable \
+                       lpj=6000000 \
+                       nokaslr noapic nosmp \
+                       randomize_kstack_offset=off norandmaps \
+                       kfence.sample_interval=0 \
+                       no_hash_pointers \
+                       panic=-1\0"
                 .to_vec(),
         }
     }
@@ -135,6 +160,9 @@ pub enum VmError {
 
     #[error("Failed to create PIT: {0}")]
     CreatePit(#[source] kvm_ioctls::Error),
+
+    #[error("Failed to set KVM clock: {0}")]
+    SetClock(#[source] kvm_ioctls::Error),
 
     #[error("Failed to run vCPU: {0}")]
     VcpuRun(#[source] kvm_ioctls::Error),
@@ -278,6 +306,16 @@ impl DeterministicVm {
         };
         vm.create_pit2(pit_config).map_err(VmError::CreatePit)?;
 
+        // DETERMINISM: Set KVM clock to zero so guest always sees the same
+        // starting time. Without this, the guest reads host wall-clock time
+        // via the KVM paravirt clock MSRs, breaking reproducibility.
+        let clock_data = kvm_clock_data {
+            clock: 0,
+            ..Default::default()
+        };
+        vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
+        info!("KVM clock set to 0 (deterministic)");
+
         // Create vCPU AFTER irqchip (so LAPIC is in-kernel)
         let vcpu = vm.create_vcpu(0).map_err(VmError::VcpuCreate)?;
 
@@ -389,6 +427,23 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Reset the vCPU's TSC to 0 via MSR write.
+    fn reset_tsc_to_zero(&self) -> Result<(), VmError> {
+        use kvm_bindings::{kvm_msr_entry, Msrs};
+
+        const MSR_IA32_TSC: u32 = 0x10;
+
+        let msrs = Msrs::from_entries(&[kvm_msr_entry {
+            index: MSR_IA32_TSC,
+            data: 0,
+            ..Default::default()
+        }])
+        .map_err(|_| VmError::GuestMemoryWrite)?;
+
+        self.vcpu.set_msrs(&msrs).map_err(VmError::SetRegisters)?;
+        Ok(())
+    }
+
     fn setup_boot_params(&self, initrd_info: Option<(u64, u64)>) -> Result<(), VmError> {
         const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
         const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
@@ -396,8 +451,14 @@ impl DeterministicVm {
         const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x0100_0000;
 
         // Write kernel command line
-        let cmdline = b"console=ttyS0 earlyprintk=serial nokaslr noapic nosmp \
-                        randomize_kstack_offset=off norandmaps panic=-1\0";
+        let cmdline = b"console=ttyS0 earlyprintk=serial \
+                       clocksource=tsc tsc=reliable \
+                       lpj=6000000 \
+                       nokaslr noapic nosmp \
+                       randomize_kstack_offset=off norandmaps \
+                       kfence.sample_interval=0 \
+                       no_hash_pointers \
+                       panic=-1\0";
         self.memory.write_cmdline(cmdline)?;
 
         let mut hdr = linux_loader::loader::bootparam::setup_header {
@@ -491,10 +552,37 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Reset all time-dependent state to deterministic values.
+    ///
+    /// Called immediately before the first `vcpu.run()` to ensure the
+    /// guest sees identical starting conditions regardless of how long
+    /// host-side setup took.
+    fn reset_time_state(&self) -> Result<(), VmError> {
+        // Reset TSC to 0 — the guest will read TSC=0 on first instruction
+        self.reset_tsc_to_zero()?;
+
+        // Reset KVM clock to 0 — any paravirt clock reads start at 0
+        let clock_data = kvm_clock_data {
+            clock: 0,
+            ..Default::default()
+        };
+        self.vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
+
+        // Snapshot and restore PIT to reset its internal tick counter.
+        // The PIT starts counting from host time at create_pit2(); this
+        // resets it so the first PIT tick happens at a consistent point.
+        let pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+        self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+
+        Ok(())
+    }
+
     // ─── Public API: execution ───────────────────────────────────────
 
     /// Run the VM until it halts or shuts down.
     pub fn run(&mut self) -> Result<(), VmError> {
+        // Reset time state as close to first vcpu.run() as possible
+        self.reset_time_state()?;
         info!("Starting VM execution");
         loop {
             if self.step()? {
@@ -514,6 +602,9 @@ impl DeterministicVm {
     ///
     /// Returns the captured serial output since the call.
     pub fn run_until(&mut self, pattern: &str) -> Result<String, VmError> {
+        if self.exit_count == 0 {
+            self.reset_time_state()?;
+        }
         self.serial_writer.take();
         loop {
             if self.step()? {
@@ -531,6 +622,9 @@ impl DeterministicVm {
     ///
     /// Returns `(exits_executed, halted)`.
     pub fn run_bounded(&mut self, max_exits: u64) -> Result<(u64, bool), VmError> {
+        if self.exit_count == 0 {
+            self.reset_time_state()?;
+        }
         for i in 0..max_exits {
             if self.step()? {
                 return Ok((i + 1, true));

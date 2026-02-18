@@ -15,6 +15,8 @@
 | 2026-02-18 | self | VmSnapshot didn't save/restore VirtualTsc | Must save virtual_tsc, exit_count, io_exit_count in snapshot |
 | 2026-02-18 | self | Faults didn't fire in integration tests | poll_faults() gated by setup_complete — call force_setup_complete() |
 | 2026-02-18 | self | Used bzImage for kernel loading | ELF loader needs vmlinux (result-dev/vmlinux), not bzImage |
+| 2026-02-18 | self | cargo fmt applied to worktrees but not main repo | Always fmt main repo first, then apply feature changes cleanly |
+| 2026-02-18 | self | New files in worktrees aren't in `git diff` | Copy untracked files from worktrees separately — `git diff` only shows tracked files |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -24,6 +26,8 @@
 - bpftrace NOPASSWD via NixOS config
 
 ## Patterns That Work
+- **VirtioBackend downcasting**: `as_any_mut()` on trait → `downcast_mut::<VirtioBlock>()` for device-specific operations
+- **Checkpoint resume**: Save global coverage + progress counters, skip VM snapshots (re-bootstrap on resume), carry forward coverage to avoid re-exploration
 - vm_superio::Serial with EventFd + register_irqfd for interrupt-driven serial
 - CapturingWriter pattern: write to stdout + capture in Arc<Mutex<Vec<u8>>>
 - VirtualTsc advancing on every VM exit for deterministic time progression
@@ -83,6 +87,12 @@
 
 ## Remaining Work
 (All items completed)
+
+## Completed (2026-02-18 loose ends)
+18. ✅ DiskTornWrite + DiskCorruption fault handlers wired to DeterministicBlock
+19. ✅ Explore `resume` subcommand with JSON checkpoint save/load
+20. ✅ cargo fmt pass across workspace
+21. ✅ 523 tests passing, 0 failures
 
 ## CLI Binaries (2026-02-18)
 - **chaoscontrol-explore**: `run` subcommand (ExplorerConfig from CLI args, progress via env_logger), `resume` placeholder

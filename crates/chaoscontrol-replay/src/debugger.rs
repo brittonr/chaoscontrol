@@ -262,6 +262,7 @@ mod tests {
     use chaoscontrol_fault::schedule::FaultSchedule;
     use chaoscontrol_vmm::controller::{SimulationSnapshot, NetworkFabric, RoundResult};
     use chaoscontrol_fault::oracle::OracleReport;
+    use rand::SeedableRng;
 
     // Mock simulation runner for testing
     struct MockRunner {
@@ -296,6 +297,10 @@ mod tests {
                     partitions: vec![],
                     latency: vec![0; 2],
                     in_flight: vec![],
+                    loss_rate_ppm: vec![],
+                    corruption_rate_ppm: vec![],
+                    reorder_window: vec![],
+                    rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
                 },
                 fault_engine_snapshot: engine.snapshot(),
             })

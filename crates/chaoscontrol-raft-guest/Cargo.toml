@@ -1,0 +1,11 @@
+[package]
+name = "chaoscontrol-raft-guest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "In-process Raft consensus guest for ChaosControl exploration"
+
+[dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["std"] }
+libc = "0.2"

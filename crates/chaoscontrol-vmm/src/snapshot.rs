@@ -40,6 +40,7 @@ pub struct VmSnapshot {
     pub virtual_tsc: u64,
     pub exit_count: u64,
     pub io_exit_count: u64,
+    pub exits_since_last_sdk: u64,
 }
 
 impl VmSnapshot {
@@ -53,6 +54,7 @@ impl VmSnapshot {
         virtual_tsc: u64,
         exit_count: u64,
         io_exit_count: u64,
+        exits_since_last_sdk: u64,
     ) -> Result<Self, SnapshotError> {
         // Capture vCPU state
         let regs = vcpu.get_regs().map_err(SnapshotError::GetRegs)?;
@@ -121,6 +123,7 @@ impl VmSnapshot {
             virtual_tsc,
             exit_count,
             io_exit_count,
+            exits_since_last_sdk,
         })
     }
 

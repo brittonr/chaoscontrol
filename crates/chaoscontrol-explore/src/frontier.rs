@@ -138,6 +138,10 @@ mod tests {
             partitions: Vec::new(),
             latency: vec![0, 0],
             in_flight: Vec::new(),
+            loss_rate_ppm: Vec::new(),
+            corruption_rate_ppm: Vec::new(),
+            reorder_window: Vec::new(),
+            rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
         };
         
         SimulationSnapshot {

@@ -205,6 +205,7 @@ fn uuid_like_id() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     fn test_config() -> RecordingConfig {
         RecordingConfig {
@@ -234,6 +235,10 @@ mod tests {
                 partitions: vec![],
                 latency: vec![],
                 in_flight: vec![],
+                loss_rate_ppm: vec![],
+                corruption_rate_ppm: vec![],
+                reorder_window: vec![],
+                rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
             },
             fault_engine_snapshot: engine.snapshot(),
         }

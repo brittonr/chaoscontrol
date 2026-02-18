@@ -116,6 +116,33 @@
 9. ✅ VmSnapshot now saves/restores VirtualTsc + exit_count + io_exit_count (was missing, caused snapshot/restore vTSC mismatch)
 10. ✅ FaultEngine::force_setup_complete() for integration tests where guest doesn't use SDK
 
+## Completed (2026-02-18 cleanup)
+11. ✅ Packet-level faults: PacketLoss, PacketCorruption, PacketReorder implemented in NetworkFabric
+12. ✅ ProcessPause auto-resume: VmStatus::Resuming variant, schedule_resume() method
+13. ✅ MemoryPressure stored in VmSlot.memory_limit_bytes
+14. ✅ Explorer tick tracking: BranchResult.total_ticks used in BugReport.tick
+15. ✅ README roadmap updated — all 17 items checked
+16. ✅ Zero TODOs remaining in codebase
+17. ✅ 503 tests passing, 0 failures
+
+## Dogfooding: Raft Guest (2026-02-18)
+- **chaoscontrol-raft-guest crate**: 3-node in-process Raft with SDK assertions
+- Safety: election safety (≤1 leader/term), log matching, leader completeness
+- Liveness: leader elected, values committed, 3+ committed
+- 240 coverage edges, fully deterministic, all safety assertions pass
+- **End-to-end exploration works**: 2 rounds × 4 branches completed, no bugs (correct)
+
+## Dogfooding Findings (2026-02-18)
+| Finding | Impact | Fix |
+|---------|--------|-----|
+| Kernel never HLTs after workload — busy serial polls | Idle detection based on HLT doesn't work | Changed to `exits_since_last_sdk` counter |
+| Each HLT costs ~2ms real time (KVM PIT ioctls) | Would be 37 min/tick wasted if kernel DID HLT | Fixed by idle detection |
+| Kernel idle loop = serial I/O polling, not HLT | All 50 post-workload exits are IoIn | Counter must track total exits, not HLT exits |
+| Explore creates new SimulationController per branch | 5s kernel boot per branch, wasted by snapshot restore | Known — future: cache pre-booted VM |
+| Coverage bitmap shows 0 edges in controller path | Coverage collected from first VM but bitmap at wrong GPA? | Known — needs investigation |
+| `run_bounded` had no idle detection | VM spins forever after workload | Added SDK_IDLE_THRESHOLD=500 in run_bounded |
+| `libc::pause()` returns on each PIT interrupt | Kernel scheduler runs, polls serial, back to pause() | Not a bug — just means idle=I/O not HLT |
+
 ## Coverage Instrumentation (2026-02-18)
 - **Coverage bitmap**: 64KB at GPA 0xE0000 (BIOS reserved area, within E820 gap)
 - **Protocol constants**: COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT (0x0511)

@@ -86,7 +86,7 @@ nix develop
 # Build
 cargo build
 
-# Run tests (105 unit + 11 doc-tests)
+# Run tests (497 unit + doc tests)
 cargo test
 
 # Boot a kernel
@@ -288,10 +288,10 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Fault injection engine (network, disk, process, clock faults)
 - [x] Property oracle (cross-run assertion tracking + verdicts)
 - [x] VMM ↔ SDK hypercall integration
-- [ ] Virtio transport layer (MMIO-based)
-- [ ] Wire devices into VM run loop via virtio
-- [ ] Multi-VM simulation controller
-- [ ] Deterministic scheduling across VMs
-- [ ] Coverage feedback from guest (kcov / breakpoints)
-- [ ] Coverage-guided seed exploration
+- [x] Virtio transport layer (MMIO-based)
+- [x] Wire devices into VM run loop via virtio
+- [x] Multi-VM simulation controller
+- [x] Deterministic scheduling across VMs
+- [x] Coverage feedback from guest (kcov / breakpoints)
+- [x] Coverage-guided seed exploration
 

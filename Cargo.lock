@@ -193,6 +193,14 @@ name = "chaoscontrol-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "chaoscontrol-raft-guest"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-sdk",
+ "libc",
+]
+
+[[package]]
 name = "chaoscontrol-replay"
 version = "0.1.0"
 dependencies = [
@@ -202,6 +210,8 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "rand",
+ "rand_chacha",
  "serde",
  "serde_json",
  "tempfile",

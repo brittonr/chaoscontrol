@@ -286,6 +286,7 @@ impl Explorer {
             schedule,
             exit_counts: result.vm_exit_counts,
             halted: result.total_ticks >= self.config.ticks_per_branch,
+            total_ticks: result.total_ticks,
             bugs: Vec::new(), // Will be filled by extract_bugs
             snapshot,
         })
@@ -327,7 +328,7 @@ impl Explorer {
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: result.snapshot.clone(),
-                    tick: 0, // TODO: track tick of failure
+                    tick: result.total_ticks,
                 });
             }
         }
@@ -425,6 +426,7 @@ pub struct BranchResult {
     pub schedule: FaultSchedule,
     pub exit_counts: Vec<u64>,
     pub halted: bool,
+    pub total_ticks: u64,
     pub bugs: Vec<BugReport>,
     pub snapshot: Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
 }
@@ -437,6 +439,7 @@ impl Clone for BranchResult {
             schedule: self.schedule.clone(),
             exit_counts: self.exit_counts.clone(),
             halted: self.halted,
+            total_ticks: self.total_ticks,
             bugs: self.bugs.clone(),
             snapshot: self.snapshot.clone(),
         }
@@ -530,6 +533,7 @@ mod tests {
             schedule: FaultSchedule::new(),
             exit_counts: vec![100],
             halted: false,
+            total_ticks: 100,
             bugs: Vec::new(),
             snapshot: None,
         };

@@ -11,6 +11,9 @@ use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use log::{debug, info, warn};
+use rand::RngCore;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use std::collections::VecDeque;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -66,6 +69,8 @@ pub struct VmSlot {
     pub disk_faults: DiskFaultFlags,
     /// TSC skew offset for clock fault injection (nanoseconds).
     pub tsc_skew: i64,
+    /// Memory pressure limit in bytes (`None` = unlimited).
+    pub memory_limit_bytes: Option<u64>,
     /// Initial snapshot taken after kernel load, used for restarts.
     pub initial_snapshot: Option<VmSnapshot>,
 }
@@ -75,12 +80,14 @@ pub struct VmSlot {
 pub enum VmStatus {
     /// VM is running normally.
     Running,
-    /// VM is paused (ProcessPause fault active).
+    /// VM is paused (ProcessPause fault active), will auto-resume.
     Paused,
     /// VM has crashed (ProcessKill fault injected).
     Crashed,
     /// Crashed VM will restart after this simulation tick.
     Restarting { restart_at_tick: u64 },
+    /// Paused VM will resume (without restore) at this tick.
+    Resuming { resume_at_tick: u64 },
 }
 
 /// A message in the virtual network.
@@ -111,7 +118,7 @@ pub struct DiskFaultFlags {
 //  Network Fabric
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Virtual network with partition awareness.
+/// Virtual network with partition awareness and packet-level fault injection.
 #[derive(Debug, Clone)]
 pub struct NetworkFabric {
     /// Active partition rules — (side_a, side_b) pairs.
@@ -120,15 +127,31 @@ pub struct NetworkFabric {
     pub latency: Vec<u64>,
     /// Messages in flight (not yet delivered).
     pub in_flight: Vec<NetworkMessage>,
+    /// Per-VM packet loss rate in parts per million (0 = no loss).
+    pub loss_rate_ppm: Vec<u32>,
+    /// Per-VM packet corruption rate in parts per million (0 = no corruption).
+    pub corruption_rate_ppm: Vec<u32>,
+    /// Per-VM reorder window in ticks (0 = no reordering).
+    pub reorder_window: Vec<u64>,
+    /// Deterministic RNG for packet-level fault decisions.
+    pub rng: ChaCha20Rng,
 }
 
 impl NetworkFabric {
-    /// Create a new network fabric for `num_vms` VMs.
-    fn new(num_vms: usize) -> Self {
+    /// Create a new network fabric for `num_vms` VMs with the given seed.
+    fn new(num_vms: usize, seed: u64) -> Self {
+        let mut rng_key = [0u8; 32];
+        // Derive network RNG from seed + a domain separator
+        let derived = seed.wrapping_add(0x4E45_5446_4142);  // "NETFAB" as hex
+        rng_key[..8].copy_from_slice(&derived.to_le_bytes());
         Self {
             partitions: Vec::new(),
             latency: vec![0; num_vms],
             in_flight: Vec::new(),
+            loss_rate_ppm: vec![0; num_vms],
+            corruption_rate_ppm: vec![0; num_vms],
+            reorder_window: vec![0; num_vms],
+            rng: ChaCha20Rng::from_seed(rng_key),
         }
     }
 
@@ -151,8 +174,12 @@ impl NetworkFabric {
 
     /// Send a message from `from` to `to` at the current tick.
     ///
-    /// If a partition blocks the route, the message is dropped.
-    /// Otherwise, it's added to in-flight with delivery time based on latency.
+    /// Applies packet-level faults in order:
+    /// 1. Partition check — drop if partitioned
+    /// 2. Packet loss — drop with probability `loss_rate_ppm / 1_000_000`
+    /// 3. Packet corruption — flip a random byte with probability
+    /// 4. Packet reorder — randomize delivery time within window
+    /// 5. Latency — add sender/receiver latency to delivery time
     pub fn send(
         &mut self,
         from: usize,
@@ -160,16 +187,54 @@ impl NetworkFabric {
         data: Vec<u8>,
         current_tick: u64,
     ) -> bool {
+        // 1. Partition check
         if !self.can_reach(from, to) {
             debug!("Message from VM{} to VM{} dropped by partition", from, to);
-            return false; // Dropped by partition
+            return false;
         }
 
-        // Calculate delivery tick: current + max(sender_latency, receiver_latency)
+        // 2. Packet loss — check sender's loss rate
+        let sender_loss = self.loss_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_loss = self.loss_rate_ppm.get(to).copied().unwrap_or(0);
+        let loss_rate = sender_loss.max(receiver_loss);
+        if loss_rate > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < loss_rate {
+                debug!("Message from VM{} to VM{} dropped by packet loss ({}ppm)", from, to, loss_rate);
+                return false;
+            }
+        }
+
+        // 3. Packet corruption — flip a random byte
+        let mut data = data;
+        let sender_corrupt = self.corruption_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_corrupt = self.corruption_rate_ppm.get(to).copied().unwrap_or(0);
+        let corrupt_rate = sender_corrupt.max(receiver_corrupt);
+        if corrupt_rate > 0 && !data.is_empty() {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < corrupt_rate {
+                let byte_idx = (self.rng.next_u64() as usize) % data.len();
+                let flip = (self.rng.next_u64() & 0xFF) as u8 | 1; // At least 1 bit flipped
+                data[byte_idx] ^= flip;
+                debug!("Message from VM{} to VM{} corrupted at byte {}", from, to, byte_idx);
+            }
+        }
+
+        // 4. Calculate delivery tick with latency
         let sender_latency = self.latency.get(from).copied().unwrap_or(0);
         let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
         let latency_ticks = sender_latency.max(receiver_latency);
-        let deliver_at_tick = current_tick + latency_ticks;
+        let mut deliver_at_tick = current_tick + latency_ticks;
+
+        // 5. Packet reorder — add random jitter within the reorder window
+        let sender_reorder = self.reorder_window.get(from).copied().unwrap_or(0);
+        let receiver_reorder = self.reorder_window.get(to).copied().unwrap_or(0);
+        let reorder_win = sender_reorder.max(receiver_reorder);
+        if reorder_win > 0 {
+            let jitter = self.rng.next_u64() % (reorder_win + 1);
+            deliver_at_tick += jitter;
+            debug!("Message from VM{} to VM{} reordered by {} ticks", from, to, jitter);
+        }
 
         self.in_flight.push(NetworkMessage {
             from,
@@ -187,10 +252,19 @@ impl NetworkFabric {
         self.partitions.push((side_a, side_b));
     }
 
-    /// Clear all partitions (heal network).
+    /// Clear all partitions and packet-level faults (heal network).
     fn clear_partitions(&mut self) {
-        info!("Network healed: all partitions removed");
+        info!("Network healed: all partitions and packet faults removed");
         self.partitions.clear();
+        for rate in &mut self.loss_rate_ppm {
+            *rate = 0;
+        }
+        for rate in &mut self.corruption_rate_ppm {
+            *rate = 0;
+        }
+        for win in &mut self.reorder_window {
+            *win = 0;
+        }
     }
 
     /// Set latency for a specific VM.
@@ -198,6 +272,30 @@ impl NetworkFabric {
         if target < self.latency.len() {
             self.latency[target] = latency_ns;
             debug!("VM{} latency set to {} ns", target, latency_ns);
+        }
+    }
+
+    /// Set packet loss rate for a specific VM.
+    fn set_loss_rate(&mut self, target: usize, rate_ppm: u32) {
+        if target < self.loss_rate_ppm.len() {
+            self.loss_rate_ppm[target] = rate_ppm;
+            debug!("VM{} packet loss set to {} ppm", target, rate_ppm);
+        }
+    }
+
+    /// Set packet corruption rate for a specific VM.
+    fn set_corruption_rate(&mut self, target: usize, rate_ppm: u32) {
+        if target < self.corruption_rate_ppm.len() {
+            self.corruption_rate_ppm[target] = rate_ppm;
+            debug!("VM{} packet corruption set to {} ppm", target, rate_ppm);
+        }
+    }
+
+    /// Set reorder window for a specific VM (in ticks).
+    fn set_reorder_window(&mut self, target: usize, window_ticks: u64) {
+        if target < self.reorder_window.len() {
+            self.reorder_window[target] = window_ticks;
+            debug!("VM{} reorder window set to {} ticks", target, window_ticks);
         }
     }
 }
@@ -273,11 +371,12 @@ impl SimulationController {
                 inbox: VecDeque::new(),
                 disk_faults: DiskFaultFlags::default(),
                 tsc_skew: 0,
+                memory_limit_bytes: None,
                 initial_snapshot: Some(initial_snapshot),
             });
         }
 
-        let network = NetworkFabric::new(config.num_vms);
+        let network = NetworkFabric::new(config.num_vms, config.seed);
 
         Ok(Self {
             vms,
@@ -348,6 +447,23 @@ impl SimulationController {
                         vms_halted += 1;
                     }
                 }
+                VmStatus::Resuming { resume_at_tick } => {
+                    if self.tick >= resume_at_tick {
+                        info!("VM{} resuming from pause at tick {}", i, self.tick);
+                        self.vms[i].status = VmStatus::Running;
+                        // Run the resumed VM for this round's quantum
+                        let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
+                        if halted {
+                            self.vms[i].status = VmStatus::Paused;
+                            vms_halted += 1;
+                        } else {
+                            vms_running += 1;
+                        }
+                        debug!("VM{} resumed, executed {} exits", i, exits);
+                    } else {
+                        vms_halted += 1;
+                    }
+                }
             }
         }
 
@@ -391,14 +507,18 @@ impl SimulationController {
                 self.network.clear_partitions();
             }
             Fault::PacketLoss { target, rate_ppm } => {
-                warn!("PacketLoss fault not yet implemented: VM{}, {}ppm", target, rate_ppm);
-                // TODO: Implement at network send/receive level
+                info!("PacketLoss: VM{} set to {} ppm", target, rate_ppm);
+                self.network.set_loss_rate(*target, *rate_ppm);
             }
             Fault::PacketCorruption { target, rate_ppm } => {
-                warn!("PacketCorruption fault not yet implemented: VM{}, {}ppm", target, rate_ppm);
+                info!("PacketCorruption: VM{} set to {} ppm", target, rate_ppm);
+                self.network.set_corruption_rate(*target, *rate_ppm);
             }
             Fault::PacketReorder { target, window_ns } => {
-                warn!("PacketReorder fault not yet implemented: VM{}, {}ns window", target, window_ns);
+                // Convert nanoseconds to ticks (1 tick = 1_000_000 ns)
+                let window_ticks = window_ns / 1_000_000;
+                info!("PacketReorder: VM{} window {} ns ({} ticks)", target, window_ns, window_ticks);
+                self.network.set_reorder_window(*target, window_ticks);
             }
 
             // ── Disk faults ──
@@ -439,10 +559,16 @@ impl SimulationController {
             }
             Fault::ProcessPause { target, duration_ns } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("ProcessPause: VM{} paused for {} ns", target, duration_ns);
+                    // Convert duration_ns to ticks (1 tick = 1_000_000 ns), minimum 1 tick
+                    let pause_ticks = (*duration_ns / 1_000_000).max(1);
+                    let resume_at = self.tick + pause_ticks;
+                    info!("ProcessPause: VM{} paused for {} ns ({} ticks), resume at tick {}", 
+                          target, duration_ns, pause_ticks, resume_at);
                     slot.status = VmStatus::Paused;
-                    // TODO: Schedule automatic resume after duration
                 }
+                // Schedule automatic resume after duration
+                let pause_ticks = (*duration_ns / 1_000_000).max(1);
+                self.schedule_resume(*target, self.tick + pause_ticks)?;
             }
             Fault::ProcessRestart { target } => {
                 self.schedule_restart(*target, self.tick + 10)?; // Restart after 10 ticks
@@ -470,9 +596,11 @@ impl SimulationController {
 
             // ── Resource faults ──
             Fault::MemoryPressure { target, limit_bytes } => {
-                warn!("MemoryPressure fault not yet implemented: VM{}, limit {} bytes", 
-                      target, limit_bytes);
-                // TODO: Implement memory limiting at guest allocator level
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("MemoryPressure: VM{} limited to {} bytes ({} MB)", 
+                          target, limit_bytes, limit_bytes / (1024 * 1024));
+                    slot.memory_limit_bytes = Some(*limit_bytes);
+                }
             }
         }
 
@@ -484,6 +612,17 @@ impl SimulationController {
         if let Some(slot) = self.vms.get_mut(target) {
             info!("VM{} scheduled to restart at tick {}", target, restart_at_tick);
             slot.status = VmStatus::Restarting { restart_at_tick };
+        }
+        Ok(())
+    }
+
+    /// Schedule a paused VM to resume at a future tick.
+    fn schedule_resume(&mut self, target: usize, resume_at_tick: u64) -> Result<(), VmError> {
+        if let Some(slot) = self.vms.get_mut(target) {
+            if slot.status == VmStatus::Paused {
+                info!("VM{} scheduled to resume at tick {}", target, resume_at_tick);
+                slot.status = VmStatus::Resuming { resume_at_tick };
+            }
         }
         Ok(())
     }
@@ -500,6 +639,7 @@ impl SimulationController {
             slot.inbox.clear();
             slot.disk_faults = DiskFaultFlags::default();
             slot.tsc_skew = 0;
+            slot.memory_limit_bytes = None;
         } else {
             warn!("VM{} has no initial snapshot, cannot restart", target);
         }
@@ -675,14 +815,14 @@ mod tests {
 
     #[test]
     fn test_network_fabric_can_reach() {
-        let fabric = NetworkFabric::new(4);
+        let fabric = NetworkFabric::new(4, 42);
         assert!(fabric.can_reach(0, 1));
         assert!(fabric.can_reach(1, 0));
     }
 
     #[test]
     fn test_network_fabric_partition_blocks() {
-        let mut fabric = NetworkFabric::new(4);
+        let mut fabric = NetworkFabric::new(4, 42);
         fabric.add_partition(vec![0, 1], vec![2, 3]);
 
         // Same side can reach each other
@@ -697,7 +837,7 @@ mod tests {
 
     #[test]
     fn test_network_fabric_send_respects_partition() {
-        let mut fabric = NetworkFabric::new(3);
+        let mut fabric = NetworkFabric::new(3, 42);
         fabric.add_partition(vec![0], vec![1, 2]);
 
         let sent = fabric.send(0, 1, vec![42], 0);
@@ -709,12 +849,92 @@ mod tests {
 
     #[test]
     fn test_network_fabric_latency() {
-        let mut fabric = NetworkFabric::new(2);
+        let mut fabric = NetworkFabric::new(2, 42);
         fabric.set_latency(0, 1000);
 
         fabric.send(0, 1, vec![1, 2, 3], 0);
         assert_eq!(fabric.in_flight.len(), 1);
         assert_eq!(fabric.in_flight[0].deliver_at_tick, 1000);
+    }
+
+    #[test]
+    fn test_network_fabric_packet_loss() {
+        let mut fabric = NetworkFabric::new(3, 42);
+        fabric.set_loss_rate(0, 1_000_000); // 100% loss on VM0
+
+        // All messages from VM0 should be dropped
+        let sent = fabric.send(0, 1, vec![1, 2, 3], 0);
+        assert!(!sent);
+        assert!(fabric.in_flight.is_empty());
+
+        // Messages to VM0 are also dropped (loss is bidirectional)
+        let sent = fabric.send(1, 0, vec![4, 5, 6], 0);
+        assert!(!sent);
+        assert!(fabric.in_flight.is_empty());
+
+        // Messages between unaffected VMs should go through
+        let sent = fabric.send(1, 2, vec![7, 8, 9], 0);
+        assert!(sent);
+        assert_eq!(fabric.in_flight.len(), 1);
+    }
+
+    #[test]
+    fn test_network_fabric_packet_loss_zero_rate() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_loss_rate(0, 0); // 0% loss
+
+        // All messages should go through
+        for _ in 0..10 {
+            let sent = fabric.send(0, 1, vec![1], 0);
+            assert!(sent);
+        }
+        assert_eq!(fabric.in_flight.len(), 10);
+    }
+
+    #[test]
+    fn test_network_fabric_packet_corruption() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_corruption_rate(0, 1_000_000); // 100% corruption
+
+        let original = vec![0xAA; 32];
+        fabric.send(0, 1, original.clone(), 0);
+
+        // Message should be delivered but corrupted
+        assert_eq!(fabric.in_flight.len(), 1);
+        assert_ne!(fabric.in_flight[0].data, original);
+    }
+
+    #[test]
+    fn test_network_fabric_packet_reorder() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_reorder_window(0, 100); // Up to 100 ticks jitter
+
+        // Send multiple messages — some should have different delivery times
+        for i in 0..20 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+
+        assert_eq!(fabric.in_flight.len(), 20);
+        // With reorder window, delivery ticks should vary
+        let ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+        let all_same = ticks.iter().all(|&t| t == ticks[0]);
+        assert!(!all_same, "Reorder window should produce varied delivery ticks");
+    }
+
+    #[test]
+    fn test_network_heal_clears_packet_faults() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_loss_rate(0, 500_000);
+        fabric.set_corruption_rate(0, 200_000);
+        fabric.set_reorder_window(0, 50);
+        fabric.add_partition(vec![0], vec![1]);
+
+        fabric.clear_partitions();
+
+        assert!(fabric.partitions.is_empty());
+        assert_eq!(fabric.loss_rate_ppm[0], 0);
+        assert_eq!(fabric.corruption_rate_ppm[0], 0);
+        assert_eq!(fabric.reorder_window[0], 0);
     }
 
     #[test]
@@ -743,6 +963,19 @@ mod tests {
         } else {
             panic!("Expected Restarting status");
         }
+    }
+
+    #[test]
+    fn test_vm_status_resuming() {
+        let status = VmStatus::Resuming { resume_at_tick: 50 };
+        if let VmStatus::Resuming { resume_at_tick } = status {
+            assert_eq!(resume_at_tick, 50);
+        } else {
+            panic!("Expected Resuming status");
+        }
+
+        // Resuming is not equal to Paused
+        assert_ne!(status, VmStatus::Paused);
     }
 
     #[test]

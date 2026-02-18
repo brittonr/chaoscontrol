@@ -8,6 +8,7 @@ members = [
     "crates/chaoscontrol-explore",
     "crates/chaoscontrol-replay",
     "crates/chaoscontrol-guest",
+    "crates/chaoscontrol-raft-guest",
 ]
 resolver = "2"
 

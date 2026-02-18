@@ -313,6 +313,10 @@ pub struct DeterministicVm {
     // Execution statistics
     exit_count: u64,
     io_exit_count: u64,
+    /// Total exits since the last SDK hypercall.
+    /// When this exceeds an idle threshold AND setup_complete has been
+    /// signaled, `step()` treats the VM as halted (workload done).
+    exits_since_last_sdk: u64,
 
     // Coverage tracking
     coverage_active: bool,
@@ -451,6 +455,7 @@ impl DeterministicVm {
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
+            exits_since_last_sdk: 0,
             coverage_active: false,
         })
     }
@@ -778,8 +783,23 @@ impl DeterministicVm {
         if self.exit_count == 0 {
             self.reset_time_state()?;
         }
+        /// After setup_complete, if no SDK calls happen for this many
+        /// exits, treat the VM as idle (workload done).
+        const SDK_IDLE_THRESHOLD: u64 = 500;
+
         for i in 0..max_exits {
             if self.step()? {
+                return Ok((i + 1, true));
+            }
+            self.exits_since_last_sdk += 1;
+            // Detect idle: workload done, guest is just spinning
+            if self.fault_engine.is_setup_complete()
+                && self.exits_since_last_sdk > SDK_IDLE_THRESHOLD
+            {
+                info!(
+                    "VM idle (no SDK calls for {} exits), treating as halted",
+                    self.exits_since_last_sdk
+                );
                 return Ok((i + 1, true));
             }
         }
@@ -891,6 +911,7 @@ impl DeterministicVm {
             self.virtual_tsc.read(),
             self.exit_count,
             self.io_exit_count,
+            self.exits_since_last_sdk,
         )
         .map_err(|e| VmError::Snapshot(e.to_string()))
     }
@@ -908,6 +929,7 @@ impl DeterministicVm {
         self.virtual_tsc.set(snapshot.virtual_tsc);
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
+        self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
 
         // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
@@ -989,6 +1011,11 @@ impl DeterministicVm {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
+                // Only SDK/coverage port resets idle counter — serial
+                // polling is part of the kernel idle loop.
+                if port == SDK_PORT || port == COVERAGE_PORT {
+                    self.exits_since_last_sdk = 0;
+                }
                 self.virtual_tsc.tick();
 
 
@@ -1014,6 +1041,9 @@ impl DeterministicVm {
             Ok(VcpuExit::IoOut(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
+                if port == SDK_PORT || port == COVERAGE_PORT {
+                    self.exits_since_last_sdk = 0;
+                }
                 self.virtual_tsc.tick();
 
                 let tsc = self.virtual_tsc.read();
@@ -1077,6 +1107,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::MmioRead(addr, data)) => {
                 self.exit_count += 1;
+                self.exits_since_last_sdk = 0;
                 self.virtual_tsc.tick();
 
                 // Find the virtio device that handles this address
@@ -1101,6 +1132,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::MmioWrite(addr, data)) => {
                 self.exit_count += 1;
+                self.exits_since_last_sdk = 0;
                 self.virtual_tsc.tick();
 
                 // Find the virtio device that handles this address

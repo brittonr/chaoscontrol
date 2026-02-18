@@ -4,6 +4,9 @@ A deterministic Virtual Machine Monitor (VMM) for x86_64 built with KVM
 and the rust-vmm crate ecosystem. Designed for simulation testing of
 distributed systems where reproducibility is essential.
 
+
+This is just an experiment with Claude + Pi.dev. Use at your own risk
+
 ## Features
 
 ### Deterministic Execution
@@ -292,6 +295,3 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [ ] Coverage feedback from guest (kcov / breakpoints)
 - [ ] Coverage-guided seed exploration
 
-## License
-
-Apache-2.0

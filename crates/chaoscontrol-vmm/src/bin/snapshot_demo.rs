@@ -34,10 +34,7 @@ fn main() {
     log::info!("Running until heartbeat 3...");
     let output = vm.run_until("heartbeat 3").expect("Failed to run VM");
 
-    let heartbeats: Vec<&str> = output
-        .lines()
-        .filter(|l| l.contains("heartbeat"))
-        .collect();
+    let heartbeats: Vec<&str> = output.lines().filter(|l| l.contains("heartbeat")).collect();
     log::info!(
         "Phase 1 complete. {} exits, vTSC={}, heartbeats: {:?}",
         vm.exit_count(),

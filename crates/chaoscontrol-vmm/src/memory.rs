@@ -286,9 +286,7 @@ pub enum MemoryError {
     },
 
     /// The kernel command line exceeds [`CMDLINE_MAX_SIZE`].
-    #[error(
-        "Kernel command line too long: {len} bytes exceeds maximum of {CMDLINE_MAX_SIZE}"
-    )]
+    #[error("Kernel command line too long: {len} bytes exceeds maximum of {CMDLINE_MAX_SIZE}")]
     CmdlineTooLong {
         /// Actual command-line length (including NUL terminator).
         len: usize,
@@ -373,8 +371,8 @@ impl GuestMemoryManager {
     /// fails (e.g. insufficient host memory or address space).
     pub fn new(size: usize) -> Result<Self, MemoryError> {
         let regions = vec![(GuestAddress(0), size)];
-        let memory = GuestMemoryMmap::from_ranges(&regions)
-            .map_err(|_| MemoryError::Create { size })?;
+        let memory =
+            GuestMemoryMmap::from_ranges(&regions).map_err(|_| MemoryError::Create { size })?;
 
         info!(
             "Guest memory created: {} MB ({} bytes)",
@@ -407,20 +405,14 @@ impl GuestMemoryManager {
     pub fn setup_page_tables(&self) -> Result<(), MemoryError> {
         // PML4[0] → PDPTE (present + writable).
         self.memory
-            .write_obj(
-                PDPTE_START | PTE_PRESENT_WRITABLE,
-                GuestAddress(PML4_START),
-            )
+            .write_obj(PDPTE_START | PTE_PRESENT_WRITABLE, GuestAddress(PML4_START))
             .map_err(|_| MemoryError::Write {
                 address: PML4_START,
             })?;
 
         // PDPTE[0] → PDE (present + writable).
         self.memory
-            .write_obj(
-                PDE_START | PTE_PRESENT_WRITABLE,
-                GuestAddress(PDPTE_START),
-            )
+            .write_obj(PDE_START | PTE_PRESENT_WRITABLE, GuestAddress(PDPTE_START))
             .map_err(|_| MemoryError::Write {
                 address: PDPTE_START,
             })?;
@@ -467,10 +459,10 @@ impl GuestMemoryManager {
     /// Returns [`MemoryError::Write`] if any write to guest memory fails.
     pub fn setup_gdt(&self) -> Result<(), MemoryError> {
         let gdt_table: [u64; GDT_ENTRY_COUNT] = [
-            0,                                          // NULL descriptor
-            gdt_entry(GDT_FLAGS_CODE64, 0, 0xfffff),   // CODE64 segment
-            gdt_entry(GDT_FLAGS_DATA, 0, 0xfffff),     // DATA segment
-            gdt_entry(GDT_FLAGS_TSS, 0, 0xfffff),      // TSS segment
+            0,                                       // NULL descriptor
+            gdt_entry(GDT_FLAGS_CODE64, 0, 0xfffff), // CODE64 segment
+            gdt_entry(GDT_FLAGS_DATA, 0, 0xfffff),   // DATA segment
+            gdt_entry(GDT_FLAGS_TSS, 0, 0xfffff),    // TSS segment
         ];
 
         for (i, entry) in gdt_table.iter().enumerate() {
@@ -699,10 +691,7 @@ pub fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> kvm_segment {
 /// Convenience wrapper around [`kvm_segment_from_gdt`] with the standard
 /// [`GDT_FLAGS_CODE64`] flags.  Use this for `sregs.cs`.
 pub fn code64_segment() -> kvm_segment {
-    kvm_segment_from_gdt(
-        gdt_entry(GDT_FLAGS_CODE64, 0, 0xfffff),
-        GDT_INDEX_CODE,
-    )
+    kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_CODE64, 0, 0xfffff), GDT_INDEX_CODE)
 }
 
 /// Build the data segment register (GDT index 2, selector `0x10`).
@@ -711,10 +700,7 @@ pub fn code64_segment() -> kvm_segment {
 /// [`GDT_FLAGS_DATA`] flags.  Use this for `sregs.ds`, `sregs.es`,
 /// `sregs.fs`, `sregs.gs`, and `sregs.ss`.
 pub fn data_segment() -> kvm_segment {
-    kvm_segment_from_gdt(
-        gdt_entry(GDT_FLAGS_DATA, 0, 0xfffff),
-        GDT_INDEX_DATA,
-    )
+    kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_DATA, 0, 0xfffff), GDT_INDEX_DATA)
 }
 
 /// Build the TSS segment register (GDT index 3, selector `0x18`).
@@ -722,10 +708,7 @@ pub fn data_segment() -> kvm_segment {
 /// Convenience wrapper around [`kvm_segment_from_gdt`] with the standard
 /// [`GDT_FLAGS_TSS`] flags.  Use this for `sregs.tr`.
 pub fn tss_segment() -> kvm_segment {
-    kvm_segment_from_gdt(
-        gdt_entry(GDT_FLAGS_TSS, 0, 0xfffff),
-        GDT_INDEX_TSS,
-    )
+    kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_TSS, 0, 0xfffff), GDT_INDEX_TSS)
 }
 
 // ─── GDT field extraction helpers ────────────────────────────────────
@@ -759,8 +742,8 @@ fn get_base(entry: u64) -> u64 {
 /// 4096 (left-shifted by 12) and the low 12 bits are filled with 1s,
 /// giving a byte-granular effective limit.
 fn get_limit(entry: u64) -> u32 {
-    let raw: u32 = ((((entry) & 0x000F_0000_0000_0000) >> 32)
-        | ((entry) & 0x0000_0000_0000_FFFF)) as u32;
+    let raw: u32 =
+        ((((entry) & 0x000F_0000_0000_0000) >> 32) | ((entry) & 0x0000_0000_0000_FFFF)) as u32;
     match get_g(entry) {
         0 => raw,
         _ => (raw << 12) | 0xFFF,
@@ -821,24 +804,25 @@ mod tests {
 
     #[test]
     fn memory_layout_constants_are_ordered() {
-        assert!(BOOT_GDT_OFFSET < BOOT_IDT_OFFSET);
-        assert!(BOOT_IDT_OFFSET < ZERO_PAGE_START);
-        assert!(ZERO_PAGE_START < BOOT_STACK_POINTER);
-        assert!(BOOT_STACK_POINTER < PML4_START);
-        assert!(PML4_START < PDPTE_START);
-        assert!(PDPTE_START < PDE_START);
-        assert!(PDE_START < CMDLINE_START);
-        assert!(CMDLINE_START < HIMEM_START);
+        // Compile-time checks that the memory layout is correctly ordered.
+        const {
+            assert!(BOOT_GDT_OFFSET < BOOT_IDT_OFFSET);
+            assert!(BOOT_IDT_OFFSET < ZERO_PAGE_START);
+            assert!(ZERO_PAGE_START < BOOT_STACK_POINTER);
+            assert!(BOOT_STACK_POINTER < PML4_START);
+            assert!(PML4_START < PDPTE_START);
+            assert!(PDPTE_START < PDE_START);
+            assert!(PDE_START < CMDLINE_START);
+            assert!(CMDLINE_START < HIMEM_START);
+        }
     }
 
     #[test]
     fn page_tables_do_not_overlap_cmdline() {
         // PDE table occupies PDE_START .. PDE_START + 512 * 8.
-        let pde_end = PDE_START + PDE_ENTRY_COUNT * 8;
-        assert!(
-            pde_end <= CMDLINE_START,
-            "PDE table (ends at {pde_end:#x}) overlaps command line ({CMDLINE_START:#x})"
-        );
+        const {
+            assert!(PDE_START + PDE_ENTRY_COUNT * 8 <= CMDLINE_START);
+        }
     }
 
     // ─── E820 ────────────────────────────────────────────────────────
@@ -1044,10 +1028,7 @@ mod tests {
         assert_eq!(pde0, PDE_PRESENT_WRITABLE_PS);
 
         // PDE[1]: maps 0x0020_0000–0x003F_FFFF.
-        let pde1: u64 = mgr
-            .inner()
-            .read_obj(GuestAddress(PDE_START + 8))
-            .unwrap();
+        let pde1: u64 = mgr.inner().read_obj(GuestAddress(PDE_START + 8)).unwrap();
         assert_eq!(pde1, (1u64 << 21) | PDE_PRESENT_WRITABLE_PS);
 
         // PDE[511]: maps 0x3FE0_0000–0x3FFF_FFFF.
@@ -1064,10 +1045,7 @@ mod tests {
         mgr.setup_gdt().unwrap();
 
         // NULL entry.
-        let null: u64 = mgr
-            .inner()
-            .read_obj(GuestAddress(BOOT_GDT_OFFSET))
-            .unwrap();
+        let null: u64 = mgr.inner().read_obj(GuestAddress(BOOT_GDT_OFFSET)).unwrap();
         assert_eq!(null, 0);
 
         // CODE64 entry: must have L=1.
@@ -1088,10 +1066,7 @@ mod tests {
         assert_eq!(get_db(data), 1);
 
         // IDT placeholder is zeroed.
-        let idt: u64 = mgr
-            .inner()
-            .read_obj(GuestAddress(BOOT_IDT_OFFSET))
-            .unwrap();
+        let idt: u64 = mgr.inner().read_obj(GuestAddress(BOOT_IDT_OFFSET)).unwrap();
         assert_eq!(idt, 0);
     }
 
@@ -1143,9 +1118,7 @@ mod tests {
 
         // Overwrite memory with zeros to simulate state change.
         let zeros = vec![0u8; 4 * 1024 * 1024];
-        mgr.inner()
-            .write_slice(&zeros, GuestAddress(0))
-            .unwrap();
+        mgr.inner().write_slice(&zeros, GuestAddress(0)).unwrap();
 
         // Verify memory was actually zeroed.
         let pml4: u64 = mgr.inner().read_obj(GuestAddress(PML4_START)).unwrap();

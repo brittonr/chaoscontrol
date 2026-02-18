@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn port_ranges_are_sane() {
-        assert!(SERIAL_PORT_END > SERIAL_PORT_BASE);
+        const { assert!(SERIAL_PORT_END > SERIAL_PORT_BASE) }
         assert_eq!(SERIAL_PORT_END - SERIAL_PORT_BASE, 7);
     }
 

@@ -120,7 +120,8 @@ impl DeterministicBlock {
         self.check_bounds(offset, len)?;
 
         // Check for an injected read fault at this offset.
-        if let Some(idx) = self.find_fault(|f| matches!(f, BlockFault::ReadError { offset: o } if *o == offset))
+        if let Some(idx) =
+            self.find_fault(|f| matches!(f, BlockFault::ReadError { offset: o } if *o == offset))
         {
             let fault = self.faults.remove(idx).unwrap();
             if let BlockFault::ReadError { offset } = fault {
@@ -347,10 +348,7 @@ mod tests {
     #[test]
     fn injected_corruption() {
         let mut blk = DeterministicBlock::new(1024);
-        blk.inject_fault(BlockFault::Corruption {
-            offset: 0,
-            len: 4,
-        });
+        blk.inject_fault(BlockFault::Corruption { offset: 0, len: 4 });
 
         // Write succeeds (returns Ok), but the first 4 bytes are corrupted.
         blk.write(0, &[0xAA; 8]).unwrap();

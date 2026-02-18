@@ -614,10 +614,7 @@ impl DeterministicVm {
             .register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
-        info!(
-            "VM restored from snapshot (RIP={:#x})",
-            snapshot.regs.rip,
-        );
+        info!("VM restored from snapshot (RIP={:#x})", snapshot.regs.rip,);
 
         Ok(())
     }
@@ -660,7 +657,11 @@ impl DeterministicVm {
             Ok(VcpuExit::Hlt) => {
                 self.exit_count += 1;
                 self.virtual_tsc.tick();
-                info!("VM halted (exit_count={}, vtsc={})", self.exit_count, self.virtual_tsc.read());
+                info!(
+                    "VM halted (exit_count={}, vtsc={})",
+                    self.exit_count,
+                    self.virtual_tsc.read()
+                );
                 Ok(true)
             }
             Ok(VcpuExit::Shutdown) => {

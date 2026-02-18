@@ -325,8 +325,7 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
     info!(
         "CPUID filtered: {} leaves modified \
          (tsc_khz={}, avx2={}, avx512={}, hide_hv={})",
-        modified, config.tsc_khz, config.allow_avx2, config.allow_avx512,
-        config.hide_hypervisor,
+        modified, config.tsc_khz, config.allow_avx2, config.allow_avx512, config.hide_hypervisor,
     );
 
     Ok(cpuid)
@@ -905,14 +904,7 @@ mod tests {
             allow_avx2: true,
             ..Default::default()
         };
-        let mut e = make_entry(
-            0x7,
-            0,
-            0,
-            CPUID_7_EBX_AVX2 | CPUID_7_EBX_RDSEED,
-            0,
-            0,
-        );
+        let mut e = make_entry(0x7, 0, 0, CPUID_7_EBX_AVX2 | CPUID_7_EBX_RDSEED, 0, 0);
         filter_entry(&mut e, &c);
         assert_ne!(e.ebx & CPUID_7_EBX_AVX2, 0, "AVX2 preserved");
         assert_eq!(e.ebx & CPUID_7_EBX_RDSEED, 0, "RDSEED still gone");

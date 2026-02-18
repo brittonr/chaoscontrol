@@ -107,6 +107,9 @@ pub enum VmError {
     
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
+
+    #[error("Snapshot error: {0}")]
+    Snapshot(String),
 }
 
 /// COM1 IRQ line number (standard PC)
@@ -123,12 +126,54 @@ impl vm_superio::Trigger for SerialTrigger {
     }
 }
 
+/// A writer that outputs to stdout AND captures bytes in a shared buffer.
+#[derive(Clone)]
+pub struct CapturingWriter {
+    buffer: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+impl CapturingWriter {
+    fn new() -> Self {
+        Self {
+            buffer: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Take the captured output, clearing the internal buffer.
+    pub fn take(&self) -> Vec<u8> {
+        let mut buf = self.buffer.lock().unwrap();
+        std::mem::take(&mut *buf)
+    }
+
+    /// Get the captured output as a string (lossy).
+    pub fn as_string(&self) -> String {
+        let buf = self.buffer.lock().unwrap();
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+}
+
+impl io::Write for CapturingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // Write to stdout
+        io::stdout().write_all(buf)?;
+        io::stdout().flush()?;
+        // Capture
+        self.buffer.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        io::stdout().flush()
+    }
+}
+
 pub struct DeterministicVm {
     kvm: Kvm,
     vm: VmFd,
     vcpu: VcpuFd,
     guest_memory: GuestMemoryMmap,
-    serial: vm_superio::Serial<SerialTrigger, vm_superio::serial::NoEvents, io::Stdout>,
+    serial: vm_superio::Serial<SerialTrigger, vm_superio::serial::NoEvents, CapturingWriter>,
+    serial_writer: CapturingWriter,
 }
 
 impl DeterministicVm {
@@ -175,7 +220,8 @@ impl DeterministicVm {
         // Set up serial port with interrupt support
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
         let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
-        let serial = vm_superio::Serial::new(serial_trigger, io::stdout());
+        let serial_writer = CapturingWriter::new();
+        let serial = vm_superio::Serial::new(serial_trigger, serial_writer.clone());
 
         // Register the serial EventFd with KVM IRQ line 4 (COM1)
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
@@ -187,6 +233,7 @@ impl DeterministicVm {
             vcpu,
             guest_memory,
             serial,
+            serial_writer,
         })
     }
 
@@ -469,58 +516,122 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Run the VM until it halts or shuts down. Serial output goes to stdout.
     pub fn run(&mut self) -> Result<(), VmError> {
         info!("Starting VM execution");
-        
         loop {
-            match self.vcpu.run() {
-                Ok(exit_reason) => {
-                    match exit_reason {
-                        VcpuExit::IoIn(port, data) => {
-                            if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
-                                let offset = (port - SERIAL_PORT_BASE) as u8;
-                                data[0] = self.serial.read(offset);
-                            } else {
-                                for byte in data.iter_mut() {
-                                    *byte = 0xff;
-                                }
-                            }
-                        }
-                        VcpuExit::IoOut(port, data) => {
-                            if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
-                                let offset = (port - SERIAL_PORT_BASE) as u8;
-                                let _ = self.serial.write(offset, data[0]);
-                            }
-                        }
-                        VcpuExit::Hlt => {
-                            info!("VM halted");
-                            break;
-                        }
-                        VcpuExit::Shutdown => {
-                            info!("VM shutdown");
-                            break;
-                        }
-                        VcpuExit::MmioRead(addr, data) => {
-                            debug!("MMIO read from 0x{:x}", addr);
-                            // Fill with zeros
-                            for byte in data {
-                                *byte = 0;
-                            }
-                        }
-                        VcpuExit::MmioWrite(addr, data) => {
-                            debug!("MMIO write to 0x{:x}: {:?}", addr, data);
-                        }
-                        reason => {
-                            info!("Unhandled exit reason: {:?}", reason);
-                            break;
+            if self.step()? {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Run the VM until the serial output contains `pattern`.
+    /// Returns the captured serial output since the last `take_serial_output()`.
+    pub fn run_until(&mut self, pattern: &str) -> Result<String, VmError> {
+        // Clear captured output first
+        self.serial_writer.take();
+        loop {
+            if self.step()? {
+                break;
+            }
+            let s = self.serial_writer.as_string();
+            if s.contains(pattern) {
+                return Ok(s);
+            }
+        }
+        Ok(self.serial_writer.as_string())
+    }
+
+    /// Take all serial output captured since the last call.
+    pub fn take_serial_output(&mut self) -> String {
+        String::from_utf8_lossy(&self.serial_writer.take()).into_owned()
+    }
+
+    /// Take a snapshot of the current VM state.
+    pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
+        crate::snapshot::VmSnapshot::capture(
+            &self.vcpu,
+            &self.vm,
+            &self.guest_memory,
+            self.serial.state(),
+        )
+        .map_err(|e| VmError::Snapshot(e.to_string()))
+    }
+
+    /// Restore VM state from a snapshot.
+    pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+        snapshot
+            .restore(&self.vcpu, &self.vm, &self.guest_memory)
+            .map_err(|e| VmError::Snapshot(e.to_string()))?;
+
+        // Restore serial state with new EventFd
+        let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
+        let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
+        self.serial = vm_superio::Serial::from_state(
+            &snapshot.serial_state,
+            serial_trigger,
+            vm_superio::serial::NoEvents,
+            io::stdout(),
+        )
+        .map_err(|e| VmError::Snapshot(format!("serial restore: {e}")))?;
+
+        // Re-register IRQ fd
+        self.vm
+            .register_irqfd(&serial_evt, SERIAL_IRQ)
+            .map_err(VmError::CreateIrqChip)?;
+
+        Ok(())
+    }
+
+    /// Execute one step: run the vCPU until a VM exit, handle it.
+    /// Optionally captures serial output bytes into `capture`.
+    /// Returns true if the VM halted/shut down.
+    fn step(&mut self, capture: Option<&mut Vec<u8>>) -> Result<bool, VmError> {
+        match self.vcpu.run() {
+            Ok(VcpuExit::IoIn(port, data)) => {
+                if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
+                    let offset = (port - SERIAL_PORT_BASE) as u8;
+                    data[0] = self.serial.read(offset);
+                } else {
+                    for byte in data.iter_mut() {
+                        *byte = 0xff;
+                    }
+                }
+                Ok(false)
+            }
+            Ok(VcpuExit::IoOut(port, data)) => {
+                if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
+                    let offset = (port - SERIAL_PORT_BASE) as u8;
+                    let byte = data[0];
+                    let _ = self.serial.write(offset, byte);
+                    if offset == 0 {
+                        if let Some(buf) = capture {
+                            buf.push(byte);
                         }
                     }
                 }
-                Err(e) => return Err(VmError::VcpuRun(e)),
+                Ok(false)
             }
+            Ok(VcpuExit::Hlt) => {
+                info!("VM halted");
+                Ok(true)
+            }
+            Ok(VcpuExit::Shutdown) => {
+                info!("VM shutdown");
+                Ok(true)
+            }
+            Ok(VcpuExit::MmioRead(_, data)) => {
+                for byte in data {
+                    *byte = 0;
+                }
+                Ok(false)
+            }
+            Ok(VcpuExit::MmioWrite(_, _)) => Ok(false),
+            Ok(_) => Ok(true),
+            Err(e) => Err(VmError::VcpuRun(e)),
         }
-
-        Ok(())
     }
 }
 

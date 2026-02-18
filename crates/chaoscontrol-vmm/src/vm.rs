@@ -19,6 +19,7 @@
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
+use crate::devices::virtio_mmio::VirtioMmioDevice;
 
 use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
 use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT};
@@ -75,6 +76,22 @@ const PIT_FREQ_HZ: u128 = 1_193_182;
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
 const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
 
+// Virtio MMIO device placement in guest physical memory
+/// Base address for virtio MMIO device 0 (block).
+const VIRTIO_MMIO_BASE_0: u64 = 0xD000_0000;
+/// IRQ line for virtio MMIO device 0 (block).
+const VIRTIO_MMIO_IRQ_0: u32 = 5;
+
+/// Base address for virtio MMIO device 1 (net).
+const VIRTIO_MMIO_BASE_1: u64 = 0xD000_1000;
+/// IRQ line for virtio MMIO device 1 (net).
+const VIRTIO_MMIO_IRQ_1: u32 = 6;
+
+/// Base address for virtio MMIO device 2 (entropy/rng).
+const VIRTIO_MMIO_BASE_2: u64 = 0xD000_2000;
+/// IRQ line for virtio MMIO device 2 (entropy/rng).
+const VIRTIO_MMIO_IRQ_2: u32 = 7;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════════════════════════════
@@ -113,6 +130,7 @@ impl Default for VmConfig {
             // nosmp noapic: single CPU, no APIC probing
             // kfence.sample_interval=0: disable kfence (timing-dependent)
             // no_hash_pointers: make pointer output deterministic
+            // virtio_mmio.device=<size>@<baseaddr>:<irq>: notify kernel of virtio devices
             cmdline: b"console=ttyS0 earlyprintk=serial \
                        clocksource=tsc tsc=reliable \
                        lpj=6000000 \
@@ -120,6 +138,9 @@ impl Default for VmConfig {
                        randomize_kstack_offset=off norandmaps \
                        kfence.sample_interval=0 \
                        no_hash_pointers \
+                       virtio_mmio.device=4K@0xd0000000:5 \
+                       virtio_mmio.device=4K@0xd0001000:6 \
+                       virtio_mmio.device=4K@0xd0002000:7 \
                        panic=-1\0"
                 .to_vec(),
         }
@@ -286,6 +307,9 @@ pub struct DeterministicVm {
     // Fault injection engine (SDK hypercall handler + property oracle)
     fault_engine: FaultEngine,
 
+    // Virtio MMIO devices
+    virtio_devices: Vec<VirtioMmioDevice>,
+
     // Execution statistics
     exit_count: u64,
     io_exit_count: u64,
@@ -398,11 +422,15 @@ impl DeterministicVm {
             ..EngineConfig::default()
         });
 
+        // Create virtio MMIO devices
+        let virtio_devices = Self::create_virtio_devices(config.cpu.seed);
+
         info!(
-            "VM created: {} MB memory, TSC {} kHz, seed {}",
+            "VM created: {} MB memory, TSC {} kHz, seed {}, {} virtio devices",
             config.memory_size / (1024 * 1024),
             config.cpu.tsc_khz,
             config.cpu.seed,
+            virtio_devices.len(),
         );
 
         Ok(Self {
@@ -416,10 +444,48 @@ impl DeterministicVm {
             serial,
             serial_writer,
             fault_engine,
+            virtio_devices,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
         })
+    }
+
+    /// Create the virtio MMIO devices (block, net, entropy).
+    fn create_virtio_devices(seed: u64) -> Vec<VirtioMmioDevice> {
+        use crate::devices::block::DeterministicBlock;
+        use crate::devices::net::DeterministicNet;
+        use crate::devices::virtio_block::VirtioBlock;
+        use crate::devices::virtio_net::VirtioNet;
+        use crate::devices::virtio_entropy::VirtioEntropy;
+
+        let mut devices = Vec::new();
+
+        // Device 0: virtio-blk (16 MB disk)
+        let disk = DeterministicBlock::new(16 * 1024 * 1024);
+        let blk_backend = Box::new(VirtioBlock::new(disk));
+        let blk_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0, blk_backend);
+        devices.push(blk_device);
+
+        // Device 1: virtio-net
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56]; // QEMU-style MAC
+        let net = DeterministicNet::new(mac);
+        let net_backend = Box::new(VirtioNet::new(net));
+        let net_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1, net_backend);
+        devices.push(net_device);
+
+        // Device 2: virtio-rng
+        let entropy = DeterministicEntropy::new(seed);
+        let rng_backend = Box::new(VirtioEntropy::new(entropy));
+        let rng_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, rng_backend);
+        devices.push(rng_device);
+
+        info!("Created virtio MMIO devices:");
+        info!("  Device 0: virtio-blk  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0);
+        info!("  Device 1: virtio-net  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1);
+        info!("  Device 2: virtio-rng  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2);
+
+        devices
     }
 
     /// Load a Linux kernel (and optional initrd) into guest memory.
@@ -492,19 +558,39 @@ impl DeterministicVm {
 
     /// Reset the vCPU's TSC to 0 via MSR write.
     fn reset_tsc_to_zero(&self) -> Result<(), VmError> {
+        self.write_tsc_to_guest(0)
+    }
+
+    /// Write a specific TSC value to the vCPU's IA32_TSC MSR.
+    ///
+    /// KVM advances the guest-visible TSC based on real wall-clock time
+    /// between VM entries and exits. By writing our virtual TSC value
+    /// before every `vcpu.run()`, we ensure RDTSC always starts from a
+    /// deterministic value, eliminating jitter from variable exit counts
+    /// caused by host interrupts and serial polling.
+    fn write_tsc_to_guest(&self, value: u64) -> Result<(), VmError> {
         use kvm_bindings::{kvm_msr_entry, Msrs};
 
         const MSR_IA32_TSC: u32 = 0x10;
 
         let msrs = Msrs::from_entries(&[kvm_msr_entry {
             index: MSR_IA32_TSC,
-            data: 0,
+            data: value,
             ..Default::default()
         }])
         .map_err(|_| VmError::GuestMemoryWrite)?;
 
         self.vcpu.set_msrs(&msrs).map_err(VmError::SetRegisters)?;
         Ok(())
+    }
+
+    /// Sync the virtual TSC to the guest vCPU before each run.
+    ///
+    /// This is the critical determinism fix: it overwrites KVM's
+    /// real-time TSC drift with our deterministic counter so every
+    /// guest execution slice starts at an exact, reproducible value.
+    fn sync_tsc_to_guest(&self) -> Result<(), VmError> {
+        self.write_tsc_to_guest(self.virtual_tsc.read())
     }
 
     fn setup_boot_params(&self, initrd_info: Option<(u64, u64)>) -> Result<(), VmError> {
@@ -521,6 +607,9 @@ impl DeterministicVm {
                        randomize_kstack_offset=off norandmaps \
                        kfence.sample_interval=0 \
                        no_hash_pointers \
+                       virtio_mmio.device=4K@0xd0000000:5 \
+                       virtio_mmio.device=4K@0xd0001000:6 \
+                       virtio_mmio.device=4K@0xd0002000:7 \
                        panic=-1\0";
         self.memory.write_cmdline(cmdline)?;
 
@@ -742,6 +831,18 @@ impl DeterministicVm {
         &self.memory
     }
 
+    // ─── Public API: virtio devices ──────────────────────────────────
+
+    /// Get a reference to the virtio MMIO devices.
+    pub fn virtio_devices(&self) -> &[VirtioMmioDevice] {
+        &self.virtio_devices
+    }
+
+    /// Get a mutable reference to the virtio MMIO devices.
+    pub fn virtio_devices_mut(&mut self) -> &mut [VirtioMmioDevice] {
+        &mut self.virtio_devices
+    }
+
     // ─── Public API: snapshot / restore ──────────────────────────────
 
     /// Take a snapshot of the current VM state.
@@ -839,6 +940,7 @@ impl DeterministicVm {
 
     fn step(&mut self) -> Result<bool, VmError> {
         self.sync_and_suppress_pit()?;
+        self.sync_tsc_to_guest()?;
 
         match self.vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {
@@ -925,17 +1027,50 @@ impl DeterministicVm {
                 info!("VM shutdown (exit_count={})", self.exit_count);
                 Ok(true)
             }
-            Ok(VcpuExit::MmioRead(_, data)) => {
+            Ok(VcpuExit::MmioRead(addr, data)) => {
                 self.exit_count += 1;
                 self.virtual_tsc.tick();
-                for byte in data {
-                    *byte = 0;
+
+                // Find the virtio device that handles this address
+                let mut handled = false;
+                for dev in &self.virtio_devices {
+                    if dev.handles(addr) {
+                        let offset = addr - dev.base_addr();
+                        dev.read(offset, data);
+                        handled = true;
+                        break;
+                    }
                 }
+
+                if !handled {
+                    // Unknown MMIO region — return zeros
+                    for byte in data {
+                        *byte = 0;
+                    }
+                }
+
                 Ok(false)
             }
-            Ok(VcpuExit::MmioWrite(_, _)) => {
+            Ok(VcpuExit::MmioWrite(addr, data)) => {
                 self.exit_count += 1;
                 self.virtual_tsc.tick();
+
+                // Find the virtio device that handles this address
+                for dev in &mut self.virtio_devices {
+                    if dev.handles(addr) {
+                        let offset = addr - dev.base_addr();
+                        dev.write(offset, data, self.memory.inner());
+
+                        // Process queues and raise interrupt if needed
+                        if dev.process_queues(self.memory.inner()) {
+                            let irq = dev.irq();
+                            let _ = self.vm.set_irq_line(irq, true);
+                            let _ = self.vm.set_irq_line(irq, false);
+                        }
+                        break;
+                    }
+                }
+
                 Ok(false)
             }
             Ok(exit) => {
@@ -1012,5 +1147,58 @@ mod tests {
         let config = VmConfig::default();
         assert_eq!(config.memory_size, 256 * 1024 * 1024);
         assert_eq!(config.cpu.tsc_khz, 3_000_000);
+    }
+
+    #[test]
+    fn test_virtio_devices_created() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        let devices = vm.virtio_devices();
+        assert_eq!(devices.len(), 3);
+
+        // Device 0: block @ 0xD000_0000 IRQ 5
+        assert_eq!(devices[0].base_addr(), VIRTIO_MMIO_BASE_0);
+        assert_eq!(devices[0].irq(), VIRTIO_MMIO_IRQ_0);
+
+        // Device 1: net @ 0xD000_1000 IRQ 6
+        assert_eq!(devices[1].base_addr(), VIRTIO_MMIO_BASE_1);
+        assert_eq!(devices[1].irq(), VIRTIO_MMIO_IRQ_1);
+
+        // Device 2: entropy @ 0xD000_2000 IRQ 7
+        assert_eq!(devices[2].base_addr(), VIRTIO_MMIO_BASE_2);
+        assert_eq!(devices[2].irq(), VIRTIO_MMIO_IRQ_2);
+    }
+
+    #[test]
+    fn test_virtio_mmio_magic_read() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        let devices = vm.virtio_devices();
+
+        // Read magic value from device 0
+        let mut buf = [0u8; 4];
+        devices[0].read(0x000, &mut buf); // VIRTIO_MMIO_MAGIC_VALUE offset
+        let magic = u32::from_le_bytes(buf);
+        assert_eq!(magic, 0x74726976); // "virt"
+    }
+
+    #[test]
+    fn test_virtio_device_types() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        let devices = vm.virtio_devices();
+
+        // Device 0: block (device ID = 2)
+        let mut buf = [0u8; 4];
+        devices[0].read(0x008, &mut buf); // VIRTIO_MMIO_DEVICE_ID offset
+        assert_eq!(u32::from_le_bytes(buf), 2);
+
+        // Device 1: net (device ID = 1)
+        devices[1].read(0x008, &mut buf);
+        assert_eq!(u32::from_le_bytes(buf), 1);
+
+        // Device 2: entropy/rng (device ID = 4)
+        devices[2].read(0x008, &mut buf);
+        assert_eq!(u32::from_le_bytes(buf), 4);
     }
 }

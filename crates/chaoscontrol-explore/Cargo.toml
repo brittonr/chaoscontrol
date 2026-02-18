@@ -1,0 +1,15 @@
+[package]
+name = "chaoscontrol-explore"
+version = "0.1.0"
+edition = "2021"
+description = "Coverage-guided exploration engine for ChaosControl"
+
+[dependencies]
+chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
+chaoscontrol-fault = { path = "../chaoscontrol-fault" }
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
+log = "0.4"
+thiserror = "2"
+rand = { version = "0.8", features = ["small_rng"] }
+rand_chacha = "0.3"
+vm-memory = { version = "0.17", features = ["backend-mmap"] }

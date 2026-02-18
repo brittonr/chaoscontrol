@@ -1,0 +1,900 @@
+//! Multi-VM simulation controller for deterministic distributed system testing.
+//!
+//! [`SimulationController`] orchestrates multiple [`DeterministicVm`] instances
+//! in a single deterministic simulation, handling fault injection, network
+//! routing, and deterministic scheduling.
+
+use crate::snapshot::VmSnapshot;
+use crate::vm::{DeterministicVm, VmConfig, VmError};
+use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+use chaoscontrol_fault::faults::Fault;
+use chaoscontrol_fault::oracle::OracleReport;
+use chaoscontrol_fault::schedule::FaultSchedule;
+use log::{debug, info, warn};
+use std::collections::VecDeque;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Configuration
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Configuration for a multi-VM simulation.
+#[derive(Debug, Clone)]
+pub struct SimulationConfig {
+    /// Number of VMs in the simulation.
+    pub num_vms: usize,
+    /// Per-VM config (same for all VMs).
+    pub vm_config: VmConfig,
+    /// Kernel path.
+    pub kernel_path: String,
+    /// Optional initrd path.
+    pub initrd_path: Option<String>,
+    /// Master seed for determinism.
+    pub seed: u64,
+    /// Exits per VM per scheduling round.
+    pub quantum: u64,
+    /// Fault schedule to execute.
+    pub schedule: FaultSchedule,
+}
+
+impl Default for SimulationConfig {
+    fn default() -> Self {
+        Self {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: String::new(),
+            initrd_path: None,
+            seed: 42,
+            quantum: 100,
+            schedule: FaultSchedule::default(),
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  VM State
+// ═══════════════════════════════════════════════════════════════════════
+
+/// State of a single VM within the simulation.
+pub struct VmSlot {
+    /// The VM instance.
+    pub vm: DeterministicVm,
+    /// Current status.
+    pub status: VmStatus,
+    /// Per-VM network mailbox (incoming messages).
+    pub inbox: VecDeque<NetworkMessage>,
+    /// Per-VM disk fault flags.
+    pub disk_faults: DiskFaultFlags,
+    /// TSC skew offset for clock fault injection (nanoseconds).
+    pub tsc_skew: i64,
+    /// Initial snapshot taken after kernel load, used for restarts.
+    pub initial_snapshot: Option<VmSnapshot>,
+}
+
+/// Current status of a VM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmStatus {
+    /// VM is running normally.
+    Running,
+    /// VM is paused (ProcessPause fault active).
+    Paused,
+    /// VM has crashed (ProcessKill fault injected).
+    Crashed,
+    /// Crashed VM will restart after this simulation tick.
+    Restarting { restart_at_tick: u64 },
+}
+
+/// A message in the virtual network.
+#[derive(Debug, Clone)]
+pub struct NetworkMessage {
+    /// Source VM index.
+    pub from: usize,
+    /// Destination VM index.
+    pub to: usize,
+    /// Payload bytes.
+    pub data: Vec<u8>,
+    /// Delivery tick (for latency simulation).
+    pub deliver_at_tick: u64,
+}
+
+/// Disk fault injection flags.
+#[derive(Debug, Clone, Default)]
+pub struct DiskFaultFlags {
+    /// Probability (0.0-1.0) of I/O error.
+    pub error_rate: f64,
+    /// Multiplier for I/O latency.
+    pub slow_factor: u64,
+    /// Simulate disk full.
+    pub full: bool,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Network Fabric
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Virtual network with partition awareness.
+#[derive(Debug, Clone)]
+pub struct NetworkFabric {
+    /// Active partition rules — (side_a, side_b) pairs.
+    pub partitions: Vec<(Vec<usize>, Vec<usize>)>,
+    /// Per-VM latency injection in nanoseconds.
+    pub latency: Vec<u64>,
+    /// Messages in flight (not yet delivered).
+    pub in_flight: Vec<NetworkMessage>,
+}
+
+impl NetworkFabric {
+    /// Create a new network fabric for `num_vms` VMs.
+    fn new(num_vms: usize) -> Self {
+        Self {
+            partitions: Vec::new(),
+            latency: vec![0; num_vms],
+            in_flight: Vec::new(),
+        }
+    }
+
+    /// Check if `from` can reach `to` given active partitions.
+    ///
+    /// Returns `false` if any partition separates them.
+    pub fn can_reach(&self, from: usize, to: usize) -> bool {
+        for (side_a, side_b) in &self.partitions {
+            let from_in_a = side_a.contains(&from);
+            let from_in_b = side_b.contains(&from);
+            let to_in_a = side_a.contains(&to);
+            let to_in_b = side_b.contains(&to);
+
+            if (from_in_a && to_in_b) || (from_in_b && to_in_a) {
+                return false; // Separated by this partition
+            }
+        }
+        true
+    }
+
+    /// Send a message from `from` to `to` at the current tick.
+    ///
+    /// If a partition blocks the route, the message is dropped.
+    /// Otherwise, it's added to in-flight with delivery time based on latency.
+    pub fn send(
+        &mut self,
+        from: usize,
+        to: usize,
+        data: Vec<u8>,
+        current_tick: u64,
+    ) -> bool {
+        if !self.can_reach(from, to) {
+            debug!("Message from VM{} to VM{} dropped by partition", from, to);
+            return false; // Dropped by partition
+        }
+
+        // Calculate delivery tick: current + max(sender_latency, receiver_latency)
+        let sender_latency = self.latency.get(from).copied().unwrap_or(0);
+        let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
+        let latency_ticks = sender_latency.max(receiver_latency);
+        let deliver_at_tick = current_tick + latency_ticks;
+
+        self.in_flight.push(NetworkMessage {
+            from,
+            to,
+            data,
+            deliver_at_tick,
+        });
+
+        true
+    }
+
+    /// Add a network partition between two sides.
+    fn add_partition(&mut self, side_a: Vec<usize>, side_b: Vec<usize>) {
+        info!("Network partition: {:?} | {:?}", side_a, side_b);
+        self.partitions.push((side_a, side_b));
+    }
+
+    /// Clear all partitions (heal network).
+    fn clear_partitions(&mut self) {
+        info!("Network healed: all partitions removed");
+        self.partitions.clear();
+    }
+
+    /// Set latency for a specific VM.
+    fn set_latency(&mut self, target: usize, latency_ns: u64) {
+        if target < self.latency.len() {
+            self.latency[target] = latency_ns;
+            debug!("VM{} latency set to {} ns", target, latency_ns);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Simulation Controller
+// ═══════════════════════════════════════════════════════════════════════
+
+/// The main simulation controller for multi-VM deterministic testing.
+pub struct SimulationController {
+    /// VM slots.
+    vms: Vec<VmSlot>,
+    /// Shared fault engine.
+    fault_engine: FaultEngine,
+    /// Virtual network fabric.
+    network: NetworkFabric,
+    /// Global simulation tick counter.
+    tick: u64,
+    /// Exits per VM per round.
+    quantum: u64,
+    /// Simulation config (for VM restarts).
+    pub config: SimulationConfig,
+}
+
+impl SimulationController {
+    /// Create a new simulation with N VMs.
+    pub fn new(config: SimulationConfig) -> Result<Self, VmError> {
+        info!(
+            "Creating simulation: {} VMs, seed={}, quantum={}",
+            config.num_vms, config.seed, config.quantum
+        );
+
+        if config.num_vms == 0 {
+            return Err(VmError::Snapshot("num_vms must be > 0".to_string()));
+        }
+
+        if config.kernel_path.is_empty() {
+            return Err(VmError::Snapshot("kernel_path is required".to_string()));
+        }
+
+        // Create fault engine with shared seed and num_vms
+        let engine_config = EngineConfig {
+            seed: config.seed,
+            num_vms: config.num_vms,
+            schedule: Some(config.schedule.clone()),
+            random_faults: false,
+            ..EngineConfig::default()
+        };
+        let mut fault_engine = FaultEngine::new(engine_config);
+        fault_engine.begin_run();
+
+        // Create VMs
+        let mut vms = Vec::with_capacity(config.num_vms);
+        for i in 0..config.num_vms {
+            info!("Creating VM{}", i);
+            
+            // Derive per-VM seed from master seed and VM index
+            let mut vm_config = config.vm_config.clone();
+            vm_config.cpu.seed = config.seed.wrapping_add(i as u64);
+
+            let mut vm = DeterministicVm::new(vm_config)?;
+            vm.load_kernel(
+                &config.kernel_path,
+                config.initrd_path.as_deref(),
+            )?;
+
+            // Take initial snapshot for restart capability
+            let initial_snapshot = vm.snapshot()?;
+
+            vms.push(VmSlot {
+                vm,
+                status: VmStatus::Running,
+                inbox: VecDeque::new(),
+                disk_faults: DiskFaultFlags::default(),
+                tsc_skew: 0,
+                initial_snapshot: Some(initial_snapshot),
+            });
+        }
+
+        let network = NetworkFabric::new(config.num_vms);
+
+        Ok(Self {
+            vms,
+            fault_engine,
+            network,
+            tick: 0,
+            quantum: config.quantum,
+            config,
+        })
+    }
+
+    /// Run the simulation until all VMs halt or max_ticks reached.
+    pub fn run(&mut self, max_ticks: u64) -> Result<SimulationResult, VmError> {
+        info!("Starting simulation for up to {} ticks", max_ticks);
+
+        while self.tick < max_ticks {
+            let result = self.step_round()?;
+            
+            if result.vms_running == 0 {
+                info!("All VMs halted at tick {}", self.tick);
+                break;
+            }
+
+            // Check for immediate assertion failures
+            if self.fault_engine.has_assertion_failure() {
+                warn!("Assertion failure detected at tick {}", self.tick);
+                break;
+            }
+        }
+
+        let oracle_report = self.fault_engine.oracle().report();
+        let vm_exit_counts = self.vms.iter().map(|slot| slot.vm.exit_count()).collect();
+
+        Ok(SimulationResult {
+            total_ticks: self.tick,
+            oracle_report,
+            vm_exit_counts,
+        })
+    }
+
+    /// Execute one scheduling round: step each Running VM by `quantum` exits,
+    /// advance the global clock, dispatch faults, deliver network messages.
+    pub fn step_round(&mut self) -> Result<RoundResult, VmError> {
+        let mut vms_running = 0;
+        let mut vms_halted = 0;
+
+        // Step each VM by quantum exits (round-robin)
+        for i in 0..self.vms.len() {
+            match self.vms[i].status {
+                VmStatus::Running => {
+                    let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
+                    if halted {
+                        self.vms[i].status = VmStatus::Paused; // Treat halt as pause
+                        vms_halted += 1;
+                    } else {
+                        vms_running += 1;
+                    }
+                    debug!("VM{} executed {} exits", i, exits);
+                }
+                VmStatus::Paused | VmStatus::Crashed => {
+                    vms_halted += 1;
+                }
+                VmStatus::Restarting { restart_at_tick } => {
+                    if self.tick >= restart_at_tick {
+                        self.restart_vm(i)?;
+                        vms_running += 1;
+                    } else {
+                        vms_halted += 1;
+                    }
+                }
+            }
+        }
+
+        // Advance global tick
+        self.tick += 1;
+
+        // Poll and apply faults
+        let current_time_ns = self.tick * 1_000_000; // Convert ticks to nanoseconds
+        let faults = self.fault_engine.poll_faults(current_time_ns);
+        let faults_fired = faults.clone();
+        
+        for fault in faults {
+            self.apply_fault(&fault)?;
+        }
+
+        // Deliver pending network messages
+        let messages_delivered = self.deliver_messages();
+
+        Ok(RoundResult {
+            tick: self.tick,
+            vms_running,
+            vms_halted,
+            faults_fired,
+            messages_delivered,
+        })
+    }
+
+    /// Apply a fault effect from the engine to the actual VMs.
+    fn apply_fault(&mut self, fault: &Fault) -> Result<(), VmError> {
+        info!("Applying fault at tick {}: {}", self.tick, fault);
+
+        match fault {
+            // ── Network faults ──
+            Fault::NetworkPartition { side_a, side_b } => {
+                self.network.add_partition(side_a.clone(), side_b.clone());
+            }
+            Fault::NetworkLatency { target, latency_ns } => {
+                self.network.set_latency(*target, *latency_ns);
+            }
+            Fault::NetworkHeal => {
+                self.network.clear_partitions();
+            }
+            Fault::PacketLoss { target, rate_ppm } => {
+                warn!("PacketLoss fault not yet implemented: VM{}, {}ppm", target, rate_ppm);
+                // TODO: Implement at network send/receive level
+            }
+            Fault::PacketCorruption { target, rate_ppm } => {
+                warn!("PacketCorruption fault not yet implemented: VM{}, {}ppm", target, rate_ppm);
+            }
+            Fault::PacketReorder { target, window_ns } => {
+                warn!("PacketReorder fault not yet implemented: VM{}, {}ns window", target, window_ns);
+            }
+
+            // ── Disk faults ──
+            Fault::DiskReadError { target, offset } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    warn!("DiskReadError at VM{}, offset {:#x}", target, offset);
+                    slot.disk_faults.error_rate = 1.0; // 100% error for now
+                }
+            }
+            Fault::DiskWriteError { target, offset } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    warn!("DiskWriteError at VM{}, offset {:#x}", target, offset);
+                    slot.disk_faults.error_rate = 1.0;
+                }
+            }
+            Fault::DiskTornWrite { target, offset, bytes_written } => {
+                warn!("DiskTornWrite fault not yet implemented: VM{}, offset {:#x}, {} bytes", 
+                      target, offset, bytes_written);
+            }
+            Fault::DiskCorruption { target, offset, len } => {
+                warn!("DiskCorruption fault not yet implemented: VM{}, offset {:#x}, {} bytes", 
+                      target, offset, len);
+            }
+            Fault::DiskFull { target } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("DiskFull injected at VM{}", target);
+                    slot.disk_faults.full = true;
+                }
+            }
+
+            // ── Process faults ──
+            Fault::ProcessKill { target } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("ProcessKill: VM{} crashed", target);
+                    slot.status = VmStatus::Crashed;
+                    // Can be restarted later with ProcessRestart
+                }
+            }
+            Fault::ProcessPause { target, duration_ns } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("ProcessPause: VM{} paused for {} ns", target, duration_ns);
+                    slot.status = VmStatus::Paused;
+                    // TODO: Schedule automatic resume after duration
+                }
+            }
+            Fault::ProcessRestart { target } => {
+                self.schedule_restart(*target, self.tick + 10)?; // Restart after 10 ticks
+            }
+
+            // ── Clock faults ──
+            Fault::ClockSkew { target, offset_ns } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("ClockSkew: VM{} offset by {} ns", target, offset_ns);
+                    slot.tsc_skew += offset_ns;
+                    // Apply skew to VM's virtual TSC
+                    let current_tsc = slot.vm.virtual_tsc();
+                    let skewed_tsc = (current_tsc as i64 + *offset_ns).max(0) as u64;
+                    slot.vm.virtual_tsc_mut().advance_to(skewed_tsc);
+                }
+            }
+            Fault::ClockJump { target, delta_ns } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("ClockJump: VM{} jumped by {} ns", target, delta_ns);
+                    let current_tsc = slot.vm.virtual_tsc();
+                    let jumped_tsc = (current_tsc as i64 + *delta_ns).max(0) as u64;
+                    slot.vm.virtual_tsc_mut().advance_to(jumped_tsc);
+                }
+            }
+
+            // ── Resource faults ──
+            Fault::MemoryPressure { target, limit_bytes } => {
+                warn!("MemoryPressure fault not yet implemented: VM{}, limit {} bytes", 
+                      target, limit_bytes);
+                // TODO: Implement memory limiting at guest allocator level
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Schedule a VM restart at a future tick.
+    fn schedule_restart(&mut self, target: usize, restart_at_tick: u64) -> Result<(), VmError> {
+        if let Some(slot) = self.vms.get_mut(target) {
+            info!("VM{} scheduled to restart at tick {}", target, restart_at_tick);
+            slot.status = VmStatus::Restarting { restart_at_tick };
+        }
+        Ok(())
+    }
+
+    /// Restart a VM from its initial snapshot.
+    fn restart_vm(&mut self, target: usize) -> Result<(), VmError> {
+        let slot = self.vms.get_mut(target)
+            .ok_or_else(|| VmError::Snapshot(format!("VM{} not found", target)))?;
+
+        if let Some(snapshot) = &slot.initial_snapshot {
+            info!("Restarting VM{} from initial snapshot", target);
+            slot.vm.restore(snapshot)?;
+            slot.status = VmStatus::Running;
+            slot.inbox.clear();
+            slot.disk_faults = DiskFaultFlags::default();
+            slot.tsc_skew = 0;
+        } else {
+            warn!("VM{} has no initial snapshot, cannot restart", target);
+        }
+
+        Ok(())
+    }
+
+    /// Deliver pending network messages whose delivery tick has arrived.
+    fn deliver_messages(&mut self) -> usize {
+        let mut delivered = 0;
+        let mut pending = Vec::new();
+
+        for msg in self.network.in_flight.drain(..) {
+            if msg.deliver_at_tick <= self.tick {
+                if let Some(slot) = self.vms.get_mut(msg.to) {
+                    slot.inbox.push_back(msg);
+                    delivered += 1;
+                }
+            } else {
+                pending.push(msg);
+            }
+        }
+
+        self.network.in_flight = pending;
+        delivered
+    }
+
+    /// Snapshot all VMs and simulation state.
+    pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
+        let mut vm_snapshots = Vec::with_capacity(self.vms.len());
+        
+        for slot in &self.vms {
+            let vm_snapshot = slot.vm.snapshot()?;
+            vm_snapshots.push((vm_snapshot, slot.status));
+        }
+
+        Ok(SimulationSnapshot {
+            tick: self.tick,
+            vm_snapshots,
+            network_state: self.network.clone(),
+            fault_engine_snapshot: self.fault_engine.snapshot(),
+        })
+    }
+
+    /// Restore all VMs from a snapshot.
+    pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+        if snapshot.vm_snapshots.len() != self.vms.len() {
+            return Err(VmError::Snapshot(
+                "Snapshot VM count mismatch".to_string()
+            ));
+        }
+
+        self.tick = snapshot.tick;
+        self.network = snapshot.network_state.clone();
+        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+
+        for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
+            self.vms[i].vm.restore(vm_snap)?;
+            self.vms[i].status = *status;
+        }
+
+        info!("Restored simulation state from snapshot at tick {}", self.tick);
+        Ok(())
+    }
+
+    /// Get the oracle report.
+    pub fn report(&self) -> OracleReport {
+        self.fault_engine.oracle().report()
+    }
+
+    /// Get current simulation tick.
+    pub fn tick(&self) -> u64 {
+        self.tick
+    }
+
+    /// Get the number of VMs.
+    pub fn num_vms(&self) -> usize {
+        self.vms.len()
+    }
+
+    /// Get a reference to a specific VM slot.
+    pub fn vm_slot(&self, index: usize) -> Option<&VmSlot> {
+        self.vms.get(index)
+    }
+
+    /// Get a mutable reference to a specific VM slot.
+    pub fn vm_slot_mut(&mut self, index: usize) -> Option<&mut VmSlot> {
+        self.vms.get_mut(index)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Result types
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Result of a single scheduling round.
+#[derive(Debug)]
+pub struct RoundResult {
+    /// Current simulation tick.
+    pub tick: u64,
+    /// Number of VMs actively running.
+    pub vms_running: usize,
+    /// Number of VMs halted/paused/crashed.
+    pub vms_halted: usize,
+    /// Faults that fired this round.
+    pub faults_fired: Vec<Fault>,
+    /// Number of network messages delivered this round.
+    pub messages_delivered: usize,
+}
+
+/// Final result of a simulation run.
+#[derive(Debug)]
+pub struct SimulationResult {
+    /// Total simulation ticks executed.
+    pub total_ticks: u64,
+    /// Property oracle report.
+    pub oracle_report: OracleReport,
+    /// Per-VM exit counts.
+    pub vm_exit_counts: Vec<u64>,
+}
+
+/// Complete snapshot of simulation state.
+#[derive(Debug, Clone)]
+pub struct SimulationSnapshot {
+    /// Global tick counter.
+    pub tick: u64,
+    /// Per-VM snapshots and status.
+    pub vm_snapshots: Vec<(VmSnapshot, VmStatus)>,
+    /// Network fabric state.
+    pub network_state: NetworkFabric,
+    /// Fault engine state.
+    pub fault_engine_snapshot: chaoscontrol_fault::engine::EngineSnapshot,
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chaoscontrol_fault::schedule::FaultScheduleBuilder;
+
+    fn dummy_kernel_path() -> String {
+        // Return a plausible path; tests that actually run VMs will need a real kernel
+        "/tmp/dummy-vmlinux".to_string()
+    }
+
+    #[test]
+    fn test_simulation_config_default() {
+        let config = SimulationConfig::default();
+        assert_eq!(config.num_vms, 2);
+        assert_eq!(config.seed, 42);
+        assert_eq!(config.quantum, 100);
+    }
+
+    #[test]
+    fn test_network_fabric_can_reach() {
+        let fabric = NetworkFabric::new(4);
+        assert!(fabric.can_reach(0, 1));
+        assert!(fabric.can_reach(1, 0));
+    }
+
+    #[test]
+    fn test_network_fabric_partition_blocks() {
+        let mut fabric = NetworkFabric::new(4);
+        fabric.add_partition(vec![0, 1], vec![2, 3]);
+
+        // Same side can reach each other
+        assert!(fabric.can_reach(0, 1));
+        assert!(fabric.can_reach(2, 3));
+
+        // Opposite sides cannot reach
+        assert!(!fabric.can_reach(0, 2));
+        assert!(!fabric.can_reach(1, 3));
+        assert!(!fabric.can_reach(2, 0));
+    }
+
+    #[test]
+    fn test_network_fabric_send_respects_partition() {
+        let mut fabric = NetworkFabric::new(3);
+        fabric.add_partition(vec![0], vec![1, 2]);
+
+        let sent = fabric.send(0, 1, vec![42], 0);
+        assert!(!sent); // Blocked by partition
+
+        let sent = fabric.send(1, 2, vec![99], 0);
+        assert!(sent); // Same side, allowed
+    }
+
+    #[test]
+    fn test_network_fabric_latency() {
+        let mut fabric = NetworkFabric::new(2);
+        fabric.set_latency(0, 1000);
+
+        fabric.send(0, 1, vec![1, 2, 3], 0);
+        assert_eq!(fabric.in_flight.len(), 1);
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 1000);
+    }
+
+    #[test]
+    fn test_disk_fault_flags() {
+        let mut flags = DiskFaultFlags::default();
+        assert_eq!(flags.error_rate, 0.0);
+        assert!(!flags.full);
+
+        flags.full = true;
+        flags.error_rate = 0.5;
+        assert!(flags.full);
+        assert_eq!(flags.error_rate, 0.5);
+    }
+
+    #[test]
+    fn test_vm_status_transitions() {
+        let mut status = VmStatus::Running;
+        assert_eq!(status, VmStatus::Running);
+
+        status = VmStatus::Crashed;
+        assert_eq!(status, VmStatus::Crashed);
+
+        status = VmStatus::Restarting { restart_at_tick: 100 };
+        if let VmStatus::Restarting { restart_at_tick } = status {
+            assert_eq!(restart_at_tick, 100);
+        } else {
+            panic!("Expected Restarting status");
+        }
+    }
+
+    #[test]
+    fn test_simulation_controller_requires_kernel_path() {
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: String::new(), // Empty path
+            ..Default::default()
+        };
+
+        let result = SimulationController::new(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_simulation_controller_requires_nonzero_vms() {
+        let config = SimulationConfig {
+            num_vms: 0,
+            kernel_path: dummy_kernel_path(),
+            ..Default::default()
+        };
+
+        let result = SimulationController::new(config);
+        assert!(result.is_err());
+    }
+
+    // The following tests would require an actual kernel to run.
+    // They are marked with #[ignore] and serve as integration test templates.
+
+    #[test]
+    #[ignore]
+    fn test_simulation_controller_creates_vms() {
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            initrd_path: Some("/path/to/initrd".to_string()),
+            ..Default::default()
+        };
+
+        let controller = SimulationController::new(config).unwrap();
+        assert_eq!(controller.num_vms(), 2);
+        assert_eq!(controller.tick(), 0);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_step_round_advances_tick() {
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            quantum: 10,
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+        let result = controller.step_round().unwrap();
+
+        assert_eq!(controller.tick(), 1);
+        assert_eq!(result.tick, 1);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_fault_injection_process_kill() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(1_000_000, Fault::ProcessKill { target: 0 })
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            schedule,
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+
+        // Run until fault fires
+        for _ in 0..2000 {
+            controller.step_round().unwrap();
+        }
+
+        // VM 0 should be crashed
+        assert_eq!(controller.vm_slot(0).unwrap().status, VmStatus::Crashed);
+        assert_eq!(controller.vm_slot(1).unwrap().status, VmStatus::Running);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_fault_injection_network_partition() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(1_000_000, Fault::NetworkPartition {
+                side_a: vec![0],
+                side_b: vec![1],
+            })
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            schedule,
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+
+        // Run until fault fires
+        for _ in 0..2000 {
+            controller.step_round().unwrap();
+        }
+
+        // Verify partition is active
+        assert!(!controller.network.can_reach(0, 1));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_snapshot_restore() {
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            quantum: 10,
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+
+        // Run for a bit
+        for _ in 0..5 {
+            controller.step_round().unwrap();
+        }
+
+        let tick_before = controller.tick();
+        let snapshot = controller.snapshot_all().unwrap();
+
+        // Run more
+        for _ in 0..5 {
+            controller.step_round().unwrap();
+        }
+        assert!(controller.tick() > tick_before);
+
+        // Restore
+        controller.restore_all(&snapshot).unwrap();
+        assert_eq!(controller.tick(), tick_before);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_deterministic_exit_counts() {
+        let config = SimulationConfig {
+            num_vms: 2,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            seed: 12345,
+            quantum: 50,
+            ..Default::default()
+        };
+
+        let mut c1 = SimulationController::new(config.clone()).unwrap();
+        let mut c2 = SimulationController::new(config).unwrap();
+
+        // Run both for same number of ticks
+        for _ in 0..100 {
+            c1.step_round().unwrap();
+            c2.step_round().unwrap();
+        }
+
+        // Exit counts should be identical
+        let exits1 = c1.vms.iter().map(|s| s.vm.exit_count()).collect::<Vec<_>>();
+        let exits2 = c2.vms.iter().map(|s| s.vm.exit_count()).collect::<Vec<_>>();
+        assert_eq!(exits1, exits2);
+    }
+}

@@ -11,8 +11,10 @@
 //! - [`memory`] — Guest memory management, page tables, GDT, snapshots
 //! - [`snapshot`] — Complete VM state capture and restore
 //! - [`devices`] — Deterministic device backends
+//! - [`controller`] — Multi-VM simulation controller
 //! - [`verified`] — Pure functions extracted for formal verification with Verus
 
+pub mod controller;
 pub mod cpu;
 pub mod devices;
 pub mod memory;

@@ -11,7 +11,7 @@ use log::info;
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
 /// Complete VM state — everything needed to restore a VM to an exact point.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VmSnapshot {
     // vCPU register state
     pub regs: kvm_regs,

@@ -5,6 +5,8 @@ members = [
     "crates/chaoscontrol-fault",
     "crates/chaoscontrol-vmm",
     "crates/chaoscontrol-trace",
+    "crates/chaoscontrol-explore",
+    "crates/chaoscontrol-replay",
 ]
 resolver = "2"
 

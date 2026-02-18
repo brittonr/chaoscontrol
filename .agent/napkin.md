@@ -46,9 +46,9 @@
 - **Root cause of non-determinism**: variable VM exit counts × fixed TSC-per-exit = variable virtual TSC
 
 ## Determinism Status
-- **DETERMINISTIC**: 321 of 324 kernel lines, all application output
-- **NOT DETERMINISTIC**: tsc calibration, Memory ±28KB, sched_clock, audit timestamp
-- **ROOT CAUSE**: variable VM exit counts (host interrupts, serial polling) × fixed TSC advance
+- **FIXED (2026-02-18)**: sync_tsc_to_guest() writes virtual TSC to IA32_TSC before every vcpu.run()
+- Previously: 321/324 deterministic. TSC calibration, sched_clock, audit timestamp drifted ~2ms
+- Root cause was variable VM exit counts × fixed TSC advance. Fix: overwrite KVM's real-time TSC with our deterministic value before each entry
 
 ## eBPF Trace Harness (2026-02-17)
 - **chaoscontrol-trace crate**: libbpf-rs 0.26 + libbpf-cargo 0.26 skeleton approach
@@ -71,12 +71,19 @@
 - chaoscontrol-trace verified modules: events (determinism_eq), verifier (divergence detection)
 - All verified functions are pure (no I/O, no side effects), deterministic, and testable
 
-## Next Steps
-1. Fix virtual TSC: advance based on guest execution time, not exit count
-2. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)
-3. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
-4. Implement virtio MMIO transport
-5. Build multi-VM simulation controller
+## Completed (2026-02-18 session)
+1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()
+2. ✅ Multi-VM SimulationController (round-robin scheduling, NetworkFabric, fault dispatch)
+3. ✅ Virtio MMIO transport (virtio 1.2, legacy-free) + virtio-blk, virtio-net, virtio-rng backends
+4. ✅ chaoscontrol-explore crate: fork-from-snapshot, coverage-guided search, AFL-style bitmaps, frontier, mutator
+5. ✅ chaoscontrol-replay crate: recording, checkpoint, replay, time-travel debugger, triage, serialize
+
+## Remaining Work
+1. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)
+2. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
+3. End-to-end integration test with real kernel (boot multi-VM, inject faults, verify exploration loop)
+4. Wire fault engine effects into real VMs at runtime (controller has structure, needs integration test)
+5. SDK coverage instrumentation (guest-side branch tracking to shared memory page)
 
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode

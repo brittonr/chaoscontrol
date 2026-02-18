@@ -1,0 +1,17 @@
+[package]
+name = "chaoscontrol-replay"
+version = "0.1.0"
+edition = "2021"
+description = "Time-travel debugging and replay for ChaosControl"
+
+[dependencies]
+chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
+chaoscontrol-fault = { path = "../chaoscontrol-fault" }
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
+log = "0.4"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

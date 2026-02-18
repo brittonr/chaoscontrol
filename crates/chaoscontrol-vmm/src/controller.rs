@@ -589,6 +589,23 @@ impl SimulationController {
     pub fn vm_slot_mut(&mut self, index: usize) -> Option<&mut VmSlot> {
         self.vms.get_mut(index)
     }
+
+    /// Clear coverage bitmaps in all VMs.
+    ///
+    /// Call this before each branch run in the exploration loop.
+    pub fn clear_all_coverage(&self) {
+        for slot in &self.vms {
+            slot.vm.clear_coverage_bitmap();
+        }
+    }
+
+    /// Force the fault engine's setup_complete flag to true.
+    ///
+    /// Use this in integration tests where the guest doesn't use the
+    /// ChaosControl SDK but you still want scheduled faults to fire.
+    pub fn force_setup_complete(&mut self) {
+        self.fault_engine.force_setup_complete();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

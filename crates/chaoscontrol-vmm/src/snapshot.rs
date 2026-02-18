@@ -35,6 +35,11 @@ pub struct VmSnapshot {
     // Deterministic device state
     pub serial_state: vm_superio::SerialState,
     pub entropy: EntropySnapshot,
+
+    // VMM-side determinism counters
+    pub virtual_tsc: u64,
+    pub exit_count: u64,
+    pub io_exit_count: u64,
 }
 
 impl VmSnapshot {
@@ -45,6 +50,9 @@ impl VmSnapshot {
         guest_memory: &GuestMemoryMmap,
         serial_state: vm_superio::SerialState,
         entropy: EntropySnapshot,
+        virtual_tsc: u64,
+        exit_count: u64,
+        io_exit_count: u64,
     ) -> Result<Self, SnapshotError> {
         // Capture vCPU state
         let regs = vcpu.get_regs().map_err(SnapshotError::GetRegs)?;
@@ -110,6 +118,9 @@ impl VmSnapshot {
             memory_size,
             serial_state,
             entropy,
+            virtual_tsc,
+            exit_count,
+            io_exit_count,
         })
     }
 

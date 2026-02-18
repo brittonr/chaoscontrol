@@ -12,6 +12,9 @@
 | 2026-02-17 | self | Used string literals in bpftrace map keys | BPF verifier rejects string comparisons in map keys; use integer rw field directly |
 | 2026-02-17 | self | Used args->irq for kvm_pic_set_irq | Field is called args->pin, not args->irq |
 | 2026-02-17 | self | Used args->irq for kvm_set_irq | Field is called args->gsi, not args->irq |
+| 2026-02-18 | self | VmSnapshot didn't save/restore VirtualTsc | Must save virtual_tsc, exit_count, io_exit_count in snapshot |
+| 2026-02-18 | self | Faults didn't fire in integration tests | poll_faults() gated by setup_complete — call force_setup_complete() |
+| 2026-02-18 | self | Used bzImage for kernel loading | ELF loader needs vmlinux (result-dev/vmlinux), not bzImage |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -81,9 +84,30 @@
 ## Remaining Work
 1. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)
 2. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
-3. End-to-end integration test with real kernel (boot multi-VM, inject faults, verify exploration loop)
-4. Wire fault engine effects into real VMs at runtime (controller has structure, needs integration test)
-5. SDK coverage instrumentation (guest-side branch tracking to shared memory page)
+
+## Completed (2026-02-18 continued)
+6. ✅ SDK coverage instrumentation — AFL-style 64KB bitmap at 0xE0000, SanCov hooks, no_std + std transport
+7. ✅ End-to-end integration test — 12 tests: boot, determinism, snapshot/restore, coverage bitmap, multi-VM, fault injection (ProcessKill, NetworkPartition, ClockSkew), controller determinism
+8. ✅ Fault engine wired to real VMs — ProcessKill, ClockSkew, NetworkPartition confirmed working via integration tests
+9. ✅ VmSnapshot now saves/restores VirtualTsc + exit_count + io_exit_count (was missing, caused snapshot/restore vTSC mismatch)
+10. ✅ FaultEngine::force_setup_complete() for integration tests where guest doesn't use SDK
+
+## Coverage Instrumentation (2026-02-18)
+- **Coverage bitmap**: 64KB at GPA 0xE0000 (BIOS reserved area, within E820 gap)
+- **Protocol constants**: COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT (0x0511)
+- **SDK coverage module**: `no_std` direct pointer + `std` mmap /dev/mem
+- **SanCov hooks**: `__sanitizer_cov_trace_pc_guard` + `__sanitizer_cov_trace_pc_guard_init`
+- **AFL edge hashing**: `prev_location XOR cur_location`, saturating 8-bit counters
+- **VMM integration**: clear_coverage_bitmap() before each branch, read_coverage_bitmap() after
+- **Explore wiring**: ExplorerConfig.coverage_gpa defaults to COVERAGE_BITMAP_ADDR, CoverageCollector reads via collect_from_guest()
+
+## Integration Test Results (2026-02-18)
+- **12/12 tests pass** with real kernel (vmlinux ELF, not bzImage)
+- **Determinism**: Bounded runs (100K exits) produce identical exit counts + vTSC; serial content 99%+ match (1 line differs: PIT-calibrated TSC MHz varies due to KVM PIT using host time)
+- **Snapshot/restore**: vTSC correctly saved/restored, serial content 100% match after restore
+- **Fault injection**: ProcessKill, ClockSkew, NetworkPartition all confirmed working
+- **Key fix**: Must call force_setup_complete() when guest doesn't use SDK, faults are gated by setup_complete flag
+- **Kernel loading**: Must use vmlinux (ELF), not bzImage — ELF loader rejects bzImage magic
 
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode

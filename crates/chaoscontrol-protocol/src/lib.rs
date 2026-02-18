@@ -47,6 +47,30 @@ pub const PAYLOAD_OFFSET: usize = 32;
 pub const PAYLOAD_MAX: usize = HYPERCALL_PAGE_SIZE - PAYLOAD_OFFSET;
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Coverage bitmap
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Guest-physical address of the coverage bitmap (64 KB).
+///
+/// Located in the BIOS reserved area (0xE0000–0xEFFFF) within the E820
+/// gap between low memory end and HIMEM_START.  The kernel sees this as
+/// reserved BIOS memory and will not allocate it, but it is backed by
+/// the KVM memory region and identity-mapped by the guest page tables.
+///
+/// The bitmap follows the AFL convention: 64 KB of 8-bit saturating
+/// counters indexed by `(prev_location XOR cur_location) % MAP_SIZE`.
+pub const COVERAGE_BITMAP_ADDR: u64 = 0x000E_0000;
+
+/// Size of the coverage bitmap in bytes (64 KB, same as AFL).
+pub const COVERAGE_BITMAP_SIZE: usize = 65536;
+
+/// I/O port used to signal coverage initialization.
+///
+/// Guest writes `outb(COVERAGE_PORT, 0)` after mapping the bitmap.
+/// This tells the VMM that coverage collection is active.
+pub const COVERAGE_PORT: u16 = 0x0511;
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Command IDs
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -73,6 +97,9 @@ pub const CMD_RANDOM_GET: u8 = 0x20;
 
 /// Random: request a guided choice from `n` options (0..n-1).
 pub const CMD_RANDOM_CHOICE: u8 = 0x21;
+
+/// Coverage: signal that guest has initialized coverage instrumentation.
+pub const CMD_COVERAGE_INIT: u8 = 0x30;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes
@@ -441,5 +468,26 @@ mod tests {
         // Must be >= LOW_MEMORY_END (0x9FC00) and < HIMEM_START (0x100000)
         assert!(HYPERCALL_PAGE_ADDR >= 0x9FC00);
         assert!(HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64 <= 0x100000);
+    }
+
+    #[test]
+    fn coverage_bitmap_in_e820_gap() {
+        // Must be >= LOW_MEMORY_END and within reserved BIOS area
+        assert!(COVERAGE_BITMAP_ADDR >= 0xA0000); // Video RAM starts here
+        assert!(COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64 <= 0x100000);
+    }
+
+    #[test]
+    fn coverage_bitmap_does_not_overlap_hypercall_page() {
+        let cov_end = COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64;
+        // Coverage: 0xE0000..0xF0000, Hypercall: 0xFE000..0xFF000
+        assert!(cov_end <= HYPERCALL_PAGE_ADDR || COVERAGE_BITMAP_ADDR >= HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64);
+    }
+
+    #[test]
+    fn coverage_port_does_not_conflict() {
+        assert_ne!(COVERAGE_PORT, SDK_PORT);
+        assert!(COVERAGE_PORT < 0x3F8 || COVERAGE_PORT > 0x3FF); // Not serial
+        assert!(COVERAGE_PORT != 0x40 && COVERAGE_PORT != 0x43); // Not PIT
     }
 }

@@ -6,6 +6,7 @@ use crate::frontier::{Frontier, FrontierEntry};
 use crate::mutator::{MutationConfig, ScheduleMutator};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
@@ -66,7 +67,7 @@ impl Default for ExplorerConfig {
             max_frontier: 50,
             quantum: 100,
             mutation: MutationConfig::default(),
-            coverage_gpa: 0, // Blind mode by default
+            coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
         }
     }
 }
@@ -257,6 +258,9 @@ impl Explorer {
         if let Some(snap) = snapshot {
             controller.restore_all(snap)?;
         }
+
+        // Clear coverage bitmaps before this branch run
+        controller.clear_all_coverage();
 
         // Run for configured ticks
         let result = controller.run(self.config.ticks_per_branch)?;

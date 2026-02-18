@@ -8,7 +8,8 @@ description = "Guest-side SDK for ChaosControl deterministic simulation testing"
 
 [features]
 default = []
-std = ["chaoscontrol-protocol/std"]
+std = ["chaoscontrol-protocol/std", "libc"]
 
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
+libc = { version = "0.2", optional = true }

@@ -266,6 +266,14 @@ impl FaultEngine {
         self.setup_complete
     }
 
+    /// Force setup_complete to true.
+    ///
+    /// Use this in integration tests where the guest doesn't use the SDK
+    /// but you still want faults to fire on schedule.
+    pub fn force_setup_complete(&mut self) {
+        self.setup_complete = true;
+    }
+
     /// Snapshot the engine state.
     pub fn snapshot(&self) -> EngineSnapshot {
         EngineSnapshot {

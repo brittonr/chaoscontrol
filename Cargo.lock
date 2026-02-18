@@ -201,6 +201,7 @@ name = "chaoscontrol-sdk"
 version = "0.1.0"
 dependencies = [
  "chaoscontrol-protocol",
+ "libc",
 ]
 
 [[package]]

@@ -40,6 +40,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod assert;
+pub mod coverage;
 pub mod lifecycle;
 pub mod random;
 mod transport;

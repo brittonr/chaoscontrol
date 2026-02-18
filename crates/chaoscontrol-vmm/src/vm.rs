@@ -22,7 +22,7 @@ use crate::devices::pit::DeterministicPit;
 use crate::devices::virtio_mmio::VirtioMmioDevice;
 
 use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
-use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT};
+use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT};
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
@@ -313,6 +313,9 @@ pub struct DeterministicVm {
     // Execution statistics
     exit_count: u64,
     io_exit_count: u64,
+
+    // Coverage tracking
+    coverage_active: bool,
 }
 
 impl DeterministicVm {
@@ -448,6 +451,7 @@ impl DeterministicVm {
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
+            coverage_active: false,
         })
     }
 
@@ -831,6 +835,37 @@ impl DeterministicVm {
         &self.memory
     }
 
+    // ─── Public API: coverage ────────────────────────────────────
+
+    /// Clear the coverage bitmap in guest memory (zero 64 KB).
+    ///
+    /// Call this before each execution quantum to get per-run coverage.
+    pub fn clear_coverage_bitmap(&self) {
+        let zeros = vec![0u8; COVERAGE_BITMAP_SIZE];
+        let _ = self.memory.inner().write_slice(
+            &zeros,
+            vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR),
+        );
+    }
+
+    /// Read the coverage bitmap from guest memory.
+    ///
+    /// Returns the raw 64 KB bitmap. Use with
+    /// [`CoverageBitmap::from_slice`](chaoscontrol_explore::coverage::CoverageBitmap::from_slice).
+    pub fn read_coverage_bitmap(&self) -> Vec<u8> {
+        let mut buf = vec![0u8; COVERAGE_BITMAP_SIZE];
+        let _ = self.memory.inner().read_slice(
+            &mut buf,
+            vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR),
+        );
+        buf
+    }
+
+    /// Check if guest has activated coverage instrumentation.
+    pub fn coverage_active(&self) -> bool {
+        self.coverage_active
+    }
+
     // ─── Public API: virtio devices ──────────────────────────────────
 
     /// Get a reference to the virtio MMIO devices.
@@ -853,6 +888,9 @@ impl DeterministicVm {
             self.memory.inner(),
             self.serial.state(),
             self.entropy.snapshot(),
+            self.virtual_tsc.read(),
+            self.exit_count,
+            self.io_exit_count,
         )
         .map_err(|e| VmError::Snapshot(e.to_string()))
     }
@@ -865,6 +903,11 @@ impl DeterministicVm {
 
         // Restore deterministic entropy PRNG state
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
+
+        // Restore VMM-side counters
+        self.virtual_tsc.set(snapshot.virtual_tsc);
+        self.exit_count = snapshot.exit_count;
+        self.io_exit_count = snapshot.io_exit_count;
 
         // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
@@ -954,6 +997,8 @@ impl DeterministicVm {
                 if port == SDK_PORT {
                     // SDK hypercall result — guest reads status byte
                     data[0] = 0; // STATUS_OK
+                } else if port == COVERAGE_PORT {
+                    data[0] = if self.coverage_active { 1 } else { 0 };
                 } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     data[0] = self.serial.read(offset);
@@ -974,6 +1019,9 @@ impl DeterministicVm {
                 let tsc = self.virtual_tsc.read();
                 if port == SDK_PORT {
                     self.handle_sdk_hypercall();
+                } else if port == COVERAGE_PORT {
+                    self.coverage_active = true;
+                    log::info!("Coverage instrumentation activated by guest");
                 } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     let byte = data[0];

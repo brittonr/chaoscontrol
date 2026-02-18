@@ -179,6 +179,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-guest"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-sdk",
+ "libc",
+]
+
+[[package]]
 name = "chaoscontrol-protocol"
 version = "0.1.0"
 

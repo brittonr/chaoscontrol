@@ -127,6 +127,7 @@
 
           rustToolchain = pkgs.rust-bin.stable.latest.default.override {
             extensions = [ "rust-src" "rust-analyzer" ];
+            targets = [ "x86_64-unknown-linux-musl" ];
           };
         in
         {
@@ -143,6 +144,9 @@
               pkgs.elfutils           # libelf (libbpf-sys dependency)
               pkgs.zlib               # libbpf-sys dependency
               pkgs.pkg-config         # find system libs
+
+              # Guest binary (musl static linking)
+              pkgs.pkgsCross.musl64.stdenv.cc   # x86_64-unknown-linux-musl-gcc
             ];
 
             # libbpf-sys needs to find libelf and zlib

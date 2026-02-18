@@ -1,0 +1,4 @@
+# Use the nix-provided musl cross-compiler for static guest binaries.
+# The wrapper is added to PATH by the devShell in flake.nix.
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-unknown-linux-musl-gcc"

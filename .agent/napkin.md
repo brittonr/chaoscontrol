@@ -84,6 +84,17 @@
 ## Remaining Work
 (All items completed)
 
+## SDK Guest Program (2026-02-18)
+- **chaoscontrol-guest crate**: minimal SDK-instrumented guest binary, runs as PID 1 in VM
+- **musl static linking**: `x86_64-unknown-linux-musl` target, binary is ~560KB, fully static
+- **CARGO_TARGET_DIR**: nix sets `CARGO_TARGET_DIR=$HOME/.cargo-target`; build scripts must use it
+- **devtmpfs**: guest mounts devtmpfs on /dev for `/dev/mem` + `/dev/port` (SDK std transport)
+- **`file` output**: musl binary says "static-pie linked" not "statically linked"; use `ldd` to verify
+- **flake.nix**: added `pkgs.pkgsCross.musl64.stdenv.cc` + musl target to rust-overlay
+- **`.cargo/config.toml`**: sets `linker = "x86_64-unknown-linux-musl-gcc"` for musl target
+- **7/7 SDK guest tests pass**: boot, setup_complete, oracle assertions, always verdicts, coverage bitmap, lifecycle events, determinism
+- **100 coverage edges**: guest records ~100 non-zero bitmap entries across 50 iterations × 4 choices
+
 ## BPF Tracepoint Fix (2026-02-18)
 - **Root cause**: kvm_exit struct had implicit padding between u32 exit_reason and u64 guest_rip. Kernel format (verified via /sys/kernel/tracing/events/kvm/kvm_exit/format) has guest_rip at offset 16, isa at 24, etc. — compiler was inserting correct padding but the struct didn't have explicit __u32 _pad fields
 - **Fix**: Added explicit __u32 _pad0/1/2 fields to tp_kvm_exit to make alignment visible and prevent compiler differences

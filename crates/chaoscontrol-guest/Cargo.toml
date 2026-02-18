@@ -1,0 +1,11 @@
+[package]
+name = "chaoscontrol-guest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Minimal SDK-instrumented guest for ChaosControl exploration"
+
+[dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["std"] }
+libc = "0.2"

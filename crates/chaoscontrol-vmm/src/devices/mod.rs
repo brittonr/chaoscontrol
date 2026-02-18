@@ -7,4 +7,5 @@
 pub mod block;
 pub mod entropy;
 pub mod net;
+pub mod pit;
 pub mod serial;

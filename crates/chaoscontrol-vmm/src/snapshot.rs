@@ -1,8 +1,9 @@
 //! VM snapshot and restore — capture complete VM state and recreate it.
 
 use kvm_bindings::{
-    kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2, kvm_regs,
-    kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
+    kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2,
+    kvm_regs, kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER,
+    KVM_IRQCHIP_PIC_SLAVE,
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;

@@ -473,6 +473,23 @@ impl VirtualTsc {
         self.counter = value;
     }
 
+    /// Advance the counter to at least `target`, rounding up to a tick
+    /// boundary.
+    ///
+    /// Used by the HLT handler to fast-forward virtual time to the next
+    /// timer event without calling `tick()` in a loop.
+    #[inline]
+    pub fn advance_to(&mut self, target: u64) {
+        if target > self.counter {
+            let delta = target - self.counter;
+            // Round up to the next tick boundary
+            let ticks = delta.div_ceil(self.advance_per_tick);
+            self.counter = self
+                .counter
+                .wrapping_add(ticks.wrapping_mul(self.advance_per_tick));
+        }
+    }
+
     /// The configured TSC frequency in kHz.
     #[inline]
     pub fn tsc_khz(&self) -> u32 {

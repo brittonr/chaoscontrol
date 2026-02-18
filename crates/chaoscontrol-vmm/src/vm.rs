@@ -58,6 +58,8 @@ const SERIAL_PORT_END: u16 = 0x3ff;
 /// COM1 IRQ line number (standard PC).
 const SERIAL_IRQ: u32 = 4;
 
+
+
 /// KVM TSS address — must be set before create_irq_chip.
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
 const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
@@ -158,7 +160,7 @@ pub enum VmError {
     #[error("Failed to create in-kernel IRQ chip: {0}")]
     CreateIrqChip(#[source] kvm_ioctls::Error),
 
-    #[error("Failed to create PIT: {0}")]
+    #[error("Failed to configure PIT: {0}")]
     CreatePit(#[source] kvm_ioctls::Error),
 
     #[error("Failed to set KVM clock: {0}")]
@@ -299,12 +301,17 @@ impl DeterministicVm {
         // Create in-kernel IRQ chip (PIC, IOAPIC, LAPIC) — MUST be before create_vcpu
         vm.create_irq_chip().map_err(VmError::CreateIrqChip)?;
 
-        // Create PIT (Programmable Interval Timer)
+        // Create KVM PIT with speaker dummy flag.
+        // KVM's PIT handles I/O ports 0x40-0x43, 0x61 internally and
+        // delivers IRQ 0 via the in-kernel PIC. We use set_pit2() to
+        // reset its count_load_time before each vcpu.run(), pinning
+        // timer delivery to our virtual TSC instead of host wall time.
         let pit_config = kvm_pit_config {
             flags: KVM_PIT_SPEAKER_DUMMY,
             ..Default::default()
         };
-        vm.create_pit2(pit_config).map_err(VmError::CreatePit)?;
+        vm.create_pit2(pit_config)
+            .map_err(VmError::CreatePit)?;
 
         // DETERMINISM: Set KVM clock to zero so guest always sees the same
         // starting time. Without this, the guest reads host wall-clock time
@@ -568,11 +575,28 @@ impl DeterministicVm {
         };
         self.vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
 
-        // Snapshot and restore PIT to reset its internal tick counter.
-        // The PIT starts counting from host time at create_pit2(); this
-        // resets it so the first PIT tick happens at a consistent point.
-        let pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
-        self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+        // Reset KVM PIT: set count_load_time for all channels to the
+        // current host monotonic time so the PIT thinks it was JUST
+        // loaded (0 elapsed ticks). This makes the first timer interrupt
+        // occur at a consistent point relative to guest execution start,
+        // regardless of how long host-side setup took.
+        let mut ts = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: clock_gettime with CLOCK_MONOTONIC is always safe
+        unsafe {
+            libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
+        }
+        let now_ns = ts.tv_sec * 1_000_000_000 + ts.tv_nsec;
+
+        let mut pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+        for ch in &mut pit_state.channels {
+            ch.count_load_time = now_ns;
+        }
+        self.vm
+            .set_pit2(&pit_state)
+            .map_err(VmError::CreatePit)?;
 
         Ok(())
     }
@@ -725,6 +749,8 @@ impl DeterministicVm {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
                 self.virtual_tsc.tick();
+
+
 
                 if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;

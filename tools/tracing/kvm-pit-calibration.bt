@@ -1,0 +1,70 @@
+#!/usr/bin/env bpftrace
+/*
+ * kvm-pit-calibration.bt — Trace PIT I/O during kernel boot
+ *
+ * Shows exactly what PIT ports the guest reads/writes, when KVM PIT
+ * fires IRQ 0, and how our set_irq_line injections look.
+ * Use to debug PIT calibration non-determinism.
+ *
+ * Usage: sudo bpftrace kvm-pit-calibration.bt
+ *        (then start the VM in another terminal)
+ */
+
+BEGIN
+{
+    printf("Tracing KVM PIT I/O and IRQ activity... Ctrl-C to stop.\n\n");
+    @start = nsecs;
+}
+
+/* PIT port I/O: 0x40 (ch0 data), 0x41 (ch1), 0x42 (ch2), 0x43 (cmd), 0x61 (control) */
+tracepoint:kvm:kvm_pio
+/args->port >= 0x40 && args->port <= 0x43/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    $rw = args->rw == 0 ? "IN " : "OUT";
+    printf("[%10lu us] PIT %s port=0x%02x size=%d val=0x%02x\n",
+           $elapsed_us, $rw, args->port, args->size, args->val);
+}
+
+tracepoint:kvm:kvm_pio
+/args->port == 0x61/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    $rw = args->rw == 0 ? "IN " : "OUT";
+    printf("[%10lu us] PIT %s port=0x61 (NMI/speaker) val=0x%02x\n",
+           $elapsed_us, $rw, args->val);
+}
+
+/* PIC IRQ 0 (PIT timer) set */
+tracepoint:kvm:kvm_pic_set_irq
+/args->irq == 0/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    printf("[%10lu us] PIC IRQ0 set: irq_num=%d level=%d\n",
+           $elapsed_us, args->irq, args->level);
+    @irq0_count++;
+}
+
+/* Interrupt injection into vCPU */
+tracepoint:kvm:kvm_inj_virq
+/args->irq == 0 || args->irq == 32/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    printf("[%10lu us] INJ_VIRQ: irq=%d\n",
+           $elapsed_us, args->irq);
+}
+
+/* IRQ acknowledgment */
+tracepoint:kvm:kvm_ack_irq
+/args->irqchip == 0 && args->pin == 0/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    printf("[%10lu us] ACK IRQ0 (chip=%d pin=%d)\n",
+           $elapsed_us, args->irqchip, args->pin);
+}
+
+END
+{
+    printf("\n--- Summary ---\n");
+    printf("Total PIC IRQ0 events: %d\n", @irq0_count);
+}

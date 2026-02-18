@@ -1,0 +1,76 @@
+#!/usr/bin/env bpftrace
+/*
+ * kvm-exit-profile.bt — Profile all KVM exit reasons during VM boot
+ *
+ * Shows distribution of exit reasons, I/O port frequencies, and
+ * MSR access patterns. Use to understand VM execution profile
+ * and identify sources of non-determinism.
+ *
+ * Usage: sudo bpftrace kvm-exit-profile.bt
+ *        (then start the VM in another terminal)
+ *
+ * Exit reasons (x86):
+ *   0=EXCEPTION_NMI, 1=EXT_INT, 7=INT_WINDOW, 10=CPUID,
+ *   12=HLT, 28=CR_ACCESS, 30=IO, 31=MSR_READ, 32=MSR_WRITE,
+ *   48=EPT_VIOLATION, 49=EPT_MISCONFIG, 55=XSAVES, 56=XRSTORS
+ */
+
+BEGIN
+{
+    printf("Profiling KVM exits... Ctrl-C to stop.\n\n");
+    @start = nsecs;
+
+    /* Human-readable exit reason names */
+    @reason[0]  = "EXCEPTION_NMI";
+    @reason[1]  = "EXT_INT";
+    @reason[7]  = "INT_WINDOW";
+    @reason[10] = "CPUID";
+    @reason[12] = "HLT";
+    @reason[28] = "CR_ACCESS";
+    @reason[30] = "IO";
+    @reason[31] = "MSR_READ";
+    @reason[32] = "MSR_WRITE";
+    @reason[48] = "EPT_VIOLATION";
+    @reason[49] = "EPT_MISCONFIG";
+}
+
+/* Count every exit by reason */
+tracepoint:kvm:kvm_exit
+{
+    @exits[args->exit_reason] = count();
+}
+
+/* I/O port access histogram */
+tracepoint:kvm:kvm_pio
+{
+    $rw = args->rw == 0 ? "IN" : "OUT";
+    @pio[args->port, $rw] = count();
+}
+
+/* MSR access tracking */
+tracepoint:kvm:kvm_msr
+{
+    $rw = args->write ? "WRMSR" : "RDMSR";
+    @msr[args->ecx, $rw] = count();
+}
+
+/* HLT timing distribution */
+tracepoint:kvm:kvm_exit
+/args->exit_reason == 12/
+{
+    @hlt_times = hist((nsecs - @start) / 1000000);
+}
+
+END
+{
+    printf("\n=== KVM Exit Reasons ===\n");
+    print(@exits);
+    printf("\n=== I/O Port Access (port, direction) ===\n");
+    print(@pio);
+    printf("\n=== MSR Access (MSR#, direction) ===\n");
+    print(@msr);
+    printf("\n=== HLT exit time distribution (ms since start) ===\n");
+    print(@hlt_times);
+
+    clear(@reason);
+}

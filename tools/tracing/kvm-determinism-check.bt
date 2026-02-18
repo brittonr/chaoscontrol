@@ -1,0 +1,74 @@
+#!/usr/bin/env bpftrace
+/*
+ * kvm-determinism-check.bt — Detect non-deterministic KVM behavior
+ *
+ * Specifically monitors:
+ * 1. KVM PIT IRQ0 fires (should be ZERO if our suppression works)
+ * 2. Gap between set_pit2() and vcpu_run() (race window)
+ * 3. External interrupt injections (our set_irq_line calls)
+ * 4. TSC MSR writes
+ *
+ * Usage: sudo bpftrace kvm-determinism-check.bt
+ *        (then start the VM in another terminal)
+ */
+
+BEGIN
+{
+    printf("Monitoring KVM determinism... Ctrl-C to stop.\n\n");
+    @start = nsecs;
+    @kvm_pit_irq0 = 0;
+    @our_irq0 = 0;
+}
+
+/* Detect KVM PIT firing IRQ 0 (SHOULD NOT HAPPEN with our suppression) */
+tracepoint:kvm:kvm_pic_set_irq
+/args->irq == 0/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    @kvm_pit_irq0++;
+    printf("[%10lu us] *** KVM PIT IRQ0 fired! (count=%d) ***\n",
+           $elapsed_us, @kvm_pit_irq0);
+}
+
+/* Track set_irq_line calls (our deterministic IRQ injection) */
+tracepoint:kvm:kvm_set_irq
+/args->irq == 0/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    @our_irq0++;
+    printf("[%10lu us] Our IRQ0 injection (count=%d)\n",
+           $elapsed_us, @our_irq0);
+}
+
+/* TSC writes — should see exactly one (our reset to 0) */
+tracepoint:kvm:kvm_msr
+/args->ecx == 0x10 && args->write/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    printf("[%10lu us] TSC write: value=%lu\n",
+           $elapsed_us, args->data);
+}
+
+/* KVM clock MSR writes */
+tracepoint:kvm:kvm_msr
+/args->ecx == 0x4b564d01 && args->write/
+{
+    $elapsed_us = (nsecs - @start) / 1000;
+    printf("[%10lu us] KVM_CLOCK write: value=0x%lx\n",
+           $elapsed_us, args->data);
+}
+
+/* CPUID exits (for checking our leaf 0x15 injection) */
+tracepoint:kvm:kvm_cpuid
+{
+    @cpuid_leaves[args->function] = count();
+}
+
+END
+{
+    printf("\n=== Determinism Report ===\n");
+    printf("KVM PIT IRQ0 fires (should be 0): %d\n", @kvm_pit_irq0);
+    printf("Our IRQ0 injections: %d\n", @our_irq0);
+    printf("\n=== CPUID leaf queries ===\n");
+    print(@cpuid_leaves);
+}

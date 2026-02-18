@@ -274,6 +274,11 @@ impl FaultEngine {
         self.setup_complete = true;
     }
 
+    /// Replace the fault schedule (for exploration branch mutations).
+    pub fn set_schedule(&mut self, schedule: FaultSchedule) {
+        self.schedule = schedule;
+    }
+
     /// Snapshot the engine state.
     pub fn snapshot(&self) -> EngineSnapshot {
         EngineSnapshot {

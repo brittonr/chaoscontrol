@@ -388,11 +388,12 @@ impl SimulationController {
         })
     }
 
-    /// Run the simulation until all VMs halt or max_ticks reached.
-    pub fn run(&mut self, max_ticks: u64) -> Result<SimulationResult, VmError> {
-        info!("Starting simulation for up to {} ticks", max_ticks);
+    /// Run the simulation for up to `num_ticks` scheduling rounds.
+    pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, VmError> {
+        let stop_at = self.tick + num_ticks;
+        info!("Running simulation for {} ticks (tick {}→{})", num_ticks, self.tick, stop_at);
 
-        while self.tick < max_ticks {
+        while self.tick < stop_at {
             let result = self.step_round()?;
             
             if result.vms_running == 0 {
@@ -745,6 +746,20 @@ impl SimulationController {
     /// ChaosControl SDK but you still want scheduled faults to fire.
     pub fn force_setup_complete(&mut self) {
         self.fault_engine.force_setup_complete();
+    }
+
+    /// Replace the fault schedule (used by the explorer between branches).
+    pub fn set_schedule(&mut self, schedule: FaultSchedule) {
+        self.fault_engine.set_schedule(schedule);
+    }
+
+    /// Reset all VM statuses to Running and the tick counter to a
+    /// snapshot's tick. Called implicitly by `restore_all`, but
+    /// exposed for manual control.
+    pub fn reset_vm_statuses(&mut self) {
+        for slot in &mut self.vms {
+            slot.status = VmStatus::Running;
+        }
     }
 }
 

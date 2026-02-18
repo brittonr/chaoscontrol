@@ -135,13 +135,13 @@
 ## Dogfooding Findings (2026-02-18)
 | Finding | Impact | Fix |
 |---------|--------|-----|
-| Kernel never HLTs after workload — busy serial polls | Idle detection based on HLT doesn't work | Changed to `exits_since_last_sdk` counter |
-| Each HLT costs ~2ms real time (KVM PIT ioctls) | Would be 37 min/tick wasted if kernel DID HLT | Fixed by idle detection |
+| Kernel never HLTs after workload — busy serial polls | Idle detection based on HLT doesn't work | **Fixed**: `exits_since_last_sdk` counter |
 | Kernel idle loop = serial I/O polling, not HLT | All 50 post-workload exits are IoIn | Counter must track total exits, not HLT exits |
-| Explore creates new SimulationController per branch | 5s kernel boot per branch, wasted by snapshot restore | Known — future: cache pre-booted VM |
-| Coverage bitmap shows 0 edges in controller path | Coverage collected from first VM but bitmap at wrong GPA? | Known — needs investigation |
-| `run_bounded` had no idle detection | VM spins forever after workload | Added SDK_IDLE_THRESHOLD=500 in run_bounded |
-| `libc::pause()` returns on each PIT interrupt | Kernel scheduler runs, polls serial, back to pause() | Not a bug — just means idle=I/O not HLT |
+| `run_bounded` had no idle detection | VM spins forever after workload | **Fixed**: SDK_IDLE_THRESHOLD=500 in run_bounded |
+| Explore creates new SimulationController per branch | 5s kernel boot per branch | **Fixed**: controller cached in Explorer, reused via restore_all |
+| Coverage bitmap shows 0 edges in exploration | Guest run-to-completion during boot, exploration ticks idle | **Fixed**: guest changed to infinite loop; controller.run() is relative ticks |
+| `controller.run(max_ticks)` was absolute, not relative | After restore to tick=5, `run(5)` exits immediately | **Fixed**: changed to `run(num_ticks)` = relative duration |
+| Guest "workload complete" model incompatible with exploration | Guest runs 200 ticks then idles forever | **Fixed**: infinite loop, no completion, VMM controls horizon |
 
 ## Coverage Instrumentation (2026-02-18)
 - **Coverage bitmap**: 64KB at GPA 0xE0000 (BIOS reserved area, within E820 gap)

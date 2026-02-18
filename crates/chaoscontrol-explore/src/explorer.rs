@@ -80,6 +80,9 @@ pub struct Explorer {
     mutator: ScheduleMutator,
     coverage: CoverageCollector,
     rng: ChaCha8Rng,
+    /// Reusable controller — avoids 5s kernel boot per branch.
+    /// Created once during bootstrap, then restored from snapshots.
+    controller: Option<SimulationController>,
     /// Stats tracking.
     rounds_completed: u64,
     total_branches_run: u64,
@@ -105,6 +108,7 @@ impl Explorer {
             mutator,
             coverage,
             rng,
+            controller: None,
             rounds_completed: 0,
             total_branches_run: 0,
         }
@@ -233,14 +237,12 @@ impl Explorer {
         })
     }
 
-    /// Run a single branch: create simulation from snapshot + schedule, run for N ticks.
-    /// Returns (coverage_bitmap, oracle_report, halted).
-    fn run_branch(
-        &mut self,
-        snapshot: &Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
-        schedule: FaultSchedule,
-    ) -> Result<BranchResult, ExploreError> {
-        // Create simulation config
+    /// Ensure we have a controller ready (created once, reused across branches).
+    fn ensure_controller(&mut self) -> Result<(), ExploreError> {
+        if self.controller.is_some() {
+            return Ok(());
+        }
+
         let sim_config = SimulationConfig {
             num_vms: self.config.num_vms,
             vm_config: self.config.vm_config.clone(),
@@ -248,24 +250,55 @@ impl Explorer {
             initrd_path: self.config.initrd_path.clone(),
             seed: self.config.seed,
             quantum: self.config.quantum,
-            schedule: schedule.clone(),
+            schedule: FaultSchedule::new(),
         };
 
-        // Create controller
-        let mut controller = SimulationController::new(sim_config)?;
+        self.controller = Some(SimulationController::new(sim_config)?);
+        Ok(())
+    }
 
-        // Restore from snapshot if provided
-        if let Some(snap) = snapshot {
-            controller.restore_all(snap)?;
+    /// Run a single branch: restore snapshot → clear coverage → apply
+    /// schedule → run for N ticks → collect coverage.
+    ///
+    /// Reuses the cached controller to avoid re-booting the kernel per
+    /// branch (5s saved per branch).
+    fn run_branch(
+        &mut self,
+        snapshot: &Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+        schedule: FaultSchedule,
+    ) -> Result<BranchResult, ExploreError> {
+        self.ensure_controller()?;
+
+        // Phase 1: restore + run (needs &mut controller)
+        {
+            let controller = self.controller.as_mut().unwrap();
+
+            // Restore from snapshot if provided (rewinds VM state without reboot)
+            if let Some(snap) = snapshot {
+                controller.restore_all(snap)?;
+            }
+
+            // Apply the mutated fault schedule
+            controller.set_schedule(schedule.clone());
+
+            // Clear coverage bitmaps so we only see edges from THIS branch
+            controller.clear_all_coverage();
+
+            // Run for configured ticks
+            controller.run(self.config.ticks_per_branch)?;
         }
 
-        // Clear coverage bitmaps before this branch run
-        controller.clear_all_coverage();
+        // Phase 2: collect results (reborrow controller as immutable,
+        // coverage collector as mutable — no overlapping borrows)
+        let controller = self.controller.as_ref().unwrap();
 
-        // Run for configured ticks
-        let result = controller.run(self.config.ticks_per_branch)?;
+        let result_info = controller.report();
+        let vm_exit_counts: Vec<u64> = (0..controller.num_vms())
+            .map(|i| controller.vm_slot(i).map_or(0, |s| s.vm.exit_count()))
+            .collect();
+        let total_ticks = controller.tick();
 
-        // Collect coverage from first VM (if in coverage mode)
+        // Collect coverage from first VM
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
                 self.coverage.collect_from_guest(vm_slot.vm.memory().inner())
@@ -273,22 +306,20 @@ impl Explorer {
                 CoverageBitmap::new()
             }
         } else {
-            // Blind mode: use assertion variety as pseudo-coverage
-            self.assertion_coverage(&result.oracle_report)
+            self.assertion_coverage(&result_info)
         };
 
-        // Take snapshot at end for potential frontier entry
-        let snapshot = controller.snapshot_all().ok();
+        let snap = controller.snapshot_all().ok();
 
         Ok(BranchResult {
             coverage,
-            oracle_report: result.oracle_report,
+            oracle_report: result_info,
             schedule,
-            exit_counts: result.vm_exit_counts,
-            halted: result.total_ticks >= self.config.ticks_per_branch,
-            total_ticks: result.total_ticks,
-            bugs: Vec::new(), // Will be filled by extract_bugs
-            snapshot,
+            exit_counts: vm_exit_counts,
+            halted: total_ticks >= self.config.ticks_per_branch,
+            total_ticks,
+            bugs: Vec::new(),
+            snapshot: snap,
         })
     }
 

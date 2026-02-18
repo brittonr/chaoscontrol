@@ -20,7 +20,8 @@ use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
 // ═══════════════════════════════════════════════════════════════════════
 
 const NUM_NODES: usize = 3;
-const TICKS: usize = 200;
+// No fixed tick count — guest runs in an infinite loop.
+// The VMM controls the execution horizon via run_bounded(quantum).
 const QUORUM: usize = 2;
 /// Ticks before a follower starts an election (base).
 const ELECTION_TIMEOUT_BASE: usize = 8;
@@ -240,7 +241,8 @@ impl Node {
                 }
             }
 
-            Message::AppendEntries { term, prev_log_index, prev_log_term, entries, leader_commit, .. } => {
+            Message::AppendEntries { term, leader_id, prev_log_index, prev_log_term, entries, leader_commit } => {
+                let _ = leader_id; // Raft protocol field; used for redirect in full impl
                 if term > self.current_term {
                     self.become_follower(term);
                 } else if term < self.current_term {
@@ -457,8 +459,9 @@ fn main() {
 
     let mut values_proposed = 0u64;
     let mut values_committed = 0usize;
+    let mut tick = 0usize;
 
-    for tick in 0..TICKS {
+    loop {
         // ── Pick which node to activate this tick ────────────
         let active = random::random_choice(NUM_NODES);
         coverage::record_edge(6000 + tick * 7 + active * 3);
@@ -557,27 +560,8 @@ fn main() {
                 values_proposed,
             );
         }
-    }
 
-    // ── Final report ────────────────────────────────────────
-    lifecycle::send_event("raft_done", &[
-        ("proposed", &values_proposed.to_string()),
-        ("committed", &values_committed.to_string()),
-    ]);
-
-    println!(
-        "raft: workload complete proposed={} committed={}",
-        values_proposed, values_committed,
-    );
-    for (i, node) in nodes.iter().enumerate() {
-        println!(
-            "raft: node[{}] term={} role={:?} log_len={} commit={}",
-            i, node.current_term, node.role, node.log.len(), node.commit_index,
-        );
+        tick += 1;
     }
-
-    // Idle forever (PID 1 can't exit)
-    loop {
-        unsafe { libc::pause(); }
-    }
+    // Guest never reaches here — the VMM controls execution via run_bounded().
 }

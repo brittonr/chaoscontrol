@@ -106,8 +106,7 @@ impl DeterministicEntropy {
     // ── internal helpers ──────────────────────────────────────────────
 
     fn rng_from_u64(seed: u64) -> ChaCha20Rng {
-        let mut key = [0u8; 32];
-        key[..8].copy_from_slice(&seed.to_le_bytes());
+        let key = crate::verified::entropy::expand_seed(seed);
         ChaCha20Rng::from_seed(key)
     }
 }

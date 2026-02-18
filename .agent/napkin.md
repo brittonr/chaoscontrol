@@ -61,6 +61,16 @@
 - **SIGTERM handling critical**: collector must handle SIGTERM for graceful save on `kill`
 - **sudo NOPASSWD needed**: for both bpftrace and chaoscontrol-trace binary
 
+## Verus Testing (2026-02-17)
+- Extracted pure functions into `src/verified/` modules in both crates
+- Created Verus spec files in `verus/` directories
+- Pattern: pure function in verified/, imperative shell delegates to it
+- Modules covered: cpu, memory, pit, block, entropy, net, events, verifier
+- Tiger Style: every verified function has debug_assert! preconditions and postconditions
+- chaoscontrol-vmm verified modules: cpu (TSC advance), memory (region overlap), pit (reload/latch), block (offset clamp), entropy (seed expansion), net (MAC validation)
+- chaoscontrol-trace verified modules: events (determinism_eq), verifier (divergence detection)
+- All verified functions are pure (no I/O, no side effects), deterministic, and testable
+
 ## Next Steps
 1. Fix virtual TSC: advance based on guest execution time, not exit count
 2. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)

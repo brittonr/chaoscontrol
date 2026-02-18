@@ -66,4 +66,5 @@
 
 pub mod collector;
 pub mod events;
+pub mod verified;
 pub mod verifier;

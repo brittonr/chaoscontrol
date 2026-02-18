@@ -193,30 +193,7 @@ pub const E820_UNUSABLE: u32 = 5;
 /// Usable low RAM ends at this address.
 pub const LOW_MEMORY_END: u64 = 0x9fc00;
 
-/// A single entry in the E820 memory map.
-///
-/// This mirrors the layout of the Linux boot protocol's `boot_e820_entry`.
-/// Use [`build_e820_map`] to construct the standard two-entry map for a
-/// given memory size, then copy the entries into `boot_params.e820_table`.
-///
-/// # Example
-///
-/// ```
-/// use chaoscontrol_vmm::memory::{build_e820_map, E820_RAM};
-///
-/// let map = build_e820_map(128 * 1024 * 1024);
-/// assert_eq!(map.len(), 2);
-/// assert_eq!(map[0].type_, E820_RAM);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct E820Entry {
-    /// Start of the memory region (guest physical address).
-    pub addr: u64,
-    /// Size of the region in bytes.
-    pub size: u64,
-    /// Memory type (see [`E820_RAM`], [`E820_RESERVED`], etc.).
-    pub type_: u32,
-}
+pub use crate::verified::memory::E820Entry;
 
 /// Build the standard E820 memory map for a guest with `memory_size` bytes.
 ///
@@ -236,25 +213,7 @@ pub struct E820Entry {
 /// Panics if `memory_size` is less than or equal to [`HIMEM_START`],
 /// because there would be no usable high memory.
 pub fn build_e820_map(memory_size: u64) -> Vec<E820Entry> {
-    assert!(
-        memory_size > HIMEM_START,
-        "Guest memory ({memory_size:#x}) must be larger than HIMEM_START ({HIMEM_START:#x})"
-    );
-
-    vec![
-        // Entry 0: Conventional low memory (below the EBDA).
-        E820Entry {
-            addr: 0,
-            size: LOW_MEMORY_END,
-            type_: E820_RAM,
-        },
-        // Entry 1: High memory (1 MB to end of guest RAM).
-        E820Entry {
-            addr: HIMEM_START,
-            size: memory_size - HIMEM_START,
-            type_: E820_RAM,
-        },
-    ]
+    crate::verified::memory::build_e820_map(memory_size)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -640,11 +599,7 @@ impl GuestMemoryManager {
 /// assert_ne!(code64, 0);
 /// ```
 pub fn gdt_entry(flags: u16, base: u32, limit: u32) -> u64 {
-    ((u64::from(base) & 0xff00_0000u64) << (56 - 24))
-        | ((u64::from(flags) & 0x0000_f0ffu64) << 40)
-        | ((u64::from(limit) & 0x000f_0000u64) << (48 - 16))
-        | ((u64::from(base) & 0x00ff_ffffu64) << 16)
-        | (u64::from(limit) & 0x0000_ffffu64)
+    crate::verified::memory::gdt_entry(flags, base, limit)
 }
 
 /// Convert a raw GDT descriptor entry into a KVM segment register.
@@ -731,9 +686,7 @@ pub fn tss_segment() -> kvm_segment {
 
 /// Extract the segment base address (32-bit) from a GDT entry.
 fn get_base(entry: u64) -> u64 {
-    ((entry & 0xFF00_0000_0000_0000) >> 32)
-        | ((entry & 0x0000_00FF_0000_0000) >> 16)
-        | ((entry & 0x0000_0000_FFFF_0000) >> 16)
+    crate::verified::memory::get_base(entry)
 }
 
 /// Extract the segment limit from a GDT entry.
@@ -742,54 +695,49 @@ fn get_base(entry: u64) -> u64 {
 /// 4096 (left-shifted by 12) and the low 12 bits are filled with 1s,
 /// giving a byte-granular effective limit.
 fn get_limit(entry: u64) -> u32 {
-    let raw: u32 =
-        ((((entry) & 0x000F_0000_0000_0000) >> 32) | ((entry) & 0x0000_0000_0000_FFFF)) as u32;
-    match get_g(entry) {
-        0 => raw,
-        _ => (raw << 12) | 0xFFF,
-    }
+    crate::verified::memory::get_limit(entry)
 }
 
 /// Extract the Granularity bit (G) — bit 55.
 fn get_g(entry: u64) -> u8 {
-    ((entry & 0x0080_0000_0000_0000) >> 55) as u8
+    crate::verified::memory::get_g(entry)
 }
 
 /// Extract the Default operation size bit (D/B) — bit 54.
 fn get_db(entry: u64) -> u8 {
-    ((entry & 0x0040_0000_0000_0000) >> 54) as u8
+    crate::verified::memory::get_db(entry)
 }
 
 /// Extract the Long mode bit (L) — bit 53.
 fn get_l(entry: u64) -> u8 {
-    ((entry & 0x0020_0000_0000_0000) >> 53) as u8
+    crate::verified::memory::get_l(entry)
 }
 
 /// Extract the Available for system use bit (AVL) — bit 52.
 fn get_avl(entry: u64) -> u8 {
-    ((entry & 0x0010_0000_0000_0000) >> 52) as u8
+    crate::verified::memory::get_avl(entry)
 }
 
 /// Extract the Present bit (P) — bit 47.
 fn get_p(entry: u64) -> u8 {
-    ((entry & 0x0000_8000_0000_0000) >> 47) as u8
+    crate::verified::memory::get_p(entry)
 }
 
 /// Extract the Descriptor Privilege Level (DPL) — bits 46:45.
 fn get_dpl(entry: u64) -> u8 {
-    ((entry & 0x0000_6000_0000_0000) >> 45) as u8
+    crate::verified::memory::get_dpl(entry)
 }
 
 /// Extract the Descriptor type bit (S) — bit 44.
 ///
 /// Returns 0 for system segments (LDT, TSS, gates) or 1 for code/data.
 fn get_s(entry: u64) -> u8 {
-    ((entry & 0x0000_1000_0000_0000) >> 44) as u8
+    crate::verified::memory::get_s(entry)
 }
 
 /// Extract the Type field — bits 43:40.
 fn get_type(entry: u64) -> u8 {
-    ((entry & 0x0000_0F00_0000_0000) >> 40) as u8
+    crate::verified::memory::get_type(entry)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

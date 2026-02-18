@@ -142,25 +142,9 @@ pub const CPUID_EXT_EDX_RDTSCP: u32 = 1 << 27;
 pub const CPUID_APM_EDX_INVARIANT_TSC: u32 = 1 << 8;
 
 // ─── CPUID 0x1 EAX model / family bit layout ────────────────────────
-
-/// Bits \[3:0\] — Processor stepping ID.
-const EAX_STEPPING_MASK: u32 = 0xF;
-
-/// Bits \[7:4\] — Processor model (low nibble).
-const EAX_MODEL_MASK: u32 = 0xF << 4;
-const EAX_MODEL_SHIFT: u32 = 4;
-
-/// Bits \[11:8\] — Processor family (low nibble).
-const EAX_FAMILY_MASK: u32 = 0xF << 8;
-const EAX_FAMILY_SHIFT: u32 = 8;
-
-/// Bits \[19:16\] — Extended model ID (high nibble of display model).
-const EAX_EXT_MODEL_MASK: u32 = 0xF << 16;
-const EAX_EXT_MODEL_SHIFT: u32 = 16;
-
-/// Bits \[27:20\] — Extended family ID.
-const EAX_EXT_FAMILY_MASK: u32 = 0xFF << 20;
-const EAX_EXT_FAMILY_SHIFT: u32 = 20;
+//
+// Canonical definitions live in `verified::cpu`.  We re-use them here
+// via fully-qualified paths in `filter_entry` and in tests.
 
 // ─── Defaults ────────────────────────────────────────────────────────
 
@@ -448,20 +432,23 @@ impl VirtualTsc {
     ///
     /// Call this once per VM-exit (or per scheduling quantum) to make
     /// time progress deterministically.
+    ///
+    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_tick`].
     #[inline]
     pub fn tick(&mut self) -> u64 {
-        self.counter = self.counter.wrapping_add(self.advance_per_tick);
+        self.counter = crate::verified::cpu::vtsc_tick(self.counter, self.advance_per_tick);
         self.counter
     }
 
     /// Advance the counter by exactly `n` ticks and return the new value.
     ///
     /// Equivalent to calling [`tick`](Self::tick) `n` times, but O(1).
+    ///
+    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_advance`].
     #[inline]
     pub fn advance(&mut self, n: u64) -> u64 {
-        self.counter = self
-            .counter
-            .wrapping_add(self.advance_per_tick.wrapping_mul(n));
+        self.counter =
+            crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
         self.counter
     }
 
@@ -478,16 +465,12 @@ impl VirtualTsc {
     ///
     /// Used by the HLT handler to fast-forward virtual time to the next
     /// timer event without calling `tick()` in a loop.
+    ///
+    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_advance_to`].
     #[inline]
     pub fn advance_to(&mut self, target: u64) {
-        if target > self.counter {
-            let delta = target - self.counter;
-            // Round up to the next tick boundary
-            let ticks = delta.div_ceil(self.advance_per_tick);
-            self.counter = self
-                .counter
-                .wrapping_add(ticks.wrapping_mul(self.advance_per_tick));
-        }
+        self.counter =
+            crate::verified::cpu::vtsc_advance_to(self.counter, self.advance_per_tick, target);
     }
 
     /// The configured TSC frequency in kHz.
@@ -506,11 +489,10 @@ impl VirtualTsc {
     ///
     /// Uses `u128` intermediate arithmetic so that large counter values
     /// (up to ~195 years at 3 GHz) do not overflow.
+    ///
+    /// Delegates to [`crate::verified::cpu::elapsed_ns`].
     pub fn elapsed_ns(&self) -> u64 {
-        // tsc_khz kHz  =  tsc_khz × 1 000 Hz
-        // elapsed_s    =  counter / (tsc_khz × 1 000)
-        // elapsed_ns   =  counter × 1 000 000 / tsc_khz
-        ((self.counter as u128 * 1_000_000) / self.tsc_khz as u128) as u64
+        crate::verified::cpu::elapsed_ns(self.counter, self.tsc_khz)
     }
 
     /// Produce a serialisable snapshot of the current state.
@@ -717,24 +699,14 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
 /// ```
 ///
 /// The ratio is reduced to lowest terms via GCD so the values stay small.
+///
+/// Delegates to [`crate::verified::cpu::tsc_crystal_ratio`].
 fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
-    let tsc_hz = tsc_khz as u64 * 1_000;
-    let crystal = CRYSTAL_CLOCK_HZ as u64;
-    let g = gcd(tsc_hz, crystal);
-    let denominator = (crystal / g) as u32;
-    let numerator = (tsc_hz / g) as u32;
-    (denominator, numerator)
+    crate::verified::cpu::tsc_crystal_ratio(tsc_khz)
 }
 
-/// Greatest common divisor (Euclidean algorithm).
-const fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
-}
+// `gcd` has moved to `crate::verified::cpu::gcd`.
+// Tests below import it from there.
 
 // ─── Internal: model / family / stepping encoding ────────────────────
 
@@ -743,30 +715,27 @@ const fn gcd(mut a: u64, mut b: u64) -> u64 {
 /// For families ≤ 15 the value fits in bits \[11:8\].  For families > 15
 /// the base field is set to 0xF and the excess is placed in the
 /// extended-family field (bits \[27:20\]).
+///
+/// Delegates to [`crate::verified::cpu::encode_family`].
 fn encode_family(eax: &mut u32, family: u8) {
-    *eax &= !(EAX_FAMILY_MASK | EAX_EXT_FAMILY_MASK);
-    if family <= 0xF {
-        *eax |= (family as u32) << EAX_FAMILY_SHIFT;
-    } else {
-        *eax |= 0xF << EAX_FAMILY_SHIFT;
-        *eax |= ((family as u32).saturating_sub(0xF)) << EAX_EXT_FAMILY_SHIFT;
-    }
+    crate::verified::cpu::encode_family(eax, family);
 }
 
 /// Encode a *display* model value into the CPUID 0x1 EAX register.
 ///
 /// Low nibble → bits \[7:4\], high nibble → bits \[19:16\] (extended
 /// model).
+///
+/// Delegates to [`crate::verified::cpu::encode_model`].
 fn encode_model(eax: &mut u32, model: u8) {
-    *eax &= !(EAX_MODEL_MASK | EAX_EXT_MODEL_MASK);
-    *eax |= ((model as u32) & 0xF) << EAX_MODEL_SHIFT;
-    *eax |= (((model as u32) >> 4) & 0xF) << EAX_EXT_MODEL_SHIFT;
+    crate::verified::cpu::encode_model(eax, model);
 }
 
 /// Encode a stepping value into CPUID 0x1 EAX bits \[3:0\].
+///
+/// Delegates to [`crate::verified::cpu::encode_stepping`].
 fn encode_stepping(eax: &mut u32, stepping: u8) {
-    *eax &= !EAX_STEPPING_MASK;
-    *eax |= (stepping as u32) & 0xF;
+    crate::verified::cpu::encode_stepping(eax, stepping);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -774,6 +743,10 @@ fn encode_stepping(eax: &mut u32, stepping: u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Import pure functions and EAX field constants from the verified module.
+    use crate::verified::cpu::{
+        gcd, EAX_EXT_FAMILY_SHIFT, EAX_EXT_MODEL_SHIFT, EAX_FAMILY_SHIFT, EAX_MODEL_SHIFT,
+    };
 
     // -- helpers --
 

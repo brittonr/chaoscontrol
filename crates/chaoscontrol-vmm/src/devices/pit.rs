@@ -115,62 +115,12 @@ impl PitChannel {
 
     /// Compute the current counter value based on elapsed PIT ticks
     fn compute_counter(&self, elapsed_pit_ticks: u64) -> u16 {
-        if !self.armed {
-            return 0;
-        }
-
-        let effective_reload = if self.reload == 0 { 65536u64 } else { self.reload as u64 };
-
-        match self.mode {
-            ChannelMode::Mode0 => {
-                // Count down once, saturate at 0
-                if elapsed_pit_ticks >= effective_reload {
-                    0
-                } else {
-                    (effective_reload - elapsed_pit_ticks) as u16
-                }
-            }
-            ChannelMode::Mode2 | ChannelMode::Mode3 => {
-                // Periodic mode: count wraps around
-                let position = elapsed_pit_ticks % effective_reload;
-                if position == 0 && elapsed_pit_ticks > 0 {
-                    effective_reload as u16
-                } else {
-                    (effective_reload - position) as u16
-                }
-            }
-            _ => {
-                // Other modes not fully implemented, return reload value
-                self.reload
-            }
-        }
+        crate::verified::pit::compute_counter(self.mode, self.reload, self.armed, elapsed_pit_ticks)
     }
 
     /// Get the output state for this channel
     fn output(&self, elapsed_pit_ticks: u64) -> bool {
-        if !self.armed || !self.gate {
-            return false;
-        }
-
-        let effective_reload = if self.reload == 0 { 65536u64 } else { self.reload as u64 };
-
-        match self.mode {
-            ChannelMode::Mode0 => {
-                // Output starts LOW, goes HIGH when counter reaches 0
-                elapsed_pit_ticks >= effective_reload
-            }
-            ChannelMode::Mode2 => {
-                // Output is HIGH except for 1 tick pulse LOW at reload
-                let position = elapsed_pit_ticks % effective_reload;
-                position != 0 || elapsed_pit_ticks == 0
-            }
-            ChannelMode::Mode3 => {
-                // Square wave: HIGH for first half, LOW for second half
-                let position = elapsed_pit_ticks % effective_reload;
-                position < (effective_reload / 2)
-            }
-            _ => true,
-        }
+        crate::verified::pit::compute_output(self.mode, self.armed, self.gate, self.reload, elapsed_pit_ticks)
     }
 }
 
@@ -255,23 +205,12 @@ impl DeterministicPit {
 
     /// Check if the PIT handles the given I/O port
     pub fn handles_port(port: u16) -> bool {
-        matches!(
-            port,
-            PIT_PORT_CHANNEL0
-                | PIT_PORT_CHANNEL1
-                | PIT_PORT_CHANNEL2
-                | PIT_PORT_COMMAND
-                | PORT_SYSTEM_CONTROL_B
-        )
+        crate::verified::pit::handles_port(port)
     }
 
     /// Convert elapsed TSC ticks to PIT ticks
     fn tsc_to_pit_ticks(&self, elapsed_tsc: u64) -> u64 {
-        // Use u128 to avoid overflow: pit_ticks = tsc * PIT_FREQ / TSC_FREQ
-        const { assert!(PIT_FREQ_HZ > 0, "PIT frequency must be positive") };
-        let tsc_freq = self.tsc_khz as u128 * 1000;
-        let pit_ticks = (elapsed_tsc as u128 * PIT_FREQ_HZ as u128) / tsc_freq;
-        pit_ticks as u64
+        crate::verified::pit::tsc_to_pit_ticks(elapsed_tsc, self.tsc_khz)
     }
 
     /// Get elapsed PIT ticks for a channel since it was armed
@@ -327,28 +266,14 @@ impl DeterministicPit {
     /// # Returns
     /// `true` if an IRQ should be delivered
     pub fn pending_irq(&self, current_tsc: u64) -> bool {
-        if !self.channels[0].armed {
-            return false;
-        }
-
         let elapsed_pit_ticks = self.elapsed_pit_ticks(0, current_tsc);
-        let effective_reload = if self.channels[0].reload == 0 {
-            65536u64
-        } else {
-            self.channels[0].reload as u64
-        };
-
-        match self.channels[0].mode {
-            // Periodic: IRQ fires every reload period
-            ChannelMode::Mode2 | ChannelMode::Mode3 => {
-                let periods_elapsed = elapsed_pit_ticks / effective_reload;
-                periods_elapsed > self.irqs_delivered
-            }
-            // One-shot: IRQ fires once when counter reaches 0
-            ChannelMode::Mode0 | ChannelMode::Mode1 | ChannelMode::Mode4 | ChannelMode::Mode5 => {
-                elapsed_pit_ticks >= effective_reload && self.irqs_delivered == 0
-            }
-        }
+        crate::verified::pit::pending_irq_check(
+            self.channels[0].mode,
+            self.channels[0].armed,
+            self.channels[0].reload,
+            elapsed_pit_ticks,
+            self.irqs_delivered,
+        )
     }
 
     /// Check if channel N is armed (for debugging).
@@ -381,44 +306,20 @@ impl DeterministicPit {
     /// Returns `None` if channel 0 is not armed or the mode doesn't
     /// generate repeating interrupts.
     pub fn next_irq_tsc(&self) -> Option<u64> {
-        let ch = &self.channels[0];
-        if !ch.armed {
-            return None;
-        }
-
-        let effective_reload = if ch.reload == 0 {
-            65536u64
-        } else {
-            ch.reload as u64
-        };
-
-        let tsc_hz = self.tsc_khz as u128 * 1000;
-        match ch.mode {
-            // Periodic modes: next IRQ fires after (irqs_delivered + 1) full periods
-            ChannelMode::Mode2 | ChannelMode::Mode3 => {
-                let next_period = self.irqs_delivered + 1;
-                let pit_ticks_needed = next_period * effective_reload;
-                let tsc_offset =
-                    (pit_ticks_needed as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
-                Some(ch.start_tsc + tsc_offset)
-            }
-            // One-shot modes: fire once at terminal count
-            ChannelMode::Mode0 | ChannelMode::Mode1 | ChannelMode::Mode4 | ChannelMode::Mode5 => {
-                if self.irqs_delivered > 0 {
-                    return None; // Already fired
-                }
-                let tsc_offset =
-                    (effective_reload as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
-                Some(ch.start_tsc + tsc_offset)
-            }
-        }
+        crate::verified::pit::next_irq_tsc_compute(
+            self.channels[0].mode,
+            self.channels[0].armed,
+            self.channels[0].reload,
+            self.channels[0].start_tsc,
+            self.tsc_khz,
+            self.irqs_delivered,
+        )
     }
 
     /// Write to command register (port 0x43)
     fn write_command(&mut self, value: u8, current_tsc: u64) {
-        let channel_select = (value >> 6) & 0x3;
-        let access_mode = (value >> 4) & 0x3;
-        let mode_bits = (value >> 1) & 0x7;
+        // Use verified function to decode command byte
+        let (channel_select, access_mode, mode) = crate::verified::pit::decode_command(value);
 
         // Handle readback command (channel_select == 3)
         if channel_select == 3 {
@@ -446,17 +347,6 @@ impl DeterministicPit {
         };
 
         let channel = &mut self.channels[channel_select as usize];
-
-        // Decode mode (modes 6 and 7 are aliases for 2 and 3)
-        let mode = match mode_bits {
-            0 => ChannelMode::Mode0,
-            1 => ChannelMode::Mode1,
-            2 | 6 => ChannelMode::Mode2,
-            3 | 7 => ChannelMode::Mode3,
-            4 => ChannelMode::Mode4,
-            5 => ChannelMode::Mode5,
-            _ => ChannelMode::Mode0,
-        };
 
         channel.access = access;
         channel.mode = mode;

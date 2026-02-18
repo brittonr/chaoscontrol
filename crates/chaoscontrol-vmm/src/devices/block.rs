@@ -236,22 +236,19 @@ impl DeterministicBlock {
 
     // ── internal helpers ──────────────────────────────────────────────
 
+    /// Check whether `[offset, offset+len)` is within the device.
+    ///
+    /// Delegates to [`crate::verified::block::check_bounds`].
     fn check_bounds(&self, offset: u64, len: u64) -> Result<(), BlockError> {
-        let device_size = self.data.len() as u64;
-        if offset.saturating_add(len) > device_size {
-            return Err(BlockError::OutOfBounds {
-                offset,
-                len,
-                device_size,
-            });
-        }
-        Ok(())
+        crate::verified::block::check_bounds(self.data.len() as u64, offset, len)
     }
 
     /// Find the first fault in the queue matching `predicate` and return its
     /// index.
+    ///
+    /// Delegates to [`crate::verified::block::find_matching_fault`].
     fn find_fault(&self, predicate: impl Fn(&BlockFault) -> bool) -> Option<usize> {
-        self.faults.iter().position(predicate)
+        crate::verified::block::find_matching_fault(&self.faults, predicate)
     }
 }
 

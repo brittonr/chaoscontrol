@@ -51,37 +51,18 @@ pub enum EventType {
 }
 
 impl EventType {
+    /// Convert a `u32` discriminant to an [`EventType`], if valid.
+    ///
+    /// Delegates to [`crate::verified::events::event_type_from_u32`].
     pub fn from_u32(v: u32) -> Option<Self> {
-        match v {
-            1 => Some(Self::KvmExit),
-            2 => Some(Self::KvmEntry),
-            3 => Some(Self::KvmPio),
-            4 => Some(Self::KvmMmio),
-            5 => Some(Self::KvmMsr),
-            6 => Some(Self::KvmInjVirq),
-            7 => Some(Self::KvmPicIrq),
-            8 => Some(Self::KvmSetIrq),
-            9 => Some(Self::KvmPageFault),
-            10 => Some(Self::KvmCr),
-            11 => Some(Self::KvmCpuid),
-            _ => None,
-        }
+        crate::verified::events::event_type_from_u32(v)
     }
 
+    /// Return the human-readable tracepoint name.
+    ///
+    /// Delegates to [`crate::verified::events::event_type_name`].
     pub fn name(&self) -> &'static str {
-        match self {
-            Self::KvmExit => "kvm_exit",
-            Self::KvmEntry => "kvm_entry",
-            Self::KvmPio => "kvm_pio",
-            Self::KvmMmio => "kvm_mmio",
-            Self::KvmMsr => "kvm_msr",
-            Self::KvmInjVirq => "kvm_inj_virq",
-            Self::KvmPicIrq => "kvm_pic_set_irq",
-            Self::KvmSetIrq => "kvm_set_irq",
-            Self::KvmPageFault => "kvm_page_fault",
-            Self::KvmCr => "kvm_cr",
-            Self::KvmCpuid => "kvm_cpuid",
-        }
+        crate::verified::events::event_type_name(self)
     }
 }
 
@@ -110,32 +91,10 @@ pub struct TraceEvent {
 }
 
 /// KVM exit reason names (x86).
+///
+/// Delegates to [`crate::verified::events::exit_reason_name`].
 pub fn exit_reason_name(reason: u32) -> &'static str {
-    match reason {
-        0 => "EXCEPTION_NMI",
-        1 => "EXTERNAL_INTERRUPT",
-        2 => "IO_INSTRUCTION",
-        7 => "INTERRUPT_WINDOW",
-        10 => "CPUID",
-        12 => "HLT",
-        18 => "VMCALL",
-        30 => "IO_IN",
-        31 => "IO_OUT",
-        32 => "RDMSR",
-        33 => "WRMSR",
-        48 => "EPT_VIOLATION",
-        49 => "EPT_MISCONFIG",
-        // SVM exit codes (AMD)
-        0x040 => "SVM_INTR",
-        0x061 => "SVM_CPUID",
-        0x064 => "SVM_VMRUN",
-        0x06e => "SVM_RDTSC",
-        0x078 => "SVM_HLT",
-        0x07b => "SVM_IOIO",
-        0x07c => "SVM_MSR",
-        0x400 => "SVM_NPF",
-        _ => "UNKNOWN",
-    }
+    crate::verified::events::exit_reason_name(reason)
 }
 
 /// I/O direction for PIO/MMIO/MSR events.
@@ -231,94 +190,17 @@ pub enum EventKind {
 
 impl TraceEvent {
     /// Parse a [`RawEvent`] into a typed [`TraceEvent`].
+    ///
+    /// Delegates to [`crate::verified::events::parse_event_kind`] for
+    /// the pure event-kind parsing logic.
     pub fn from_raw(raw: &RawEvent) -> Self {
-        let kind = match EventType::from_u32(raw.event_type) {
-            Some(EventType::KvmExit) => EventKind::KvmExit {
-                reason: raw.arg0 as u32,
-                guest_rip: raw.arg1,
-                info1: raw.arg2,
-                info2: raw.arg3,
-            },
-            Some(EventType::KvmEntry) => EventKind::KvmEntry {
-                vcpu_id: raw.arg0 as u32,
-                rip: raw.arg1,
-            },
-            Some(EventType::KvmPio) => EventKind::KvmPio {
-                direction: if raw.arg0 == 0 {
-                    IoDirection::Read
-                } else {
-                    IoDirection::Write
-                },
-                port: raw.arg1 as u16,
-                size: raw.arg2 as u8,
-                val: raw.arg3 as u32,
-            },
-            Some(EventType::KvmMmio) => EventKind::KvmMmio {
-                direction: if raw.arg0 == 0 {
-                    IoDirection::Read
-                } else {
-                    IoDirection::Write
-                },
-                len: raw.arg1 as u32,
-                gpa: raw.arg2,
-                val: raw.arg3,
-            },
-            Some(EventType::KvmMsr) => EventKind::KvmMsr {
-                direction: if raw.arg0 == 0 {
-                    IoDirection::Read
-                } else {
-                    IoDirection::Write
-                },
-                index: raw.arg1 as u32,
-                data: raw.arg2,
-            },
-            Some(EventType::KvmInjVirq) => EventKind::KvmInjVirq {
-                vector: raw.arg0 as u32,
-                soft: raw.arg1 != 0,
-                reinjected: raw.arg2 != 0,
-            },
-            Some(EventType::KvmPicIrq) => EventKind::KvmPicIrq {
-                chip: (raw.arg0 >> 32) as u8,
-                pin: (raw.arg0 >> 16) as u8,
-                elcr: (raw.arg0 >> 8) as u8,
-                imr: raw.arg0 as u8,
-                coalesced: raw.arg1 != 0,
-            },
-            Some(EventType::KvmSetIrq) => EventKind::KvmSetIrq {
-                gsi: raw.arg0 as u32,
-                level: raw.arg1 as i32,
-            },
-            Some(EventType::KvmPageFault) => EventKind::KvmPageFault {
-                vcpu_id: raw.arg0 as u32,
-                guest_rip: raw.arg1,
-                fault_address: raw.arg2,
-                error_code: raw.arg3,
-            },
-            Some(EventType::KvmCr) => EventKind::KvmCr {
-                direction: if raw.arg0 == 0 {
-                    IoDirection::Read
-                } else {
-                    IoDirection::Write
-                },
-                cr: raw.arg1 as u32,
-                val: raw.arg2,
-            },
-            Some(EventType::KvmCpuid) => EventKind::KvmCpuid {
-                function: (raw.arg0 >> 32) as u32,
-                index: raw.arg0 as u32,
-                rax: raw.arg1,
-                rbx: raw.arg2,
-                rcx: raw.arg3 >> 32,
-                rdx: raw.arg3 & 0xFFFF_FFFF,
-            },
-            None => EventKind::Unknown {
-                event_type: raw.event_type,
-                arg0: raw.arg0,
-                arg1: raw.arg1,
-                arg2: raw.arg2,
-                arg3: raw.arg3,
-            },
-        };
+        let kind = crate::verified::events::parse_event_kind(
+            raw.event_type,
+            raw.arg0,
+            raw.arg1,
+            raw.arg2,
+            raw.arg3,
+        );
 
         TraceEvent {
             seq: raw.seq,
@@ -358,163 +240,10 @@ impl TraceEvent {
     }
 }
 
-// PartialEq for EventKind compares all data fields
+// PartialEq for EventKind — delegates to the verified pure function.
 impl PartialEq for EventKind {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                EventKind::KvmExit {
-                    reason: r1,
-                    guest_rip: rip1,
-                    info1: i1a,
-                    info2: i2a,
-                },
-                EventKind::KvmExit {
-                    reason: r2,
-                    guest_rip: rip2,
-                    info1: i1b,
-                    info2: i2b,
-                },
-            ) => r1 == r2 && rip1 == rip2 && i1a == i1b && i2a == i2b,
-
-            (
-                EventKind::KvmEntry {
-                    vcpu_id: v1,
-                    rip: r1,
-                },
-                EventKind::KvmEntry {
-                    vcpu_id: v2,
-                    rip: r2,
-                },
-            ) => v1 == v2 && r1 == r2,
-
-            (
-                EventKind::KvmPio {
-                    direction: d1,
-                    port: p1,
-                    size: s1,
-                    val: v1,
-                },
-                EventKind::KvmPio {
-                    direction: d2,
-                    port: p2,
-                    size: s2,
-                    val: v2,
-                },
-            ) => d1 == d2 && p1 == p2 && s1 == s2 && v1 == v2,
-
-            (
-                EventKind::KvmMmio {
-                    direction: d1,
-                    len: l1,
-                    gpa: g1,
-                    val: v1,
-                },
-                EventKind::KvmMmio {
-                    direction: d2,
-                    len: l2,
-                    gpa: g2,
-                    val: v2,
-                },
-            ) => d1 == d2 && l1 == l2 && g1 == g2 && v1 == v2,
-
-            (
-                EventKind::KvmMsr {
-                    direction: d1,
-                    index: i1,
-                    data: da1,
-                },
-                EventKind::KvmMsr {
-                    direction: d2,
-                    index: i2,
-                    data: da2,
-                },
-            ) => d1 == d2 && i1 == i2 && da1 == da2,
-
-            (
-                EventKind::KvmInjVirq {
-                    vector: v1,
-                    soft: s1,
-                    reinjected: r1,
-                },
-                EventKind::KvmInjVirq {
-                    vector: v2,
-                    soft: s2,
-                    reinjected: r2,
-                },
-            ) => v1 == v2 && s1 == s2 && r1 == r2,
-
-            (
-                EventKind::KvmPicIrq {
-                    chip: c1,
-                    pin: p1,
-                    ..
-                },
-                EventKind::KvmPicIrq {
-                    chip: c2,
-                    pin: p2,
-                    ..
-                },
-            ) => c1 == c2 && p1 == p2,
-
-            (
-                EventKind::KvmSetIrq {
-                    gsi: g1,
-                    level: l1,
-                },
-                EventKind::KvmSetIrq {
-                    gsi: g2,
-                    level: l2,
-                },
-            ) => g1 == g2 && l1 == l2,
-
-            (
-                EventKind::KvmPageFault {
-                    fault_address: a1,
-                    error_code: e1,
-                    ..
-                },
-                EventKind::KvmPageFault {
-                    fault_address: a2,
-                    error_code: e2,
-                    ..
-                },
-            ) => a1 == a2 && e1 == e2,
-
-            (
-                EventKind::KvmCr {
-                    direction: d1,
-                    cr: c1,
-                    val: v1,
-                },
-                EventKind::KvmCr {
-                    direction: d2,
-                    cr: c2,
-                    val: v2,
-                },
-            ) => d1 == d2 && c1 == c2 && v1 == v2,
-
-            (
-                EventKind::KvmCpuid {
-                    function: f1,
-                    index: i1,
-                    rax: a1,
-                    rbx: b1,
-                    rcx: c1,
-                    rdx: d1,
-                },
-                EventKind::KvmCpuid {
-                    function: f2,
-                    index: i2,
-                    rax: a2,
-                    rbx: b2,
-                    rcx: c2,
-                    rdx: d2,
-                },
-            ) => f1 == f2 && i1 == i2 && a1 == a2 && b1 == b2 && c1 == c2 && d1 == d2,
-
-            _ => false,
-        }
+        crate::verified::events::event_kind_eq(self, other)
     }
 }
 

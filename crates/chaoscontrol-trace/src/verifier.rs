@@ -9,7 +9,7 @@
 //! with the same seed twice, collect traces, and verify they match.
 
 use crate::collector::TraceLog;
-use crate::events::{EventKind, TraceEvent};
+use crate::events::TraceEvent;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -290,101 +290,10 @@ impl DeterminismVerifier {
 }
 
 /// Describe how two events differ.
+///
+/// Delegates to [`crate::verified::verifier::describe_divergence`].
 fn describe_divergence(a: &TraceEvent, b: &TraceEvent) -> String {
-    let type_a = a.event_type();
-    let type_b = b.event_type();
-
-    if type_a != type_b {
-        return format!(
-            "Event type mismatch: A={}, B={}",
-            type_a.name(),
-            type_b.name()
-        );
-    }
-
-    match (&a.kind, &b.kind) {
-        (
-            EventKind::KvmExit {
-                reason: r1,
-                guest_rip: rip1,
-                ..
-            },
-            EventKind::KvmExit {
-                reason: r2,
-                guest_rip: rip2,
-                ..
-            },
-        ) => {
-            if r1 != r2 {
-                format!("Exit reason differs: A={}, B={}", r1, r2)
-            } else {
-                format!("Guest RIP differs: A={:#x}, B={:#x}", rip1, rip2)
-            }
-        }
-        (
-            EventKind::KvmPio {
-                port: p1,
-                val: v1,
-                direction: d1,
-                ..
-            },
-            EventKind::KvmPio {
-                port: p2,
-                val: v2,
-                direction: d2,
-                ..
-            },
-        ) => {
-            if p1 != p2 {
-                format!("PIO port differs: A={:#x}, B={:#x}", p1, p2)
-            } else if d1 != d2 {
-                format!("PIO direction differs: A={}, B={}", d1, d2)
-            } else {
-                format!(
-                    "PIO data differs on port {:#x}: A={:#x}, B={:#x}",
-                    p1, v1, v2
-                )
-            }
-        }
-        (
-            EventKind::KvmInjVirq { vector: v1, .. },
-            EventKind::KvmInjVirq { vector: v2, .. },
-        ) => {
-            format!("Injected vector differs: A={}, B={}", v1, v2)
-        }
-        (
-            EventKind::KvmSetIrq { gsi: g1, level: l1 },
-            EventKind::KvmSetIrq { gsi: g2, level: l2 },
-        ) => {
-            if g1 != g2 {
-                format!("IRQ GSI differs: A={}, B={}", g1, g2)
-            } else {
-                format!("IRQ level differs on GSI {}: A={}, B={}", g1, l1, l2)
-            }
-        }
-        (
-            EventKind::KvmMsr {
-                index: i1,
-                data: d1,
-                ..
-            },
-            EventKind::KvmMsr {
-                index: i2,
-                data: d2,
-                ..
-            },
-        ) => {
-            if i1 != i2 {
-                format!("MSR index differs: A={:#x}, B={:#x}", i1, i2)
-            } else {
-                format!(
-                    "MSR data differs for {:#x}: A={:#x}, B={:#x}",
-                    i1, d1, d2
-                )
-            }
-        }
-        _ => format!("Events differ (same type: {})", type_a.name()),
-    }
+    crate::verified::verifier::describe_divergence(a, b)
 }
 
 #[cfg(test)]

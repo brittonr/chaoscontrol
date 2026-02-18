@@ -6,6 +6,14 @@ authors.workspace = true
 license.workspace = true
 description = "In-process Raft consensus guest for ChaosControl exploration"
 
+[lib]
+name = "chaoscontrol_raft_guest"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chaoscontrol-raft-guest"
+path = "src/main.rs"
+
 [dependencies]
 chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["std"] }
 libc = "0.2"

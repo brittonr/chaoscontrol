@@ -17,6 +17,7 @@
 | 2026-02-18 | self | Used bzImage for kernel loading | ELF loader needs vmlinux (result-dev/vmlinux), not bzImage |
 | 2026-02-18 | self | cargo fmt applied to worktrees but not main repo | Always fmt main repo first, then apply feature changes cleanly |
 | 2026-02-18 | self | New files in worktrees aren't in `git diff` | Copy untracked files from worktrees separately — `git diff` only shows tracked files |
+| 2026-02-18 | self | TestCluster::step() had borrow conflict: `&mut self.nodes[i]` + `self.rand()` | Move `self.rand()` call outside the `let node = &mut self.nodes[active]` borrow scope |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -125,6 +126,16 @@
 8. ✅ Fault engine wired to real VMs — ProcessKill, ClockSkew, NetworkPartition confirmed working via integration tests
 9. ✅ VmSnapshot now saves/restores VirtualTsc + exit_count + io_exit_count (was missing, caused snapshot/restore vTSC mismatch)
 10. ✅ FaultEngine::force_setup_complete() for integration tests where guest doesn't use SDK
+
+## Raft Test Expansion (2026-02-18)
+- **Restructured**: Extracted pure Raft logic into `src/lib.rs` (no SDK deps), `main.rs` is thin SDK wrapper
+- **Cargo.toml**: Added `[lib]` + `[[bin]]` sections so lib tests work without VM
+- **Pattern**: SDK calls (coverage/random/assert) are injected via parameters (jitter: usize) instead of called directly
+- **TestCluster**: Deterministic cluster runner using LCG for randomness, drives full simulation loop
+- **78 tests** across 15 categories: node construction, follower/candidate transitions, RequestVote, AppendEntries, commit quorum, heartbeats, safety checks, full scenarios, determinism, coverage gaps
+- **100% line coverage** (244/244 lines) verified via cargo-tarpaulin
+- **Borrow fix**: Leader propose logic must be outside `let node = &mut self.nodes[active]` scope
+- **Coverage gaps found**: leader log content mismatch (line 444), `leaders()` method (601-605), `run_checked` panic paths (587) — all covered by Category O tests
 
 ## Completed (2026-02-18 cleanup)
 11. ✅ Packet-level faults: PacketLoss, PacketCorruption, PacketReorder implemented in NetworkFabric

@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use thiserror::Error;
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
+use vmm_sys_util::eventfd::EventFd;
 
 // Memory layout constants (based on Firecracker)
 const HIMEM_START: u64 = 0x0010_0000; // 1 MB
@@ -108,12 +109,26 @@ pub enum VmError {
     Io(#[from] io::Error),
 }
 
+/// COM1 IRQ line number (standard PC)
+const SERIAL_IRQ: u32 = 4;
+
+/// Wrapper to implement vm_superio::Trigger for EventFd
+struct SerialTrigger(EventFd);
+
+impl vm_superio::Trigger for SerialTrigger {
+    type E = io::Error;
+
+    fn trigger(&self) -> Result<(), Self::E> {
+        self.0.write(1).map_err(|e| io::Error::other(e))
+    }
+}
+
 pub struct DeterministicVm {
     kvm: Kvm,
-    #[allow(dead_code)]
     vm: VmFd,
     vcpu: VcpuFd,
     guest_memory: GuestMemoryMmap,
+    serial: vm_superio::Serial<SerialTrigger, vm_superio::serial::NoEvents, io::Stdout>,
 }
 
 impl DeterministicVm {
@@ -157,15 +172,29 @@ impl DeterministicVm {
         // Create vCPU AFTER irqchip (so LAPIC is in-kernel)
         let vcpu = vm.create_vcpu(0).map_err(VmError::VcpuCreate)?;
 
+        // Set up serial port with interrupt support
+        let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
+        let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
+        let serial = vm_superio::Serial::new(serial_trigger, io::stdout());
+
+        // Register the serial EventFd with KVM IRQ line 4 (COM1)
+        vm.register_irqfd(&serial_evt, SERIAL_IRQ)
+            .map_err(VmError::CreateIrqChip)?;
+
         Ok(Self {
             kvm,
             vm,
             vcpu,
             guest_memory,
+            serial,
         })
     }
 
-    pub fn load_kernel(&mut self, kernel_path: &str) -> Result<(), VmError> {
+    pub fn load_kernel(
+        &mut self,
+        kernel_path: &str,
+        initrd_path: Option<&str>,
+    ) -> Result<(), VmError> {
         info!("Loading kernel from {}", kernel_path);
         
         let mut kernel_file = File::open(kernel_path)?;
@@ -180,10 +209,33 @@ impl DeterministicVm {
         .map_err(VmError::KernelLoad)?;
 
         let entry_point = kernel_load_result.kernel_load;
-        info!("Kernel entry point: 0x{:x}", entry_point.raw_value());
+        let kernel_end = kernel_load_result.kernel_end;
+        info!(
+            "Kernel entry point: 0x{:x}, end: 0x{:x}",
+            entry_point.raw_value(),
+            kernel_end
+        );
+
+        // Load initrd if provided (place it after the kernel, page-aligned)
+        let initrd_info = if let Some(initrd_path) = initrd_path {
+            info!("Loading initrd from {}", initrd_path);
+            let initrd_data = std::fs::read(initrd_path)?;
+            let initrd_addr = (kernel_end + 4095) & !4095; // Page-align
+            self.guest_memory
+                .write_slice(&initrd_data, GuestAddress(initrd_addr))
+                .map_err(|_| VmError::GuestMemoryWrite)?;
+            info!(
+                "Initrd loaded at 0x{:x}, size: {} bytes",
+                initrd_addr,
+                initrd_data.len()
+            );
+            Some((initrd_addr, initrd_data.len() as u64))
+        } else {
+            None
+        };
 
         // Set up boot parameters (zero page)
-        self.setup_boot_params()?;
+        self.setup_boot_params(initrd_info)?;
 
         // Set up x86_64 boot environment
         self.setup_x86_64_boot(entry_point)?;
@@ -197,7 +249,10 @@ impl DeterministicVm {
         Ok(())
     }
 
-    fn setup_boot_params(&self) -> Result<(), VmError> {
+    fn setup_boot_params(
+        &self,
+        initrd_info: Option<(u64, u64)>,
+    ) -> Result<(), VmError> {
         const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
         const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
         const KERNEL_LOADER_OTHER: u8 = 0xff;
@@ -210,16 +265,24 @@ impl DeterministicVm {
             .write_slice(cmdline, GuestAddress(CMDLINE_START))
             .map_err(|_| VmError::GuestMemoryWrite)?;
 
+        let mut hdr = linux_loader::loader::bootparam::setup_header {
+            type_of_loader: KERNEL_LOADER_OTHER,
+            boot_flag: KERNEL_BOOT_FLAG_MAGIC,
+            header: KERNEL_HDR_MAGIC,
+            cmd_line_ptr: CMDLINE_START as u32,
+            cmdline_size: cmdline.len() as u32,
+            kernel_alignment: KERNEL_MIN_ALIGNMENT_BYTES,
+            ..Default::default()
+        };
+
+        // Set initrd address/size in boot header
+        if let Some((initrd_addr, initrd_size)) = initrd_info {
+            hdr.ramdisk_image = initrd_addr as u32;
+            hdr.ramdisk_size = initrd_size as u32;
+        }
+
         let mut params = boot_params {
-            hdr: linux_loader::loader::bootparam::setup_header {
-                type_of_loader: KERNEL_LOADER_OTHER,
-                boot_flag: KERNEL_BOOT_FLAG_MAGIC,
-                header: KERNEL_HDR_MAGIC,
-                cmd_line_ptr: CMDLINE_START as u32,
-                cmdline_size: cmdline.len() as u32,
-                kernel_alignment: KERNEL_MIN_ALIGNMENT_BYTES,
-                ..Default::default()
-            },
+            hdr,
             ..Default::default()
         };
 
@@ -415,29 +478,9 @@ impl DeterministicVm {
                     match exit_reason {
                         VcpuExit::IoIn(port, data) => {
                             if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
-                                let offset = port - SERIAL_PORT_BASE;
-                                for byte in data.iter_mut() {
-                                    *byte = match offset {
-                                        SERIAL_LSR => {
-                                            // Line Status: TX empty + TX holding empty
-                                            0x60
-                                        }
-                                        SERIAL_IIR_FCR => {
-                                            // No interrupt pending
-                                            0x01
-                                        }
-                                        SERIAL_MSR => {
-                                            // Modem status: CTS + DSR + DCD
-                                            0xb0
-                                        }
-                                        SERIAL_IER => 0,
-                                        SERIAL_MCR => 0,
-                                        SERIAL_LCR => 0x03, // 8N1
-                                        _ => 0,
-                                    };
-                                }
+                                let offset = (port - SERIAL_PORT_BASE) as u8;
+                                data[0] = self.serial.read(offset);
                             } else {
-                                // Return 0xFF for unhandled ports (standard ISA behavior)
                                 for byte in data.iter_mut() {
                                     *byte = 0xff;
                                 }
@@ -445,15 +488,9 @@ impl DeterministicVm {
                         }
                         VcpuExit::IoOut(port, data) => {
                             if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
-                                let offset = port - SERIAL_PORT_BASE;
-                                if offset == SERIAL_DATA {
-                                    // Data register — output to stdout
-                                    io::stdout().write_all(data)?;
-                                    io::stdout().flush()?;
-                                }
-                                // Other registers (IER, FCR, LCR, MCR): silently accept
+                                let offset = (port - SERIAL_PORT_BASE) as u8;
+                                let _ = self.serial.write(offset, data[0]);
                             }
-                            // Silently ignore other ports
                         }
                         VcpuExit::Hlt => {
                             info!("VM halted");

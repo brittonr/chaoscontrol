@@ -1,5 +1,6 @@
 //! VM snapshot and restore — capture complete VM state and recreate it.
 
+use crate::devices::entropy::EntropySnapshot;
 use kvm_bindings::{
     kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2,
     kvm_regs, kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER,
@@ -31,8 +32,9 @@ pub struct VmSnapshot {
     pub memory: Vec<u8>,
     pub memory_size: usize,
 
-    // Serial device state
+    // Deterministic device state
     pub serial_state: vm_superio::SerialState,
+    pub entropy: EntropySnapshot,
 }
 
 impl VmSnapshot {
@@ -42,6 +44,7 @@ impl VmSnapshot {
         vm: &VmFd,
         guest_memory: &GuestMemoryMmap,
         serial_state: vm_superio::SerialState,
+        entropy: EntropySnapshot,
     ) -> Result<Self, SnapshotError> {
         // Capture vCPU state
         let regs = vcpu.get_regs().map_err(SnapshotError::GetRegs)?;
@@ -106,6 +109,7 @@ impl VmSnapshot {
             memory,
             memory_size,
             serial_state,
+            entropy,
         })
     }
 

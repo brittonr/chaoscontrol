@@ -17,6 +17,7 @@
 //! ```
 
 use crate::cpu::{self, CpuConfig, VirtualTsc};
+use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
@@ -266,6 +267,9 @@ pub struct DeterministicVm {
     // Determinism state
     virtual_tsc: VirtualTsc,
 
+    // Deterministic entropy source (seeded PRNG replacing virtio-rng)
+    entropy: DeterministicEntropy,
+
     // Deterministic timer (mirrors KVM PIT state on virtual TSC timeline)
     pit: DeterministicPit,
 
@@ -364,6 +368,9 @@ impl DeterministicVm {
         // Create virtual TSC for deterministic time tracking
         let virtual_tsc = VirtualTsc::from_config(&config.cpu);
 
+        // Create deterministic entropy source seeded from master seed
+        let entropy = DeterministicEntropy::new(config.cpu.seed);
+
         // Deterministic PIT driven by virtual TSC — delivers timer
         // interrupts at exact virtual-time points via set_irq_line.
         let pit = DeterministicPit::new(config.cpu.tsc_khz);
@@ -391,6 +398,7 @@ impl DeterministicVm {
             vcpu,
             memory,
             virtual_tsc,
+            entropy,
             pit,
             serial,
             serial_writer,
@@ -705,6 +713,16 @@ impl DeterministicVm {
         &mut self.virtual_tsc
     }
 
+    /// Get a reference to the deterministic entropy source.
+    pub fn entropy(&self) -> &DeterministicEntropy {
+        &self.entropy
+    }
+
+    /// Get a mutable reference to the deterministic entropy source.
+    pub fn entropy_mut(&mut self) -> &mut DeterministicEntropy {
+        &mut self.entropy
+    }
+
     /// Get a reference to the guest memory manager.
     pub fn memory(&self) -> &GuestMemoryManager {
         &self.memory
@@ -719,6 +737,7 @@ impl DeterministicVm {
             &self.vm,
             self.memory.inner(),
             self.serial.state(),
+            self.entropy.snapshot(),
         )
         .map_err(|e| VmError::Snapshot(e.to_string()))
     }
@@ -728,6 +747,9 @@ impl DeterministicVm {
         snapshot
             .restore(&self.vcpu, &self.vm, self.memory.inner())
             .map_err(|e| VmError::Snapshot(e.to_string()))?;
+
+        // Restore deterministic entropy PRNG state
+        self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
 
         // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;

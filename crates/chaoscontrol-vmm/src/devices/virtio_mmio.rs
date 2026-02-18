@@ -316,6 +316,9 @@ pub trait VirtioBackend: Send {
 
     /// Write to device-specific config space (offset relative to 0x100).
     fn write_config(&mut self, offset: u64, data: &[u8]);
+
+    /// Downcast to `Any` for backend-specific operations (e.g., fault injection).
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -664,6 +667,9 @@ mod tests {
             }
         }
         fn write_config(&mut self, _offset: u64, _data: &[u8]) {}
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
     }
 
     #[test]

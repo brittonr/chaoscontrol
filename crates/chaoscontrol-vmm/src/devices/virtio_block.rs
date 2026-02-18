@@ -267,6 +267,10 @@ impl VirtioBackend for VirtioBlock {
     fn write_config(&mut self, _offset: u64, _data: &[u8]) {
         // Config space is read-only for virtio-blk
     }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]

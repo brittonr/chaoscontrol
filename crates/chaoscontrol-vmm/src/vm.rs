@@ -907,6 +907,28 @@ impl DeterministicVm {
         &mut self.virtio_devices
     }
 
+    /// Inject a fault into the VM's block device.
+    ///
+    /// Returns `true` if the block device was found and the fault was injected,
+    /// `false` if no block device exists.
+    pub fn inject_disk_fault(&mut self, fault: crate::devices::block::BlockFault) -> bool {
+        // Block device has device_id == 2
+        for device in &mut self.virtio_devices {
+            if device.backend().device_id() == 2 {
+                // Downcast to VirtioBlock
+                if let Some(virtio_block) = device
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>(
+                ) {
+                    virtio_block.disk_mut().inject_fault(fault);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     // ─── Public API: snapshot / restore ──────────────────────────────
 
     /// Take a snapshot of the current VM state.

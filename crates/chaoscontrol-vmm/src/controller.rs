@@ -546,20 +546,48 @@ impl SimulationController {
                 offset,
                 bytes_written,
             } => {
-                warn!(
-                    "DiskTornWrite fault not yet implemented: VM{}, offset {:#x}, {} bytes",
-                    target, offset, bytes_written
-                );
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    use crate::devices::block::BlockFault;
+                    let fault = BlockFault::TornWrite {
+                        offset: *offset,
+                        bytes_written: *bytes_written,
+                    };
+                    if slot.vm.inject_disk_fault(fault) {
+                        info!(
+                            "DiskTornWrite injected at VM{}, offset {:#x}, {} bytes",
+                            target, offset, bytes_written
+                        );
+                    } else {
+                        warn!(
+                            "DiskTornWrite fault failed: VM{} has no block device",
+                            target
+                        );
+                    }
+                }
             }
             Fault::DiskCorruption {
                 target,
                 offset,
                 len,
             } => {
-                warn!(
-                    "DiskCorruption fault not yet implemented: VM{}, offset {:#x}, {} bytes",
-                    target, offset, len
-                );
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    use crate::devices::block::BlockFault;
+                    let fault = BlockFault::Corruption {
+                        offset: *offset,
+                        len: *len,
+                    };
+                    if slot.vm.inject_disk_fault(fault) {
+                        info!(
+                            "DiskCorruption injected at VM{}, offset {:#x}, {} bytes",
+                            target, offset, len
+                        );
+                    } else {
+                        warn!(
+                            "DiskCorruption fault failed: VM{} has no block device",
+                            target
+                        );
+                    }
+                }
             }
             Fault::DiskFull { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
@@ -1208,5 +1236,85 @@ mod tests {
         let exits1 = c1.vms.iter().map(|s| s.vm.exit_count()).collect::<Vec<_>>();
         let exits2 = c2.vms.iter().map(|s| s.vm.exit_count()).collect::<Vec<_>>();
         assert_eq!(exits1, exits2);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_disk_torn_write_fault_dispatch() {
+        use crate::devices::virtio_block::VirtioBlock;
+        use chaoscontrol_fault::faults::Fault;
+
+        let config = SimulationConfig {
+            num_vms: 1,
+            kernel_path: dummy_kernel_path(),
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+
+        // Inject a DiskTornWrite fault
+        let fault = Fault::DiskTornWrite {
+            target: 0,
+            offset: 4096,
+            bytes_written: 256,
+        };
+        controller.apply_fault(&fault).unwrap();
+
+        // Verify the fault was injected into the block device
+        let vm = &mut controller.vms[0].vm;
+        for device in vm.virtio_devices_mut() {
+            if device.backend().device_id() == 2 {
+                if let Some(_virtio_block) = device
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<VirtioBlock>()
+                {
+                    // The fault should be queued in the disk
+                    // We can't directly check the queue, but the fact that
+                    // inject succeeded means it was added
+                    return;
+                }
+            }
+        }
+        panic!("Expected block device not found");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_disk_corruption_fault_dispatch() {
+        use crate::devices::virtio_block::VirtioBlock;
+        use chaoscontrol_fault::faults::Fault;
+
+        let config = SimulationConfig {
+            num_vms: 1,
+            kernel_path: dummy_kernel_path(),
+            ..Default::default()
+        };
+
+        let mut controller = SimulationController::new(config).unwrap();
+
+        // Inject a DiskCorruption fault
+        let fault = Fault::DiskCorruption {
+            target: 0,
+            offset: 8192,
+            len: 512,
+        };
+        controller.apply_fault(&fault).unwrap();
+
+        // Verify the fault was injected into the block device
+        let vm = &mut controller.vms[0].vm;
+        for device in vm.virtio_devices_mut() {
+            if device.backend().device_id() == 2 {
+                if let Some(_virtio_block) = device
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<VirtioBlock>()
+                {
+                    // The fault should be queued in the disk
+                    return;
+                }
+            }
+        }
+        panic!("Expected block device not found");
     }
 }

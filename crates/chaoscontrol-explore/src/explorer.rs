@@ -1,5 +1,8 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
+use crate::checkpoint::{
+    save_checkpoint, CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug,
+};
 use crate::corpus::{BugReport, Corpus, CorpusEntry};
 use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 use crate::frontier::{Frontier, FrontierEntry};
@@ -51,6 +54,8 @@ pub struct ExplorerConfig {
     pub mutation: MutationConfig,
     /// Guest physical address of coverage bitmap (0 = blind mode).
     pub coverage_gpa: u64,
+    /// Optional output directory for checkpoints and reports.
+    pub output_dir: Option<String>,
 }
 
 impl Default for ExplorerConfig {
@@ -68,6 +73,7 @@ impl Default for ExplorerConfig {
             quantum: 100,
             mutation: MutationConfig::default(),
             coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
+            output_dir: None,
         }
     }
 }
@@ -146,6 +152,13 @@ impl Explorer {
                 round_report.bugs_found,
                 round_report.frontier_size
             );
+
+            // Save checkpoint if output directory is configured
+            if let Some(ref output_dir) = self.config.output_dir {
+                if let Err(e) = self.save_checkpoint_to_dir(output_dir) {
+                    warn!("Failed to save checkpoint: {}", e);
+                }
+            }
 
             // Check for stopping conditions
             if self.frontier.is_empty() {
@@ -478,6 +491,106 @@ impl Explorer {
             corpus_size: self.corpus.len(),
         }
     }
+
+    /// Get a mutable reference to the config (for runtime adjustments).
+    pub fn config_mut(&mut self) -> &mut ExplorerConfig {
+        &mut self.config
+    }
+
+    /// Save a checkpoint to the specified directory.
+    pub fn save_checkpoint_to_dir(&self, dir: &str) -> Result<(), CheckpointError> {
+        use std::fs;
+
+        // Create directory if it doesn't exist
+        fs::create_dir_all(dir)?;
+
+        let checkpoint_path = format!("{}/checkpoint.json", dir);
+        let checkpoint = self.create_checkpoint();
+        save_checkpoint(&checkpoint_path, &checkpoint)?;
+
+        info!("Checkpoint saved to {}", checkpoint_path);
+        Ok(())
+    }
+
+    /// Create a checkpoint from the current state.
+    fn create_checkpoint(&self) -> ExplorationCheckpoint {
+        let config = CheckpointConfig {
+            num_vms: self.config.num_vms,
+            kernel_path: self.config.kernel_path.clone(),
+            initrd_path: self.config.initrd_path.clone(),
+            seed: self.config.seed,
+            branch_factor: self.config.branch_factor,
+            ticks_per_branch: self.config.ticks_per_branch,
+            max_rounds: self.config.max_rounds,
+            max_frontier: self.config.max_frontier,
+            quantum: self.config.quantum,
+            coverage_gpa: self.config.coverage_gpa,
+        };
+
+        let bugs: Vec<SerializableBug> = self.corpus.bugs().iter().map(|b| b.into()).collect();
+
+        ExplorationCheckpoint {
+            config,
+            global_coverage: self.coverage.global_coverage().as_slice().to_vec(),
+            bugs,
+            rounds_completed: self.rounds_completed,
+            total_branches_run: self.total_branches_run,
+            total_edges: self.coverage.stats().total_edges,
+            seed: self.config.seed,
+        }
+    }
+
+    /// Create an Explorer from a checkpoint, optionally overriding config fields.
+    pub fn from_checkpoint(
+        checkpoint: ExplorationCheckpoint,
+        kernel_path_override: Option<String>,
+        initrd_path_override: Option<String>,
+        max_rounds_override: Option<u64>,
+    ) -> Self {
+        let config = ExplorerConfig {
+            num_vms: checkpoint.config.num_vms,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel_path_override.unwrap_or(checkpoint.config.kernel_path),
+            initrd_path: initrd_path_override.or(checkpoint.config.initrd_path),
+            seed: checkpoint.config.seed,
+            branch_factor: checkpoint.config.branch_factor,
+            ticks_per_branch: checkpoint.config.ticks_per_branch,
+            max_rounds: max_rounds_override.unwrap_or(checkpoint.config.max_rounds),
+            max_frontier: checkpoint.config.max_frontier,
+            quantum: checkpoint.config.quantum,
+            mutation: MutationConfig::default(),
+            coverage_gpa: checkpoint.config.coverage_gpa,
+            output_dir: None, // Will be set by caller if needed
+        };
+
+        let frontier = Frontier::new(config.max_frontier);
+        let corpus = Corpus::new();
+        let mutator = ScheduleMutator::new(config.seed);
+
+        // Restore global coverage
+        let mut coverage = CoverageCollector::new(config.coverage_gpa);
+        let restored_bitmap = CoverageBitmap::from_slice(&checkpoint.global_coverage);
+        coverage.update_global(&restored_bitmap);
+
+        let rng = ChaCha8Rng::seed_from_u64(config.seed);
+
+        info!(
+            "Restored checkpoint: {} rounds completed, {} branches, {} edges",
+            checkpoint.rounds_completed, checkpoint.total_branches_run, checkpoint.total_edges
+        );
+
+        Self {
+            config,
+            frontier,
+            corpus,
+            mutator,
+            coverage,
+            rng,
+            controller: None,
+            rounds_completed: checkpoint.rounds_completed,
+            total_branches_run: checkpoint.total_branches_run,
+        }
+    }
 }
 
 /// Result of running a single branch.
@@ -661,5 +774,74 @@ mod tests {
 
         assert!(report.rounds <= 2);
         assert!(report.total_branches > 0);
+    }
+
+    #[test]
+    fn test_explorer_checkpoint_roundtrip() {
+        use std::fs;
+
+        let tempdir = std::env::temp_dir();
+        let checkpoint_dir = tempdir.join("test_checkpoint_roundtrip");
+        let _ = fs::create_dir_all(&checkpoint_dir);
+
+        let config = ExplorerConfig {
+            kernel_path: "/fake/kernel".to_string(),
+            initrd_path: Some("/fake/initrd".to_string()),
+            num_vms: 3,
+            seed: 12345,
+            branch_factor: 16,
+            ticks_per_branch: 2000,
+            max_rounds: 200,
+            max_frontier: 100,
+            quantum: 200,
+            output_dir: Some(checkpoint_dir.to_string_lossy().to_string()),
+            ..Default::default()
+        };
+
+        let mut explorer = Explorer::new(config);
+
+        // Simulate some progress
+        explorer.rounds_completed = 42;
+        explorer.total_branches_run = 336;
+
+        // Add some coverage
+        let mut bitmap = CoverageBitmap::new();
+        for i in 0..100 {
+            bitmap.record_hit(i * 10);
+        }
+        explorer.coverage.update_global(&bitmap);
+
+        // Save checkpoint
+        explorer
+            .save_checkpoint_to_dir(&checkpoint_dir.to_string_lossy())
+            .unwrap();
+
+        // Load checkpoint
+        let checkpoint_path = checkpoint_dir.join("checkpoint.json");
+        let checkpoint = crate::checkpoint::load_checkpoint(&checkpoint_path).unwrap();
+
+        // Verify checkpoint contents
+        assert_eq!(checkpoint.config.num_vms, 3);
+        assert_eq!(checkpoint.config.seed, 12345);
+        assert_eq!(checkpoint.rounds_completed, 42);
+        assert_eq!(checkpoint.total_branches_run, 336);
+        assert_eq!(checkpoint.total_edges, 100);
+
+        // Create new explorer from checkpoint
+        let restored = Explorer::from_checkpoint(
+            checkpoint,
+            Some("/fake/kernel".to_string()),
+            Some("/fake/initrd".to_string()),
+            Some(200),
+        );
+
+        assert_eq!(restored.rounds_completed, 42);
+        assert_eq!(restored.total_branches_run, 336);
+        assert_eq!(restored.config.num_vms, 3);
+        assert_eq!(restored.config.seed, 12345);
+        assert_eq!(restored.coverage.stats().total_edges, 100);
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&checkpoint_dir);
     }
 }

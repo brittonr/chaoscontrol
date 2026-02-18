@@ -12,10 +12,33 @@
 //! # Run with custom parameters
 //! chaoscontrol-explore run --kernel vmlinux --vms 3 --rounds 200 --branches 16
 //!
-//! # Save results to directory
+//! # Save results to directory (enables checkpointing)
 //! chaoscontrol-explore run --kernel vmlinux --output results/
+//!
+//! # Resume from a previous session
+//! chaoscontrol-explore resume --corpus results/
+//!
+//! # Resume with different kernel or more rounds
+//! chaoscontrol-explore resume --corpus results/ --kernel vmlinux.new --rounds 500
 //! ```
+//!
+//! # Checkpointing
+//!
+//! When an `--output` directory is specified for the `run` command, the explorer
+//! automatically saves a checkpoint after each round to `{output}/checkpoint.json`.
+//! This allows exploration campaigns to be interrupted and resumed later.
+//!
+//! The checkpoint contains:
+//! - Configuration (VMs, seed, rounds, etc.)
+//! - Global coverage bitmap (64KB)
+//! - Bugs found so far
+//! - Progress counters (rounds completed, branches run)
+//!
+//! Note: The frontier (VM snapshots) is NOT saved, as it contains complex KVM state.
+//! On resume, we re-bootstrap the VMs but carry forward the global coverage map,
+//! so we don't re-explore known territory.
 
+use chaoscontrol_explore::checkpoint::load_checkpoint;
 use chaoscontrol_explore::explorer::{Explorer, ExplorerConfig};
 use chaoscontrol_explore::mutator::MutationConfig;
 use chaoscontrol_explore::report::format_report;
@@ -79,11 +102,23 @@ enum Commands {
         output: Option<String>,
     },
 
-    /// Resume from saved corpus (not yet implemented).
+    /// Resume from saved checkpoint.
     Resume {
-        /// Path to corpus directory.
+        /// Path to corpus directory (containing checkpoint.json).
         #[arg(short, long)]
         corpus: String,
+
+        /// Override kernel path (if different from checkpoint).
+        #[arg(short, long)]
+        kernel: Option<String>,
+
+        /// Override initrd path (if different from checkpoint).
+        #[arg(short, long)]
+        initrd: Option<String>,
+
+        /// Override max rounds (continue for more rounds).
+        #[arg(short, long)]
+        rounds: Option<u64>,
     },
 }
 
@@ -116,7 +151,12 @@ fn main() {
             max_frontier,
             output,
         ),
-        Commands::Resume { corpus } => cmd_resume(corpus),
+        Commands::Resume {
+            corpus,
+            kernel,
+            initrd,
+            rounds,
+        } => cmd_resume(corpus, kernel, initrd, rounds),
     }
 }
 
@@ -167,6 +207,7 @@ fn cmd_run(
         quantum,
         mutation: MutationConfig::default(),
         coverage_gpa: COVERAGE_BITMAP_ADDR,
+        output_dir: output.clone(),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -263,13 +304,149 @@ fn run_with_progress(
     explorer.run()
 }
 
-fn cmd_resume(corpus: String) {
-    eprintln!("Resume command is not yet implemented.");
-    eprintln!("Corpus directory: {}", corpus);
+fn cmd_resume(
+    corpus: String,
+    kernel_override: Option<String>,
+    initrd_override: Option<String>,
+    rounds_override: Option<u64>,
+) {
+    // Validate corpus directory exists
+    if !Path::new(&corpus).is_dir() {
+        eprintln!("Error: corpus directory not found: {}", corpus);
+        std::process::exit(1);
+    }
+
+    // Load checkpoint
+    let checkpoint_path = format!("{}/checkpoint.json", corpus);
+    if !Path::new(&checkpoint_path).exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
+        eprintln!("Expected: {}", checkpoint_path);
+        std::process::exit(1);
+    }
+
+    let checkpoint = match load_checkpoint(&checkpoint_path) {
+        Ok(cp) => cp,
+        Err(e) => {
+            eprintln!("Error: failed to load checkpoint: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Determine actual paths (overrides take precedence)
+    let kernel_path = kernel_override
+        .clone()
+        .unwrap_or_else(|| checkpoint.config.kernel_path.clone());
+    let initrd_path = initrd_override
+        .clone()
+        .or(checkpoint.config.initrd_path.clone());
+
+    // Validate kernel/initrd paths
+    if !Path::new(&kernel_path).exists() {
+        eprintln!("Error: kernel file not found: {}", kernel_path);
+        std::process::exit(1);
+    }
+
+    if let Some(ref initrd) = initrd_path {
+        if !Path::new(initrd).exists() {
+            eprintln!("Error: initrd file not found: {}", initrd);
+            std::process::exit(1);
+        }
+    }
+
+    // Calculate remaining rounds
+    let max_rounds = rounds_override.unwrap_or(checkpoint.config.max_rounds);
+    let rounds_to_run = max_rounds.saturating_sub(checkpoint.rounds_completed);
+
+    if rounds_to_run == 0 {
+        eprintln!(
+            "Error: checkpoint already completed {} rounds (max: {})",
+            checkpoint.rounds_completed, max_rounds
+        );
+        eprintln!("Use --rounds to increase the round limit");
+        std::process::exit(1);
+    }
+
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!("  ChaosControl Exploration (RESUME)");
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!();
-    eprintln!("Future functionality:");
-    eprintln!("  - Load saved corpus from {}", corpus);
-    eprintln!("  - Resume exploration from previous session");
-    eprintln!("  - Continue building on discovered coverage");
-    std::process::exit(1);
+    eprintln!("Checkpoint loaded from: {}", checkpoint_path);
+    eprintln!();
+    eprintln!("Previous progress:");
+    eprintln!("  Rounds completed:  {}", checkpoint.rounds_completed);
+    eprintln!("  Branches run:      {}", checkpoint.total_branches_run);
+    eprintln!("  Edges discovered:  {}", checkpoint.total_edges);
+    eprintln!("  Bugs found:        {}", checkpoint.bugs.len());
+    eprintln!();
+    eprintln!("Configuration:");
+    eprintln!("  Kernel:            {}", kernel_path);
+    if let Some(ref initrd) = initrd_path {
+        eprintln!("  Initrd:            {}", initrd);
+    }
+    eprintln!("  VMs:               {}", checkpoint.config.num_vms);
+    eprintln!("  Seed:              {}", checkpoint.config.seed);
+    eprintln!("  Max rounds:        {}", max_rounds);
+    eprintln!("  Remaining rounds:  {}", rounds_to_run);
+    eprintln!("  Branches/round:    {}", checkpoint.config.branch_factor);
+    eprintln!(
+        "  Ticks/branch:      {}",
+        checkpoint.config.ticks_per_branch
+    );
+    eprintln!("  Output:            {}", corpus);
+    eprintln!();
+    eprintln!("Resuming exploration...");
+    eprintln!();
+
+    // Create explorer from checkpoint
+    let mut explorer = Explorer::from_checkpoint(
+        checkpoint,
+        kernel_override,
+        initrd_override,
+        Some(max_rounds),
+    );
+
+    // Update output directory to continue saving checkpoints
+    explorer.config_mut().output_dir = Some(corpus.clone());
+
+    // Run exploration
+    let report = match run_with_progress(&mut explorer) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!();
+            eprintln!("Exploration failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    eprintln!();
+    eprintln!("Exploration complete!");
+    eprintln!();
+
+    // Format and print report
+    let formatted = format_report(&report);
+    println!("{}", formatted);
+
+    // Save output
+    let report_path = format!("{}/report.txt", corpus);
+    if let Err(e) = fs::write(&report_path, &formatted) {
+        eprintln!("Warning: failed to save report: {}", e);
+    } else {
+        eprintln!("Saved report to: {}", report_path);
+    }
+
+    // Save bugs
+    for bug in &report.bugs {
+        let bug_path = format!("{}/bug_{}.txt", corpus, bug.bug_id);
+        let bug_text = format!("{:#?}", bug);
+        if let Err(e) = fs::write(&bug_path, bug_text) {
+            eprintln!("Warning: failed to save bug {}: {}", bug.bug_id, e);
+        } else {
+            eprintln!("Saved bug {} to: {}", bug.bug_id, bug_path);
+        }
+    }
+
+    // Exit with error code if bugs found
+    if !report.bugs.is_empty() {
+        std::process::exit(1);
+    }
 }

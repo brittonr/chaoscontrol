@@ -128,7 +128,6 @@ impl Frontier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chaoscontrol_vmm::controller::NetworkFabric;
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 

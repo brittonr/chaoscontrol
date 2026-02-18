@@ -1,0 +1,13 @@
+[package]
+name = "chaoscontrol-fault"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Host-side fault injection engine and property oracle for ChaosControl"
+
+[dependencies]
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
+rand = "0.8"
+rand_chacha = "0.3"
+thiserror = "2"

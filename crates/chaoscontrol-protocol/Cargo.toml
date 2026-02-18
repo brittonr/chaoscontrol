@@ -1,0 +1,11 @@
+[package]
+name = "chaoscontrol-protocol"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Wire protocol for ChaosControl SDK ↔ VMM hypercall communication"
+
+[features]
+default = []
+std = []

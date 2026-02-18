@@ -155,6 +155,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chaoscontrol-fault"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-protocol",
+ "rand",
+ "rand_chacha",
+ "thiserror",
+]
+
+[[package]]
+name = "chaoscontrol-protocol"
+version = "0.1.0"
+
+[[package]]
+name = "chaoscontrol-sdk"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-protocol",
+]
+
+[[package]]
 name = "chaoscontrol-trace"
 version = "0.1.0"
 dependencies = [
@@ -173,6 +194,8 @@ dependencies = [
 name = "chaoscontrol-vmm"
 version = "0.1.0"
 dependencies = [
+ "chaoscontrol-fault",
+ "chaoscontrol-protocol",
  "env_logger",
  "kvm-bindings",
  "kvm-ioctls",

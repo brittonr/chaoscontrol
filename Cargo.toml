@@ -1,5 +1,8 @@
 [workspace]
 members = [
+    "crates/chaoscontrol-protocol",
+    "crates/chaoscontrol-sdk",
+    "crates/chaoscontrol-fault",
     "crates/chaoscontrol-vmm",
     "crates/chaoscontrol-trace",
 ]

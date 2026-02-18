@@ -19,6 +19,9 @@
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
+
+use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
+use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT};
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
@@ -280,6 +283,9 @@ pub struct DeterministicVm {
     // KVM PIT mirroring state
     last_kvm_pit_mode: u8,
 
+    // Fault injection engine (SDK hypercall handler + property oracle)
+    fault_engine: FaultEngine,
+
     // Execution statistics
     exit_count: u64,
     io_exit_count: u64,
@@ -385,6 +391,13 @@ impl DeterministicVm {
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
+        // Create fault injection engine for SDK hypercalls
+        let fault_engine = FaultEngine::new(EngineConfig {
+            seed: config.cpu.seed,
+            num_vms: 1,
+            ..EngineConfig::default()
+        });
+
         info!(
             "VM created: {} MB memory, TSC {} kHz, seed {}",
             config.memory_size / (1024 * 1024),
@@ -402,6 +415,7 @@ impl DeterministicVm {
             pit,
             serial,
             serial_writer,
+            fault_engine,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
@@ -835,7 +849,10 @@ impl DeterministicVm {
 
 
                 let tsc = self.virtual_tsc.read();
-                if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
+                if port == SDK_PORT {
+                    // SDK hypercall result — guest reads status byte
+                    data[0] = 0; // STATUS_OK
+                } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     data[0] = self.serial.read(offset);
                 } else if DeterministicPit::handles_port(port) {
@@ -853,7 +870,9 @@ impl DeterministicVm {
                 self.virtual_tsc.tick();
 
                 let tsc = self.virtual_tsc.read();
-                if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
+                if port == SDK_PORT {
+                    self.handle_sdk_hypercall();
+                } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     let byte = data[0];
                     let _ = self.serial.write(offset, byte);
@@ -926,6 +945,61 @@ impl DeterministicVm {
             }
             Err(e) => Err(VmError::VcpuRun(e)),
         }
+    }
+
+    // ─── Public API: fault injection engine ─────────────────────
+
+    /// Get a reference to the fault injection engine.
+    pub fn fault_engine(&self) -> &FaultEngine {
+        &self.fault_engine
+    }
+
+    /// Get a mutable reference to the fault injection engine.
+    pub fn fault_engine_mut(&mut self) -> &mut FaultEngine {
+        &mut self.fault_engine
+    }
+
+    // ─── Internal: SDK hypercall handler ─────────────────────────
+
+    /// Handle an SDK hypercall triggered by `outb(0x510, 0)`.
+    ///
+    /// Reads the [`HypercallPage`] from guest memory at
+    /// [`HYPERCALL_PAGE_ADDR`], dispatches to the fault engine,
+    /// and writes the result back.
+    fn handle_sdk_hypercall(&mut self) {
+        use vm_memory::Bytes;
+
+        // Read the hypercall page from guest memory
+        let mut page = HypercallPage::zeroed();
+        let page_bytes = unsafe {
+            core::slice::from_raw_parts_mut(
+                &mut page as *mut HypercallPage as *mut u8,
+                HYPERCALL_PAGE_SIZE,
+            )
+        };
+
+        if self
+            .memory
+            .inner()
+            .read_slice(page_bytes, vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR))
+            .is_err()
+        {
+            return; // Guest memory read failed — silently ignore
+        }
+
+        // Dispatch to the fault engine
+        let (result, status) = self.fault_engine.handle_hypercall(&page);
+
+        // Write result and status back to the guest page
+        let result_bytes = result.to_le_bytes();
+        let _ = self.memory.inner().write_slice(
+            &result_bytes,
+            vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + 0x10), // result offset
+        );
+        let _ = self.memory.inner().write_slice(
+            &[status],
+            vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + 0x18), // status offset
+        );
     }
 }
 

@@ -43,26 +43,35 @@ distributed systems where reproducibility is essential.
 
 ```
 chaoscontrol/
-├── flake.nix                          # Nix development environment
-├── Cargo.toml                         # Workspace root
+├── flake.nix                              # Nix development environment
+├── Cargo.toml                             # Workspace root
 └── crates/
-    └── chaoscontrol-vmm/              # VMM implementation
-        ├── Cargo.toml
-        └── src/
-            ├── lib.rs                 # Library root
-            ├── vm.rs                  # Core VM: create, boot, run loop
-            ├── cpu.rs                 # CPUID filtering, TSC, virtual TSC
-            ├── memory.rs              # Guest memory, page tables, GDT
-            ├── snapshot.rs            # VM state snapshot/restore
-            ├── devices/
-            │   ├── mod.rs
-            │   ├── serial.rs          # Serial port constants
-            │   ├── entropy.rs         # Seeded PRNG entropy source
-            │   ├── block.rs           # In-memory block device + faults
-            │   └── net.rs             # Simulated network queues
-            └── bin/
-                ├── boot.rs            # Boot a Linux kernel
-                └── snapshot_demo.rs   # Snapshot/restore demonstration
+    ├── chaoscontrol-protocol/             # SDK ↔ VMM wire protocol (no_std)
+    │   └── src/lib.rs                     # Hypercall page layout, commands, encoding
+    ├── chaoscontrol-sdk/                  # Guest-side SDK (Antithesis-style)
+    │   └── src/
+    │       ├── lib.rs                     # Public API
+    │       ├── assert.rs                  # always, sometimes, reachable, unreachable
+    │       ├── lifecycle.rs               # setup_complete, send_event
+    │       ├── random.rs                  # Guided randomness (get_random, random_choice)
+    │       └── transport.rs               # Hypercall page + I/O port transport
+    ├── chaoscontrol-fault/                # Host-side fault injection engine
+    │   └── src/
+    │       ├── lib.rs
+    │       ├── faults.rs                  # Fault types (network, disk, process, clock)
+    │       ├── engine.rs                  # FaultEngine: schedule + inject + dispatch
+    │       ├── schedule.rs                # Time-based fault scheduling
+    │       └── oracle.rs                  # Property oracle (cross-run assertion tracking)
+    ├── chaoscontrol-vmm/                  # VMM implementation
+    │   └── src/
+    │       ├── lib.rs                     # Library root
+    │       ├── vm.rs                      # Core VM + SDK hypercall handler
+    │       ├── cpu.rs                     # CPUID filtering, TSC, virtual TSC
+    │       ├── memory.rs                  # Guest memory, page tables, GDT
+    │       ├── snapshot.rs                # VM state snapshot/restore
+    │       ├── devices/                   # Deterministic device backends
+    │       └── verified/                  # Pure functions for formal verification
+    └── chaoscontrol-trace/                # eBPF-based KVM tracing
 ```
 
 ## Building
@@ -170,6 +179,55 @@ net.inject_packet(vec![/* ethernet frame */]);
 let sent = net.drain_tx();
 ```
 
+
+### Guest SDK (Antithesis-style)
+
+The `chaoscontrol-sdk` crate provides a guest-side testing API inspired by
+[Antithesis](https://antithesis.com). Guest code uses these to annotate
+properties and receive guided random values:
+
+```rust
+use chaoscontrol_sdk::{assert, lifecycle, random};
+
+// Signal setup complete — faults may begin
+lifecycle::setup_complete(&[("nodes", "3")]);
+
+// Safety property: must always hold
+assert::always(leader < num_nodes, "valid leader", &[]);
+
+// Liveness property: must hold at least once across all runs
+assert::sometimes(write_ok, "write succeeded", &[]);
+
+// Guided random choice for exploration
+let action = random::random_choice(3);
+```
+
+Communication uses a shared memory page at `0xFE000` (E820 reserved gap)
+plus an `outb(0x510)` trigger. The VMM reads the page, dispatches to the
+fault engine, and writes the result back.
+
+### Fault Injection Engine
+
+The `chaoscontrol-fault` crate provides host-side chaos engineering:
+
+```rust
+use chaoscontrol_fault::schedule::FaultScheduleBuilder;
+use chaoscontrol_fault::faults::Fault;
+
+let schedule = FaultScheduleBuilder::new()
+    .at_ns(1_000_000_000, Fault::NetworkPartition {
+        side_a: vec![0],
+        side_b: vec![1, 2],
+    })
+    .at_ns(5_000_000_000, Fault::NetworkHeal)
+    .at_ns(8_000_000_000, Fault::ProcessKill { target: 1 })
+    .build();
+```
+
+Supported fault categories: **network** (partition, latency, loss,
+corruption, reorder), **disk** (I/O errors, torn writes, corruption,
+full), **process** (kill, pause, restart), **clock** (skew, jump),
+**resource** (memory pressure).
 ### Run Loop
 
 The VM run loop handles exits and advances the virtual TSC deterministically:
@@ -206,12 +264,16 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Deterministic entropy (seeded ChaCha20)
 - [x] Deterministic block device with fault injection
 - [x] Deterministic network (simulated queues)
+- [x] Guest SDK (Antithesis-style assertions + guided randomness)
+- [x] Fault injection engine (network, disk, process, clock faults)
+- [x] Property oracle (cross-run assertion tracking + verdicts)
+- [x] VMM ↔ SDK hypercall integration
 - [ ] Virtio transport layer (MMIO-based)
 - [ ] Wire devices into VM run loop via virtio
 - [ ] Multi-VM simulation controller
 - [ ] Deterministic scheduling across VMs
 - [ ] Coverage feedback from guest (kcov / breakpoints)
-- [ ] Fault injection engine (partitions, delays, kills)
+- [ ] Coverage-guided seed exploration
 
 ## License
 

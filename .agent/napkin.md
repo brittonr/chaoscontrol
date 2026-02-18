@@ -77,3 +77,14 @@
 3. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
 4. Implement virtio MMIO transport
 5. Build multi-VM simulation controller
+
+## SDK + Fault Injection (2026-02-18)
+- **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode
+- **chaoscontrol-sdk**: Guest SDK crate, `no_std` default + `std` feature. Antithesis-style API: assert::{always,sometimes,reachable,unreachable}, lifecycle::{setup_complete,send_event}, random::{get_random,random_choice}
+- **chaoscontrol-fault**: Host-side engine crate. FaultEngine (dispatch + scheduling + random generation), PropertyOracle (cross-run assertion tracking), FaultSchedule (time-ordered fault delivery)
+- **Transport**: Shared memory page at `0x000F_E000` (E820 reserved gap) + `outb(0x0510)` trigger port
+- **VMM integration**: SDK port (0x510) handled in step() IoIn/IoOut. handle_sdk_hypercall() reads page from guest memory, dispatches to FaultEngine, writes result back
+- **Assertion ID**: FNV-1a hash of location string, computed at const time via location_id()
+- **Faults gated by setup_complete**: No faults fire until guest calls lifecycle::setup_complete()
+- **BTreeMap not HashMap** in oracle for determinism
+- **Oracle borrow fix**: Must compute run_id BEFORE mutable borrow of self.assertions (Rust borrow checker)

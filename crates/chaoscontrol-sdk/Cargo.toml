@@ -1,0 +1,14 @@
+[package]
+name = "chaoscontrol-sdk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Guest-side SDK for ChaosControl deterministic simulation testing"
+
+[features]
+default = []
+std = ["chaoscontrol-protocol/std"]
+
+[dependencies]
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }

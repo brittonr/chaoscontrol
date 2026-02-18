@@ -135,19 +135,43 @@
               rustToolchain
               pkgs.cargo-watch
               pkgs.cargo-edit
+
+              # eBPF tracing harness dependencies
+              pkgs.clang              # BPF program compilation
+              pkgs.libbpf             # BPF library (headers + lib)
+              pkgs.bpftools           # bpftool (vmlinux.h generation)
+              pkgs.elfutils           # libelf (libbpf-sys dependency)
+              pkgs.zlib               # libbpf-sys dependency
+              pkgs.pkg-config         # find system libs
             ];
+
+            # libbpf-sys needs to find libelf and zlib
+            nativeBuildInputs = [
+              pkgs.pkg-config
+            ];
+
+            # BPF compilation needs unwrapped clang (nix wrapper adds
+            # flags like -fzero-call-used-regs that the BPF target
+            # doesn't support). libbpf-cargo reads $CLANG.
+            CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
 
             shellHook = ''
               echo "ChaosControl development environment"
               echo "Rust: $(rustc --version)"
+              echo "Clang: $(clang --version | head -1)"
               echo ""
               echo "Commands:"
               echo "  cargo build              Build the project"
-              echo "  cargo test               Run tests (105 unit + 11 doc)"
+              echo "  cargo test               Run tests"
               echo "  cargo run --bin boot -- <kernel> [initrd]"
               echo "  cargo run --bin snapshot_demo -- <kernel> <initrd>"
               echo "  cargo watch -x check     Watch for changes"
               echo "  cargo clippy             Lint"
+              echo ""
+              echo "Tracing:"
+              echo "  cargo build -p chaoscontrol-trace    Build trace harness"
+              echo "  sudo chaoscontrol-trace live --pid <PID>"
+              echo "  chaoscontrol-trace verify --trace-a a.json --trace-b b.json"
             '';
           };
         }

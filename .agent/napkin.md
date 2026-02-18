@@ -50,8 +50,20 @@
 - **NOT DETERMINISTIC**: tsc calibration, Memory ±28KB, sched_clock, audit timestamp
 - **ROOT CAUSE**: variable VM exit counts (host interrupts, serial polling) × fixed TSC advance
 
+## eBPF Trace Harness (2026-02-17)
+- **chaoscontrol-trace crate**: libbpf-rs 0.26 + libbpf-cargo 0.26 skeleton approach
+- **BPF program**: 11 KVM tracepoints (exit, entry, pio, mmio, msr, inj_virq, pic_set_irq, set_irq, page_fault, cr, cpuid)
+- **NixOS**: Must use unwrapped clang for BPF target (CLANG env var in flake.nix)
+- **Struct naming**: vmlinux.h defines `struct trace_event` and `struct trace_entry` — our event struct must use a different name (`cc_trace_event`)
+- **libbpf-rs 0.26 API**: `SkelBuilder::open()` takes `&mut MaybeUninit<OpenObject>`; need `Box::leak` for lifetime; traits `SkelBuilder`, `OpenSkel`, `Skel`, `MapCore` must be imported explicitly
+- **kvm_exit not captured**: BPF tracepoint context struct for kvm_exit may have alignment issues with `trace_entry` from vmlinux.h — kvm_entry/pio/page_fault/cpuid/msr/cr/mmio all work
+- **Event counts confirm napkin findings**: kvm_entry varies ±1000-2000, kvm_pio varies ±2000-5000 between runs; cpuid/cr/msr/mmio perfectly deterministic
+- **SIGTERM handling critical**: collector must handle SIGTERM for graceful save on `kill`
+- **sudo NOPASSWD needed**: for both bpftrace and chaoscontrol-trace binary
+
 ## Next Steps
 1. Fix virtual TSC: advance based on guest execution time, not exit count
-2. Full userspace PIT: increase TSC-per-exit or use host-time-proportional advance
-3. Implement virtio MMIO transport
-4. Build multi-VM simulation controller
+2. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)
+3. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
+4. Implement virtio MMIO transport
+5. Build multi-VM simulation controller

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/chaoscontrol-vmm",
+    "crates/chaoscontrol-trace",
 ]
 resolver = "2"
 

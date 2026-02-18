@@ -1,0 +1,24 @@
+[package]
+name = "chaoscontrol-trace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "eBPF-based KVM tracing harness for ChaosControl deterministic VMM"
+
+[dependencies]
+libbpf-rs = "0.26"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+libc = "0.2"
+
+[build-dependencies]
+libbpf-cargo = "0.26"
+
+[[bin]]
+name = "chaoscontrol-trace"
+path = "src/bin/chaoscontrol-trace.rs"

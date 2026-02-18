@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/chaoscontrol-vmm",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["ChaosControl Contributors"]
+license = "Apache-2.0"

@@ -1,0 +1,19 @@
+[package]
+name = "chaoscontrol-vmm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+kvm-ioctls = "0.19"
+kvm-bindings = { version = "0.10", features = ["fam-wrappers"] }
+vm-memory = { version = "0.17", features = ["backend-mmap"] }
+linux-loader = { version = "0.13", features = ["elf", "bzimage"] }
+vmm-sys-util = "0.12"
+rand = "0.8"
+rand_chacha = "0.3"
+thiserror = "2"
+log = "0.4"
+env_logger = "0.11"
+libc = "0.2"

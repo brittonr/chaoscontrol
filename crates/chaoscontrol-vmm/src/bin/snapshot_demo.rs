@@ -8,7 +8,7 @@
 //!
 //! Usage: cargo run --release --bin snapshot_demo -- <kernel> <initrd>
 
-use chaoscontrol_vmm::vm::DeterministicVm;
+use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;
 
 fn main() {
@@ -22,11 +22,11 @@ fn main() {
 
     let kernel_path = &args[1];
     let initrd_path = &args[2];
-    let memory_size = 256 * 1024 * 1024;
 
     // === Phase 1: Boot and wait for init ===
     log::info!("=== Phase 1: Boot VM ===");
-    let mut vm = DeterministicVm::new(memory_size).expect("Failed to create VM");
+    let config = VmConfig::default();
+    let mut vm = DeterministicVm::new(config).expect("Failed to create VM");
     vm.load_kernel(kernel_path, Some(initrd_path))
         .expect("Failed to load kernel");
 
@@ -34,23 +34,27 @@ fn main() {
     log::info!("Running until heartbeat 3...");
     let output = vm.run_until("heartbeat 3").expect("Failed to run VM");
 
-    // Count heartbeats we've seen
     let heartbeats: Vec<&str> = output
         .lines()
         .filter(|l| l.contains("heartbeat"))
         .collect();
     log::info!(
-        "Phase 1 complete. Saw {} heartbeats: {:?}",
-        heartbeats.len(),
-        heartbeats
+        "Phase 1 complete. {} exits, vTSC={}, heartbeats: {:?}",
+        vm.exit_count(),
+        vm.virtual_tsc(),
+        heartbeats,
     );
 
     // === Phase 2: Snapshot ===
     log::info!("=== Phase 2: Taking snapshot ===");
     let snapshot = vm.snapshot().expect("Failed to take snapshot");
+    let snap_exit_count = vm.exit_count();
+    let snap_vtsc = vm.virtual_tsc();
     log::info!(
-        "Snapshot taken: {} MB memory",
-        snapshot.memory.len() / 1024 / 1024
+        "Snapshot taken: {} MB memory, exit_count={}, vTSC={}",
+        snapshot.memory.len() / 1024 / 1024,
+        snap_exit_count,
+        snap_vtsc,
     );
 
     // === Phase 3: Continue running after snapshot ===
@@ -63,9 +67,10 @@ fn main() {
         .filter(|l| l.contains("heartbeat"))
         .collect();
     log::info!(
-        "Post-snapshot: saw {} heartbeats: {:?}",
-        post_heartbeats.len(),
-        post_heartbeats
+        "Post-snapshot: {} exits, vTSC={}, heartbeats: {:?}",
+        vm.exit_count(),
+        vm.virtual_tsc(),
+        post_heartbeats,
     );
 
     // === Phase 4: Restore from snapshot ===
@@ -83,9 +88,10 @@ fn main() {
         .filter(|l| l.contains("heartbeat"))
         .collect();
     log::info!(
-        "Restored run: saw {} heartbeats: {:?}",
-        restored_heartbeats.len(),
-        restored_heartbeats
+        "Restored run: {} exits, vTSC={}, heartbeats: {:?}",
+        vm.exit_count(),
+        vm.virtual_tsc(),
+        restored_heartbeats,
     );
 
     // === Summary ===

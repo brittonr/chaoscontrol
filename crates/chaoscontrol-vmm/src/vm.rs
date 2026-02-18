@@ -1,6 +1,30 @@
+//! Core VM implementation for the ChaosControl deterministic hypervisor.
+//!
+//! [`DeterministicVm`] is the main entry point: it creates a KVM-backed
+//! virtual machine with deterministic CPU, memory, clock, and I/O
+//! behaviour suitable for simulation testing.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+//!
+//! let config = VmConfig::default();
+//! let mut vm = DeterministicVm::new(config).unwrap();
+//! vm.load_kernel("/path/to/vmlinux", Some("/path/to/initrd.gz"))
+//!     .unwrap();
+//! vm.run().unwrap();
+//! ```
+
+use crate::cpu::{self, CpuConfig, VirtualTsc};
+use crate::memory::{
+    self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
+    BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
+    HIMEM_START, PML4_START, ZERO_PAGE_START,
+};
+
 use kvm_bindings::{
-    kvm_fpu, kvm_pit_config, kvm_regs, kvm_segment, kvm_userspace_memory_region,
-    KVM_MAX_CPUID_ENTRIES, KVM_PIT_SPEAKER_DUMMY,
+    kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -8,103 +32,113 @@ use linux_loader::configurator::{BootConfigurator, BootParams};
 use linux_loader::loader::bootparam::boot_params;
 use linux_loader::loader::elf::Elf;
 use linux_loader::loader::KernelLoader;
-use log::{debug, info};
+use log::info;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use thiserror::Error;
-use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
+use vm_memory::{Address, Bytes, GuestAddress};
 use vmm_sys_util::eventfd::EventFd;
 
-// Memory layout constants (based on Firecracker)
-const HIMEM_START: u64 = 0x0010_0000; // 1 MB
-const BOOT_STACK_POINTER: u64 = 0x8ff0;
-const ZERO_PAGE_START: u64 = 0x7000;
-const CMDLINE_START: u64 = 0x20000;
-const BOOT_GDT_OFFSET: u64 = 0x500;
-const BOOT_IDT_OFFSET: u64 = 0x520;
-
-// Page table addresses
-const PML4_START: u64 = 0x9000;
-const PDPTE_START: u64 = 0xa000;
-const PDE_START: u64 = 0xb000;
+// ═══════════════════════════════════════════════════════════════════════
+//  Constants
+// ═══════════════════════════════════════════════════════════════════════
 
 // x86_64 control register flags
-const X86_CR0_PE: u64 = 0x1; // Protected mode
-const X86_CR0_PG: u64 = 0x8000_0000; // Paging
-const X86_CR4_PAE: u64 = 0x20; // Physical Address Extension
-const EFER_LME: u64 = 0x100; // Long Mode Enable
-const EFER_LMA: u64 = 0x400; // Long Mode Active
+const X86_CR0_PE: u64 = 0x1;
+const X86_CR0_PG: u64 = 0x8000_0000;
+const X86_CR4_PAE: u64 = 0x20;
+const EFER_LME: u64 = 0x100;
+const EFER_LMA: u64 = 0x400;
 
-// Serial port constants
+// Serial port I/O range (COM1)
 const SERIAL_PORT_BASE: u16 = 0x3f8;
 const SERIAL_PORT_END: u16 = 0x3ff;
 
-// Serial port register offsets
-const SERIAL_DATA: u16 = 0; // THR/RBR
-const SERIAL_IER: u16 = 1; // Interrupt Enable Register
-const SERIAL_IIR_FCR: u16 = 2; // IIR (read) / FCR (write)
-const SERIAL_LCR: u16 = 3; // Line Control Register
-const SERIAL_MCR: u16 = 4; // Modem Control Register
-const SERIAL_LSR: u16 = 5; // Line Status Register
-const SERIAL_MSR: u16 = 6; // Modem Status Register
+/// COM1 IRQ line number (standard PC).
+const SERIAL_IRQ: u32 = 4;
 
-// CPUID leaves to filter
-const CPUID_EXT_FEATURES: u32 = 1;
-const CPUID_STRUCTURED_EXT: u32 = 7;
+/// KVM TSS address — must be set before create_irq_chip.
+/// Placed at the top of the 32-bit address space (3 pages needed by KVM).
+const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Configuration
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Configuration for creating a [`DeterministicVm`].
+#[derive(Debug, Clone)]
+pub struct VmConfig {
+    /// Guest memory size in bytes (default: 256 MB).
+    pub memory_size: usize,
+    /// CPU determinism configuration.
+    pub cpu: CpuConfig,
+    /// Kernel command line (NUL-terminated).
+    pub cmdline: Vec<u8>,
+}
+
+impl Default for VmConfig {
+    fn default() -> Self {
+        Self {
+            memory_size: 256 * 1024 * 1024,
+            cpu: CpuConfig::default(),
+            cmdline: b"console=ttyS0 earlyprintk=serial nokaslr noapic nosmp \
+                       randomize_kstack_offset=off norandmaps panic=-1\0"
+                .to_vec(),
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Error type
+// ═══════════════════════════════════════════════════════════════════════
 
 #[derive(Error, Debug)]
 pub enum VmError {
     #[error("Failed to create KVM instance: {0}")]
     KvmCreate(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to create VM: {0}")]
     VmCreate(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to create vCPU: {0}")]
     VcpuCreate(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to set user memory region: {0}")]
     SetUserMemoryRegion(#[source] kvm_ioctls::Error),
-    
-    #[error("Failed to create guest memory")]
-    GuestMemoryCreate,
-    
+
+    #[error("Guest memory error: {0}")]
+    Memory(#[from] memory::MemoryError),
+
+    #[error("CPU configuration error: {0}")]
+    Cpu(#[from] cpu::CpuError),
+
     #[error("Failed to load kernel: {0}")]
     KernelLoad(#[source] linux_loader::loader::Error),
-    
+
     #[error("Failed to write to guest memory")]
     GuestMemoryWrite,
-    
+
     #[error("Failed to set vCPU registers: {0}")]
     SetRegisters(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to set vCPU special registers: {0}")]
     SetSregs(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to get vCPU special registers: {0}")]
     GetSregs(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to set FPU: {0}")]
     SetFpu(#[source] kvm_ioctls::Error),
-    
-    #[error("Failed to set CPUID: {0}")]
-    SetCpuid(#[source] kvm_ioctls::Error),
-    
-    #[error("Failed to get CPUID: {0}")]
-    GetCpuid(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to create in-kernel IRQ chip: {0}")]
     CreateIrqChip(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to create PIT: {0}")]
     CreatePit(#[source] kvm_ioctls::Error),
-    
+
     #[error("Failed to run vCPU: {0}")]
     VcpuRun(#[source] kvm_ioctls::Error),
-    
-    #[error("Failed to set TSC frequency: {0}")]
-    SetTscKhz(#[source] kvm_ioctls::Error),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
@@ -112,21 +146,27 @@ pub enum VmError {
     Snapshot(String),
 }
 
-/// COM1 IRQ line number (standard PC)
-const SERIAL_IRQ: u32 = 4;
+// ═══════════════════════════════════════════════════════════════════════
+//  Serial I/O helpers
+// ═══════════════════════════════════════════════════════════════════════
 
-/// Wrapper to implement vm_superio::Trigger for EventFd
+/// Wrapper to implement `vm_superio::Trigger` for `EventFd`.
 struct SerialTrigger(EventFd);
 
 impl vm_superio::Trigger for SerialTrigger {
     type E = io::Error;
 
     fn trigger(&self) -> Result<(), Self::E> {
-        self.0.write(1).map_err(|e| io::Error::other(e))
+        self.0.write(1).map_err(io::Error::other)
     }
 }
 
 /// A writer that outputs to stdout AND captures bytes in a shared buffer.
+///
+/// Used as the output sink for the serial port so that serial output is
+/// both visible in real time and available for programmatic inspection
+/// via [`DeterministicVm::take_serial_output`] and
+/// [`DeterministicVm::run_until`].
 #[derive(Clone)]
 pub struct CapturingWriter {
     buffer: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
@@ -145,7 +185,7 @@ impl CapturingWriter {
         std::mem::take(&mut *buf)
     }
 
-    /// Get the captured output as a string (lossy).
+    /// Get the captured output as a string (lossy UTF-8).
     pub fn as_string(&self) -> String {
         let buf = self.buffer.lock().unwrap();
         String::from_utf8_lossy(&buf).into_owned()
@@ -154,10 +194,8 @@ impl CapturingWriter {
 
 impl io::Write for CapturingWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Write to stdout
         io::stdout().write_all(buf)?;
         io::stdout().flush()?;
-        // Capture
         self.buffer.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
     }
@@ -167,40 +205,66 @@ impl io::Write for CapturingWriter {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  DeterministicVm
+// ═══════════════════════════════════════════════════════════════════════
+
+/// A deterministic KVM-backed virtual machine.
+///
+/// All sources of non-determinism are controlled:
+/// - CPUID is filtered to hide RDRAND, RDSEED, RDTSCP, etc.
+/// - TSC is pinned to a fixed frequency
+/// - A virtual TSC counter advances only on VM exits
+/// - Serial I/O is captured for deterministic output comparison
+///
+/// The VM tracks execution statistics (exit counts) for use in
+/// deterministic scheduling and progress measurement.
 pub struct DeterministicVm {
+    #[allow(dead_code)]
     kvm: Kvm,
     vm: VmFd,
     vcpu: VcpuFd,
-    guest_memory: GuestMemoryMmap,
+    memory: GuestMemoryManager,
+
+    // Determinism state
+    virtual_tsc: VirtualTsc,
+
+    // Serial console
     serial: vm_superio::Serial<SerialTrigger, vm_superio::serial::NoEvents, CapturingWriter>,
     serial_writer: CapturingWriter,
+
+    // Execution statistics
+    exit_count: u64,
+    io_exit_count: u64,
 }
 
 impl DeterministicVm {
-    pub fn new(memory_size: usize) -> Result<Self, VmError> {
+    /// Create a new deterministic VM with the given configuration.
+    ///
+    /// This sets up KVM, guest memory, IRQ chip, PIT, and the serial
+    /// console. The VM is ready for [`load_kernel`](Self::load_kernel)
+    /// after construction.
+    pub fn new(config: VmConfig) -> Result<Self, VmError> {
         let kvm = Kvm::new().map_err(VmError::KvmCreate)?;
         let vm = kvm.create_vm().map_err(VmError::VmCreate)?;
 
-        // Create guest memory first (TSS address must be within addressable range)
-        let guest_memory = create_guest_memory(memory_size)?;
+        // Create guest memory
+        let memory = GuestMemoryManager::new(config.memory_size)?;
 
-        // Set up KVM memory region
+        // Register guest memory with KVM
         let mem_region = kvm_userspace_memory_region {
             slot: 0,
             guest_phys_addr: 0,
-            memory_size: memory_size as u64,
-            userspace_addr: guest_memory.get_host_address(GuestAddress(0)).unwrap() as u64,
+            memory_size: config.memory_size as u64,
+            userspace_addr: memory.host_address(),
             flags: 0,
         };
-        
         unsafe {
             vm.set_user_memory_region(mem_region)
                 .map_err(VmError::SetUserMemoryRegion)?;
         }
 
-        // Set TSS address — MUST be done before create_irq_chip on x86_64
-        // Place it at top of 32-bit address space (3 pages needed by KVM)
-        const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
+        // Set TSS address — MUST be before create_irq_chip on x86_64
         vm.set_tss_address(KVM_TSS_ADDRESS)
             .map_err(VmError::CreateIrqChip)?;
 
@@ -217,6 +281,16 @@ impl DeterministicVm {
         // Create vCPU AFTER irqchip (so LAPIC is in-kernel)
         let vcpu = vm.create_vcpu(0).map_err(VmError::VcpuCreate)?;
 
+        // Apply deterministic CPUID filtering
+        let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
+        vcpu.set_cpuid2(&cpuid).map_err(cpu::CpuError::SetCpuid)?;
+
+        // Pin TSC to fixed frequency
+        cpu::setup_tsc(&vcpu, config.cpu.tsc_khz)?;
+
+        // Create virtual TSC for deterministic time tracking
+        let virtual_tsc = VirtualTsc::from_config(&config.cpu);
+
         // Set up serial port with interrupt support
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
         let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
@@ -227,28 +301,46 @@ impl DeterministicVm {
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
+        info!(
+            "VM created: {} MB memory, TSC {} kHz, seed {}",
+            config.memory_size / (1024 * 1024),
+            config.cpu.tsc_khz,
+            config.cpu.seed,
+        );
+
         Ok(Self {
             kvm,
             vm,
             vcpu,
-            guest_memory,
+            memory,
+            virtual_tsc,
             serial,
             serial_writer,
+            exit_count: 0,
+            io_exit_count: 0,
         })
     }
 
+    /// Load a Linux kernel (and optional initrd) into guest memory.
+    ///
+    /// This sets up:
+    /// - Kernel loaded at HIMEM_START (1 MB)
+    /// - Optional initrd placed after the kernel (page-aligned)
+    /// - Boot parameters (zero page) with E820 memory map
+    /// - GDT, page tables, segment registers for 64-bit mode
+    /// - General-purpose registers with entry point and stack pointer
     pub fn load_kernel(
         &mut self,
         kernel_path: &str,
         initrd_path: Option<&str>,
     ) -> Result<(), VmError> {
         info!("Loading kernel from {}", kernel_path);
-        
+
         let mut kernel_file = File::open(kernel_path)?;
-        
+
         // Load kernel using linux-loader
         let kernel_load_result = Elf::load(
-            &self.guest_memory,
+            self.memory.inner(),
             None,
             &mut kernel_file,
             Some(GuestAddress(HIMEM_START)),
@@ -258,59 +350,55 @@ impl DeterministicVm {
         let entry_point = kernel_load_result.kernel_load;
         let kernel_end = kernel_load_result.kernel_end;
         info!(
-            "Kernel entry point: 0x{:x}, end: 0x{:x}",
+            "Kernel entry point: {:#x}, end: {:#x}",
             entry_point.raw_value(),
-            kernel_end
+            kernel_end,
         );
 
         // Load initrd if provided (place it after the kernel, page-aligned)
         let initrd_info = if let Some(initrd_path) = initrd_path {
             info!("Loading initrd from {}", initrd_path);
             let initrd_data = std::fs::read(initrd_path)?;
-            let initrd_addr = (kernel_end + 4095) & !4095; // Page-align
-            self.guest_memory
+            let initrd_addr = (kernel_end + 4095) & !4095;
+            self.memory
+                .inner()
                 .write_slice(&initrd_data, GuestAddress(initrd_addr))
                 .map_err(|_| VmError::GuestMemoryWrite)?;
             info!(
-                "Initrd loaded at 0x{:x}, size: {} bytes",
+                "Initrd loaded at {:#x}, size: {} bytes",
                 initrd_addr,
-                initrd_data.len()
+                initrd_data.len(),
             );
             Some((initrd_addr, initrd_data.len() as u64))
         } else {
             None
         };
 
+        // Write boot data structures using memory module
+        self.memory.setup_page_tables()?;
+        self.memory.setup_gdt()?;
+
         // Set up boot parameters (zero page)
         self.setup_boot_params(initrd_info)?;
 
-        // Set up x86_64 boot environment
-        self.setup_x86_64_boot(entry_point)?;
-
-        // Filter CPUID for determinism
-        self.filter_cpuid()?;
-
-        // Pin TSC
-        self.pin_tsc()?;
+        // Set up x86_64 registers
+        self.setup_sregs()?;
+        self.setup_regs(entry_point)?;
+        self.setup_fpu()?;
 
         Ok(())
     }
 
-    fn setup_boot_params(
-        &self,
-        initrd_info: Option<(u64, u64)>,
-    ) -> Result<(), VmError> {
+    fn setup_boot_params(&self, initrd_info: Option<(u64, u64)>) -> Result<(), VmError> {
         const KERNEL_BOOT_FLAG_MAGIC: u16 = 0xaa55;
         const KERNEL_HDR_MAGIC: u32 = 0x5372_6448;
         const KERNEL_LOADER_OTHER: u8 = 0xff;
         const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x0100_0000;
 
-        // Write kernel command line to guest memory
+        // Write kernel command line
         let cmdline = b"console=ttyS0 earlyprintk=serial nokaslr noapic nosmp \
-            randomize_kstack_offset=off norandmaps panic=-1\0";
-        self.guest_memory
-            .write_slice(cmdline, GuestAddress(CMDLINE_START))
-            .map_err(|_| VmError::GuestMemoryWrite)?;
+                        randomize_kstack_offset=off norandmaps panic=-1\0";
+        self.memory.write_cmdline(cmdline)?;
 
         let mut hdr = linux_loader::loader::bootparam::setup_header {
             type_of_loader: KERNEL_LOADER_OTHER,
@@ -322,7 +410,6 @@ impl DeterministicVm {
             ..Default::default()
         };
 
-        // Set initrd address/size in boot header
         if let Some((initrd_addr, initrd_size)) = initrd_info {
             hdr.ramdisk_image = initrd_addr as u32;
             hdr.ramdisk_size = initrd_size as u32;
@@ -333,91 +420,19 @@ impl DeterministicVm {
             ..Default::default()
         };
 
-        // Set up E820 memory map
-        // Entry 0: Low memory (0 - 9FC00, conventional memory below EBDA)
-        params.e820_table[0].addr = 0;
-        params.e820_table[0].size = 0x9fc00;
-        params.e820_table[0].type_ = 1; // E820_RAM
-
-        // Entry 1: High memory (1MB - end)
-        params.e820_table[1].addr = HIMEM_START;
-        params.e820_table[1].size =
-            self.guest_memory.last_addr().raw_value() - HIMEM_START + 1;
-        params.e820_table[1].type_ = 1; // E820_RAM
-
-        params.e820_entries = 2;
+        // Set up E820 memory map using memory module
+        let e820_map = build_e820_map(self.memory.size() as u64);
+        for (i, entry) in e820_map.iter().enumerate() {
+            params.e820_table[i].addr = entry.addr;
+            params.e820_table[i].size = entry.size;
+            params.e820_table[i].type_ = entry.type_;
+        }
+        params.e820_entries = e820_map.len() as u8;
 
         // Write boot params to zero page
         let boot_params = BootParams::new(&params, GuestAddress(ZERO_PAGE_START));
-        LinuxBootConfigurator::write_bootparams(&boot_params, &self.guest_memory)
+        LinuxBootConfigurator::write_bootparams(&boot_params, self.memory.inner())
             .map_err(|_| VmError::GuestMemoryWrite)?;
-
-        Ok(())
-    }
-
-    fn setup_x86_64_boot(&self, entry_point: GuestAddress) -> Result<(), VmError> {
-        // Set up GDT
-        self.setup_gdt()?;
-
-        // Set up page tables for long mode
-        self.setup_page_tables()?;
-
-        // Configure segments and special registers
-        self.setup_sregs()?;
-
-        // Set up general purpose registers
-        self.setup_regs(entry_point)?;
-
-        // Set up FPU
-        self.setup_fpu()?;
-
-        Ok(())
-    }
-
-    fn setup_gdt(&self) -> Result<(), VmError> {
-        // GDT entries for 64-bit mode
-        let gdt_table: [u64; 4] = [
-            0,                           // NULL descriptor
-            gdt_entry(0xa09b, 0, 0xfffff), // CODE segment (64-bit)
-            gdt_entry(0xc093, 0, 0xfffff), // DATA segment
-            gdt_entry(0x808b, 0, 0xfffff), // TSS
-        ];
-
-        // Write GDT to guest memory
-        for (i, entry) in gdt_table.iter().enumerate() {
-            let addr = GuestAddress(BOOT_GDT_OFFSET + (i as u64 * 8));
-            self.guest_memory
-                .write_obj(*entry, addr)
-                .map_err(|_| VmError::GuestMemoryWrite)?;
-        }
-
-        // Write IDT (empty for now)
-        self.guest_memory
-            .write_obj(0u64, GuestAddress(BOOT_IDT_OFFSET))
-            .map_err(|_| VmError::GuestMemoryWrite)?;
-
-        Ok(())
-    }
-
-    fn setup_page_tables(&self) -> Result<(), VmError> {
-        // Set up identity-mapped page tables for the first 1GB
-        // PML4 entry pointing to PDPTE
-        self.guest_memory
-            .write_obj(PDPTE_START | 0x03, GuestAddress(PML4_START))
-            .map_err(|_| VmError::GuestMemoryWrite)?;
-
-        // PDPTE entry pointing to PDE
-        self.guest_memory
-            .write_obj(PDE_START | 0x03, GuestAddress(PDPTE_START))
-            .map_err(|_| VmError::GuestMemoryWrite)?;
-
-        // PDE entries: 512 entries of 2MB pages (covering 1GB)
-        for i in 0..512u64 {
-            let entry = (i << 21) | 0x83; // 2MB page, present, writable
-            self.guest_memory
-                .write_obj(entry, GuestAddress(PDE_START + i * 8))
-                .map_err(|_| VmError::GuestMemoryWrite)?;
-        }
 
         Ok(())
     }
@@ -425,23 +440,21 @@ impl DeterministicVm {
     fn setup_sregs(&self) -> Result<(), VmError> {
         let mut sregs = self.vcpu.get_sregs().map_err(VmError::GetSregs)?;
 
-        // Set up code segment
-        sregs.cs = kvm_segment_from_gdt(gdt_entry(0xa09b, 0, 0xfffff), 1);
+        // Use segment helpers from memory module
+        sregs.cs = code64_segment();
 
-        // Set up data segments
-        let data_seg = kvm_segment_from_gdt(gdt_entry(0xc093, 0, 0xfffff), 2);
+        let data_seg = data_segment();
         sregs.ds = data_seg;
         sregs.es = data_seg;
         sregs.fs = data_seg;
         sregs.gs = data_seg;
         sregs.ss = data_seg;
 
-        // Set up TSS
-        sregs.tr = kvm_segment_from_gdt(gdt_entry(0x808b, 0, 0xfffff), 3);
+        sregs.tr = tss_segment();
 
-        // Set up GDT and IDT
+        // GDT and IDT
         sregs.gdt.base = BOOT_GDT_OFFSET;
-        sregs.gdt.limit = 4 * 8 - 1;
+        sregs.gdt.limit = (GDT_ENTRY_COUNT as u16) * 8 - 1;
         sregs.idt.base = BOOT_IDT_OFFSET;
         sregs.idt.limit = 8 - 1;
 
@@ -464,7 +477,6 @@ impl DeterministicVm {
             rflags: 0x2,          // Reserved bit must be set
             ..Default::default()
         };
-
         self.vcpu.set_regs(&regs).map_err(VmError::SetRegisters)?;
         Ok(())
     }
@@ -475,48 +487,13 @@ impl DeterministicVm {
             mxcsr: 0x1f80,
             ..Default::default()
         };
-
         self.vcpu.set_fpu(&fpu).map_err(VmError::SetFpu)?;
         Ok(())
     }
 
-    fn filter_cpuid(&mut self) -> Result<(), VmError> {
-        // Get supported CPUID
-        let mut cpuid = self.kvm
-            .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)
-            .map_err(VmError::GetCpuid)?;
+    // ─── Public API: execution ───────────────────────────────────────
 
-        // Filter out non-deterministic features
-        for entry in cpuid.as_mut_slice() {
-            match entry.function {
-                CPUID_EXT_FEATURES => {
-                    // Clear RDRAND (bit 30 of ECX)
-                    entry.ecx &= !(1 << 30);
-                }
-                CPUID_STRUCTURED_EXT if entry.index == 0 => {
-                    // Clear RDSEED (bit 18 of EBX)
-                    entry.ebx &= !(1 << 18);
-                }
-                _ => {}
-            }
-        }
-
-        self.vcpu.set_cpuid2(&cpuid).map_err(VmError::SetCpuid)?;
-        Ok(())
-    }
-
-    fn pin_tsc(&self) -> Result<(), VmError> {
-        // Set TSC to a fixed frequency (3.0 GHz)
-        const TSC_KHZ: u32 = 3_000_000;
-        self.vcpu
-            .set_tsc_khz(TSC_KHZ)
-            .map_err(VmError::SetTscKhz)?;
-        
-        info!("TSC pinned to {} KHz", TSC_KHZ);
-        Ok(())
-    }
-
-    /// Run the VM until it halts or shuts down. Serial output goes to stdout.
+    /// Run the VM until it halts or shuts down.
     pub fn run(&mut self) -> Result<(), VmError> {
         info!("Starting VM execution");
         loop {
@@ -524,13 +501,19 @@ impl DeterministicVm {
                 break;
             }
         }
+        info!(
+            "VM stopped after {} exits ({} I/O), virtual TSC: {}",
+            self.exit_count,
+            self.io_exit_count,
+            self.virtual_tsc.read(),
+        );
         Ok(())
     }
 
-    /// Run the VM until the serial output contains `pattern`.
-    /// Returns the captured serial output since the last `take_serial_output()`.
+    /// Run until the serial output contains `pattern`.
+    ///
+    /// Returns the captured serial output since the call.
     pub fn run_until(&mut self, pattern: &str) -> Result<String, VmError> {
-        // Clear captured output first
         self.serial_writer.take();
         loop {
             if self.step()? {
@@ -544,17 +527,65 @@ impl DeterministicVm {
         Ok(self.serial_writer.as_string())
     }
 
+    /// Run for a bounded number of vCPU exits.
+    ///
+    /// Returns `(exits_executed, halted)`.
+    pub fn run_bounded(&mut self, max_exits: u64) -> Result<(u64, bool), VmError> {
+        for i in 0..max_exits {
+            if self.step()? {
+                return Ok((i + 1, true));
+            }
+        }
+        Ok((max_exits, false))
+    }
+
+    // ─── Public API: serial output ───────────────────────────────────
+
     /// Take all serial output captured since the last call.
     pub fn take_serial_output(&mut self) -> String {
         String::from_utf8_lossy(&self.serial_writer.take()).into_owned()
     }
+
+    // ─── Public API: determinism state ───────────────────────────────
+
+    /// Get the current virtual TSC value.
+    pub fn virtual_tsc(&self) -> u64 {
+        self.virtual_tsc.read()
+    }
+
+    /// Get the total number of VM exits since creation.
+    pub fn exit_count(&self) -> u64 {
+        self.exit_count
+    }
+
+    /// Get the number of I/O exits since creation.
+    pub fn io_exit_count(&self) -> u64 {
+        self.io_exit_count
+    }
+
+    /// Get a reference to the virtual TSC tracker.
+    pub fn virtual_tsc_ref(&self) -> &VirtualTsc {
+        &self.virtual_tsc
+    }
+
+    /// Get a mutable reference to the virtual TSC tracker.
+    pub fn virtual_tsc_mut(&mut self) -> &mut VirtualTsc {
+        &mut self.virtual_tsc
+    }
+
+    /// Get a reference to the guest memory manager.
+    pub fn memory(&self) -> &GuestMemoryManager {
+        &self.memory
+    }
+
+    // ─── Public API: snapshot / restore ──────────────────────────────
 
     /// Take a snapshot of the current VM state.
     pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
         crate::snapshot::VmSnapshot::capture(
             &self.vcpu,
             &self.vm,
-            &self.guest_memory,
+            self.memory.inner(),
             self.serial.state(),
         )
         .map_err(|e| VmError::Snapshot(e.to_string()))
@@ -563,17 +594,18 @@ impl DeterministicVm {
     /// Restore VM state from a snapshot.
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         snapshot
-            .restore(&self.vcpu, &self.vm, &self.guest_memory)
+            .restore(&self.vcpu, &self.vm, self.memory.inner())
             .map_err(|e| VmError::Snapshot(e.to_string()))?;
 
-        // Restore serial state with new EventFd
+        // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
         let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
+        self.serial_writer = CapturingWriter::new();
         self.serial = vm_superio::Serial::from_state(
             &snapshot.serial_state,
             serial_trigger,
             vm_superio::serial::NoEvents,
-            io::stdout(),
+            self.serial_writer.clone(),
         )
         .map_err(|e| VmError::Snapshot(format!("serial restore: {e}")))?;
 
@@ -582,16 +614,28 @@ impl DeterministicVm {
             .register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
+        info!(
+            "VM restored from snapshot (RIP={:#x})",
+            snapshot.regs.rip,
+        );
+
         Ok(())
     }
 
-    /// Execute one step: run the vCPU until a VM exit, handle it.
-    /// Optionally captures serial output bytes into `capture`.
-    /// Returns true if the VM halted/shut down.
-    fn step(&mut self, capture: Option<&mut Vec<u8>>) -> Result<bool, VmError> {
+    // ─── Internal: VM exit handling ──────────────────────────────────
+
+    /// Execute one vCPU run cycle and handle the resulting exit.
+    ///
+    /// Returns `true` if the VM halted or shut down.
+    /// Advances the virtual TSC on every exit for deterministic time progression.
+    fn step(&mut self) -> Result<bool, VmError> {
         match self.vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {
-                if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
+                self.exit_count += 1;
+                self.io_exit_count += 1;
+                self.virtual_tsc.tick();
+
+                if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     data[0] = self.serial.read(offset);
                 } else {
@@ -602,119 +646,49 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::IoOut(port, data)) => {
-                if port >= SERIAL_PORT_BASE && port <= SERIAL_PORT_END {
+                self.exit_count += 1;
+                self.io_exit_count += 1;
+                self.virtual_tsc.tick();
+
+                if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     let byte = data[0];
                     let _ = self.serial.write(offset, byte);
-                    if offset == 0 {
-                        if let Some(buf) = capture {
-                            buf.push(byte);
-                        }
-                    }
                 }
                 Ok(false)
             }
             Ok(VcpuExit::Hlt) => {
-                info!("VM halted");
+                self.exit_count += 1;
+                self.virtual_tsc.tick();
+                info!("VM halted (exit_count={}, vtsc={})", self.exit_count, self.virtual_tsc.read());
                 Ok(true)
             }
             Ok(VcpuExit::Shutdown) => {
-                info!("VM shutdown");
+                self.exit_count += 1;
+                info!("VM shutdown (exit_count={})", self.exit_count);
                 Ok(true)
             }
             Ok(VcpuExit::MmioRead(_, data)) => {
+                self.exit_count += 1;
+                self.virtual_tsc.tick();
                 for byte in data {
                     *byte = 0;
                 }
                 Ok(false)
             }
-            Ok(VcpuExit::MmioWrite(_, _)) => Ok(false),
-            Ok(_) => Ok(true),
+            Ok(VcpuExit::MmioWrite(_, _)) => {
+                self.exit_count += 1;
+                self.virtual_tsc.tick();
+                Ok(false)
+            }
+            Ok(exit) => {
+                self.exit_count += 1;
+                info!("Unhandled VM exit: {:?} — stopping", exit);
+                Ok(true)
+            }
             Err(e) => Err(VmError::VcpuRun(e)),
         }
     }
-}
-
-// Helper function to create a GDT entry
-fn gdt_entry(flags: u16, base: u32, limit: u32) -> u64 {
-    ((u64::from(base) & 0xff00_0000u64) << (56 - 24))
-        | ((u64::from(flags) & 0x0000_f0ffu64) << 40)
-        | ((u64::from(limit) & 0x000f_0000u64) << (48 - 16))
-        | ((u64::from(base) & 0x00ff_ffffu64) << 16)
-        | (u64::from(limit) & 0x0000_ffffu64)
-}
-
-// Helper function to convert GDT entry to kvm_segment
-fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> kvm_segment {
-    kvm_segment {
-        base: get_base(entry),
-        limit: get_limit(entry),
-        selector: u16::from(table_index * 8),
-        type_: get_type(entry),
-        present: get_p(entry),
-        dpl: get_dpl(entry),
-        db: get_db(entry),
-        s: get_s(entry),
-        l: get_l(entry),
-        g: get_g(entry),
-        avl: get_avl(entry),
-        padding: 0,
-        unusable: if get_p(entry) == 0 { 1 } else { 0 },
-    }
-}
-
-fn get_base(entry: u64) -> u64 {
-    (((entry) & 0xFF00_0000_0000_0000) >> 32)
-        | (((entry) & 0x0000_00FF_0000_0000) >> 16)
-        | (((entry) & 0x0000_0000_FFFF_0000) >> 16)
-}
-
-fn get_limit(entry: u64) -> u32 {
-    let limit: u32 =
-        ((((entry) & 0x000F_0000_0000_0000) >> 32) | ((entry) & 0x0000_0000_0000_FFFF)) as u32;
-    match get_g(entry) {
-        0 => limit,
-        _ => (limit << 12) | 0xFFF,
-    }
-}
-
-fn get_g(entry: u64) -> u8 {
-    ((entry & 0x0080_0000_0000_0000) >> 55) as u8
-}
-
-fn get_db(entry: u64) -> u8 {
-    ((entry & 0x0040_0000_0000_0000) >> 54) as u8
-}
-
-fn get_l(entry: u64) -> u8 {
-    ((entry & 0x0020_0000_0000_0000) >> 53) as u8
-}
-
-fn get_avl(entry: u64) -> u8 {
-    ((entry & 0x0010_0000_0000_0000) >> 52) as u8
-}
-
-fn get_p(entry: u64) -> u8 {
-    ((entry & 0x0000_8000_0000_0000) >> 47) as u8
-}
-
-fn get_dpl(entry: u64) -> u8 {
-    ((entry & 0x0000_6000_0000_0000) >> 45) as u8
-}
-
-fn get_s(entry: u64) -> u8 {
-    ((entry & 0x0000_1000_0000_0000) >> 44) as u8
-}
-
-fn get_type(entry: u64) -> u8 {
-    ((entry & 0x0000_0F00_0000_0000) >> 40) as u8
-}
-
-fn create_guest_memory(size: usize) -> Result<GuestMemoryMmap, VmError> {
-    let regions = vec![(GuestAddress(0), size)];
-    
-    GuestMemoryMmap::from_ranges(&regions)
-        .map_err(|_| VmError::GuestMemoryCreate)
 }
 
 #[cfg(test)]
@@ -722,14 +696,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_gdt_entry() {
-        let entry = gdt_entry(0xa09b, 0, 0xfffff);
-        assert_ne!(entry, 0);
-    }
-
-    #[test]
-    fn test_create_guest_memory() {
-        let mem = create_guest_memory(128 * 1024 * 1024).unwrap();
-        assert_eq!(mem.num_regions(), 1);
+    fn test_vm_config_default() {
+        let config = VmConfig::default();
+        assert_eq!(config.memory_size, 256 * 1024 * 1024);
+        assert_eq!(config.cpu.tsc_khz, 3_000_000);
     }
 }

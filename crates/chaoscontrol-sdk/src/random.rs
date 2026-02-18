@@ -8,8 +8,8 @@
 //! When running outside a ChaosControl VM, these functions return
 //! deterministic values based on the VMM's seeded PRNG.
 
-use chaoscontrol_protocol::*;
 use crate::transport;
+use chaoscontrol_protocol::*;
 
 /// Get a guided random `u64` from the VMM.
 ///

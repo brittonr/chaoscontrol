@@ -226,11 +226,7 @@ impl HypercallPage {
 /// for each detail:
 ///   [u16 key_len] [key bytes] [u16 value_len] [value bytes]
 /// ```
-pub fn encode_payload(
-    buf: &mut [u8],
-    message: &str,
-    details: &[(&str, &str)],
-) -> Option<usize> {
+pub fn encode_payload(buf: &mut [u8], message: &str, details: &[(&str, &str)]) -> Option<usize> {
     let mut offset = 0;
 
     // Message length + bytes
@@ -481,7 +477,10 @@ mod tests {
     fn coverage_bitmap_does_not_overlap_hypercall_page() {
         let cov_end = COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64;
         // Coverage: 0xE0000..0xF0000, Hypercall: 0xFE000..0xFF000
-        assert!(cov_end <= HYPERCALL_PAGE_ADDR || COVERAGE_BITMAP_ADDR >= HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64);
+        assert!(
+            cov_end <= HYPERCALL_PAGE_ADDR
+                || COVERAGE_BITMAP_ADDR >= HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64
+        );
     }
 
     #[test]

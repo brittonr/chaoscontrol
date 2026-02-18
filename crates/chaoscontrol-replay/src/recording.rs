@@ -56,10 +56,7 @@ pub struct RecordingConfig {
 #[serde(tag = "type")]
 pub enum RecordedEvent {
     /// A fault was fired at this tick.
-    FaultFired {
-        tick: u64,
-        fault: String,
-    },
+    FaultFired { tick: u64, fault: String },
     /// An SDK assertion was hit.
     AssertionHit {
         tick: u64,
@@ -139,14 +136,19 @@ impl Recorder {
         // Check if it's time for a checkpoint
         if tick >= self.next_checkpoint_tick {
             let snapshot = snapshot_fn();
-            
+
             // Collect events since last checkpoint
-            let last_cp_tick = self.recording.checkpoints.all()
+            let last_cp_tick = self
+                .recording
+                .checkpoints
+                .all()
                 .last()
                 .map(|cp| cp.tick)
                 .unwrap_or(0);
-            
-            let events_since_last: Vec<_> = self.recording.events
+
+            let events_since_last: Vec<_> = self
+                .recording
+                .events
                 .iter()
                 .filter(|e| event_tick(e) > last_cp_tick && event_tick(e) <= tick)
                 .cloned()
@@ -221,13 +223,13 @@ mod tests {
 
     fn dummy_snapshot() -> SimulationSnapshot {
         // Create a minimal dummy snapshot for testing
-        use chaoscontrol_vmm::controller::{SimulationSnapshot, NetworkFabric};
-        use chaoscontrol_fault::engine::FaultEngine;
         use chaoscontrol_fault::engine::EngineConfig;
-        
+        use chaoscontrol_fault::engine::FaultEngine;
+        use chaoscontrol_vmm::controller::{NetworkFabric, SimulationSnapshot};
+
         // Create a temporary engine just to get a snapshot
         let engine = FaultEngine::new(EngineConfig::default());
-        
+
         SimulationSnapshot {
             tick: 0,
             vm_snapshots: vec![],
@@ -249,7 +251,7 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let recorder = Recorder::new(config, schedule, 42);
-        
+
         assert_eq!(recorder.recording.seed, 42);
         assert_eq!(recorder.recording.total_ticks, 0);
         assert!(recorder.recording.checkpoints.is_empty());
@@ -260,10 +262,10 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
-        
+
         // Tick 100 - no checkpoint yet (interval is 1000)
         recorder.on_tick(100, || dummy_snapshot(), vec![]);
-        
+
         assert_eq!(recorder.recording.total_ticks, 100);
         assert_eq!(recorder.recording.checkpoints.len(), 0);
     }
@@ -273,13 +275,13 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
-        
+
         // Tick 1000 - checkpoint
         recorder.on_tick(1000, || dummy_snapshot(), vec![String::from("output")]);
-        
+
         assert_eq!(recorder.recording.total_ticks, 1000);
         assert_eq!(recorder.recording.checkpoints.len(), 1);
-        
+
         let cp = recorder.recording.checkpoints.all()[0].clone();
         assert_eq!(cp.id, 0);
         assert_eq!(cp.tick, 1000);
@@ -291,11 +293,11 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
-        
+
         recorder.on_tick(1000, || dummy_snapshot(), vec![]);
         recorder.on_tick(2000, || dummy_snapshot(), vec![]);
         recorder.on_tick(3000, || dummy_snapshot(), vec![]);
-        
+
         assert_eq!(recorder.recording.checkpoints.len(), 3);
         assert_eq!(recorder.recording.checkpoints.all()[0].id, 0);
         assert_eq!(recorder.recording.checkpoints.all()[1].id, 1);
@@ -307,12 +309,12 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
-        
+
         recorder.record_event(RecordedEvent::FaultFired {
             tick: 100,
             fault: "NetworkPartition".to_string(),
         });
-        
+
         assert_eq!(recorder.recording.events.len(), 1);
     }
 
@@ -321,7 +323,7 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let recorder = Recorder::new(config, schedule, 42);
-        
+
         let oracle_report = OracleReport {
             assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
@@ -330,7 +332,7 @@ mod tests {
             unexercised: 0,
             events: vec![],
         };
-        
+
         let recording = recorder.finish(oracle_report);
         assert!(recording.oracle_report.is_some());
     }
@@ -338,7 +340,10 @@ mod tests {
     #[test]
     fn test_event_tick_extraction() {
         let events = vec![
-            RecordedEvent::FaultFired { tick: 100, fault: "test".to_string() },
+            RecordedEvent::FaultFired {
+                tick: 100,
+                fault: "test".to_string(),
+            },
             RecordedEvent::AssertionHit {
                 tick: 200,
                 vm_index: 0,
@@ -353,7 +358,7 @@ mod tests {
                 checkpoint_id: None,
             },
         ];
-        
+
         assert_eq!(event_tick(&events[0]), 100);
         assert_eq!(event_tick(&events[1]), 200);
         assert_eq!(event_tick(&events[2]), 300);
@@ -364,22 +369,31 @@ mod tests {
         let config = test_config();
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
-        
+
         // Add events at various ticks
-        recorder.record_event(RecordedEvent::FaultFired { tick: 100, fault: "f1".to_string() });
-        recorder.record_event(RecordedEvent::FaultFired { tick: 500, fault: "f2".to_string() });
-        recorder.record_event(RecordedEvent::FaultFired { tick: 1500, fault: "f3".to_string() });
-        
+        recorder.record_event(RecordedEvent::FaultFired {
+            tick: 100,
+            fault: "f1".to_string(),
+        });
+        recorder.record_event(RecordedEvent::FaultFired {
+            tick: 500,
+            fault: "f2".to_string(),
+        });
+        recorder.record_event(RecordedEvent::FaultFired {
+            tick: 1500,
+            fault: "f3".to_string(),
+        });
+
         // Take checkpoint at 1000
         recorder.on_tick(1000, || dummy_snapshot(), vec![]);
-        
+
         // First checkpoint should include events up to tick 1000
         let cp1 = &recorder.recording.checkpoints.all()[0];
         assert_eq!(cp1.events_since_last.len(), 2); // f1 and f2
-        
+
         // Take checkpoint at 2000
         recorder.on_tick(2000, || dummy_snapshot(), vec![]);
-        
+
         // Second checkpoint should include events after 1000
         let cp2 = &recorder.recording.checkpoints.all()[1];
         assert_eq!(cp2.events_since_last.len(), 1); // f3

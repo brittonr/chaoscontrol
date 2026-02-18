@@ -34,11 +34,7 @@ pub struct Divergence {
 
 impl fmt::Display for Divergence {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "DIVERGENCE at event index {}:",
-            self.event_index
-        )?;
+        writeln!(f, "DIVERGENCE at event index {}:", self.event_index)?;
         writeln!(f, "  {}", self.description)?;
 
         if let Some(ref a) = self.trace_a_event {
@@ -126,7 +122,11 @@ impl fmt::Display for VerificationResult {
         all_types.extend(self.trace_a_summary.keys().cloned());
         all_types.extend(self.trace_b_summary.keys().cloned());
 
-        writeln!(f, "  {:>20} {:>10} {:>10} {:>10}", "Event", "Trace A", "Trace B", "Delta")?;
+        writeln!(
+            f,
+            "  {:>20} {:>10} {:>10} {:>10}",
+            "Event", "Trace A", "Trace B", "Delta"
+        )?;
         for t in &all_types {
             let a = self.trace_a_summary.get(t).copied().unwrap_or(0);
             let b = self.trace_b_summary.get(t).copied().unwrap_or(0);
@@ -281,10 +281,18 @@ impl DeterminismVerifier {
         trace_b: &TraceLog,
         filter: &dyn Fn(&TraceEvent) -> bool,
     ) -> VerificationResult {
-        let filtered_a: Vec<TraceEvent> =
-            trace_a.events.iter().filter(|e| filter(e)).cloned().collect();
-        let filtered_b: Vec<TraceEvent> =
-            trace_b.events.iter().filter(|e| filter(e)).cloned().collect();
+        let filtered_a: Vec<TraceEvent> = trace_a
+            .events
+            .iter()
+            .filter(|e| filter(e))
+            .cloned()
+            .collect();
+        let filtered_b: Vec<TraceEvent> = trace_b
+            .events
+            .iter()
+            .filter(|e| filter(e))
+            .cloned()
+            .collect();
         Self::compare_events(&filtered_a, &filtered_b, trace_a, trace_b)
     }
 }
@@ -363,10 +371,7 @@ mod tests {
 
     #[test]
     fn different_lengths_diverge() {
-        let log_a = make_log(vec![
-            make_exit(12, 0x1000),
-            make_exit(12, 0x2000),
-        ]);
+        let log_a = make_log(vec![make_exit(12, 0x1000), make_exit(12, 0x2000)]);
         let log_b = make_log(vec![make_exit(12, 0x1000)]);
 
         let result = DeterminismVerifier::compare(&log_a, &log_b);

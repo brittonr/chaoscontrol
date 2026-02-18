@@ -233,8 +233,7 @@ impl FaultEngine {
             if let Some(fault) = self.generate_random_fault() {
                 faults.push(fault);
             }
-            self.next_random_fault_time_ns =
-                current_time_ns + self.config.random_fault_interval_ns;
+            self.next_random_fault_time_ns = current_time_ns + self.config.random_fault_interval_ns;
         }
 
         self.faults_injected += faults.len() as u64;
@@ -319,9 +318,7 @@ impl FaultEngine {
             return String::new();
         }
         let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
-        decode_payload(buf)
-            .map(|p| p.message)
-            .unwrap_or_default()
+        decode_payload(buf).map(|p| p.message).unwrap_or_default()
     }
 
     fn decode_event(&self, page: &HypercallPage) -> (String, Vec<(String, String)>) {
@@ -352,9 +349,7 @@ impl FaultEngine {
             2 => {
                 // Network partition: target vs everyone else
                 let side_a = vec![target];
-                let side_b = (0..self.config.num_vms)
-                    .filter(|&i| i != target)
-                    .collect();
+                let side_b = (0..self.config.num_vms).filter(|&i| i != target).collect();
                 Fault::NetworkPartition { side_a, side_b }
             }
             3 => Fault::NetworkHeal,
@@ -373,8 +368,7 @@ impl FaultEngine {
             },
             7 => Fault::ClockSkew {
                 target,
-                offset_ns: (self.rng.next_u64() % 10_000_000_000) as i64
-                    - 5_000_000_000,
+                offset_ns: (self.rng.next_u64() % 10_000_000_000) as i64 - 5_000_000_000,
             },
             _ => unreachable!(),
         })
@@ -466,8 +460,14 @@ mod tests {
 
     #[test]
     fn random_deterministic_with_same_seed() {
-        let mut e1 = FaultEngine::new(EngineConfig { seed: 123, ..Default::default() });
-        let mut e2 = FaultEngine::new(EngineConfig { seed: 123, ..Default::default() });
+        let mut e1 = FaultEngine::new(EngineConfig {
+            seed: 123,
+            ..Default::default()
+        });
+        let mut e2 = FaultEngine::new(EngineConfig {
+            seed: 123,
+            ..Default::default()
+        });
         e1.begin_run();
         e2.begin_run();
 
@@ -481,8 +481,14 @@ mod tests {
 
     #[test]
     fn random_different_with_different_seed() {
-        let mut e1 = FaultEngine::new(EngineConfig { seed: 1, ..Default::default() });
-        let mut e2 = FaultEngine::new(EngineConfig { seed: 2, ..Default::default() });
+        let mut e1 = FaultEngine::new(EngineConfig {
+            seed: 1,
+            ..Default::default()
+        });
+        let mut e2 = FaultEngine::new(EngineConfig {
+            seed: 2,
+            ..Default::default()
+        });
         e1.begin_run();
         e2.begin_run();
 

@@ -186,8 +186,7 @@ impl Collector {
         builder
             .add(&skel.maps.events, move |data: &[u8]| -> i32 {
                 if data.len() >= std::mem::size_of::<RawEvent>() {
-                    let raw =
-                        unsafe { std::ptr::read_unaligned(data.as_ptr() as *const RawEvent) };
+                    let raw = unsafe { std::ptr::read_unaligned(data.as_ptr() as *const RawEvent) };
                     let event = TraceEvent::from_raw(&raw);
                     if let Ok(mut buf) = events_clone.lock() {
                         buf.push(event);
@@ -204,8 +203,11 @@ impl Collector {
         // We need to erase the lifetime of the ring buffer. This is safe
         // because _open_object (which owns the BPF maps) is kept alive
         // in Self and dropped after ring_buf.
-        let ring_buf: Box<dyn RingBufPollable> =
-            unsafe { std::mem::transmute::<Box<dyn RingBufPollable>, Box<dyn RingBufPollable>>(Box::new(ring_buf)) };
+        let ring_buf: Box<dyn RingBufPollable> = unsafe {
+            std::mem::transmute::<Box<dyn RingBufPollable>, Box<dyn RingBufPollable>>(Box::new(
+                ring_buf,
+            ))
+        };
 
         Ok(Self {
             events,
@@ -335,16 +337,14 @@ impl TraceLog {
 
     /// Save trace to a JSON file.
     pub fn save(&self, path: &str) -> std::io::Result<()> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(path, json)
     }
 
     /// Load trace from a JSON file.
     pub fn load(path: &str) -> std::io::Result<Self> {
         let json = std::fs::read_to_string(path)?;
-        serde_json::from_str(&json)
-            .map_err(std::io::Error::other)
+        serde_json::from_str(&json).map_err(std::io::Error::other)
     }
 
     /// Number of events in the trace.

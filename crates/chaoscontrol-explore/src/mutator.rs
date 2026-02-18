@@ -50,7 +50,12 @@ impl ScheduleMutator {
     ///
     /// Each variant is created by applying random mutations to the base schedule.
     /// Mutations are deterministic given the same seed and counter.
-    pub fn mutate(&mut self, base: &FaultSchedule, n: usize, config: &MutationConfig) -> Vec<FaultSchedule> {
+    pub fn mutate(
+        &mut self,
+        base: &FaultSchedule,
+        n: usize,
+        config: &MutationConfig,
+    ) -> Vec<FaultSchedule> {
         let mut variants = Vec::with_capacity(n);
 
         for _ in 0..n {
@@ -75,7 +80,8 @@ impl ScheduleMutator {
         let num_mutations = rng.gen_range(1..=3);
         for _ in 0..num_mutations {
             let roll = rng.gen::<f64>();
-            let total_prob = config.add_prob + config.remove_prob + config.shift_prob + config.replace_prob;
+            let total_prob =
+                config.add_prob + config.remove_prob + config.shift_prob + config.replace_prob;
 
             if total_prob == 0.0 {
                 // No mutations configured
@@ -101,7 +107,12 @@ impl ScheduleMutator {
     }
 
     /// Mutation strategy 1: Add a random fault at a random time.
-    fn add_random_fault(&mut self, schedule: &mut FaultSchedule, config: &MutationConfig, rng: &mut ChaCha8Rng) {
+    fn add_random_fault(
+        &mut self,
+        schedule: &mut FaultSchedule,
+        config: &MutationConfig,
+        rng: &mut ChaCha8Rng,
+    ) {
         let time_ns = rng.gen_range(0..=config.max_tick);
         let fault = self.random_fault(config, rng);
         schedule.add(ScheduledFault::new(time_ns, fault));
@@ -157,7 +168,7 @@ impl ScheduleMutator {
 
         let shift_idx = rng.gen_range(0..faults.len());
         let mut new_schedule = FaultSchedule::new();
-        
+
         for (i, mut fault) in faults.into_iter().enumerate() {
             if i == shift_idx {
                 let delta = (fault.time_ns / 10).max(1); // ±10%
@@ -175,7 +186,12 @@ impl ScheduleMutator {
     }
 
     /// Mutation strategy 4: Replace a fault with a different type.
-    fn replace_fault(&mut self, schedule: &mut FaultSchedule, config: &MutationConfig, rng: &mut ChaCha8Rng) {
+    fn replace_fault(
+        &mut self,
+        schedule: &mut FaultSchedule,
+        config: &MutationConfig,
+        rng: &mut ChaCha8Rng,
+    ) {
         let faults: Vec<_> = {
             let mut sched_clone = schedule.clone();
             sched_clone.reset();
@@ -192,7 +208,7 @@ impl ScheduleMutator {
 
         let replace_idx = rng.gen_range(0..faults.len());
         let mut new_schedule = FaultSchedule::new();
-        
+
         for (i, mut fault) in faults.into_iter().enumerate() {
             if i == replace_idx {
                 fault.fault = self.random_fault(config, rng);
@@ -221,13 +237,12 @@ impl ScheduleMutator {
             2 => Fault::ProcessRestart { target },
             3 => {
                 // Network partition: split randomly
-                let side_a: Vec<usize> = (0..config.num_vms)
-                    .filter(|_| rng.gen_bool(0.5))
-                    .collect();
+                let side_a: Vec<usize> =
+                    (0..config.num_vms).filter(|_| rng.gen_bool(0.5)).collect();
                 let side_b: Vec<usize> = (0..config.num_vms)
                     .filter(|i| !side_a.contains(i))
                     .collect();
-                
+
                 if side_a.is_empty() || side_b.is_empty() {
                     Fault::NetworkHeal
                 } else {

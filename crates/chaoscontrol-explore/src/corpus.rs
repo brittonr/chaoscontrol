@@ -188,7 +188,7 @@ mod tests {
     fn test_corpus_add() {
         let mut corpus = Corpus::new();
         let entry = make_entry(5, 1, 0);
-        
+
         corpus.add(entry);
         assert_eq!(corpus.len(), 1);
         assert_eq!(corpus.entries[0].id, 0);
@@ -199,7 +199,7 @@ mod tests {
         let mut corpus = Corpus::new();
         corpus.add(make_entry(5, 1, 0));
         corpus.add(make_entry(3, 2, 0));
-        
+
         assert_eq!(corpus.entries[0].id, 0);
         assert_eq!(corpus.entries[1].id, 1);
     }
@@ -207,18 +207,18 @@ mod tests {
     #[test]
     fn test_corpus_global_coverage() {
         let mut corpus = Corpus::new();
-        
+
         let mut entry1 = make_entry(0, 1, 0);
         entry1.coverage.record_hit(1);
         entry1.coverage.record_hit(2);
-        
+
         corpus.add(entry1);
         assert_eq!(corpus.global_coverage.count_bits(), 2);
-        
+
         let mut entry2 = make_entry(0, 1, 0);
         entry2.coverage.record_hit(2);
         entry2.coverage.record_hit(3);
-        
+
         corpus.add(entry2);
         assert_eq!(corpus.global_coverage.count_bits(), 3); // edges 1, 2, 3
     }
@@ -226,10 +226,10 @@ mod tests {
     #[test]
     fn test_corpus_bugs_collection() {
         let mut corpus = Corpus::new();
-        
+
         corpus.add(make_entry(5, 1, 2)); // 2 bugs
         corpus.add(make_entry(3, 2, 1)); // 1 bug
-        
+
         let bugs = corpus.bugs();
         assert_eq!(bugs.len(), 3);
     }
@@ -237,9 +237,9 @@ mod tests {
     #[test]
     fn test_corpus_bug_id_assignment() {
         let mut corpus = Corpus::new();
-        
+
         corpus.add(make_entry(5, 1, 2)); // 2 bugs
-        
+
         let bugs = corpus.bugs();
         assert_eq!(bugs[0].bug_id, 0);
         assert_eq!(bugs[1].bug_id, 1);
@@ -248,10 +248,10 @@ mod tests {
     #[test]
     fn test_corpus_stats() {
         let mut corpus = Corpus::new();
-        
+
         corpus.add(make_entry(10, 1, 1));
         corpus.add(make_entry(5, 3, 2));
-        
+
         let stats = corpus.stats();
         assert_eq!(stats.total_entries, 2);
         assert_eq!(stats.total_bugs, 3);
@@ -263,7 +263,7 @@ mod tests {
     fn test_corpus_stats_empty() {
         let corpus = Corpus::new();
         let stats = corpus.stats();
-        
+
         assert_eq!(stats.total_entries, 0);
         assert_eq!(stats.total_bugs, 0);
         assert_eq!(stats.total_edges, 0);

@@ -92,12 +92,7 @@ const _: () = assert!(PIT_FREQ_HZ > 0, "PIT frequency must be positive");
 /// assert_eq!(compute_counter(ChannelMode::Mode2, 1000, true, 1000), 1000);
 /// assert_eq!(compute_counter(ChannelMode::Mode2, 1000, true, 1001), 999);
 /// ```
-pub fn compute_counter(
-    mode: ChannelMode,
-    reload: u16,
-    armed: bool,
-    elapsed_pit_ticks: u64,
-) -> u16 {
+pub fn compute_counter(mode: ChannelMode, reload: u16, armed: bool, elapsed_pit_ticks: u64) -> u16 {
     // Precondition: if not armed, always return 0
     if !armed {
         return 0;
@@ -409,7 +404,8 @@ pub fn next_irq_tsc_compute(
             // Periodic modes: next IRQ fires after (irqs_delivered + 1) full periods
             let next_period = irqs_delivered + 1;
             let pit_ticks_needed = next_period * effective_reload;
-            let tsc_offset = (pit_ticks_needed as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
+            let tsc_offset =
+                (pit_ticks_needed as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
             Some(start_tsc + tsc_offset)
         }
         ChannelMode::Mode0 | ChannelMode::Mode1 | ChannelMode::Mode4 | ChannelMode::Mode5 => {
@@ -417,7 +413,8 @@ pub fn next_irq_tsc_compute(
             if irqs_delivered > 0 {
                 None // Already fired
             } else {
-                let tsc_offset = (effective_reload as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
+                let tsc_offset =
+                    (effective_reload as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
                 Some(start_tsc + tsc_offset)
             }
         }
@@ -575,7 +572,10 @@ mod tests {
         assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 999), 1);
 
         // Wrap at reload
-        assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 1000), 1000);
+        assert_eq!(
+            compute_counter(ChannelMode::Mode2, reload, true, 1000),
+            1000
+        );
         assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 1001), 999);
     }
 
@@ -663,7 +663,13 @@ mod tests {
         assert!(compute_output(ChannelMode::Mode2, true, true, reload, 999));
 
         // Output LOW at reload point
-        assert!(!compute_output(ChannelMode::Mode2, true, true, reload, 1000));
+        assert!(!compute_output(
+            ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            1000
+        ));
 
         // Output HIGH after reload
         assert!(compute_output(ChannelMode::Mode2, true, true, reload, 1001));
@@ -721,7 +727,11 @@ mod tests {
 
         // Small values
         let pit = tsc_to_pit_ticks(2011, tsc_khz);
-        assert!(pit <= 1, "2011 TSC ticks should be ~1 PIT tick, got {}", pit);
+        assert!(
+            pit <= 1,
+            "2011 TSC ticks should be ~1 PIT tick, got {}",
+            pit
+        );
 
         // Larger values
         let pit = tsc_to_pit_ticks(2_011_420, tsc_khz);
@@ -755,7 +765,13 @@ mod tests {
         assert!(pending_irq_check(ChannelMode::Mode0, true, reload, 1500, 0));
 
         // No IRQ after acknowledged
-        assert!(!pending_irq_check(ChannelMode::Mode0, true, reload, 1500, 1));
+        assert!(!pending_irq_check(
+            ChannelMode::Mode0,
+            true,
+            reload,
+            1500,
+            1
+        ));
     }
 
     #[test]
@@ -770,7 +786,13 @@ mod tests {
         assert!(pending_irq_check(ChannelMode::Mode2, true, reload, 1000, 0));
 
         // No IRQ in same period after ack
-        assert!(!pending_irq_check(ChannelMode::Mode2, true, reload, 1500, 1));
+        assert!(!pending_irq_check(
+            ChannelMode::Mode2,
+            true,
+            reload,
+            1500,
+            1
+        ));
 
         // Second IRQ at 2*reload
         assert!(pending_irq_check(ChannelMode::Mode2, true, reload, 2000, 1));
@@ -837,7 +859,8 @@ mod tests {
         // Tiger Style: result must be >= start_tsc when Some
         for mode in [ChannelMode::Mode0, ChannelMode::Mode2] {
             for start_tsc in [0, 1000, 1000000] {
-                if let Some(next) = next_irq_tsc_compute(mode, true, 1000, start_tsc, 2_400_000, 0) {
+                if let Some(next) = next_irq_tsc_compute(mode, true, 1000, start_tsc, 2_400_000, 0)
+                {
                     assert!(
                         next >= start_tsc,
                         "next_irq_tsc {} < start_tsc {}",
@@ -965,6 +988,9 @@ mod tests {
         assert_eq!(PIT_PORT_CHANNEL1, crate::devices::pit::PIT_PORT_CHANNEL1);
         assert_eq!(PIT_PORT_CHANNEL2, crate::devices::pit::PIT_PORT_CHANNEL2);
         assert_eq!(PIT_PORT_COMMAND, crate::devices::pit::PIT_PORT_COMMAND);
-        assert_eq!(PORT_SYSTEM_CONTROL_B, crate::devices::pit::PORT_SYSTEM_CONTROL_B);
+        assert_eq!(
+            PORT_SYSTEM_CONTROL_B,
+            crate::devices::pit::PORT_SYSTEM_CONTROL_B
+        );
     }
 }

@@ -51,10 +51,12 @@ impl Frontier {
         self.next_id += 1;
 
         self.entries.push(entry);
-        
+
         // Sort by score descending for efficient selection
         self.entries.sort_by(|a, b| {
-            b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         if self.entries.len() > self.max_size {
@@ -132,7 +134,7 @@ mod tests {
 
     fn dummy_snapshot() -> SimulationSnapshot {
         use chaoscontrol_vmm::controller::NetworkFabric;
-        
+
         // Create a minimal network fabric manually since ::new is private
         let network_state = NetworkFabric {
             partitions: Vec::new(),
@@ -143,7 +145,7 @@ mod tests {
             reorder_window: Vec::new(),
             rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
         };
-        
+
         SimulationSnapshot {
             tick: 0,
             vm_snapshots: Vec::new(),
@@ -154,7 +156,7 @@ mod tests {
 
     fn dummy_engine_snapshot() -> chaoscontrol_fault::engine::EngineSnapshot {
         // Create a minimal engine snapshot for testing
-        use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
+        use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
         let engine = FaultEngine::new(EngineConfig::default());
         engine.snapshot()
     }
@@ -193,10 +195,10 @@ mod tests {
         let mut frontier = Frontier::new(10);
         let entry1 = make_entry(999, 1.0, 0); // ID will be overwritten
         let entry2 = make_entry(888, 2.0, 0);
-        
+
         frontier.push(entry1);
         frontier.push(entry2);
-        
+
         assert_eq!(frontier.entries[0].id, 1); // Higher score, so sorted first
         assert_eq!(frontier.entries[1].id, 0);
     }
@@ -222,7 +224,7 @@ mod tests {
         frontier.push(make_entry(0, 2.0, 0));
 
         let mut rng = ChaCha8Rng::seed_from_u64(42);
-        
+
         // With a fixed seed, we can test deterministic selection
         // First call should select highest score (3.0)
         let selected = frontier.select(&mut rng).unwrap();
@@ -237,7 +239,7 @@ mod tests {
         let mut entry1 = make_entry(0, 10.0, 0);
         entry1.times_selected = 9; // Already selected many times
         let entry2 = make_entry(0, 5.0, 0); // Lower score but fresh
-        
+
         frontier.push(entry1);
         frontier.push(entry2);
 
@@ -259,7 +261,7 @@ mod tests {
         frontier.push(make_entry(0, 4.0, 0)); // Should trigger prune
 
         assert_eq!(frontier.len(), 3);
-        
+
         // Should keep top 3 scores: 4.0, 3.0, 2.0
         assert_eq!(frontier.entries[0].score, 4.0);
         assert_eq!(frontier.entries[1].score, 3.0);
@@ -279,7 +281,7 @@ mod tests {
         let mut entry = make_entry(0, 1.0, 5);
         entry.parent = Some(42);
         frontier.push(entry);
-        
+
         assert_eq!(frontier.entries[0].parent, Some(42));
         assert_eq!(frontier.entries[0].depth, 5);
     }

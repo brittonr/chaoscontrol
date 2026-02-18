@@ -1,10 +1,8 @@
 //! ChaosControl Replay CLI — time-travel debugging and bug triage
 
 use chaoscontrol_replay::recording::RecordedEvent;
-use chaoscontrol_replay::replay::{ReplayEngine, RealSimulationRunner};
-use chaoscontrol_replay::serialize::{
-    load_recording, save_triage_json, save_triage_report,
-};
+use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine};
+use chaoscontrol_replay::serialize::{load_recording, save_triage_json, save_triage_report};
 use chaoscontrol_replay::triage::TriageEngine;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -165,19 +163,14 @@ fn cmd_replay(
     println!("Ticks executed: {}", result.ticks_executed);
     println!(
         "Oracle: {} passed, {} failed, {} unexercised",
-        result.oracle_report.passed,
-        result.oracle_report.failed,
-        result.oracle_report.unexercised
+        result.oracle_report.passed, result.oracle_report.failed, result.oracle_report.unexercised
     );
 
     if result.oracle_report.failed > 0 {
         println!("\n⚠️  FAILURES DETECTED:");
         for (id, info) in &result.oracle_report.assertions {
             if info.verdict() == chaoscontrol_fault::oracle::Verdict::Failed {
-                println!(
-                    "  - Assertion {} ({:?}): {}",
-                    id, info.kind, info.message
-                );
+                println!("  - Assertion {} ({:?}): {}", id, info.kind, info.message);
             }
         }
     }
@@ -252,7 +245,10 @@ fn cmd_info(recording_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         println!("Initrd: {}", initrd);
     }
     println!("Quantum: {}", recording.config.quantum);
-    println!("Checkpoint interval: {} ticks", recording.config.checkpoint_interval);
+    println!(
+        "Checkpoint interval: {} ticks",
+        recording.config.checkpoint_interval
+    );
 
     println!("\n=== Execution ===");
     println!("Total ticks: {}", recording.total_ticks);
@@ -350,10 +346,7 @@ fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), Box<dyn std::erro
     let start_tick = tick.saturating_sub(window);
     let end_tick = tick + window;
 
-    println!(
-        "\nEvents around tick {} (±{} tick window):",
-        tick, window
-    );
+    println!("\nEvents around tick {} (±{} tick window):", tick, window);
     let mut found_any = false;
     for event in &recording.events {
         let event_tick = event_tick(event);
@@ -377,7 +370,11 @@ fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), Box<dyn std::erro
                 } else {
                     output.clone()
                 };
-                println!("  VM{}: {}", i, tail.lines().collect::<Vec<_>>().join("\n       "));
+                println!(
+                    "  VM{}: {}",
+                    i,
+                    tail.lines().collect::<Vec<_>>().join("\n       ")
+                );
             }
         }
     }
@@ -419,10 +416,7 @@ fn format_event(event: &RecordedEvent) -> String {
             old_status,
             new_status,
             ..
-        } => format!(
-            "🔄 VM{} status: {} → {}",
-            vm_index, old_status, new_status
-        ),
+        } => format!("🔄 VM{} status: {} → {}", vm_index, old_status, new_status),
         RecordedEvent::SerialOutput { vm_index, data, .. } => {
             let preview = if data.len() > 50 {
                 format!("{}...", &data[..50])

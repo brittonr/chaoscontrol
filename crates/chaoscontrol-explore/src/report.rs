@@ -13,7 +13,10 @@ pub fn format_report(report: &ExplorationReport) -> String {
 
     // Summary
     output.push_str(&format!("Exploration rounds:     {}\n", report.rounds));
-    output.push_str(&format!("Total branches explored: {}\n", report.total_branches));
+    output.push_str(&format!(
+        "Total branches explored: {}\n",
+        report.total_branches
+    ));
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
@@ -21,8 +24,14 @@ pub fn format_report(report: &ExplorationReport) -> String {
 
     // Coverage stats
     output.push_str("─── Coverage Statistics ───────────────────────────────────────────────\n");
-    output.push_str(&format!("Total runs:             {}\n", report.coverage_stats.total_runs));
-    output.push_str(&format!("Unique edges:           {}\n", report.coverage_stats.total_edges));
+    output.push_str(&format!(
+        "Total runs:             {}\n",
+        report.coverage_stats.total_runs
+    ));
+    output.push_str(&format!(
+        "Unique edges:           {}\n",
+        report.coverage_stats.total_edges
+    ));
     output.push_str(&format!(
         "Avg edges/run:          {:.2}\n",
         report.coverage_stats.edges_per_run_avg
@@ -31,14 +40,16 @@ pub fn format_report(report: &ExplorationReport) -> String {
 
     // Bug details
     if !report.bugs.is_empty() {
-        output.push_str("─── Bugs Found ─────────────────────────────────────────────────────────\n");
+        output
+            .push_str("─── Bugs Found ─────────────────────────────────────────────────────────\n");
         for (i, bug) in report.bugs.iter().enumerate() {
             output.push_str(&format!("\n{}. Bug #{}\n", i + 1, bug.bug_id));
             output.push_str(&format_bug(bug));
             output.push_str("\n");
         }
     } else {
-        output.push_str("─── No Bugs Found ──────────────────────────────────────────────────────\n");
+        output
+            .push_str("─── No Bugs Found ──────────────────────────────────────────────────────\n");
         output.push_str("No assertion failures detected during exploration.\n\n");
     }
 
@@ -54,8 +65,11 @@ pub fn format_bug(bug: &BugReport) -> String {
     output.push_str(&format!("   Assertion ID: {}\n", bug.assertion_id));
     output.push_str(&format!("   Location:     {}\n", bug.assertion_location));
     output.push_str(&format!("   Tick:         {}\n", bug.tick));
-    output.push_str(&format!("   Schedule:     {} faults\n", bug.schedule.total()));
-    
+    output.push_str(&format!(
+        "   Schedule:     {} faults\n",
+        bug.schedule.total()
+    ));
+
     if bug.snapshot.is_some() {
         output.push_str("   Snapshot:     Available for replay\n");
     } else {
@@ -65,7 +79,7 @@ pub fn format_bug(bug: &BugReport) -> String {
     // Show fault schedule details
     if bug.schedule.total() > 0 {
         output.push_str("\n   Fault Schedule:\n");
-        
+
         // Clone and drain to list faults
         let mut sched_clone = bug.schedule.clone();
         sched_clone.reset();

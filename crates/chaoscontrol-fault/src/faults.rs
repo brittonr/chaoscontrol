@@ -228,8 +228,15 @@ impl fmt::Display for Fault {
                 f,
                 "disk-torn-write(vm={target}, offset={offset:#x}, partial={bytes_written})"
             ),
-            Fault::DiskCorruption { target, offset, len } => {
-                write!(f, "disk-corrupt(vm={target}, offset={offset:#x}, len={len})")
+            Fault::DiskCorruption {
+                target,
+                offset,
+                len,
+            } => {
+                write!(
+                    f,
+                    "disk-corrupt(vm={target}, offset={offset:#x}, len={len})"
+                )
             }
             Fault::DiskFull { target } => write!(f, "disk-full(vm={target})"),
             Fault::ProcessKill { target } => write!(f, "process-kill(vm={target})"),
@@ -298,10 +305,7 @@ mod tests {
 
     #[test]
     fn fault_category_classification() {
-        assert_eq!(
-            Fault::NetworkHeal.category(),
-            FaultCategory::Network
-        );
+        assert_eq!(Fault::NetworkHeal.category(), FaultCategory::Network);
         assert_eq!(
             Fault::DiskFull { target: 0 }.category(),
             FaultCategory::Disk
@@ -311,11 +315,19 @@ mod tests {
             FaultCategory::Process
         );
         assert_eq!(
-            Fault::ClockSkew { target: 0, offset_ns: 0 }.category(),
+            Fault::ClockSkew {
+                target: 0,
+                offset_ns: 0
+            }
+            .category(),
             FaultCategory::Clock
         );
         assert_eq!(
-            Fault::MemoryPressure { target: 0, limit_bytes: 0 }.category(),
+            Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: 0
+            }
+            .category(),
             FaultCategory::Resource
         );
     }

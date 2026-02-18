@@ -6,9 +6,7 @@
 //! - `std`: Accesses `/dev/mem` for the shared page and `/dev/port`
 //!   for I/O port access.  Requires root or CAP_SYS_RAWIO.
 
-use chaoscontrol_protocol::{
-    HypercallPage, HYPERCALL_PAGE_ADDR, SDK_PORT,
-};
+use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, SDK_PORT};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  no_std transport (bare-metal / ring 0)
@@ -156,12 +154,8 @@ pub(crate) fn hypercall(
         page.status = 0;
 
         // Encode payload
-        let payload_len = chaoscontrol_protocol::encode_payload(
-            &mut page.payload,
-            message,
-            details,
-        )
-        .unwrap_or(0);
+        let payload_len =
+            chaoscontrol_protocol::encode_payload(&mut page.payload, message, details).unwrap_or(0);
         page.payload_len = payload_len as u16;
 
         // Trigger the hypercall

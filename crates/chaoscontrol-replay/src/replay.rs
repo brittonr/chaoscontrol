@@ -1,9 +1,11 @@
 //! Replay engine — restores and replays from recording.
 
-use crate::recording::{Recording, RecordedEvent, RecordingConfig};
+use crate::recording::{RecordedEvent, Recording, RecordingConfig};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot, RoundResult};
+use chaoscontrol_vmm::controller::{
+    RoundResult, SimulationConfig, SimulationController, SimulationSnapshot,
+};
 use chaoscontrol_vmm::vm::VmError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -24,25 +26,32 @@ pub enum ReplayError {
 /// Trait for running simulations (allows mocking in tests).
 pub trait SimulationRunner {
     /// Create a new simulation from config.
-    fn create(config: &RecordingConfig, schedule: FaultSchedule, seed: u64) -> Result<Self, Box<dyn std::error::Error>> 
-    where 
+    fn create(
+        config: &RecordingConfig,
+        schedule: FaultSchedule,
+        seed: u64,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
         Self: Sized;
-    
+
     /// Step the simulation by one round.
     fn step_round(&mut self) -> Result<RoundResult, Box<dyn std::error::Error>>;
-    
+
     /// Take a snapshot of all VMs.
     fn snapshot_all(&self) -> Result<SimulationSnapshot, Box<dyn std::error::Error>>;
-    
+
     /// Restore all VMs from a snapshot.
-    fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), Box<dyn std::error::Error>>;
-    
+    fn restore_all(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+
     /// Get current simulation tick.
     fn tick(&self) -> u64;
-    
+
     /// Get the oracle report.
     fn report(&self) -> OracleReport;
-    
+
     /// Get serial output for a specific VM.
     fn serial_output(&self, vm_index: usize) -> String;
 }
@@ -53,7 +62,11 @@ pub struct RealSimulationRunner {
 }
 
 impl SimulationRunner for RealSimulationRunner {
-    fn create(config: &RecordingConfig, schedule: FaultSchedule, seed: u64) -> Result<Self, Box<dyn std::error::Error>> {
+    fn create(
+        config: &RecordingConfig,
+        schedule: FaultSchedule,
+        seed: u64,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let sim_config = SimulationConfig {
             num_vms: config.num_vms,
             vm_config: chaoscontrol_vmm::vm::VmConfig {
@@ -71,7 +84,7 @@ impl SimulationRunner for RealSimulationRunner {
             quantum: config.quantum,
             schedule,
         };
-        
+
         let controller = SimulationController::new(sim_config)?;
         Ok(Self { controller })
     }
@@ -84,7 +97,10 @@ impl SimulationRunner for RealSimulationRunner {
         Ok(self.controller.snapshot_all()?)
     }
 
-    fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), Box<dyn std::error::Error>> {
+    fn restore_all(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(self.controller.restore_all(snapshot)?)
     }
 
@@ -134,18 +150,22 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         .map_err(|e| ReplayError::Runner(e.to_string()))?;
 
         let start_tick = if let Some(cp_id) = checkpoint_id {
-            let checkpoint = self.recording.checkpoints
+            let checkpoint = self
+                .recording
+                .checkpoints
                 .get(cp_id)
                 .ok_or(ReplayError::CheckpointNotFound(cp_id))?;
-            
+
             if let Some(snapshot) = &checkpoint.snapshot {
-                runner.restore_all(snapshot)
+                runner
+                    .restore_all(snapshot)
                     .map_err(|e| ReplayError::Runner(e.to_string()))?;
                 checkpoint.tick
             } else {
-                return Err(ReplayError::InvalidState(
-                    format!("Checkpoint {} has no snapshot", cp_id)
-                ));
+                return Err(ReplayError::InvalidState(format!(
+                    "Checkpoint {} has no snapshot",
+                    cp_id
+                )));
             }
         } else {
             0
@@ -155,9 +175,10 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         let mut events = Vec::new();
 
         while runner.tick() < target_tick {
-            let result = runner.step_round()
+            let result = runner
+                .step_round()
                 .map_err(|e| ReplayError::Runner(e.to_string()))?;
-            
+
             // Collect events that occurred this tick
             for event in &self.recording.events {
                 if event_tick(event) == runner.tick() {
@@ -175,8 +196,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             .map(|i| runner.serial_output(i))
             .collect();
 
-        let final_snapshot = runner.snapshot_all()
-            .ok();
+        let final_snapshot = runner.snapshot_all().ok();
 
         Ok(ReplayResult {
             ticks_executed: runner.tick() - start_tick,
@@ -194,14 +214,15 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         modified_schedule: FaultSchedule,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
-        let checkpoint = self.recording.checkpoints
+        let checkpoint = self
+            .recording
+            .checkpoints
             .get(checkpoint_id)
             .ok_or(ReplayError::CheckpointNotFound(checkpoint_id))?;
 
-        let snapshot = checkpoint.snapshot.as_ref()
-            .ok_or_else(|| ReplayError::InvalidState(
-                format!("Checkpoint {} has no snapshot", checkpoint_id)
-            ))?;
+        let snapshot = checkpoint.snapshot.as_ref().ok_or_else(|| {
+            ReplayError::InvalidState(format!("Checkpoint {} has no snapshot", checkpoint_id))
+        })?;
 
         let mut runner = R::create(
             &self.recording.config,
@@ -210,7 +231,8 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         )
         .map_err(|e| ReplayError::Runner(e.to_string()))?;
 
-        runner.restore_all(snapshot)
+        runner
+            .restore_all(snapshot)
             .map_err(|e| ReplayError::Runner(e.to_string()))?;
 
         let start_tick = checkpoint.tick;
@@ -218,9 +240,10 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         let events = Vec::new(); // Events not collected in counterfactual replay
 
         while runner.tick() < target_tick {
-            let result = runner.step_round()
+            let result = runner
+                .step_round()
                 .map_err(|e| ReplayError::Runner(e.to_string()))?;
-            
+
             if result.vms_running == 0 {
                 break;
             }
@@ -301,8 +324,8 @@ fn event_tick(event: &RecordedEvent) -> u64 {
 mod tests {
     use super::*;
     use crate::checkpoint::{Checkpoint, CheckpointStore};
-    use chaoscontrol_vmm::controller::NetworkFabric;
     use chaoscontrol_fault::engine::EngineSnapshot;
+    use chaoscontrol_vmm::controller::NetworkFabric;
     use rand::SeedableRng;
 
     // Mock simulation runner for testing
@@ -312,8 +335,15 @@ mod tests {
     }
 
     impl SimulationRunner for MockRunner {
-        fn create(_config: &RecordingConfig, _schedule: FaultSchedule, _seed: u64) -> Result<Self, Box<dyn std::error::Error>> {
-            Ok(Self { tick: 0, max_ticks: 1000 })
+        fn create(
+            _config: &RecordingConfig,
+            _schedule: FaultSchedule,
+            _seed: u64,
+        ) -> Result<Self, Box<dyn std::error::Error>> {
+            Ok(Self {
+                tick: 0,
+                max_ticks: 1000,
+            })
         }
 
         fn step_round(&mut self) -> Result<RoundResult, Box<dyn std::error::Error>> {
@@ -328,10 +358,10 @@ mod tests {
         }
 
         fn snapshot_all(&self) -> Result<SimulationSnapshot, Box<dyn std::error::Error>> {
-            use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
-            
+            use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+
             let engine = FaultEngine::new(EngineConfig::default());
-            
+
             Ok(SimulationSnapshot {
                 tick: self.tick,
                 vm_snapshots: vec![],
@@ -348,7 +378,10 @@ mod tests {
             })
         }
 
-        fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), Box<dyn std::error::Error>> {
+        fn restore_all(
+            &mut self,
+            snapshot: &SimulationSnapshot,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             self.tick = snapshot.tick;
             Ok(())
         }
@@ -374,11 +407,11 @@ mod tests {
     }
 
     fn test_recording() -> Recording {
-        use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
-        
+        use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+
         let mut checkpoints = CheckpointStore::new();
         let engine = FaultEngine::new(EngineConfig::default());
-        
+
         // Add checkpoint at tick 500
         checkpoints.push(Checkpoint {
             id: 0,
@@ -433,7 +466,7 @@ mod tests {
     fn test_replay_from_beginning() {
         let recording = test_recording();
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
-        
+
         let result = engine.replay_from(None, 100).unwrap();
         assert_eq!(result.ticks_executed, 100);
     }
@@ -442,7 +475,7 @@ mod tests {
     fn test_replay_from_checkpoint() {
         let recording = test_recording();
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
-        
+
         let result = engine.replay_from(Some(0), 100).unwrap();
         // Should start from checkpoint at tick 500, run for 100 more
         assert_eq!(result.ticks_executed, 100);
@@ -452,7 +485,7 @@ mod tests {
     fn test_replay_checkpoint_not_found() {
         let recording = test_recording();
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
-        
+
         let result = engine.replay_from(Some(999), 100);
         assert!(matches!(result, Err(ReplayError::CheckpointNotFound(999))));
     }
@@ -461,7 +494,7 @@ mod tests {
     fn test_replay_with_schedule() {
         let recording = test_recording();
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
-        
+
         let new_schedule = FaultSchedule::new();
         let result = engine.replay_with_schedule(0, new_schedule, 50).unwrap();
         assert_eq!(result.ticks_executed, 50);

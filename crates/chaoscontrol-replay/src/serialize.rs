@@ -61,7 +61,10 @@ fn format_triage_markdown(report: &TriageReport) -> String {
     md.push_str(&format!("- **ID:** {}\n", report.assertion.id));
     md.push_str(&format!("- **Type:** {}\n", report.assertion.kind));
     md.push_str(&format!("- **Location:** {}\n", report.assertion.location));
-    md.push_str(&format!("- **Description:** {}\n\n", report.assertion.description));
+    md.push_str(&format!(
+        "- **Description:** {}\n\n",
+        report.assertion.description
+    ));
 
     // Timeline
     md.push_str("## Timeline\n\n");
@@ -69,7 +72,8 @@ fn format_triage_markdown(report: &TriageReport) -> String {
     md.push_str("| Tick | VM | Event |\n");
     md.push_str("|------|-------|-------|\n");
     for entry in &report.timeline {
-        let vm = entry.vm_index
+        let vm = entry
+            .vm_index
             .map(|i| format!("VM{}", i))
             .unwrap_or_else(|| "-".to_string());
         md.push_str(&format!("| {} | {} | {} |\n", entry.tick, vm, entry.event));
@@ -102,7 +106,10 @@ fn format_triage_markdown(report: &TriageReport) -> String {
     } else {
         md.push_str("2. **Start from:** beginning\n");
     }
-    md.push_str(&format!("3. **Run for:** {} ticks\n\n", report.reproduction.ticks_to_bug));
+    md.push_str(&format!(
+        "3. **Run for:** {} ticks\n\n",
+        report.reproduction.ticks_to_bug
+    ));
 
     md.push_str("**Fault schedule (JSON):**\n\n");
     md.push_str("```json\n");
@@ -130,8 +137,10 @@ pub fn load_triage_json(path: &Path) -> Result<TriageReport, SerializeError> {
 mod tests {
     use super::*;
     use crate::checkpoint::CheckpointStore;
-    use crate::recording::{RecordingConfig, RecordedEvent};
-    use crate::triage::{AssertionInfo, TimelineEntry, VmStateSnapshot, ReproductionInfo, Severity};
+    use crate::recording::{RecordedEvent, RecordingConfig};
+    use crate::triage::{
+        AssertionInfo, ReproductionInfo, Severity, TimelineEntry, VmStateSnapshot,
+    };
     use chaoscontrol_fault::schedule::FaultSchedule;
     use tempfile::TempDir;
 
@@ -151,9 +160,10 @@ mod tests {
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),
             seed: 42,
-            events: vec![
-                RecordedEvent::FaultFired { tick: 100, fault: "Test".to_string() },
-            ],
+            events: vec![RecordedEvent::FaultFired {
+                tick: 100,
+                fault: "Test".to_string(),
+            }],
             oracle_report: None,
             total_ticks: 5000,
         }
@@ -182,14 +192,12 @@ mod tests {
                 },
             ],
             schedule_description: "2 faults over 5000 ticks".to_string(),
-            vm_states: vec![
-                VmStateSnapshot {
-                    vm_index: 0,
-                    status: "Running".to_string(),
-                    rip: 0x1000,
-                    serial_tail: "last output...".to_string(),
-                },
-            ],
+            vm_states: vec![VmStateSnapshot {
+                vm_index: 0,
+                status: "Running".to_string(),
+                rip: 0x1000,
+                serial_tail: "last output...".to_string(),
+            }],
             reproduction: ReproductionInfo {
                 seed: 42,
                 schedule_json: "{}".to_string(),

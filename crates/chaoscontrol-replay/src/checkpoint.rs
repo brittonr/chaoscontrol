@@ -46,10 +46,7 @@ impl CheckpointStore {
 
     /// Find the checkpoint at or just before the given tick.
     pub fn at_or_before(&self, tick: u64) -> Option<&Checkpoint> {
-        self.checkpoints
-            .iter()
-            .rev()
-            .find(|cp| cp.tick <= tick)
+        self.checkpoints.iter().rev().find(|cp| cp.tick <= tick)
     }
 
     /// Get checkpoint by ID.
@@ -99,7 +96,7 @@ mod tests {
         let mut store = CheckpointStore::new();
         store.push(make_checkpoint(0, 100));
         store.push(make_checkpoint(1, 200));
-        
+
         assert_eq!(store.len(), 2);
     }
 
@@ -109,7 +106,7 @@ mod tests {
         store.push(make_checkpoint(1, 200));
         store.push(make_checkpoint(0, 100));
         store.push(make_checkpoint(2, 150));
-        
+
         let all = store.all();
         assert_eq!(all[0].tick, 100);
         assert_eq!(all[1].tick, 150);
@@ -122,7 +119,7 @@ mod tests {
         store.push(make_checkpoint(0, 100));
         store.push(make_checkpoint(1, 200));
         store.push(make_checkpoint(2, 300));
-        
+
         assert_eq!(store.at_or_before(50).map(|c| c.tick), None);
         assert_eq!(store.at_or_before(100).map(|c| c.tick), Some(100));
         assert_eq!(store.at_or_before(150).map(|c| c.tick), Some(100));
@@ -137,7 +134,7 @@ mod tests {
         let mut store = CheckpointStore::new();
         store.push(make_checkpoint(10, 100));
         store.push(make_checkpoint(20, 200));
-        
+
         assert!(store.get(10).is_some());
         assert!(store.get(20).is_some());
         assert!(store.get(30).is_none());
@@ -148,7 +145,7 @@ mod tests {
         let mut store = CheckpointStore::new();
         store.push(make_checkpoint(0, 100));
         store.push(make_checkpoint(1, 200));
-        
+
         let all = store.all();
         assert_eq!(all.len(), 2);
     }

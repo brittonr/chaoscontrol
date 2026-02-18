@@ -1,6 +1,6 @@
 //! Automatic bug triage and report generation.
 
-use crate::recording::{Recording, RecordedEvent};
+use crate::recording::{RecordedEvent, Recording};
 use serde::{Deserialize, Serialize};
 
 /// Automatically generates triage reports for bugs.
@@ -11,7 +11,13 @@ impl TriageEngine {
     pub fn triage(recording: &Recording, bug_id: u64) -> Option<TriageReport> {
         // Find the bug event
         let bug_event = recording.events.iter().find_map(|e| {
-            if let RecordedEvent::BugDetected { tick, bug_id: id, description, checkpoint_id } = e {
+            if let RecordedEvent::BugDetected {
+                tick,
+                bug_id: id,
+                description,
+                checkpoint_id,
+            } = e
+            {
                 if *id == bug_id {
                     return Some((*tick, description.clone(), *checkpoint_id));
                 }
@@ -22,28 +28,40 @@ impl TriageEngine {
         let (bug_tick, description, checkpoint_id) = bug_event;
 
         // Find the related assertion
-        let assertion = recording.events.iter().find_map(|e| {
-            if let RecordedEvent::AssertionHit { tick, assertion_id, location, passed, .. } = e {
-                if *tick <= bug_tick && !passed {
-                    return Some(AssertionInfo {
-                        id: *assertion_id,
-                        location: location.clone(),
-                        kind: "always".to_string(), // Would need to track assertion types
-                        description: description.clone(),
-                    });
+        let assertion = recording
+            .events
+            .iter()
+            .find_map(|e| {
+                if let RecordedEvent::AssertionHit {
+                    tick,
+                    assertion_id,
+                    location,
+                    passed,
+                    ..
+                } = e
+                {
+                    if *tick <= bug_tick && !passed {
+                        return Some(AssertionInfo {
+                            id: *assertion_id,
+                            location: location.clone(),
+                            kind: "always".to_string(), // Would need to track assertion types
+                            description: description.clone(),
+                        });
+                    }
                 }
-            }
-            None
-        }).unwrap_or_else(|| AssertionInfo {
-            id: 0,
-            location: "unknown".to_string(),
-            kind: "unknown".to_string(),
-            description: description.clone(),
-        });
+                None
+            })
+            .unwrap_or_else(|| AssertionInfo {
+                id: 0,
+                location: "unknown".to_string(),
+                kind: "unknown".to_string(),
+                description: description.clone(),
+            });
 
         // Build timeline: events leading up to the bug
         let timeline_start = bug_tick.saturating_sub(1000);
-        let timeline: Vec<_> = recording.events
+        let timeline: Vec<_> = recording
+            .events
             .iter()
             .filter(|e| {
                 let tick = event_tick(e);
@@ -85,7 +103,9 @@ impl TriageEngine {
         );
 
         let ticks_to_bug = if let Some(cp_id) = checkpoint_id {
-            recording.checkpoints.get(cp_id)
+            recording
+                .checkpoints
+                .get(cp_id)
                 .map(|cp| bug_tick.saturating_sub(cp.tick))
                 .unwrap_or(bug_tick)
         } else {
@@ -101,10 +121,7 @@ impl TriageEngine {
 
         let summary = format!(
             "Bug #{}: {} at tick {} ({})",
-            bug_id,
-            assertion.description,
-            bug_tick,
-            assertion.location
+            bug_id, assertion.description, bug_tick, assertion.location
         );
 
         let schedule_description = format!(
@@ -223,10 +240,24 @@ fn event_vm_index(event: &RecordedEvent) -> Option<usize> {
 fn format_event(event: &RecordedEvent) -> String {
     match event {
         RecordedEvent::FaultFired { fault, .. } => format!("Fault fired: {}", fault),
-        RecordedEvent::AssertionHit { assertion_id, location, passed, .. } => {
-            format!("Assertion {}: {} ({})", assertion_id, location, if *passed { "PASS" } else { "FAIL" })
+        RecordedEvent::AssertionHit {
+            assertion_id,
+            location,
+            passed,
+            ..
+        } => {
+            format!(
+                "Assertion {}: {} ({})",
+                assertion_id,
+                location,
+                if *passed { "PASS" } else { "FAIL" }
+            )
         }
-        RecordedEvent::VmStatusChange { old_status, new_status, .. } => {
+        RecordedEvent::VmStatusChange {
+            old_status,
+            new_status,
+            ..
+        } => {
             format!("VM status: {} → {}", old_status, new_status)
         }
         RecordedEvent::SerialOutput { data, .. } => {
@@ -245,7 +276,9 @@ fn format_event(event: &RecordedEvent) -> String {
 
 fn get_serial_tail(recording: &Recording, vm_index: usize, _tick: u64) -> String {
     // Get the most recent checkpoint serial output
-    recording.checkpoints.all()
+    recording
+        .checkpoints
+        .all()
         .last()
         .and_then(|cp| cp.serial_output.get(vm_index))
         .map(|s| {
@@ -314,10 +347,10 @@ mod tests {
     fn test_triage_engine_generates_report() {
         let recording = test_recording();
         let report = TriageEngine::triage(&recording, 1);
-        
+
         assert!(report.is_some());
         let report = report.unwrap();
-        
+
         assert_eq!(report.bug_id, 1);
         assert!(report.summary.contains("Leader election failed"));
         assert_eq!(report.severity, Severity::Critical);
@@ -327,7 +360,7 @@ mod tests {
     fn test_triage_engine_missing_bug() {
         let recording = test_recording();
         let report = TriageEngine::triage(&recording, 999);
-        
+
         assert!(report.is_none());
     }
 
@@ -335,13 +368,19 @@ mod tests {
     fn test_triage_report_timeline() {
         let recording = test_recording();
         let report = TriageEngine::triage(&recording, 1).unwrap();
-        
+
         // Timeline should include events leading to bug
         assert!(report.timeline.len() >= 2);
-        
-        let has_fault = report.timeline.iter().any(|e| e.event.contains("NetworkPartition"));
-        let has_assertion = report.timeline.iter().any(|e| e.event.contains("Assertion"));
-        
+
+        let has_fault = report
+            .timeline
+            .iter()
+            .any(|e| e.event.contains("NetworkPartition"));
+        let has_assertion = report
+            .timeline
+            .iter()
+            .any(|e| e.event.contains("Assertion"));
+
         assert!(has_fault);
         assert!(has_assertion);
     }
@@ -350,7 +389,7 @@ mod tests {
     fn test_triage_report_vm_states() {
         let recording = test_recording();
         let report = TriageEngine::triage(&recording, 1).unwrap();
-        
+
         assert_eq!(report.vm_states.len(), 2);
         assert_eq!(report.vm_states[0].vm_index, 0);
         assert_eq!(report.vm_states[1].vm_index, 1);
@@ -360,7 +399,7 @@ mod tests {
     fn test_triage_report_reproduction() {
         let recording = test_recording();
         let report = TriageEngine::triage(&recording, 1).unwrap();
-        
+
         assert_eq!(report.reproduction.seed, 42);
         assert_eq!(report.reproduction.start_checkpoint_id, Some(0));
         assert!(report.reproduction.schedule_json.contains("{")); // Valid JSON
@@ -376,7 +415,10 @@ mod tests {
 
     #[test]
     fn test_format_event() {
-        let fault = RecordedEvent::FaultFired { tick: 100, fault: "Test".to_string() };
+        let fault = RecordedEvent::FaultFired {
+            tick: 100,
+            fault: "Test".to_string(),
+        };
         let formatted = format_event(&fault);
         assert!(formatted.contains("Fault fired"));
         assert!(formatted.contains("Test"));
@@ -396,8 +438,16 @@ mod tests {
     #[test]
     fn test_event_tick_extraction() {
         let events = vec![
-            RecordedEvent::FaultFired { tick: 100, fault: "test".to_string() },
-            RecordedEvent::BugDetected { tick: 200, bug_id: 1, description: "bug".to_string(), checkpoint_id: None },
+            RecordedEvent::FaultFired {
+                tick: 100,
+                fault: "test".to_string(),
+            },
+            RecordedEvent::BugDetected {
+                tick: 200,
+                bug_id: 1,
+                description: "bug".to_string(),
+                checkpoint_id: None,
+            },
         ];
 
         assert_eq!(event_tick(&events[0]), 100);
@@ -406,7 +456,10 @@ mod tests {
 
     #[test]
     fn test_event_vm_index_extraction() {
-        let fault = RecordedEvent::FaultFired { tick: 100, fault: "test".to_string() };
+        let fault = RecordedEvent::FaultFired {
+            tick: 100,
+            fault: "test".to_string(),
+        };
         assert_eq!(event_vm_index(&fault), None);
 
         let assertion = RecordedEvent::AssertionHit {

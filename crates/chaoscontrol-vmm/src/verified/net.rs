@@ -22,10 +22,10 @@
 /// ```
 pub fn is_local_unicast_mac(mac: &[u8; 6]) -> bool {
     let result = (mac[0] & 0x01) == 0 && (mac[0] & 0x02) != 0;
-    
+
     // Tiger Style: positive and negative assertions
     debug_assert!(result == ((mac[0] & 0x03) == 0x02));
-    
+
     result
 }
 

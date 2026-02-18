@@ -64,18 +64,18 @@
 //! All exploration is deterministic given the same seed. The explorer uses
 //! seeded RNGs throughout and avoids HashMaps (using BTreeMap instead).
 
-pub mod coverage;
 pub mod corpus;
+pub mod coverage;
 pub mod explorer;
 pub mod frontier;
 pub mod mutator;
 pub mod report;
 
 // Re-export main types for convenience
-pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
+pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 pub use explorer::{
-    BranchResult, ExploreError, Explorer, ExplorerConfig, ExplorationReport, ExplorationStats,
+    BranchResult, ExplorationReport, ExplorationStats, ExploreError, Explorer, ExplorerConfig,
     RoundReport,
 };
 pub use frontier::{Frontier, FrontierEntry};

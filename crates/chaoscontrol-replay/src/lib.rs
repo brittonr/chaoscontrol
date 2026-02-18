@@ -160,9 +160,7 @@ pub mod triage;
 // Re-export main types for convenience
 pub use checkpoint::{Checkpoint, CheckpointStore};
 pub use debugger::{DebugState, Debugger, EventFilter, RegisterState};
-pub use recording::{
-    RecordedEvent, Recorder, Recording, RecordingConfig,
-};
+pub use recording::{RecordedEvent, Recorder, Recording, RecordingConfig};
 pub use replay::{
     MemoryModification, RealSimulationRunner, ReplayEngine, ReplayError, ReplayResult,
     SimulationRunner,
@@ -184,7 +182,7 @@ mod tests {
     fn test_module_exports() {
         // Verify all main types are accessible
         let _checkpoint_store = CheckpointStore::new();
-        
+
         // RecordingConfig
         let _config = RecordingConfig {
             num_vms: 2,
@@ -206,7 +204,7 @@ mod tests {
     #[test]
     fn test_recording_workflow() {
         use chaoscontrol_fault::schedule::FaultSchedule;
-        
+
         let config = RecordingConfig {
             num_vms: 2,
             vm_memory_size: 256 * 1024 * 1024,
@@ -219,7 +217,7 @@ mod tests {
 
         let schedule = FaultSchedule::new();
         let recorder = Recorder::new(config, schedule, 42);
-        
+
         assert_eq!(recorder.recording().seed, 42);
         assert_eq!(recorder.recording().total_ticks, 0);
     }
@@ -228,7 +226,7 @@ mod tests {
     fn test_checkpoint_store_basic() {
         let mut store = CheckpointStore::new();
         assert!(store.is_empty());
-        
+
         let cp = Checkpoint {
             id: 0,
             tick: 100,
@@ -236,7 +234,7 @@ mod tests {
             serial_output: vec![],
             events_since_last: vec![],
         };
-        
+
         store.push(cp);
         assert_eq!(store.len(), 1);
     }
@@ -247,7 +245,7 @@ mod tests {
             tick: 100,
             fault: "test".to_string(),
         };
-        
+
         assert!(EventFilter::AnyFault.matches(&fault));
         assert!(!EventFilter::AnyAssertion.matches(&fault));
     }

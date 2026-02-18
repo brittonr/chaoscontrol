@@ -304,11 +304,7 @@ impl fmt::Display for TraceEvent {
                 index,
                 data,
             } => {
-                write!(
-                    f,
-                    "MSR   {} index={:#x} data={:#x}",
-                    direction, index, data,
-                )
+                write!(f, "MSR   {} index={:#x} data={:#x}", direction, index, data,)
             }
             EventKind::KvmInjVirq {
                 vector,
@@ -339,11 +335,7 @@ impl fmt::Display for TraceEvent {
                     fault_address, error_code, guest_rip,
                 )
             }
-            EventKind::KvmCr {
-                direction,
-                cr,
-                val,
-            } => {
+            EventKind::KvmCr { direction, cr, val } => {
                 write!(f, "CR    {} cr{}={:#x}", direction, cr, val)
             }
             EventKind::KvmCpuid {

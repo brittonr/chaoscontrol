@@ -214,9 +214,7 @@ fn cmd_verify(trace_a: String, trace_b: String, filter: Option<String>) {
 
     let result = if let Some(ref f) = filter {
         let types = parse_event_filter(f);
-        DeterminismVerifier::compare_filtered(&log_a, &log_b, &|e| {
-            types.contains(&e.event_type())
-        })
+        DeterminismVerifier::compare_filtered(&log_a, &log_b, &|e| types.contains(&e.event_type()))
     } else {
         DeterminismVerifier::compare(&log_a, &log_b)
     };

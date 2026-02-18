@@ -66,8 +66,7 @@ impl FaultSchedule {
     /// Advances the internal cursor past any returned faults.
     pub fn drain_due(&mut self, current_time_ns: u64) -> Vec<ScheduledFault> {
         let mut due = Vec::new();
-        while self.cursor < self.faults.len()
-            && self.faults[self.cursor].time_ns <= current_time_ns
+        while self.cursor < self.faults.len() && self.faults[self.cursor].time_ns <= current_time_ns
         {
             due.push(self.faults[self.cursor].clone());
             self.cursor += 1;
@@ -192,18 +191,9 @@ mod tests {
     #[test]
     fn faults_sorted_by_time() {
         let mut sched = FaultSchedule::new();
-        sched.add(ScheduledFault::new(
-            3000,
-            Fault::ProcessKill { target: 0 },
-        ));
-        sched.add(ScheduledFault::new(
-            1000,
-            Fault::NetworkHeal,
-        ));
-        sched.add(ScheduledFault::new(
-            2000,
-            Fault::DiskFull { target: 1 },
-        ));
+        sched.add(ScheduledFault::new(3000, Fault::ProcessKill { target: 0 }));
+        sched.add(ScheduledFault::new(1000, Fault::NetworkHeal));
+        sched.add(ScheduledFault::new(2000, Fault::DiskFull { target: 1 }));
 
         assert_eq!(sched.next_time(), Some(1000));
         assert_eq!(sched.remaining(), 3);

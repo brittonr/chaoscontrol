@@ -244,19 +244,21 @@ fn cmd_run(
 
 fn run_with_progress(
     explorer: &mut Explorer,
-) -> Result<chaoscontrol_explore::explorer::ExplorationReport, chaoscontrol_explore::explorer::ExploreError>
-{
+) -> Result<
+    chaoscontrol_explore::explorer::ExplorationReport,
+    chaoscontrol_explore::explorer::ExploreError,
+> {
     // We need to manually run the exploration loop to inject progress output
     // Since Explorer::run() doesn't expose round-by-round progress, we'll
     // use the stats() method to track progress after each internal step.
-    
+
     // For now, just call run() and poll stats periodically if we could.
     // But Explorer::run() is blocking, so we'll just run it and report at the end.
     // To get per-round progress, we'd need Explorer to have a callback or iterator.
-    
+
     // Actually, looking at the Explorer implementation, it uses log::info! internally
     // for progress. So with env_logger, that will show progress automatically.
-    
+
     // Let's just call run() - the internal logging will show progress
     explorer.run()
 }

@@ -4,8 +4,8 @@
 //! it to begin fault injection at the right time and to correlate events
 //! across multiple VMs.
 
-use chaoscontrol_protocol::*;
 use crate::transport;
+use chaoscontrol_protocol::*;
 
 /// Signal that workload setup is complete and testing may begin.
 ///
@@ -25,7 +25,13 @@ use crate::transport;
 /// // Faults may now be injected
 /// ```
 pub fn setup_complete(details: &[(&str, &str)]) {
-    transport::hypercall(CMD_LIFECYCLE_SETUP_COMPLETE, 0, 0, "setup_complete", details);
+    transport::hypercall(
+        CMD_LIFECYCLE_SETUP_COMPLETE,
+        0,
+        0,
+        "setup_complete",
+        details,
+    );
 }
 
 /// Emit a named structured event.

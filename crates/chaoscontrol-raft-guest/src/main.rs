@@ -145,12 +145,15 @@ impl Node {
         let mut outbox = Vec::new();
         for peer in 0..NUM_NODES {
             if peer != self.id {
-                outbox.push((peer, Message::RequestVote {
-                    term: self.current_term,
-                    candidate_id: self.id,
-                    last_log_index: self.last_log_index(),
-                    last_log_term: self.last_log_term(),
-                }));
+                outbox.push((
+                    peer,
+                    Message::RequestVote {
+                        term: self.current_term,
+                        candidate_id: self.id,
+                        last_log_index: self.last_log_index(),
+                        last_log_term: self.last_log_term(),
+                    },
+                ));
             }
         }
         outbox
@@ -189,14 +192,17 @@ impl Node {
             } else {
                 Vec::new()
             };
-            outbox.push((peer, Message::AppendEntries {
-                term: self.current_term,
-                leader_id: self.id,
-                prev_log_index,
-                prev_log_term,
-                entries,
-                leader_commit: self.commit_index,
-            }));
+            outbox.push((
+                peer,
+                Message::AppendEntries {
+                    term: self.current_term,
+                    leader_id: self.id,
+                    prev_log_index,
+                    prev_log_term,
+                    entries,
+                    leader_commit: self.commit_index,
+                },
+            ));
         }
         outbox
     }
@@ -206,7 +212,12 @@ impl Node {
         let mut outbox = Vec::new();
 
         match msg {
-            Message::RequestVote { term, candidate_id, last_log_index, last_log_term } => {
+            Message::RequestVote {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => {
                 if term > self.current_term {
                     self.become_follower(term);
                 }
@@ -222,10 +233,13 @@ impl Node {
                     coverage::record_edge(3000 + self.id * 10 + candidate_id);
                 }
 
-                outbox.push((from, Message::RequestVoteResponse {
-                    term: self.current_term,
-                    vote_granted,
-                }));
+                outbox.push((
+                    from,
+                    Message::RequestVoteResponse {
+                        term: self.current_term,
+                        vote_granted,
+                    },
+                ));
             }
 
             Message::RequestVoteResponse { term, vote_granted } => {
@@ -241,16 +255,26 @@ impl Node {
                 }
             }
 
-            Message::AppendEntries { term, leader_id, prev_log_index, prev_log_term, entries, leader_commit } => {
+            Message::AppendEntries {
+                term,
+                leader_id,
+                prev_log_index,
+                prev_log_term,
+                entries,
+                leader_commit,
+            } => {
                 let _ = leader_id; // Raft protocol field; used for redirect in full impl
                 if term > self.current_term {
                     self.become_follower(term);
                 } else if term < self.current_term {
-                    outbox.push((from, Message::AppendEntriesResponse {
-                        term: self.current_term,
-                        success: false,
-                        match_index: 0,
-                    }));
+                    outbox.push((
+                        from,
+                        Message::AppendEntriesResponse {
+                            term: self.current_term,
+                            success: false,
+                            match_index: 0,
+                        },
+                    ));
                     return outbox;
                 }
 
@@ -269,11 +293,14 @@ impl Node {
                 };
 
                 if !log_ok {
-                    outbox.push((from, Message::AppendEntriesResponse {
-                        term: self.current_term,
-                        success: false,
-                        match_index: 0,
-                    }));
+                    outbox.push((
+                        from,
+                        Message::AppendEntriesResponse {
+                            term: self.current_term,
+                            success: false,
+                            match_index: 0,
+                        },
+                    ));
                     return outbox;
                 }
 
@@ -300,14 +327,21 @@ impl Node {
                     }
                 }
 
-                outbox.push((from, Message::AppendEntriesResponse {
-                    term: self.current_term,
-                    success: true,
-                    match_index: self.log.len(),
-                }));
+                outbox.push((
+                    from,
+                    Message::AppendEntriesResponse {
+                        term: self.current_term,
+                        success: true,
+                        match_index: self.log.len(),
+                    },
+                ));
             }
 
-            Message::AppendEntriesResponse { term, success, match_index } => {
+            Message::AppendEntriesResponse {
+                term,
+                success,
+                match_index,
+            } => {
                 if term > self.current_term {
                     self.become_follower(term);
                     return outbox;
@@ -555,8 +589,12 @@ fn main() {
                 "raft: tick={} leader={:?} terms=[{},{},{}] commits=[{},{},{}] proposed={}",
                 tick,
                 leader_id,
-                nodes[0].current_term, nodes[1].current_term, nodes[2].current_term,
-                nodes[0].commit_index, nodes[1].commit_index, nodes[2].commit_index,
+                nodes[0].current_term,
+                nodes[1].current_term,
+                nodes[2].current_term,
+                nodes[0].commit_index,
+                nodes[1].commit_index,
+                nodes[2].commit_index,
                 values_proposed,
             );
         }

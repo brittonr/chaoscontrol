@@ -142,7 +142,7 @@ impl NetworkFabric {
     fn new(num_vms: usize, seed: u64) -> Self {
         let mut rng_key = [0u8; 32];
         // Derive network RNG from seed + a domain separator
-        let derived = seed.wrapping_add(0x4E45_5446_4142);  // "NETFAB" as hex
+        let derived = seed.wrapping_add(0x4E45_5446_4142); // "NETFAB" as hex
         rng_key[..8].copy_from_slice(&derived.to_le_bytes());
         Self {
             partitions: Vec::new(),
@@ -180,13 +180,7 @@ impl NetworkFabric {
     /// 3. Packet corruption — flip a random byte with probability
     /// 4. Packet reorder — randomize delivery time within window
     /// 5. Latency — add sender/receiver latency to delivery time
-    pub fn send(
-        &mut self,
-        from: usize,
-        to: usize,
-        data: Vec<u8>,
-        current_tick: u64,
-    ) -> bool {
+    pub fn send(&mut self, from: usize, to: usize, data: Vec<u8>, current_tick: u64) -> bool {
         // 1. Partition check
         if !self.can_reach(from, to) {
             debug!("Message from VM{} to VM{} dropped by partition", from, to);
@@ -200,7 +194,10 @@ impl NetworkFabric {
         if loss_rate > 0 {
             let roll = (self.rng.next_u64() % 1_000_000) as u32;
             if roll < loss_rate {
-                debug!("Message from VM{} to VM{} dropped by packet loss ({}ppm)", from, to, loss_rate);
+                debug!(
+                    "Message from VM{} to VM{} dropped by packet loss ({}ppm)",
+                    from, to, loss_rate
+                );
                 return false;
             }
         }
@@ -216,7 +213,10 @@ impl NetworkFabric {
                 let byte_idx = (self.rng.next_u64() as usize) % data.len();
                 let flip = (self.rng.next_u64() & 0xFF) as u8 | 1; // At least 1 bit flipped
                 data[byte_idx] ^= flip;
-                debug!("Message from VM{} to VM{} corrupted at byte {}", from, to, byte_idx);
+                debug!(
+                    "Message from VM{} to VM{} corrupted at byte {}",
+                    from, to, byte_idx
+                );
             }
         }
 
@@ -233,7 +233,10 @@ impl NetworkFabric {
         if reorder_win > 0 {
             let jitter = self.rng.next_u64() % (reorder_win + 1);
             deliver_at_tick += jitter;
-            debug!("Message from VM{} to VM{} reordered by {} ticks", from, to, jitter);
+            debug!(
+                "Message from VM{} to VM{} reordered by {} ticks",
+                from, to, jitter
+            );
         }
 
         self.in_flight.push(NetworkMessage {
@@ -351,16 +354,13 @@ impl SimulationController {
         let mut vms = Vec::with_capacity(config.num_vms);
         for i in 0..config.num_vms {
             info!("Creating VM{}", i);
-            
+
             // Derive per-VM seed from master seed and VM index
             let mut vm_config = config.vm_config.clone();
             vm_config.cpu.seed = config.seed.wrapping_add(i as u64);
 
             let mut vm = DeterministicVm::new(vm_config)?;
-            vm.load_kernel(
-                &config.kernel_path,
-                config.initrd_path.as_deref(),
-            )?;
+            vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;
 
             // Take initial snapshot for restart capability
             let initial_snapshot = vm.snapshot()?;
@@ -391,11 +391,14 @@ impl SimulationController {
     /// Run the simulation for up to `num_ticks` scheduling rounds.
     pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, VmError> {
         let stop_at = self.tick + num_ticks;
-        info!("Running simulation for {} ticks (tick {}→{})", num_ticks, self.tick, stop_at);
+        info!(
+            "Running simulation for {} ticks (tick {}→{})",
+            num_ticks, self.tick, stop_at
+        );
 
         while self.tick < stop_at {
             let result = self.step_round()?;
-            
+
             if result.vms_running == 0 {
                 info!("All VMs halted at tick {}", self.tick);
                 break;
@@ -475,7 +478,7 @@ impl SimulationController {
         let current_time_ns = self.tick * 1_000_000; // Convert ticks to nanoseconds
         let faults = self.fault_engine.poll_faults(current_time_ns);
         let faults_fired = faults.clone();
-        
+
         for fault in faults {
             self.apply_fault(&fault)?;
         }
@@ -518,7 +521,10 @@ impl SimulationController {
             Fault::PacketReorder { target, window_ns } => {
                 // Convert nanoseconds to ticks (1 tick = 1_000_000 ns)
                 let window_ticks = window_ns / 1_000_000;
-                info!("PacketReorder: VM{} window {} ns ({} ticks)", target, window_ns, window_ticks);
+                info!(
+                    "PacketReorder: VM{} window {} ns ({} ticks)",
+                    target, window_ns, window_ticks
+                );
                 self.network.set_reorder_window(*target, window_ticks);
             }
 
@@ -535,13 +541,25 @@ impl SimulationController {
                     slot.disk_faults.error_rate = 1.0;
                 }
             }
-            Fault::DiskTornWrite { target, offset, bytes_written } => {
-                warn!("DiskTornWrite fault not yet implemented: VM{}, offset {:#x}, {} bytes", 
-                      target, offset, bytes_written);
+            Fault::DiskTornWrite {
+                target,
+                offset,
+                bytes_written,
+            } => {
+                warn!(
+                    "DiskTornWrite fault not yet implemented: VM{}, offset {:#x}, {} bytes",
+                    target, offset, bytes_written
+                );
             }
-            Fault::DiskCorruption { target, offset, len } => {
-                warn!("DiskCorruption fault not yet implemented: VM{}, offset {:#x}, {} bytes", 
-                      target, offset, len);
+            Fault::DiskCorruption {
+                target,
+                offset,
+                len,
+            } => {
+                warn!(
+                    "DiskCorruption fault not yet implemented: VM{}, offset {:#x}, {} bytes",
+                    target, offset, len
+                );
             }
             Fault::DiskFull { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
@@ -558,13 +576,18 @@ impl SimulationController {
                     // Can be restarted later with ProcessRestart
                 }
             }
-            Fault::ProcessPause { target, duration_ns } => {
+            Fault::ProcessPause {
+                target,
+                duration_ns,
+            } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
                     // Convert duration_ns to ticks (1 tick = 1_000_000 ns), minimum 1 tick
                     let pause_ticks = (*duration_ns / 1_000_000).max(1);
                     let resume_at = self.tick + pause_ticks;
-                    info!("ProcessPause: VM{} paused for {} ns ({} ticks), resume at tick {}", 
-                          target, duration_ns, pause_ticks, resume_at);
+                    info!(
+                        "ProcessPause: VM{} paused for {} ns ({} ticks), resume at tick {}",
+                        target, duration_ns, pause_ticks, resume_at
+                    );
                     slot.status = VmStatus::Paused;
                 }
                 // Schedule automatic resume after duration
@@ -596,10 +619,17 @@ impl SimulationController {
             }
 
             // ── Resource faults ──
-            Fault::MemoryPressure { target, limit_bytes } => {
+            Fault::MemoryPressure {
+                target,
+                limit_bytes,
+            } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("MemoryPressure: VM{} limited to {} bytes ({} MB)", 
-                          target, limit_bytes, limit_bytes / (1024 * 1024));
+                    info!(
+                        "MemoryPressure: VM{} limited to {} bytes ({} MB)",
+                        target,
+                        limit_bytes,
+                        limit_bytes / (1024 * 1024)
+                    );
                     slot.memory_limit_bytes = Some(*limit_bytes);
                 }
             }
@@ -611,7 +641,10 @@ impl SimulationController {
     /// Schedule a VM restart at a future tick.
     fn schedule_restart(&mut self, target: usize, restart_at_tick: u64) -> Result<(), VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
-            info!("VM{} scheduled to restart at tick {}", target, restart_at_tick);
+            info!(
+                "VM{} scheduled to restart at tick {}",
+                target, restart_at_tick
+            );
             slot.status = VmStatus::Restarting { restart_at_tick };
         }
         Ok(())
@@ -621,7 +654,10 @@ impl SimulationController {
     fn schedule_resume(&mut self, target: usize, resume_at_tick: u64) -> Result<(), VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
             if slot.status == VmStatus::Paused {
-                info!("VM{} scheduled to resume at tick {}", target, resume_at_tick);
+                info!(
+                    "VM{} scheduled to resume at tick {}",
+                    target, resume_at_tick
+                );
                 slot.status = VmStatus::Resuming { resume_at_tick };
             }
         }
@@ -630,7 +666,9 @@ impl SimulationController {
 
     /// Restart a VM from its initial snapshot.
     fn restart_vm(&mut self, target: usize) -> Result<(), VmError> {
-        let slot = self.vms.get_mut(target)
+        let slot = self
+            .vms
+            .get_mut(target)
             .ok_or_else(|| VmError::Snapshot(format!("VM{} not found", target)))?;
 
         if let Some(snapshot) = &slot.initial_snapshot {
@@ -671,7 +709,7 @@ impl SimulationController {
     /// Snapshot all VMs and simulation state.
     pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
-        
+
         for slot in &self.vms {
             let vm_snapshot = slot.vm.snapshot()?;
             vm_snapshots.push((vm_snapshot, slot.status));
@@ -688,9 +726,7 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
         if snapshot.vm_snapshots.len() != self.vms.len() {
-            return Err(VmError::Snapshot(
-                "Snapshot VM count mismatch".to_string()
-            ));
+            return Err(VmError::Snapshot("Snapshot VM count mismatch".to_string()));
         }
 
         self.tick = snapshot.tick;
@@ -702,7 +738,10 @@ impl SimulationController {
             self.vms[i].status = *status;
         }
 
-        info!("Restored simulation state from snapshot at tick {}", self.tick);
+        info!(
+            "Restored simulation state from snapshot at tick {}",
+            self.tick
+        );
         Ok(())
     }
 
@@ -933,7 +972,10 @@ mod tests {
         // With reorder window, delivery ticks should vary
         let ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
         let all_same = ticks.iter().all(|&t| t == ticks[0]);
-        assert!(!all_same, "Reorder window should produce varied delivery ticks");
+        assert!(
+            !all_same,
+            "Reorder window should produce varied delivery ticks"
+        );
     }
 
     #[test]
@@ -972,7 +1014,9 @@ mod tests {
         status = VmStatus::Crashed;
         assert_eq!(status, VmStatus::Crashed);
 
-        status = VmStatus::Restarting { restart_at_tick: 100 };
+        status = VmStatus::Restarting {
+            restart_at_tick: 100,
+        };
         if let VmStatus::Restarting { restart_at_tick } = status {
             assert_eq!(restart_at_tick, 100);
         } else {
@@ -1082,10 +1126,13 @@ mod tests {
     #[ignore]
     fn test_fault_injection_network_partition() {
         let schedule = FaultScheduleBuilder::new()
-            .at_ns(1_000_000, Fault::NetworkPartition {
-                side_a: vec![0],
-                side_b: vec![1],
-            })
+            .at_ns(
+                1_000_000,
+                Fault::NetworkPartition {
+                    side_a: vec![0],
+                    side_b: vec![1],
+                },
+            )
             .build();
 
         let config = SimulationConfig {

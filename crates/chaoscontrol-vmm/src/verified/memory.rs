@@ -284,11 +284,7 @@ pub fn get_base(entry: u64) -> u64 {
         "get_base: result {result:#x} exceeds 32 bits"
     );
     // Postcondition: high 32 bits are zero.
-    debug_assert_eq!(
-        result >> 32,
-        0,
-        "get_base: upper 32 bits must be zero"
-    );
+    debug_assert_eq!(result >> 32, 0, "get_base: upper 32 bits must be zero");
 
     result
 }
@@ -500,11 +496,7 @@ mod tests {
         let flags_g0: u16 = 0x0093; // access=0x93, flags nibble=0x0 (G=0)
         for &limit in &[0x0u32, 0x1, 0xFFFF, 0xFFFFF] {
             let entry = gdt_entry(flags_g0, 0, limit);
-            assert_eq!(
-                get_g(entry),
-                0,
-                "G bit should be 0 for flags {flags_g0:#x}"
-            );
+            assert_eq!(get_g(entry), 0, "G bit should be 0 for flags {flags_g0:#x}");
             assert_eq!(
                 get_limit(entry),
                 limit,
@@ -572,7 +564,12 @@ mod tests {
     fn get_base_fits_in_32_bits() {
         // Exhaustive on interesting values — the extractor must never
         // produce a value wider than 32 bits.
-        for &entry in &[0u64, 0xFFFF_FFFF_FFFF_FFFF, 0xFF00_00FF_FFFF_0000, 0x0000_0000_FFFF_FFFF] {
+        for &entry in &[
+            0u64,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFF00_00FF_FFFF_0000,
+            0x0000_0000_FFFF_FFFF,
+        ] {
             assert!(
                 get_base(entry) <= 0xFFFF_FFFF,
                 "get_base({entry:#x}) = {:#x} exceeds 32 bits",
@@ -586,7 +583,7 @@ mod tests {
         // When G=0, the limit must be at most 0xFFFFF.
         // Build an entry with G=0 and maximum limit bits set.
         let entry_max_limit: u64 = 0x000F_0000_0000_FFFF; // bits [51:48]=0xF, [15:0]=0xFFFF
-        // But G (bit 55) is 0 in this value.
+                                                          // But G (bit 55) is 0 in this value.
         assert_eq!(get_g(entry_max_limit), 0);
         assert_eq!(get_limit(entry_max_limit), 0xFFFFF);
     }
@@ -613,12 +610,13 @@ mod tests {
 
     #[test]
     fn get_dpl_returns_0_to_3() {
-        for &entry in &[0u64, 0xFFFF_FFFF_FFFF_FFFF, 0x0000_2000_0000_0000, 0x0000_6000_0000_0000]
-        {
-            assert!(
-                get_dpl(entry) <= 3,
-                "get_dpl out of range for {entry:#x}"
-            );
+        for &entry in &[
+            0u64,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0x0000_2000_0000_0000,
+            0x0000_6000_0000_0000,
+        ] {
+            assert!(get_dpl(entry) <= 3, "get_dpl out of range for {entry:#x}");
         }
     }
 

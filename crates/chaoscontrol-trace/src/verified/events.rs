@@ -158,13 +158,7 @@ pub fn exit_reason_name(reason: u32) -> &'static str {
 /// - Valid event types (1..=11) produce the corresponding `EventKind` variant.
 /// - Invalid event types produce `EventKind::Unknown`.
 /// - The function is total: it never panics for any input combination.
-pub fn parse_event_kind(
-    event_type: u32,
-    arg0: u64,
-    arg1: u64,
-    arg2: u64,
-    arg3: u64,
-) -> EventKind {
+pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: u64) -> EventKind {
     let result = match event_type_from_u32(event_type) {
         Some(EventType::KvmExit) => EventKind::KvmExit {
             reason: arg0 as u32,
@@ -255,8 +249,7 @@ pub fn parse_event_kind(
 
     // Postcondition: unknown types produce the Unknown variant.
     debug_assert!(
-        event_type_from_u32(event_type).is_some()
-            || matches!(result, EventKind::Unknown { .. }),
+        event_type_from_u32(event_type).is_some() || matches!(result, EventKind::Unknown { .. }),
         "parse_event_kind: unrecognised type must produce Unknown"
     );
 
@@ -366,26 +359,16 @@ pub fn event_kind_eq(a: &EventKind, b: &EventKind) -> bool {
 
         (
             EventKind::KvmPicIrq {
-                chip: c1,
-                pin: p1,
-                ..
+                chip: c1, pin: p1, ..
             },
             EventKind::KvmPicIrq {
-                chip: c2,
-                pin: p2,
-                ..
+                chip: c2, pin: p2, ..
             },
         ) => c1 == c2 && p1 == p2,
 
         (
-            EventKind::KvmSetIrq {
-                gsi: g1,
-                level: l1,
-            },
-            EventKind::KvmSetIrq {
-                gsi: g2,
-                level: l2,
-            },
+            EventKind::KvmSetIrq { gsi: g1, level: l1 },
+            EventKind::KvmSetIrq { gsi: g2, level: l2 },
         ) => g1 == g2 && l1 == l2,
 
         (
@@ -710,18 +693,72 @@ mod tests {
     #[test]
     fn eq_reflexive_all_variants() {
         let variants: Vec<EventKind> = vec![
-            EventKind::KvmExit { reason: 1, guest_rip: 2, info1: 3, info2: 4 },
-            EventKind::KvmEntry { vcpu_id: 0, rip: 0x1000 },
-            EventKind::KvmPio { direction: IoDirection::Write, port: 0x3f8, size: 1, val: 0x48 },
-            EventKind::KvmMmio { direction: IoDirection::Read, len: 4, gpa: 0x1000, val: 42 },
-            EventKind::KvmMsr { direction: IoDirection::Write, index: 0x174, data: 0xdeadbeef },
-            EventKind::KvmInjVirq { vector: 32, soft: true, reinjected: false },
-            EventKind::KvmPicIrq { chip: 0, pin: 1, elcr: 0, imr: 0, coalesced: false },
+            EventKind::KvmExit {
+                reason: 1,
+                guest_rip: 2,
+                info1: 3,
+                info2: 4,
+            },
+            EventKind::KvmEntry {
+                vcpu_id: 0,
+                rip: 0x1000,
+            },
+            EventKind::KvmPio {
+                direction: IoDirection::Write,
+                port: 0x3f8,
+                size: 1,
+                val: 0x48,
+            },
+            EventKind::KvmMmio {
+                direction: IoDirection::Read,
+                len: 4,
+                gpa: 0x1000,
+                val: 42,
+            },
+            EventKind::KvmMsr {
+                direction: IoDirection::Write,
+                index: 0x174,
+                data: 0xdeadbeef,
+            },
+            EventKind::KvmInjVirq {
+                vector: 32,
+                soft: true,
+                reinjected: false,
+            },
+            EventKind::KvmPicIrq {
+                chip: 0,
+                pin: 1,
+                elcr: 0,
+                imr: 0,
+                coalesced: false,
+            },
             EventKind::KvmSetIrq { gsi: 4, level: 1 },
-            EventKind::KvmPageFault { vcpu_id: 0, guest_rip: 0x1000, fault_address: 0x2000, error_code: 1 },
-            EventKind::KvmCr { direction: IoDirection::Write, cr: 0, val: 0x80000001 },
-            EventKind::KvmCpuid { function: 1, index: 0, rax: 1, rbx: 2, rcx: 3, rdx: 4 },
-            EventKind::Unknown { event_type: 99, arg0: 1, arg1: 2, arg2: 3, arg3: 4 },
+            EventKind::KvmPageFault {
+                vcpu_id: 0,
+                guest_rip: 0x1000,
+                fault_address: 0x2000,
+                error_code: 1,
+            },
+            EventKind::KvmCr {
+                direction: IoDirection::Write,
+                cr: 0,
+                val: 0x80000001,
+            },
+            EventKind::KvmCpuid {
+                function: 1,
+                index: 0,
+                rax: 1,
+                rbx: 2,
+                rcx: 3,
+                rdx: 4,
+            },
+            EventKind::Unknown {
+                event_type: 99,
+                arg0: 1,
+                arg1: 2,
+                arg2: 3,
+                arg3: 4,
+            },
         ];
         for (i, v) in variants.iter().enumerate() {
             assert!(
@@ -792,19 +829,54 @@ mod tests {
         // Verify our function agrees with the PartialEq trait impl.
         let cases: Vec<(EventKind, EventKind)> = vec![
             (
-                EventKind::KvmExit { reason: 12, guest_rip: 0x1000, info1: 0, info2: 0 },
-                EventKind::KvmExit { reason: 12, guest_rip: 0x1000, info1: 0, info2: 0 },
+                EventKind::KvmExit {
+                    reason: 12,
+                    guest_rip: 0x1000,
+                    info1: 0,
+                    info2: 0,
+                },
+                EventKind::KvmExit {
+                    reason: 12,
+                    guest_rip: 0x1000,
+                    info1: 0,
+                    info2: 0,
+                },
             ),
             (
-                EventKind::KvmExit { reason: 12, guest_rip: 0x1000, info1: 0, info2: 0 },
-                EventKind::KvmExit { reason: 7, guest_rip: 0x1000, info1: 0, info2: 0 },
+                EventKind::KvmExit {
+                    reason: 12,
+                    guest_rip: 0x1000,
+                    info1: 0,
+                    info2: 0,
+                },
+                EventKind::KvmExit {
+                    reason: 7,
+                    guest_rip: 0x1000,
+                    info1: 0,
+                    info2: 0,
+                },
             ),
             (
-                EventKind::KvmPio { direction: IoDirection::Write, port: 0x3f8, size: 1, val: 0x48 },
-                EventKind::KvmPio { direction: IoDirection::Write, port: 0x3f8, size: 1, val: 0x48 },
+                EventKind::KvmPio {
+                    direction: IoDirection::Write,
+                    port: 0x3f8,
+                    size: 1,
+                    val: 0x48,
+                },
+                EventKind::KvmPio {
+                    direction: IoDirection::Write,
+                    port: 0x3f8,
+                    size: 1,
+                    val: 0x48,
+                },
             ),
             (
-                EventKind::KvmPio { direction: IoDirection::Write, port: 0x3f8, size: 1, val: 0x48 },
+                EventKind::KvmPio {
+                    direction: IoDirection::Write,
+                    port: 0x3f8,
+                    size: 1,
+                    val: 0x48,
+                },
                 EventKind::KvmEntry { vcpu_id: 0, rip: 0 },
             ),
         ];

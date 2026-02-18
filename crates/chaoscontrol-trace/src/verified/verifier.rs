@@ -93,10 +93,7 @@ pub fn describe_divergence(a: &TraceEvent, b: &TraceEvent) -> String {
                 )
             }
         }
-        (
-            EventKind::KvmInjVirq { vector: v1, .. },
-            EventKind::KvmInjVirq { vector: v2, .. },
-        ) => {
+        (EventKind::KvmInjVirq { vector: v1, .. }, EventKind::KvmInjVirq { vector: v2, .. }) => {
             format!("Injected vector differs: A={}, B={}", v1, v2)
         }
         (
@@ -124,10 +121,7 @@ pub fn describe_divergence(a: &TraceEvent, b: &TraceEvent) -> String {
             if i1 != i2 {
                 format!("MSR index differs: A={:#x}, B={:#x}", i1, i2)
             } else {
-                format!(
-                    "MSR data differs for {:#x}: A={:#x}, B={:#x}",
-                    i1, d1, d2
-                )
+                format!("MSR data differs for {:#x}: A={:#x}, B={:#x}", i1, d1, d2)
             }
         }
         _ => format!("Events differ (same type: {})", type_a.name()),
@@ -416,10 +410,7 @@ mod tests {
 
     #[test]
     fn length_mismatch_a_longer() {
-        let a = vec![
-            make_exit(12, 0x1000),
-            make_exit(12, 0x2000),
-        ];
+        let a = vec![make_exit(12, 0x1000), make_exit(12, 0x2000)];
         let b = vec![make_exit(12, 0x1000)];
         let (idx, desc) = find_first_divergence(&a, &b).unwrap();
         assert_eq!(idx, 1, "divergence should be at the end of shorter slice");
@@ -432,10 +423,7 @@ mod tests {
     #[test]
     fn length_mismatch_b_longer() {
         let a = vec![make_exit(12, 0x1000)];
-        let b = vec![
-            make_exit(12, 0x1000),
-            make_exit(12, 0x2000),
-        ];
+        let b = vec![make_exit(12, 0x1000), make_exit(12, 0x2000)];
         let (idx, desc) = find_first_divergence(&a, &b).unwrap();
         assert_eq!(idx, 1);
         assert!(desc.contains("length mismatch"));

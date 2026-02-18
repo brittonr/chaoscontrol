@@ -60,7 +60,7 @@ pub const VIRTIO_MMIO_DEVICE_SIZE: u64 = 0x1000;
 /// Virtqueue descriptor flags (virtio spec §2.7.5).
 const VIRTQ_DESC_F_NEXT: u16 = 1; // Descriptor continues via `next` field
 const VIRTQ_DESC_F_WRITE: u16 = 2; // Buffer is write-only (device writes)
-                                    // const VIRTQ_DESC_F_INDIRECT: u16 = 4;  // Reserved for future use
+                                   // const VIRTQ_DESC_F_INDIRECT: u16 = 4;  // Reserved for future use
 
 /// Device status bits (virtio spec §2.1).
 #[allow(dead_code)]
@@ -243,10 +243,7 @@ impl VirtQueue {
         {
             return false;
         }
-        if mem
-            .write_obj(len, GuestAddress(elem_addr + 4))
-            .is_err()
-        {
+        if mem.write_obj(len, GuestAddress(elem_addr + 4)).is_err() {
             return false;
         }
 
@@ -467,8 +464,8 @@ impl VirtioMmioDevice {
             VIRTIO_MMIO_DRIVER_FEATURES => {
                 let sel = self.driver_features_sel;
                 if sel == 0 {
-                    self.driver_features = (self.driver_features & 0xFFFF_FFFF_0000_0000)
-                        | (val as u64);
+                    self.driver_features =
+                        (self.driver_features & 0xFFFF_FFFF_0000_0000) | (val as u64);
                 } else if sel == 1 {
                     self.driver_features =
                         (self.driver_features & 0x0000_0000_FFFF_FFFF) | ((val as u64) << 32);
@@ -720,7 +717,11 @@ mod tests {
 
         // Select high 32 bits
         let mut dev = dev;
-        dev.write(VIRTIO_MMIO_DEVICE_FEATURES_SEL, &[1, 0, 0, 0], &GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 1024)]).unwrap());
+        dev.write(
+            VIRTIO_MMIO_DEVICE_FEATURES_SEL,
+            &[1, 0, 0, 0],
+            &GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 1024)]).unwrap(),
+        );
         dev.read(VIRTIO_MMIO_DEVICE_FEATURES, &mut buf);
         assert_eq!(u32::from_le_bytes(buf), 0x0000_0001);
     }

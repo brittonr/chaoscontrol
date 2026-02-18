@@ -21,12 +21,15 @@ use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
 use crate::devices::virtio_mmio::VirtioMmioDevice;
 
-use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
-use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, HYPERCALL_PAGE_SIZE, SDK_PORT, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT};
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
     HIMEM_START, PML4_START, ZERO_PAGE_START,
+};
+use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+use chaoscontrol_protocol::{
+    HypercallPage, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT, HYPERCALL_PAGE_ADDR,
+    HYPERCALL_PAGE_SIZE, SDK_PORT,
 };
 
 use kvm_bindings::{
@@ -69,8 +72,6 @@ const PIT_IRQ: u32 = 0;
 
 /// PIT oscillator frequency (Hz).
 const PIT_FREQ_HZ: u128 = 1_193_182;
-
-
 
 /// KVM TSS address — must be set before create_irq_chip.
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
@@ -118,7 +119,7 @@ impl Default for VmConfig {
                 // doing non-deterministic PIT-based calibration.
                 hide_hypervisor: true,
                 fixed_family: Some(6),
-                fixed_model: Some(85),    // Skylake-SP
+                fixed_model: Some(85), // Skylake-SP
                 fixed_stepping: Some(4),
                 ..CpuConfig::default()
             },
@@ -364,8 +365,7 @@ impl DeterministicVm {
             flags: KVM_PIT_SPEAKER_DUMMY,
             ..Default::default()
         };
-        vm.create_pit2(pit_config)
-            .map_err(VmError::CreatePit)?;
+        vm.create_pit2(pit_config).map_err(VmError::CreatePit)?;
 
         // Immediately disable KVM PIT channel 0 timer so it never fires
         // on host time. We'll deliver IRQ 0 ourselves via set_irq_line
@@ -465,8 +465,8 @@ impl DeterministicVm {
         use crate::devices::block::DeterministicBlock;
         use crate::devices::net::DeterministicNet;
         use crate::devices::virtio_block::VirtioBlock;
-        use crate::devices::virtio_net::VirtioNet;
         use crate::devices::virtio_entropy::VirtioEntropy;
+        use crate::devices::virtio_net::VirtioNet;
 
         let mut devices = Vec::new();
 
@@ -490,9 +490,18 @@ impl DeterministicVm {
         devices.push(rng_device);
 
         info!("Created virtio MMIO devices:");
-        info!("  Device 0: virtio-blk  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0);
-        info!("  Device 1: virtio-net  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1);
-        info!("  Device 2: virtio-rng  @ {:#010x} IRQ {}", VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2);
+        info!(
+            "  Device 0: virtio-blk  @ {:#010x} IRQ {}",
+            VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0
+        );
+        info!(
+            "  Device 1: virtio-net  @ {:#010x} IRQ {}",
+            VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1
+        );
+        info!(
+            "  Device 2: virtio-rng  @ {:#010x} IRQ {}",
+            VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2
+        );
 
         devices
     }
@@ -862,10 +871,10 @@ impl DeterministicVm {
     /// Call this before each execution quantum to get per-run coverage.
     pub fn clear_coverage_bitmap(&self) {
         let zeros = vec![0u8; COVERAGE_BITMAP_SIZE];
-        let _ = self.memory.inner().write_slice(
-            &zeros,
-            vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR),
-        );
+        let _ = self
+            .memory
+            .inner()
+            .write_slice(&zeros, vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR));
     }
 
     /// Read the coverage bitmap from guest memory.
@@ -874,10 +883,10 @@ impl DeterministicVm {
     /// [`CoverageBitmap::from_slice`](chaoscontrol_explore::coverage::CoverageBitmap::from_slice).
     pub fn read_coverage_bitmap(&self) -> Vec<u8> {
         let mut buf = vec![0u8; COVERAGE_BITMAP_SIZE];
-        let _ = self.memory.inner().read_slice(
-            &mut buf,
-            vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR),
-        );
+        let _ = self
+            .memory
+            .inner()
+            .read_slice(&mut buf, vm_memory::GuestAddress(COVERAGE_BITMAP_ADDR));
         buf
     }
 
@@ -970,9 +979,7 @@ impl DeterministicVm {
         // when it gets reprogrammed by the guest.
         let reload = ch0.count as u16;
         let mode = ch0.mode;
-        if ch0.gate != 0
-            && (reload != self.pit.channel_reload(0)
-                || mode != self.last_kvm_pit_mode)
+        if ch0.gate != 0 && (reload != self.pit.channel_reload(0) || mode != self.last_kvm_pit_mode)
         {
             let tsc = self.virtual_tsc.read();
             // Program our DeterministicPit with the same config
@@ -1017,8 +1024,6 @@ impl DeterministicVm {
                     self.exits_since_last_sdk = 0;
                 }
                 self.virtual_tsc.tick();
-
-
 
                 let tsc = self.virtual_tsc.read();
                 if port == SDK_PORT {
@@ -1071,7 +1076,11 @@ impl DeterministicVm {
                 // inject the interrupt deterministically.
                 let pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
                 let ch0 = &pit_state.channels[0];
-                let reload = if ch0.count == 0 { 65536u64 } else { ch0.count as u64 };
+                let reload = if ch0.count == 0 {
+                    65536u64
+                } else {
+                    ch0.count as u64
+                };
 
                 if ch0.gate != 0 && reload > 0 {
                     // Advance virtual TSC by one PIT period:

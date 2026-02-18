@@ -115,10 +115,7 @@ pub(crate) const fn gcd(mut a: u64, mut b: u64) -> u64 {
 /// - `denominator > 0`
 pub(crate) fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
     debug_assert!(tsc_khz > 0, "tsc_khz must be non-zero");
-    debug_assert!(
-        CRYSTAL_CLOCK_HZ > 0,
-        "CRYSTAL_CLOCK_HZ must be non-zero"
-    );
+    debug_assert!(CRYSTAL_CLOCK_HZ > 0, "CRYSTAL_CLOCK_HZ must be non-zero");
 
     let tsc_hz = tsc_khz as u64 * 1_000;
     let crystal = CRYSTAL_CLOCK_HZ as u64;
@@ -131,8 +128,7 @@ pub(crate) fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
     // Postconditions.
     debug_assert!(denominator > 0, "denominator must be positive");
     debug_assert!(
-        CRYSTAL_CLOCK_HZ as u64 * numerator as u64 / denominator as u64
-            == tsc_khz as u64 * 1_000,
+        CRYSTAL_CLOCK_HZ as u64 * numerator as u64 / denominator as u64 == tsc_khz as u64 * 1_000,
         "ratio must reconstruct the original TSC frequency"
     );
 
@@ -356,15 +352,8 @@ pub(crate) fn vtsc_advance(counter: u64, advance_per_tick: u64, n: u64) -> u64 {
 /// - `result >= target` (when `target > counter`)
 /// - `result - counter` is a multiple of `advance_per_tick`
 /// - `result - counter < target - counter + advance_per_tick` (minimal)
-pub(crate) fn vtsc_advance_to(
-    counter: u64,
-    advance_per_tick: u64,
-    target: u64,
-) -> u64 {
-    debug_assert!(
-        advance_per_tick > 0,
-        "advance_per_tick must be non-zero"
-    );
+pub(crate) fn vtsc_advance_to(counter: u64, advance_per_tick: u64, target: u64) -> u64 {
+    debug_assert!(advance_per_tick > 0, "advance_per_tick must be non-zero");
 
     if target <= counter {
         // Postcondition: no-op when already past target.
@@ -531,10 +520,7 @@ mod tests {
         let mut eax = 0xDEAD_BEEFu32;
         let non_model_bits = eax & !(EAX_MODEL_MASK | EAX_EXT_MODEL_MASK);
         encode_model(&mut eax, 0xA5);
-        assert_eq!(
-            eax & !(EAX_MODEL_MASK | EAX_EXT_MODEL_MASK),
-            non_model_bits
-        );
+        assert_eq!(eax & !(EAX_MODEL_MASK | EAX_EXT_MODEL_MASK), non_model_bits);
     }
 
     #[test]
@@ -594,10 +580,7 @@ mod tests {
     #[test]
     fn elapsed_ns_large_counter() {
         // 3 × 10^12 ticks at 3 GHz = 1000 s.
-        assert_eq!(
-            elapsed_ns(3_000_000_000_000, 3_000_000),
-            1_000_000_000_000
-        );
+        assert_eq!(elapsed_ns(3_000_000_000_000, 3_000_000), 1_000_000_000_000);
     }
 
     #[test]
@@ -687,7 +670,10 @@ mod tests {
                 0,
                 "advance_to(0, 100, {target}) = {result} is not on a tick boundary"
             );
-            assert!(result >= target, "advance_to(0, 100, {target}) = {result} < target");
+            assert!(
+                result >= target,
+                "advance_to(0, 100, {target}) = {result} < target"
+            );
         }
     }
 

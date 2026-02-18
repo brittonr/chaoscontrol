@@ -1,8 +1,10 @@
 //! Time-travel debugger — interactive navigation of recorded execution.
 
 use crate::checkpoint::Checkpoint;
-use crate::recording::{Recording, RecordedEvent};
-use crate::replay::{MemoryModification, ReplayEngine, ReplayError, ReplayResult, SimulationRunner};
+use crate::recording::{RecordedEvent, Recording};
+use crate::replay::{
+    MemoryModification, ReplayEngine, ReplayError, ReplayResult, SimulationRunner,
+};
 use serde::{Deserialize, Serialize};
 
 /// Interactive time-travel debugger.
@@ -31,11 +33,11 @@ impl<R: SimulationRunner> Debugger<R> {
     pub fn goto(&mut self, tick: u64) -> Result<DebugState, ReplayError> {
         // Find the nearest checkpoint at or before target tick
         let checkpoint = self.recording.checkpoints.at_or_before(tick);
-        
+
         if let Some(cp) = checkpoint {
             self.current_checkpoint = Some(cp.id);
             let ticks_to_run = tick.saturating_sub(cp.tick);
-            
+
             let result = self.replay.replay_from(Some(cp.id), ticks_to_run)?;
             self.current_tick = cp.tick + result.ticks_executed;
         } else {
@@ -62,38 +64,51 @@ impl<R: SimulationRunner> Debugger<R> {
 
     /// Jump to next event of a given type.
     pub fn next_event(&self, event_filter: EventFilter) -> Option<&RecordedEvent> {
-        self.recording.events
-            .iter()
-            .find(|e| {
-                let tick = event_tick(e);
-                tick > self.current_tick && event_filter.matches(e)
-            })
+        self.recording.events.iter().find(|e| {
+            let tick = event_tick(e);
+            tick > self.current_tick && event_filter.matches(e)
+        })
     }
 
     /// Jump to the tick where a bug was detected.
     pub fn goto_bug(&mut self, bug_id: u64) -> Result<DebugState, ReplayError> {
         for event in &self.recording.events {
-            if let RecordedEvent::BugDetected { tick, bug_id: id, .. } = event {
+            if let RecordedEvent::BugDetected {
+                tick, bug_id: id, ..
+            } = event
+            {
                 if *id == bug_id {
                     return self.goto(*tick);
                 }
             }
         }
-        Err(ReplayError::InvalidState(format!("Bug {} not found", bug_id)))
+        Err(ReplayError::InvalidState(format!(
+            "Bug {} not found",
+            bug_id
+        )))
     }
 
     /// Read guest memory at the current position.
-    pub fn read_memory(&self, _vm_index: usize, _address: u64, _size: usize) -> Result<Vec<u8>, ReplayError> {
+    pub fn read_memory(
+        &self,
+        _vm_index: usize,
+        _address: u64,
+        _size: usize,
+    ) -> Result<Vec<u8>, ReplayError> {
         // Would need to access VM memory through snapshot
         log::warn!("Memory reading not yet implemented");
-        Err(ReplayError::InvalidState("Memory reading not implemented".to_string()))
+        Err(ReplayError::InvalidState(
+            "Memory reading not implemented".to_string(),
+        ))
     }
 
     /// Read VM registers at the current position.
     pub fn read_registers(&self, _vm_index: usize) -> Result<RegisterState, ReplayError> {
         // Would need to access VM registers through snapshot
         log::warn!("Register reading not yet implemented");
-        Err(ReplayError::InvalidState("Register reading not implemented".to_string()))
+        Err(ReplayError::InvalidState(
+            "Register reading not implemented".to_string(),
+        ))
     }
 
     /// Get serial output up to the current position.
@@ -108,7 +123,8 @@ impl<R: SimulationRunner> Debugger<R> {
 
     /// Get all events between two ticks.
     pub fn events_between(&self, start_tick: u64, end_tick: u64) -> Vec<&RecordedEvent> {
-        self.recording.events
+        self.recording
+            .events
             .iter()
             .filter(|e| {
                 let tick = event_tick(e);
@@ -123,10 +139,12 @@ impl<R: SimulationRunner> Debugger<R> {
         modifications: Vec<MemoryModification>,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
-        let checkpoint_id = self.current_checkpoint
-            .ok_or_else(|| ReplayError::InvalidState("No checkpoint available for counterfactual".to_string()))?;
-        
-        self.replay.replay_with_modification(checkpoint_id, modifications, ticks)
+        let checkpoint_id = self.current_checkpoint.ok_or_else(|| {
+            ReplayError::InvalidState("No checkpoint available for counterfactual".to_string())
+        })?;
+
+        self.replay
+            .replay_with_modification(checkpoint_id, modifications, ticks)
     }
 
     /// List all checkpoints.
@@ -142,8 +160,10 @@ impl<R: SimulationRunner> Debugger<R> {
     /// Build debug state from current position.
     fn build_state(&self) -> DebugState {
         let checkpoint_id = self.current_checkpoint.unwrap_or(0);
-        
-        let events_at_tick: Vec<_> = self.recording.events
+
+        let events_at_tick: Vec<_> = self
+            .recording
+            .events
             .iter()
             .filter(|e| event_tick(e) == self.current_tick)
             .cloned()
@@ -234,7 +254,9 @@ impl EventFilter {
         match (self, event) {
             (EventFilter::AnyFault, RecordedEvent::FaultFired { .. }) => true,
             (EventFilter::AnyAssertion, RecordedEvent::AssertionHit { .. }) => true,
-            (EventFilter::FailedAssertion, RecordedEvent::AssertionHit { passed: false, .. }) => true,
+            (EventFilter::FailedAssertion, RecordedEvent::AssertionHit { passed: false, .. }) => {
+                true
+            }
             (EventFilter::AnyBug, RecordedEvent::BugDetected { .. }) => true,
             (EventFilter::VmStatusChange, RecordedEvent::VmStatusChange { .. }) => true,
             (EventFilter::SerialOutput, RecordedEvent::SerialOutput { .. }) => true,
@@ -259,9 +281,9 @@ mod tests {
     use super::*;
     use crate::checkpoint::CheckpointStore;
     use crate::recording::RecordingConfig;
-    use chaoscontrol_fault::schedule::FaultSchedule;
-    use chaoscontrol_vmm::controller::{SimulationSnapshot, NetworkFabric, RoundResult};
     use chaoscontrol_fault::oracle::OracleReport;
+    use chaoscontrol_fault::schedule::FaultSchedule;
+    use chaoscontrol_vmm::controller::{NetworkFabric, RoundResult, SimulationSnapshot};
     use rand::SeedableRng;
 
     // Mock simulation runner for testing
@@ -270,7 +292,11 @@ mod tests {
     }
 
     impl SimulationRunner for MockRunner {
-        fn create(_config: &RecordingConfig, _schedule: FaultSchedule, _seed: u64) -> Result<Self, Box<dyn std::error::Error>> {
+        fn create(
+            _config: &RecordingConfig,
+            _schedule: FaultSchedule,
+            _seed: u64,
+        ) -> Result<Self, Box<dyn std::error::Error>> {
             Ok(Self { tick: 0 })
         }
 
@@ -286,10 +312,10 @@ mod tests {
         }
 
         fn snapshot_all(&self) -> Result<SimulationSnapshot, Box<dyn std::error::Error>> {
-            use chaoscontrol_fault::engine::{FaultEngine, EngineConfig};
-            
+            use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+
             let engine = FaultEngine::new(EngineConfig::default());
-            
+
             Ok(SimulationSnapshot {
                 tick: self.tick,
                 vm_snapshots: vec![],
@@ -306,7 +332,10 @@ mod tests {
             })
         }
 
-        fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), Box<dyn std::error::Error>> {
+        fn restore_all(
+            &mut self,
+            snapshot: &SimulationSnapshot,
+        ) -> Result<(), Box<dyn std::error::Error>> {
             self.tick = snapshot.tick;
             Ok(())
         }
@@ -348,7 +377,10 @@ mod tests {
             schedule: FaultSchedule::new(),
             seed: 42,
             events: vec![
-                RecordedEvent::FaultFired { tick: 50, fault: "test".to_string() },
+                RecordedEvent::FaultFired {
+                    tick: 50,
+                    fault: "test".to_string(),
+                },
                 RecordedEvent::AssertionHit {
                     tick: 100,
                     vm_index: 0,
@@ -372,7 +404,7 @@ mod tests {
     fn test_debugger_new() {
         let recording = test_recording();
         let debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         assert_eq!(debugger.current_tick, 0);
         assert_eq!(debugger.current_checkpoint, None);
     }
@@ -381,7 +413,7 @@ mod tests {
     fn test_debugger_goto() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let state = debugger.goto(50).unwrap();
         assert_eq!(state.tick, 50);
     }
@@ -390,7 +422,7 @@ mod tests {
     fn test_debugger_step_forward() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let _state1 = debugger.goto(100).unwrap();
         let state2 = debugger.step_forward(50).unwrap();
         assert_eq!(state2.tick, 150);
@@ -400,7 +432,7 @@ mod tests {
     fn test_debugger_rewind() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let _state1 = debugger.goto(200).unwrap();
         let state2 = debugger.rewind(50).unwrap();
         assert_eq!(state2.tick, 150);
@@ -410,9 +442,9 @@ mod tests {
     fn test_debugger_next_event() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let _state = debugger.goto(0).unwrap();
-        
+
         let next_fault = debugger.next_event(EventFilter::AnyFault);
         assert!(next_fault.is_some());
         assert_eq!(event_tick(next_fault.unwrap()), 50);
@@ -422,7 +454,7 @@ mod tests {
     fn test_debugger_goto_bug() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let state = debugger.goto_bug(1).unwrap();
         assert_eq!(state.tick, 200);
     }
@@ -431,7 +463,7 @@ mod tests {
     fn test_debugger_goto_bug_not_found() {
         let recording = test_recording();
         let mut debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let result = debugger.goto_bug(999);
         assert!(result.is_err());
     }
@@ -440,14 +472,17 @@ mod tests {
     fn test_debugger_events_between() {
         let recording = test_recording();
         let debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let events = debugger.events_between(50, 100);
         assert_eq!(events.len(), 2);
     }
 
     #[test]
     fn test_event_filter_matches() {
-        let fault_event = RecordedEvent::FaultFired { tick: 10, fault: "test".to_string() };
+        let fault_event = RecordedEvent::FaultFired {
+            tick: 10,
+            fault: "test".to_string(),
+        };
         let assertion_pass = RecordedEvent::AssertionHit {
             tick: 20,
             vm_index: 0,
@@ -486,7 +521,7 @@ mod tests {
     fn test_debugger_state() {
         let recording = test_recording();
         let debugger: Debugger<MockRunner> = Debugger::new(recording);
-        
+
         let state = debugger.state();
         assert_eq!(state.tick, 0);
         assert_eq!(state.vm_statuses.len(), 2);

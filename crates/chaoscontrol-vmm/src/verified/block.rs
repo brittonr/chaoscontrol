@@ -102,8 +102,7 @@ pub fn find_matching_fault(
     );
     // Postcondition: no earlier fault matches.
     debug_assert!(
-        result.is_none()
-            || (0..result.unwrap()).all(|j| !predicate(&faults[j])),
+        result.is_none() || (0..result.unwrap()).all(|j| !predicate(&faults[j])),
         "find_matching_fault: no earlier fault should match"
     );
 
@@ -268,11 +267,7 @@ mod tests {
         let idx = find_matching_fault(&faults, |f| {
             matches!(f, BlockFault::ReadError { offset: 0 })
         });
-        assert_eq!(
-            idx,
-            Some(0),
-            "must return the earliest matching index"
-        );
+        assert_eq!(idx, Some(0), "must return the earliest matching index");
     }
 
     #[test]

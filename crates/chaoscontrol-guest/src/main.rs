@@ -49,10 +49,7 @@ fn mount_devtmpfs() {
             let err = *libc::__errno_location();
             // EBUSY (16) is fine — already mounted
             if err != libc::EBUSY {
-                eprintln!(
-                    "chaoscontrol-guest: mount devtmpfs failed (errno={})",
-                    err,
-                );
+                eprintln!("chaoscontrol-guest: mount devtmpfs failed (errno={})", err,);
             }
         }
     }
@@ -77,10 +74,7 @@ fn main() {
     println!("chaoscontrol-guest: coverage initialized");
 
     // ── Phase 2: signal setup complete ──────────────────────────
-    lifecycle::setup_complete(&[
-        ("program", "chaoscontrol-guest"),
-        ("version", "0.1.0"),
-    ]);
+    lifecycle::setup_complete(&[("program", "chaoscontrol-guest"), ("version", "0.1.0")]);
     println!("chaoscontrol-guest: setup_complete");
 
     // ── Phase 3: SDK-instrumented workload ──────────────────────
@@ -95,11 +89,7 @@ fn main() {
         coverage::record_edge(i * 31 + choice * 17);
 
         // ── Safety property: choice always in range ─────────────
-        assert::always(
-            choice < NUM_CHOICES,
-            "random choice in range",
-            &[],
-        );
+        assert::always(choice < NUM_CHOICES, "random choice in range", &[]);
 
         // ── Liveness: eventually see each choice value ──────────
         assert::sometimes(choice == 0, "saw choice 0", &[]);
@@ -141,16 +131,12 @@ fn main() {
     assert::sometimes(true, "workload completed", &[]);
 
     // Send a structured event with final stats
-    lifecycle::send_event(
-        "workload_done",
-        &[("iterations", "50")],
-    );
+    lifecycle::send_event("workload_done", &[("iterations", "50")]);
 
     println!("chaoscontrol-guest: workload complete");
     println!(
         "chaoscontrol-guest: choices={},{},{},{}",
-        choice_counts[0], choice_counts[1],
-        choice_counts[2], choice_counts[3],
+        choice_counts[0], choice_counts[1], choice_counts[2], choice_counts[3],
     );
 
     // ── Phase 5: halt ───────────────────────────────────────────
@@ -158,6 +144,8 @@ fn main() {
     // let the VMM terminate via exit-count budget or serial pattern.
     println!("chaoscontrol-guest: done, idling");
     loop {
-        unsafe { libc::pause(); }
+        unsafe {
+            libc::pause();
+        }
     }
 }

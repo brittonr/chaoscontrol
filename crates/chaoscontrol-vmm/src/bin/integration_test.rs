@@ -129,7 +129,11 @@ fn main() {
         // We count matching vs differing content lines as a soft metric.
         let lines1: Vec<&str> = output1.lines().map(strip_timestamp).collect();
         let lines2: Vec<&str> = output2.lines().map(strip_timestamp).collect();
-        let matching = lines1.iter().zip(lines2.iter()).filter(|(a, b)| a == b).count();
+        let matching = lines1
+            .iter()
+            .zip(lines2.iter())
+            .filter(|(a, b)| a == b)
+            .count();
         let total = lines1.len().max(lines2.len()).max(1);
         let pct = (matching * 100) / total;
 
@@ -139,7 +143,10 @@ fn main() {
         if !vtsc_match {
             eprintln!("    vTSC mismatch: {} vs {}", vtsc1, vtsc2);
         }
-        eprintln!("    serial content: {}/{} lines match ({}%)", matching, total, pct);
+        eprintln!(
+            "    serial content: {}/{} lines match ({}%)",
+            matching, total, pct
+        );
 
         // Pass if exit count and vTSC match (core determinism guarantee)
         exits_match && vtsc_match
@@ -182,16 +189,26 @@ fn main() {
         // Compare content (strip timestamps)
         let lines_a: Vec<&str> = output_a.lines().map(strip_timestamp).collect();
         let lines_b: Vec<&str> = output_b.lines().map(strip_timestamp).collect();
-        let matching = lines_a.iter().zip(lines_b.iter()).filter(|(a, b)| a == b).count();
+        let matching = lines_a
+            .iter()
+            .zip(lines_b.iter())
+            .filter(|(a, b)| a == b)
+            .count();
         let total = lines_a.len().max(lines_b.len()).max(1);
         let pct = (matching * 100) / total;
 
         // Verify restore brought vTSC back to snapshot
         let vtsc_restored_ok = (restored_vtsc as i64 - snap_vtsc as i64).unsigned_abs() < 1000;
         if !vtsc_restored_ok {
-            eprintln!("    vTSC at snap: {}, after restore: {}", snap_vtsc, restored_vtsc);
+            eprintln!(
+                "    vTSC at snap: {}, after restore: {}",
+                snap_vtsc, restored_vtsc
+            );
         }
-        eprintln!("    serial content: {}/{} lines match ({}%)", matching, total, pct);
+        eprintln!(
+            "    serial content: {}/{} lines match ({}%)",
+            matching, total, pct
+        );
 
         vtsc_restored_ok
     });
@@ -329,7 +346,10 @@ fn main() {
 
         let result = vm0_status == VmStatus::Crashed;
         if !result {
-            eprintln!("    VM0 status: {:?}, VM1 status: {:?}", vm0_status, vm1_status);
+            eprintln!(
+                "    VM0 status: {:?}, VM1 status: {:?}",
+                vm0_status, vm1_status
+            );
         }
         result
     });
@@ -446,8 +466,12 @@ fn main() {
             c2.step_round().expect("c2 step");
         }
 
-        let exits1: Vec<u64> = (0..2).map(|i| c1.vm_slot(i).unwrap().vm.exit_count()).collect();
-        let exits2: Vec<u64> = (0..2).map(|i| c2.vm_slot(i).unwrap().vm.exit_count()).collect();
+        let exits1: Vec<u64> = (0..2)
+            .map(|i| c1.vm_slot(i).unwrap().vm.exit_count())
+            .collect();
+        let exits2: Vec<u64> = (0..2)
+            .map(|i| c2.vm_slot(i).unwrap().vm.exit_count())
+            .collect();
 
         let match_ok = exits1 == exits2;
         if !match_ok {
@@ -499,9 +523,17 @@ fn main() {
     // ═══════════════════════════════════════════════════════════════
     println!();
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║  Results: {} passed, {} failed, {} total          {}",
-        passed, failed, passed + failed,
-        if failed == 0 { "      ║" } else { "      ║" });
+    println!(
+        "║  Results: {} passed, {} failed, {} total          {}",
+        passed,
+        failed,
+        passed + failed,
+        if failed == 0 {
+            "      ║"
+        } else {
+            "      ║"
+        }
+    );
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
 

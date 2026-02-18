@@ -56,9 +56,7 @@ impl CoverageBitmap {
         self.map
             .iter()
             .zip(global.map.iter())
-            .filter(|(&self_count, &global_count)| {
-                self_count > 0 && global_count == 0
-            })
+            .filter(|(&self_count, &global_count)| self_count > 0 && global_count == 0)
             .count()
     }
 
@@ -149,7 +147,10 @@ impl CoverageCollector {
             .read_slice(&mut buffer, GuestAddress(self.bitmap_gpa))
             .is_err()
         {
-            log::warn!("Failed to read coverage bitmap from guest memory at {:#x}", self.bitmap_gpa);
+            log::warn!(
+                "Failed to read coverage bitmap from guest memory at {:#x}",
+                self.bitmap_gpa
+            );
             return CoverageBitmap::new();
         }
 
@@ -170,7 +171,11 @@ impl CoverageCollector {
         let new_edges = after.saturating_sub(before);
         self.total_edges = after;
         if new_edges > 0 {
-            log::info!("New coverage: {} edges (total: {})", new_edges, self.total_edges);
+            log::info!(
+                "New coverage: {} edges (total: {})",
+                new_edges,
+                self.total_edges
+            );
         }
     }
 
@@ -297,15 +302,12 @@ mod tests {
     #[test]
     fn test_collector_blind_mode() {
         use vm_memory::GuestMemoryMmap;
-        
+
         let mut collector = CoverageCollector::new(0); // 0 = blind mode
-        
+
         // Create a dummy guest memory (won't be used in blind mode)
-        let mem: GuestMemoryMmap = GuestMemoryMmap::from_ranges(&[(
-            GuestAddress(0),
-            1024 * 1024,
-        )])
-        .unwrap();
+        let mem: GuestMemoryMmap =
+            GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 1024 * 1024)]).unwrap();
 
         let bitmap = collector.collect_from_guest(&mem);
         assert_eq!(bitmap.count_bits(), 0);

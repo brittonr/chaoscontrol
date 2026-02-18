@@ -19,8 +19,8 @@
 //! satisfaction across runs.  Use [`location_id`] to derive an ID from
 //! a string (typically `file!()` + `line!()`).
 
-use chaoscontrol_protocol::*;
 use crate::transport;
+use chaoscontrol_protocol::*;
 
 /// Derive a deterministic assertion ID from a location string.
 ///

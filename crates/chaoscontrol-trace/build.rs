@@ -13,7 +13,12 @@ fn main() {
     if !vmlinux_h.exists() {
         let output = Command::new("bpftool")
             .args([
-                "btf", "dump", "file", "/sys/kernel/btf/vmlinux", "format", "c",
+                "btf",
+                "dump",
+                "file",
+                "/sys/kernel/btf/vmlinux",
+                "format",
+                "c",
             ])
             .output()
             .expect(
@@ -26,12 +31,8 @@ fn main() {
             "bpftool btf dump failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        std::fs::write(&vmlinux_h, &output.stdout)
-            .expect("failed to write vmlinux.h");
-        eprintln!(
-            "Generated vmlinux.h ({} bytes)",
-            output.stdout.len()
-        );
+        std::fs::write(&vmlinux_h, &output.stdout).expect("failed to write vmlinux.h");
+        eprintln!("Generated vmlinux.h ({} bytes)", output.stdout.len());
     }
 
     // Step 2: Compile BPF program and generate Rust skeleton
@@ -45,12 +46,10 @@ fn main() {
     // target. Use the CLANG env var to point to unwrapped clang.
     let skel_output = out_dir.join("kvm_trace.skel.rs");
     let mut builder = libbpf_cargo::SkeletonBuilder::new();
-    builder
-        .source("src/bpf/kvm_trace.bpf.c")
-        .clang_args([
-            format!("-I{}", out_dir.display()),
-            "-D__TARGET_ARCH_x86".to_string(),
-        ]);
+    builder.source("src/bpf/kvm_trace.bpf.c").clang_args([
+        format!("-I{}", out_dir.display()),
+        "-D__TARGET_ARCH_x86".to_string(),
+    ]);
 
     // Use unwrapped clang if CLANG env var is set (needed on NixOS)
     if let Ok(clang_path) = env::var("CLANG") {
@@ -58,12 +57,10 @@ fn main() {
         builder.clang(clang_path);
     }
 
-    builder
-        .build_and_generate(&skel_output)
-        .expect(
-            "Failed to build BPF program. Ensure clang is available.\n\
+    builder.build_and_generate(&skel_output).expect(
+        "Failed to build BPF program. Ensure clang is available.\n\
              On NixOS, set CLANG to unwrapped clang path.",
-        );
+    );
 
     println!("cargo:rerun-if-changed=src/bpf/kvm_trace.bpf.c");
 }

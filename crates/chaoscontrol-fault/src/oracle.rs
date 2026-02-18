@@ -348,9 +348,7 @@ impl PropertyOracle {
 
     /// Whether the current run's setup phase is complete.
     pub fn is_setup_complete(&self) -> bool {
-        self.current_run
-            .as_ref()
-            .is_some_and(|r| r.setup_complete)
+        self.current_run.as_ref().is_some_and(|r| r.setup_complete)
     }
 
     /// Record a lifecycle event.
@@ -421,7 +419,9 @@ impl PropertyOracle {
     // ── Internal ────────────────────────────────────────────────
 
     fn current_run_id(&self) -> u32 {
-        self.current_run.as_ref().map_or(self.total_runs, |r| r.run_id)
+        self.current_run
+            .as_ref()
+            .map_or(self.total_runs, |r| r.run_id)
     }
 }
 
@@ -561,7 +561,10 @@ mod tests {
             99,
             AssertionRecord::new("phantom".to_string(), AssertionKind::Always),
         );
-        assert_eq!(oracle.report().assertions[&99].verdict(), Verdict::Unexercised);
+        assert_eq!(
+            oracle.report().assertions[&99].verdict(),
+            Verdict::Unexercised
+        );
     }
 
     #[test]

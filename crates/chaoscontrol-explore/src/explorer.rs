@@ -126,7 +126,7 @@ impl Explorer {
         // Bootstrap: run initial simulation with empty schedule
         info!("Bootstrap: running initial simulation...");
         let initial_result = self.run_branch(&None, FaultSchedule::new())?;
-        
+
         if let Some(snapshot) = initial_result.snapshot.clone() {
             self.add_to_frontier(snapshot, initial_result, FaultSchedule::new(), None, 0);
         }
@@ -134,7 +134,7 @@ impl Explorer {
         // Main exploration loop
         for round in 0..self.config.max_rounds {
             info!("=== Round {}/{} ===", round + 1, self.config.max_rounds);
-            
+
             let round_report = self.explore_round()?;
             self.rounds_completed += 1;
 
@@ -176,51 +176,69 @@ impl Explorer {
         let mut bugs_found = 0;
 
         // Select entry from frontier
-        let (snapshot, base_schedule, parent_id, parent_depth) = if let Some(entry) = self.frontier.select(&mut self.rng) {
-            (
-                Some(entry.snapshot.clone()),
-                entry.schedule.clone(),
-                Some(entry.id),
-                entry.depth,
-            )
-        } else {
-            // No frontier entry, use clean slate
-            (None, FaultSchedule::new(), None, 0)
-        };
+        let (snapshot, base_schedule, parent_id, parent_depth) =
+            if let Some(entry) = self.frontier.select(&mut self.rng) {
+                (
+                    Some(entry.snapshot.clone()),
+                    entry.schedule.clone(),
+                    Some(entry.id),
+                    entry.depth,
+                )
+            } else {
+                // No frontier entry, use clean slate
+                (None, FaultSchedule::new(), None, 0)
+            };
 
         // Generate variant schedules
-        let variants = self.mutator.mutate(&base_schedule, self.config.branch_factor, &self.config.mutation);
+        let variants = self.mutator.mutate(
+            &base_schedule,
+            self.config.branch_factor,
+            &self.config.mutation,
+        );
 
         debug!("Generated {} variant schedules", variants.len());
 
         // Run each variant
         for (i, schedule) in variants.into_iter().enumerate() {
             debug!("Running branch {}/{}", i + 1, self.config.branch_factor);
-            
+
             let result = self.run_branch(&snapshot, schedule.clone())?;
             branches_run += 1;
             self.total_branches_run += 1;
 
             // Check for new coverage
-            let new_edges = result.coverage.has_new_coverage(self.coverage.global_coverage());
-            
+            let new_edges = result
+                .coverage
+                .has_new_coverage(self.coverage.global_coverage());
+
             if new_edges > 0 {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
-                
+
                 // Add to corpus
-                self.add_to_corpus(result.clone(), schedule.clone(), new_edges, parent_depth + 1);
-                
+                self.add_to_corpus(
+                    result.clone(),
+                    schedule.clone(),
+                    new_edges,
+                    parent_depth + 1,
+                );
+
                 // Add to frontier if we got a snapshot
                 if let Some(snap) = result.snapshot.clone() {
-                    self.add_to_frontier(snap, result.clone(), schedule.clone(), parent_id, parent_depth + 1);
+                    self.add_to_frontier(
+                        snap,
+                        result.clone(),
+                        schedule.clone(),
+                        parent_id,
+                        parent_depth + 1,
+                    );
                 }
             }
 
             // Check for bugs
             let branch_bugs = self.extract_bugs(&result, &schedule);
             bugs_found += branch_bugs.len();
-            
+
             if !branch_bugs.is_empty() {
                 warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
             }
@@ -301,7 +319,8 @@ impl Explorer {
         // Collect coverage from first VM
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
-                self.coverage.collect_from_guest(vm_slot.vm.memory().inner())
+                self.coverage
+                    .collect_from_guest(vm_slot.vm.memory().inner())
             } else {
                 CoverageBitmap::new()
             }
@@ -326,9 +345,11 @@ impl Explorer {
     /// Score a branch result for frontier prioritization.
     /// Factors: new coverage edges, assertion variety, depth penalty.
     fn score_branch(&self, result: &BranchResult, parent_depth: u32) -> f64 {
-        let new_edges = result.coverage.has_new_coverage(self.coverage.global_coverage());
+        let new_edges = result
+            .coverage
+            .has_new_coverage(self.coverage.global_coverage());
         let total_edges = result.coverage.count_bits();
-        
+
         // Base score: number of new edges
         let mut score = new_edges as f64 * 10.0;
 
@@ -352,7 +373,10 @@ impl Explorer {
 
         // Check oracle for failed assertions
         for (assertion_id, record) in &result.oracle_report.assertions {
-            if matches!(record.verdict(), chaoscontrol_fault::oracle::Verdict::Failed) {
+            if matches!(
+                record.verdict(),
+                chaoscontrol_fault::oracle::Verdict::Failed
+            ) {
                 bugs.push(BugReport {
                     bug_id: 0, // Will be assigned by corpus
                     assertion_id: *assertion_id as u64,
@@ -393,7 +417,13 @@ impl Explorer {
     }
 
     /// Add a result to the corpus.
-    fn add_to_corpus(&mut self, result: BranchResult, schedule: FaultSchedule, new_edges: usize, depth: u32) {
+    fn add_to_corpus(
+        &mut self,
+        result: BranchResult,
+        schedule: FaultSchedule,
+        new_edges: usize,
+        depth: u32,
+    ) {
         let bugs = self.extract_bugs(&result, &schedule);
 
         let entry = CorpusEntry {
@@ -411,7 +441,7 @@ impl Explorer {
     /// Generate pseudo-coverage from assertion variety (blind mode).
     fn assertion_coverage(&self, oracle: &OracleReport) -> CoverageBitmap {
         let mut bitmap = CoverageBitmap::new();
-        
+
         // Map each assertion ID to a bitmap index
         for assertion_id in oracle.assertions.keys() {
             let index = (*assertion_id as usize) % crate::coverage::MAP_SIZE;
@@ -539,7 +569,7 @@ mod tests {
         };
         let explorer = Explorer::new(config);
         let stats = explorer.stats();
-        
+
         assert_eq!(stats.rounds, 0);
         assert_eq!(stats.branches, 0);
         assert_eq!(stats.edges, 0);

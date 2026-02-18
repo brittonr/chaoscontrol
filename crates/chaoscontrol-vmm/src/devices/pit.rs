@@ -120,7 +120,13 @@ impl PitChannel {
 
     /// Get the output state for this channel
     fn output(&self, elapsed_pit_ticks: u64) -> bool {
-        crate::verified::pit::compute_output(self.mode, self.armed, self.gate, self.reload, elapsed_pit_ticks)
+        crate::verified::pit::compute_output(
+            self.mode,
+            self.armed,
+            self.gate,
+            self.reload,
+            elapsed_pit_ticks,
+        )
     }
 }
 
@@ -192,11 +198,7 @@ impl DeterministicPit {
     /// * `tsc_khz` - TSC frequency in KHz (e.g., 2400000 for 2.4 GHz)
     pub fn new(tsc_khz: u32) -> Self {
         Self {
-            channels: [
-                PitChannel::new(0),
-                PitChannel::new(1),
-                PitChannel::new(2),
-            ],
+            channels: [PitChannel::new(0), PitChannel::new(1), PitChannel::new(2)],
             tsc_khz,
             port_61: 0,
             irqs_delivered: 0,
@@ -398,21 +400,19 @@ impl DeterministicPit {
                 channel.start_tsc = current_tsc;
                 channel.armed = true;
             }
-            AccessMode::LoHiByte => {
-                match channel.write_state {
-                    WriteState::Lo => {
-                        channel.reload = (channel.reload & 0xFF00) | (value as u16);
-                        channel.write_state = WriteState::Hi;
-                        channel.armed = false;
-                    }
-                    WriteState::Hi => {
-                        channel.reload = (channel.reload & 0x00FF) | ((value as u16) << 8);
-                        channel.write_state = WriteState::Lo;
-                        channel.start_tsc = current_tsc;
-                        channel.armed = true;
-                    }
+            AccessMode::LoHiByte => match channel.write_state {
+                WriteState::Lo => {
+                    channel.reload = (channel.reload & 0xFF00) | (value as u16);
+                    channel.write_state = WriteState::Hi;
+                    channel.armed = false;
                 }
-            }
+                WriteState::Hi => {
+                    channel.reload = (channel.reload & 0x00FF) | ((value as u16) << 8);
+                    channel.write_state = WriteState::Lo;
+                    channel.start_tsc = current_tsc;
+                    channel.armed = true;
+                }
+            },
         }
 
         // Reset IRQ delivery counter when channel 0 is freshly armed.
@@ -748,10 +748,18 @@ mod tests {
         // Check multiple periods
         for period in 1..=5 {
             let tsc = start_tsc + tsc_per_period * period;
-            assert!(pit.pending_irq(tsc), "Period {} should have pending IRQ", period);
+            assert!(
+                pit.pending_irq(tsc),
+                "Period {} should have pending IRQ",
+                period
+            );
             pit.acknowledge_irq();
             assert_eq!(pit.irqs_delivered, period);
-            assert!(!pit.pending_irq(tsc), "After ack, period {} should not have pending IRQ", period);
+            assert!(
+                !pit.pending_irq(tsc),
+                "After ack, period {} should not have pending IRQ",
+                period
+            );
         }
     }
 

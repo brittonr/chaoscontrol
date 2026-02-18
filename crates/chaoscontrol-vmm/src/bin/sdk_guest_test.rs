@@ -87,11 +87,14 @@ fn main() {
         let mut vm = DeterministicVm::new(config).expect("create VM");
         vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
         let output = vm.run_until("workload complete").expect("run VM");
-        let ok = output.contains("workload complete")
-            && output.contains("setup_complete");
+        let ok = output.contains("workload complete") && output.contains("setup_complete");
         if !ok {
             eprintln!("    serial output (last 500 chars):");
-            let tail = if output.len() > 500 { &output[output.len()-500..] } else { &output };
+            let tail = if output.len() > 500 {
+                &output[output.len() - 500..]
+            } else {
+                &output
+            };
             for line in tail.lines().take(15) {
                 eprintln!("      {}", line);
             }
@@ -140,8 +143,10 @@ fn main() {
             }
         }
 
-        eprintln!("    assertions: {} total (always={}, sometimes={}, reachable={})",
-            total, always_count, sometimes_count, reachable_count);
+        eprintln!(
+            "    assertions: {} total (always={}, sometimes={}, reachable={})",
+            total, always_count, sometimes_count, reachable_count
+        );
 
         // Guest sends: 1 always, 5 sometimes, 4+ reachable
         always_count >= 1 && sometimes_count >= 4 && reachable_count >= 1
@@ -162,9 +167,14 @@ fn main() {
         for record in report.assertions.values() {
             if record.kind == chaoscontrol_fault::oracle::AssertionKind::Always {
                 if record.verdict() != Verdict::Passed {
-                    eprintln!("    FAIL: always '{}' -> {:?} (hit={}, true={}, false={})",
-                        record.message, record.verdict(),
-                        record.hit_count, record.true_count, record.false_count);
+                    eprintln!(
+                        "    FAIL: always '{}' -> {:?} (hit={}, true={}, false={})",
+                        record.message,
+                        record.verdict(),
+                        record.hit_count,
+                        record.true_count,
+                        record.false_count
+                    );
                     all_pass = false;
                 }
             }
@@ -184,7 +194,11 @@ fn main() {
         let bitmap = vm.read_coverage_bitmap();
         let edges = bitmap.iter().filter(|&&b| b > 0).count();
 
-        eprintln!("    coverage edges: {} / {} bytes non-zero", edges, bitmap.len());
+        eprintln!(
+            "    coverage edges: {} / {} bytes non-zero",
+            edges,
+            bitmap.len()
+        );
 
         // Guest records: iteration edges + 4 path edges = should be > 5
         edges >= 5
@@ -202,7 +216,10 @@ fn main() {
         let report = vm.fault_engine().oracle().report();
         let has_event = report.events.iter().any(|e| e.name == "workload_done");
 
-        eprintln!("    events: {:?}", report.events.iter().map(|e| &e.name).collect::<Vec<_>>());
+        eprintln!(
+            "    events: {:?}",
+            report.events.iter().map(|e| &e.name).collect::<Vec<_>>()
+        );
         has_event
     });
 
@@ -237,9 +254,10 @@ fn main() {
             let r1 = &report1.assertions[id];
             let r2 = &report2.assertions[id];
             if r1.hit_count != r2.hit_count || r1.true_count != r2.true_count {
-                eprintln!("    assertion {} '{}': hit {}/{}, true {}/{}",
-                    id, r1.message, r1.hit_count, r2.hit_count,
-                    r1.true_count, r2.true_count);
+                eprintln!(
+                    "    assertion {} '{}': hit {}/{}, true {}/{}",
+                    id, r1.message, r1.hit_count, r2.hit_count, r1.true_count, r2.true_count
+                );
                 counts_match = false;
             }
         }
@@ -251,7 +269,10 @@ fn main() {
         let edges2 = bitmap2.iter().filter(|&&b| b > 0).count();
         eprintln!("    assertion IDs match: {}", ids_match);
         eprintln!("    hit counts match:    {}", counts_match);
-        eprintln!("    coverage match:      {} (edges: {}/{})", cov_match, edges1, edges2);
+        eprintln!(
+            "    coverage match:      {} (edges: {}/{})",
+            cov_match, edges1, edges2
+        );
 
         ids_match && counts_match && cov_match
     });
@@ -263,7 +284,9 @@ fn main() {
     println!("╔══════════════════════════════════════════════════════════╗");
     println!(
         "║  Results: {} passed, {} failed, {} total                 ║",
-        passed, failed, passed + failed,
+        passed,
+        failed,
+        passed + failed,
     );
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();

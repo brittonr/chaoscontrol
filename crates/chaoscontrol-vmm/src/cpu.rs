@@ -447,8 +447,7 @@ impl VirtualTsc {
     /// Delegates arithmetic to [`crate::verified::cpu::vtsc_advance`].
     #[inline]
     pub fn advance(&mut self, n: u64) -> u64 {
-        self.counter =
-            crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
+        self.counter = crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
         self.counter
     }
 
@@ -614,16 +613,16 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
                 entry.ebx &= !(1 << 28); // AVX512CD
                 entry.ebx &= !(1 << 30); // AVX512BW
                 entry.ebx &= !(1 << 31); // AVX512VL
-                // Sub-features in ECX (leaf 7, sub-leaf 0)
-                entry.ecx &= !(1 << 1);  // AVX512_VBMI
-                entry.ecx &= !(1 << 6);  // AVX512_VBMI2
+                                         // Sub-features in ECX (leaf 7, sub-leaf 0)
+                entry.ecx &= !(1 << 1); // AVX512_VBMI
+                entry.ecx &= !(1 << 6); // AVX512_VBMI2
                 entry.ecx &= !(1 << 11); // AVX512_VNNI
                 entry.ecx &= !(1 << 12); // AVX512_BITALG
                 entry.ecx &= !(1 << 14); // AVX512_VPOPCNTDQ
-                // Sub-features in EDX (leaf 7, sub-leaf 0)
-                entry.edx &= !(1 << 2);  // AVX512_4VNNIW
-                entry.edx &= !(1 << 3);  // AVX512_4FMAPS
-                entry.edx &= !(1 << 8);  // AVX512_VP2INTERSECT
+                                         // Sub-features in EDX (leaf 7, sub-leaf 0)
+                entry.edx &= !(1 << 2); // AVX512_4VNNIW
+                entry.edx &= !(1 << 3); // AVX512_4FMAPS
+                entry.edx &= !(1 << 8); // AVX512_VP2INTERSECT
                 entry.edx &= !(1 << 23); // AVX512_FP16
             }
 

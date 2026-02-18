@@ -31,27 +31,41 @@ struct cc_trace_event {
 };
 
 
-// Tracepoint context structures
+// Tracepoint context structures.
+// Field offsets MUST match /sys/kernel/tracing/events/kvm/<name>/format.
+// Use explicit padding where the kernel inserts alignment holes.
+
+// kvm_exit format (from kernel):
+//   exit_reason: offset 8, size 4
+//   guest_rip:   offset 16, size 8  (4 bytes padding after exit_reason)
+//   isa:         offset 24, size 4
+//   info1:       offset 32, size 8  (4 bytes padding after isa)
+//   info2:       offset 40, size 8
+//   intr_info:   offset 48, size 4
+//   error_code:  offset 52, size 4
+//   vcpu_id:     offset 56, size 4
+//   requests:    offset 64, size 8  (4 bytes padding after vcpu_id)
 struct tp_kvm_exit {
-    struct trace_entry ent;
-    unsigned int exit_reason;
-    unsigned long guest_rip;
-    u32 isa;
-    u64 info1;
-    u64 info2;
-    u32 intr_info;
-    u32 error_code;
-    unsigned int vcpu_id;
-    u64 requests;
+    struct trace_entry ent;       // offset 0, size 8
+    unsigned int exit_reason;     // offset 8, size 4
+    __u32 _pad0;                  // offset 12, size 4 (alignment to 8)
+    unsigned long guest_rip;      // offset 16, size 8
+    __u32 isa;                    // offset 24, size 4
+    __u32 _pad1;                  // offset 28, size 4 (alignment to 8)
+    __u64 info1;                  // offset 32, size 8
+    __u64 info2;                  // offset 40, size 8
+    __u32 intr_info;              // offset 48, size 4
+    __u32 error_code;             // offset 52, size 4
+    unsigned int vcpu_id;         // offset 56, size 4
+    __u32 _pad2;                  // offset 60, size 4 (alignment to 8)
+    __u64 requests;               // offset 64, size 8
 };
 
 struct tp_kvm_entry {
     struct trace_entry ent;
     unsigned int vcpu_id;
+    __u32 _pad0;
     unsigned long rip;
-    bool immediate_exit;
-    u32 intr_info;
-    u32 error_code;
 };
 
 struct tp_kvm_pio {
@@ -65,25 +79,29 @@ struct tp_kvm_pio {
 
 struct tp_kvm_mmio {
     struct trace_entry ent;
-    u32 type;
-    u32 len;
-    u64 gpa;
-    u64 val;
+    __u32 type;
+    __u32 len;
+    __u64 gpa;
+    __u64 val;
 };
 
 struct tp_kvm_msr {
     struct trace_entry ent;
     unsigned int write;
-    u32 ecx;
-    u64 data;
-    u8 exception;
+    __u32 ecx;
+    __u64 data;
+    __u8 exception;
 };
 
+// kvm_inj_virq format (from kernel):
+//   vector: offset 8, size 4
+//   soft:   offset 12, size 1
+//   reinjected: offset 13, size 1
 struct tp_kvm_inj_virq {
-    struct trace_entry ent;
-    unsigned int vector;
-    bool soft;
-    bool reinjected;
+    struct trace_entry ent;       // offset 0, size 8
+    unsigned int vector;          // offset 8, size 4
+    __u8 soft;                    // offset 12, size 1 (use u8, not bool)
+    __u8 reinjected;              // offset 13, size 1
 };
 
 struct tp_kvm_pic_set_irq {
@@ -92,22 +110,27 @@ struct tp_kvm_pic_set_irq {
     __u8 pin;
     __u8 elcr;
     __u8 imr;
-    bool coalesced;
+    __u8 coalesced;
 };
 
+// kvm_set_irq format (from kernel):
+//   gsi: offset 8, size 4
+//   level: offset 12, size 4
+//   irq_source_id: offset 16, size 4
 struct tp_kvm_set_irq {
-    struct trace_entry ent;
-    unsigned int gsi;
-    int level;
-    int irq_source_id;
+    struct trace_entry ent;       // offset 0, size 8
+    unsigned int gsi;             // offset 8, size 4
+    int level;                    // offset 12, size 4
+    int irq_source_id;            // offset 16, size 4
 };
 
 struct tp_kvm_page_fault {
     struct trace_entry ent;
     unsigned int vcpu_id;
+    __u32 _pad0;
     unsigned long guest_rip;
-    u64 fault_address;
-    u64 error_code;
+    __u64 fault_address;
+    __u64 error_code;
 };
 
 struct tp_kvm_cr {
@@ -125,8 +148,8 @@ struct tp_kvm_cpuid {
     unsigned long rbx;
     unsigned long rcx;
     unsigned long rdx;
-    bool found;
-    bool used_max_basic;
+    __u8 found;
+    __u8 used_max_basic;
 };
 
 // BPF maps
@@ -348,7 +371,7 @@ int trace_kvm_set_irq(struct tp_kvm_set_irq *ctx) {
     e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->gsi;
     e->arg1 = ctx->level;
-    e->arg2 = 0;
+    e->arg2 = ctx->irq_source_id;
     e->arg3 = 0;
     
     bpf_ringbuf_submit(e, 0);

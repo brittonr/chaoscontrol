@@ -82,8 +82,14 @@
 5. ✅ chaoscontrol-replay crate: recording, checkpoint, replay, time-travel debugger, triage, serialize
 
 ## Remaining Work
-1. Fix kvm_exit BPF tracepoint (trace_entry struct alignment with vmlinux.h)
-2. Add kvm_exit + kvm_inj_virq + kvm_set_irq capture (currently 0 events for these)
+(All items completed)
+
+## BPF Tracepoint Fix (2026-02-18)
+- **Root cause**: kvm_exit struct had implicit padding between u32 exit_reason and u64 guest_rip. Kernel format (verified via /sys/kernel/tracing/events/kvm/kvm_exit/format) has guest_rip at offset 16, isa at 24, etc. — compiler was inserting correct padding but the struct didn't have explicit __u32 _pad fields
+- **Fix**: Added explicit __u32 _pad0/1/2 fields to tp_kvm_exit to make alignment visible and prevent compiler differences
+- **kvm_inj_virq**: Changed `bool` → `__u8` for soft/reinjected (bool fragile in BPF)
+- **kvm_set_irq**: Now captures irq_source_id in arg2 (was dropped)
+- **Pattern**: Always verify BPF tracepoint context structs against `/sys/kernel/tracing/events/<subsys>/<event>/format`
 
 ## Completed (2026-02-18 continued)
 6. ✅ SDK coverage instrumentation — AFL-style 64KB bitmap at 0xE0000, SanCov hooks, no_std + std transport

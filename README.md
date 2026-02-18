@@ -91,6 +91,23 @@ cargo run --bin boot -- <kernel-path> [initrd-path]
 
 # Snapshot demo
 cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
+
+# Exploration — coverage-guided fault schedule search
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel <kernel-path> --initrd <initrd-path> \
+  --vms 3 --rounds 200 --branches 16 --output results/
+
+# Replay — reproduce a recorded session
+cargo run --release --bin chaoscontrol-replay -- replay \
+  --recording session.json --ticks 5000
+
+# Triage — generate bug report from recording
+cargo run --release --bin chaoscontrol-replay -- triage \
+  --recording session.json --bug-id 1 --format markdown
+
+# Info — inspect recording metadata
+cargo run --release --bin chaoscontrol-replay -- info \
+  --recording session.json
 ```
 
 ## Architecture

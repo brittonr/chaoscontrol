@@ -84,6 +84,13 @@
 ## Remaining Work
 (All items completed)
 
+## CLI Binaries (2026-02-18)
+- **chaoscontrol-explore**: `run` subcommand (ExplorerConfig from CLI args, progress via env_logger), `resume` placeholder
+- **chaoscontrol-replay**: 5 subcommands: `replay`, `triage`, `info`, `events`, `debug`
+- **Pattern**: clap derive + env_logger, matching chaoscontrol-trace style
+- **Delegates made worktree changes**: Must copy from /tmp/pi-worktrees/ back to main repo
+- **Virtio MMIO already wired**: MmioRead/MmioWrite in step(), process_queues() + IRQ raise, kernel cmdline has virtio_mmio.device= params
+
 ## SDK Guest Program (2026-02-18)
 - **chaoscontrol-guest crate**: minimal SDK-instrumented guest binary, runs as PID 1 in VM
 - **musl static linking**: `x86_64-unknown-linux-musl` target, binary is ~560KB, fully static

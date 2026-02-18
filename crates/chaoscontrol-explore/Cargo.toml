@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "Coverage-guided exploration engine for ChaosControl"
 
+[[bin]]
+name = "chaoscontrol-explore"
+path = "src/bin/chaoscontrol-explore.rs"
+
 [dependencies]
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
@@ -13,3 +17,5 @@ thiserror = "2"
 rand = { version = "0.8", features = ["small_rng"] }
 rand_chacha = "0.3"
 vm-memory = { version = "0.17", features = ["backend-mmap"] }
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"

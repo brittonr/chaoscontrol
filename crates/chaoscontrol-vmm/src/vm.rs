@@ -17,6 +17,7 @@
 //! ```
 
 use crate::cpu::{self, CpuConfig, VirtualTsc};
+use crate::devices::pit::DeterministicPit;
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
@@ -57,6 +58,12 @@ const SERIAL_PORT_END: u16 = 0x3ff;
 
 /// COM1 IRQ line number (standard PC).
 const SERIAL_IRQ: u32 = 4;
+
+/// PIT timer IRQ line number (standard PC, IRQ 0).
+const PIT_IRQ: u32 = 0;
+
+/// PIT oscillator frequency (Hz).
+const PIT_FREQ_HZ: u128 = 1_193_182;
 
 
 
@@ -259,9 +266,15 @@ pub struct DeterministicVm {
     // Determinism state
     virtual_tsc: VirtualTsc,
 
+    // Deterministic timer (mirrors KVM PIT state on virtual TSC timeline)
+    pit: DeterministicPit,
+
     // Serial console
     serial: vm_superio::Serial<SerialTrigger, vm_superio::serial::NoEvents, CapturingWriter>,
     serial_writer: CapturingWriter,
+
+    // KVM PIT mirroring state
+    last_kvm_pit_mode: u8,
 
     // Execution statistics
     exit_count: u64,
@@ -313,6 +326,21 @@ impl DeterministicVm {
         vm.create_pit2(pit_config)
             .map_err(VmError::CreatePit)?;
 
+        // Immediately disable KVM PIT channel 0 timer so it never fires
+        // on host time. We'll deliver IRQ 0 ourselves via set_irq_line
+        // at deterministic virtual-time points.
+        {
+            let mut pit_state = vm.get_pit2().map_err(VmError::CreatePit)?;
+            // Set channel 0 to mode 0 (one-shot) with max count and
+            // a far-future load time so it never triggers
+            pit_state.channels[0].count = 0; // 0 = 65536
+            pit_state.channels[0].mode = 0; // mode 0 = one-shot
+            pit_state.channels[0].gate = 1;
+            // Set count_load_time far in the future (year 2100)
+            pit_state.channels[0].count_load_time = i64::MAX / 2;
+            vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+        }
+
         // DETERMINISM: Set KVM clock to zero so guest always sees the same
         // starting time. Without this, the guest reads host wall-clock time
         // via the KVM paravirt clock MSRs, breaking reproducibility.
@@ -335,6 +363,10 @@ impl DeterministicVm {
 
         // Create virtual TSC for deterministic time tracking
         let virtual_tsc = VirtualTsc::from_config(&config.cpu);
+
+        // Deterministic PIT driven by virtual TSC — delivers timer
+        // interrupts at exact virtual-time points via set_irq_line.
+        let pit = DeterministicPit::new(config.cpu.tsc_khz);
 
         // Set up serial port with interrupt support
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
@@ -359,8 +391,10 @@ impl DeterministicVm {
             vcpu,
             memory,
             virtual_tsc,
+            pit,
             serial,
             serial_writer,
+            last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
         })
@@ -575,28 +609,8 @@ impl DeterministicVm {
         };
         self.vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
 
-        // Reset KVM PIT: set count_load_time for all channels to the
-        // current host monotonic time so the PIT thinks it was JUST
-        // loaded (0 elapsed ticks). This makes the first timer interrupt
-        // occur at a consistent point relative to guest execution start,
-        // regardless of how long host-side setup took.
-        let mut ts = libc::timespec {
-            tv_sec: 0,
-            tv_nsec: 0,
-        };
-        // SAFETY: clock_gettime with CLOCK_MONOTONIC is always safe
-        unsafe {
-            libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
-        }
-        let now_ns = ts.tv_sec * 1_000_000_000 + ts.tv_nsec;
-
-        let mut pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
-        for ch in &mut pit_state.channels {
-            ch.count_load_time = now_ns;
-        }
-        self.vm
-            .set_pit2(&pit_state)
-            .map_err(VmError::CreatePit)?;
+        // KVM PIT channel 0 is disabled (count_load_time = far future)
+        // so it won't fire. Our DeterministicPit delivers IRQ 0 instead.
 
         Ok(())
     }
@@ -743,7 +757,53 @@ impl DeterministicVm {
     ///
     /// Returns `true` if the VM halted or shut down.
     /// Advances the virtual TSC on every exit for deterministic time progression.
+    /// Synchronize PIT state: read KVM PIT, mirror to our DeterministicPit,
+    /// then suppress KVM's timer by pushing count_load_time to far future.
+    /// We deliver IRQ 0 ourselves at deterministic virtual-time points.
+    fn sync_and_suppress_pit(&mut self) -> Result<(), VmError> {
+        let mut pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+        let ch0 = &pit_state.channels[0];
+
+        // Mirror KVM PIT channel 0 config to our DeterministicPit
+        // when it gets reprogrammed by the guest.
+        let reload = ch0.count as u16;
+        let mode = ch0.mode;
+        if ch0.gate != 0
+            && (reload != self.pit.channel_reload(0)
+                || mode != self.last_kvm_pit_mode)
+        {
+            let tsc = self.virtual_tsc.read();
+            // Program our DeterministicPit with the same config
+            // Encode command byte: ch0, lohi, mode, binary
+            let cmd = 0x30 | ((mode & 0x7) << 1);
+            self.pit.write_port(0x43, cmd, tsc);
+            self.pit.write_port(0x40, reload as u8, tsc);
+            self.pit.write_port(0x40, (reload >> 8) as u8, tsc);
+            self.last_kvm_pit_mode = mode;
+        }
+
+        // Suppress KVM PIT timer: push count_load_time far into future
+        // so KVM never thinks the counter expired.
+        pit_state.channels[0].count_load_time = i64::MAX / 2;
+        self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+
+        // Now deliver our deterministic IRQ 0 if it's time
+        let current_tsc = self.virtual_tsc.read();
+        if self.pit.pending_irq(current_tsc) {
+            self.vm
+                .set_irq_line(PIT_IRQ, true)
+                .map_err(VmError::CreateIrqChip)?;
+            self.vm
+                .set_irq_line(PIT_IRQ, false)
+                .map_err(VmError::CreateIrqChip)?;
+            self.pit.acknowledge_irq();
+        }
+        Ok(())
+    }
+
     fn step(&mut self) -> Result<bool, VmError> {
+        self.sync_and_suppress_pit()?;
+
         match self.vcpu.run() {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
@@ -752,9 +812,12 @@ impl DeterministicVm {
 
 
 
+                let tsc = self.virtual_tsc.read();
                 if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     data[0] = self.serial.read(offset);
+                } else if DeterministicPit::handles_port(port) {
+                    data[0] = self.pit.read_port(port, tsc);
                 } else {
                     for byte in data.iter_mut() {
                         *byte = 0xff;
@@ -767,22 +830,54 @@ impl DeterministicVm {
                 self.io_exit_count += 1;
                 self.virtual_tsc.tick();
 
+                let tsc = self.virtual_tsc.read();
                 if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
                     let offset = (port - SERIAL_PORT_BASE) as u8;
                     let byte = data[0];
                     let _ = self.serial.write(offset, byte);
+                } else if DeterministicPit::handles_port(port) {
+                    self.pit.write_port(port, data[0], tsc);
                 }
                 Ok(false)
             }
             Ok(VcpuExit::Hlt) => {
                 self.exit_count += 1;
                 self.virtual_tsc.tick();
-                info!(
-                    "VM halted (exit_count={}, vtsc={})",
-                    self.exit_count,
-                    self.virtual_tsc.read()
-                );
-                Ok(true)
+
+                // HLT = kernel idle loop waiting for next interrupt.
+                // Read KVM PIT state to find channel 0's reload value,
+                // then fast-forward virtual TSC by one PIT period and
+                // inject the interrupt deterministically.
+                let pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+                let ch0 = &pit_state.channels[0];
+                let reload = if ch0.count == 0 { 65536u64 } else { ch0.count as u64 };
+
+                if ch0.gate != 0 && reload > 0 {
+                    // Advance virtual TSC by one PIT period:
+                    // tsc_ticks = reload * tsc_freq / PIT_FREQ
+                    let tsc_khz = self.virtual_tsc.tsc_khz() as u128;
+                    let tsc_per_period =
+                        (reload as u128 * tsc_khz * 1000).div_ceil(PIT_FREQ_HZ) as u64;
+                    self.virtual_tsc
+                        .advance_to(self.virtual_tsc.read() + tsc_per_period);
+
+                    // Inject the timer interrupt deterministically
+                    self.vm
+                        .set_irq_line(PIT_IRQ, true)
+                        .map_err(VmError::CreateIrqChip)?;
+                    self.vm
+                        .set_irq_line(PIT_IRQ, false)
+                        .map_err(VmError::CreateIrqChip)?;
+
+                    Ok(false)
+                } else {
+                    info!(
+                        "VM halted (exit_count={}, vtsc={})",
+                        self.exit_count,
+                        self.virtual_tsc.read()
+                    );
+                    Ok(true)
+                }
             }
             Ok(VcpuExit::Shutdown) => {
                 self.exit_count += 1;

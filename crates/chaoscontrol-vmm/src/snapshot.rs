@@ -3,6 +3,7 @@
 use crate::devices::block::BlockSnapshot;
 use crate::devices::entropy::EntropySnapshot;
 use crate::devices::pit::PitSnapshot;
+use crate::scheduler::SchedulerSnapshot;
 use chaoscontrol_fault::engine::EngineSnapshot;
 use kvm_bindings::{
     kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2, kvm_regs,
@@ -36,18 +37,53 @@ pub struct CaptureParams {
     pub fault_engine_snapshot: EngineSnapshot,
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
+    pub scheduler_snapshot: SchedulerSnapshot,
 }
 
-/// Complete VM state — everything needed to restore a VM to an exact point.
+/// Per-vCPU register state for snapshot/restore.
 #[derive(Clone, Debug)]
-pub struct VmSnapshot {
-    // vCPU register state
+pub struct VcpuSnapshot {
     pub regs: kvm_regs,
     pub sregs: kvm_sregs,
     pub fpu: kvm_fpu,
     pub debug_regs: kvm_debugregs,
     pub lapic: kvm_lapic_state,
     pub xcrs: kvm_xcrs,
+}
+
+impl VcpuSnapshot {
+    /// Capture all register state from a single vCPU.
+    pub fn capture(vcpu: &VcpuFd) -> Result<Self, SnapshotError> {
+        Ok(Self {
+            regs: vcpu.get_regs().map_err(SnapshotError::GetRegs)?,
+            sregs: vcpu.get_sregs().map_err(SnapshotError::GetSregs)?,
+            fpu: vcpu.get_fpu().map_err(SnapshotError::GetFpu)?,
+            debug_regs: vcpu.get_debug_regs().map_err(SnapshotError::GetDebugRegs)?,
+            lapic: vcpu.get_lapic().map_err(SnapshotError::GetLapic)?,
+            xcrs: vcpu.get_xcrs().map_err(SnapshotError::GetXcrs)?,
+        })
+    }
+
+    /// Restore all register state to a single vCPU.
+    pub fn restore(&self, vcpu: &VcpuFd) -> Result<(), SnapshotError> {
+        vcpu.set_sregs(&self.sregs)
+            .map_err(SnapshotError::SetSregs)?;
+        vcpu.set_regs(&self.regs).map_err(SnapshotError::SetRegs)?;
+        vcpu.set_fpu(&self.fpu).map_err(SnapshotError::SetFpu)?;
+        vcpu.set_debug_regs(&self.debug_regs)
+            .map_err(SnapshotError::SetDebugRegs)?;
+        vcpu.set_lapic(&self.lapic)
+            .map_err(SnapshotError::SetLapic)?;
+        vcpu.set_xcrs(&self.xcrs).map_err(SnapshotError::SetXcrs)?;
+        Ok(())
+    }
+}
+
+/// Complete VM state — everything needed to restore a VM to an exact point.
+#[derive(Clone, Debug)]
+pub struct VmSnapshot {
+    /// Per-vCPU register state (one entry per vCPU).
+    pub vcpu_snapshots: Vec<VcpuSnapshot>,
 
     // In-kernel device state
     pub pic_master: kvm_irqchip,
@@ -80,23 +116,32 @@ pub struct VmSnapshot {
     // Virtio device state
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
+
+    /// Index of the active vCPU at snapshot time.
+    pub active_vcpu: usize,
+
+    /// vCPU scheduler state.
+    pub scheduler_snapshot: SchedulerSnapshot,
 }
 
 impl VmSnapshot {
+    /// Convenience accessor: RIP of vCPU 0 (BSP).
+    pub fn rip(&self) -> u64 {
+        self.vcpu_snapshots[0].regs.rip
+    }
+
     /// Capture the complete state of a running VM.
     pub fn capture(
-        vcpu: &VcpuFd,
+        vcpus: &[VcpuFd],
         vm: &VmFd,
         guest_memory: &GuestMemoryMmap,
         params: CaptureParams,
     ) -> Result<Self, SnapshotError> {
-        // Capture vCPU state
-        let regs = vcpu.get_regs().map_err(SnapshotError::GetRegs)?;
-        let sregs = vcpu.get_sregs().map_err(SnapshotError::GetSregs)?;
-        let fpu = vcpu.get_fpu().map_err(SnapshotError::GetFpu)?;
-        let debug_regs = vcpu.get_debug_regs().map_err(SnapshotError::GetDebugRegs)?;
-        let lapic = vcpu.get_lapic().map_err(SnapshotError::GetLapic)?;
-        let xcrs = vcpu.get_xcrs().map_err(SnapshotError::GetXcrs)?;
+        // Capture per-vCPU state
+        let mut vcpu_snapshots = Vec::with_capacity(vcpus.len());
+        for vcpu in vcpus {
+            vcpu_snapshots.push(VcpuSnapshot::capture(vcpu)?);
+        }
 
         // Capture in-kernel IRQ chip state (3 chips: PIC master, PIC slave, IOAPIC)
         let mut pic_master = kvm_irqchip {
@@ -132,19 +177,14 @@ impl VmSnapshot {
             .map_err(|_| SnapshotError::ReadMemory)?;
 
         info!(
-            "Snapshot captured: {} MB memory, RIP=0x{:x}, RSP=0x{:x}",
+            "Snapshot captured: {} vCPUs, {} MB memory, BSP RIP=0x{:x}",
+            vcpu_snapshots.len(),
             memory_size / 1024 / 1024,
-            regs.rip,
-            regs.rsp
+            vcpu_snapshots[0].regs.rip,
         );
 
         Ok(Self {
-            regs,
-            sregs,
-            fpu,
-            debug_regs,
-            lapic,
-            xcrs,
+            vcpu_snapshots,
             pic_master,
             pic_slave,
             ioapic,
@@ -163,16 +203,25 @@ impl VmSnapshot {
             fault_engine_snapshot: params.fault_engine_snapshot,
             virtio_snapshots: params.virtio_snapshots,
             coverage_active: params.coverage_active,
+            active_vcpu: params.scheduler_snapshot.active,
+            scheduler_snapshot: params.scheduler_snapshot,
         })
     }
 
     /// Restore VM state from this snapshot.
     pub fn restore(
         &self,
-        vcpu: &VcpuFd,
+        vcpus: &[VcpuFd],
         vm: &VmFd,
         guest_memory: &GuestMemoryMmap,
     ) -> Result<(), SnapshotError> {
+        if vcpus.len() != self.vcpu_snapshots.len() {
+            return Err(SnapshotError::VcpuCountMismatch {
+                snapshot: self.vcpu_snapshots.len(),
+                current: vcpus.len(),
+            });
+        }
+
         // Restore guest memory
         guest_memory
             .write_slice(&self.memory, GuestAddress(0))
@@ -188,20 +237,15 @@ impl VmSnapshot {
         vm.set_irqchip(&self.ioapic)
             .map_err(SnapshotError::SetIrqchip)?;
 
-        // Restore vCPU state
-        vcpu.set_sregs(&self.sregs)
-            .map_err(SnapshotError::SetSregs)?;
-        vcpu.set_regs(&self.regs).map_err(SnapshotError::SetRegs)?;
-        vcpu.set_fpu(&self.fpu).map_err(SnapshotError::SetFpu)?;
-        vcpu.set_debug_regs(&self.debug_regs)
-            .map_err(SnapshotError::SetDebugRegs)?;
-        vcpu.set_lapic(&self.lapic)
-            .map_err(SnapshotError::SetLapic)?;
-        vcpu.set_xcrs(&self.xcrs).map_err(SnapshotError::SetXcrs)?;
+        // Restore per-vCPU state
+        for (vcpu_snap, vcpu) in self.vcpu_snapshots.iter().zip(vcpus.iter()) {
+            vcpu_snap.restore(vcpu)?;
+        }
 
         info!(
-            "Snapshot restored: RIP=0x{:x}, RSP=0x{:x}",
-            self.regs.rip, self.regs.rsp
+            "Snapshot restored: {} vCPUs, BSP RIP=0x{:x}",
+            self.vcpu_snapshots.len(),
+            self.vcpu_snapshots[0].regs.rip,
         );
 
         Ok(())
@@ -250,4 +294,6 @@ pub enum SnapshotError {
     SetClock(kvm_ioctls::Error),
     #[error("Failed to write guest memory")]
     WriteMemory,
+    #[error("vCPU count mismatch: snapshot has {snapshot}, VM has {current}")]
+    VcpuCountMismatch { snapshot: usize, current: usize },
 }

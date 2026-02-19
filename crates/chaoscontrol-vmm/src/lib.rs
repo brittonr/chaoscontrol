@@ -14,10 +14,12 @@
 //! - [`controller`] — Multi-VM simulation controller
 //! - [`verified`] — Pure functions extracted for formal verification with Verus
 
+pub mod acpi;
 pub mod controller;
 pub mod cpu;
 pub mod devices;
 pub mod memory;
+pub mod scheduler;
 pub mod snapshot;
 pub mod verified;
 pub mod vm;

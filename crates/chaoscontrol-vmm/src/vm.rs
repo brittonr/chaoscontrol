@@ -16,10 +16,12 @@
 //! vm.run().unwrap();
 //! ```
 
+use crate::acpi;
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
 use crate::devices::virtio_mmio::VirtioMmioDevice;
+use crate::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
@@ -119,6 +121,11 @@ pub struct VmConfig {
     pub memory_size: usize,
     /// CPU determinism configuration.
     pub cpu: CpuConfig,
+    /// Number of vCPUs (default: 1).
+    ///
+    /// When `num_vcpus > 1`, the VM runs in SMP mode with deterministic
+    /// serialized scheduling — only one vCPU executes at a time.
+    pub num_vcpus: usize,
     /// Kernel command line (NUL-terminated).
     pub cmdline: Vec<u8>,
 }
@@ -127,6 +134,7 @@ impl Default for VmConfig {
     fn default() -> Self {
         Self {
             memory_size: 256 * 1024 * 1024,
+            num_vcpus: 1,
             cpu: CpuConfig {
                 // Hide KVM so guest doesn't use kvm-clock (reads host wall time).
                 // Set fixed family=6 (Intel) so kernel's native_calibrate_tsc()
@@ -301,7 +309,9 @@ pub struct DeterministicVm {
     #[allow(dead_code)]
     kvm: Kvm,
     vm: VmFd,
-    vcpu: VcpuFd,
+    vcpus: Vec<VcpuFd>,
+    /// Index of the currently active vCPU (0 = BSP).
+    active_vcpu: usize,
     memory: GuestMemoryManager,
 
     // Determinism state
@@ -325,6 +335,9 @@ pub struct DeterministicVm {
 
     // Virtio MMIO devices
     virtio_devices: Vec<VirtioMmioDevice>,
+
+    // Intra-VM vCPU scheduler (only meaningful when num_vcpus > 1)
+    scheduler: VcpuScheduler,
 
     // Execution statistics
     exit_count: u64,
@@ -407,15 +420,18 @@ impl DeterministicVm {
         vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
         info!("KVM clock set to 0 (deterministic)");
 
-        // Create vCPU AFTER irqchip (so LAPIC is in-kernel)
-        let vcpu = vm.create_vcpu(0).map_err(VmError::VcpuCreate)?;
-
-        // Apply deterministic CPUID filtering
+        // Create vCPUs AFTER irqchip (so each gets an in-kernel LAPIC).
+        // Only one vCPU runs at a time — deterministic serialized scheduling.
+        let num_vcpus = config.num_vcpus.max(1);
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
-        vcpu.set_cpuid2(&cpuid).map_err(cpu::CpuError::SetCpuid)?;
-
-        // Pin TSC to fixed frequency
-        cpu::setup_tsc(&vcpu, config.cpu.tsc_khz)?;
+        let mut vcpus = Vec::with_capacity(num_vcpus);
+        for i in 0..num_vcpus {
+            let vcpu = vm.create_vcpu(i as u64).map_err(VmError::VcpuCreate)?;
+            vcpu.set_cpuid2(&cpuid).map_err(cpu::CpuError::SetCpuid)?;
+            cpu::setup_tsc(&vcpu, config.cpu.tsc_khz)?;
+            vcpus.push(vcpu);
+        }
+        info!("Created {} vCPU(s)", num_vcpus);
 
         // Create virtual TSC for deterministic time tracking
         let virtual_tsc = VirtualTsc::from_config(&config.cpu);
@@ -437,6 +453,14 @@ impl DeterministicVm {
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
+        // Create intra-VM vCPU scheduler
+        let scheduler = VcpuScheduler::new(&SchedulerConfig {
+            num_vcpus,
+            quantum: 100, // exits per vCPU turn
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: config.cpu.seed,
+        });
+
         // Create fault injection engine for SDK hypercalls
         let fault_engine = FaultEngine::new(EngineConfig {
             seed: config.cpu.seed,
@@ -448,8 +472,9 @@ impl DeterministicVm {
         let virtio_devices = Self::create_virtio_devices(config.cpu.seed);
 
         info!(
-            "VM created: {} MB memory, TSC {} kHz, seed {}, {} virtio devices",
+            "VM created: {} MB memory, {} vCPU(s), TSC {} kHz, seed {}, {} virtio devices",
             config.memory_size / (1024 * 1024),
+            num_vcpus,
             config.cpu.tsc_khz,
             config.cpu.seed,
             virtio_devices.len(),
@@ -458,13 +483,15 @@ impl DeterministicVm {
         Ok(Self {
             kvm,
             vm,
-            vcpu,
+            vcpus,
+            active_vcpu: 0,
             memory,
             virtual_tsc,
             entropy,
             pit,
             serial,
             serial_writer,
+            scheduler,
             fault_engine,
             virtio_devices,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
@@ -521,6 +548,35 @@ impl DeterministicVm {
         devices
     }
 
+    /// Build the kernel command line dynamically based on VM configuration.
+    ///
+    /// For single-vCPU mode: includes `nosmp noapic`.
+    /// For multi-vCPU mode: includes `maxcpus=N` and omits `nosmp noapic`.
+    fn build_cmdline(&self) -> Vec<u8> {
+        let num_vcpus = self.vcpus.len();
+        let smp_params = if num_vcpus > 1 {
+            format!("maxcpus={num_vcpus}")
+        } else {
+            "nosmp noapic".to_string()
+        };
+
+        let cmdline = format!(
+            "console=ttyS0 earlyprintk=serial \
+             clocksource=tsc tsc=reliable \
+             lpj=6000000 \
+             nokaslr {smp_params} \
+             randomize_kstack_offset=off norandmaps \
+             kfence.sample_interval=0 \
+             no_hash_pointers \
+             virtio_mmio.device=4K@0xd0000000:5 \
+             virtio_mmio.device=4K@0xd0001000:6 \
+             virtio_mmio.device=4K@0xd0002000:7 \
+             panic=-1\0"
+        );
+
+        cmdline.into_bytes()
+    }
+
     /// Load a Linux kernel (and optional initrd) into guest memory.
     ///
     /// This sets up:
@@ -529,6 +585,7 @@ impl DeterministicVm {
     /// - Boot parameters (zero page) with E820 memory map
     /// - GDT, page tables, segment registers for 64-bit mode
     /// - General-purpose registers with entry point and stack pointer
+    /// - ACPI tables (RSDP/RSDT/MADT) when `num_vcpus > 1`
     pub fn load_kernel(
         &mut self,
         kernel_path: &str,
@@ -581,10 +638,17 @@ impl DeterministicVm {
         // Set up boot parameters (zero page)
         self.setup_boot_params(initrd_info)?;
 
-        // Set up x86_64 registers
+        // Set up x86_64 registers for BSP (vCPU 0)
         self.setup_sregs()?;
         self.setup_regs(entry_point)?;
         self.setup_fpu()?;
+
+        // Write ACPI tables for SMP when num_vcpus > 1
+        if self.vcpus.len() > 1 {
+            acpi::write_acpi_tables(self.memory.inner(), self.vcpus.len())
+                .map_err(|e| VmError::Snapshot(format!("ACPI table generation: {e}")))?;
+            info!("ACPI tables written for {} vCPUs", self.vcpus.len());
+        }
 
         Ok(())
     }
@@ -594,7 +658,7 @@ impl DeterministicVm {
         self.write_tsc_to_guest(0)
     }
 
-    /// Write a specific TSC value to the vCPU's IA32_TSC MSR.
+    /// Write a specific TSC value to the active vCPU's IA32_TSC MSR.
     ///
     /// KVM advances the guest-visible TSC based on real wall-clock time
     /// between VM entries and exits. By writing our virtual TSC value
@@ -613,7 +677,9 @@ impl DeterministicVm {
         }])
         .map_err(|_| VmError::GuestMemoryWrite)?;
 
-        self.vcpu.set_msrs(&msrs).map_err(VmError::SetRegisters)?;
+        self.vcpus[self.active_vcpu]
+            .set_msrs(&msrs)
+            .map_err(VmError::SetRegisters)?;
         Ok(())
     }
 
@@ -632,19 +698,9 @@ impl DeterministicVm {
         const KERNEL_LOADER_OTHER: u8 = 0xff;
         const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x0100_0000;
 
-        // Write kernel command line
-        let cmdline = b"console=ttyS0 earlyprintk=serial \
-                       clocksource=tsc tsc=reliable \
-                       lpj=6000000 \
-                       nokaslr noapic nosmp \
-                       randomize_kstack_offset=off norandmaps \
-                       kfence.sample_interval=0 \
-                       no_hash_pointers \
-                       virtio_mmio.device=4K@0xd0000000:5 \
-                       virtio_mmio.device=4K@0xd0001000:6 \
-                       virtio_mmio.device=4K@0xd0002000:7 \
-                       panic=-1\0";
-        self.memory.write_cmdline(cmdline)?;
+        // Write kernel command line (dynamic based on num_vcpus)
+        let cmdline = self.build_cmdline();
+        self.memory.write_cmdline(&cmdline)?;
 
         let mut hdr = linux_loader::loader::bootparam::setup_header {
             type_of_loader: KERNEL_LOADER_OTHER,
@@ -683,8 +739,9 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Set up segment registers for the BSP (vCPU 0).
     fn setup_sregs(&self) -> Result<(), VmError> {
-        let mut sregs = self.vcpu.get_sregs().map_err(VmError::GetSregs)?;
+        let mut sregs = self.vcpus[0].get_sregs().map_err(VmError::GetSregs)?;
 
         // Use segment helpers from memory module
         sregs.cs = code64_segment();
@@ -710,10 +767,11 @@ impl DeterministicVm {
         sregs.cr4 |= X86_CR4_PAE;
         sregs.efer |= EFER_LME | EFER_LMA;
 
-        self.vcpu.set_sregs(&sregs).map_err(VmError::SetSregs)?;
+        self.vcpus[0].set_sregs(&sregs).map_err(VmError::SetSregs)?;
         Ok(())
     }
 
+    /// Set up general-purpose registers for the BSP (vCPU 0).
     fn setup_regs(&self, entry_point: GuestAddress) -> Result<(), VmError> {
         let regs = kvm_regs {
             rip: entry_point.raw_value(),
@@ -723,17 +781,18 @@ impl DeterministicVm {
             rflags: 0x2,          // Reserved bit must be set
             ..Default::default()
         };
-        self.vcpu.set_regs(&regs).map_err(VmError::SetRegisters)?;
+        self.vcpus[0].set_regs(&regs).map_err(VmError::SetRegisters)?;
         Ok(())
     }
 
+    /// Set up FPU state for the BSP (vCPU 0).
     fn setup_fpu(&self) -> Result<(), VmError> {
         let fpu = kvm_fpu {
             fcw: 0x37f,
             mxcsr: 0x1f80,
             ..Default::default()
         };
-        self.vcpu.set_fpu(&fpu).map_err(VmError::SetFpu)?;
+        self.vcpus[0].set_fpu(&fpu).map_err(VmError::SetFpu)?;
         Ok(())
     }
 
@@ -874,6 +933,31 @@ impl DeterministicVm {
         &mut self.entropy
     }
 
+    /// Get the number of vCPUs in this VM.
+    pub fn num_vcpus(&self) -> usize {
+        self.vcpus.len()
+    }
+
+    /// Get the index of the currently active vCPU.
+    pub fn active_vcpu(&self) -> usize {
+        self.active_vcpu
+    }
+
+    /// Set the active vCPU index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= num_vcpus()`.
+    pub fn set_active_vcpu(&mut self, index: usize) {
+        assert!(
+            index < self.vcpus.len(),
+            "vCPU index {} out of range (have {})",
+            index,
+            self.vcpus.len(),
+        );
+        self.active_vcpu = index;
+    }
+
     /// Get a reference to the guest memory manager.
     pub fn memory(&self) -> &GuestMemoryManager {
         &self.memory
@@ -983,16 +1067,17 @@ impl DeterministicVm {
             fault_engine_snapshot: self.fault_engine.snapshot(),
             virtio_snapshots,
             coverage_active: self.coverage_active,
+            scheduler_snapshot: self.scheduler.snapshot(),
         };
 
-        crate::snapshot::VmSnapshot::capture(&self.vcpu, &self.vm, self.memory.inner(), params)
+        crate::snapshot::VmSnapshot::capture(&self.vcpus, &self.vm, self.memory.inner(), params)
             .map_err(|e| VmError::Snapshot(e.to_string()))
     }
 
     /// Restore VM state from a snapshot.
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         snapshot
-            .restore(&self.vcpu, &self.vm, self.memory.inner())
+            .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| VmError::Snapshot(e.to_string()))?;
 
         // Restore deterministic entropy PRNG state
@@ -1013,6 +1098,10 @@ impl DeterministicVm {
 
         // Restore coverage flag
         self.coverage_active = snapshot.coverage_active;
+
+        // Restore scheduler state and active vCPU
+        self.scheduler.restore(&snapshot.scheduler_snapshot);
+        self.active_vcpu = snapshot.active_vcpu;
 
         // Restore virtio device state (block device data)
         for (snap, dev) in snapshot
@@ -1048,7 +1137,7 @@ impl DeterministicVm {
             .register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
 
-        info!("VM restored from snapshot (RIP={:#x})", snapshot.regs.rip,);
+        info!("VM restored from snapshot (BSP RIP={:#x})", snapshot.rip());
 
         Ok(())
     }
@@ -1124,11 +1213,26 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Check if the vCPU scheduler wants to switch and do so.
+    ///
+    /// Called after each exit that increments `exit_count`.  When the
+    /// current vCPU's quantum is exhausted, advances to the next vCPU.
+    #[inline]
+    fn maybe_switch_vcpu(&mut self) {
+        if self.scheduler.tick() {
+            let next = self.scheduler.advance();
+            self.active_vcpu = next;
+        }
+    }
+
     fn step(&mut self) -> Result<bool, VmError> {
         self.sync_and_suppress_pit()?;
         self.sync_tsc_to_guest()?;
 
-        match self.vcpu.run() {
+        // Ensure active_vcpu tracks the scheduler
+        self.active_vcpu = self.scheduler.active();
+
+        match self.vcpus[self.active_vcpu].run() {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
@@ -1155,6 +1259,7 @@ impl DeterministicVm {
                         *byte = 0xff;
                     }
                 }
+                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::IoOut(port, data)) => {
@@ -1178,6 +1283,7 @@ impl DeterministicVm {
                 } else if DeterministicPit::handles_port(port) {
                     self.pit.write_port(port, data[0], tsc);
                 }
+                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::Hlt) => {
@@ -1213,6 +1319,7 @@ impl DeterministicVm {
                         .set_irq_line(PIT_IRQ, false)
                         .map_err(VmError::CreateIrqChip)?;
 
+                    self.maybe_switch_vcpu();
                     Ok(false)
                 } else {
                     info!(
@@ -1251,6 +1358,7 @@ impl DeterministicVm {
                     }
                 }
 
+                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::MmioWrite(addr, data)) => {
@@ -1274,6 +1382,7 @@ impl DeterministicVm {
                     }
                 }
 
+                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::Intr) => {
@@ -1359,6 +1468,7 @@ mod tests {
     fn test_vm_config_default() {
         let config = VmConfig::default();
         assert_eq!(config.memory_size, 256 * 1024 * 1024);
+        assert_eq!(config.num_vcpus, 1);
         assert_eq!(config.cpu.tsc_khz, 3_000_000);
     }
 

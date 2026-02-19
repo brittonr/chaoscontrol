@@ -370,6 +370,49 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
     Ok(cpuid)
 }
 
+/// Produce a per-vCPU copy of the CPUID table with the correct APIC ID.
+///
+/// CPUID leaf 0x1 (EBX\[31:24\]) and leaves 0xB/0x1F (EDX) must report
+/// each vCPU's unique APIC ID.  [`filter_cpuid`] produces a shared
+/// template with APIC ID 0; this function creates a per-vCPU variant
+/// by patching the relevant fields.
+///
+/// # Fields patched
+///
+/// | Leaf | Register | Field |
+/// |------|----------|-------|
+/// | 0x1  | EBX\[31:24\] | Initial APIC ID |
+/// | 0x1  | EBX\[23:16\] | Max addressable logical processor IDs |
+/// | 0xB (all sub-leaves) | EDX | x2APIC ID |
+/// | 0x1F (all sub-leaves) | EDX | x2APIC ID |
+pub fn patch_cpuid_apic_id(
+    cpuid: &CpuId,
+    apic_id: u32,
+    num_vcpus: u32,
+) -> Result<CpuId, CpuError> {
+    let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+    for entry in entries.iter_mut() {
+        match entry.function {
+            CPUID_LEAF_FEATURES => {
+                // EBX[31:24] = Initial APIC ID for this vCPU.
+                entry.ebx = (entry.ebx & 0x00FF_FFFF) | (apic_id << 24);
+                // EBX[23:16] = Maximum number of addressable IDs for
+                // logical processors in this physical package.  Must
+                // be >= num_vcpus so the kernel builds the correct
+                // topology.
+                entry.ebx = (entry.ebx & 0xFF00_FFFF) | (num_vcpus << 16);
+            }
+            0xB | 0x1F => {
+                // EDX = x2APIC ID.  Applies to every sub-leaf.
+                entry.edx = apic_id;
+            }
+            _ => {}
+        }
+    }
+    CpuId::from_entries(&entries)
+        .map_err(|_| CpuError::GetCpuid(kvm_ioctls::Error::new(libc::ENOMEM)))
+}
+
 /// Pin the vCPU's TSC to a fixed frequency.
 ///
 /// After this call every `RDTSC` inside the guest will advance at
@@ -1218,5 +1261,84 @@ mod tests {
         let (d, n) = tsc_crystal_ratio(3_000_000);
         assert_eq!(d, 1);
         assert_eq!(n, 120);
+    }
+
+    // -- patch_cpuid_apic_id --
+
+    #[test]
+    fn patch_apic_id_leaf1_initial_apic_id() {
+        // Build a minimal CpuId with leaf 0x1 (EBX cleared to 0).
+        let entries = vec![make_entry(0x1, 0, 0, 0x00FF_FFFF, 0, 0)];
+        let cpuid = CpuId::from_entries(&entries).unwrap();
+
+        let patched = patch_cpuid_apic_id(&cpuid, 3, 4).unwrap();
+        let e = &patched.as_slice()[0];
+
+        // EBX[31:24] = APIC ID = 3
+        assert_eq!((e.ebx >> 24) & 0xFF, 3);
+        // EBX[23:16] = num_vcpus = 4
+        assert_eq!((e.ebx >> 16) & 0xFF, 4);
+        // EBX[15:0] unchanged
+        assert_eq!(e.ebx & 0xFFFF, 0xFFFF);
+    }
+
+    #[test]
+    fn patch_apic_id_leaf0xb_edx() {
+        // Leaf 0xB sub-leaf 0 (SMT level) and sub-leaf 1 (Core level).
+        let entries = vec![
+            make_entry(0xB, 0, 1, 1, 0x0100, 0),
+            make_entry(0xB, 1, 4, 8, 0x0201, 0),
+        ];
+        let cpuid = CpuId::from_entries(&entries).unwrap();
+
+        let patched = patch_cpuid_apic_id(&cpuid, 5, 8).unwrap();
+        let sl = patched.as_slice();
+        assert_eq!(sl[0].edx, 5, "sub-leaf 0 EDX must be APIC ID");
+        assert_eq!(sl[1].edx, 5, "sub-leaf 1 EDX must be APIC ID");
+        // EAX/EBX/ECX unchanged
+        assert_eq!(sl[0].eax, 1);
+        assert_eq!(sl[1].ebx, 8);
+    }
+
+    #[test]
+    fn patch_apic_id_leaf0x1f_edx() {
+        let entries = vec![make_entry(0x1F, 0, 0, 0, 0, 0)];
+        let cpuid = CpuId::from_entries(&entries).unwrap();
+
+        let patched = patch_cpuid_apic_id(&cpuid, 7, 8).unwrap();
+        assert_eq!(patched.as_slice()[0].edx, 7);
+    }
+
+    #[test]
+    fn patch_apic_id_bsp_is_zero() {
+        let entries = vec![
+            make_entry(0x1, 0, 0, 0, 0, 0),
+            make_entry(0xB, 0, 0, 0, 0, 99),
+        ];
+        let cpuid = CpuId::from_entries(&entries).unwrap();
+
+        let patched = patch_cpuid_apic_id(&cpuid, 0, 2).unwrap();
+        let sl = patched.as_slice();
+        assert_eq!((sl[0].ebx >> 24) & 0xFF, 0, "BSP APIC ID = 0");
+        assert_eq!(sl[1].edx, 0, "BSP x2APIC ID = 0");
+    }
+
+    #[test]
+    fn patch_apic_id_does_not_touch_other_leaves() {
+        let entries = vec![
+            make_entry(0x7, 0, 0xAAAA, 0xBBBB, 0xCCCC, 0xDDDD),
+            make_entry(0xB, 0, 1, 2, 3, 0),
+        ];
+        let cpuid = CpuId::from_entries(&entries).unwrap();
+
+        let patched = patch_cpuid_apic_id(&cpuid, 2, 4).unwrap();
+        let sl = patched.as_slice();
+        // Leaf 0x7 untouched
+        assert_eq!(sl[0].eax, 0xAAAA);
+        assert_eq!(sl[0].ebx, 0xBBBB);
+        assert_eq!(sl[0].ecx, 0xCCCC);
+        assert_eq!(sl[0].edx, 0xDDDD);
+        // Leaf 0xB EDX patched
+        assert_eq!(sl[1].edx, 2);
     }
 }

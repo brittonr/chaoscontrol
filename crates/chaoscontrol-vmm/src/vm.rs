@@ -491,7 +491,13 @@ impl DeterministicVm {
         let mut vcpus = Vec::with_capacity(num_vcpus);
         for i in 0..num_vcpus {
             let vcpu = vm.create_vcpu(i as u64).map_err(VmError::VcpuCreate)?;
-            vcpu.set_cpuid2(&cpuid).map_err(cpu::CpuError::SetCpuid)?;
+            // Each vCPU needs its own CPUID table with its unique APIC ID
+            // in leaf 0x1 EBX[31:24] and leaf 0xB/0x1F EDX. Without this,
+            // all vCPUs report APIC ID 0, causing "APIC ID mismatch"
+            // firmware bug warnings from the kernel.
+            let vcpu_cpuid = cpu::patch_cpuid_apic_id(&cpuid, i as u32, num_vcpus as u32)?;
+            vcpu.set_cpuid2(&vcpu_cpuid)
+                .map_err(cpu::CpuError::SetCpuid)?;
             cpu::setup_tsc(&vcpu, config.cpu.tsc_khz)?;
             vcpus.push(vcpu);
         }

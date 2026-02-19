@@ -45,6 +45,7 @@
 | 2026-02-19 | self | SIGALRM from previous SMP VM leaks into next VM's vcpu.run() | Must disarm timer in run_bounded on exit + Drop impl; stale SIGALRMs cause ±2 exit count jitter |
 | 2026-02-19 | self | SMP VMs hit InternalError after snapshot/restore | VcpuSnapshot must save/restore KVM_MP_STATE — without it, KVM doesn't know AP is HALTED vs UNINITIALIZED |
 | 2026-02-19 | self | VcpuSnapshot only saved regs/sregs/fpu/lapic/xcrs | Must also save mp_state; set mp_state BEFORE registers during restore (KVM rejects writes on UNINITIALIZED vCPUs) |
+| 2026-02-19 | self | CPUID leaf 0xB EDX=0 for all vCPUs → "APIC ID mismatch" firmware bug | filter_cpuid makes shared template; must patch_cpuid_apic_id per-vCPU with unique APIC ID before set_cpuid2 |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -143,6 +144,7 @@
   - PMU instruction counting abandoned — SIGIO never delivered on AMD Zen5, counts non-deterministic
   - Exit-count scheduling + SIGALRM liveness is the winning approach
 - **Integration tests**: 24/24 pass
+- **CPUID per-vCPU**: filter_cpuid() creates shared template → patch_cpuid_apic_id() per-vCPU for leaf 0x1 EBX[31:24] + leaf 0xB/0x1F EDX
 - **Key architecture**:
   1. Exit-count scheduler (quantum=100 round-robin, seeded RNG for randomized)
   2. SIGALRM (10ms) fires during spin loops, detected by `sigalrm_without_exit >= 2`

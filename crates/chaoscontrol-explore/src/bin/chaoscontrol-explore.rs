@@ -43,6 +43,7 @@ use chaoscontrol_explore::explorer::{Explorer, ExplorerConfig};
 use chaoscontrol_explore::mutator::MutationConfig;
 use chaoscontrol_explore::report::format_report;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
+use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 use clap::{Parser, Subcommand};
 use std::fs;
@@ -93,6 +94,14 @@ enum Commands {
         #[arg(short, long, default_value = "100")]
         quantum: u64,
 
+        /// Number of vCPUs per VM (1 = single-CPU, 2+ = SMP).
+        #[arg(long, default_value = "1")]
+        vcpus: usize,
+
+        /// Scheduling strategy for SMP: "round-robin" or "randomized".
+        #[arg(long, default_value = "round-robin")]
+        scheduling: String,
+
         /// Max frontier size.
         #[arg(short, long, default_value = "50")]
         max_frontier: usize,
@@ -137,6 +146,8 @@ fn main() {
             branches,
             ticks,
             quantum,
+            vcpus,
+            scheduling,
             max_frontier,
             output,
         } => cmd_run(
@@ -148,6 +159,8 @@ fn main() {
             branches,
             ticks,
             quantum,
+            vcpus,
+            scheduling,
             max_frontier,
             output,
         ),
@@ -169,6 +182,8 @@ fn cmd_run(
     branches: usize,
     ticks: u64,
     quantum: u64,
+    vcpus: usize,
+    scheduling: String,
     max_frontier: usize,
     output: Option<String>,
 ) {
@@ -193,10 +208,31 @@ fn cmd_run(
         }
     }
 
+    // Parse scheduling strategy
+    let scheduling_strategy = match scheduling.as_str() {
+        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
+        "randomized" | "rand" => SchedulingStrategy::Randomized {
+            min_quantum: 50,
+            max_quantum: 200,
+        },
+        other => {
+            eprintln!(
+                "Error: unknown scheduling strategy '{}'. Use 'round-robin' or 'randomized'.",
+                other
+            );
+            std::process::exit(1);
+        }
+    };
+
+    // Build VM config with SMP settings
+    let mut vm_config = VmConfig::default();
+    vm_config.num_vcpus = vcpus;
+    vm_config.scheduling_strategy = scheduling_strategy;
+
     // Build configuration
     let config = ExplorerConfig {
         num_vms: vms,
-        vm_config: VmConfig::default(),
+        vm_config,
         kernel_path: kernel.clone(),
         initrd_path: initrd.clone(),
         seed,
@@ -205,6 +241,7 @@ fn cmd_run(
         max_rounds: rounds,
         max_frontier,
         quantum,
+        scheduling_strategy,
         mutation: MutationConfig::default(),
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
@@ -225,6 +262,8 @@ fn cmd_run(
     eprintln!("  Branches/round: {}", branches);
     eprintln!("  Ticks/branch:   {}", ticks);
     eprintln!("  Quantum:        {}", quantum);
+    eprintln!("  vCPUs/VM:       {}", vcpus);
+    eprintln!("  Scheduling:     {}", scheduling);
     eprintln!("  Max frontier:   {}", max_frontier);
     if let Some(ref output_dir) = output {
         eprintln!("  Output:         {}", output_dir);

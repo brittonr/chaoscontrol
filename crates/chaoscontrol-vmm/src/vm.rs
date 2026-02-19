@@ -130,6 +130,11 @@ pub struct VmConfig {
     /// When `num_vcpus > 1`, the VM runs in SMP mode with deterministic
     /// serialized scheduling — only one vCPU executes at a time.
     pub num_vcpus: usize,
+    /// Scheduling strategy for multi-vCPU VMs.
+    ///
+    /// Only meaningful when `num_vcpus > 1`. Controls how vCPU execution
+    /// time is divided: fixed round-robin or randomized quantum.
+    pub scheduling_strategy: SchedulingStrategy,
     /// Kernel command line (NUL-terminated).
     pub cmdline: Vec<u8>,
 }
@@ -139,6 +144,7 @@ impl Default for VmConfig {
         Self {
             memory_size: 256 * 1024 * 1024,
             num_vcpus: 1,
+            scheduling_strategy: SchedulingStrategy::RoundRobin,
             cpu: CpuConfig {
                 // Hide KVM so guest doesn't use kvm-clock (reads host wall time).
                 // Set fixed family=6 (Intel) so kernel's native_calibrate_tsc()
@@ -515,7 +521,7 @@ impl DeterministicVm {
         let scheduler = VcpuScheduler::new(&SchedulerConfig {
             num_vcpus,
             quantum: 100, // exits per vCPU turn
-            strategy: SchedulingStrategy::RoundRobin,
+            strategy: config.scheduling_strategy,
             seed: config.cpu.seed,
         });
 
@@ -596,7 +602,7 @@ impl DeterministicVm {
             virtio_devices,
             instruction_counter,
             insn_count: 0,
-            insn_quantum: insn_quantum,
+            insn_quantum,
             singlestep_remaining: 0,
             singlestep_active: false,
             sigalrm_without_exit: 0,
@@ -990,6 +996,11 @@ impl DeterministicVm {
 
         for i in 0..max_exits {
             if self.step()? {
+                // Disarm timer on early exit to prevent stale SIGALRMs
+                // from leaking into subsequent VM runs in the same process.
+                if self.vcpus.len() > 1 {
+                    self.disarm_preemption_timer();
+                }
                 return Ok((i + 1, true));
             }
             self.exits_since_last_sdk += 1;
@@ -1001,8 +1012,16 @@ impl DeterministicVm {
                     "VM idle (no SDK calls for {} exits), treating as halted",
                     self.exits_since_last_sdk
                 );
+                if self.vcpus.len() > 1 {
+                    self.disarm_preemption_timer();
+                }
                 return Ok((i + 1, true));
             }
+        }
+        // Disarm preemption timer at end of bounded run so it doesn't
+        // fire on a future vcpu.run() call from a different VM.
+        if self.vcpus.len() > 1 {
+            self.disarm_preemption_timer();
         }
         Ok((max_exits, false))
     }
@@ -1284,6 +1303,34 @@ impl DeterministicVm {
         self.vm
             .register_irqfd(&serial_evt, SERIAL_IRQ)
             .map_err(VmError::CreateIrqChip)?;
+
+        // Reset host-side preemption state that is NOT part of the
+        // deterministic snapshot but affects scheduling decisions.
+        // Without this, SIGALRM-driven liveness switches from a
+        // prior run can leak non-determinism into the restored session.
+        self.sigalrm_without_exit = 0;
+        self.skip_tsc_sync = false;
+        self.insn_count = 0;
+
+        // Disarm the SIGALRM preemption timer and drain any pending
+        // signal so it doesn't fire at a non-deterministic phase
+        // relative to the first vcpu.run() after restore. The timer
+        // will be re-armed in the next step() call.
+        if self.vcpus.len() > 1 {
+            unsafe {
+                let zero = libc::itimerval {
+                    it_interval: libc::timeval {
+                        tv_sec: 0,
+                        tv_usec: 0,
+                    },
+                    it_value: libc::timeval {
+                        tv_sec: 0,
+                        tv_usec: 0,
+                    },
+                };
+                libc::setitimer(libc::ITIMER_REAL, &zero, std::ptr::null_mut());
+            }
+        }
 
         info!("VM restored from snapshot (BSP RIP={:#x})", snapshot.rip());
 
@@ -1741,6 +1788,33 @@ impl DeterministicVm {
                 // KVM needs to inject a pending interrupt — retry immediately.
                 Ok(false)
             }
+            Ok(VcpuExit::InternalError) => {
+                // KVM_EXIT_INTERNAL_ERROR: emulation failure or inconsistent
+                // vCPU state. In SMP mode this can happen after snapshot/restore
+                // if the active vCPU (AP) was HALTED and the in-kernel LAPIC
+                // state wasn't perfectly consistent for re-entry.
+                //
+                // Recovery: switch to another runnable vCPU (fall back to BSP).
+                // If this is a single-vCPU VM, treat it as a fatal halt.
+                if self.vcpus.len() > 1 {
+                    log::warn!(
+                        "InternalError on vCPU {} — switching to next runnable vCPU",
+                        self.active_vcpu
+                    );
+                    for offset in 1..self.vcpus.len() {
+                        let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                        if candidate == 0 || self.vcpu_is_runnable(candidate) {
+                            self.active_vcpu = candidate;
+                            break;
+                        }
+                    }
+                    Ok(false)
+                } else {
+                    self.exit_count += 1;
+                    log::error!("KVM InternalError on vCPU 0 — stopping");
+                    Ok(true)
+                }
+            }
             Ok(exit) => {
                 self.exit_count += 1;
                 info!("Unhandled VM exit: {:?} — stopping", exit);
@@ -1824,6 +1898,17 @@ impl DeterministicVm {
             &[status],
             vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + 0x18), // status offset
         );
+    }
+}
+
+impl Drop for DeterministicVm {
+    fn drop(&mut self) {
+        // Disarm the SIGALRM preemption timer to prevent stale signals
+        // from interfering with subsequent VMs in the same process
+        // (important for test suites that create many VMs sequentially).
+        if self.vcpus.len() > 1 {
+            self.disarm_preemption_timer();
+        }
     }
 }
 

@@ -6,8 +6,9 @@ use crate::devices::pit::PitSnapshot;
 use crate::scheduler::SchedulerSnapshot;
 use chaoscontrol_fault::engine::EngineSnapshot;
 use kvm_bindings::{
-    kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2, kvm_regs,
-    kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
+    kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_mp_state,
+    kvm_pit_state2, kvm_regs, kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER,
+    KVM_IRQCHIP_PIC_SLAVE,
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
@@ -50,6 +51,10 @@ pub struct VcpuSnapshot {
     pub debug_regs: kvm_debugregs,
     pub lapic: kvm_lapic_state,
     pub xcrs: kvm_xcrs,
+    /// MP state (RUNNABLE, HALTED, UNINITIALIZED, etc.).
+    /// Critical for SMP: without this, KVM doesn't know whether an AP
+    /// should be running or waiting for SIPI after restore.
+    pub mp_state: kvm_mp_state,
 }
 
 impl VcpuSnapshot {
@@ -62,11 +67,16 @@ impl VcpuSnapshot {
             debug_regs: vcpu.get_debug_regs().map_err(SnapshotError::GetDebugRegs)?,
             lapic: vcpu.get_lapic().map_err(SnapshotError::GetLapic)?,
             xcrs: vcpu.get_xcrs().map_err(SnapshotError::GetXcrs)?,
+            mp_state: vcpu.get_mp_state().map_err(SnapshotError::GetMpState)?,
         })
     }
 
     /// Restore all register state to a single vCPU.
     pub fn restore(&self, vcpu: &VcpuFd) -> Result<(), SnapshotError> {
+        // MP state MUST be set before registers — KVM refuses register
+        // writes on vCPUs in UNINITIALIZED state on some host kernels.
+        vcpu.set_mp_state(self.mp_state)
+            .map_err(SnapshotError::SetMpState)?;
         vcpu.set_sregs(&self.sregs)
             .map_err(SnapshotError::SetSregs)?;
         vcpu.set_regs(&self.regs).map_err(SnapshotError::SetRegs)?;
@@ -271,6 +281,8 @@ pub enum SnapshotError {
     GetLapic(kvm_ioctls::Error),
     #[error("Failed to get XCRs: {0}")]
     GetXcrs(kvm_ioctls::Error),
+    #[error("Failed to get MP state: {0}")]
+    GetMpState(kvm_ioctls::Error),
     #[error("Failed to get IRQ chip: {0}")]
     GetIrqchip(kvm_ioctls::Error),
     #[error("Failed to get PIT: {0}")]
@@ -291,6 +303,8 @@ pub enum SnapshotError {
     SetLapic(kvm_ioctls::Error),
     #[error("Failed to set XCRs: {0}")]
     SetXcrs(kvm_ioctls::Error),
+    #[error("Failed to set MP state: {0}")]
+    SetMpState(kvm_ioctls::Error),
     #[error("Failed to set IRQ chip: {0}")]
     SetIrqchip(kvm_ioctls::Error),
     #[error("Failed to set PIT: {0}")]

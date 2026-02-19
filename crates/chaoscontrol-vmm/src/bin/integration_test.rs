@@ -1590,6 +1590,104 @@ fn main() {
     );
 
     // ═══════════════════════════════════════════════════════════════
+    //  Test 25: SMP snapshot/restore determinism
+    // ═══════════════════════════════════════════════════════════════
+    run_test!(
+        "SMP snapshot/restore: two restores produce identical execution",
+        {
+            let mut config = VmConfig::default();
+            config.num_vcpus = 2;
+            let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
+            vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+
+            // Boot to SMP online (~70K exits)
+            let mut boot_output = String::new();
+            for _ in 0..20 {
+                let (_, halted) = vm.run_bounded(10_000).expect("boot run");
+                boot_output.push_str(&vm.take_serial_output());
+                if boot_output.contains("Brought up") || halted {
+                    break;
+                }
+            }
+
+            if !boot_output.contains("Brought up 1 node, 2 CPUs") {
+                eprintln!("    SMP boot failed — cannot test snapshot/restore");
+                return false;
+            }
+
+            // Snapshot after SMP boot
+            let snapshot = vm.snapshot().expect("snapshot");
+            let snap_exits = vm.exit_count();
+            let _snap_vtsc = vm.virtual_tsc();
+
+            // Restore #1 and run 20K more exits (branch A)
+            vm.restore(&snapshot).expect("restore 1");
+            let restored_exits_1 = vm.exit_count();
+            vm.take_serial_output(); // clear
+            vm.run_bounded(20_000).expect("branch A run");
+            let exits_a = vm.exit_count();
+            let vtsc_a = vm.virtual_tsc();
+            let output_a = vm.take_serial_output();
+
+            // Restore #2 and run 20K more exits (branch B)
+            vm.restore(&snapshot).expect("restore 2");
+            let restored_exits_2 = vm.exit_count();
+            vm.take_serial_output(); // clear
+            vm.run_bounded(20_000).expect("branch B run");
+            let exits_b = vm.exit_count();
+            let vtsc_b = vm.virtual_tsc();
+            let output_b = vm.take_serial_output();
+
+            // Verify restore correctness: exit counts match snapshot
+            let restore_ok_1 = restored_exits_1 == snap_exits;
+            let restore_ok_2 = restored_exits_2 == snap_exits;
+
+            // Core property: two restores produce identical execution
+            let exits_match = exits_a == exits_b;
+            let vtsc_match = vtsc_a == vtsc_b;
+
+            // Strip non-deterministic lines for serial comparison
+            let strip = |s: &str| -> String {
+                let re_ts = regex::Regex::new(r"\[\s*\d+\.\d+\]\s*").unwrap();
+                let re_mem = regex::Regex::new(r"Memory: \d+K/\d+K available").unwrap();
+                let re_tsc = regex::Regex::new(
+                    r"tsc: (Detected [\d.]+ MHz processor|Fast TSC calibration.*)",
+                )
+                .unwrap();
+                let s = re_ts.replace_all(s, "");
+                let s = re_mem.replace_all(&s, "Memory: STRIPPED");
+                re_tsc.replace_all(&s, "tsc: STRIPPED").to_string()
+            };
+            let serial_match = strip(&output_a) == strip(&output_b);
+
+            if !restore_ok_1 || !restore_ok_2 {
+                eprintln!(
+                    "    Restore exits mismatch: snap={}, r1={}, r2={}",
+                    snap_exits, restored_exits_1, restored_exits_2
+                );
+            }
+            if !exits_match {
+                eprintln!(
+                    "    Post-restore exit counts differ: {} vs {}",
+                    exits_a, exits_b
+                );
+            }
+            if !vtsc_match {
+                eprintln!("    Post-restore vTSC differs: {} vs {}", vtsc_a, vtsc_b);
+            }
+            if !serial_match {
+                eprintln!(
+                    "    Post-restore serial differs (lengths: {} vs {})",
+                    output_a.len(),
+                    output_b.len()
+                );
+            }
+
+            restore_ok_1 && restore_ok_2 && exits_match && vtsc_match && serial_match
+        }
+    );
+
+    // ═══════════════════════════════════════════════════════════════
     //  Summary
     // ═══════════════════════════════════════════════════════════════
     println!();

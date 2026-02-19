@@ -11,6 +11,7 @@ use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
 use rand::SeedableRng;
@@ -50,6 +51,8 @@ pub struct ExplorerConfig {
     pub max_frontier: usize,
     /// Exits per VM per scheduling round (passed to SimulationController).
     pub quantum: u64,
+    /// Scheduling strategy for multi-vCPU VMs.
+    pub scheduling_strategy: SchedulingStrategy,
     /// Mutation config.
     pub mutation: MutationConfig,
     /// Guest physical address of coverage bitmap (0 = blind mode).
@@ -71,6 +74,7 @@ impl Default for ExplorerConfig {
             max_rounds: 100,
             max_frontier: 50,
             quantum: 100,
+            scheduling_strategy: SchedulingStrategy::RoundRobin,
             mutation: MutationConfig::default(),
             coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
             output_dir: None,
@@ -274,9 +278,12 @@ impl Explorer {
             return Ok(());
         }
 
+        let mut vm_config = self.config.vm_config.clone();
+        vm_config.scheduling_strategy = self.config.scheduling_strategy;
+
         let sim_config = SimulationConfig {
             num_vms: self.config.num_vms,
-            vm_config: self.config.vm_config.clone(),
+            vm_config,
             kernel_path: self.config.kernel_path.clone(),
             initrd_path: self.config.initrd_path.clone(),
             seed: self.config.seed,
@@ -565,6 +572,7 @@ impl Explorer {
             max_rounds: max_rounds_override.unwrap_or(checkpoint.config.max_rounds),
             max_frontier: checkpoint.config.max_frontier,
             quantum: checkpoint.config.quantum,
+            scheduling_strategy: SchedulingStrategy::RoundRobin,
             mutation: MutationConfig::default(),
             coverage_gpa: checkpoint.config.coverage_gpa,
             output_dir: None, // Will be set by caller if needed

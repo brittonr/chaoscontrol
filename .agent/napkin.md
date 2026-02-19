@@ -41,6 +41,10 @@
 | 2026-02-19 | self | CPUID 0x15 injection (25MHz × 120 = 3GHz) works on AMD | Leaf doesn't exist natively; combined with vendor=GenuineIntel makes kernel trust it |
 | 2026-02-19 | self | Liveness switch must be invisible to scheduler | If SIGALRM calls scheduler.tick() or set_active(), it creates non-deterministic scheduling |
 | 2026-02-19 | self | Spin-loop detection needs threshold ≥2 consecutive SIGALRMs | Threshold=1 triggers during PIT calibration (real exits happen between SIGALRMs) |
+| 2026-02-19 | self | SMP snapshot/restore exit counts differ by ±2 | SIGALRM timer phase is non-deterministic after restore; test REPRODUCIBILITY (restore twice → same result) not EQUIVALENCE (original path == restored path) |
+| 2026-02-19 | self | SIGALRM from previous SMP VM leaks into next VM's vcpu.run() | Must disarm timer in run_bounded on exit + Drop impl; stale SIGALRMs cause ±2 exit count jitter |
+| 2026-02-19 | self | SMP VMs hit InternalError after snapshot/restore | VcpuSnapshot must save/restore KVM_MP_STATE — without it, KVM doesn't know AP is HALTED vs UNINITIALIZED |
+| 2026-02-19 | self | VcpuSnapshot only saved regs/sregs/fpu/lapic/xcrs | Must also save mp_state; set mp_state BEFORE registers during restore (KVM rejects writes on UNINITIALIZED vCPUs) |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -192,6 +196,16 @@
 - **Seed propagation chain**: `config.seed` → FaultEngine (`seed`), per-VM CPU (`seed + i`), NetworkFabric (`seed + 0x4E455446414E` domain separator)
 - **Key insight**: NetworkFabric is `Clone` → snapshot = clone → RNG state preserved by ChaCha20's `get_seed()` (stored in the struct fields, not external state)
 - 630 unit tests, 22/22 integration tests pass
+
+## Completed (2026-02-19 SMP end-to-end)
+26. ✅ SMP snapshot/restore integration test (Test 25) — two restores produce identical execution
+27. ✅ num_vcpus + SchedulingStrategy wired through VmConfig → SimulationConfig → ExplorerConfig → CLI
+28. ✅ CLI: --vcpus and --scheduling flags for chaoscontrol-explore
+29. ✅ VcpuSnapshot saves/restores KVM_MP_STATE (critical for SMP restore)
+30. ✅ SIGALRM timer properly disarmed on run_bounded exit + VM Drop
+31. ✅ VcpuExit::InternalError handled gracefully in SMP (switch to next runnable vCPU)
+32. ✅ SMP Raft exploration: 3 VMs × 2 vCPUs, 3 rounds × 4 branches completed
+33. ✅ 25/25 integration tests pass, 634 unit tests pass
 
 ## Completed (2026-02-18 loose ends)
 18. ✅ DiskTornWrite + DiskCorruption fault handlers wired to DeterministicBlock

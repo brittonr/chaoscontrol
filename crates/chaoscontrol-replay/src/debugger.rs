@@ -331,6 +331,7 @@ mod tests {
                     reorder_window: vec![],
                     duplicate_rate_ppm: vec![],
                     rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
+                    stats: Default::default(),
                 },
                 fault_engine_snapshot: engine.snapshot(),
             })

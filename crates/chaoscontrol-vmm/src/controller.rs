@@ -118,6 +118,58 @@ pub struct DiskFaultFlags {
 //  Network Fabric
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Packet-level counters for network fabric observability.
+///
+/// Tracks how many packets were affected by each fault type so the
+/// effects of jitter, bandwidth, loss, corruption, reorder, and
+/// duplication are visible in reports and logs.
+#[derive(Debug, Clone, Default)]
+pub struct NetworkStats {
+    /// Total packets submitted to `send()`.
+    pub packets_sent: u64,
+    /// Packets delivered (enqueued in `in_flight`).
+    pub packets_delivered: u64,
+    /// Packets dropped by partition rules.
+    pub packets_dropped_partition: u64,
+    /// Packets dropped by loss rate.
+    pub packets_dropped_loss: u64,
+    /// Packets whose payload was corrupted.
+    pub packets_corrupted: u64,
+    /// Extra duplicate copies created.
+    pub packets_duplicated: u64,
+    /// Packets that had bandwidth serialization delay added.
+    pub packets_bandwidth_delayed: u64,
+    /// Packets that had jitter added to delivery time.
+    pub packets_jittered: u64,
+    /// Packets that had reorder window applied.
+    pub packets_reordered: u64,
+    /// Cumulative jitter ticks added across all jittered packets.
+    pub total_jitter_ticks: u64,
+    /// Cumulative bandwidth delay ticks added across all delayed packets.
+    pub total_bandwidth_delay_ticks: u64,
+}
+
+impl std::fmt::Display for NetworkStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "sent={} delivered={} lost(partition={}, loss={}) corrupted={} \
+             duplicated={} bw_delayed={}({}ticks) jittered={}({}ticks) reordered={}",
+            self.packets_sent,
+            self.packets_delivered,
+            self.packets_dropped_partition,
+            self.packets_dropped_loss,
+            self.packets_corrupted,
+            self.packets_duplicated,
+            self.packets_bandwidth_delayed,
+            self.total_bandwidth_delay_ticks,
+            self.packets_jittered,
+            self.total_jitter_ticks,
+            self.packets_reordered,
+        )
+    }
+}
+
 /// Virtual network with partition awareness and packet-level fault injection.
 ///
 /// Models real-world network impairments: latency, jitter, bandwidth limits,
@@ -148,6 +200,8 @@ pub struct NetworkFabric {
     pub duplicate_rate_ppm: Vec<u32>,
     /// Deterministic RNG for packet-level fault decisions.
     pub rng: ChaCha20Rng,
+    /// Cumulative packet-level statistics.
+    pub stats: NetworkStats,
 }
 
 impl NetworkFabric {
@@ -169,6 +223,7 @@ impl NetworkFabric {
             reorder_window: vec![0; num_vms],
             duplicate_rate_ppm: vec![0; num_vms],
             rng: ChaCha20Rng::from_seed(rng_key),
+            stats: NetworkStats::default(),
         }
     }
 
@@ -200,9 +255,12 @@ impl NetworkFabric {
     /// 6. Packet reorder — additional random shuffle within window
     /// 7. Packet duplication — clone with slightly offset delivery
     pub fn send(&mut self, from: usize, to: usize, data: Vec<u8>, current_tick: u64) -> bool {
+        self.stats.packets_sent += 1;
+
         // 1. Partition check
         if !self.can_reach(from, to) {
             debug!("Message from VM{} to VM{} dropped by partition", from, to);
+            self.stats.packets_dropped_partition += 1;
             return false;
         }
 
@@ -217,6 +275,7 @@ impl NetworkFabric {
                     "Message from VM{} to VM{} dropped by packet loss ({}ppm)",
                     from, to, loss_rate
                 );
+                self.stats.packets_dropped_loss += 1;
                 return false;
             }
         }
@@ -243,6 +302,8 @@ impl NetworkFabric {
                 *slot = tx_start + serialization_ticks;
             }
             bandwidth_delay_ticks = (tx_start + serialization_ticks).saturating_sub(current_tick);
+            self.stats.packets_bandwidth_delayed += 1;
+            self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
             debug!(
                 "Message from VM{} to VM{}: bandwidth delay {} ticks ({}B @ {}B/s)",
                 from,
@@ -264,6 +325,7 @@ impl NetworkFabric {
                 let byte_idx = (self.rng.next_u64() as usize) % data.len();
                 let flip = (self.rng.next_u64() & 0xFF) as u8 | 1; // At least 1 bit flipped
                 data[byte_idx] ^= flip;
+                self.stats.packets_corrupted += 1;
                 debug!(
                     "Message from VM{} to VM{} corrupted at byte {}",
                     from, to, byte_idx
@@ -280,7 +342,12 @@ impl NetworkFabric {
         let receiver_jitter = self.jitter.get(to).copied().unwrap_or(0);
         let jitter_max = sender_jitter.max(receiver_jitter);
         let jitter_ticks = if jitter_max > 0 {
-            self.rng.next_u64() % (jitter_max + 1)
+            let jt = self.rng.next_u64() % (jitter_max + 1);
+            if jt > 0 {
+                self.stats.packets_jittered += 1;
+                self.stats.total_jitter_ticks += jt;
+            }
+            jt
         } else {
             0
         };
@@ -295,6 +362,9 @@ impl NetworkFabric {
         if reorder_win > 0 {
             let reorder_jitter = self.rng.next_u64() % (reorder_win + 1);
             deliver_at_tick += reorder_jitter;
+            if reorder_jitter > 0 {
+                self.stats.packets_reordered += 1;
+            }
             debug!(
                 "Message from VM{} to VM{} reordered by {} ticks",
                 from, to, reorder_jitter
@@ -316,6 +386,7 @@ impl NetworkFabric {
                     data: data.clone(),
                     deliver_at_tick: deliver_at_tick + dup_offset,
                 });
+                self.stats.packets_duplicated += 1;
                 debug!(
                     "Message from VM{} to VM{} duplicated (+{} ticks)",
                     from, to, dup_offset
@@ -330,6 +401,7 @@ impl NetworkFabric {
             deliver_at_tick,
         });
 
+        self.stats.packets_delivered += 1;
         true
     }
 
@@ -368,6 +440,7 @@ impl NetworkFabric {
         for rate in &mut self.duplicate_rate_ppm {
             *rate = 0;
         }
+        // Note: stats are NOT reset on heal — they are cumulative.
     }
 
     /// Set latency for a specific VM.
@@ -422,6 +495,11 @@ impl NetworkFabric {
             self.bandwidth_bps[target] = bytes_per_sec;
             debug!("VM{} bandwidth set to {} B/s", target, bytes_per_sec);
         }
+    }
+
+    /// Get a reference to the cumulative network statistics.
+    pub fn stats(&self) -> &NetworkStats {
+        &self.stats
     }
 
     /// Set packet duplication rate for a specific VM (parts per million).
@@ -548,6 +626,7 @@ impl SimulationController {
             total_ticks: self.tick,
             oracle_report,
             vm_exit_counts,
+            network_stats: self.network.stats.clone(),
         })
     }
 
@@ -1022,6 +1101,8 @@ pub struct SimulationResult {
     pub oracle_report: OracleReport,
     /// Per-VM exit counts.
     pub vm_exit_counts: Vec<u64>,
+    /// Cumulative network fabric statistics.
+    pub network_stats: NetworkStats,
 }
 
 /// Complete snapshot of simulation state.
@@ -1732,6 +1813,126 @@ mod tests {
             run1, run3,
             "Different seeds should produce different jitter"
         );
+    }
+
+    // ── Stats tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_network_stats_tracks_sent_and_delivered() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        for _ in 0..5 {
+            fabric.send(0, 1, vec![42], 0);
+        }
+        assert_eq!(fabric.stats.packets_sent, 5);
+        assert_eq!(fabric.stats.packets_delivered, 5);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_partition_drops() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.add_partition(vec![0], vec![1]);
+        fabric.send(0, 1, vec![42], 0);
+        assert_eq!(fabric.stats.packets_sent, 1);
+        assert_eq!(fabric.stats.packets_dropped_partition, 1);
+        assert_eq!(fabric.stats.packets_delivered, 0);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_loss_drops() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_loss_rate(0, 1_000_000); // 100% loss
+        fabric.send(0, 1, vec![42], 0);
+        assert_eq!(fabric.stats.packets_sent, 1);
+        assert_eq!(fabric.stats.packets_dropped_loss, 1);
+        assert_eq!(fabric.stats.packets_delivered, 0);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_corruption() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_corruption_rate(0, 1_000_000); // 100%
+        fabric.send(0, 1, vec![0xAA; 10], 0);
+        assert_eq!(fabric.stats.packets_corrupted, 1);
+        assert_eq!(fabric.stats.packets_delivered, 1);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_duplication() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 1_000_000); // 100%
+        fabric.send(0, 1, vec![42], 0);
+        assert_eq!(fabric.stats.packets_duplicated, 1);
+        assert_eq!(fabric.stats.packets_delivered, 1); // original
+    }
+
+    #[test]
+    fn test_network_stats_tracks_bandwidth_delay() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_bandwidth(0, 8000); // 8000 B/s
+        fabric.send(0, 1, vec![0xAA; 100], 0);
+        assert_eq!(fabric.stats.packets_bandwidth_delayed, 1);
+        assert_eq!(fabric.stats.total_bandwidth_delay_ticks, 100);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_jitter() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_jitter(0, 50);
+        // Send many packets — some will get jitter > 0
+        for i in 0..100 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+        assert_eq!(fabric.stats.packets_sent, 100);
+        // With jitter_max=50, most packets should get non-zero jitter
+        assert!(
+            fabric.stats.packets_jittered > 0,
+            "Expected some packets to be jittered"
+        );
+        assert!(
+            fabric.stats.total_jitter_ticks > 0,
+            "Expected non-zero total jitter ticks"
+        );
+    }
+
+    #[test]
+    fn test_network_stats_display() {
+        let stats = NetworkStats {
+            packets_sent: 100,
+            packets_delivered: 85,
+            packets_dropped_partition: 5,
+            packets_dropped_loss: 10,
+            packets_corrupted: 3,
+            packets_duplicated: 7,
+            packets_bandwidth_delayed: 20,
+            total_bandwidth_delay_ticks: 500,
+            packets_jittered: 15,
+            total_jitter_ticks: 200,
+            packets_reordered: 8,
+        };
+        let s = stats.to_string();
+        assert!(s.contains("sent=100"));
+        assert!(s.contains("delivered=85"));
+        assert!(s.contains("duplicated=7"));
+        assert!(s.contains("jittered=15(200ticks)"));
+    }
+
+    #[test]
+    fn test_network_stats_cumulative_across_sends() {
+        let mut fabric = NetworkFabric::new(3, 42);
+        fabric.set_loss_rate(0, 1_000_000); // 100% loss on VM0
+
+        // Send from VM0 (all dropped)
+        for _ in 0..10 {
+            fabric.send(0, 1, vec![42], 0);
+        }
+        // Send from VM1 (all delivered)
+        for _ in 0..5 {
+            fabric.send(1, 2, vec![42], 0);
+        }
+
+        assert_eq!(fabric.stats.packets_sent, 15);
+        assert_eq!(fabric.stats.packets_dropped_loss, 10);
+        assert_eq!(fabric.stats.packets_delivered, 5);
     }
 
     #[test]

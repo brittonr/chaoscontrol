@@ -470,6 +470,12 @@ impl Explorer {
         let coverage_stats = self.coverage.stats();
         let corpus_stats = self.corpus.stats();
 
+        let network_stats = self
+            .controller
+            .as_ref()
+            .map(|c| c.network().stats().clone())
+            .unwrap_or_default();
+
         ExplorationReport {
             rounds: self.rounds_completed,
             total_branches: self.total_branches_run,
@@ -477,6 +483,7 @@ impl Explorer {
             bugs,
             corpus_size: corpus_stats.total_entries,
             coverage_stats,
+            network_stats,
         }
     }
 
@@ -638,6 +645,7 @@ pub struct ExplorationReport {
     pub bugs: Vec<BugReport>,
     pub corpus_size: usize,
     pub coverage_stats: CoverageStats,
+    pub network_stats: chaoscontrol_vmm::controller::NetworkStats,
 }
 
 /// Current exploration statistics.

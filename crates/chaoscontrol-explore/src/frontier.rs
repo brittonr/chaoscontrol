@@ -147,6 +147,7 @@ mod tests {
             reorder_window: Vec::new(),
             duplicate_rate_ppm: Vec::new(),
             rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
+            stats: Default::default(),
         };
 
         SimulationSnapshot {

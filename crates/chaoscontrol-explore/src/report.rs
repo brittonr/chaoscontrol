@@ -38,6 +38,63 @@ pub fn format_report(report: &ExplorationReport) -> String {
     ));
     output.push_str("\n");
 
+    // Network stats
+    let ns = &report.network_stats;
+    if ns.packets_sent > 0 {
+        output
+            .push_str("─── Network Fabric Statistics ─────────────────────────────────────────\n");
+        output.push_str(&format!("Packets sent:           {}\n", ns.packets_sent));
+        output.push_str(&format!(
+            "Packets delivered:      {}\n",
+            ns.packets_delivered
+        ));
+        if ns.packets_dropped_partition > 0 {
+            output.push_str(&format!(
+                "Dropped (partition):    {}\n",
+                ns.packets_dropped_partition
+            ));
+        }
+        if ns.packets_dropped_loss > 0 {
+            output.push_str(&format!(
+                "Dropped (loss):         {}\n",
+                ns.packets_dropped_loss
+            ));
+        }
+        if ns.packets_corrupted > 0 {
+            output.push_str(&format!(
+                "Corrupted:              {}\n",
+                ns.packets_corrupted
+            ));
+        }
+        if ns.packets_duplicated > 0 {
+            output.push_str(&format!(
+                "Duplicated:             {}\n",
+                ns.packets_duplicated
+            ));
+        }
+        if ns.packets_bandwidth_delayed > 0 {
+            let avg_bw = ns.total_bandwidth_delay_ticks / ns.packets_bandwidth_delayed.max(1);
+            output.push_str(&format!(
+                "Bandwidth delayed:      {} (avg {} ticks)\n",
+                ns.packets_bandwidth_delayed, avg_bw
+            ));
+        }
+        if ns.packets_jittered > 0 {
+            let avg_j = ns.total_jitter_ticks / ns.packets_jittered.max(1);
+            output.push_str(&format!(
+                "Jittered:               {} (avg {} ticks)\n",
+                ns.packets_jittered, avg_j
+            ));
+        }
+        if ns.packets_reordered > 0 {
+            output.push_str(&format!(
+                "Reordered:              {}\n",
+                ns.packets_reordered
+            ));
+        }
+        output.push('\n');
+    }
+
     // Bug details
     if !report.bugs.is_empty() {
         output
@@ -135,6 +192,7 @@ mod tests {
                 total_runs: 80,
                 edges_per_run_avg: 3.2,
             },
+            network_stats: Default::default(),
         };
 
         let formatted = format_report(&report);
@@ -162,6 +220,7 @@ mod tests {
                 total_runs: 40,
                 edges_per_run_avg: 3.2,
             },
+            network_stats: Default::default(),
         };
 
         let formatted = format_report(&report);

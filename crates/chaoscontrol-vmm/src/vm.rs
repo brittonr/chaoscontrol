@@ -36,7 +36,7 @@ use chaoscontrol_protocol::{
 
 use kvm_bindings::{
     kvm_clock_data, kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region,
-    KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
+    KVM_MP_STATE_HALTED, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -361,7 +361,7 @@ impl DeterministicVm {
             // SAFETY: sigaction with SA_RESTART and a trivial handler is safe.
             unsafe {
                 let mut sa: libc::sigaction = std::mem::zeroed();
-                sa.sa_sigaction = noop_signal_handler as usize;
+                sa.sa_sigaction = noop_signal_handler as *const () as usize;
                 sa.sa_flags = 0; // Do NOT set SA_RESTART — we want the signal to interrupt vcpu.run()
                 libc::sigaction(libc::SIGALRM, &sa, std::ptr::null_mut());
             }
@@ -967,6 +967,21 @@ impl DeterministicVm {
         self.active_vcpu
     }
 
+    /// Get the KVM MP state for each vCPU (for diagnostics).
+    ///
+    /// Returns `(vcpu_index, mp_state_u32)` for each vCPU.
+    /// States: 0=RUNNABLE, 1=UNINITIALIZED, 2=INIT_RECEIVED, 3=HALTED, 4=SIPI_RECEIVED
+    pub fn vcpu_mp_states(&self) -> Vec<(usize, u32)> {
+        self.vcpus
+            .iter()
+            .enumerate()
+            .map(|(i, vcpu)| {
+                let state = vcpu.get_mp_state().map(|mp| mp.mp_state).unwrap_or(99);
+                (i, state)
+            })
+            .collect()
+    }
+
     /// Set the active vCPU index.
     ///
     /// # Panics
@@ -1249,17 +1264,21 @@ impl DeterministicVm {
         }
     }
 
-    /// Check if a vCPU is in a runnable state (via KVM_GET_MP_STATE).
+    /// Check if a vCPU is schedulable (via KVM_GET_MP_STATE).
     ///
     /// APs (secondary CPUs) start in UNINITIALIZED/INIT_RECEIVED state
     /// and only become RUNNABLE after receiving a SIPI from the BSP.
+    /// HALTED means the vCPU executed HLT and is waiting for an interrupt —
+    /// it's still schedulable (our HLT handler injects the timer IRQ).
     fn vcpu_is_runnable(&self, vcpu_idx: usize) -> bool {
         // BSP (vCPU 0) is always runnable after setup
         if vcpu_idx == 0 {
             return true;
         }
         match self.vcpus[vcpu_idx].get_mp_state() {
-            Ok(mp) => mp.mp_state == KVM_MP_STATE_RUNNABLE,
+            Ok(mp) => {
+                mp.mp_state == KVM_MP_STATE_RUNNABLE || mp.mp_state == KVM_MP_STATE_HALTED
+            }
             Err(_) => false,
         }
     }
@@ -1296,26 +1315,24 @@ impl DeterministicVm {
         self.sync_and_suppress_pit()?;
         self.sync_tsc_to_guest()?;
 
-        // Ensure active_vcpu tracks the scheduler
-        self.active_vcpu = self.scheduler.active();
-
         // Skip non-runnable vCPUs (APs waiting for SIPI).
         // Try all vCPUs before giving up — if none are runnable, stick with BSP.
         if self.vcpus.len() > 1 && !self.vcpu_is_runnable(self.active_vcpu) {
-            let starting = self.active_vcpu;
-            loop {
-                let next = self.scheduler.advance();
-                self.active_vcpu = next;
-                if self.vcpu_is_runnable(next) || next == starting {
+            for offset in 1..self.vcpus.len() {
+                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                if self.vcpu_is_runnable(candidate) {
+                    self.active_vcpu = candidate;
                     break;
                 }
             }
         }
 
         // For SMP: arm preemption timer to break out of tight spin loops.
-        // This causes SIGALRM → VcpuExit::Intr, letting us switch vCPUs.
+        // Always armed in SMP mode because the AP can become runnable at
+        // any point (KVM delivers SIPI asynchronously). The timer is purely
+        // a liveness mechanism — it does not advance deterministic state.
         if self.vcpus.len() > 1 {
-            self.arm_preemption_timer(1000); // 1ms
+            self.arm_preemption_timer(500); // 500µs
         }
 
         match self.vcpus[self.active_vcpu].run() {
@@ -1472,14 +1489,20 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::Intr) => {
-                // Host signal interrupted vcpu.run(). In single-vCPU mode,
-                // just retry. In SMP mode, this is our preemption timer —
-                // treat it as a quantum expiry and switch vCPUs.
+                // Host signal interrupted vcpu.run(). In SMP mode, this is
+                // our preemption timer — a liveness mechanism to break out of
+                // tight spin loops. Switch to next runnable vCPU.
+                // Does NOT advance exit_count or virtual_tsc.
                 if self.vcpus.len() > 1 {
                     self.disarm_preemption_timer();
-                    self.exit_count += 1;
-                    self.virtual_tsc.tick();
-                    self.maybe_switch_vcpu();
+                    for offset in 1..self.vcpus.len() {
+                        let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                        if self.vcpu_is_runnable(candidate) {
+                            self.active_vcpu = candidate;
+                            self.scheduler.set_active(candidate);
+                            break;
+                        }
+                    }
                 }
                 Ok(false)
             }
@@ -1497,9 +1520,14 @@ impl DeterministicVm {
                 if e.errno() == libc::EINTR {
                     if self.vcpus.len() > 1 {
                         self.disarm_preemption_timer();
-                        self.exit_count += 1;
-                        self.virtual_tsc.tick();
-                        self.maybe_switch_vcpu();
+                        for offset in 1..self.vcpus.len() {
+                            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                            if self.vcpu_is_runnable(candidate) {
+                                self.active_vcpu = candidate;
+                                self.scheduler.set_active(candidate);
+                                break;
+                            }
+                        }
                     }
                     return Ok(false);
                 }

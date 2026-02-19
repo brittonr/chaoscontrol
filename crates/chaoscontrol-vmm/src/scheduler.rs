@@ -163,6 +163,17 @@ impl VcpuScheduler {
         self.remaining = self.quantum;
     }
 
+    /// Force the scheduler to a specific vCPU with a fresh quantum.
+    ///
+    /// Used by the SIGALRM preemption handler to switch vCPUs outside
+    /// the normal quantum-based scheduling. Does NOT consume RNG state
+    /// to avoid non-determinism from wall-clock timer jitter.
+    pub fn set_active(&mut self, vcpu: usize) {
+        debug_assert!(vcpu < self.num_vcpus, "vCPU index out of bounds");
+        self.active = vcpu;
+        self.remaining = self.quantum;
+    }
+
     /// Get remaining exits in the current quantum.
     #[inline]
     pub fn remaining(&self) -> u64 {

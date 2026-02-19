@@ -137,6 +137,12 @@
 - **Borrow fix**: Leader propose logic must be outside `let node = &mut self.nodes[active]` scope
 - **Coverage gaps found**: leader log content mismatch (line 444), `leaders()` method (601-605), `run_checked` panic paths (587) — all covered by Category O tests
 
+## Pi Skill (2026-02-18)
+- Created `chaoscontrol` skill in agentkit at `_global/skills/chaoscontrol/SKILL.md`
+- Symlinked to `~/.pi/agent/skills/chaoscontrol`
+- Covers: workspace layout, build commands, CLI tools, key APIs (SDK, VMM, controller, fault, explore, replay), architecture notes, guest program patterns, common pitfalls, testing patterns
+- Updated agentkit README.md to include it
+
 ## Completed (2026-02-18 cleanup)
 11. ✅ Packet-level faults: PacketLoss, PacketCorruption, PacketReorder implemented in NetworkFabric
 12. ✅ ProcessPause auto-resume: VmStatus::Resuming variant, schedule_resume() method

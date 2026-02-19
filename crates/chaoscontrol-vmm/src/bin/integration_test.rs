@@ -1467,6 +1467,89 @@ fn main() {
     });
 
     // ═══════════════════════════════════════════════════════════════
+    //  Test 23: SMP boot — 2 vCPUs online
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("SMP boot: 2 vCPUs detected by kernel", {
+        let mut config = VmConfig::default();
+        config.num_vcpus = 2;
+        let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+        assert_eq!(vm.num_vcpus(), 2, "VM should have 2 vCPUs");
+
+        // Boot until we see "smpboot" or "Brought up" in serial output.
+        // The kernel prints "smpboot: Brought up N node(s), N CPU(s)"
+        // when secondary CPUs come online.
+        let output = vm.run_until("login:").unwrap_or_default();
+
+        // Check for SMP indicators in the serial output
+        let has_smp =
+            output.contains("CPU") && (output.contains("smpboot") || output.contains("Brought up"));
+
+        // Also check that the kernel didn't say "nosmp" or "UP"
+        let no_nosmp = !output.contains("nosmp");
+
+        if !has_smp {
+            eprintln!("    Serial output did not contain SMP boot indicators");
+            eprintln!(
+                "    Looking for 'smpboot' or 'Brought up' — found neither"
+            );
+            // Print relevant lines
+            for line in output.lines() {
+                let stripped = strip_timestamp(line);
+                if stripped.contains("CPU")
+                    || stripped.contains("smp")
+                    || stripped.contains("SMP")
+                    || stripped.contains("Brought")
+                    || stripped.contains("APIC")
+                {
+                    eprintln!("    | {}", stripped);
+                }
+            }
+        }
+
+        has_smp && no_nosmp
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 24: SMP determinism — two runs produce same exit counts
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("SMP determinism: identical runs with 2 vCPUs", {
+        let make_vm = || {
+            let mut config = VmConfig::default();
+            config.num_vcpus = 2;
+            let mut vm = DeterministicVm::new(config).expect("create VM");
+            vm.load_kernel(kernel, Some(initrd)).expect("load");
+            vm
+        };
+
+        let mut vm1 = make_vm();
+        let mut vm2 = make_vm();
+
+        // Run both for same bounded exits
+        let (exits1, _) = vm1.run_bounded(100_000).expect("run1");
+        let (exits2, _) = vm2.run_bounded(100_000).expect("run2");
+
+        let vtsc1 = vm1.virtual_tsc();
+        let vtsc2 = vm2.virtual_tsc();
+
+        let exits_match = exits1 == exits2;
+        let vtsc_match = vtsc1 == vtsc2;
+
+        if !exits_match {
+            eprintln!(
+                "    Exit counts differ: {} vs {}",
+                vm1.exit_count(),
+                vm2.exit_count()
+            );
+        }
+        if !vtsc_match {
+            eprintln!("    Virtual TSC differs: {} vs {}", vtsc1, vtsc2);
+        }
+
+        exits_match && vtsc_match
+    });
+
+    // ═══════════════════════════════════════════════════════════════
     //  Summary
     // ═══════════════════════════════════════════════════════════════
     println!();

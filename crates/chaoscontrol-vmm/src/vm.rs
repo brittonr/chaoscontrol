@@ -36,7 +36,7 @@ use chaoscontrol_protocol::{
 
 use kvm_bindings::{
     kvm_clock_data, kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region,
-    KVM_PIT_SPEAKER_DUMMY,
+    KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -352,6 +352,27 @@ pub struct DeterministicVm {
 }
 
 impl DeterministicVm {
+    /// Install a no-op SIGALRM handler so the preemption timer doesn't
+    /// kill the process. Called once on first multi-vCPU VM creation.
+    fn install_sigalrm_handler() {
+        use std::sync::Once;
+        static ONCE: Once = Once::new();
+        ONCE.call_once(|| {
+            // SAFETY: sigaction with SA_RESTART and a trivial handler is safe.
+            unsafe {
+                let mut sa: libc::sigaction = std::mem::zeroed();
+                sa.sa_sigaction = noop_signal_handler as usize;
+                sa.sa_flags = 0; // Do NOT set SA_RESTART — we want the signal to interrupt vcpu.run()
+                libc::sigaction(libc::SIGALRM, &sa, std::ptr::null_mut());
+            }
+        });
+
+        extern "C" fn noop_signal_handler(_sig: libc::c_int) {
+            // Intentionally empty — the signal delivery interrupts vcpu.run(),
+            // causing KVM to return VcpuExit::Intr. No action needed here.
+        }
+    }
+
     /// Create a new deterministic VM with the given configuration.
     ///
     /// This sets up KVM, guest memory, IRQ chip, PIT, and the serial
@@ -423,6 +444,9 @@ impl DeterministicVm {
         // Create vCPUs AFTER irqchip (so each gets an in-kernel LAPIC).
         // Only one vCPU runs at a time — deterministic serialized scheduling.
         let num_vcpus = config.num_vcpus.max(1);
+        if num_vcpus > 1 {
+            Self::install_sigalrm_handler();
+        }
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
         for i in 0..num_vcpus {
@@ -1225,12 +1249,74 @@ impl DeterministicVm {
         }
     }
 
+    /// Check if a vCPU is in a runnable state (via KVM_GET_MP_STATE).
+    ///
+    /// APs (secondary CPUs) start in UNINITIALIZED/INIT_RECEIVED state
+    /// and only become RUNNABLE after receiving a SIPI from the BSP.
+    fn vcpu_is_runnable(&self, vcpu_idx: usize) -> bool {
+        // BSP (vCPU 0) is always runnable after setup
+        if vcpu_idx == 0 {
+            return true;
+        }
+        match self.vcpus[vcpu_idx].get_mp_state() {
+            Ok(mp) => mp.mp_state == KVM_MP_STATE_RUNNABLE,
+            Err(_) => false,
+        }
+    }
+
+    /// Arm a POSIX interval timer that fires SIGALRM after `us` microseconds.
+    ///
+    /// When the vCPU is in a tight spin loop (no VM exits), this signal
+    /// interrupts `vcpu.run()` causing `VcpuExit::Intr`, which lets us
+    /// switch to another vCPU. Essential for SMP — without it, the BSP
+    /// can monopolize execution while spin-waiting for an AP to come online.
+    fn arm_preemption_timer(&self, us: i64) {
+        let timer_spec = libc::itimerval {
+            it_interval: libc::timeval {
+                tv_sec: 0,
+                tv_usec: 0,
+            },
+            it_value: libc::timeval {
+                tv_sec: 0,
+                tv_usec: us,
+            },
+        };
+        // SAFETY: setitimer is safe with valid pointer; ITIMER_REAL sends SIGALRM.
+        unsafe {
+            libc::setitimer(libc::ITIMER_REAL, &timer_spec, std::ptr::null_mut());
+        }
+    }
+
+    /// Disarm the preemption timer.
+    fn disarm_preemption_timer(&self) {
+        self.arm_preemption_timer(0);
+    }
+
     fn step(&mut self) -> Result<bool, VmError> {
         self.sync_and_suppress_pit()?;
         self.sync_tsc_to_guest()?;
 
         // Ensure active_vcpu tracks the scheduler
         self.active_vcpu = self.scheduler.active();
+
+        // Skip non-runnable vCPUs (APs waiting for SIPI).
+        // Try all vCPUs before giving up — if none are runnable, stick with BSP.
+        if self.vcpus.len() > 1 && !self.vcpu_is_runnable(self.active_vcpu) {
+            let starting = self.active_vcpu;
+            loop {
+                let next = self.scheduler.advance();
+                self.active_vcpu = next;
+                if self.vcpu_is_runnable(next) || next == starting {
+                    break;
+                }
+            }
+        }
+
+        // For SMP: arm preemption timer to break out of tight spin loops.
+        // This causes SIGALRM → VcpuExit::Intr, letting us switch vCPUs.
+        if self.vcpus.len() > 1 {
+            self.arm_preemption_timer(1000); // 1ms
+        }
 
         match self.vcpus[self.active_vcpu].run() {
             Ok(VcpuExit::IoIn(port, data)) => {
@@ -1386,9 +1472,15 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::Intr) => {
-                // Host signal interrupted vcpu.run() — retry without advancing
-                // deterministic state. This exit is caused by host-side signals
-                // (SIGALRM, SIGCHLD, etc.) and is inherently non-deterministic.
+                // Host signal interrupted vcpu.run(). In single-vCPU mode,
+                // just retry. In SMP mode, this is our preemption timer —
+                // treat it as a quantum expiry and switch vCPUs.
+                if self.vcpus.len() > 1 {
+                    self.disarm_preemption_timer();
+                    self.exit_count += 1;
+                    self.virtual_tsc.tick();
+                    self.maybe_switch_vcpu();
+                }
                 Ok(false)
             }
             Ok(VcpuExit::IrqWindowOpen) => {
@@ -1400,7 +1492,19 @@ impl DeterministicVm {
                 info!("Unhandled VM exit: {:?} — stopping", exit);
                 Ok(true)
             }
-            Err(e) => Err(VmError::VcpuRun(e)),
+            Err(e) => {
+                // EINTR from signal (e.g., SIGALRM preemption timer)
+                if e.errno() == libc::EINTR {
+                    if self.vcpus.len() > 1 {
+                        self.disarm_preemption_timer();
+                        self.exit_count += 1;
+                        self.virtual_tsc.tick();
+                        self.maybe_switch_vcpu();
+                    }
+                    return Ok(false);
+                }
+                Err(VmError::VcpuRun(e))
+            }
         }
     }
 

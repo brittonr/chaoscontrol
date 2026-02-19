@@ -39,8 +39,9 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
   snapshot/restore and reseed for exploration
 - **Block**: In-memory block device with fault injection (read errors,
   write errors, torn writes, corruption)
-- **Network**: Simulated network with RX/TX queues for fully controlled
-  packet delivery between VMs
+- **Network**: Simulated network with RX/TX queues, latency, jitter,
+  bandwidth limiting, packet loss/corruption/reorder/duplication for
+  fully controlled packet delivery between VMs
 
 ## Project Structure
 
@@ -86,7 +87,7 @@ nix develop
 # Build
 cargo build
 
-# Run tests (497 unit + doc tests)
+# Run tests (616 unit + doc tests)
 cargo test
 
 # Boot a kernel
@@ -244,10 +245,10 @@ let schedule = FaultScheduleBuilder::new()
     .build();
 ```
 
-Supported fault categories: **network** (partition, latency, loss,
-corruption, reorder), **disk** (I/O errors, torn writes, corruption,
-full), **process** (kill, pause, restart), **clock** (skew, jump),
-**resource** (memory pressure).
+Supported fault categories: **network** (partition, latency, jitter,
+bandwidth, loss, corruption, reorder, duplication), **disk** (I/O errors,
+torn writes, corruption, full), **process** (kill, pause, restart),
+**clock** (skew, jump), **resource** (memory pressure).
 ### Run Loop
 
 The VM run loop handles exits and advances the virtual TSC deterministically:
@@ -294,4 +295,5 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Deterministic scheduling across VMs
 - [x] Coverage feedback from guest (kcov / breakpoints)
 - [x] Coverage-guided seed exploration
+- [x] Network simulation fidelity (jitter, bandwidth, duplication)
 

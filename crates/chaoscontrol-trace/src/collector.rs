@@ -358,8 +358,8 @@ impl TraceLog {
     }
 
     /// Summary statistics about event types.
-    pub fn summary(&self) -> std::collections::HashMap<String, usize> {
-        let mut counts = std::collections::HashMap::new();
+    pub fn summary(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut counts = std::collections::BTreeMap::new();
         for event in &self.events {
             *counts
                 .entry(event.event_type().name().to_string())

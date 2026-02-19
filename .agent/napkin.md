@@ -18,6 +18,8 @@
 | 2026-02-18 | self | cargo fmt applied to worktrees but not main repo | Always fmt main repo first, then apply feature changes cleanly |
 | 2026-02-18 | self | New files in worktrees aren't in `git diff` | Copy untracked files from worktrees separately — `git diff` only shows tracked files |
 | 2026-02-18 | self | TestCluster::step() had borrow conflict: `&mut self.nodes[i]` + `self.rand()` | Move `self.rand()` call outside the `let node = &mut self.nodes[active]` borrow scope |
+| 2026-02-19 | self | delegate_task workers made changes in isolated worktrees, not the main repo | Workers run in isolation — must apply changes directly via edit/write in main session |
+| 2026-02-19 | self | libc::timespec fields are already i64 on x86_64 Linux | Don't cast `ts.tv_sec as i64` — clippy flags unnecessary_cast |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -27,7 +29,10 @@
 - bpftrace NOPASSWD via NixOS config
 
 ## Patterns That Work
-- **VirtioBackend downcasting**: `as_any_mut()` on trait → `downcast_mut::<VirtioBlock>()` for device-specific operations
+- **VirtioBackend downcasting**: `as_any()` / `as_any_mut()` on trait → `downcast_ref`/`downcast_mut` for device-specific operations (snapshot + fault injection)
+- **CaptureParams struct**: group snapshot params to avoid too-many-arguments clippy lint
+- **PIT ch2 virtual time sync**: set `count_load_time = host_now - virtual_elapsed_ns` before vcpu.run() to make KVM PIT return deterministic values
+- **VcpuExit::Intr passthrough**: don't tick virtual_tsc on host signal interrupts — just retry vcpu.run()
 - **Checkpoint resume**: Save global coverage + progress counters, skip VM snapshots (re-bootstrap on resume), carry forward coverage to avoid re-exploration
 - vm_superio::Serial with EventFd + register_irqfd for interrupt-driven serial
 - CapturingWriter pattern: write to stdout + capture in Arc<Mutex<Vec<u8>>>
@@ -57,6 +62,13 @@
 - **FIXED (2026-02-18)**: sync_tsc_to_guest() writes virtual TSC to IA32_TSC before every vcpu.run()
 - Previously: 321/324 deterministic. TSC calibration, sched_clock, audit timestamp drifted ~2ms
 - Root cause was variable VM exit counts × fixed TSC advance. Fix: overwrite KVM's real-time TSC with our deterministic value before each entry
+- **FIXED (2026-02-19)**: VcpuExit::Intr handled — host signals no longer cause spurious exits/ticks
+- **FIXED (2026-02-19)**: PIT channel 2 count_load_time synced to virtual time — deterministic TSC calibration
+- **FIXED (2026-02-19)**: DeterministicPit state saved/restored in VmSnapshot
+- **FIXED (2026-02-19)**: FaultEngine state saved/restored in per-VM VmSnapshot
+- **FIXED (2026-02-19)**: Virtio block device data saved/restored in VmSnapshot
+- **FIXED (2026-02-19)**: coverage_active flag saved/restored in VmSnapshot
+- **FIXED (2026-02-19)**: HashMap → BTreeMap in trace crate for deterministic iteration
 
 ## eBPF Trace Harness (2026-02-17)
 - **chaoscontrol-trace crate**: libbpf-rs 0.26 + libbpf-cargo 0.26 skeleton approach

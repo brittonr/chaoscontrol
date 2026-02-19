@@ -165,18 +165,18 @@ fn main() {
         let mut all_pass = true;
 
         for record in report.assertions.values() {
-            if record.kind == chaoscontrol_fault::oracle::AssertionKind::Always {
-                if record.verdict() != Verdict::Passed {
-                    eprintln!(
-                        "    FAIL: always '{}' -> {:?} (hit={}, true={}, false={})",
-                        record.message,
-                        record.verdict(),
-                        record.hit_count,
-                        record.true_count,
-                        record.false_count
-                    );
-                    all_pass = false;
-                }
+            if record.kind == chaoscontrol_fault::oracle::AssertionKind::Always
+                && record.verdict() != Verdict::Passed
+            {
+                eprintln!(
+                    "    FAIL: always '{}' -> {:?} (hit={}, true={}, false={})",
+                    record.message,
+                    record.verdict(),
+                    record.hit_count,
+                    record.true_count,
+                    record.false_count
+                );
+                all_pass = false;
             }
         }
         all_pass

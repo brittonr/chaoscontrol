@@ -327,7 +327,6 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
-            ..Default::default()
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -376,7 +375,6 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
-            ..Default::default()
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -413,7 +411,6 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
-            ..Default::default()
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -524,15 +521,10 @@ fn main() {
     println!();
     println!("╔══════════════════════════════════════════════════════════╗");
     println!(
-        "║  Results: {} passed, {} failed, {} total          {}",
+        "║  Results: {} passed, {} failed, {} total                ║",
         passed,
         failed,
         passed + failed,
-        if failed == 0 {
-            "      ║"
-        } else {
-            "      ║"
-        }
     );
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();

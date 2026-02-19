@@ -115,7 +115,7 @@ pub(crate) const fn gcd(mut a: u64, mut b: u64) -> u64 {
 /// - `denominator > 0`
 pub(crate) fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
     debug_assert!(tsc_khz > 0, "tsc_khz must be non-zero");
-    debug_assert!(CRYSTAL_CLOCK_HZ > 0, "CRYSTAL_CLOCK_HZ must be non-zero");
+    const { assert!(CRYSTAL_CLOCK_HZ > 0, "CRYSTAL_CLOCK_HZ must be non-zero") };
 
     let tsc_hz = tsc_khz as u64 * 1_000;
     let crystal = CRYSTAL_CLOCK_HZ as u64;
@@ -373,7 +373,7 @@ pub(crate) fn vtsc_advance_to(counter: u64, advance_per_tick: u64, target: u64) 
     // Postcondition: step is a tick-multiple (when no wrapping).
     debug_assert!(
         result < counter // wrapped
-        || (result - counter) % advance_per_tick == 0,
+        || (result - counter).is_multiple_of(advance_per_tick),
         "advance_to must land on a tick boundary"
     );
 

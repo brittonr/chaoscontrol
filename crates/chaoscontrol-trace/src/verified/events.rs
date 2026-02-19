@@ -274,7 +274,7 @@ pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: 
 /// - Reflexive: `event_kind_eq(e, e) == true` for all `e`
 /// - Symmetric: `event_kind_eq(a, b) == event_kind_eq(b, a)`
 pub fn event_kind_eq(a: &EventKind, b: &EventKind) -> bool {
-    let result = match (a, b) {
+    match (a, b) {
         (
             EventKind::KvmExit {
                 reason: r1,
@@ -434,9 +434,7 @@ pub fn event_kind_eq(a: &EventKind, b: &EventKind) -> bool {
         ) => t1 == t2 && a0_1 == a0_2 && a1_1 == a1_2 && a2_1 == a2_2 && a3_1 == a3_2,
 
         _ => false,
-    };
-
-    result
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────
@@ -524,7 +522,7 @@ mod tests {
             let et = event_type_from_u32(disc).unwrap();
             names.push(event_type_name(&et));
         }
-        let unique: std::collections::HashSet<_> = names.iter().collect();
+        let unique: std::collections::BTreeSet<_> = names.iter().collect();
         assert_eq!(
             names.len(),
             unique.len(),

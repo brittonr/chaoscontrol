@@ -317,6 +317,9 @@ pub trait VirtioBackend: Send {
     /// Write to device-specific config space (offset relative to 0x100).
     fn write_config(&mut self, offset: u64, data: &[u8]);
 
+    /// Downcast to `Any` for backend-specific operations (e.g., snapshot).
+    fn as_any(&self) -> &dyn std::any::Any;
+
     /// Downcast to `Any` for backend-specific operations (e.g., fault injection).
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
@@ -599,7 +602,7 @@ pub fn walk_descriptor_chain(
 ) -> Option<Vec<DescriptorBuffer>> {
     let mut buffers = Vec::new();
     let mut idx = head_idx;
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = std::collections::BTreeSet::new();
 
     loop {
         if visited.contains(&idx) {
@@ -667,6 +670,9 @@ mod tests {
             }
         }
         fn write_config(&mut self, _offset: u64, _data: &[u8]) {}
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }

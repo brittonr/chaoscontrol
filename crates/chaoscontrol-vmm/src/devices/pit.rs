@@ -298,6 +298,21 @@ impl DeterministicPit {
         self.irqs_delivered
     }
 
+    /// Get the virtual TSC value when a channel was last armed.
+    /// Returns 0 if the channel is not armed.
+    pub fn channel_start_tsc(&self, ch: usize) -> u64 {
+        if self.channels[ch].armed {
+            self.channels[ch].start_tsc
+        } else {
+            0
+        }
+    }
+
+    /// Get the TSC frequency in kHz.
+    pub fn tsc_khz(&self) -> u32 {
+        self.tsc_khz
+    }
+
     /// Acknowledge that an IRQ was delivered
     pub fn acknowledge_irq(&mut self) {
         self.irqs_delivered += 1;

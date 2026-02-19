@@ -77,6 +77,21 @@ const PIT_FREQ_HZ: u128 = 1_193_182;
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
 const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
 
+/// Get the current CLOCK_MONOTONIC time in nanoseconds.
+///
+/// Used to synchronize KVM PIT's `count_load_time` with our virtual time.
+fn monotonic_ns() -> i64 {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: Valid timespec pointer, CLOCK_MONOTONIC is always available.
+    unsafe {
+        libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
+    }
+    ts.tv_sec * 1_000_000_000 + ts.tv_nsec
+}
+
 // Virtio MMIO device placement in guest physical memory
 /// Base address for virtio MMIO device 0 (block).
 const VIRTIO_MMIO_BASE_0: u64 = 0xD000_0000;
@@ -933,18 +948,45 @@ impl DeterministicVm {
 
     /// Take a snapshot of the current VM state.
     pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
-        crate::snapshot::VmSnapshot::capture(
-            &self.vcpu,
-            &self.vm,
-            self.memory.inner(),
-            self.serial.state(),
-            self.entropy.snapshot(),
-            self.virtual_tsc.read(),
-            self.exit_count,
-            self.io_exit_count,
-            self.exits_since_last_sdk,
-        )
-        .map_err(|e| VmError::Snapshot(e.to_string()))
+        use crate::snapshot::{CaptureParams, VirtioDeviceSnapshot};
+
+        // Snapshot virtio device state (block device data)
+        let virtio_snapshots: Vec<VirtioDeviceSnapshot> = self
+            .virtio_devices
+            .iter()
+            .map(|dev| {
+                let device_id = dev.backend().device_id();
+                let block_snapshot = if device_id == 2 {
+                    dev.backend()
+                        .as_any()
+                        .downcast_ref::<crate::devices::virtio_block::VirtioBlock>()
+                        .map(|vb| vb.disk().snapshot())
+                } else {
+                    None
+                };
+                VirtioDeviceSnapshot {
+                    device_id,
+                    block_snapshot,
+                }
+            })
+            .collect();
+
+        let params = CaptureParams {
+            serial_state: self.serial.state(),
+            entropy: self.entropy.snapshot(),
+            virtual_tsc: self.virtual_tsc.read(),
+            exit_count: self.exit_count,
+            io_exit_count: self.io_exit_count,
+            exits_since_last_sdk: self.exits_since_last_sdk,
+            pit_snapshot: self.pit.snapshot(),
+            last_kvm_pit_mode: self.last_kvm_pit_mode,
+            fault_engine_snapshot: self.fault_engine.snapshot(),
+            virtio_snapshots,
+            coverage_active: self.coverage_active,
+        };
+
+        crate::snapshot::VmSnapshot::capture(&self.vcpu, &self.vm, self.memory.inner(), params)
+            .map_err(|e| VmError::Snapshot(e.to_string()))
     }
 
     /// Restore VM state from a snapshot.
@@ -961,6 +1003,33 @@ impl DeterministicVm {
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
         self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
+
+        // Restore DeterministicPit state
+        self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
+        self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
+
+        // Restore fault engine state
+        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+
+        // Restore coverage flag
+        self.coverage_active = snapshot.coverage_active;
+
+        // Restore virtio device state (block device data)
+        for (snap, dev) in snapshot
+            .virtio_snapshots
+            .iter()
+            .zip(self.virtio_devices.iter_mut())
+        {
+            if let Some(ref blk_snap) = snap.block_snapshot {
+                if let Some(vb) = dev
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>()
+                {
+                    *vb.disk_mut() = crate::devices::block::DeterministicBlock::restore(blk_snap);
+                }
+            }
+        }
 
         // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
@@ -995,31 +1064,54 @@ impl DeterministicVm {
     /// We deliver IRQ 0 ourselves at deterministic virtual-time points.
     fn sync_and_suppress_pit(&mut self) -> Result<(), VmError> {
         let mut pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
-        let ch0 = &pit_state.channels[0];
+        let current_tsc = self.virtual_tsc.read();
+        let tsc_khz = self.virtual_tsc.tsc_khz() as u128;
 
-        // Mirror KVM PIT channel 0 config to our DeterministicPit
-        // when it gets reprogrammed by the guest.
+        // ── Channel 0: mirror config + suppress KVM timer ──────────
+        let ch0 = &pit_state.channels[0];
         let reload = ch0.count as u16;
         let mode = ch0.mode;
         if ch0.gate != 0 && (reload != self.pit.channel_reload(0) || mode != self.last_kvm_pit_mode)
         {
-            let tsc = self.virtual_tsc.read();
             // Program our DeterministicPit with the same config
-            // Encode command byte: ch0, lohi, mode, binary
             let cmd = 0x30 | ((mode & 0x7) << 1);
-            self.pit.write_port(0x43, cmd, tsc);
-            self.pit.write_port(0x40, reload as u8, tsc);
-            self.pit.write_port(0x40, (reload >> 8) as u8, tsc);
+            self.pit.write_port(0x43, cmd, current_tsc);
+            self.pit.write_port(0x40, reload as u8, current_tsc);
+            self.pit.write_port(0x40, (reload >> 8) as u8, current_tsc);
             self.last_kvm_pit_mode = mode;
         }
-
-        // Suppress KVM PIT timer: push count_load_time far into future
-        // so KVM never thinks the counter expired.
+        // Suppress KVM PIT channel 0 timer: push count_load_time far
+        // into future so KVM never thinks the counter expired.
         pit_state.channels[0].count_load_time = i64::MAX / 2;
+
+        // ── Channel 2: mirror config + sync to virtual time ────────
+        // The kernel uses channel 2 for TSC calibration. KVM PIT handles
+        // port 0x42 reads in-kernel using ktime_get(). By setting
+        // count_load_time = host_now - virtual_elapsed, we make KVM's
+        // elapsed calculation match our virtual elapsed time, producing
+        // deterministic PIT counter values.
+        let ch2 = &pit_state.channels[2];
+        let ch2_reload = ch2.count as u16;
+        if ch2.gate != 0 && ch2_reload != self.pit.channel_reload(2) {
+            let ch2_mode = ch2.mode;
+            // Channel 2 select = 0x80, lohi = 0x30, mode bits
+            let cmd = 0x80 | 0x30 | ((ch2_mode & 0x7) << 1);
+            self.pit.write_port(0x43, cmd, current_tsc);
+            self.pit.write_port(0x42, ch2_reload as u8, current_tsc);
+            self.pit
+                .write_port(0x42, (ch2_reload >> 8) as u8, current_tsc);
+        }
+        // Sync channel 2 count_load_time to virtual time
+        if self.pit.channel_armed(2) && tsc_khz > 0 {
+            let elapsed_tsc = current_tsc.saturating_sub(self.pit.channel_start_tsc(2));
+            let virtual_elapsed_ns = (elapsed_tsc as u128 * 1_000_000 / tsc_khz) as i64;
+            let host_now = monotonic_ns();
+            pit_state.channels[2].count_load_time = host_now - virtual_elapsed_ns;
+        }
+
         self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
 
-        // Now deliver our deterministic IRQ 0 if it's time
-        let current_tsc = self.virtual_tsc.read();
+        // ── Deliver deterministic IRQ 0 ─────────────────────────────
         if self.pit.pending_irq(current_tsc) {
             self.vm
                 .set_irq_line(PIT_IRQ, true)
@@ -1182,6 +1274,16 @@ impl DeterministicVm {
                     }
                 }
 
+                Ok(false)
+            }
+            Ok(VcpuExit::Intr) => {
+                // Host signal interrupted vcpu.run() — retry without advancing
+                // deterministic state. This exit is caused by host-side signals
+                // (SIGALRM, SIGCHLD, etc.) and is inherently non-deterministic.
+                Ok(false)
+            }
+            Ok(VcpuExit::IrqWindowOpen) => {
+                // KVM needs to inject a pending interrupt — retry immediately.
                 Ok(false)
             }
             Ok(exit) => {

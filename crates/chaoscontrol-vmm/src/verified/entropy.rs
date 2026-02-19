@@ -52,9 +52,7 @@ mod tests {
     #[test]
     fn expand_seed_zeroes_remaining() {
         let expanded = expand_seed(0xFFFFFFFFFFFFFFFF);
-        for i in 8..32 {
-            assert_eq!(expanded[i], 0);
-        }
+        assert!(expanded[8..32].iter().all(|&b| b == 0));
     }
 
     #[test]

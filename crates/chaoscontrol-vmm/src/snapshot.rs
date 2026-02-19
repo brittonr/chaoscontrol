@@ -1,6 +1,9 @@
 //! VM snapshot and restore — capture complete VM state and recreate it.
 
+use crate::devices::block::BlockSnapshot;
 use crate::devices::entropy::EntropySnapshot;
+use crate::devices::pit::PitSnapshot;
+use chaoscontrol_fault::engine::EngineSnapshot;
 use kvm_bindings::{
     kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_pit_state2, kvm_regs,
     kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
@@ -8,6 +11,32 @@ use kvm_bindings::{
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
+
+/// Snapshot of a single virtio device's host-side state.
+#[derive(Clone, Debug)]
+pub struct VirtioDeviceSnapshot {
+    /// Device type ID (2 = block, 1 = net, 4 = rng).
+    pub device_id: u32,
+    /// Block device data snapshot (only for block devices).
+    pub block_snapshot: Option<BlockSnapshot>,
+}
+
+/// VMM-side state parameters for snapshot capture.
+///
+/// Groups the non-KVM state to avoid excessive function arguments.
+pub struct CaptureParams {
+    pub serial_state: vm_superio::SerialState,
+    pub entropy: EntropySnapshot,
+    pub virtual_tsc: u64,
+    pub exit_count: u64,
+    pub io_exit_count: u64,
+    pub exits_since_last_sdk: u64,
+    pub pit_snapshot: PitSnapshot,
+    pub last_kvm_pit_mode: u8,
+    pub fault_engine_snapshot: EngineSnapshot,
+    pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
+    pub coverage_active: bool,
+}
 
 /// Complete VM state — everything needed to restore a VM to an exact point.
 #[derive(Clone, Debug)]
@@ -40,6 +69,17 @@ pub struct VmSnapshot {
     pub exit_count: u64,
     pub io_exit_count: u64,
     pub exits_since_last_sdk: u64,
+
+    // DeterministicPit state
+    pub pit_snapshot: PitSnapshot,
+    pub last_kvm_pit_mode: u8,
+
+    // Fault engine state
+    pub fault_engine_snapshot: EngineSnapshot,
+
+    // Virtio device state
+    pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
+    pub coverage_active: bool,
 }
 
 impl VmSnapshot {
@@ -48,12 +88,7 @@ impl VmSnapshot {
         vcpu: &VcpuFd,
         vm: &VmFd,
         guest_memory: &GuestMemoryMmap,
-        serial_state: vm_superio::SerialState,
-        entropy: EntropySnapshot,
-        virtual_tsc: u64,
-        exit_count: u64,
-        io_exit_count: u64,
-        exits_since_last_sdk: u64,
+        params: CaptureParams,
     ) -> Result<Self, SnapshotError> {
         // Capture vCPU state
         let regs = vcpu.get_regs().map_err(SnapshotError::GetRegs)?;
@@ -117,12 +152,17 @@ impl VmSnapshot {
             clock,
             memory,
             memory_size,
-            serial_state,
-            entropy,
-            virtual_tsc,
-            exit_count,
-            io_exit_count,
-            exits_since_last_sdk,
+            serial_state: params.serial_state,
+            entropy: params.entropy,
+            virtual_tsc: params.virtual_tsc,
+            exit_count: params.exit_count,
+            io_exit_count: params.io_exit_count,
+            exits_since_last_sdk: params.exits_since_last_sdk,
+            pit_snapshot: params.pit_snapshot,
+            last_kvm_pit_mode: params.last_kvm_pit_mode,
+            fault_engine_snapshot: params.fault_engine_snapshot,
+            virtio_snapshots: params.virtio_snapshots,
+            coverage_active: params.coverage_active,
         })
     }
 

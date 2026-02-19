@@ -84,9 +84,9 @@ pub struct VerificationResult {
     /// First divergence (if any).
     pub first_divergence: Option<Divergence>,
     /// Event type breakdown for trace A.
-    pub trace_a_summary: std::collections::HashMap<String, usize>,
+    pub trace_a_summary: std::collections::BTreeMap<String, usize>,
     /// Event type breakdown for trace B.
-    pub trace_b_summary: std::collections::HashMap<String, usize>,
+    pub trace_b_summary: std::collections::BTreeMap<String, usize>,
 }
 
 impl fmt::Display for VerificationResult {

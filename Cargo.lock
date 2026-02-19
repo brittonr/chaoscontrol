@@ -257,6 +257,7 @@ dependencies = [
  "log",
  "rand",
  "rand_chacha",
+ "regex",
  "thiserror",
  "vm-memory",
  "vm-superio",

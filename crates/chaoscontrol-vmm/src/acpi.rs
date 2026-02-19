@@ -192,7 +192,7 @@ fn build_madt(num_cpus: usize, self_address: u32) -> Vec<u8> {
     madt[0..4].copy_from_slice(b"APIC"); // Signature
     madt[4..8].copy_from_slice(&(table_len as u32).to_le_bytes()); // Length
     madt[8] = 4; // Revision
-    // Checksum at byte 9 — computed after
+                 // Checksum at byte 9 — computed after
     madt[10..16].copy_from_slice(b"CHAOS "); // OEM ID
     madt[16..24].copy_from_slice(b"CHAOSCTL"); // OEM Table ID
     madt[24..28].copy_from_slice(&1u32.to_le_bytes()); // OEM Revision
@@ -213,7 +213,7 @@ fn build_madt(num_cpus: usize, self_address: u32) -> Vec<u8> {
         madt[offset + 1] = MADT_LAPIC_LEN; // Length
         madt[offset + 2] = i as u8; // ACPI Processor UID
         madt[offset + 3] = i as u8; // APIC ID
-        // Flags: bit 0 = Processor Enabled
+                                    // Flags: bit 0 = Processor Enabled
         madt[offset + 4..offset + 8].copy_from_slice(&1u32.to_le_bytes());
         offset += MADT_LAPIC_LEN as usize;
     }
@@ -308,7 +308,7 @@ mod tests {
             assert_eq!(madt[base], MADT_LAPIC_TYPE);
             assert_eq!(madt[base + 2], i as u8); // Processor UID
             assert_eq!(madt[base + 3], i as u8); // APIC ID
-            // Enabled flag
+                                                 // Enabled flag
             let flags = u32::from_le_bytes([
                 madt[base + 4],
                 madt[base + 5],
@@ -326,8 +326,7 @@ mod tests {
     #[test]
     fn madt_lapic_address() {
         let madt = build_madt(1, 0);
-        let lapic_addr =
-            u32::from_le_bytes([madt[36], madt[37], madt[38], madt[39]]);
+        let lapic_addr = u32::from_le_bytes([madt[36], madt[37], madt[38], madt[39]]);
         assert_eq!(lapic_addr, LAPIC_DEFAULT_ADDR);
     }
 

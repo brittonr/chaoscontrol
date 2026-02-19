@@ -33,6 +33,14 @@
 | 2026-02-19 | self | SMP: TSC calibration varies because RDTSC sees hardware drift | Use clocksource=jiffies notsc for SMP; tsc=reliable not enough (calibration still runs) |
 | 2026-02-19 | self | SMP: sync_tsc_to_guest on EINTR re-entry resets TSC non-deterministically | Add skip_tsc_sync flag; skip PIT sync + TSC write after signal returns |
 | 2026-02-19 | self | PMU overflow SIGIO has 1-5 instruction skid (hardware limitation) | Accept ±4 exit variance or investigate PEBS zero-skid mode |
+| 2026-02-19 | self | PMU overflow SIGIO never delivered on AMD Zen5 | SIGIO signals are 0 even with perf_event_paranoid=-1; use SIGALRM-based approach instead |
+| 2026-02-19 | self | PMU instruction counts not deterministic | PIT calibration loop iterations vary 41.8M vs 42.3M between runs; exit-count scheduling is inherently more deterministic |
+| 2026-02-19 | self | SIGALRM 5ms timer non-deterministic in integration tests | After 23 prior test VMs, process state differs enough to cause ±1 exit count; use 10ms |
+| 2026-02-19 | self | hide_tsc via CPUID EDX bit 4 breaks APIC timer | Kernel panics "IO-APIC + timer doesn't work!"; use `notsc` cmdline instead |
+| 2026-02-19 | self | PIT channel 2 frozen via count_load_time=far_future | Makes elapsed clamp to 0, counter always reads initial reload — forces CPUID 0x15 fallback |
+| 2026-02-19 | self | CPUID 0x15 injection (25MHz × 120 = 3GHz) works on AMD | Leaf doesn't exist natively; combined with vendor=GenuineIntel makes kernel trust it |
+| 2026-02-19 | self | Liveness switch must be invisible to scheduler | If SIGALRM calls scheduler.tick() or set_active(), it creates non-deterministic scheduling |
+| 2026-02-19 | self | Spin-loop detection needs threshold ≥2 consecutive SIGALRMs | Threshold=1 triggers during PIT calibration (real exits happen between SIGALRMs) |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -126,12 +134,19 @@
   - skip_tsc_sync flag prevents non-deterministic TSC resets on signal re-entry
   - SMP cmdline: clocksource=jiffies notsc (avoids non-deterministic TSC calibration)
 - **Determinism status**:
-  - Single-vCPU: ✅ PERFECTLY DETERMINISTIC
-  - SMP 2-vCPU: ±4 exits over 5 runs (PMU interrupt skid: 1-5 instructions)
-  - PMU skid is a hardware limitation — overflow interrupt delivered 1-5 insns late
-  - Intel PEBS zero-skid mode not available through perf_event_open
-- **Integration tests**: 24/24 pass (test 24 is SMP determinism with tolerance)
-- **Next**: investigate PEBS or accept ±4 exit skid as inherent hardware limitation
+  - Single-vCPU: ✅ PERFECTLY DETERMINISTIC (70000 × 3 runs identical)
+  - SMP 2-vCPU: ✅ PERFECTLY DETERMINISTIC (69905 × 5 runs identical @ 5ms, 69930 × 5 @ 50ms)
+  - PMU instruction counting abandoned — SIGIO never delivered on AMD Zen5, counts non-deterministic
+  - Exit-count scheduling + SIGALRM liveness is the winning approach
+- **Integration tests**: 24/24 pass
+- **Key architecture**:
+  1. Exit-count scheduler (quantum=100 round-robin, seeded RNG for randomized)
+  2. SIGALRM (10ms) fires during spin loops, detected by `sigalrm_without_exit >= 2`
+  3. Liveness switch changes `active_vcpu` only (invisible to scheduler — no tick/set_active)
+  4. `skip_tsc_sync = true` after SIGALRM prevents PIT/TSC disruption
+  5. `maybe_switch_vcpu()` guards: only ticks scheduler when `active_vcpu == scheduler.active()`
+  6. PIT channel 2 frozen (count_load_time = i64::MAX / 2), CPUID 0x15 provides 3GHz
+  7. Serial verified with `strip_nondeterministic()` (strips timestamps, Memory line, TSC MHz)
 
 ## Completed (2026-02-18 session)
 1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()

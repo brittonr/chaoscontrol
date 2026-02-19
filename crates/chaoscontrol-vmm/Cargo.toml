@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
+regex = "1"
 kvm-ioctls = "0.19"
 kvm-bindings = { version = "0.10", features = ["fam-wrappers"] }
 vm-memory = { version = "0.17", features = ["backend-mmap"] }

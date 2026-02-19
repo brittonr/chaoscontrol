@@ -35,8 +35,9 @@ use chaoscontrol_protocol::{
 };
 
 use kvm_bindings::{
-    kvm_clock_data, kvm_fpu, kvm_pit_config, kvm_regs, kvm_userspace_memory_region,
-    KVM_MP_STATE_HALTED, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
+    kvm_clock_data, kvm_fpu, kvm_guest_debug, kvm_pit_config, kvm_regs,
+    kvm_userspace_memory_region, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP, KVM_MP_STATE_HALTED,
+    KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -74,6 +75,9 @@ const PIT_IRQ: u32 = 0;
 
 /// PIT oscillator frequency (Hz).
 const PIT_FREQ_HZ: u128 = 1_193_182;
+
+/// Single-step margin for exact preemption (reserved for future use).
+const SINGLESTEP_MARGIN: u64 = 50;
 
 /// KVM TSS address — must be set before create_irq_chip.
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
@@ -141,6 +145,11 @@ impl Default for VmConfig {
                 // trusts CPUID leaf 0x15 for exact TSC frequency instead of
                 // doing non-deterministic PIT-based calibration.
                 hide_hypervisor: true,
+                // Hide TSC feature for SMP: prevents early boot calibration
+                // (PIT + TSC loop) which is non-deterministic due to
+                // wall-clock PIT reads. Kernel falls back to CPUID 0x15.
+                // (Set dynamically for SMP in new() below.)
+                hide_tsc: false,
                 fixed_family: Some(6),
                 fixed_model: Some(85), // Skylake-SP
                 fixed_stepping: Some(4),
@@ -340,13 +349,23 @@ pub struct DeterministicVm {
     scheduler: VcpuScheduler,
 
     // Hardware instruction counter for deterministic SMP scheduling.
-    // Counts guest instructions between exits; when count exceeds
-    // the quantum, the deterministic scheduler switches vCPUs.
+    // In overflow mode: delivers SIGIO after `insn_quantum - SINGLESTEP_MARGIN`
+    // guest instructions. We then single-step the exact remainder.
     instruction_counter: Option<crate::perf::InstructionCounter>,
     /// Accumulated guest instructions for the current vCPU's turn.
     insn_count: u64,
-    /// Instruction quantum: switch vCPU after this many guest instructions.
+    /// Instruction quantum: total guest instructions per vCPU turn.
     insn_quantum: u64,
+
+    /// Single-step state for exact preemption.
+    /// When PMU overflow fires, we enable KVM single-stepping and count
+    /// down `singlestep_remaining` instructions to reach the exact quantum.
+    singlestep_remaining: u64,
+    /// Whether KVM guest debug single-step is currently active.
+    singlestep_active: bool,
+    /// Consecutive SIGALRM exits without a real exit.
+    /// Used to detect spin-wait loops for liveness switches.
+    sigalrm_without_exit: u32,
 
     // Execution statistics
     exit_count: u64,
@@ -461,6 +480,7 @@ impl DeterministicVm {
         if num_vcpus > 1 {
             Self::install_sigalrm_handler();
         }
+
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
         for i in 0..num_vcpus {
@@ -518,29 +538,47 @@ impl DeterministicVm {
             virtio_devices.len(),
         );
 
-        // For SMP: instruction counter in overflow mode delivers SIGIO
-        // after exactly N guest instructions. This replaces SIGALRM for
-        // both liveness (breaking spin loops) and deterministic scheduling.
+        // For SMP: PMU counting mode + SIGALRM + KVM single-step.
+        //
+        // Strategy: the PMU counts guest instructions (exclude_host=1).
+        // SIGALRM (500µs) breaks tight spin loops that have no real exits.
+        // At EVERY exit (real or SIGALRM), we read the counter. When it
+        // reaches `quantum - margin`, we enable KVM single-step and count
+        // down to the exact quantum boundary. Result: each vCPU runs
+        // exactly `quantum` guest instructions per turn (deterministic).
         let insn_quantum = 500_000u64;
         let instruction_counter = if num_vcpus > 1 {
-            crate::perf::InstructionCounter::install_sigio_handler();
-            match crate::perf::InstructionCounter::with_overflow(insn_quantum) {
+            debug_assert!(
+                insn_quantum > SINGLESTEP_MARGIN,
+                "quantum must exceed single-step margin"
+            );
+            Self::install_sigalrm_handler();
+            match crate::perf::InstructionCounter::new() {
                 Ok(counter) => {
                     info!(
-                        "SMP preemption: PMU overflow after {} guest instructions",
-                        insn_quantum
+                        "SMP preemption: PMU counting + single-step, quantum={}, margin={}",
+                        insn_quantum, SINGLESTEP_MARGIN
                     );
                     Some(counter)
                 }
                 Err(e) => {
-                    info!("SMP preemption: falling back to SIGALRM (no PMU: {})", e);
-                    Self::install_sigalrm_handler();
+                    info!(
+                        "SMP preemption: falling back to SIGALRM only (no PMU: {})",
+                        e
+                    );
                     None
                 }
             }
         } else {
             None
         };
+
+        // Reset the PMU counter for the initial vCPU (BSP).
+        // It starts paused; resume() happens just before each vcpu.run().
+        if let Some(ref counter) = instruction_counter {
+            counter.reset_and_enable();
+            counter.disable();
+        }
 
         Ok(Self {
             kvm,
@@ -559,6 +597,9 @@ impl DeterministicVm {
             instruction_counter,
             insn_count: 0,
             insn_quantum: insn_quantum,
+            singlestep_remaining: 0,
+            singlestep_active: false,
+            sigalrm_without_exit: 0,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
@@ -856,7 +897,9 @@ impl DeterministicVm {
             rflags: 0x2,          // Reserved bit must be set
             ..Default::default()
         };
-        self.vcpus[0].set_regs(&regs).map_err(VmError::SetRegisters)?;
+        self.vcpus[0]
+            .set_regs(&regs)
+            .map_err(VmError::SetRegisters)?;
         Ok(())
     }
 
@@ -1158,6 +1201,7 @@ impl DeterministicVm {
             virtio_snapshots,
             coverage_active: self.coverage_active,
             scheduler_snapshot: self.scheduler.snapshot(),
+            singlestep_remaining: self.singlestep_remaining,
         };
 
         crate::snapshot::VmSnapshot::capture(&self.vcpus, &self.vm, self.memory.inner(), params)
@@ -1192,6 +1236,20 @@ impl DeterministicVm {
         // Restore scheduler state and active vCPU
         self.scheduler.restore(&snapshot.scheduler_snapshot);
         self.active_vcpu = snapshot.active_vcpu;
+
+        // Restore single-step state. If the snapshot was taken during
+        // single-stepping, re-enable it. Otherwise, re-arm the PMU counter.
+        self.singlestep_remaining = snapshot.singlestep_remaining;
+        if self.singlestep_remaining > 0 && self.instruction_counter.is_some() {
+            self.singlestep_active = false; // clear so enable_singlestep works
+            self.enable_singlestep();
+        } else {
+            self.disable_singlestep();
+            if let Some(ref counter) = self.instruction_counter {
+                counter.reset_and_enable();
+                counter.disable(); // Paused; resume() before vcpu.run()
+            }
+        }
 
         // Restore virtio device state (block device data)
         for (snap, dev) in snapshot
@@ -1263,30 +1321,32 @@ impl DeterministicVm {
         // into future so KVM never thinks the counter expired.
         pit_state.channels[0].count_load_time = i64::MAX / 2;
 
-        // ── Channel 2: mirror config + sync to virtual time ────────
-        // The kernel uses channel 2 for TSC calibration. KVM PIT handles
-        // port 0x42 reads in-kernel using ktime_get(). By setting
-        // count_load_time = host_now - virtual_elapsed, we make KVM's
-        // elapsed calculation match our virtual elapsed time, producing
-        // deterministic PIT counter values.
+        // ── Channel 2: freeze for deterministic calibration ────────
+        // The kernel uses channel 2 for TSC calibration, reading port 0x42.
+        // KVM's in-kernel PIT computes elapsed time via
+        //   ktime_get() - count_load_time
+        // which depends on real wall-clock time (non-deterministic).
+        //
+        // Fix: push count_load_time into the far future so the elapsed
+        // time is always negative → KVM clamps to 0 → counter always
+        // reads its initial (reload) value. This makes the "fast TSC
+        // calibration" read a frozen counter, producing a deterministic
+        // result. The kernel falls back to a fixed lpj (set via cmdline).
+        //
+        // Mirror channel 2 config changes to our software PIT for
+        // snapshot consistency.
         let ch2 = &pit_state.channels[2];
         let ch2_reload = ch2.count as u16;
         if ch2.gate != 0 && ch2_reload != self.pit.channel_reload(2) {
             let ch2_mode = ch2.mode;
-            // Channel 2 select = 0x80, lohi = 0x30, mode bits
             let cmd = 0x80 | 0x30 | ((ch2_mode & 0x7) << 1);
             self.pit.write_port(0x43, cmd, current_tsc);
             self.pit.write_port(0x42, ch2_reload as u8, current_tsc);
             self.pit
                 .write_port(0x42, (ch2_reload >> 8) as u8, current_tsc);
         }
-        // Sync channel 2 count_load_time to virtual time
-        if self.pit.channel_armed(2) && tsc_khz > 0 {
-            let elapsed_tsc = current_tsc.saturating_sub(self.pit.channel_start_tsc(2));
-            let virtual_elapsed_ns = (elapsed_tsc as u128 * 1_000_000 / tsc_khz) as i64;
-            let host_now = monotonic_ns();
-            pit_state.channels[2].count_load_time = host_now - virtual_elapsed_ns;
-        }
+        // Freeze channel 2: set count_load_time far in the future.
+        pit_state.channels[2].count_load_time = i64::MAX / 2;
 
         self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
 
@@ -1305,24 +1365,37 @@ impl DeterministicVm {
 
     /// Check if vCPU should switch after a real VM exit.
     ///
-    /// With PMU overflow mode: switching is driven by SIGIO (not here).
-    /// This is a no-op when PMU is active — the real switch happens in
-    /// the VcpuExit::Intr / EINTR handler.
-    ///
-    /// Without PMU: fall back to exit-count-based scheduling.
+    /// Only ticks the deterministic scheduler when running the scheduler's
+    /// intended vCPU (active_vcpu == scheduler.active()). During liveness
+    /// detours (SIGALRM-switched), exits are counted globally but don't
+    /// affect scheduler state, preserving deterministic interleaving.
     #[inline]
     fn maybe_switch_vcpu(&mut self) {
-        if self.vcpus.len() <= 1 || self.instruction_counter.is_some() {
-            return; // PMU handles switching via SIGIO overflow
+        if self.vcpus.len() <= 1 {
+            return;
         }
-        // Fallback: exit-count-based scheduler
+        // Real exit occurred — reset the spin-loop detection counter.
+        self.sigalrm_without_exit = 0;
+
+        // During a liveness detour (SIGALRM switched us to a different
+        // vCPU than the scheduler intended), don't tick the scheduler.
+        // The detour vCPU's exits are real (affect exit_count, vtsc) but
+        // invisible to the scheduler's quantum tracking.
+        if self.active_vcpu != self.scheduler.active() {
+            return;
+        }
         if self.scheduler.tick() {
-            for offset in 1..self.vcpus.len() {
-                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+            // Scheduler says switch. Use advance() for deterministic next vCPU.
+            let next = self.scheduler.advance();
+            // Find next RUNNABLE vCPU starting from scheduler's choice.
+            for offset in 0..self.vcpus.len() {
+                let candidate = (next + offset) % self.vcpus.len();
                 if self.vcpu_is_runnable(candidate) {
                     self.active_vcpu = candidate;
-                    self.scheduler.set_active(candidate);
-                    break;
+                    if candidate != next {
+                        self.scheduler.set_active(candidate);
+                    }
+                    return;
                 }
             }
         }
@@ -1340,9 +1413,7 @@ impl DeterministicVm {
             return true;
         }
         match self.vcpus[vcpu_idx].get_mp_state() {
-            Ok(mp) => {
-                mp.mp_state == KVM_MP_STATE_RUNNABLE || mp.mp_state == KVM_MP_STATE_HALTED
-            }
+            Ok(mp) => mp.mp_state == KVM_MP_STATE_RUNNABLE || mp.mp_state == KVM_MP_STATE_HALTED,
             Err(_) => false,
         }
     }
@@ -1375,6 +1446,69 @@ impl DeterministicVm {
         self.arm_preemption_timer(0);
     }
 
+    /// Enable KVM guest single-stepping on the active vCPU.
+    ///
+    /// Each guest instruction will cause `VcpuExit::Debug` instead of
+    /// executing normally. Used to count down the exact remainder after
+    /// PMU overflow to reach the quantum boundary precisely.
+    fn enable_singlestep(&mut self) {
+        debug_assert!(!self.singlestep_active, "single-step already active");
+        let dbg = kvm_guest_debug {
+            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
+            pad: 0,
+            arch: Default::default(),
+        };
+        if let Err(e) = self.vcpus[self.active_vcpu].set_guest_debug(&dbg) {
+            log::warn!(
+                "Failed to enable single-step on vCPU {}: {}",
+                self.active_vcpu,
+                e
+            );
+            return;
+        }
+        self.singlestep_active = true;
+    }
+
+    /// Disable KVM guest single-stepping on the active vCPU.
+    fn disable_singlestep(&mut self) {
+        if !self.singlestep_active {
+            return;
+        }
+        let dbg = kvm_guest_debug {
+            control: 0,
+            pad: 0,
+            arch: Default::default(),
+        };
+        let _ = self.vcpus[self.active_vcpu].set_guest_debug(&dbg);
+        self.singlestep_active = false;
+        self.singlestep_remaining = 0;
+    }
+
+    /// Switch to the next runnable vCPU after a quantum expires.
+    /// Disables single-stepping, resets instruction count, re-arms the PMU
+    /// counter for the new vCPU's turn.
+    fn switch_vcpu_at_quantum(&mut self) {
+        self.disable_singlestep();
+        self.insn_count = 0;
+
+        // Switch to next runnable vCPU
+        for offset in 1..self.vcpus.len() {
+            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+            if self.vcpu_is_runnable(candidate) {
+                self.active_vcpu = candidate;
+                self.scheduler.set_active(candidate);
+                break;
+            }
+        }
+
+        // Reset PMU counter for the new turn (but don't enable yet —
+        // we'll resume() just before vcpu.run() to avoid counting host code).
+        if let Some(ref counter) = self.instruction_counter {
+            counter.reset_and_enable();
+            counter.disable(); // Paused at 0; resume() before vcpu.run()
+        }
+    }
+
     fn step(&mut self) -> Result<bool, VmError> {
         if self.skip_tsc_sync {
             self.skip_tsc_sync = false;
@@ -1395,18 +1529,24 @@ impl DeterministicVm {
             }
         }
 
-        // For SMP: enable preemption mechanism.
-        // With PMU: instruction counter overflow delivers SIGIO after N insns.
-        // Without PMU: SIGALRM timer for wall-clock preemption (non-deterministic).
-        if self.vcpus.len() > 1 {
-            if let Some(ref counter) = self.instruction_counter {
-                counter.enable(); // SIGIO after insn_quantum instructions
-            } else {
-                self.arm_preemption_timer(500);
-            }
-        }
+        let num_vcpus = self.vcpus.len();
 
-        match self.vcpus[self.active_vcpu].run() {
+        // For SMP: arm SIGALRM for spin-loop detection.
+        // Delay until after early boot (>200 exits) to avoid disturbing
+        // PIT channel 2 TSC calibration. SIGALRM interrupts cause RDTSC
+        // to jump (hardware TSC advances during host code), making the
+        // calibration result non-deterministic.
+        // Only do liveness switches when the vCPU appears stuck
+        // (2 consecutive SIGALRMs without real exits).
+        if num_vcpus > 1 {
+            // 10ms SIGALRM: fast enough for liveness (20ms to detect
+            // spin loops with threshold=2), slow enough to avoid
+            // disturbing PIT calibration (~2-5ms during early boot).
+            self.arm_preemption_timer(10_000);
+        }
+        let run_result = self.vcpus[self.active_vcpu].run();
+
+        match run_result {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
@@ -1560,28 +1700,41 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::Intr) => {
-                // Signal interrupted vcpu.run():
-                // - SIGIO from PMU overflow = deterministic quantum expiry
-                // - SIGALRM (no PMU fallback) = non-deterministic
+                // SIGALRM interrupted vcpu.run().
+                //
+                // Only switch vCPU if this vCPU appears stuck (consecutive
+                // SIGALRMs without any real exit). Normal code generates
+                // real exits between SIGALRMs, keeping the counter at 0.
+                // Spin-wait loops have no real exits, so the counter
+                // grows until it crosses the threshold → liveness switch.
+                //
+                // The liveness switch is INVISIBLE to the scheduler:
+                // we change active_vcpu but not scheduler state.
+                self.disarm_preemption_timer();
+                // Skip PIT/TSC sync on next step() — virtual time hasn't
+                // advanced, and skipping avoids disturbing in-progress
+                // PIT channel 2 calibration during early boot.
                 self.skip_tsc_sync = true;
-                if self.vcpus.len() > 1 {
-                    if let Some(ref counter) = self.instruction_counter {
-                        counter.disable();
-                    } else {
-                        self.disarm_preemption_timer();
-                    }
-                    // Switch to next runnable vCPU
-                    for offset in 1..self.vcpus.len() {
-                        let candidate =
-                            (self.active_vcpu + offset) % self.vcpus.len();
-                        if self.vcpu_is_runnable(candidate) {
-                            self.active_vcpu = candidate;
-                            self.scheduler.set_active(candidate);
-                            self.insn_count = 0;
-                            break;
+                if num_vcpus > 1 {
+                    self.sigalrm_without_exit += 1;
+                    // Threshold: 2 consecutive SIGALRMs with no real exit.
+                    // At 500µs per SIGALRM, this triggers after ~1ms of
+                    // no real exits — clearly a spin-wait loop.
+                    if self.sigalrm_without_exit >= 2 {
+                        for offset in 1..self.vcpus.len() {
+                            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                            if self.vcpu_is_runnable(candidate) {
+                                self.active_vcpu = candidate;
+                                self.sigalrm_without_exit = 0;
+                                break;
+                            }
                         }
                     }
                 }
+                Ok(false)
+            }
+            Ok(VcpuExit::Debug(_debug)) => {
+                // Debug exit (reserved for future single-step support).
                 Ok(false)
             }
             Ok(VcpuExit::IrqWindowOpen) => {
@@ -1596,21 +1749,18 @@ impl DeterministicVm {
             Err(e) => {
                 // EINTR from signal — same as VcpuExit::Intr
                 if e.errno() == libc::EINTR {
+                    self.disarm_preemption_timer();
                     self.skip_tsc_sync = true;
                     if self.vcpus.len() > 1 {
-                        if let Some(ref counter) = self.instruction_counter {
-                            counter.disable();
-                        } else {
-                            self.disarm_preemption_timer();
-                        }
-                        for offset in 1..self.vcpus.len() {
-                            let candidate =
-                                (self.active_vcpu + offset) % self.vcpus.len();
-                            if self.vcpu_is_runnable(candidate) {
-                                self.active_vcpu = candidate;
-                                self.scheduler.set_active(candidate);
-                                self.insn_count = 0;
-                                break;
+                        self.sigalrm_without_exit += 1;
+                        if self.sigalrm_without_exit >= 2 {
+                            for offset in 1..self.vcpus.len() {
+                                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                                if self.vcpu_is_runnable(candidate) {
+                                    self.active_vcpu = candidate;
+                                    self.sigalrm_without_exit = 0;
+                                    break;
+                                }
                             }
                         }
                     }

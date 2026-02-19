@@ -84,6 +84,19 @@ pub const CPUID_LEAF_APM: u32 = 0x8000_0007;
 
 // -- Leaf 0x1, ECX --
 
+// -- Leaf 0x1, EDX --
+
+/// EDX bit 4 — Time Stamp Counter (TSC) feature.
+///
+/// When hidden, the guest kernel's `get_cycles()` returns 0, preventing
+/// all TSC-based calibration (PIT + TSC calibration loop). RDTSC still
+/// works at the hardware level (KVM provides it), but the kernel never
+/// reads it. This eliminates non-deterministic calibration during early
+/// boot in SMP configurations.
+pub const CPUID_1_EDX_TSC: u32 = 1 << 4;
+
+// -- Leaf 0x1, ECX --
+
 /// ECX bit 24 — TSC-Deadline timer.
 ///
 /// Disabled because deadline-mode LAPIC interrupts have variable latency
@@ -225,6 +238,14 @@ pub struct CpuConfig {
     /// zeroed out.
     pub hide_hypervisor: bool,
 
+    /// Hide the CPUID TSC feature bit (leaf 0x1, EDX bit 4).
+    ///
+    /// When `true`, the guest kernel believes there is no TSC and skips
+    /// all TSC-based calibration. RDTSC still works (KVM provides it),
+    /// but the kernel never reads it. This prevents non-deterministic
+    /// PIT-based TSC calibration during early boot.
+    pub hide_tsc: bool,
+
     /// If `Some`, override the CPUID processor family to this value.
     ///
     /// Useful when replaying a trace on a host with a different CPU
@@ -264,6 +285,7 @@ impl Default for CpuConfig {
             allow_avx2: false,
             allow_avx512: false,
             hide_hypervisor: false,
+            hide_tsc: false,
             fixed_family: None,
             fixed_model: None,
             fixed_stepping: None,
@@ -565,6 +587,9 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
 
             if config.hide_hypervisor {
                 entry.ecx &= !CPUID_1_ECX_HYPERVISOR;
+            }
+            if config.hide_tsc {
+                entry.edx &= !CPUID_1_EDX_TSC;
             }
 
             // Fix Initial APIC ID (EBX bits 31:24) to 0.

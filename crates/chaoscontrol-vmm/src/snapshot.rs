@@ -38,6 +38,7 @@ pub struct CaptureParams {
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
     pub scheduler_snapshot: SchedulerSnapshot,
+    pub singlestep_remaining: u64,
 }
 
 /// Per-vCPU register state for snapshot/restore.
@@ -122,6 +123,9 @@ pub struct VmSnapshot {
 
     /// vCPU scheduler state.
     pub scheduler_snapshot: SchedulerSnapshot,
+
+    /// Single-step remaining count (for exact SMP preemption).
+    pub singlestep_remaining: u64,
 }
 
 impl VmSnapshot {
@@ -205,6 +209,7 @@ impl VmSnapshot {
             coverage_active: params.coverage_active,
             active_vcpu: params.scheduler_snapshot.active,
             scheduler_snapshot: params.scheduler_snapshot,
+            singlestep_remaining: params.singlestep_remaining,
         })
     }
 

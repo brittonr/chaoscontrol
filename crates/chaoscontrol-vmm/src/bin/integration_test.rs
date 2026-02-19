@@ -12,7 +12,9 @@
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 use chaoscontrol_protocol::{COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE};
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, VmStatus};
+use chaoscontrol_vmm::controller::{
+    NetworkStats, SimulationConfig, SimulationController, VmStatus,
+};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;
 use std::time::Instant;
@@ -1156,6 +1158,312 @@ fn main() {
         }
 
         ok1 && ok2 && ok3 && ordered
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 20: Network RNG determinism survives snapshot/restore
+    // ═══════════════════════════════════════════════════════════════
+    run_test!(
+        "Snapshot/restore preserves network RNG (same random decisions after restore)",
+        {
+            let schedule = FaultScheduleBuilder::new()
+                .at_ns(
+                    1_000_000,
+                    Fault::PacketLoss {
+                        target: 0,
+                        rate_ppm: 300_000, // 30% — exercises RNG heavily
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::NetworkJitter {
+                        target: 0,
+                        jitter_ns: 30_000_000,
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::PacketDuplicate {
+                        target: 1,
+                        rate_ppm: 200_000,
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::PacketCorruption {
+                        target: 0,
+                        rate_ppm: 200_000,
+                    },
+                )
+                .build();
+
+            let make_config = || SimulationConfig {
+                num_vms: 2,
+                vm_config: VmConfig::default(),
+                kernel_path: kernel.to_string(),
+                initrd_path: Some(initrd.to_string()),
+                seed: 42,
+                quantum: 5000,
+                schedule: schedule.clone(),
+            };
+
+            // Run controller to a point, snapshot, then continue with sends
+            let mut ctrl = SimulationController::new(make_config()).expect("create");
+            ctrl.force_setup_complete();
+            for _ in 0..3 {
+                ctrl.step_round().expect("step");
+            }
+
+            let snap = ctrl.snapshot_all().expect("snapshot");
+
+            // Send traffic after snapshot
+            let tick = ctrl.tick();
+            for i in 0u8..40 {
+                ctrl.network_mut().send(0, 1, vec![i; 100], tick);
+                ctrl.network_mut().send(1, 0, vec![i; 50], tick);
+            }
+            let ticks_orig: Vec<u64> = ctrl
+                .network()
+                .in_flight
+                .iter()
+                .map(|m| m.deliver_at_tick)
+                .collect();
+            let data_orig: Vec<Vec<u8>> = ctrl
+                .network()
+                .in_flight
+                .iter()
+                .map(|m| m.data.clone())
+                .collect();
+            let stats_orig = ctrl.network().stats().clone();
+
+            // Restore and replay the exact same sends
+            ctrl.restore_all(&snap).expect("restore");
+            let tick2 = ctrl.tick();
+            for i in 0u8..40 {
+                ctrl.network_mut().send(0, 1, vec![i; 100], tick2);
+                ctrl.network_mut().send(1, 0, vec![i; 50], tick2);
+            }
+            let ticks_restored: Vec<u64> = ctrl
+                .network()
+                .in_flight
+                .iter()
+                .map(|m| m.deliver_at_tick)
+                .collect();
+            let data_restored: Vec<Vec<u8>> = ctrl
+                .network()
+                .in_flight
+                .iter()
+                .map(|m| m.data.clone())
+                .collect();
+            let stats_restored = ctrl.network().stats().clone();
+
+            let tick_ok = tick == tick2;
+            let delivery_ok = ticks_orig == ticks_restored;
+            let count_ok = ticks_orig.len() == ticks_restored.len();
+            let data_ok = data_orig == data_restored;
+            let loss_ok = stats_orig.packets_dropped_loss == stats_restored.packets_dropped_loss;
+
+            if !tick_ok {
+                eprintln!("    tick mismatch: {} vs {}", tick, tick2);
+            }
+            if !count_ok {
+                eprintln!(
+                    "    in-flight count: {} vs {}",
+                    ticks_orig.len(),
+                    ticks_restored.len()
+                );
+            }
+            if !delivery_ok {
+                let diffs = ticks_orig
+                    .iter()
+                    .zip(ticks_restored.iter())
+                    .filter(|(a, b)| a != b)
+                    .count();
+                eprintln!(
+                    "    delivery tick mismatches: {}/{}",
+                    diffs,
+                    ticks_orig.len()
+                );
+            }
+            if !data_ok {
+                eprintln!("    packet data mismatch (corruption decisions differ)");
+            }
+            if !loss_ok {
+                eprintln!(
+                    "    loss count: {} vs {}",
+                    stats_orig.packets_dropped_loss, stats_restored.packets_dropped_loss
+                );
+            }
+
+            tick_ok && delivery_ok && count_ok && data_ok && loss_ok
+        }
+    );
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 21: Seed propagation — different master seed ⇒ different traffic
+    // ═══════════════════════════════════════════════════════════════
+    run_test!(
+        "Seed propagation: different master seed changes network RNG",
+        {
+            let make_schedule = || {
+                FaultScheduleBuilder::new()
+                    .at_ns(
+                        1_000_000,
+                        Fault::PacketLoss {
+                            target: 0,
+                            rate_ppm: 400_000,
+                        },
+                    )
+                    .at_ns(
+                        1_000_000,
+                        Fault::NetworkJitter {
+                            target: 0,
+                            jitter_ns: 80_000_000,
+                        },
+                    )
+                    .build()
+            };
+
+            let make_config = |seed: u64| SimulationConfig {
+                num_vms: 2,
+                vm_config: VmConfig::default(),
+                kernel_path: kernel.to_string(),
+                initrd_path: Some(initrd.to_string()),
+                seed,
+                quantum: 5000,
+                schedule: make_schedule(),
+            };
+
+            let collect_traffic = |config: SimulationConfig| -> (Vec<u64>, u64) {
+                let mut ctrl = SimulationController::new(config).expect("create");
+                ctrl.force_setup_complete();
+                for _ in 0..3 {
+                    ctrl.step_round().expect("step");
+                }
+
+                let tick = ctrl.tick();
+                for i in 0u8..30 {
+                    ctrl.network_mut().send(0, 1, vec![i; 50], tick);
+                }
+                let ticks: Vec<u64> = ctrl
+                    .network()
+                    .in_flight
+                    .iter()
+                    .map(|m| m.deliver_at_tick)
+                    .collect();
+                let lost = ctrl.network().stats().packets_dropped_loss;
+                (ticks, lost)
+            };
+
+            let (ticks_a, lost_a) = collect_traffic(make_config(42));
+            let (ticks_b, lost_b) = collect_traffic(make_config(42));
+            let (ticks_c, _lost_c) = collect_traffic(make_config(99));
+
+            let same_ok = ticks_a == ticks_b && lost_a == lost_b;
+            let diff_ok = ticks_a != ticks_c;
+
+            if !same_ok {
+                eprintln!("    same seed produced different results!");
+                eprintln!(
+                    "    run1 delivered: {}, run2: {}",
+                    ticks_a.len(),
+                    ticks_b.len()
+                );
+            }
+            if !diff_ok {
+                eprintln!("    different seeds produced SAME results — seed not propagating");
+            }
+
+            same_ok && diff_ok
+        }
+    );
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 22: NetworkStats match between identical runs
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("NetworkStats deterministic between identical runs", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::PacketLoss {
+                    target: 0,
+                    rate_ppm: 200_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkJitter {
+                    target: 0,
+                    jitter_ns: 20_000_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkBandwidth {
+                    target: 1,
+                    bytes_per_sec: 100_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::PacketCorruption {
+                    target: 0,
+                    rate_ppm: 150_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::PacketDuplicate {
+                    target: 1,
+                    rate_ppm: 100_000,
+                },
+            )
+            .build();
+
+        let make_config = || SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule: schedule.clone(),
+        };
+
+        let collect_stats = |config: SimulationConfig| -> NetworkStats {
+            let mut ctrl = SimulationController::new(config).expect("create");
+            ctrl.force_setup_complete();
+            for _ in 0..3 {
+                ctrl.step_round().expect("step");
+            }
+            let tick = ctrl.tick();
+            for i in 0u8..50 {
+                ctrl.network_mut().send(0, 1, vec![i; 200], tick);
+                ctrl.network_mut().send(1, 0, vec![i; 100], tick);
+            }
+            ctrl.network().stats().clone()
+        };
+
+        let s1 = collect_stats(make_config());
+        let s2 = collect_stats(make_config());
+
+        let all_match = s1.packets_sent == s2.packets_sent
+            && s1.packets_delivered == s2.packets_delivered
+            && s1.packets_dropped_loss == s2.packets_dropped_loss
+            && s1.packets_corrupted == s2.packets_corrupted
+            && s1.packets_duplicated == s2.packets_duplicated
+            && s1.packets_bandwidth_delayed == s2.packets_bandwidth_delayed
+            && s1.total_bandwidth_delay_ticks == s2.total_bandwidth_delay_ticks
+            && s1.packets_jittered == s2.packets_jittered
+            && s1.total_jitter_ticks == s2.total_jitter_ticks
+            && s1.packets_reordered == s2.packets_reordered;
+
+        if !all_match {
+            eprintln!("    Run 1: {}", s1);
+            eprintln!("    Run 2: {}", s2);
+        }
+
+        all_match
     });
 
     // ═══════════════════════════════════════════════════════════════

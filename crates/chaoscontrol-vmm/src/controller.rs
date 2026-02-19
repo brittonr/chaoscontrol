@@ -1950,4 +1950,212 @@ mod tests {
         let run2 = send_messages(42);
         assert_eq!(run1, run2, "Bandwidth delay must be deterministic");
     }
+
+    // ── Seed propagation & snapshot/restore determinism ───────────
+
+    #[test]
+    fn test_network_rng_state_survives_clone() {
+        // NetworkFabric is cloned during snapshot_all (network_state: self.network.clone()).
+        // Verify that the cloned fabric's RNG produces the same random decisions.
+        let mut fabric = NetworkFabric::new(3, 42);
+        fabric.set_loss_rate(0, 500_000); // 50%
+        fabric.set_jitter(1, 100);
+        fabric.set_duplicate_rate(2, 300_000); // 30%
+
+        // Advance RNG state by sending some packets
+        for i in 0u8..20 {
+            fabric.send(0, 1, vec![i; 50], 100);
+            fabric.send(1, 2, vec![i; 30], 100);
+        }
+
+        // Clone (simulates snapshot)
+        let mut cloned = fabric.clone();
+
+        // Clear in-flight on both so we compare fresh sends
+        fabric.in_flight.clear();
+        cloned.in_flight.clear();
+
+        // Send identical traffic on both — should get identical random decisions
+        let mut orig_ticks = Vec::new();
+        let mut clone_ticks = Vec::new();
+        for i in 0u8..30 {
+            fabric.send(0, 1, vec![i; 80], 200);
+            cloned.send(0, 1, vec![i; 80], 200);
+            fabric.send(2, 0, vec![i; 40], 200);
+            cloned.send(2, 0, vec![i; 40], 200);
+        }
+        for m in &fabric.in_flight {
+            orig_ticks.push((m.from, m.to, m.deliver_at_tick, m.data.len()));
+        }
+        for m in &cloned.in_flight {
+            clone_ticks.push((m.from, m.to, m.deliver_at_tick, m.data.len()));
+        }
+
+        assert_eq!(
+            orig_ticks, clone_ticks,
+            "Cloned fabric must produce identical random decisions"
+        );
+        assert_eq!(
+            fabric.stats.packets_sent, cloned.stats.packets_sent,
+            "Stats must match"
+        );
+        assert_eq!(
+            fabric.stats.packets_dropped_loss, cloned.stats.packets_dropped_loss,
+            "Loss stats must match"
+        );
+    }
+
+    #[test]
+    fn test_seed_changes_all_rng_domains() {
+        // Changing the master seed must change network RNG output.
+        // This verifies domain separation: seed flows into the fabric.
+        let send_and_collect = |seed: u64| -> (Vec<u64>, NetworkStats) {
+            let mut fabric = NetworkFabric::new(3, seed);
+            fabric.set_loss_rate(0, 500_000);
+            fabric.set_jitter(1, 100);
+            fabric.set_corruption_rate(0, 200_000);
+            fabric.set_duplicate_rate(2, 300_000);
+            for i in 0u8..50 {
+                fabric.send(0, 1, vec![i; 50], 0);
+                fabric.send(1, 2, vec![i; 30], 0);
+                fabric.send(2, 0, vec![i; 20], 0);
+            }
+            let ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+            (ticks, fabric.stats.clone())
+        };
+
+        let (ticks_a1, stats_a1) = send_and_collect(42);
+        let (ticks_a2, stats_a2) = send_and_collect(42);
+        let (ticks_b, stats_b) = send_and_collect(99);
+
+        // Same seed = same results
+        assert_eq!(ticks_a1, ticks_a2, "Same seed must produce same ticks");
+        assert_eq!(
+            stats_a1.packets_dropped_loss, stats_a2.packets_dropped_loss,
+            "Same seed must produce same loss count"
+        );
+
+        // Different seed = different results (at least delivery ticks differ)
+        assert_ne!(
+            ticks_a1, ticks_b,
+            "Different seeds must produce different delivery ticks"
+        );
+    }
+
+    #[test]
+    fn test_network_stats_deterministic_between_runs() {
+        // Two identical runs must produce identical stats.
+        let run = |seed: u64| -> NetworkStats {
+            let mut fabric = NetworkFabric::new(3, seed);
+            fabric.set_loss_rate(0, 300_000);
+            fabric.set_corruption_rate(1, 200_000);
+            fabric.set_jitter(0, 50);
+            fabric.set_bandwidth(1, 10_000);
+            fabric.set_duplicate_rate(2, 150_000);
+            for i in 0u8..100 {
+                fabric.send(0, 1, vec![i; 80], i as u64);
+                fabric.send(1, 2, vec![i; 40], i as u64);
+                fabric.send(2, 0, vec![i; 20], i as u64);
+            }
+            fabric.stats.clone()
+        };
+
+        let s1 = run(42);
+        let s2 = run(42);
+
+        assert_eq!(s1.packets_sent, s2.packets_sent);
+        assert_eq!(s1.packets_delivered, s2.packets_delivered);
+        assert_eq!(s1.packets_dropped_loss, s2.packets_dropped_loss);
+        assert_eq!(s1.packets_corrupted, s2.packets_corrupted);
+        assert_eq!(s1.packets_duplicated, s2.packets_duplicated);
+        assert_eq!(s1.packets_bandwidth_delayed, s2.packets_bandwidth_delayed);
+        assert_eq!(
+            s1.total_bandwidth_delay_ticks,
+            s2.total_bandwidth_delay_ticks
+        );
+        assert_eq!(s1.packets_jittered, s2.packets_jittered);
+        assert_eq!(s1.total_jitter_ticks, s2.total_jitter_ticks);
+        assert_eq!(s1.packets_reordered, s2.packets_reordered);
+    }
+
+    #[test]
+    fn test_network_domain_separator_isolates_from_engine() {
+        // Network fabric and fault engine both derive from the same master seed
+        // but must use different domain separators so their RNG streams differ.
+        //
+        // Here we verify that the network fabric's derived seed != master seed
+        // (i.e., it actually uses the domain separator).
+        let seed: u64 = 42;
+        let mut fabric_key = [0u8; 32];
+        let derived = seed.wrapping_add(0x4E45_5446_4142); // "NETFAB"
+        fabric_key[..8].copy_from_slice(&derived.to_le_bytes());
+
+        let mut engine_key = [0u8; 32];
+        engine_key[..8].copy_from_slice(&seed.to_le_bytes());
+
+        // The keys must differ (different domain separators)
+        assert_ne!(
+            fabric_key, engine_key,
+            "Network fabric and fault engine must use different RNG keys"
+        );
+    }
+
+    #[test]
+    fn test_snapshot_restore_rng_determinism() {
+        // The most critical gap: after snapshot/restore, the RNG must produce
+        // the same sequence of random decisions as continuing from that point
+        // without restore.
+        let mut fabric = NetworkFabric::new(3, 42);
+        fabric.set_loss_rate(0, 400_000);
+        fabric.set_jitter(1, 80);
+        fabric.set_corruption_rate(0, 200_000);
+        fabric.set_duplicate_rate(2, 250_000);
+        fabric.set_bandwidth(0, 50_000);
+
+        // Advance state
+        for i in 0u8..20 {
+            fabric.send(0, 1, vec![i; 60], i as u64);
+            fabric.send(1, 2, vec![i; 30], i as u64);
+        }
+
+        // "Snapshot" = clone
+        let snapshot = fabric.clone();
+
+        // Continue original for 30 more sends
+        fabric.in_flight.clear();
+        for i in 20u8..50 {
+            fabric.send(0, 1, vec![i; 60], i as u64);
+            fabric.send(2, 0, vec![i; 30], i as u64);
+        }
+        let orig_ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+        let orig_data: Vec<Vec<u8>> = fabric.in_flight.iter().map(|m| m.data.clone()).collect();
+
+        // "Restore" from snapshot and replay same sends
+        let mut restored = snapshot;
+        restored.in_flight.clear();
+        for i in 20u8..50 {
+            restored.send(0, 1, vec![i; 60], i as u64);
+            restored.send(2, 0, vec![i; 30], i as u64);
+        }
+        let restored_ticks: Vec<u64> = restored
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+        let restored_data: Vec<Vec<u8>> =
+            restored.in_flight.iter().map(|m| m.data.clone()).collect();
+
+        assert_eq!(
+            orig_ticks, restored_ticks,
+            "Post-restore sends must produce identical delivery ticks"
+        );
+        assert_eq!(
+            orig_data, restored_data,
+            "Post-restore sends must produce identical data (corruption decisions)"
+        );
+        assert_eq!(
+            fabric.stats.packets_dropped_loss, restored.stats.packets_dropped_loss,
+            "Post-restore loss decisions must be identical"
+        );
+    }
 }

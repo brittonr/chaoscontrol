@@ -24,6 +24,11 @@
 | 2026-02-19 | self | SMP: BSP spin-waits for AP with no VM exits | Tight loops don't generate KVM exits; use SIGALRM timer for preemption |
 | 2026-02-19 | self | SIGALRM with SA_RESTART doesn't interrupt vcpu.run() | Must NOT set SA_RESTART; also handle Err(EINTR) in addition to VcpuExit::Intr |
 | 2026-02-19 | self | ChaCha20Rng::get_seed() returns initial seed, not current state | Must save get_seed() + get_word_pos() together; restore with from_seed() + set_word_pos() |
+| 2026-02-19 | self | SMP: vcpu_is_runnable() only checked RUNNABLE (0) | Must also accept HALTED (3) — AP halts during init, needs timer IRQ to continue |
+| 2026-02-19 | self | SMP: scheduler.active() at top of step() overrode EINTR switch | Remove that line — let EINTR handler's active_vcpu assignment persist |
+| 2026-02-19 | self | SMP: only armed timer when multiple vCPUs runnable | Must ALWAYS arm timer in SMP mode — AP becomes runnable asynchronously via SIPI |
+| 2026-02-19 | self | SMP: EINTR called scheduler.advance() → non-deterministic scheduling | Use scheduler.set_active() or simple round-robin — don't consume RNG on wall-clock events |
+| 2026-02-19 | self | SMP: SA_RESTART makes vcpu.run() restart after SIGALRM | Must NOT set SA_RESTART — need SIGALRM to interrupt the ioctl |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -105,9 +110,17 @@
 - **MP state check**: skip non-runnable APs (KVM_MP_STATE_RUNNABLE = 0)
 - **Cmdline**: `nosmp noapic` for 1 vCPU, `maxcpus=N` for SMP
 - **Snapshot**: VmSnapshot now stores Vec<VcpuSnapshot> + SchedulerSnapshot
-- **Status**: kernel reaches "Booting SMP configuration: CPUs: #1" — AP trampoline in progress
-- **Issue**: 1ms SIGALRM preemption is slow (~90s/100K exits); AP trampoline not completing yet
-- **Next**: need to debug AP trampoline (may need real-mode I/O handling, or faster preemption)
+- **Status**: ✅ **WORKING** — "Brought up 1 node, 2 CPUs" at ~70K exits in ~2s
+- **KVM_MP_STATE_HALTED**: must treat HALTED (3) as schedulable, not just RUNNABLE (0)
+- **SIGALRM preemption**: wall-clock timer (500µs) breaks tight spin loops during SMP boot
+  - EINTR handler does simple round-robin switch, NOT deterministic scheduler
+  - Does NOT advance exit_count or virtual_tsc — invisible to deterministic state
+  - scheduler.set_active() syncs scheduler state without consuming RNG
+- **Non-determinism**: SMP boot is functionally correct but NOT bit-exact deterministic
+  - Wall-clock SIGALRM causes variable instruction counts between interrupts
+  - Full determinism requires IA32_FIXED_CTR0 PMI (hardware perf counters) — future work
+- **Integration tests**: 24/24 pass (2 SMP tests: boot + topology)
+- **Next**: Hardware PMU preemption for full SMP determinism
 
 ## Completed (2026-02-18 session)
 1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()

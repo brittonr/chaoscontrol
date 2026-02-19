@@ -115,6 +115,27 @@
 - 31 new tests (616 total, 0 failures)
 - Existing `latency` field stores ticks but comments said "nanoseconds" — naming inconsistency preserved for now
 
+## Network Observability (2026-02-19)
+- **NetworkStats struct**: cumulative packet-level counters in NetworkFabric
+  - packets_sent, packets_delivered, packets_dropped_partition, packets_dropped_loss
+  - packets_corrupted, packets_duplicated, packets_bandwidth_delayed (+ total ticks)
+  - packets_jittered (+ total ticks), packets_reordered
+- **Wired into**: SimulationResult, ExplorationReport, format_report()
+- **Display impl**: one-liner for log output
+- **NOT reset on NetworkHeal**: stats are cumulative across entire simulation
+- **Exploration report**: new "Network Fabric Statistics" section shows non-zero counters + averages
+
+## Entropy & Seeding Determinism Tests (2026-02-19)
+- **Gap found**: Test 18 verified network config survives snapshot/restore but NOT that the RNG state was identical
+- **5 new unit tests**: clone-preserves-RNG, seed-changes-all-domains, stats-deterministic, domain-separator-isolation, snapshot-restore-RNG-decisions
+- **3 new integration tests (20-22)**:
+  - Test 20: snapshot/restore + 80 packet sends → identical delivery ticks, data, loss counts
+  - Test 21: seed propagation — same seed=same traffic, different seed=different traffic
+  - Test 22: all 10 NetworkStats counters match between identical full runs
+- **Seed propagation chain**: `config.seed` → FaultEngine (`seed`), per-VM CPU (`seed + i`), NetworkFabric (`seed + 0x4E455446414E` domain separator)
+- **Key insight**: NetworkFabric is `Clone` → snapshot = clone → RNG state preserved by ChaCha20's `get_seed()` (stored in the struct fields, not external state)
+- 630 unit tests, 22/22 integration tests pass
+
 ## Completed (2026-02-18 loose ends)
 18. ✅ DiskTornWrite + DiskCorruption fault handlers wired to DeterministicBlock
 19. ✅ Explore `resume` subcommand with JSON checkpoint save/load

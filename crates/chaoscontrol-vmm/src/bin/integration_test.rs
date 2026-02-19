@@ -516,6 +516,649 @@ fn main() {
     });
 
     // ═══════════════════════════════════════════════════════════════
+    //  Test 13: NetworkJitter via fault schedule
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("NetworkJitter: variable latency after fault fires", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::NetworkJitter {
+                    target: 0,
+                    jitter_ns: 50_000_000, // 50ms → 50 ticks jitter
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkLatency {
+                    target: 0,
+                    latency_ns: 100, // 100 ticks base latency
+                },
+            )
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run until faults fire (tick 1 = 1_000_000 ns)
+        for _ in 0..5 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Verify jitter was applied to the fabric
+        let jitter_val = ctrl.network().jitter[0];
+        if jitter_val == 0 {
+            eprintln!("    jitter not applied: jitter[0]={}", jitter_val);
+            return false;
+        }
+
+        // Send many test messages through the fabric and check delivery variation
+        let tick = ctrl.tick();
+        for i in 0u8..50 {
+            ctrl.network_mut().send(0, 1, vec![i], tick);
+        }
+
+        let ticks: Vec<u64> = ctrl
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+
+        // All delivery ticks should be in [tick+100, tick+150]
+        // (100 base latency + 0..50 jitter)
+        let min_expected = tick + 100;
+        let max_expected = tick + 150;
+        let in_range = ticks
+            .iter()
+            .all(|&t| t >= min_expected && t <= max_expected);
+
+        // Should have variation (not all the same)
+        let has_variation = ticks.iter().any(|&t| t != ticks[0]);
+
+        if !in_range {
+            let actual_min = ticks.iter().min().unwrap();
+            let actual_max = ticks.iter().max().unwrap();
+            eprintln!(
+                "    delivery ticks out of range: [{}, {}] expected [{}, {}]",
+                actual_min, actual_max, min_expected, max_expected
+            );
+        }
+        if !has_variation {
+            eprintln!("    no jitter variation in delivery ticks");
+        }
+
+        in_range && has_variation
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 14: NetworkBandwidth via fault schedule
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("NetworkBandwidth: queuing delay after fault fires", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::NetworkBandwidth {
+                    target: 0,
+                    bytes_per_sec: 8000, // 8000 B/s → 100 bytes = 100 ticks
+                },
+            )
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run until fault fires
+        for _ in 0..5 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Verify bandwidth was applied
+        let bw = ctrl.network().bandwidth_bps[0];
+        if bw != 8000 {
+            eprintln!("    bandwidth not applied: bw[0]={}", bw);
+            return false;
+        }
+
+        // Send 3 back-to-back 100-byte packets: should queue
+        let tick = ctrl.tick();
+        ctrl.network_mut().send(0, 1, vec![0xAA; 100], tick);
+        ctrl.network_mut().send(0, 1, vec![0xBB; 100], tick);
+        ctrl.network_mut().send(0, 1, vec![0xCC; 100], tick);
+
+        let ticks: Vec<u64> = ctrl
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+
+        // Each 100-byte packet at 8000 B/s takes 100 ticks
+        // Packet 1: tick + 100, Packet 2: tick + 200, Packet 3: tick + 300
+        let expected = vec![tick + 100, tick + 200, tick + 300];
+        let queuing_ok = ticks == expected;
+
+        if !queuing_ok {
+            eprintln!("    delivery ticks: {:?}", ticks);
+            eprintln!("    expected:       {:?}", expected);
+        }
+
+        queuing_ok
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 15: PacketDuplicate via fault schedule
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("PacketDuplicate: copies packets after fault fires", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::PacketDuplicate {
+                    target: 0,
+                    rate_ppm: 1_000_000, // 100% duplication
+                },
+            )
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run until fault fires
+        for _ in 0..5 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Verify duplication was applied
+        let dup = ctrl.network().duplicate_rate_ppm[0];
+        if dup != 1_000_000 {
+            eprintln!("    duplication not applied: dup[0]={}", dup);
+            return false;
+        }
+
+        // Send 5 messages — with 100% duplication, each produces 2 in-flight
+        let tick = ctrl.tick();
+        for i in 0u8..5 {
+            ctrl.network_mut().send(0, 1, vec![i], tick);
+        }
+
+        let count = ctrl.network().in_flight.len();
+
+        // 5 originals + 5 duplicates = 10
+        let dup_ok = count == 10;
+
+        if !dup_ok {
+            eprintln!("    in_flight count: {} (expected 10)", count);
+        }
+
+        // Verify duplicates have same data as originals
+        let data_pairs: Vec<(&[u8], &[u8])> = ctrl
+            .network()
+            .in_flight
+            .chunks(2)
+            .map(|pair| (pair[0].data.as_slice(), pair[1].data.as_slice()))
+            .collect();
+        let data_match = data_pairs.iter().all(|(a, b)| a == b);
+
+        if !data_match {
+            eprintln!("    duplicate data mismatch");
+        }
+
+        dup_ok && data_match
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 16: NetworkHeal resets jitter, bandwidth, duplication
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("NetworkHeal resets all new network fault types", {
+        let schedule = FaultScheduleBuilder::new()
+            // Apply all faults at tick 1
+            .at_ns(
+                1_000_000,
+                Fault::NetworkJitter {
+                    target: 0,
+                    jitter_ns: 50_000_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkBandwidth {
+                    target: 0,
+                    bytes_per_sec: 100_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::PacketDuplicate {
+                    target: 0,
+                    rate_ppm: 500_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::PacketLoss {
+                    target: 0,
+                    rate_ppm: 200_000,
+                },
+            )
+            // Heal at tick 3
+            .at_ns(3_000_000, Fault::NetworkHeal)
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run past tick 1 — faults should be active
+        for _ in 0..2 {
+            ctrl.step_round().expect("step");
+        }
+
+        let jitter_active = ctrl.network().jitter[0] > 0;
+        let bw_active = ctrl.network().bandwidth_bps[0] > 0;
+        let dup_active = ctrl.network().duplicate_rate_ppm[0] > 0;
+        let loss_active = ctrl.network().loss_rate_ppm[0] > 0;
+
+        if !jitter_active || !bw_active || !dup_active || !loss_active {
+            eprintln!(
+                "    faults not active: jitter={}, bw={}, dup={}, loss={}",
+                jitter_active, bw_active, dup_active, loss_active
+            );
+            return false;
+        }
+
+        // Run past tick 3 — heal should have reset everything
+        for _ in 0..5 {
+            ctrl.step_round().expect("step");
+        }
+
+        let jitter_zero = ctrl.network().jitter[0] == 0;
+        let bw_zero = ctrl.network().bandwidth_bps[0] == 0;
+        let dup_zero = ctrl.network().duplicate_rate_ppm[0] == 0;
+        let loss_zero = ctrl.network().loss_rate_ppm[0] == 0;
+        let nft_zero = ctrl.network().next_free_tick[0] == 0;
+
+        let all_zero = jitter_zero && bw_zero && dup_zero && loss_zero && nft_zero;
+        if !all_zero {
+            eprintln!(
+                "    after heal: jitter={}, bw={}, dup={}, loss={}, nft={}",
+                ctrl.network().jitter[0],
+                ctrl.network().bandwidth_bps[0],
+                ctrl.network().duplicate_rate_ppm[0],
+                ctrl.network().loss_rate_ppm[0],
+                ctrl.network().next_free_tick[0],
+            );
+        }
+        all_zero
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 17: Combined network faults are deterministic
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Combined network faults are deterministic", {
+        let make_config = || {
+            let schedule = FaultScheduleBuilder::new()
+                .at_ns(
+                    1_000_000,
+                    Fault::NetworkJitter {
+                        target: 0,
+                        jitter_ns: 20_000_000, // 20ms
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::NetworkBandwidth {
+                        target: 0,
+                        bytes_per_sec: 50_000,
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::PacketDuplicate {
+                        target: 1,
+                        rate_ppm: 300_000, // 30%
+                    },
+                )
+                .at_ns(
+                    1_000_000,
+                    Fault::NetworkLatency {
+                        target: 0,
+                        latency_ns: 10, // 10 ticks
+                    },
+                )
+                .at_ns(
+                    2_000_000,
+                    Fault::PacketLoss {
+                        target: 1,
+                        rate_ppm: 100_000, // 10%
+                    },
+                )
+                .build();
+
+            SimulationConfig {
+                num_vms: 3,
+                vm_config: VmConfig::default(),
+                kernel_path: kernel.to_string(),
+                initrd_path: Some(initrd.to_string()),
+                seed: 77,
+                quantum: 5000,
+                schedule,
+            }
+        };
+
+        // Run 1
+        let mut c1 = SimulationController::new(make_config()).expect("create c1");
+        c1.force_setup_complete();
+        for _ in 0..5 {
+            c1.step_round().expect("c1 step");
+        }
+
+        // Send identical test traffic
+        let tick1 = c1.tick();
+        for i in 0u8..30 {
+            c1.network_mut().send(0, 1, vec![i; 200], tick1);
+            c1.network_mut().send(1, 2, vec![i; 100], tick1);
+            c1.network_mut().send(2, 0, vec![i; 50], tick1);
+        }
+        let ticks1: Vec<u64> = c1
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+        let data1: Vec<Vec<u8>> = c1
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.data.clone())
+            .collect();
+
+        // Run 2 (identical)
+        let mut c2 = SimulationController::new(make_config()).expect("create c2");
+        c2.force_setup_complete();
+        for _ in 0..5 {
+            c2.step_round().expect("c2 step");
+        }
+
+        let tick2 = c2.tick();
+        for i in 0u8..30 {
+            c2.network_mut().send(0, 1, vec![i; 200], tick2);
+            c2.network_mut().send(1, 2, vec![i; 100], tick2);
+            c2.network_mut().send(2, 0, vec![i; 50], tick2);
+        }
+        let ticks2: Vec<u64> = c2
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+        let data2: Vec<Vec<u8>> = c2
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.data.clone())
+            .collect();
+
+        let tick_match = tick1 == tick2;
+        let delivery_match = ticks1 == ticks2;
+        let count_match = ticks1.len() == ticks2.len();
+        let data_match = data1 == data2;
+
+        if !tick_match {
+            eprintln!("    tick mismatch: {} vs {}", tick1, tick2);
+        }
+        if !count_match {
+            eprintln!(
+                "    in-flight count mismatch: {} vs {}",
+                ticks1.len(),
+                ticks2.len()
+            );
+        }
+        if !delivery_match {
+            let diffs = ticks1
+                .iter()
+                .zip(ticks2.iter())
+                .enumerate()
+                .filter(|(_, (a, b))| a != b)
+                .count();
+            eprintln!("    delivery tick mismatches: {}/{}", diffs, ticks1.len());
+        }
+        if !data_match {
+            eprintln!("    packet data mismatch");
+        }
+
+        tick_match && delivery_match && count_match && data_match
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 18: Snapshot/restore preserves network fabric state
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Snapshot/restore preserves network fabric state", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::NetworkJitter {
+                    target: 0,
+                    jitter_ns: 30_000_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkBandwidth {
+                    target: 1,
+                    bytes_per_sec: 500_000,
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::PacketDuplicate {
+                    target: 0,
+                    rate_ppm: 200_000,
+                },
+            )
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run until faults are active
+        for _ in 0..3 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Snapshot with faults active
+        let snap = ctrl.snapshot_all().expect("snapshot");
+        let snap_jitter = ctrl.network().jitter[0];
+        let snap_bw = ctrl.network().bandwidth_bps[1];
+        let snap_dup = ctrl.network().duplicate_rate_ppm[0];
+
+        // Run more rounds (state changes)
+        for _ in 0..5 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Restore
+        ctrl.restore_all(&snap).expect("restore");
+
+        // Verify network fabric state is restored
+        let restored_jitter = ctrl.network().jitter[0];
+        let restored_bw = ctrl.network().bandwidth_bps[1];
+        let restored_dup = ctrl.network().duplicate_rate_ppm[0];
+
+        let jitter_ok = snap_jitter == restored_jitter;
+        let bw_ok = snap_bw == restored_bw;
+        let dup_ok = snap_dup == restored_dup;
+
+        if !jitter_ok {
+            eprintln!(
+                "    jitter mismatch: snap={}, restored={}",
+                snap_jitter, restored_jitter
+            );
+        }
+        if !bw_ok {
+            eprintln!(
+                "    bandwidth mismatch: snap={}, restored={}",
+                snap_bw, restored_bw
+            );
+        }
+        if !dup_ok {
+            eprintln!(
+                "    duplication mismatch: snap={}, restored={}",
+                snap_dup, restored_dup
+            );
+        }
+
+        jitter_ok && bw_ok && dup_ok
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 19: Bandwidth + jitter + latency compose correctly
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Bandwidth + jitter + latency compose correctly", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(
+                1_000_000,
+                Fault::NetworkBandwidth {
+                    target: 0,
+                    bytes_per_sec: 80_000, // 100 bytes = 10 ticks serialization
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkLatency {
+                    target: 0,
+                    latency_ns: 50, // 50 ticks base latency
+                },
+            )
+            .at_ns(
+                1_000_000,
+                Fault::NetworkJitter {
+                    target: 0,
+                    jitter_ns: 5_000_000, // 5ms → 5 ticks
+                },
+            )
+            .build();
+
+        let config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 5000,
+            schedule,
+        };
+
+        let mut ctrl = SimulationController::new(config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        for _ in 0..3 {
+            ctrl.step_round().expect("step");
+        }
+
+        // Send 3 queued packets of 100 bytes each
+        let tick = ctrl.tick();
+        ctrl.network_mut().send(0, 1, vec![0xAA; 100], tick);
+        ctrl.network_mut().send(0, 1, vec![0xBB; 100], tick);
+        ctrl.network_mut().send(0, 1, vec![0xCC; 100], tick);
+
+        let ticks: Vec<u64> = ctrl
+            .network()
+            .in_flight
+            .iter()
+            .map(|m| m.deliver_at_tick)
+            .collect();
+
+        // Each packet: BW serialization (queuing) + 50 latency + 0..5 jitter
+        // Packet 1: tick + 10 (bw) + 50 (lat) + 0..5 (jitter) = tick+60..65
+        // Packet 2: tick + 20 (bw queued) + 50 (lat) + 0..5   = tick+70..75
+        // Packet 3: tick + 30 (bw queued) + 50 (lat) + 0..5   = tick+80..85
+        let min1 = tick + 60;
+        let max1 = tick + 65;
+        let min2 = tick + 70;
+        let max2 = tick + 75;
+        let min3 = tick + 80;
+        let max3 = tick + 85;
+
+        let ok1 = ticks[0] >= min1 && ticks[0] <= max1;
+        let ok2 = ticks[1] >= min2 && ticks[1] <= max2;
+        let ok3 = ticks[2] >= min3 && ticks[2] <= max3;
+        // Strict ordering: each packet arrives after the previous
+        let ordered = ticks[0] < ticks[1] && ticks[1] < ticks[2];
+
+        if !ok1 {
+            eprintln!(
+                "    pkt1 deliver={} expected [{}, {}]",
+                ticks[0], min1, max1
+            );
+        }
+        if !ok2 {
+            eprintln!(
+                "    pkt2 deliver={} expected [{}, {}]",
+                ticks[1], min2, max2
+            );
+        }
+        if !ok3 {
+            eprintln!(
+                "    pkt3 deliver={} expected [{}, {}]",
+                ticks[2], min3, max3
+            );
+        }
+        if !ordered {
+            eprintln!("    not strictly ordered: {:?}", ticks);
+        }
+
+        ok1 && ok2 && ok3 && ordered
+    });
+
+    // ═══════════════════════════════════════════════════════════════
     //  Summary
     // ═══════════════════════════════════════════════════════════════
     println!();

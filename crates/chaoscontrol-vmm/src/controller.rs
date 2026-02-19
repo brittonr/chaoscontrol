@@ -969,6 +969,16 @@ impl SimulationController {
         self.fault_engine.force_setup_complete();
     }
 
+    /// Get a reference to the network fabric.
+    pub fn network(&self) -> &NetworkFabric {
+        &self.network
+    }
+
+    /// Get a mutable reference to the network fabric.
+    pub fn network_mut(&mut self) -> &mut NetworkFabric {
+        &mut self.network
+    }
+
     /// Replace the fault schedule (used by the explorer between branches).
     pub fn set_schedule(&mut self, schedule: FaultSchedule) {
         self.fault_engine.set_schedule(schedule);

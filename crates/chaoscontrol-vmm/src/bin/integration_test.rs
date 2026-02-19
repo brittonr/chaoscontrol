@@ -1513,35 +1513,58 @@ fn main() {
     // ═══════════════════════════════════════════════════════════════
     //  Test 24: SMP determinism — two runs produce same exit counts
     // ═══════════════════════════════════════════════════════════════
-    run_test!("SMP boot: both CPUs appear in kernel topology", {
-        // Verify that a 2-vCPU VM boots both CPUs and they're visible
-        // in the kernel's CPU topology. SMP boot timing is non-deterministic
-        // due to SIGALRM-based preemption (instruction-precise PMU preemption
-        // is needed for full SMP determinism — future work).
-        let mut config = VmConfig::default();
-        config.num_vcpus = 2;
-        let mut vm = DeterministicVm::new(config).expect("create VM");
-        vm.load_kernel(kernel, Some(initrd)).expect("load");
+    run_test!("SMP determinism: identical 2-vCPU runs produce same serial", {
+        let make_vm = || {
+            let mut config = VmConfig::default();
+            config.num_vcpus = 2;
+            let mut vm = DeterministicVm::new(config).expect("create VM");
+            vm.load_kernel(kernel, Some(initrd)).expect("load");
+            vm
+        };
 
-        let mut output = String::new();
-        for _ in 0..20 {
-            let (_, halted) = vm.run_bounded(10_000).expect("run");
-            output.push_str(&vm.take_serial_output());
-            if output.contains("Brought up") || halted {
-                break;
+        // Run two identical VMs through SMP boot
+        let run_vm = |vm: &mut DeterministicVm| -> (u64, u64, String) {
+            let mut output = String::new();
+            for _ in 0..20 {
+                let (_, halted) = vm.run_bounded(10_000).expect("run");
+                output.push_str(&vm.take_serial_output());
+                if output.contains("Brought up") || halted {
+                    break;
+                }
+            }
+            (vm.exit_count(), vm.virtual_tsc(), output)
+        };
+
+        let mut vm1 = make_vm();
+        let mut vm2 = make_vm();
+        let (exits1, vtsc1, out1) = run_vm(&mut vm1);
+        let (exits2, vtsc2, out2) = run_vm(&mut vm2);
+
+        let exits_match = exits1 == exits2;
+        let vtsc_match = vtsc1 == vtsc2;
+        let serial_match = out1 == out2;
+
+        if !exits_match {
+            eprintln!("    Exit counts differ: {} vs {}", exits1, exits2);
+        }
+        if !vtsc_match {
+            eprintln!("    Virtual TSC differs: {} vs {}", vtsc1, vtsc2);
+        }
+        if !serial_match {
+            eprintln!("    Serial output differs (lengths: {} vs {})", out1.len(), out2.len());
+            let lines1: Vec<&str> = out1.lines().collect();
+            let lines2: Vec<&str> = out2.lines().collect();
+            for (i, (l1, l2)) in lines1.iter().zip(lines2.iter()).enumerate() {
+                if l1 != l2 {
+                    eprintln!("    First diff at line {}:", i);
+                    eprintln!("      run1: {}", l1);
+                    eprintln!("      run2: {}", l2);
+                    break;
+                }
             }
         }
 
-        let two_cpus = output.contains("Brought up 1 node, 2 CPUs");
-        let two_activated = output.contains("Total of 2 processors activated");
-        let two_allowed = output.contains("Allowing 2 present CPUs");
-        let two_percpu = output.contains("nr_cpu_ids:2");
-
-        if !two_cpus {
-            eprintln!("    Expected 'Brought up 1 node, 2 CPUs' in serial output");
-        }
-
-        two_cpus && two_activated && two_allowed && two_percpu
+        exits_match && vtsc_match && serial_match
     });
 
     // ═══════════════════════════════════════════════════════════════

@@ -339,6 +339,15 @@ pub struct DeterministicVm {
     // Intra-VM vCPU scheduler (only meaningful when num_vcpus > 1)
     scheduler: VcpuScheduler,
 
+    // Hardware instruction counter for deterministic SMP scheduling.
+    // Counts guest instructions between exits; when count exceeds
+    // the quantum, the deterministic scheduler switches vCPUs.
+    instruction_counter: Option<crate::perf::InstructionCounter>,
+    /// Accumulated guest instructions for the current vCPU's turn.
+    insn_count: u64,
+    /// Instruction quantum: switch vCPU after this many guest instructions.
+    insn_quantum: u64,
+
     // Execution statistics
     exit_count: u64,
     io_exit_count: u64,
@@ -349,6 +358,11 @@ pub struct DeterministicVm {
 
     // Coverage tracking
     coverage_active: bool,
+
+    /// Set after a signal-interrupted exit (EINTR/Intr). Causes the
+    /// next `step()` to skip `sync_tsc_to_guest()` so the TSC resync
+    /// doesn't happen at non-deterministic wall-clock times.
+    skip_tsc_sync: bool,
 }
 
 impl DeterministicVm {
@@ -504,6 +518,30 @@ impl DeterministicVm {
             virtio_devices.len(),
         );
 
+        // For SMP: instruction counter in overflow mode delivers SIGIO
+        // after exactly N guest instructions. This replaces SIGALRM for
+        // both liveness (breaking spin loops) and deterministic scheduling.
+        let insn_quantum = 500_000u64;
+        let instruction_counter = if num_vcpus > 1 {
+            crate::perf::InstructionCounter::install_sigio_handler();
+            match crate::perf::InstructionCounter::with_overflow(insn_quantum) {
+                Ok(counter) => {
+                    info!(
+                        "SMP preemption: PMU overflow after {} guest instructions",
+                        insn_quantum
+                    );
+                    Some(counter)
+                }
+                Err(e) => {
+                    info!("SMP preemption: falling back to SIGALRM (no PMU: {})", e);
+                    Self::install_sigalrm_handler();
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             kvm,
             vm,
@@ -518,11 +556,15 @@ impl DeterministicVm {
             scheduler,
             fault_engine,
             virtio_devices,
+            instruction_counter,
+            insn_count: 0,
+            insn_quantum: insn_quantum,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
             exits_since_last_sdk: 0,
             coverage_active: false,
+            skip_tsc_sync: false,
         })
     }
 
@@ -578,15 +620,24 @@ impl DeterministicVm {
     /// For multi-vCPU mode: includes `maxcpus=N` and omits `nosmp noapic`.
     fn build_cmdline(&self) -> Vec<u8> {
         let num_vcpus = self.vcpus.len();
-        let smp_params = if num_vcpus > 1 {
-            format!("maxcpus={num_vcpus}")
+        let (smp_params, clock_params) = if num_vcpus > 1 {
+            // SMP: use jiffies clocksource (driven by deterministic PIT).
+            // notsc disables TSC entirely — no TSC calibration (which reads
+            // hardware TSC + PIT, producing non-deterministic results).
+            (
+                format!("maxcpus={num_vcpus}"),
+                "clocksource=jiffies notsc".to_string(),
+            )
         } else {
-            "nosmp noapic".to_string()
+            (
+                "nosmp noapic".to_string(),
+                "clocksource=tsc tsc=reliable".to_string(),
+            )
         };
 
         let cmdline = format!(
             "console=ttyS0 earlyprintk=serial \
-             clocksource=tsc tsc=reliable \
+             {clock_params} \
              lpj=6000000 \
              nokaslr {smp_params} \
              randomize_kstack_offset=off norandmaps \
@@ -1252,15 +1303,28 @@ impl DeterministicVm {
         Ok(())
     }
 
-    /// Check if the vCPU scheduler wants to switch and do so.
+    /// Check if vCPU should switch after a real VM exit.
     ///
-    /// Called after each exit that increments `exit_count`.  When the
-    /// current vCPU's quantum is exhausted, advances to the next vCPU.
+    /// With PMU overflow mode: switching is driven by SIGIO (not here).
+    /// This is a no-op when PMU is active — the real switch happens in
+    /// the VcpuExit::Intr / EINTR handler.
+    ///
+    /// Without PMU: fall back to exit-count-based scheduling.
     #[inline]
     fn maybe_switch_vcpu(&mut self) {
+        if self.vcpus.len() <= 1 || self.instruction_counter.is_some() {
+            return; // PMU handles switching via SIGIO overflow
+        }
+        // Fallback: exit-count-based scheduler
         if self.scheduler.tick() {
-            let next = self.scheduler.advance();
-            self.active_vcpu = next;
+            for offset in 1..self.vcpus.len() {
+                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                if self.vcpu_is_runnable(candidate) {
+                    self.active_vcpu = candidate;
+                    self.scheduler.set_active(candidate);
+                    break;
+                }
+            }
         }
     }
 
@@ -1312,8 +1376,12 @@ impl DeterministicVm {
     }
 
     fn step(&mut self) -> Result<bool, VmError> {
-        self.sync_and_suppress_pit()?;
-        self.sync_tsc_to_guest()?;
+        if self.skip_tsc_sync {
+            self.skip_tsc_sync = false;
+        } else {
+            self.sync_and_suppress_pit()?;
+            self.sync_tsc_to_guest()?;
+        }
 
         // Skip non-runnable vCPUs (APs waiting for SIPI).
         // Try all vCPUs before giving up — if none are runnable, stick with BSP.
@@ -1327,12 +1395,15 @@ impl DeterministicVm {
             }
         }
 
-        // For SMP: arm preemption timer to break out of tight spin loops.
-        // Always armed in SMP mode because the AP can become runnable at
-        // any point (KVM delivers SIPI asynchronously). The timer is purely
-        // a liveness mechanism — it does not advance deterministic state.
+        // For SMP: enable preemption mechanism.
+        // With PMU: instruction counter overflow delivers SIGIO after N insns.
+        // Without PMU: SIGALRM timer for wall-clock preemption (non-deterministic).
         if self.vcpus.len() > 1 {
-            self.arm_preemption_timer(500); // 500µs
+            if let Some(ref counter) = self.instruction_counter {
+                counter.enable(); // SIGIO after insn_quantum instructions
+            } else {
+                self.arm_preemption_timer(500);
+            }
         }
 
         match self.vcpus[self.active_vcpu].run() {
@@ -1489,17 +1560,24 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::Intr) => {
-                // Host signal interrupted vcpu.run(). In SMP mode, this is
-                // our preemption timer — a liveness mechanism to break out of
-                // tight spin loops. Switch to next runnable vCPU.
-                // Does NOT advance exit_count or virtual_tsc.
+                // Signal interrupted vcpu.run():
+                // - SIGIO from PMU overflow = deterministic quantum expiry
+                // - SIGALRM (no PMU fallback) = non-deterministic
+                self.skip_tsc_sync = true;
                 if self.vcpus.len() > 1 {
-                    self.disarm_preemption_timer();
+                    if let Some(ref counter) = self.instruction_counter {
+                        counter.disable();
+                    } else {
+                        self.disarm_preemption_timer();
+                    }
+                    // Switch to next runnable vCPU
                     for offset in 1..self.vcpus.len() {
-                        let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                        let candidate =
+                            (self.active_vcpu + offset) % self.vcpus.len();
                         if self.vcpu_is_runnable(candidate) {
                             self.active_vcpu = candidate;
                             self.scheduler.set_active(candidate);
+                            self.insn_count = 0;
                             break;
                         }
                     }
@@ -1516,15 +1594,22 @@ impl DeterministicVm {
                 Ok(true)
             }
             Err(e) => {
-                // EINTR from signal (e.g., SIGALRM preemption timer)
+                // EINTR from signal — same as VcpuExit::Intr
                 if e.errno() == libc::EINTR {
+                    self.skip_tsc_sync = true;
                     if self.vcpus.len() > 1 {
-                        self.disarm_preemption_timer();
+                        if let Some(ref counter) = self.instruction_counter {
+                            counter.disable();
+                        } else {
+                            self.disarm_preemption_timer();
+                        }
                         for offset in 1..self.vcpus.len() {
-                            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
+                            let candidate =
+                                (self.active_vcpu + offset) % self.vcpus.len();
                             if self.vcpu_is_runnable(candidate) {
                                 self.active_vcpu = candidate;
                                 self.scheduler.set_active(candidate);
+                                self.insn_count = 0;
                                 break;
                             }
                         }

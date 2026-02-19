@@ -15,6 +15,7 @@
 //! - [`verified`] — Pure functions extracted for formal verification with Verus
 
 pub mod acpi;
+pub mod perf;
 pub mod controller;
 pub mod cpu;
 pub mod devices;

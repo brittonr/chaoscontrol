@@ -138,10 +138,14 @@ mod tests {
         let network_state = NetworkFabric {
             partitions: Vec::new(),
             latency: vec![0, 0],
+            jitter: vec![0, 0],
+            bandwidth_bps: vec![0, 0],
+            next_free_tick: vec![0, 0],
             in_flight: Vec::new(),
             loss_rate_ppm: Vec::new(),
             corruption_rate_ppm: Vec::new(),
             reorder_window: Vec::new(),
+            duplicate_rate_ppm: Vec::new(),
             rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
         };
 

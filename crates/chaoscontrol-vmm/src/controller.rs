@@ -119,12 +119,23 @@ pub struct DiskFaultFlags {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Virtual network with partition awareness and packet-level fault injection.
+///
+/// Models real-world network impairments: latency, jitter, bandwidth limits,
+/// packet loss, corruption, reordering, and duplication.  All values are
+/// per-VM and bidirectional (max of sender/receiver is used).
 #[derive(Debug, Clone)]
 pub struct NetworkFabric {
     /// Active partition rules — (side_a, side_b) pairs.
     pub partitions: Vec<(Vec<usize>, Vec<usize>)>,
-    /// Per-VM latency injection in nanoseconds.
+    /// Per-VM base latency in ticks (0 = no added latency).
     pub latency: Vec<u64>,
+    /// Per-VM latency jitter in ticks (0 = no jitter).
+    /// Each packet gets up to this much extra random delay on top of base latency.
+    pub jitter: Vec<u64>,
+    /// Per-VM bandwidth limit in bytes per second (0 = unlimited).
+    pub bandwidth_bps: Vec<u64>,
+    /// Per-VM next-free tick for bandwidth serialization queuing.
+    pub next_free_tick: Vec<u64>,
     /// Messages in flight (not yet delivered).
     pub in_flight: Vec<NetworkMessage>,
     /// Per-VM packet loss rate in parts per million (0 = no loss).
@@ -133,6 +144,8 @@ pub struct NetworkFabric {
     pub corruption_rate_ppm: Vec<u32>,
     /// Per-VM reorder window in ticks (0 = no reordering).
     pub reorder_window: Vec<u64>,
+    /// Per-VM packet duplication rate in parts per million (0 = no duplication).
+    pub duplicate_rate_ppm: Vec<u32>,
     /// Deterministic RNG for packet-level fault decisions.
     pub rng: ChaCha20Rng,
 }
@@ -147,10 +160,14 @@ impl NetworkFabric {
         Self {
             partitions: Vec::new(),
             latency: vec![0; num_vms],
+            jitter: vec![0; num_vms],
+            bandwidth_bps: vec![0; num_vms],
+            next_free_tick: vec![0; num_vms],
             in_flight: Vec::new(),
             loss_rate_ppm: vec![0; num_vms],
             corruption_rate_ppm: vec![0; num_vms],
             reorder_window: vec![0; num_vms],
+            duplicate_rate_ppm: vec![0; num_vms],
             rng: ChaCha20Rng::from_seed(rng_key),
         }
     }
@@ -174,12 +191,14 @@ impl NetworkFabric {
 
     /// Send a message from `from` to `to` at the current tick.
     ///
-    /// Applies packet-level faults in order:
+    /// Applies the full packet-level fault pipeline in order:
     /// 1. Partition check — drop if partitioned
-    /// 2. Packet loss — drop with probability `loss_rate_ppm / 1_000_000`
-    /// 3. Packet corruption — flip a random byte with probability
-    /// 4. Packet reorder — randomize delivery time within window
-    /// 5. Latency — add sender/receiver latency to delivery time
+    /// 2. Packet loss — drop with probability
+    /// 3. Bandwidth — add serialization delay (queuing model)
+    /// 4. Packet corruption — flip a random byte
+    /// 5. Latency + jitter — base delay plus random variation
+    /// 6. Packet reorder — additional random shuffle within window
+    /// 7. Packet duplication — clone with slightly offset delivery
     pub fn send(&mut self, from: usize, to: usize, data: Vec<u8>, current_tick: u64) -> bool {
         // 1. Partition check
         if !self.can_reach(from, to) {
@@ -187,7 +206,7 @@ impl NetworkFabric {
             return false;
         }
 
-        // 2. Packet loss — check sender's loss rate
+        // 2. Packet loss — max(sender, receiver) rate
         let sender_loss = self.loss_rate_ppm.get(from).copied().unwrap_or(0);
         let receiver_loss = self.loss_rate_ppm.get(to).copied().unwrap_or(0);
         let loss_rate = sender_loss.max(receiver_loss);
@@ -202,7 +221,39 @@ impl NetworkFabric {
             }
         }
 
-        // 3. Packet corruption — flip a random byte
+        // 3. Bandwidth — serialization delay with queuing
+        //
+        // Each VM tracks `next_free_tick`: when the outgoing link becomes
+        // idle.  A packet of N bytes on a B bytes/sec link takes
+        // `N * 8 * 1000 / B` ticks of serialization time (1 tick = 1 ms).
+        // Back-to-back packets queue behind each other naturally.
+        let mut bandwidth_delay_ticks: u64 = 0;
+        let sender_bw = self.bandwidth_bps.get(from).copied().unwrap_or(0);
+        let receiver_bw = self.bandwidth_bps.get(to).copied().unwrap_or(0);
+        let effective_bw = match (sender_bw, receiver_bw) {
+            (0, 0) => 0,          // both unlimited
+            (0, b) | (b, 0) => b, // one is limited
+            (a, b) => a.min(b),   // bottleneck
+        };
+        if effective_bw > 0 && !data.is_empty() {
+            let bits = data.len() as u64 * 8;
+            let serialization_ticks = (bits * 1000).saturating_div(effective_bw);
+            let tx_start = current_tick.max(self.next_free_tick.get(from).copied().unwrap_or(0));
+            if let Some(slot) = self.next_free_tick.get_mut(from) {
+                *slot = tx_start + serialization_ticks;
+            }
+            bandwidth_delay_ticks = (tx_start + serialization_ticks).saturating_sub(current_tick);
+            debug!(
+                "Message from VM{} to VM{}: bandwidth delay {} ticks ({}B @ {}B/s)",
+                from,
+                to,
+                bandwidth_delay_ticks,
+                data.len(),
+                effective_bw
+            );
+        }
+
+        // 4. Packet corruption — flip a random byte
         let mut data = data;
         let sender_corrupt = self.corruption_rate_ppm.get(from).copied().unwrap_or(0);
         let receiver_corrupt = self.corruption_rate_ppm.get(to).copied().unwrap_or(0);
@@ -220,23 +271,56 @@ impl NetworkFabric {
             }
         }
 
-        // 4. Calculate delivery tick with latency
+        // 5. Latency + jitter — base delay plus random variation
         let sender_latency = self.latency.get(from).copied().unwrap_or(0);
         let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
         let latency_ticks = sender_latency.max(receiver_latency);
-        let mut deliver_at_tick = current_tick + latency_ticks;
 
-        // 5. Packet reorder — add random jitter within the reorder window
+        let sender_jitter = self.jitter.get(from).copied().unwrap_or(0);
+        let receiver_jitter = self.jitter.get(to).copied().unwrap_or(0);
+        let jitter_max = sender_jitter.max(receiver_jitter);
+        let jitter_ticks = if jitter_max > 0 {
+            self.rng.next_u64() % (jitter_max + 1)
+        } else {
+            0
+        };
+
+        let mut deliver_at_tick =
+            current_tick + bandwidth_delay_ticks + latency_ticks + jitter_ticks;
+
+        // 6. Packet reorder — additional random shuffle within window
         let sender_reorder = self.reorder_window.get(from).copied().unwrap_or(0);
         let receiver_reorder = self.reorder_window.get(to).copied().unwrap_or(0);
         let reorder_win = sender_reorder.max(receiver_reorder);
         if reorder_win > 0 {
-            let jitter = self.rng.next_u64() % (reorder_win + 1);
-            deliver_at_tick += jitter;
+            let reorder_jitter = self.rng.next_u64() % (reorder_win + 1);
+            deliver_at_tick += reorder_jitter;
             debug!(
                 "Message from VM{} to VM{} reordered by {} ticks",
-                from, to, jitter
+                from, to, reorder_jitter
             );
+        }
+
+        // 7. Packet duplication — maybe enqueue a second copy
+        let sender_dup = self.duplicate_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_dup = self.duplicate_rate_ppm.get(to).copied().unwrap_or(0);
+        let dup_rate = sender_dup.max(receiver_dup);
+        if dup_rate > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < dup_rate {
+                // Duplicate arrives with slight offset (0–2 extra ticks)
+                let dup_offset = self.rng.next_u64() % 3;
+                self.in_flight.push(NetworkMessage {
+                    from,
+                    to,
+                    data: data.clone(),
+                    deliver_at_tick: deliver_at_tick + dup_offset,
+                });
+                debug!(
+                    "Message from VM{} to VM{} duplicated (+{} ticks)",
+                    from, to, dup_offset
+                );
+            }
         }
 
         self.in_flight.push(NetworkMessage {
@@ -256,6 +340,10 @@ impl NetworkFabric {
     }
 
     /// Clear all partitions and packet-level faults (heal network).
+    ///
+    /// Resets: partitions, loss, corruption, reorder, jitter, bandwidth,
+    /// and duplication rates.  Base latency is preserved (use
+    /// `set_latency(target, 0)` to clear it explicitly).
     fn clear_partitions(&mut self) {
         info!("Network healed: all partitions and packet faults removed");
         self.partitions.clear();
@@ -267,6 +355,18 @@ impl NetworkFabric {
         }
         for win in &mut self.reorder_window {
             *win = 0;
+        }
+        for j in &mut self.jitter {
+            *j = 0;
+        }
+        for bw in &mut self.bandwidth_bps {
+            *bw = 0;
+        }
+        for t in &mut self.next_free_tick {
+            *t = 0;
+        }
+        for rate in &mut self.duplicate_rate_ppm {
+            *rate = 0;
         }
     }
 
@@ -299,6 +399,36 @@ impl NetworkFabric {
         if target < self.reorder_window.len() {
             self.reorder_window[target] = window_ticks;
             debug!("VM{} reorder window set to {} ticks", target, window_ticks);
+        }
+    }
+
+    /// Set latency jitter for a specific VM (in ticks).
+    ///
+    /// Each packet to/from this VM receives up to `jitter_ticks` extra
+    /// random delay on top of the base latency.
+    fn set_jitter(&mut self, target: usize, jitter_ticks: u64) {
+        if target < self.jitter.len() {
+            self.jitter[target] = jitter_ticks;
+            debug!("VM{} jitter set to {} ticks", target, jitter_ticks);
+        }
+    }
+
+    /// Set bandwidth limit for a specific VM (bytes per second).
+    ///
+    /// Models serialization delay: a 1500-byte packet on a 1 MB/s link
+    /// takes ~12 µs (0.012 ticks).  Set to 0 for unlimited.
+    fn set_bandwidth(&mut self, target: usize, bytes_per_sec: u64) {
+        if target < self.bandwidth_bps.len() {
+            self.bandwidth_bps[target] = bytes_per_sec;
+            debug!("VM{} bandwidth set to {} B/s", target, bytes_per_sec);
+        }
+    }
+
+    /// Set packet duplication rate for a specific VM (parts per million).
+    fn set_duplicate_rate(&mut self, target: usize, rate_ppm: u32) {
+        if target < self.duplicate_rate_ppm.len() {
+            self.duplicate_rate_ppm[target] = rate_ppm;
+            debug!("VM{} packet duplication set to {} ppm", target, rate_ppm);
         }
     }
 }
@@ -526,6 +656,30 @@ impl SimulationController {
                     target, window_ns, window_ticks
                 );
                 self.network.set_reorder_window(*target, window_ticks);
+            }
+            Fault::NetworkJitter { target, jitter_ns } => {
+                let jitter_ticks = jitter_ns / 1_000_000;
+                info!(
+                    "NetworkJitter: VM{} jitter {} ns ({} ticks)",
+                    target, jitter_ns, jitter_ticks
+                );
+                self.network.set_jitter(*target, jitter_ticks);
+            }
+            Fault::NetworkBandwidth {
+                target,
+                bytes_per_sec,
+            } => {
+                info!(
+                    "NetworkBandwidth: VM{} limited to {} B/s ({} KB/s)",
+                    target,
+                    bytes_per_sec,
+                    bytes_per_sec / 1024
+                );
+                self.network.set_bandwidth(*target, *bytes_per_sec);
+            }
+            Fault::PacketDuplicate { target, rate_ppm } => {
+                info!("PacketDuplicate: VM{} set to {} ppm", target, rate_ppm);
+                self.network.set_duplicate_rate(*target, *rate_ppm);
             }
 
             // ── Disk faults ──
@@ -1012,6 +1166,9 @@ mod tests {
         fabric.set_loss_rate(0, 500_000);
         fabric.set_corruption_rate(0, 200_000);
         fabric.set_reorder_window(0, 50);
+        fabric.set_jitter(0, 10);
+        fabric.set_bandwidth(0, 1_000_000);
+        fabric.set_duplicate_rate(0, 100_000);
         fabric.add_partition(vec![0], vec![1]);
 
         fabric.clear_partitions();
@@ -1020,6 +1177,10 @@ mod tests {
         assert_eq!(fabric.loss_rate_ppm[0], 0);
         assert_eq!(fabric.corruption_rate_ppm[0], 0);
         assert_eq!(fabric.reorder_window[0], 0);
+        assert_eq!(fabric.jitter[0], 0);
+        assert_eq!(fabric.bandwidth_bps[0], 0);
+        assert_eq!(fabric.next_free_tick[0], 0);
+        assert_eq!(fabric.duplicate_rate_ppm[0], 0);
     }
 
     #[test]
@@ -1316,5 +1477,266 @@ mod tests {
             }
         }
         panic!("Expected block device not found");
+    }
+
+    // ── Jitter tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_network_fabric_jitter_adds_variable_delay() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_latency(0, 100); // 100 ticks base latency
+        fabric.set_jitter(0, 50); // up to 50 ticks extra
+
+        for i in 0..30 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+
+        assert_eq!(fabric.in_flight.len(), 30);
+        let ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+
+        // All delivery ticks should be in range [100, 150]
+        for &t in &ticks {
+            assert!(t >= 100, "deliver_at_tick {} < base latency 100", t);
+            assert!(t <= 150, "deliver_at_tick {} > base + jitter 150", t);
+        }
+
+        // Jitter should produce variation (not all the same)
+        let all_same = ticks.iter().all(|&t| t == ticks[0]);
+        assert!(!all_same, "Jitter should produce varied delivery ticks");
+    }
+
+    #[test]
+    fn test_network_fabric_jitter_zero_no_effect() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_latency(0, 50);
+        fabric.set_jitter(0, 0); // no jitter
+
+        for i in 0..10 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+
+        // All should arrive at exactly tick 50
+        for msg in &fabric.in_flight {
+            assert_eq!(msg.deliver_at_tick, 50);
+        }
+    }
+
+    #[test]
+    fn test_network_fabric_jitter_bidirectional() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_jitter(0, 20); // jitter on VM0
+
+        // Sending FROM VM0 → VM1 should get jitter
+        for i in 0..10 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+        let forward_ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+        fabric.in_flight.clear();
+
+        // Sending TO VM0 (VM1 → VM0) should also get jitter (max of sender/receiver)
+        for i in 0..10 {
+            fabric.send(1, 0, vec![i as u8], 0);
+        }
+        let reverse_ticks: Vec<u64> = fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect();
+
+        // Both directions should have jitter (some ticks > 0)
+        assert!(
+            forward_ticks.iter().any(|&t| t > 0),
+            "Forward jitter missing"
+        );
+        assert!(
+            reverse_ticks.iter().any(|&t| t > 0),
+            "Reverse jitter missing"
+        );
+    }
+
+    // ── Bandwidth tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_network_fabric_bandwidth_serialization_delay() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        // 8000 bytes/sec → 1 byte = 1 bit/ms = 1 tick per byte for 8-bit data
+        // Actually: bits * 1000 / bps = N*8*1000/8000 = N ticks
+        fabric.set_bandwidth(0, 8000);
+
+        // Send 100 bytes: 100 * 8 * 1000 / 8000 = 100 ticks serialization
+        fabric.send(0, 1, vec![0xAA; 100], 0);
+        assert_eq!(fabric.in_flight.len(), 1);
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 100);
+    }
+
+    #[test]
+    fn test_network_fabric_bandwidth_queuing() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        // 8000 bytes/sec → each 100-byte packet takes 100 ticks
+        fabric.set_bandwidth(0, 8000);
+
+        // Send 3 packets at tick 0 — they should queue
+        fabric.send(0, 1, vec![0xAA; 100], 0);
+        fabric.send(0, 1, vec![0xBB; 100], 0);
+        fabric.send(0, 1, vec![0xCC; 100], 0);
+
+        assert_eq!(fabric.in_flight.len(), 3);
+        // First packet: completes at tick 100
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 100);
+        // Second: queued behind first, completes at tick 200
+        assert_eq!(fabric.in_flight[1].deliver_at_tick, 200);
+        // Third: queued behind second, completes at tick 300
+        assert_eq!(fabric.in_flight[2].deliver_at_tick, 300);
+    }
+
+    #[test]
+    fn test_network_fabric_bandwidth_unlimited() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        // bandwidth_bps = 0 means unlimited (default)
+
+        fabric.send(0, 1, vec![0xAA; 1000], 0);
+        fabric.send(0, 1, vec![0xBB; 1000], 0);
+
+        // Both should arrive at tick 0 (no delay)
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 0);
+        assert_eq!(fabric.in_flight[1].deliver_at_tick, 0);
+    }
+
+    #[test]
+    fn test_network_fabric_bandwidth_bottleneck() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_bandwidth(0, 8000); // sender: 8000 B/s
+        fabric.set_bandwidth(1, 4000); // receiver: 4000 B/s (bottleneck)
+
+        // 100 bytes at min(8000, 4000) = 4000 B/s → 100*8*1000/4000 = 200 ticks
+        fabric.send(0, 1, vec![0xAA; 100], 0);
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 200);
+    }
+
+    #[test]
+    fn test_network_fabric_bandwidth_with_latency() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_bandwidth(0, 8000); // 100 ticks per 100 bytes
+        fabric.set_latency(0, 50); // 50 ticks base latency
+
+        // 100 bytes: 100 ticks serialization + 50 ticks latency = 150
+        fabric.send(0, 1, vec![0xAA; 100], 0);
+        assert_eq!(fabric.in_flight[0].deliver_at_tick, 150);
+    }
+
+    // ── Duplication tests ───────────────────────────────────────
+
+    #[test]
+    fn test_network_fabric_duplication_100_percent() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 1_000_000); // 100% duplication
+
+        fabric.send(0, 1, vec![42], 0);
+
+        // Should have 2 messages: original + duplicate
+        assert_eq!(fabric.in_flight.len(), 2);
+        assert_eq!(fabric.in_flight[0].data, fabric.in_flight[1].data);
+    }
+
+    #[test]
+    fn test_network_fabric_duplication_zero_rate() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 0); // No duplication
+
+        for i in 0..20 {
+            fabric.send(0, 1, vec![i as u8], 0);
+        }
+
+        // Should have exactly 20 messages (no duplicates)
+        assert_eq!(fabric.in_flight.len(), 20);
+    }
+
+    #[test]
+    fn test_network_fabric_duplication_preserves_data() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 1_000_000); // 100% duplication
+
+        let original = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        fabric.send(0, 1, original.clone(), 0);
+
+        assert_eq!(fabric.in_flight.len(), 2);
+        // Both messages should have the same data
+        assert_eq!(fabric.in_flight[0].data, original);
+        assert_eq!(fabric.in_flight[1].data, original);
+    }
+
+    #[test]
+    fn test_network_fabric_duplication_bidirectional() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 1_000_000); // 100% dup on VM0
+
+        // Sending TO VM0 should also duplicate (max of sender/receiver)
+        fabric.send(1, 0, vec![42], 0);
+        assert_eq!(fabric.in_flight.len(), 2);
+    }
+
+    // ── Combined effects tests ──────────────────────────────────
+
+    #[test]
+    fn test_network_fabric_combined_latency_jitter_bandwidth() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_latency(0, 10); // 10 ticks base
+        fabric.set_jitter(0, 5); // up to 5 ticks jitter
+        fabric.set_bandwidth(0, 80_000); // 80 KB/s
+
+        // 100 bytes: 100*8*1000/80000 = 10 ticks serialization
+        // Total: 10 (bw) + 10 (latency) + 0..5 (jitter) = 20..25 ticks
+        for i in 0..20 {
+            fabric.send(0, 1, vec![0xAA; 100], 0);
+
+            // Each subsequent packet queues behind the previous, so
+            // bandwidth delay grows while latency+jitter stay the same.
+            // First packet: bw=10, second: bw=20, etc.
+            let msg = fabric.in_flight.last().unwrap();
+            let expected_min_bw = 10 * (i + 1); // queuing effect
+            let expected_min = expected_min_bw + 10; // + base latency
+            assert!(
+                msg.deliver_at_tick >= expected_min,
+                "Packet {} deliver_at_tick {} < expected min {}",
+                i,
+                msg.deliver_at_tick,
+                expected_min
+            );
+        }
+    }
+
+    #[test]
+    fn test_network_fabric_jitter_deterministic_with_same_seed() {
+        let send_messages = |seed: u64| -> Vec<u64> {
+            let mut fabric = NetworkFabric::new(2, seed);
+            fabric.set_latency(0, 100);
+            fabric.set_jitter(0, 50);
+            for i in 0..20 {
+                fabric.send(0, 1, vec![i as u8], 0);
+            }
+            fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect()
+        };
+
+        let run1 = send_messages(42);
+        let run2 = send_messages(42);
+        assert_eq!(run1, run2, "Same seed must produce same jitter");
+
+        let run3 = send_messages(99);
+        assert_ne!(
+            run1, run3,
+            "Different seeds should produce different jitter"
+        );
+    }
+
+    #[test]
+    fn test_network_fabric_bandwidth_deterministic() {
+        let send_messages = |seed: u64| -> Vec<u64> {
+            let mut fabric = NetworkFabric::new(2, seed);
+            fabric.set_bandwidth(0, 8000);
+            for i in 0..5 {
+                fabric.send(0, 1, vec![0xAA; 100 + i * 50], 0);
+            }
+            fabric.in_flight.iter().map(|m| m.deliver_at_tick).collect()
+        };
+
+        let run1 = send_messages(42);
+        let run2 = send_messages(42);
+        assert_eq!(run1, run2, "Bandwidth delay must be deterministic");
     }
 }

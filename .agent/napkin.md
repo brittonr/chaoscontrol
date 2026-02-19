@@ -101,6 +101,20 @@
 ## Remaining Work
 (All items completed)
 
+## Network Simulation Fidelity (2026-02-19)
+- **NetworkJitter fault**: per-VM random latency variation (0 to jitter_ns extra delay per packet)
+- **NetworkBandwidth fault**: per-VM throughput cap with serialization delay queuing model
+  - Token-bucket style: tracks `next_free_tick` per VM, back-to-back packets queue naturally
+  - `delay_ticks = packet_bits * 1000 / effective_bps` (1 tick = 1ms)
+  - Bottleneck: `min(sender_bps, receiver_bps)` when both are set
+- **PacketDuplicate fault**: per-VM duplication rate (PPM), duplicate arrives with 0-2 ticks offset
+- All three are bidirectional (max of sender/receiver rate), consistent with existing loss/corruption model
+- `NetworkHeal` resets jitter, bandwidth, next_free_tick, and duplication (same as loss/corruption/reorder)
+- Updated: `FaultEngine::random_fault()` (11 types), `Mutator::random_fault()` (13 types), checkpoint serialization
+- New `send()` pipeline: partition → loss → bandwidth → corruption → latency+jitter → reorder → duplication
+- 31 new tests (616 total, 0 failures)
+- Existing `latency` field stores ticks but comments said "nanoseconds" — naming inconsistency preserved for now
+
 ## Completed (2026-02-18 loose ends)
 18. ✅ DiskTornWrite + DiskCorruption fault handlers wired to DeterministicBlock
 19. ✅ Explore `resume` subcommand with JSON checkpoint save/load

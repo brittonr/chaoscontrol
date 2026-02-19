@@ -338,7 +338,7 @@ impl FaultEngine {
         }
 
         let target = (self.rng.next_u64() as usize) % self.config.num_vms;
-        let fault_type = self.rng.next_u64() % 8;
+        let fault_type = self.rng.next_u64() % 11;
 
         Some(match fault_type {
             0 => Fault::ProcessKill { target },
@@ -369,6 +369,18 @@ impl FaultEngine {
             7 => Fault::ClockSkew {
                 target,
                 offset_ns: (self.rng.next_u64() % 10_000_000_000) as i64 - 5_000_000_000,
+            },
+            8 => Fault::NetworkJitter {
+                target,
+                jitter_ns: (self.rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
+            },
+            9 => Fault::NetworkBandwidth {
+                target,
+                bytes_per_sec: (self.rng.next_u64() % 10_000_000) + 100_000, // 100 KB/s–10 MB/s
+            },
+            10 => Fault::PacketDuplicate {
+                target,
+                rate_ppm: ((self.rng.next_u64() % 200_000) + 10_000) as u32, // 1–21 %
             },
             _ => unreachable!(),
         })

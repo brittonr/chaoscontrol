@@ -51,6 +51,36 @@ pub enum Fault {
         window_ns: u64,
     },
 
+    /// Add jitter (random latency variation) to a VM's network.
+    ///
+    /// Each packet receives up to `jitter_ns` extra random delay on
+    /// top of the base latency.
+    NetworkJitter {
+        /// Target VM index.
+        target: usize,
+        /// Maximum additional random delay in nanoseconds.
+        jitter_ns: u64,
+    },
+
+    /// Limit a VM's outgoing network bandwidth.
+    ///
+    /// Models serialization delay: large packets take longer on slow
+    /// links, and back-to-back packets queue behind each other.
+    NetworkBandwidth {
+        /// Target VM index.
+        target: usize,
+        /// Maximum throughput in bytes per second (0 = unlimited).
+        bytes_per_sec: u64,
+    },
+
+    /// Duplicate packets to/from a VM with a given probability.
+    PacketDuplicate {
+        /// Target VM index.
+        target: usize,
+        /// Duplication probability in parts per million.
+        rate_ppm: u32,
+    },
+
     /// Heal all network partitions and remove network faults.
     NetworkHeal,
 
@@ -151,9 +181,12 @@ impl Fault {
         match self {
             Fault::NetworkPartition { .. } | Fault::NetworkHeal => None,
             Fault::NetworkLatency { target, .. }
+            | Fault::NetworkJitter { target, .. }
+            | Fault::NetworkBandwidth { target, .. }
             | Fault::PacketLoss { target, .. }
             | Fault::PacketCorruption { target, .. }
             | Fault::PacketReorder { target, .. }
+            | Fault::PacketDuplicate { target, .. }
             | Fault::DiskReadError { target, .. }
             | Fault::DiskWriteError { target, .. }
             | Fault::DiskTornWrite { target, .. }
@@ -173,9 +206,12 @@ impl Fault {
         match self {
             Fault::NetworkPartition { .. }
             | Fault::NetworkLatency { .. }
+            | Fault::NetworkJitter { .. }
+            | Fault::NetworkBandwidth { .. }
             | Fault::PacketLoss { .. }
             | Fault::PacketCorruption { .. }
             | Fault::PacketReorder { .. }
+            | Fault::PacketDuplicate { .. }
             | Fault::NetworkHeal => FaultCategory::Network,
 
             Fault::DiskReadError { .. }
@@ -212,6 +248,18 @@ impl fmt::Display for Fault {
             }
             Fault::PacketReorder { target, window_ns } => {
                 write!(f, "packet-reorder(vm={target}, {window_ns}ns)")
+            }
+            Fault::NetworkJitter { target, jitter_ns } => {
+                write!(f, "network-jitter(vm={target}, ±{jitter_ns}ns)")
+            }
+            Fault::NetworkBandwidth {
+                target,
+                bytes_per_sec,
+            } => {
+                write!(f, "network-bandwidth(vm={target}, {bytes_per_sec}B/s)")
+            }
+            Fault::PacketDuplicate { target, rate_ppm } => {
+                write!(f, "packet-duplicate(vm={target}, {rate_ppm}ppm)")
             }
             Fault::NetworkHeal => write!(f, "network-heal"),
             Fault::DiskReadError { target, offset } => {

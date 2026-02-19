@@ -67,6 +67,18 @@ pub enum SerializableFault {
         target: usize,
         window_ns: u64,
     },
+    NetworkJitter {
+        target: usize,
+        jitter_ns: u64,
+    },
+    NetworkBandwidth {
+        target: usize,
+        bytes_per_sec: u64,
+    },
+    PacketDuplicate {
+        target: usize,
+        rate_ppm: u32,
+    },
     NetworkHeal,
     DiskReadError {
         target: usize,
@@ -135,6 +147,21 @@ impl From<&Fault> for SerializableFault {
             Fault::PacketReorder { target, window_ns } => SerializableFault::PacketReorder {
                 target: *target,
                 window_ns: *window_ns,
+            },
+            Fault::NetworkJitter { target, jitter_ns } => SerializableFault::NetworkJitter {
+                target: *target,
+                jitter_ns: *jitter_ns,
+            },
+            Fault::NetworkBandwidth {
+                target,
+                bytes_per_sec,
+            } => SerializableFault::NetworkBandwidth {
+                target: *target,
+                bytes_per_sec: *bytes_per_sec,
+            },
+            Fault::PacketDuplicate { target, rate_ppm } => SerializableFault::PacketDuplicate {
+                target: *target,
+                rate_ppm: *rate_ppm,
             },
             Fault::NetworkHeal => SerializableFault::NetworkHeal,
             Fault::DiskReadError { target, offset } => SerializableFault::DiskReadError {
@@ -216,6 +243,21 @@ impl From<&SerializableFault> for Fault {
             SerializableFault::PacketReorder { target, window_ns } => Fault::PacketReorder {
                 target: *target,
                 window_ns: *window_ns,
+            },
+            SerializableFault::NetworkJitter { target, jitter_ns } => Fault::NetworkJitter {
+                target: *target,
+                jitter_ns: *jitter_ns,
+            },
+            SerializableFault::NetworkBandwidth {
+                target,
+                bytes_per_sec,
+            } => Fault::NetworkBandwidth {
+                target: *target,
+                bytes_per_sec: *bytes_per_sec,
+            },
+            SerializableFault::PacketDuplicate { target, rate_ppm } => Fault::PacketDuplicate {
+                target: *target,
+                rate_ppm: *rate_ppm,
             },
             SerializableFault::NetworkHeal => Fault::NetworkHeal,
             SerializableFault::DiskReadError { target, offset } => Fault::DiskReadError {

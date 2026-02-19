@@ -226,7 +226,7 @@ impl ScheduleMutator {
         }
 
         let target = rng.gen_range(0..config.num_vms);
-        let fault_type = rng.gen_range(0..10);
+        let fault_type = rng.gen_range(0..13);
 
         match fault_type {
             0 => Fault::ProcessKill { target },
@@ -266,6 +266,18 @@ impl ScheduleMutator {
             9 => Fault::ClockJump {
                 target,
                 delta_ns: rng.gen_range(-5_000_000_000..5_000_000_000), // ±5s
+            },
+            10 => Fault::NetworkJitter {
+                target,
+                jitter_ns: rng.gen_range(1_000_000..100_000_000), // 1ms to 100ms
+            },
+            11 => Fault::NetworkBandwidth {
+                target,
+                bytes_per_sec: rng.gen_range(10_000..10_000_000), // 10 KB/s to 10 MB/s
+            },
+            12 => Fault::PacketDuplicate {
+                target,
+                rate_ppm: rng.gen_range(10_000..500_000), // 1% to 50%
             },
             _ => Fault::NetworkHeal,
         }

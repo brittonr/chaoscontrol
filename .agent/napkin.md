@@ -20,6 +20,10 @@
 | 2026-02-18 | self | TestCluster::step() had borrow conflict: `&mut self.nodes[i]` + `self.rand()` | Move `self.rand()` call outside the `let node = &mut self.nodes[active]` borrow scope |
 | 2026-02-19 | self | delegate_task workers made changes in isolated worktrees, not the main repo | Workers run in isolation — must apply changes directly via edit/write in main session |
 | 2026-02-19 | self | libc::timespec fields are already i64 on x86_64 Linux | Don't cast `ts.tv_sec as i64` — clippy flags unnecessary_cast |
+| 2026-02-19 | self | SMP: AP vCPU stuck in SIPI-wait, scheduler tried to run it | Check KVM_GET_MP_STATE before running each vCPU; skip non-runnable APs |
+| 2026-02-19 | self | SMP: BSP spin-waits for AP with no VM exits | Tight loops don't generate KVM exits; use SIGALRM timer for preemption |
+| 2026-02-19 | self | SIGALRM with SA_RESTART doesn't interrupt vcpu.run() | Must NOT set SA_RESTART; also handle Err(EINTR) in addition to VcpuExit::Intr |
+| 2026-02-19 | self | ChaCha20Rng::get_seed() returns initial seed, not current state | Must save get_seed() + get_word_pos() together; restore with from_seed() + set_word_pos() |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -90,6 +94,20 @@
 - chaoscontrol-vmm verified modules: cpu (TSC advance), memory (region overlap), pit (reload/latch), block (offset clamp), entropy (seed expansion), net (MAC validation)
 - chaoscontrol-trace verified modules: events (determinism_eq), verifier (divergence detection)
 - All verified functions are pure (no I/O, no side effects), deterministic, and testable
+
+## Multi-vCPU / SMP (2026-02-19)
+- **Architecture**: Antithesis-style serialized execution — only one vCPU runs at a time
+- **VcpuScheduler**: deterministic round-robin + randomized strategy, seeded ChaCha20
+- **ACPI MADT**: minimal RSDP/RSDT/MADT at 0xF0000, EBDA pointer at 0x40E
+- **Linux detects 2 CPUs**: ACPI MADT parsed, topology shows "Allowing 2 present CPUs"
+- **AP boot sequence**: BSP sends INIT IPI + SIPI via LAPIC ICR (handled by KVM internally)
+- **Preemption timer**: ITIMER_REAL (1ms) sends SIGALRM → Err(EINTR) from vcpu.run()
+- **MP state check**: skip non-runnable APs (KVM_MP_STATE_RUNNABLE = 0)
+- **Cmdline**: `nosmp noapic` for 1 vCPU, `maxcpus=N` for SMP
+- **Snapshot**: VmSnapshot now stores Vec<VcpuSnapshot> + SchedulerSnapshot
+- **Status**: kernel reaches "Booting SMP configuration: CPUs: #1" — AP trampoline in progress
+- **Issue**: 1ms SIGALRM preemption is slow (~90s/100K exits); AP trampoline not completing yet
+- **Next**: need to debug AP trampoline (may need real-mode I/O handling, or faster preemption)
 
 ## Completed (2026-02-18 session)
 1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()

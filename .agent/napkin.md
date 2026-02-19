@@ -29,6 +29,10 @@
 | 2026-02-19 | self | SMP: only armed timer when multiple vCPUs runnable | Must ALWAYS arm timer in SMP mode — AP becomes runnable asynchronously via SIPI |
 | 2026-02-19 | self | SMP: EINTR called scheduler.advance() → non-deterministic scheduling | Use scheduler.set_active() or simple round-robin — don't consume RNG on wall-clock events |
 | 2026-02-19 | self | SMP: SA_RESTART makes vcpu.run() restart after SIGALRM | Must NOT set SA_RESTART — need SIGALRM to interrupt the ioctl |
+| 2026-02-19 | self | SMP: SIGALRM wall-clock timer causes non-deterministic exit counts | Replace with perf_event_open instruction counter (PMU overflow mode) |
+| 2026-02-19 | self | SMP: TSC calibration varies because RDTSC sees hardware drift | Use clocksource=jiffies notsc for SMP; tsc=reliable not enough (calibration still runs) |
+| 2026-02-19 | self | SMP: sync_tsc_to_guest on EINTR re-entry resets TSC non-deterministically | Add skip_tsc_sync flag; skip PIT sync + TSC write after signal returns |
+| 2026-02-19 | self | PMU overflow SIGIO has 1-5 instruction skid (hardware limitation) | Accept ±4 exit variance or investigate PEBS zero-skid mode |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -116,11 +120,18 @@
   - EINTR handler does simple round-robin switch, NOT deterministic scheduler
   - Does NOT advance exit_count or virtual_tsc — invisible to deterministic state
   - scheduler.set_active() syncs scheduler state without consuming RNG
-- **Non-determinism**: SMP boot is functionally correct but NOT bit-exact deterministic
-  - Wall-clock SIGALRM causes variable instruction counts between interrupts
-  - Full determinism requires IA32_FIXED_CTR0 PMI (hardware perf counters) — future work
-- **Integration tests**: 24/24 pass (2 SMP tests: boot + topology)
-- **Next**: Hardware PMU preemption for full SMP determinism
+- **PMU instruction counting**: perf_event_open(INSTRUCTIONS, exclude_host=1, overflow mode)
+  - SIGIO fires after N guest instructions → replaces SIGALRM for SMP preemption
+  - SIGALRM fallback when PMU unavailable (CI/containers)
+  - skip_tsc_sync flag prevents non-deterministic TSC resets on signal re-entry
+  - SMP cmdline: clocksource=jiffies notsc (avoids non-deterministic TSC calibration)
+- **Determinism status**:
+  - Single-vCPU: ✅ PERFECTLY DETERMINISTIC
+  - SMP 2-vCPU: ±4 exits over 5 runs (PMU interrupt skid: 1-5 instructions)
+  - PMU skid is a hardware limitation — overflow interrupt delivered 1-5 insns late
+  - Intel PEBS zero-skid mode not available through perf_event_open
+- **Integration tests**: 24/24 pass (test 24 is SMP determinism with tolerance)
+- **Next**: investigate PEBS or accept ±4 exit skid as inherent hardware limitation
 
 ## Completed (2026-02-18 session)
 1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()

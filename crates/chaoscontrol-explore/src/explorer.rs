@@ -65,6 +65,10 @@ pub struct ExplorerConfig {
     ///
     /// When set, each VM's block device is loaded from this file.
     pub disk_image_path: Option<String>,
+    /// Maximum ticks for bootstrap (kernel boot + guest init).
+    /// Bootstrap runs until `setup_complete` or this limit.
+    /// Default: 10_000 (enough for kernel boot + guest init).
+    pub bootstrap_budget: u64,
 }
 
 impl Default for ExplorerConfig {
@@ -85,6 +89,7 @@ impl Default for ExplorerConfig {
             coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
             output_dir: None,
             disk_image_path: None,
+            bootstrap_budget: 10_000,
         }
     }
 }
@@ -140,9 +145,12 @@ impl Explorer {
             self.config.max_rounds, self.config.branch_factor, self.config.num_vms
         );
 
-        // Bootstrap: run initial simulation with empty schedule
-        info!("Bootstrap: running initial simulation...");
-        let initial_result = self.run_branch(&None, FaultSchedule::new())?;
+        // Bootstrap: boot kernel + guest init until setup_complete.
+        // This uses a generous tick budget (bootstrap_budget) because
+        // kernel boot time is variable and much larger than exploration
+        // branch budgets.
+        info!("Bootstrap: booting kernel + guest init...");
+        let initial_result = self.bootstrap()?;
 
         if let Some(snapshot) = initial_result.snapshot.clone() {
             self.add_to_frontier(snapshot, initial_result, FaultSchedule::new(), None, 0);
@@ -303,6 +311,62 @@ impl Explorer {
         Ok(())
     }
 
+    /// Bootstrap: boot kernel + run guest until `setup_complete`.
+    ///
+    /// Returns a `BranchResult` with the initial coverage and a snapshot
+    /// taken after setup_complete (or at the budget limit).
+    fn bootstrap(&mut self) -> Result<BranchResult, ExploreError> {
+        self.ensure_controller()?;
+
+        {
+            let controller = self.controller.as_mut().unwrap();
+            controller.set_schedule(FaultSchedule::new());
+            controller.clear_all_coverage();
+
+            // Run until setup_complete or budget exhausted
+            controller.run_until_setup_complete(self.config.bootstrap_budget)?;
+        }
+
+        // Collect results (same as run_branch phase 2)
+        let controller = self.controller.as_ref().unwrap();
+
+        let result_info = controller.report();
+        let vm_exit_counts: Vec<u64> = (0..controller.num_vms())
+            .map(|i| controller.vm_slot(i).map_or(0, |s| s.vm.exit_count()))
+            .collect();
+        let total_ticks = controller.tick();
+
+        let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
+            if let Some(vm_slot) = controller.vm_slot(0) {
+                self.coverage
+                    .collect_from_guest(vm_slot.vm.memory().inner())
+            } else {
+                CoverageBitmap::new()
+            }
+        } else {
+            self.assertion_coverage(&result_info)
+        };
+
+        let snap = controller.snapshot_all().ok();
+
+        info!(
+            "Bootstrap: {} ticks, {} coverage edges",
+            total_ticks,
+            coverage.count_bits()
+        );
+
+        Ok(BranchResult {
+            coverage,
+            oracle_report: result_info,
+            schedule: FaultSchedule::new(),
+            exit_counts: vm_exit_counts,
+            halted: false,
+            total_ticks,
+            bugs: Vec::new(),
+            snapshot: snap,
+        })
+    }
+
     /// Run a single branch: restore snapshot → clear coverage → apply
     /// schedule → run for N ticks → collect coverage.
     ///
@@ -322,6 +386,9 @@ impl Explorer {
             // Restore from snapshot if provided (rewinds VM state without reboot)
             if let Some(snap) = snapshot {
                 controller.restore_all(snap)?;
+                // Reset all VMs to Running — snapshots may have been taken
+                // after idle detection paused a VM.
+                controller.reset_vm_statuses();
             }
 
             // Apply the mutated fault schedule
@@ -548,6 +615,7 @@ impl Explorer {
             quantum: self.config.quantum,
             coverage_gpa: self.config.coverage_gpa,
             disk_image_path: self.config.disk_image_path.clone(),
+            bootstrap_budget: self.config.bootstrap_budget,
         };
 
         let bugs: Vec<SerializableBug> = self.corpus.bugs().iter().map(|b| b.into()).collect();
@@ -586,6 +654,7 @@ impl Explorer {
             coverage_gpa: checkpoint.config.coverage_gpa,
             output_dir: None, // Will be set by caller if needed
             disk_image_path: checkpoint.config.disk_image_path,
+            bootstrap_budget: checkpoint.config.bootstrap_budget,
         };
 
         let frontier = Frontier::new(config.max_frontier);

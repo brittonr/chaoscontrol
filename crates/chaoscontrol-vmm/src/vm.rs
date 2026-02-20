@@ -144,6 +144,10 @@ pub struct VmConfig {
     /// of an empty zero-filled buffer. The file is read once at VM
     /// creation; subsequent snapshot/restore uses copy-on-write.
     pub disk_image_path: Option<String>,
+    /// Extra kernel command line parameters appended to the default.
+    ///
+    /// Useful for passing guest-specific options like `raft_bug=fig8`.
+    pub extra_cmdline: Option<String>,
 }
 
 impl Default for VmConfig {
@@ -190,6 +194,7 @@ impl Default for VmConfig {
                        panic=-1\0"
                 .to_vec(),
             disk_image_path: None,
+            extra_cmdline: None,
         }
     }
 }
@@ -401,6 +406,9 @@ pub struct DeterministicVm {
     /// next `step()` to skip `sync_tsc_to_guest()` so the TSC resync
     /// doesn't happen at non-deterministic wall-clock times.
     skip_tsc_sync: bool,
+
+    /// Extra kernel command line parameters (from VmConfig).
+    extra_cmdline: Option<String>,
 }
 
 impl DeterministicVm {
@@ -631,6 +639,7 @@ impl DeterministicVm {
             exits_since_last_sdk: 0,
             coverage_active: false,
             skip_tsc_sync: false,
+            extra_cmdline: config.extra_cmdline.clone(),
         })
     }
 
@@ -721,6 +730,11 @@ impl DeterministicVm {
             )
         };
 
+        let extra = self
+            .extra_cmdline
+            .as_deref()
+            .unwrap_or("");
+
         let cmdline = format!(
             "console=ttyS0 earlyprintk=serial \
              {clock_params} \
@@ -732,6 +746,7 @@ impl DeterministicVm {
              virtio_mmio.device=4K@0xd0000000:5 \
              virtio_mmio.device=4K@0xd0001000:6 \
              virtio_mmio.device=4K@0xd0002000:7 \
+             {extra} \
              panic=-1\0"
         );
 
@@ -1032,8 +1047,15 @@ impl DeterministicVm {
             self.reset_time_state()?;
         }
         /// After setup_complete, if no SDK calls happen for this many
-        /// exits, treat the VM as idle (workload done).
-        const SDK_IDLE_THRESHOLD: u64 = 500;
+        /// consecutive exits, treat the VM as idle (workload done).
+        ///
+        /// Must be far above any normal gap between SDK calls.  Active
+        /// guests make SDK calls every ~50-100 exits, but kernel code
+        /// paths (especially serial I/O from println) can produce long
+        /// stretches without SDK port accesses.  50K exits = ~500 rounds
+        /// of pure kernel serial polling — if the guest hasn't made a
+        /// single SDK call in that time, it's truly idle.
+        const SDK_IDLE_THRESHOLD: u64 = 50_000;
 
         for i in 0..max_exits {
             if self.step()? {
@@ -1044,14 +1066,18 @@ impl DeterministicVm {
                 }
                 return Ok((i + 1, true));
             }
-            self.exits_since_last_sdk += 1;
-            // Detect idle: workload done, guest is just spinning
+            // Idle counter incremented in step() on every exit except
+            // SDK/coverage port accesses (which reset it to 0).
+            // Detect idle: workload done, guest stopped making SDK calls.
+            
             if self.fault_engine.is_setup_complete()
                 && self.exits_since_last_sdk > SDK_IDLE_THRESHOLD
             {
                 info!(
-                    "VM idle (no SDK calls for {} exits), treating as halted",
-                    self.exits_since_last_sdk
+                    "VM idle (no SDK calls for {} exits, exit_count={}, io_exits={}), treating as halted",
+                    self.exits_since_last_sdk,
+                    self.exit_count,
+                    self.io_exit_count,
                 );
                 if self.vcpus.len() > 1 {
                     self.disarm_preemption_timer();
@@ -1291,7 +1317,9 @@ impl DeterministicVm {
         self.virtual_tsc.set(snapshot.virtual_tsc);
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
-        self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
+        // Always reset idle counter — branches should start fresh,
+        // not inherit the bootstrap's idle state.
+        self.exits_since_last_sdk = 0;
 
         // Restore DeterministicPit state
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
@@ -1654,10 +1682,14 @@ impl DeterministicVm {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
-                // Only SDK/coverage port resets idle counter — serial
-                // polling is part of the kernel idle loop.
+                // SDK/coverage access resets idle counter; all other
+                // exits increment it.  This counts total exits since
+                // the last SDK interaction, regardless of exit type.
                 if port == SDK_PORT || port == COVERAGE_PORT {
                     self.exits_since_last_sdk = 0;
+                } else {
+                    self.exits_since_last_sdk += 1;
+                    
                 }
                 self.virtual_tsc.tick();
 
@@ -1683,8 +1715,12 @@ impl DeterministicVm {
             Ok(VcpuExit::IoOut(port, data)) => {
                 self.exit_count += 1;
                 self.io_exit_count += 1;
+                // SDK/coverage access resets idle counter; all other
+                // exits (including serial writes) increment it.
                 if port == SDK_PORT || port == COVERAGE_PORT {
                     self.exits_since_last_sdk = 0;
+                } else {
+                    self.exits_since_last_sdk += 1;
                 }
                 self.virtual_tsc.tick();
 
@@ -1706,6 +1742,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::Hlt) => {
                 self.exit_count += 1;
+                self.exits_since_last_sdk += 1;
                 self.virtual_tsc.tick();
 
                 // HLT = kernel idle loop waiting for next interrupt.
@@ -1755,7 +1792,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::MmioRead(addr, data)) => {
                 self.exit_count += 1;
-                self.exits_since_last_sdk = 0;
+                self.exits_since_last_sdk += 1;
                 self.virtual_tsc.tick();
 
                 // Find the virtio device that handles this address
@@ -1781,7 +1818,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::MmioWrite(addr, data)) => {
                 self.exit_count += 1;
-                self.exits_since_last_sdk = 0;
+                self.exits_since_last_sdk += 1;
                 self.virtual_tsc.tick();
 
                 // Find the virtio device that handles this address

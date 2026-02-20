@@ -14,8 +14,9 @@
 //!   nix develop --command bash -c "scripts/build-raft-guest.sh"
 
 use chaoscontrol_raft_guest::{
-    check_election_safety, check_leader_completeness, check_log_matching, LogEntry, Message, Node,
-    Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL, NUM_NODES,
+    check_election_safety, check_leader_completeness, check_log_matching, BugMode, LogEntry,
+    Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL,
+    NUM_NODES,
 };
 use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
 
@@ -43,23 +44,61 @@ fn mount_devtmpfs() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Kernel cmdline parsing
+// ═══════════════════════════════════════════════════════════════════════
+
+fn mount_proc() {
+    unsafe {
+        libc::mkdir(c"/proc".as_ptr().cast(), 0o555);
+        libc::mount(
+            c"proc".as_ptr().cast(),
+            c"/proc".as_ptr().cast(),
+            c"proc".as_ptr().cast(),
+            0,
+            std::ptr::null(),
+        );
+    }
+}
+
+/// Parse `raft_bug=NAME` from /proc/cmdline.
+fn parse_bug_mode() -> BugMode {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    for token in cmdline.split_whitespace() {
+        if let Some(val) = token.strip_prefix("raft_bug=") {
+            return BugMode::from_str(val);
+        }
+    }
+    BugMode::None
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Main
 // ═══════════════════════════════════════════════════════════════════════
 
 fn main() {
     mount_devtmpfs();
-    println!("raft: starting 3-node cluster");
+    mount_proc();
+
+    let bug = parse_bug_mode();
+    println!("raft: starting 3-node cluster (bug={})", bug.name());
 
     coverage::init();
     let kcov_ok = kcov::init();
-    lifecycle::setup_complete(&[("program", "raft-guest"), ("nodes", "3")]);
+    lifecycle::setup_complete(&[
+        ("program", "raft-guest"),
+        ("nodes", "3"),
+        ("bug", bug.name()),
+    ]);
     println!(
-        "raft: setup_complete (kcov={})",
-        if kcov_ok { "active" } else { "unavailable" }
+        "raft: setup_complete (kcov={}, bug={})",
+        if kcov_ok { "active" } else { "unavailable" },
+        bug.name(),
     );
 
-    // Initialize 3 nodes
-    let mut nodes: Vec<Node> = (0..NUM_NODES).map(Node::new).collect();
+    // Initialize 3 nodes with the selected bug mode
+    let mut nodes: Vec<Node> = (0..NUM_NODES)
+        .map(|i| Node::new_with_bug(i, bug))
+        .collect();
     // Stagger initial election timers
     for (i, node) in nodes.iter_mut().enumerate() {
         node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;

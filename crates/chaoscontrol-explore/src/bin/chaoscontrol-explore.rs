@@ -116,6 +116,17 @@ enum Commands {
         /// The file is read once; copy-on-write makes snapshots cheap.
         #[arg(long)]
         disk_image: Option<String>,
+
+        /// Extra kernel command line parameters (appended to defaults).
+        ///
+        /// Example: --extra-cmdline "raft_bug=fig8"
+        #[arg(long)]
+        extra_cmdline: Option<String>,
+
+        /// Bootstrap tick budget (kernel boot + guest init).
+        /// Exploration waits for setup_complete or this limit.
+        #[arg(long, default_value = "10000")]
+        bootstrap_budget: u64,
     },
 
     /// Resume from saved checkpoint.
@@ -158,6 +169,8 @@ fn main() {
             max_frontier,
             output,
             disk_image,
+            extra_cmdline,
+            bootstrap_budget,
         } => cmd_run(
             kernel,
             initrd,
@@ -172,6 +185,8 @@ fn main() {
             max_frontier,
             output,
             disk_image,
+            extra_cmdline,
+            bootstrap_budget,
         ),
         Commands::Resume {
             corpus,
@@ -197,6 +212,8 @@ fn cmd_run(
     max_frontier: usize,
     output: Option<String>,
     disk_image: Option<String>,
+    extra_cmdline: Option<String>,
+    bootstrap_budget: u64,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -246,6 +263,7 @@ fn cmd_run(
     let vm_config = VmConfig {
         num_vcpus: vcpus,
         scheduling_strategy,
+        extra_cmdline: extra_cmdline.clone(),
         ..Default::default()
     };
 
@@ -266,6 +284,7 @@ fn cmd_run(
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
         disk_image_path: disk_image.clone(),
+        bootstrap_budget,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -286,8 +305,12 @@ fn cmd_run(
     eprintln!("  vCPUs/VM:       {}", vcpus);
     eprintln!("  Scheduling:     {}", scheduling);
     eprintln!("  Max frontier:   {}", max_frontier);
+    eprintln!("  Bootstrap:      {} ticks", bootstrap_budget);
     if let Some(ref disk_image_path) = disk_image {
         eprintln!("  Disk image:     {}", disk_image_path);
+    }
+    if let Some(ref extra) = extra_cmdline {
+        eprintln!("  Extra cmdline:  {}", extra);
     }
     if let Some(ref output_dir) = output {
         eprintln!("  Output:         {}", output_dir);

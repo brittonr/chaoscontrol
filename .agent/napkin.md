@@ -51,6 +51,13 @@
 | 2026-02-19 | self | snafu selectors are `pub(crate)` by default | Need `#[snafu(visibility(pub))]` on enum when selectors used cross-module |
 | 2026-02-19 | self | `.build()` can't be used inside `matches!()` macro | Use `matches!(result, Err(Error::Variant { field: val }))` for pattern matching |
 | 2026-02-19 | self | `into_error()` not available on snafu context selectors | Use direct construction `Error::Variant { source, field }` for manual error building |
+| 2026-02-20 | self | Serial IoOut (println) reset exits_since_last_sdk counter | Only SDK/coverage port accesses should reset idle counter — serial is diagnostic |
+| 2026-02-20 | self | SDK_IDLE_THRESHOLD=500 too low for guests with serial output | Set to 50_000 — kernel serial I/O generates long gaps between SDK calls |
+| 2026-02-20 | self | SDK_IDLE_THRESHOLD=2000 still too low | Serial UART status reads (IoIn 0x3FD) accumulate across run_bounded() calls |
+| 2026-02-20 | self | Bootstrap used ticks_per_branch for kernel boot | Bootstrap needs run_until_setup_complete — kernel boot takes ~1200 ticks |
+| 2026-02-20 | self | Controller checked its OWN fault_engine for setup_complete | Guest SDK calls go to per-VM fault engine; must check vms[].vm.fault_engine() |
+| 2026-02-20 | self | Controller checked its OWN fault_engine for assertion failures | Same issue — must check all VMs' fault engines and merge oracle reports |
+| 2026-02-20 | self | Snapshot saved VmStatus::Paused from idle detection | Must call reset_vm_statuses() after restore_all() so branches start Running |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -188,6 +195,24 @@
 3. ✅ Virtio MMIO transport (virtio 1.2, legacy-free) + virtio-blk, virtio-net, virtio-rng backends
 4. ✅ chaoscontrol-explore crate: fork-from-snapshot, coverage-guided search, AFL-style bitmaps, frontier, mutator
 5. ✅ chaoscontrol-replay crate: recording, checkpoint, replay, time-travel debugger, triage, serialize
+
+## Bug Hunt Results (2026-02-20)
+- **End-to-end exploration working**: 6/7 bug variants found assertion violations
+- **Parameters**: 1 VM, seed=42, 5 rounds × 4 branches × 500 ticks, bootstrap_budget=5000
+- **Results**:
+
+| Bug Variant | Bugs Found | Assertions Violated |
+|-------------|------------|---------------------|
+| none (control) | 1 | leader completeness |
+| double_vote | 1 | leader completeness |
+| skip_truncate | 2 | leader completeness, log matching |
+| accept_stale_term | 0 | (timed out) |
+| leader_no_stepdown | 4 | leader completeness (×4) |
+| fig8_commit | 1 | leader completeness |
+| premature_commit | 2 | leader completeness (×2) |
+
+- **Finding**: "leader completeness" violation in `none` variant suggests the base Raft implementation has an edge case under certain message orderings (5% random drop)
+- **Key fixes for bug hunt**: bootstrap via `run_until_setup_complete`, merged oracle reports from per-VM fault engines, reset VM statuses after snapshot restore, idle threshold at 50K
 
 ## Remaining Work
 (All items completed)

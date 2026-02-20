@@ -45,6 +45,13 @@ pub struct CheckpointConfig {
     /// Optional disk image path (defaults to None for backward compat).
     #[serde(default)]
     pub disk_image_path: Option<String>,
+    /// Bootstrap tick budget (defaults to 10000 for backward compat).
+    #[serde(default = "default_bootstrap_budget")]
+    pub bootstrap_budget: u64,
+}
+
+fn default_bootstrap_budget() -> u64 {
+    10_000
 }
 
 /// Serializable fault representation.
@@ -465,6 +472,7 @@ mod tests {
                 quantum: 100,
                 coverage_gpa: 0x1000000,
                 disk_image_path: None,
+                bootstrap_budget: 10_000,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -503,6 +511,7 @@ mod tests {
                 quantum: 50,
                 coverage_gpa: 0x2000000,
                 disk_image_path: None,
+                bootstrap_budget: 10_000,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],

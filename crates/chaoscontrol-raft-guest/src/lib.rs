@@ -20,6 +20,83 @@ pub const ELECTION_TIMEOUT_JITTER: usize = 8;
 pub const HEARTBEAT_INTERVAL: usize = 3;
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Bug injection
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Injected bug variants for validation testing.
+///
+/// Each variant introduces a realistic, subtle implementation error that
+/// violates one or more Raft safety properties. The exploration engine
+/// should find each bug by discovering the right fault schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BugMode {
+    /// Correct implementation — no bugs.
+    None,
+    /// **Figure 8 commit bug** (Raft §5.4.2).
+    ///
+    /// Removes the guard that prevents committing entries from prior terms.
+    /// A new leader can commit old-term entries that may later be overwritten
+    /// by a different leader, violating leader completeness.
+    Fig8Commit,
+    /// **Missing log truncation**.
+    ///
+    /// When a follower receives AppendEntries with a conflicting entry,
+    /// it skips the truncation, leaving stale entries that diverge from
+    /// the leader's log.
+    SkipTruncate,
+    /// **Accept stale-term AppendEntries**.
+    ///
+    /// Follower accepts AppendEntries from leaders with lower terms instead
+    /// of rejecting them. A partitioned old leader can write conflicting
+    /// entries.
+    AcceptStaleTerm,
+    /// **Leader ignores higher-term AppendEntries**.
+    ///
+    /// Leader does not step down when receiving AppendEntries or
+    /// AppendEntriesResponse with a higher term, causing concurrent leaders.
+    LeaderNoStepdown,
+    /// **Double voting in same term**.
+    ///
+    /// Node grants votes to multiple candidates in the same term by
+    /// ignoring the `voted_for` check, enabling two leaders per term.
+    DoubleVote,
+    /// **Premature commit advance**.
+    ///
+    /// Advances commit_index BEFORE verifying log consistency, committing
+    /// entries the follower hasn't actually validated.
+    PrematureCommit,
+}
+
+impl BugMode {
+    /// Parse from a string (for kernel cmdline parsing).
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "fig8" | "fig8_commit" => Self::Fig8Commit,
+            "skip_truncate" | "no_truncate" => Self::SkipTruncate,
+            "accept_stale" | "accept_stale_term" => Self::AcceptStaleTerm,
+            "leader_no_stepdown" | "no_stepdown" => Self::LeaderNoStepdown,
+            "double_vote" => Self::DoubleVote,
+            "premature_commit" => Self::PrematureCommit,
+            "none" | "" => Self::None,
+            _ => Self::None,
+        }
+    }
+
+    /// Short name for display/logging.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Fig8Commit => "fig8_commit",
+            Self::SkipTruncate => "skip_truncate",
+            Self::AcceptStaleTerm => "accept_stale_term",
+            Self::LeaderNoStepdown => "leader_no_stepdown",
+            Self::DoubleVote => "double_vote",
+            Self::PrematureCommit => "premature_commit",
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Types
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -80,10 +157,16 @@ pub struct Node {
     pub match_index: [usize; NUM_NODES],
     /// Inbox of pending messages from other nodes.
     pub inbox: Vec<(usize, Message)>,
+    /// Injected bug mode for validation testing.
+    pub bug: BugMode,
 }
 
 impl Node {
     pub fn new(id: usize) -> Self {
+        Self::new_with_bug(id, BugMode::None)
+    }
+
+    pub fn new_with_bug(id: usize, bug: BugMode) -> Self {
         debug_assert!(id < NUM_NODES, "node id must be < NUM_NODES");
         Self {
             id,
@@ -98,6 +181,7 @@ impl Node {
             next_index: [1; NUM_NODES],
             match_index: [0; NUM_NODES],
             inbox: Vec::new(),
+            bug,
         }
     }
 
@@ -221,7 +305,9 @@ impl Node {
                     self.become_follower(term, jitter);
                 }
                 let vote_granted = term >= self.current_term
-                    && (self.voted_for.is_none() || self.voted_for == Some(candidate_id))
+                    && (self.bug == BugMode::DoubleVote
+                        || self.voted_for.is_none()
+                        || self.voted_for == Some(candidate_id))
                     && (last_log_term > self.last_log_term()
                         || (last_log_term == self.last_log_term()
                             && last_log_index >= self.last_log_index()));
@@ -262,9 +348,19 @@ impl Node {
                 leader_commit,
             } => {
                 let _ = leader_id; // Raft protocol field; used for redirect in full impl
+
+                // BUG(LeaderNoStepdown): leader ignores higher-term AE entirely
+                if self.bug == BugMode::LeaderNoStepdown
+                    && self.role == Role::Leader
+                    && term > self.current_term
+                {
+                    return outbox;
+                }
+
                 if term > self.current_term {
                     self.become_follower(term, jitter);
-                } else if term < self.current_term {
+                // BUG(AcceptStaleTerm): accept AE from lower terms
+                } else if self.bug != BugMode::AcceptStaleTerm && term < self.current_term {
                     outbox.push((
                         from,
                         Message::AppendEntriesResponse {
@@ -280,6 +376,14 @@ impl Node {
                     self.become_follower(term, jitter);
                 }
                 self.reset_election_timer_with(jitter);
+
+                // BUG(PrematureCommit): advance commit BEFORE log check
+                if self.bug == BugMode::PrematureCommit && leader_commit > self.commit_index {
+                    let new_commit = leader_commit.min(self.log.len());
+                    if new_commit > self.commit_index {
+                        self.commit_index = new_commit;
+                    }
+                }
 
                 // Check log consistency
                 let log_ok = if prev_log_index == 0 {
@@ -308,7 +412,10 @@ impl Node {
                     insert_index += 1;
                     if insert_index <= self.log.len() {
                         if self.log[insert_index - 1].term != entry.term {
-                            self.log.truncate(insert_index - 1);
+                            // BUG(SkipTruncate): don't truncate conflicting entries
+                            if self.bug != BugMode::SkipTruncate {
+                                self.log.truncate(insert_index - 1);
+                            }
                             self.log.push(entry.clone());
                         }
                     } else {
@@ -339,7 +446,13 @@ impl Node {
                 success,
                 match_index,
             } => {
-                if term > self.current_term {
+                // BUG(LeaderNoStepdown): leader ignores higher-term response
+                if self.bug == BugMode::LeaderNoStepdown
+                    && self.role == Role::Leader
+                    && term > self.current_term
+                {
+                    // Leader stays as-is, doesn't step down
+                } else if term > self.current_term {
                     self.become_follower(term, jitter);
                     return outbox;
                 }
@@ -365,8 +478,8 @@ impl Node {
     /// Leader: advance commit_index if a majority has replicated.
     pub fn try_advance_commit(&mut self) {
         for n in (self.commit_index + 1)..=self.log.len() {
-            if self.log[n - 1].term != self.current_term {
-                continue; // Only commit entries from current term
+            if self.bug != BugMode::Fig8Commit && self.log[n - 1].term != self.current_term {
+                continue; // Only commit entries from current term (§5.4.2)
             }
             let mut match_count = 0;
             for peer in 0..NUM_NODES {
@@ -464,12 +577,20 @@ pub struct TestCluster {
     pub tick: usize,
     pub values_proposed: u64,
     rng_state: u64,
+    pub bug: BugMode,
 }
 
 impl TestCluster {
     /// Create a new test cluster with staggered election timers.
     pub fn new(seed: u64) -> Self {
-        let mut nodes: Vec<Node> = (0..NUM_NODES).map(Node::new).collect();
+        Self::new_with_bug(seed, BugMode::None)
+    }
+
+    /// Create a test cluster with the given bug mode injected into all nodes.
+    pub fn new_with_bug(seed: u64, bug: BugMode) -> Self {
+        let mut nodes: Vec<Node> = (0..NUM_NODES)
+            .map(|i| Node::new_with_bug(i, bug))
+            .collect();
         for (i, node) in nodes.iter_mut().enumerate() {
             node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;
         }
@@ -478,6 +599,7 @@ impl TestCluster {
             tick: 0,
             values_proposed: 0,
             rng_state: seed,
+            bug,
         }
     }
 
@@ -2395,5 +2517,455 @@ mod tests {
         ];
 
         cluster.run_checked(1);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Category P: Bug injection validation
+    // ═══════════════════════════════════════════════════════════════
+
+    #[test]
+    fn bug_mode_parse() {
+        assert_eq!(BugMode::from_str("fig8"), BugMode::Fig8Commit);
+        assert_eq!(BugMode::from_str("fig8_commit"), BugMode::Fig8Commit);
+        assert_eq!(BugMode::from_str("skip_truncate"), BugMode::SkipTruncate);
+        assert_eq!(BugMode::from_str("no_truncate"), BugMode::SkipTruncate);
+        assert_eq!(
+            BugMode::from_str("accept_stale"),
+            BugMode::AcceptStaleTerm
+        );
+        assert_eq!(
+            BugMode::from_str("leader_no_stepdown"),
+            BugMode::LeaderNoStepdown
+        );
+        assert_eq!(BugMode::from_str("double_vote"), BugMode::DoubleVote);
+        assert_eq!(
+            BugMode::from_str("premature_commit"),
+            BugMode::PrematureCommit
+        );
+        assert_eq!(BugMode::from_str("none"), BugMode::None);
+        assert_eq!(BugMode::from_str("unknown"), BugMode::None);
+    }
+
+    #[test]
+    fn bug_mode_name_roundtrip() {
+        for bug in [
+            BugMode::None,
+            BugMode::Fig8Commit,
+            BugMode::SkipTruncate,
+            BugMode::AcceptStaleTerm,
+            BugMode::LeaderNoStepdown,
+            BugMode::DoubleVote,
+            BugMode::PrematureCommit,
+        ] {
+            assert_eq!(BugMode::from_str(bug.name()), bug);
+        }
+    }
+
+    #[test]
+    fn bug_none_is_safe() {
+        let mut cluster = TestCluster::new_with_bug(42, BugMode::None);
+        cluster.run_checked(1000);
+    }
+
+    // ── Fig8Commit ───────────────────────────────────────────────
+
+    #[test]
+    fn bug_fig8_commit_allows_old_term_commit() {
+        let mut leader = Node::new_with_bug(0, BugMode::Fig8Commit);
+        leader.current_term = 3;
+        leader.role = Role::Leader;
+        leader.log.push(LogEntry { term: 1, value: 1 });
+        leader.log.push(LogEntry { term: 2, value: 2 });
+        leader.match_index = [2, 2, 0];
+
+        leader.try_advance_commit();
+        assert_eq!(leader.commit_index, 2, "fig8 bug allows old-term commit");
+    }
+
+    #[test]
+    fn bug_fig8_commit_correct_blocks_old_term() {
+        let mut leader = Node::new(0);
+        leader.current_term = 3;
+        leader.role = Role::Leader;
+        leader.log.push(LogEntry { term: 1, value: 1 });
+        leader.log.push(LogEntry { term: 2, value: 2 });
+        leader.match_index = [2, 2, 0];
+
+        leader.try_advance_commit();
+        assert_eq!(
+            leader.commit_index, 0,
+            "correct impl blocks old-term commit"
+        );
+    }
+
+    // ── SkipTruncate ─────────────────────────────────────────────
+
+    #[test]
+    fn bug_skip_truncate_keeps_stale_entries() {
+        let mut node = Node::new_with_bug(1, BugMode::SkipTruncate);
+        node.current_term = 2;
+        node.role = Role::Follower;
+        node.log.push(LogEntry { term: 1, value: 1 });
+        node.log.push(LogEntry { term: 1, value: 2 });
+
+        node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 2,
+                leader_id: 0,
+                prev_log_index: 1,
+                prev_log_term: 1,
+                entries: vec![LogEntry { term: 2, value: 99 }],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        // Bug: old entry NOT truncated, new entry appended after it
+        assert!(
+            node.log.len() > 2,
+            "skip_truncate appends without truncating"
+        );
+    }
+
+    #[test]
+    fn bug_skip_truncate_correct_truncates() {
+        let mut node = Node::new(1);
+        node.current_term = 2;
+        node.role = Role::Follower;
+        node.log.push(LogEntry { term: 1, value: 1 });
+        node.log.push(LogEntry { term: 1, value: 2 });
+
+        node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 2,
+                leader_id: 0,
+                prev_log_index: 1,
+                prev_log_term: 1,
+                entries: vec![LogEntry { term: 2, value: 99 }],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        assert_eq!(node.log.len(), 2, "correct impl truncates conflicting entry");
+        assert_eq!(node.log[1].term, 2);
+    }
+
+    // ── AcceptStaleTerm ──────────────────────────────────────────
+
+    #[test]
+    fn bug_accept_stale_term_processes_old_leader() {
+        let mut node = Node::new_with_bug(1, BugMode::AcceptStaleTerm);
+        node.current_term = 5;
+        node.role = Role::Follower;
+
+        let msgs = node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 3,
+                leader_id: 0,
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![LogEntry { term: 3, value: 42 }],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        match &msgs[0].1 {
+            Message::AppendEntriesResponse { success, .. } => {
+                assert!(*success, "bug accepts stale-term AppendEntries");
+            }
+            _ => panic!("expected AppendEntriesResponse"),
+        }
+        assert_eq!(node.log.len(), 1);
+    }
+
+    #[test]
+    fn bug_accept_stale_term_correct_rejects() {
+        let mut node = Node::new(1);
+        node.current_term = 5;
+
+        let msgs = node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 3,
+                leader_id: 0,
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![LogEntry { term: 3, value: 42 }],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        match &msgs[0].1 {
+            Message::AppendEntriesResponse { success, .. } => {
+                assert!(!success, "correct impl rejects stale-term AppendEntries");
+            }
+            _ => panic!("expected AppendEntriesResponse"),
+        }
+    }
+
+    // ── LeaderNoStepdown ─────────────────────────────────────────
+
+    #[test]
+    fn bug_leader_no_stepdown_stays_leader() {
+        let mut node = Node::new_with_bug(0, BugMode::LeaderNoStepdown);
+        node.current_term = 3;
+        node.role = Role::Leader;
+
+        node.handle_message(
+            1,
+            Message::AppendEntries {
+                term: 5,
+                leader_id: 1,
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        assert_eq!(node.role, Role::Leader, "bug: leader ignores higher-term AE");
+        assert_eq!(node.current_term, 3, "bug: term not updated");
+    }
+
+    #[test]
+    fn bug_leader_no_stepdown_correct_steps_down() {
+        let mut node = Node::new(0);
+        node.current_term = 3;
+        node.role = Role::Leader;
+
+        node.handle_message(
+            1,
+            Message::AppendEntries {
+                term: 5,
+                leader_id: 1,
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![],
+                leader_commit: 0,
+            },
+            0,
+        );
+
+        assert_eq!(node.role, Role::Follower);
+        assert_eq!(node.current_term, 5);
+    }
+
+    // ── DoubleVote ───────────────────────────────────────────────
+
+    #[test]
+    fn bug_double_vote_grants_two_votes() {
+        let mut node = Node::new_with_bug(2, BugMode::DoubleVote);
+        node.current_term = 1;
+
+        let msgs = node.handle_message(
+            0,
+            Message::RequestVote {
+                term: 1,
+                candidate_id: 0,
+                last_log_index: 0,
+                last_log_term: 0,
+            },
+            0,
+        );
+        assert!(matches!(
+            &msgs[0].1,
+            Message::RequestVoteResponse {
+                vote_granted: true,
+                ..
+            }
+        ));
+
+        let msgs = node.handle_message(
+            1,
+            Message::RequestVote {
+                term: 1,
+                candidate_id: 1,
+                last_log_index: 0,
+                last_log_term: 0,
+            },
+            0,
+        );
+        assert!(
+            matches!(
+                &msgs[0].1,
+                Message::RequestVoteResponse {
+                    vote_granted: true,
+                    ..
+                }
+            ),
+            "bug: grants vote to second candidate"
+        );
+    }
+
+    #[test]
+    fn bug_double_vote_correct_denies_second() {
+        let mut node = Node::new(2);
+        node.current_term = 1;
+
+        node.handle_message(
+            0,
+            Message::RequestVote {
+                term: 1,
+                candidate_id: 0,
+                last_log_index: 0,
+                last_log_term: 0,
+            },
+            0,
+        );
+
+        let msgs = node.handle_message(
+            1,
+            Message::RequestVote {
+                term: 1,
+                candidate_id: 1,
+                last_log_index: 0,
+                last_log_term: 0,
+            },
+            0,
+        );
+        assert!(
+            matches!(
+                &msgs[0].1,
+                Message::RequestVoteResponse {
+                    vote_granted: false,
+                    ..
+                }
+            ),
+            "correct impl denies second vote"
+        );
+    }
+
+    // ── PrematureCommit ──────────────────────────────────────────
+
+    #[test]
+    fn bug_premature_commit_advances_before_check() {
+        let mut node = Node::new_with_bug(1, BugMode::PrematureCommit);
+        node.current_term = 1;
+        node.role = Role::Follower;
+        node.log.push(LogEntry { term: 1, value: 1 });
+
+        node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 1,
+                leader_id: 0,
+                prev_log_index: 5, // inconsistent
+                prev_log_term: 1,
+                entries: vec![],
+                leader_commit: 1,
+            },
+            0,
+        );
+
+        assert_eq!(
+            node.commit_index, 1,
+            "bug: premature commit before log check"
+        );
+    }
+
+    #[test]
+    fn bug_premature_commit_correct_no_advance() {
+        let mut node = Node::new(1);
+        node.current_term = 1;
+        node.role = Role::Follower;
+        node.log.push(LogEntry { term: 1, value: 1 });
+
+        node.handle_message(
+            0,
+            Message::AppendEntries {
+                term: 1,
+                leader_id: 0,
+                prev_log_index: 5,
+                prev_log_term: 1,
+                entries: vec![],
+                leader_commit: 1,
+            },
+            0,
+        );
+
+        assert_eq!(
+            node.commit_index, 0,
+            "correct impl doesn't commit on failed check"
+        );
+    }
+
+    // ── Cluster-level bug detection ──────────────────────────────
+
+    /// Run a buggy cluster and return whether a safety violation was found.
+    fn detect_violation(bug: BugMode, seed: u64, ticks: usize) -> bool {
+        let mut cluster = TestCluster::new_with_bug(seed, bug);
+        for _ in 0..ticks {
+            cluster.step();
+            if !check_election_safety(&cluster.nodes).is_empty()
+                || !check_log_matching(&cluster.nodes).is_empty()
+                || !check_leader_completeness(&cluster.nodes).is_empty()
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn bug_double_vote_found_by_cluster() {
+        // DoubleVote requires: two candidates in same term (needs a message drop)
+        // + a node that votes for both. Rare event per run.
+        let found = (0..100).any(|seed| detect_violation(BugMode::DoubleVote, seed, 2000));
+        assert!(
+            found,
+            "DoubleVote should be detected within 100 seeds × 2000 ticks"
+        );
+    }
+
+    #[test]
+    fn bug_skip_truncate_found_by_cluster() {
+        let found = (0..20).any(|seed| detect_violation(BugMode::SkipTruncate, seed, 1000));
+        assert!(
+            found,
+            "SkipTruncate should be detected within 20 seeds × 1000 ticks"
+        );
+    }
+
+    #[test]
+    fn bug_leader_no_stepdown_found_by_cluster() {
+        let found = (0..20).any(|seed| detect_violation(BugMode::LeaderNoStepdown, seed, 500));
+        assert!(
+            found,
+            "LeaderNoStepdown should be detected within 20 seeds × 500 ticks"
+        );
+    }
+
+    #[test]
+    fn bug_accept_stale_found_by_cluster() {
+        let found = (0..20).any(|seed| detect_violation(BugMode::AcceptStaleTerm, seed, 1000));
+        assert!(
+            found,
+            "AcceptStaleTerm should be detected within 20 seeds × 1000 ticks"
+        );
+    }
+
+    #[test]
+    fn bug_fig8_cluster_runs_without_panic() {
+        // Fig8 is the subtlest bug — may not trigger in simple cluster runs.
+        // Just verify the code runs (we'll find it with the explorer).
+        let mut cluster = TestCluster::new_with_bug(42, BugMode::Fig8Commit);
+        for _ in 0..1000 {
+            cluster.step();
+        }
+    }
+
+    #[test]
+    fn bug_premature_commit_cluster_runs() {
+        let mut cluster = TestCluster::new_with_bug(42, BugMode::PrematureCommit);
+        for _ in 0..1000 {
+            cluster.step();
+        }
     }
 }

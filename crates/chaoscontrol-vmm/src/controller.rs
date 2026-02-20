@@ -625,14 +625,87 @@ impl SimulationController {
                 break;
             }
 
-            // Check for immediate assertion failures
-            if self.fault_engine.has_assertion_failure() {
+            // Check for assertion failures in ANY VM's fault engine.
+            // The guest's assert::always() calls go to the per-VM engine,
+            // not the controller's engine.
+            let any_failure = self
+                .vms
+                .iter()
+                .any(|slot| slot.vm.fault_engine().has_assertion_failure());
+            if any_failure {
                 warn!("Assertion failure detected at tick {}", self.tick);
                 break;
             }
         }
 
-        let oracle_report = self.fault_engine.oracle().report();
+        // Merge oracle reports from all VMs into a combined report.
+        let oracle_report = self.merged_oracle_report();
+        let vm_exit_counts = self.vms.iter().map(|slot| slot.vm.exit_count()).collect();
+
+        Ok(SimulationResult {
+            total_ticks: self.tick,
+            oracle_report,
+            vm_exit_counts,
+            network_stats: self.network.stats.clone(),
+        })
+    }
+
+    /// Run the simulation until any VM signals `setup_complete`, or until
+    /// `max_ticks` is reached (whichever comes first).
+    ///
+    /// Used for bootstrap: boot kernel + guest initialisation is variable-length,
+    /// so we can't use a fixed tick budget.  After `setup_complete`, the snapshot
+    /// captures a fully-initialised guest ready for exploration branches.
+    pub fn run_until_setup_complete(
+        &mut self,
+        max_ticks: u64,
+    ) -> Result<SimulationResult, VmError> {
+        let stop_at = self.tick + max_ticks;
+        info!(
+            "Bootstrap: running until setup_complete (max {} ticks, tick {}→{})",
+            max_ticks, self.tick, stop_at
+        );
+
+        while self.tick < stop_at {
+            let result = self.step_round()?;
+
+            // Check ANY VM's fault engine for setup_complete.
+            // The SDK hypercall goes to the per-VM engine, not the
+            // controller's engine, so we check VMs directly.
+            let any_setup_complete = self
+                .vms
+                .iter()
+                .any(|slot| slot.vm.fault_engine().is_setup_complete());
+
+            if any_setup_complete {
+                info!(
+                    "Bootstrap complete: setup_complete received at tick {}",
+                    self.tick
+                );
+                // Propagate to controller's engine so idle detection
+                // and fault scheduling work correctly going forward.
+                self.fault_engine.force_setup_complete();
+                break;
+            }
+
+            if result.vms_running == 0 {
+                info!("All VMs halted during bootstrap at tick {}", self.tick);
+                break;
+            }
+        }
+
+        let any_setup = self
+            .vms
+            .iter()
+            .any(|slot| slot.vm.fault_engine().is_setup_complete());
+        if !any_setup {
+            warn!(
+                "Bootstrap reached max_ticks ({}) without setup_complete",
+                max_ticks
+            );
+        }
+
+        let oracle_report = self.merged_oracle_report();
         let vm_exit_counts = self.vms.iter().map(|slot| slot.vm.exit_count()).collect();
 
         Ok(SimulationResult {
@@ -1024,9 +1097,60 @@ impl SimulationController {
         Ok(())
     }
 
-    /// Get the oracle report.
+    /// Get the oracle report (merged from all VMs).
     pub fn report(&self) -> OracleReport {
-        self.fault_engine.oracle().report()
+        self.merged_oracle_report()
+    }
+
+    /// Merge oracle reports from all VM fault engines.
+    ///
+    /// Each VM has its own FaultEngine + PropertyOracle that tracks
+    /// assertions from that VM's guest.  We merge them so the
+    /// exploration sees a unified view of all assertion violations.
+    fn merged_oracle_report(&self) -> OracleReport {
+        // Start with the first VM's report, then merge others.
+        let mut combined = if let Some(first) = self.vms.first() {
+            first.vm.fault_engine().oracle().report()
+        } else {
+            return self.fault_engine.oracle().report();
+        };
+
+        for slot in self.vms.iter().skip(1) {
+            let report = slot.vm.fault_engine().oracle().report();
+            // Merge assertion records: a failure in ANY VM is a failure.
+            for (id, record) in &report.assertions {
+                combined
+                    .assertions
+                    .entry(*id)
+                    .and_modify(|existing| {
+                        existing.hit_count += record.hit_count;
+                        existing.true_count += record.true_count;
+                        existing.false_count += record.false_count;
+                        existing.runs_hit += record.runs_hit;
+                        existing.runs_satisfied += record.runs_satisfied;
+                        if existing.first_failure_run.is_none() {
+                            existing.first_failure_run = record.first_failure_run;
+                        }
+                    })
+                    .or_insert_with(|| record.clone());
+            }
+            combined.total_runs = combined.total_runs.max(report.total_runs);
+            combined.events.extend(report.events.iter().cloned());
+        }
+
+        // Recompute pass/fail/unexercised counts after merge.
+        combined.passed = 0;
+        combined.failed = 0;
+        combined.unexercised = 0;
+        for record in combined.assertions.values() {
+            match record.verdict() {
+                chaoscontrol_fault::oracle::Verdict::Passed => combined.passed += 1,
+                chaoscontrol_fault::oracle::Verdict::Failed => combined.failed += 1,
+                chaoscontrol_fault::oracle::Verdict::Unexercised => combined.unexercised += 1,
+            }
+        }
+
+        combined
     }
 
     /// Get current simulation tick.

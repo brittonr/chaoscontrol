@@ -1,0 +1,25 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration
+═══════════════════════════════════════════════════════════════════════
+
+Configuration:
+  Kernel:         result-dev/vmlinux
+  Initrd:         guest/initrd-raft.gz
+  VMs:            1
+  Seed:           42
+  Rounds:         20
+  Branches/round: 8
+  Ticks/branch:   3000
+  Quantum:        100
+  vCPUs/VM:       1
+  Scheduling:     round-robin
+  Max frontier:   50
+  Extra cmdline:  raft_bug=double_vote
+  Output:         bug-hunt-results/double_vote
+
+Starting exploration...
+
+
+Exploration complete!
+
+Saved report to: bug-hunt-results/double_vote/report.txt

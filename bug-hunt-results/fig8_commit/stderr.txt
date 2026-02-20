@@ -1,0 +1,25 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration
+═══════════════════════════════════════════════════════════════════════
+
+Configuration:
+  Kernel:         result-dev/vmlinux
+  Initrd:         guest/initrd-raft.gz
+  VMs:            1
+  Seed:           42
+  Rounds:         20
+  Branches/round: 8
+  Ticks/branch:   3000
+  Quantum:        100
+  vCPUs/VM:       1
+  Scheduling:     round-robin
+  Max frontier:   50
+  Extra cmdline:  raft_bug=fig8_commit
+  Output:         bug-hunt-results/fig8_commit
+
+Starting exploration...
+
+
+Exploration complete!
+
+Saved report to: bug-hunt-results/fig8_commit/report.txt

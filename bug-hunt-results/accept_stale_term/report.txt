@@ -1,0 +1,19 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     20
+Total branches explored: 160
+Corpus entries:         15
+Unique edges found:     37562
+Bugs discovered:        0
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             161
+Unique edges:           37562
+Avg edges/run:          233.30
+
+─── No Bugs Found ──────────────────────────────────────────────────────
+No assertion failures detected during exploration.
+
+═══════════════════════════════════════════════════════════════════════

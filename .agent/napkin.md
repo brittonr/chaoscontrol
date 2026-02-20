@@ -46,6 +46,11 @@
 | 2026-02-19 | self | SMP VMs hit InternalError after snapshot/restore | VcpuSnapshot must save/restore KVM_MP_STATE — without it, KVM doesn't know AP is HALTED vs UNINITIALIZED |
 | 2026-02-19 | self | VcpuSnapshot only saved regs/sregs/fpu/lapic/xcrs | Must also save mp_state; set mp_state BEFORE registers during restore (KVM rejects writes on UNINITIALIZED vCPUs) |
 | 2026-02-19 | self | CPUID leaf 0xB EDX=0 for all vCPUs → "APIC ID mismatch" firmware bug | filter_cpuid makes shared template; must patch_cpuid_apic_id per-vCPU with unique APIC ID before set_cpuid2 |
+| 2026-02-19 | self | delegate_task workers don't persist file changes to worktrees | Workers run in isolation — must apply changes directly via edit/write in main session |
+| 2026-02-19 | self | snafu strips "Error" suffix from variant names for selectors | `InjectedReadError` → `InjectedReadSnafu` (not `InjectedReadErrorSnafu`) |
+| 2026-02-19 | self | snafu selectors are `pub(crate)` by default | Need `#[snafu(visibility(pub))]` on enum when selectors used cross-module |
+| 2026-02-19 | self | `.build()` can't be used inside `matches!()` macro | Use `matches!(result, Err(Error::Variant { field: val }))` for pattern matching |
+| 2026-02-19 | self | `into_error()` not available on snafu context selectors | Use direct construction `Error::Variant { source, field }` for manual error building |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -53,6 +58,16 @@
 - Nix flake for dev environment (must use `nix develop --command bash -c "..."`)
 - NixOS host (sudoers via security.sudo.extraRules, not /etc/sudoers.d/)
 - bpftrace NOPASSWD via NixOS config
+
+## Snafu Migration (2026-02-19)
+- **Completed**: thiserror → snafu 0.8 across all 5 crates (10 error enums, ~60 call sites)
+- **Pattern**: `#[derive(Debug, Snafu)]` + `#[snafu(display("msg"))]` + named struct variants
+- **Auto-From**: `#[snafu(context(false))]` replaces thiserror's `#[from]`
+- **Cross-module selectors**: `#[snafu(visibility(pub))]` needed on enum
+- **Context pattern**: `.context(VariantSnafu)?` replaces `.map_err(Error::Variant)?`
+- **Sourceless errors**: `VariantSnafu { field }.fail()` for returns, `.build()` for closures
+- **Box<dyn Error> eliminated**: SimulationRunner trait + CLI binary use proper error types
+- **Suffix stripping**: snafu removes "Error" from variant names: `FooError` → `FooSnafu`
 
 ## Patterns That Work
 - **VirtioBackend downcasting**: `as_any()` / `as_any_mut()` on trait → `downcast_ref`/`downcast_mut` for device-specific operations (snapshot + fault injection)

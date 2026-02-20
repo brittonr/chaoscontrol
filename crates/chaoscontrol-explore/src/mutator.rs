@@ -226,7 +226,7 @@ impl ScheduleMutator {
         }
 
         let target = rng.gen_range(0..config.num_vms);
-        let fault_type = rng.gen_range(0..13);
+        let fault_type = rng.gen_range(0..15);
 
         match fault_type {
             0 => Fault::ProcessKill { target },
@@ -278,6 +278,14 @@ impl ScheduleMutator {
             12 => Fault::PacketDuplicate {
                 target,
                 rate_ppm: rng.gen_range(10_000..500_000), // 1% to 50%
+            },
+            13 => Fault::InjectInterrupt {
+                target,
+                irq: rng.gen_range(0..24), // Full x86 PIC/IOAPIC range
+            },
+            14 => Fault::InjectNmi {
+                target,
+                vcpu: 0, // BSP — SMP targeting is future work
             },
             _ => Fault::NetworkHeal,
         }

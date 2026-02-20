@@ -897,7 +897,7 @@ fn main() {
                 quantum: 5000,
                 schedule,
                 disk_image_path: None,
-            base_core: None,
+                base_core: None,
             }
         };
 
@@ -1226,7 +1226,7 @@ fn main() {
                 quantum: 5000,
                 schedule: schedule.clone(),
                 disk_image_path: None,
-            base_core: None,
+                base_core: None,
             };
 
             // Run controller to a point, snapshot, then continue with sends
@@ -1355,7 +1355,7 @@ fn main() {
                 quantum: 5000,
                 schedule: make_schedule(),
                 disk_image_path: None,
-            base_core: None,
+                base_core: None,
             };
 
             let collect_traffic = |config: SimulationConfig| -> (Vec<u64>, u64) {
@@ -1770,6 +1770,106 @@ fn main() {
         }
 
         // Always passes — KCOV is optional
+        true
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 27: Interrupt injection — IRQ + NMI
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Verifies that VMM-initiated interrupt injection works:
+    //   1. IRQ injection via set_irq_line (edge-triggered pulse)
+    //   2. NMI injection via KVM_NMI ioctl
+    //   3. Invalid vCPU index rejected
+    //   4. VM continues executing normally after injections
+    //   5. Determinism: two identical runs with the same interrupts
+    //      produce the same exit count
+    run_test!("Interrupt injection: IRQ and NMI", {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).expect("create VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+        vm.fault_engine_mut().force_setup_complete();
+
+        // Boot to a stable point
+        let (exits_before, _) = vm.run_bounded(5000).expect("initial boot");
+        assert!(exits_before > 0, "VM should have executed some exits");
+        let snap = vm.snapshot().expect("snapshot");
+
+        // ── Test 1: Inject IRQ 0 (PIT timer) ──
+        vm.inject_interrupt(0)
+            .expect("IRQ 0 injection should succeed");
+
+        // ── Test 2: Inject virtio-net IRQ ──
+        vm.inject_interrupt(6)
+            .expect("IRQ 6 injection should succeed");
+
+        // ── Test 3: Inject NMI to vCPU 0 ──
+        vm.inject_nmi(0).expect("NMI to vCPU 0 should succeed");
+
+        // ── Test 4: Invalid vCPU rejected ──
+        let result = vm.inject_nmi(999);
+        assert!(result.is_err(), "NMI to invalid vCPU should fail");
+
+        // ── Test 5: VM still works after injections ──
+        let (exits_after, _) = vm.run_bounded(1000).expect("run after injection");
+        assert!(exits_after > 0, "VM should continue after interrupts");
+
+        // ── Test 6: Deterministic after interrupts ──
+        // Restore twice, inject same interrupts, compare exit counts
+        vm.restore(&snap).expect("restore 1");
+        vm.inject_interrupt(0).expect("inject IRQ 0 run A");
+        vm.inject_nmi(0).expect("inject NMI run A");
+        let (exits_a, _) = vm.run_bounded(2000).expect("run A");
+
+        vm.restore(&snap).expect("restore 2");
+        vm.inject_interrupt(0).expect("inject IRQ 0 run B");
+        vm.inject_nmi(0).expect("inject NMI run B");
+        let (exits_b, _) = vm.run_bounded(2000).expect("run B");
+
+        assert_eq!(
+            exits_a, exits_b,
+            "Same interrupts should produce same exit count: {exits_a} vs {exits_b}"
+        );
+
+        true
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 28: Interrupt injection via fault schedule
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Verifies that InjectInterrupt and InjectNmi faults work
+    // end-to-end through the SimulationController fault dispatch.
+    run_test!("Interrupt injection via fault schedule", {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(2_000_000, Fault::InjectInterrupt { target: 0, irq: 0 })
+            .at_ns(4_000_000, Fault::InjectNmi { target: 0, vcpu: 0 })
+            .at_ns(6_000_000, Fault::InjectInterrupt { target: 0, irq: 6 })
+            .build();
+
+        let sim_config = SimulationConfig {
+            num_vms: 1,
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 100,
+            ..Default::default()
+        };
+        let mut ctrl = SimulationController::new(sim_config).expect("create controller");
+        ctrl.force_setup_complete();
+        ctrl.set_schedule(schedule);
+
+        // Run for enough ticks to fire all 3 faults (at 2ms, 4ms, 6ms)
+        let _result = ctrl.run(10).expect("run with interrupt faults");
+
+        // Controller ran without error — interrupt faults dispatched
+        // successfully through apply_fault().
+        assert!(
+            ctrl.tick() >= 7,
+            "Should have run at least 7 ticks (faults at tick 2,4,6), got {}",
+            ctrl.tick()
+        );
+
         true
     });
 

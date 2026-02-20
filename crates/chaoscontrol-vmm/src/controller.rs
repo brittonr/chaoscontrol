@@ -993,6 +993,24 @@ impl SimulationController {
                     slot.memory_limit_bytes = Some(*limit_bytes);
                 }
             }
+
+            // ── Interrupt injection faults ──
+            Fault::InjectInterrupt { target, irq } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("InjectInterrupt: VM{} IRQ {}", target, irq);
+                    slot.vm.inject_interrupt(*irq)?;
+                } else {
+                    warn!("InjectInterrupt fault skipped: VM{} not found", target);
+                }
+            }
+            Fault::InjectNmi { target, vcpu } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("InjectNmi: VM{} vCPU {}", target, vcpu);
+                    slot.vm.inject_nmi(*vcpu)?;
+                } else {
+                    warn!("InjectNmi fault skipped: VM{} not found", target);
+                }
+            }
         }
 
         Ok(())
@@ -1280,6 +1298,7 @@ pub struct SimulationSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chaoscontrol_fault::faults::FaultCategory;
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 
     fn dummy_kernel_path() -> String {
@@ -2312,5 +2331,52 @@ mod tests {
             fabric.stats.packets_dropped_loss, restored.stats.packets_dropped_loss,
             "Post-restore loss decisions must be identical"
         );
+    }
+
+    #[test]
+    fn test_inject_interrupt_fault_targets() {
+        let f = Fault::InjectInterrupt { target: 1, irq: 5 };
+        assert_eq!(f.target(), Some(1));
+        assert_eq!(f.category(), FaultCategory::Interrupt);
+    }
+
+    #[test]
+    fn test_inject_nmi_fault_targets() {
+        let f = Fault::InjectNmi { target: 2, vcpu: 0 };
+        assert_eq!(f.target(), Some(2));
+        assert_eq!(f.category(), FaultCategory::Interrupt);
+    }
+
+    #[test]
+    fn test_interrupt_faults_in_schedule() {
+        let mut schedule = FaultScheduleBuilder::new()
+            .at_ns(1_000_000, Fault::InjectInterrupt { target: 0, irq: 0 })
+            .at_ns(2_000_000, Fault::InjectNmi { target: 0, vcpu: 0 })
+            .at_ns(3_000_000, Fault::InjectInterrupt { target: 1, irq: 6 })
+            .build();
+
+        assert_eq!(schedule.remaining(), 3);
+
+        // Drain at 1ms — should get InjectInterrupt
+        let faults = schedule.drain_due(1_000_000);
+        assert_eq!(faults.len(), 1);
+        assert!(matches!(
+            faults[0].fault,
+            Fault::InjectInterrupt { target: 0, irq: 0 }
+        ));
+
+        // Drain at 3ms — should get NMI and second InjectInterrupt
+        let faults = schedule.drain_due(3_000_000);
+        assert_eq!(faults.len(), 2);
+        assert!(matches!(
+            faults[0].fault,
+            Fault::InjectNmi { target: 0, vcpu: 0 }
+        ));
+        assert!(matches!(
+            faults[1].fault,
+            Fault::InjectInterrupt { target: 1, irq: 6 }
+        ));
+
+        assert_eq!(schedule.remaining(), 0);
     }
 }

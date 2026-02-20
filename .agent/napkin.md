@@ -61,6 +61,10 @@
 | 2026-02-20 | self | VcpuExit::Hypercall holds &mut ref into kvm_run | Can't call &mut self methods in match arm; use post-match flag pattern |
 | 2026-02-20 | self | `String::from_utf8_lossy(&vm.build_cmdline())` in tests | Must bind Vec to variable first — temporary dropped while borrowed |
 | 2026-02-20 | self | `acpi_pm_timer_off` is not a real kernel param | Use `nohpet` cmdline + trap MMIO/port reads in VMM instead |
+| 2026-02-20 | self | delegate_task worker called `.nmi()` on VcpuFd | kvm-ioctls 0.19.1 has no `nmi()` method; use raw `ioctl(fd, 0xae9a, 0)` |
+| 2026-02-20 | self | Worker used `vcpu: u32` for NMI target | Use `vcpu: usize` for consistency with rest of crate (usize for indices) |
+| 2026-02-20 | self | Worker classified InjectInterrupt as FaultCategory::Resource | Should be FaultCategory::Interrupt (new category) |
+| 2026-02-20 | self | BugMode::from_str shadows std::str::FromStr trait | Rename to BugMode::parse — clippy `should_implement_trait` |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -224,9 +228,9 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **VMCALL transport**: SDK uses `vmcall` instruction (RAX=48) instead of `outb(0x510)`. KVM_CAP_EXIT_HYPERCALL enables VcpuExit::Hypercall. Fallback to port I/O if host doesn't support it. Changes: protocol (VMCALL_NR), SDK (vmcall asm), VMM (enable_cap + Hypercall arm).
 - **Core pinning**: `VmConfig.core_affinity: Option<usize>` + `SimulationConfig.base_core: Option<usize>`. Uses sched_setaffinity. VM i → core base+i. Eliminates scheduler jitter, cache eviction, NUMA effects.
 - **Hide all time sources**: Added `nohpet` to cmdline. Trap HPET MMIO (0xFED00000, 1KiB) with deterministic values from vTSC. Trap ACPI PM timer port (0x408) with vTSC-derived 24-bit counter at 3.579545 MHz.
+- **Interrupt injection**: `Fault::InjectInterrupt{target, irq}` + `Fault::InjectNmi{target, vcpu}`. IRQ via `set_irq_line()` (edge-triggered pulse), NMI via raw `KVM_NMI` ioctl (0xae9a) on VcpuFd. Controller dispatches at tick boundaries. FaultCategory::Interrupt. Random generation in engine (13 types) and mutator (15 types). Checkpoint serialization. Graceful ENOTTY fallback for NMI. 2 integration tests (VM-level + controller schedule).
 
 ### Remaining Antithesis Items
-- **Interrupt injection**: VMM-initiated interrupts for proactive fault delivery (not just guest-polled)
 - **Input tree exploration**: Branch at SDK hypercall points (natural I/O exchange) instead of fixed tick intervals
 - **Instructions-retired time model**: PMC-based time (Intel-only, configurable)
 - **Massive determinism logging**: High-throughput paranoid mode for debugging

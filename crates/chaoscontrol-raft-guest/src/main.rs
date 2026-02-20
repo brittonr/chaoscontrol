@@ -65,7 +65,7 @@ fn parse_bug_mode() -> BugMode {
     let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
     for token in cmdline.split_whitespace() {
         if let Some(val) = token.strip_prefix("raft_bug=") {
-            return BugMode::from_str(val);
+            return BugMode::parse(val);
         }
     }
     BugMode::None
@@ -96,9 +96,7 @@ fn main() {
     );
 
     // Initialize 3 nodes with the selected bug mode
-    let mut nodes: Vec<Node> = (0..NUM_NODES)
-        .map(|i| Node::new_with_bug(i, bug))
-        .collect();
+    let mut nodes: Vec<Node> = (0..NUM_NODES).map(|i| Node::new_with_bug(i, bug)).collect();
     // Stagger initial election timers
     for (i, node) in nodes.iter_mut().enumerate() {
         node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;

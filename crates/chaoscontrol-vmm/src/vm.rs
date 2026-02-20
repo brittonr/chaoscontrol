@@ -855,10 +855,7 @@ impl DeterministicVm {
             )
         };
 
-        let extra = self
-            .extra_cmdline
-            .as_deref()
-            .unwrap_or("");
+        let extra = self.extra_cmdline.as_deref().unwrap_or("");
 
         let cmdline = format!(
             "console=ttyS0 earlyprintk=serial \
@@ -1195,7 +1192,7 @@ impl DeterministicVm {
             // Idle counter incremented in step() on every exit except
             // SDK/coverage port accesses (which reset it to 0).
             // Detect idle: workload done, guest stopped making SDK calls.
-            
+
             if self.fault_engine.is_setup_complete()
                 && self.exits_since_last_sdk > SDK_IDLE_THRESHOLD
             {
@@ -1379,6 +1376,78 @@ impl DeterministicVm {
             }
         }
         false
+    }
+
+    // ─── Public API: interrupt injection ─────────────────────────────
+
+    /// Inject a hardware interrupt (IRQ) into the VM.
+    ///
+    /// Pulses the specified IRQ line in the in-kernel IRQ chip
+    /// (edge-triggered: assert then deassert). The guest's interrupt
+    /// handler will be invoked on the next VM entry.
+    ///
+    /// Standard x86 IRQs: 0 = PIT timer, 4 = COM1 serial,
+    /// 5-7 = virtio MMIO devices.
+    pub fn inject_interrupt(&mut self, irq: u32) -> Result<(), VmError> {
+        self.vm
+            .set_irq_line(irq, true)
+            .context(CreateIrqChipSnafu)?;
+        self.vm
+            .set_irq_line(irq, false)
+            .context(CreateIrqChipSnafu)?;
+        log::debug!(
+            "Injected IRQ {} (exit_count={}, vtsc={})",
+            irq,
+            self.exit_count,
+            self.virtual_tsc.read()
+        );
+        Ok(())
+    }
+
+    /// Inject a non-maskable interrupt (NMI) into a specific vCPU.
+    ///
+    /// NMIs bypass interrupt masking and are delivered immediately on
+    /// the next VM entry. Used to test crash handlers, watchdog paths,
+    /// and profiling code.
+    ///
+    /// Uses the raw `KVM_NMI` ioctl since kvm-ioctls 0.19 doesn't
+    /// expose a typed wrapper.
+    pub fn inject_nmi(&mut self, vcpu_idx: usize) -> Result<(), VmError> {
+        if vcpu_idx >= self.vcpus.len() {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "vCPU index {} out of range (have {})",
+                    vcpu_idx,
+                    self.vcpus.len()
+                ),
+            });
+        }
+
+        use std::os::unix::io::AsRawFd;
+        // KVM_NMI = _IO(KVMIO, 0x9a) = _IO(0xAE, 0x9a) = 0xae9a
+        const KVM_NMI: libc::c_ulong = 0xae9a;
+
+        let vcpu_fd = self.vcpus[vcpu_idx].as_raw_fd();
+        // SAFETY: KVM_NMI is a well-defined ioctl on valid vCPU fds.
+        // It takes no arguments (third parameter is ignored).
+        let ret = unsafe { libc::ioctl(vcpu_fd, KVM_NMI, 0) };
+
+        if ret == 0 {
+            log::debug!(
+                "Injected NMI into vCPU {} (exit_count={}, vtsc={})",
+                vcpu_idx,
+                self.exit_count,
+                self.virtual_tsc.read()
+            );
+            Ok(())
+        } else {
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ENOTTY) {
+                log::warn!("KVM_NMI not supported on this kernel — skipping");
+                return Ok(()); // Graceful degradation
+            }
+            Err(VmError::Io { source: err })
+        }
     }
 
     // ─── Public API: snapshot / restore ──────────────────────────────
@@ -1829,7 +1898,6 @@ impl DeterministicVm {
                     self.exits_since_last_sdk = 0;
                 } else {
                     self.exits_since_last_sdk += 1;
-                    
                 }
                 self.virtual_tsc.tick();
 
@@ -1851,8 +1919,7 @@ impl DeterministicVm {
                     // TSC ticks to PM timer ticks.
                     let tsc_khz = self.virtual_tsc.tsc_khz() as u64;
                     let pm_ticks = if tsc_khz > 0 {
-                        (tsc as u128 * ACPI_PM_TIMER_FREQ_HZ as u128
-                            / (tsc_khz as u128 * 1000))
+                        (tsc as u128 * ACPI_PM_TIMER_FREQ_HZ as u128 / (tsc_khz as u128 * 1000))
                             as u32
                             & 0x00FF_FFFF // 24-bit wrap
                     } else {

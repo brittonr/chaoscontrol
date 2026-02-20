@@ -173,6 +173,30 @@ pub enum Fault {
         /// Maximum usable memory in bytes.
         limit_bytes: u64,
     },
+
+    // ── Interrupt injection ─────────────────────────────────
+    /// Inject a hardware interrupt (IRQ) into a VM via set_irq_line.
+    ///
+    /// Triggers the specified IRQ line in the in-kernel IRQ chip.
+    /// Standard x86 IRQs:
+    ///   0 = PIT timer, 4 = COM1 serial, 5-7 = virtio MMIO devices.
+    InjectInterrupt {
+        /// Target VM index.
+        target: usize,
+        /// IRQ line number (0-23 for standard x86 PIC/IOAPIC).
+        irq: u32,
+    },
+
+    /// Inject a non-maskable interrupt (NMI) into a VM's vCPU.
+    ///
+    /// NMIs bypass interrupt masking and are delivered immediately.
+    /// Used to test crash handlers, watchdog paths, and profiling code.
+    InjectNmi {
+        /// Target VM index.
+        target: usize,
+        /// Target vCPU index within the VM (0 = BSP).
+        vcpu: usize,
+    },
 }
 
 impl Fault {
@@ -197,7 +221,9 @@ impl Fault {
             | Fault::ProcessRestart { target }
             | Fault::ClockSkew { target, .. }
             | Fault::ClockJump { target, .. }
-            | Fault::MemoryPressure { target, .. } => Some(*target),
+            | Fault::MemoryPressure { target, .. }
+            | Fault::InjectInterrupt { target, .. }
+            | Fault::InjectNmi { target, .. } => Some(*target),
         }
     }
 
@@ -227,6 +253,8 @@ impl Fault {
             Fault::ClockSkew { .. } | Fault::ClockJump { .. } => FaultCategory::Clock,
 
             Fault::MemoryPressure { .. } => FaultCategory::Resource,
+
+            Fault::InjectInterrupt { .. } | Fault::InjectNmi { .. } => FaultCategory::Interrupt,
         }
     }
 }
@@ -303,6 +331,12 @@ impl fmt::Display for Fault {
                 target,
                 limit_bytes,
             } => write!(f, "memory-pressure(vm={target}, limit={limit_bytes})"),
+            Fault::InjectInterrupt { target, irq } => {
+                write!(f, "inject-irq(vm={target}, irq={irq})")
+            }
+            Fault::InjectNmi { target, vcpu } => {
+                write!(f, "inject-nmi(vm={target}, vcpu={vcpu})")
+            }
         }
     }
 }
@@ -315,6 +349,7 @@ pub enum FaultCategory {
     Process,
     Clock,
     Resource,
+    Interrupt,
 }
 
 impl fmt::Display for FaultCategory {
@@ -325,6 +360,7 @@ impl fmt::Display for FaultCategory {
             FaultCategory::Process => write!(f, "process"),
             FaultCategory::Clock => write!(f, "clock"),
             FaultCategory::Resource => write!(f, "resource"),
+            FaultCategory::Interrupt => write!(f, "interrupt"),
         }
     }
 }
@@ -390,5 +426,38 @@ mod tests {
             side_b: vec![1, 2],
         };
         assert_eq!(f.to_string(), "network-partition([0] | [1, 2])");
+    }
+
+    #[test]
+    fn fault_target_inject_interrupt() {
+        let f = Fault::InjectInterrupt { target: 1, irq: 4 };
+        assert_eq!(f.target(), Some(1));
+    }
+
+    #[test]
+    fn fault_target_inject_nmi() {
+        let f = Fault::InjectNmi { target: 2, vcpu: 0 };
+        assert_eq!(f.target(), Some(2));
+    }
+
+    #[test]
+    fn fault_category_interrupt() {
+        assert_eq!(
+            Fault::InjectInterrupt { target: 0, irq: 0 }.category(),
+            FaultCategory::Interrupt
+        );
+        assert_eq!(
+            Fault::InjectNmi { target: 0, vcpu: 0 }.category(),
+            FaultCategory::Interrupt
+        );
+    }
+
+    #[test]
+    fn fault_display_interrupt_variants() {
+        let f = Fault::InjectInterrupt { target: 1, irq: 5 };
+        assert_eq!(f.to_string(), "inject-irq(vm=1, irq=5)");
+
+        let f = Fault::InjectNmi { target: 0, vcpu: 0 };
+        assert_eq!(f.to_string(), "inject-nmi(vm=0, vcpu=0)");
     }
 }

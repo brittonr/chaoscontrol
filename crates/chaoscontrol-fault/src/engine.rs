@@ -338,7 +338,7 @@ impl FaultEngine {
         }
 
         let target = (self.rng.next_u64() as usize) % self.config.num_vms;
-        let fault_type = self.rng.next_u64() % 11;
+        let fault_type = self.rng.next_u64() % 13;
 
         Some(match fault_type {
             0 => Fault::ProcessKill { target },
@@ -381,6 +381,14 @@ impl FaultEngine {
             10 => Fault::PacketDuplicate {
                 target,
                 rate_ppm: ((self.rng.next_u64() % 200_000) + 10_000) as u32, // 1–21 %
+            },
+            11 => Fault::InjectInterrupt {
+                target,
+                irq: (self.rng.next_u64() % 8) as u32, // 0-7: PIT, serial, virtio
+            },
+            12 => Fault::InjectNmi {
+                target,
+                vcpu: 0, // BSP — SMP-aware targeting is future work
             },
             _ => unreachable!(),
         })

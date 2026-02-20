@@ -69,7 +69,7 @@ pub enum BugMode {
 
 impl BugMode {
     /// Parse from a string (for kernel cmdline parsing).
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "fig8" | "fig8_commit" => Self::Fig8Commit,
             "skip_truncate" | "no_truncate" => Self::SkipTruncate,
@@ -588,9 +588,7 @@ impl TestCluster {
 
     /// Create a test cluster with the given bug mode injected into all nodes.
     pub fn new_with_bug(seed: u64, bug: BugMode) -> Self {
-        let mut nodes: Vec<Node> = (0..NUM_NODES)
-            .map(|i| Node::new_with_bug(i, bug))
-            .collect();
+        let mut nodes: Vec<Node> = (0..NUM_NODES).map(|i| Node::new_with_bug(i, bug)).collect();
         for (i, node) in nodes.iter_mut().enumerate() {
             node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;
         }
@@ -2525,25 +2523,19 @@ mod tests {
 
     #[test]
     fn bug_mode_parse() {
-        assert_eq!(BugMode::from_str("fig8"), BugMode::Fig8Commit);
-        assert_eq!(BugMode::from_str("fig8_commit"), BugMode::Fig8Commit);
-        assert_eq!(BugMode::from_str("skip_truncate"), BugMode::SkipTruncate);
-        assert_eq!(BugMode::from_str("no_truncate"), BugMode::SkipTruncate);
+        assert_eq!(BugMode::parse("fig8"), BugMode::Fig8Commit);
+        assert_eq!(BugMode::parse("fig8_commit"), BugMode::Fig8Commit);
+        assert_eq!(BugMode::parse("skip_truncate"), BugMode::SkipTruncate);
+        assert_eq!(BugMode::parse("no_truncate"), BugMode::SkipTruncate);
+        assert_eq!(BugMode::parse("accept_stale"), BugMode::AcceptStaleTerm);
         assert_eq!(
-            BugMode::from_str("accept_stale"),
-            BugMode::AcceptStaleTerm
-        );
-        assert_eq!(
-            BugMode::from_str("leader_no_stepdown"),
+            BugMode::parse("leader_no_stepdown"),
             BugMode::LeaderNoStepdown
         );
-        assert_eq!(BugMode::from_str("double_vote"), BugMode::DoubleVote);
-        assert_eq!(
-            BugMode::from_str("premature_commit"),
-            BugMode::PrematureCommit
-        );
-        assert_eq!(BugMode::from_str("none"), BugMode::None);
-        assert_eq!(BugMode::from_str("unknown"), BugMode::None);
+        assert_eq!(BugMode::parse("double_vote"), BugMode::DoubleVote);
+        assert_eq!(BugMode::parse("premature_commit"), BugMode::PrematureCommit);
+        assert_eq!(BugMode::parse("none"), BugMode::None);
+        assert_eq!(BugMode::parse("unknown"), BugMode::None);
     }
 
     #[test]
@@ -2557,7 +2549,7 @@ mod tests {
             BugMode::DoubleVote,
             BugMode::PrematureCommit,
         ] {
-            assert_eq!(BugMode::from_str(bug.name()), bug);
+            assert_eq!(BugMode::parse(bug.name()), bug);
         }
     }
 
@@ -2649,7 +2641,11 @@ mod tests {
             0,
         );
 
-        assert_eq!(node.log.len(), 2, "correct impl truncates conflicting entry");
+        assert_eq!(
+            node.log.len(),
+            2,
+            "correct impl truncates conflicting entry"
+        );
         assert_eq!(node.log[1].term, 2);
     }
 
@@ -2730,7 +2726,11 @@ mod tests {
             0,
         );
 
-        assert_eq!(node.role, Role::Leader, "bug: leader ignores higher-term AE");
+        assert_eq!(
+            node.role,
+            Role::Leader,
+            "bug: leader ignores higher-term AE"
+        );
         assert_eq!(node.current_term, 3, "bug: term not updated");
     }
 

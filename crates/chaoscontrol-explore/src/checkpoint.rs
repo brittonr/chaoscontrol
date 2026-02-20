@@ -133,6 +133,14 @@ pub enum SerializableFault {
         target: usize,
         limit_bytes: u64,
     },
+    InjectInterrupt {
+        target: usize,
+        irq: u32,
+    },
+    InjectNmi {
+        target: usize,
+        vcpu: usize,
+    },
 }
 
 impl From<&Fault> for SerializableFault {
@@ -226,6 +234,14 @@ impl From<&Fault> for SerializableFault {
             } => SerializableFault::MemoryPressure {
                 target: *target,
                 limit_bytes: *limit_bytes,
+            },
+            Fault::InjectInterrupt { target, irq } => SerializableFault::InjectInterrupt {
+                target: *target,
+                irq: *irq,
+            },
+            Fault::InjectNmi { target, vcpu } => SerializableFault::InjectNmi {
+                target: *target,
+                vcpu: *vcpu,
             },
         }
     }
@@ -322,6 +338,14 @@ impl From<&SerializableFault> for Fault {
             } => Fault::MemoryPressure {
                 target: *target,
                 limit_bytes: *limit_bytes,
+            },
+            SerializableFault::InjectInterrupt { target, irq } => Fault::InjectInterrupt {
+                target: *target,
+                irq: *irq,
+            },
+            SerializableFault::InjectNmi { target, vcpu } => Fault::InjectNmi {
+                target: *target,
+                vcpu: *vcpu,
             },
         }
     }

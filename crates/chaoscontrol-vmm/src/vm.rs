@@ -138,6 +138,12 @@ pub struct VmConfig {
     pub scheduling_strategy: SchedulingStrategy,
     /// Kernel command line (NUL-terminated).
     pub cmdline: Vec<u8>,
+    /// Optional path to a disk image file for the virtio-blk device.
+    ///
+    /// When set, the block device is initialized from this file instead
+    /// of an empty zero-filled buffer. The file is read once at VM
+    /// creation; subsequent snapshot/restore uses copy-on-write.
+    pub disk_image_path: Option<String>,
 }
 
 impl Default for VmConfig {
@@ -183,6 +189,7 @@ impl Default for VmConfig {
                        virtio_mmio.device=4K@0xd0002000:7 \
                        panic=-1\0"
                 .to_vec(),
+            disk_image_path: None,
         }
     }
 }
@@ -247,6 +254,9 @@ pub enum VmError {
 
     #[snafu(display("Snapshot error: {message}"))]
     Snapshot { message: String },
+
+    #[snafu(display("Disk image error: {message}"))]
+    DiskImage { message: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -541,7 +551,8 @@ impl DeterministicVm {
         });
 
         // Create virtio MMIO devices
-        let virtio_devices = Self::create_virtio_devices(config.cpu.seed);
+        let virtio_devices =
+            Self::create_virtio_devices(config.cpu.seed, config.disk_image_path.as_deref())?;
 
         info!(
             "VM created: {} MB memory, {} vCPU(s), TSC {} kHz, seed {}, {} virtio devices",
@@ -624,7 +635,14 @@ impl DeterministicVm {
     }
 
     /// Create the virtio MMIO devices (block, net, entropy).
-    fn create_virtio_devices(seed: u64) -> Vec<VirtioMmioDevice> {
+    ///
+    /// If `disk_image_path` is `Some`, the block device is initialized
+    /// from that file (read once, then copy-on-write for snapshots).
+    /// Otherwise a zero-filled 16 MB disk is created.
+    fn create_virtio_devices(
+        seed: u64,
+        disk_image_path: Option<&str>,
+    ) -> Result<Vec<VirtioMmioDevice>, VmError> {
         use crate::devices::block::DeterministicBlock;
         use crate::devices::net::DeterministicNet;
         use crate::devices::virtio_block::VirtioBlock;
@@ -633,8 +651,21 @@ impl DeterministicVm {
 
         let mut devices = Vec::new();
 
-        // Device 0: virtio-blk (16 MB disk)
-        let disk = DeterministicBlock::new(16 * 1024 * 1024);
+        // Device 0: virtio-blk
+        let disk = match disk_image_path {
+            Some(path) => {
+                info!("Loading disk image: {}", path);
+                DeterministicBlock::from_image_file(path).map_err(|e| VmError::DiskImage {
+                    message: e.to_string(),
+                })?
+            }
+            None => DeterministicBlock::new(16 * 1024 * 1024),
+        };
+        info!(
+            "  Block device: {} bytes ({} MB)",
+            disk.size(),
+            disk.size() / (1024 * 1024)
+        );
         let blk_backend = Box::new(VirtioBlock::new(disk));
         let blk_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0, blk_backend);
         devices.push(blk_device);
@@ -666,7 +697,7 @@ impl DeterministicVm {
             VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2
         );
 
-        devices
+        Ok(devices)
     }
 
     /// Build the kernel command line dynamically based on VM configuration.

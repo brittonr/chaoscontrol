@@ -109,6 +109,13 @@ enum Commands {
         /// Output directory for reports and bug artifacts.
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Path to a disk image file for the virtio-blk device.
+        ///
+        /// When provided, each VM's block device is loaded from this file.
+        /// The file is read once; copy-on-write makes snapshots cheap.
+        #[arg(long)]
+        disk_image: Option<String>,
     },
 
     /// Resume from saved checkpoint.
@@ -150,6 +157,7 @@ fn main() {
             scheduling,
             max_frontier,
             output,
+            disk_image,
         } => cmd_run(
             kernel,
             initrd,
@@ -163,6 +171,7 @@ fn main() {
             scheduling,
             max_frontier,
             output,
+            disk_image,
         ),
         Commands::Resume {
             corpus,
@@ -187,6 +196,7 @@ fn cmd_run(
     scheduling: String,
     max_frontier: usize,
     output: Option<String>,
+    disk_image: Option<String>,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -197,6 +207,13 @@ fn cmd_run(
     if let Some(ref initrd_path) = initrd {
         if !Path::new(initrd_path).exists() {
             eprintln!("Error: initrd file not found: {}", initrd_path);
+            std::process::exit(1);
+        }
+    }
+
+    if let Some(ref disk_image_path) = disk_image {
+        if !Path::new(disk_image_path).exists() {
+            eprintln!("Error: disk image file not found: {}", disk_image_path);
             std::process::exit(1);
         }
     }
@@ -248,6 +265,7 @@ fn cmd_run(
         mutation: MutationConfig::default(),
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
+        disk_image_path: disk_image.clone(),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -268,6 +286,9 @@ fn cmd_run(
     eprintln!("  vCPUs/VM:       {}", vcpus);
     eprintln!("  Scheduling:     {}", scheduling);
     eprintln!("  Max frontier:   {}", max_frontier);
+    if let Some(ref disk_image_path) = disk_image {
+        eprintln!("  Disk image:     {}", disk_image_path);
+    }
     if let Some(ref output_dir) = output {
         eprintln!("  Output:         {}", output_dir);
     }

@@ -390,6 +390,7 @@ mod tests {
                 initrd_path: None,
                 quantum: 100,
                 checkpoint_interval: 100,
+                disk_image_path: None,
             },
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),

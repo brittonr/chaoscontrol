@@ -1,11 +1,27 @@
-//! Deterministic in-memory block device with fault injection.
+//! Deterministic block device with copy-on-write snapshots and fault injection.
 //!
-//! Replaces a real `virtio-blk` backend with a simple byte-vector store that
-//! supports snapshot/restore and programmable fault injection for testing
-//! storage error paths (torn writes, corruption, I/O errors).
+//! Replaces a real `virtio-blk` backend with an in-memory store that supports
+//! efficient snapshot/restore via copy-on-write (CoW) page tracking, and
+//! programmable fault injection for testing storage error paths (torn writes,
+//! corruption, I/O errors).
+//!
+//! # Copy-on-Write Design
+//!
+//! The block device maintains a shared, immutable **base image** (`Arc<Vec<u8>>`)
+//! and a per-instance **dirty page map** (`BTreeMap<usize, Vec<u8>>`). Writes
+//! copy the affected 4 KB page into the dirty map on first touch; subsequent
+//! writes to the same page modify the dirty copy in place.
+//!
+//! Snapshots are cheap: clone the dirty map and bump the `Arc` reference count.
+//! For a 512 MB disk image where only 1 MB has been modified, a snapshot costs
+//! ~256 dirty-page clones (~1 MB) instead of a full 512 MB copy.
 
 use snafu::Snafu;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::Arc;
+
+/// Page size for copy-on-write tracking (4 KB, matching Linux page size).
+const PAGE_SIZE: usize = 4096;
 
 /// Errors returned by block device operations.
 #[derive(Clone, Debug, Snafu)]
@@ -32,6 +48,10 @@ pub enum BlockError {
         "injected torn write at offset {offset}: only {bytes_written} bytes written"
     ))]
     InjectedTornWrite { offset: u64, bytes_written: usize },
+
+    /// Failed to read a disk image file.
+    #[snafu(display("failed to read disk image '{path}': {reason}"))]
+    ImageRead { path: String, reason: String },
 }
 
 /// A fault that can be injected into the block device.
@@ -64,16 +84,21 @@ pub struct BlockStats {
     pub bytes_written: u64,
 }
 
-/// Snapshot of a [`DeterministicBlock`], capturing the full backing store,
-/// pending faults, and statistics.
+/// Snapshot of a [`DeterministicBlock`], capturing CoW state, pending
+/// faults, and statistics.
+///
+/// Cheap to create: the base image is shared via `Arc`, only dirty pages
+/// and metadata are cloned.
 #[derive(Clone, Debug)]
 pub struct BlockSnapshot {
-    data: Vec<u8>,
+    base: Arc<Vec<u8>>,
+    dirty: BTreeMap<usize, Vec<u8>>,
     faults: VecDeque<BlockFault>,
     stats: BlockStats,
 }
 
-/// An in-memory block device with deterministic fault injection.
+/// An in-memory block device with copy-on-write snapshots and deterministic
+/// fault injection.
 ///
 /// # Examples
 ///
@@ -89,8 +114,13 @@ pub struct BlockSnapshot {
 /// ```
 #[derive(Clone, Debug)]
 pub struct DeterministicBlock {
-    data: Vec<u8>,
+    /// Immutable base image, shared across snapshots.
+    base: Arc<Vec<u8>>,
+    /// Dirty pages: page index → page data (4 KB each, last page may be shorter).
+    dirty: BTreeMap<usize, Vec<u8>>,
+    /// Pending fault injection queue.
     faults: VecDeque<BlockFault>,
+    /// I/O statistics.
     stats: BlockStats,
 }
 
@@ -98,7 +128,8 @@ impl DeterministicBlock {
     /// Create an empty (zero-filled) block device of `size_bytes`.
     pub fn new(size_bytes: usize) -> Self {
         Self {
-            data: vec![0u8; size_bytes],
+            base: Arc::new(vec![0u8; size_bytes]),
+            dirty: BTreeMap::new(),
             faults: VecDeque::new(),
             stats: BlockStats::default(),
         }
@@ -107,15 +138,40 @@ impl DeterministicBlock {
     /// Create a block device pre-loaded with `data` (e.g. a disk image).
     pub fn from_image(data: Vec<u8>) -> Self {
         Self {
-            data,
+            base: Arc::new(data),
+            dirty: BTreeMap::new(),
             faults: VecDeque::new(),
             stats: BlockStats::default(),
         }
     }
 
+    /// Create a block device from a disk image file.
+    ///
+    /// Reads the entire file into memory as the base image. The file is
+    /// only read once; subsequent snapshots share the data via `Arc`.
+    pub fn from_image_file(path: &str) -> Result<Self, BlockError> {
+        let data = std::fs::read(path).map_err(|e| BlockError::ImageRead {
+            path: path.to_string(),
+            reason: e.to_string(),
+        })?;
+        Ok(Self::from_image(data))
+    }
+
     /// Size of the backing store in bytes.
     pub fn size(&self) -> u64 {
-        self.data.len() as u64
+        self.base.len() as u64
+    }
+
+    /// Number of dirty (modified) pages.
+    ///
+    /// Useful for diagnostics: a snapshot's cost is proportional to this.
+    pub fn dirty_page_count(&self) -> usize {
+        self.dirty.len()
+    }
+
+    /// Approximate memory overhead from dirty pages (bytes).
+    pub fn dirty_bytes(&self) -> usize {
+        self.dirty.values().map(|p| p.len()).sum()
     }
 
     /// Read `buf.len()` bytes starting at `offset`.
@@ -133,9 +189,7 @@ impl DeterministicBlock {
             }
         }
 
-        let start = offset as usize;
-        let end = start + buf.len();
-        buf.copy_from_slice(&self.data[start..end]);
+        self.cow_read(offset as usize, buf);
 
         self.stats.reads += 1;
         self.stats.bytes_read += len;
@@ -166,10 +220,8 @@ impl DeterministicBlock {
                     offset,
                     bytes_written,
                 } => {
-                    // Partial write: only persist the first `bytes_written` bytes.
                     let actual = bytes_written.min(data.len());
-                    let start = offset as usize;
-                    self.data[start..start + actual].copy_from_slice(&data[..actual]);
+                    self.cow_write(offset as usize, &data[..actual]);
                     self.stats.writes += 1;
                     self.stats.bytes_written += actual as u64;
                     return InjectedTornWriteSnafu {
@@ -183,15 +235,10 @@ impl DeterministicBlock {
                     len: corrupt_len,
                 } => {
                     // Write the data normally, then overwrite with garbage.
-                    let start = offset as usize;
-                    let end = start + data.len();
-                    self.data[start..end].copy_from_slice(data);
-
-                    // Corrupt: fill the first `corrupt_len` bytes with 0xFF.
-                    let corrupt_end = (start + corrupt_len).min(self.data.len());
-                    for byte in &mut self.data[start..corrupt_end] {
-                        *byte = 0xFF;
-                    }
+                    self.cow_write(offset as usize, data);
+                    let corrupt_end = corrupt_len.min(data.len());
+                    let garbage = vec![0xFF; corrupt_end];
+                    self.cow_write(offset as usize, &garbage);
                     self.stats.writes += 1;
                     self.stats.bytes_written += data.len() as u64;
                     return Ok(());
@@ -200,9 +247,7 @@ impl DeterministicBlock {
             }
         }
 
-        let start = offset as usize;
-        let end = start + data.len();
-        self.data[start..end].copy_from_slice(data);
+        self.cow_write(offset as usize, data);
 
         self.stats.writes += 1;
         self.stats.bytes_written += len;
@@ -216,19 +261,26 @@ impl DeterministicBlock {
         self.faults.push_back(fault);
     }
 
-    /// Capture a full snapshot of the device (backing data + faults + stats).
+    /// Capture a snapshot of the device (CoW state + faults + stats).
+    ///
+    /// Cost is proportional to the number of dirty pages, not the device
+    /// size. The base image is shared via `Arc` reference counting.
     pub fn snapshot(&self) -> BlockSnapshot {
         BlockSnapshot {
-            data: self.data.clone(),
+            base: Arc::clone(&self.base),
+            dirty: self.dirty.clone(),
             faults: self.faults.clone(),
             stats: self.stats.clone(),
         }
     }
 
     /// Restore a device from a snapshot.
+    ///
+    /// Shares the base image with the snapshot via `Arc`.
     pub fn restore(snapshot: &BlockSnapshot) -> Self {
         Self {
-            data: snapshot.data.clone(),
+            base: Arc::clone(&snapshot.base),
+            dirty: snapshot.dirty.clone(),
             faults: snapshot.faults.clone(),
             stats: snapshot.stats.clone(),
         }
@@ -239,19 +291,90 @@ impl DeterministicBlock {
         &self.stats
     }
 
-    // ── internal helpers ──────────────────────────────────────────────
-
-    /// Check whether `[offset, offset+len)` is within the device.
+    /// Flatten CoW layers into a contiguous byte vector.
     ///
-    /// Delegates to [`crate::verified::block::check_bounds`].
-    fn check_bounds(&self, offset: u64, len: u64) -> Result<(), BlockError> {
-        crate::verified::block::check_bounds(self.data.len() as u64, offset, len)
+    /// Useful for inspection, debugging, or writing the final disk state
+    /// to a file. Returns a full copy of the device contents.
+    pub fn materialize(&self) -> Vec<u8> {
+        let mut data = (*self.base).clone();
+        for (&page_idx, page_data) in &self.dirty {
+            let start = page_idx * PAGE_SIZE;
+            let end = start + page_data.len();
+            data[start..end].copy_from_slice(page_data);
+        }
+        data
     }
 
-    /// Find the first fault in the queue matching `predicate` and return its
-    /// index.
+    // ── CoW internals ─────────────────────────────────────────────
+
+    /// Read bytes from the CoW layers into `buf`.
     ///
-    /// Delegates to [`crate::verified::block::find_matching_fault`].
+    /// For each 4 KB page spanned by the read, checks the dirty map first;
+    /// falls back to the base image for clean pages.
+    fn cow_read(&self, offset: usize, buf: &mut [u8]) {
+        let mut pos = 0;
+        while pos < buf.len() {
+            let abs = offset + pos;
+            let page_idx = abs / PAGE_SIZE;
+            let in_page = abs % PAGE_SIZE;
+            let page_remaining = self.page_len(page_idx) - in_page;
+            let chunk = page_remaining.min(buf.len() - pos);
+
+            if let Some(dirty_page) = self.dirty.get(&page_idx) {
+                buf[pos..pos + chunk].copy_from_slice(&dirty_page[in_page..in_page + chunk]);
+            } else {
+                let base_off = page_idx * PAGE_SIZE + in_page;
+                buf[pos..pos + chunk].copy_from_slice(&self.base[base_off..base_off + chunk]);
+            }
+
+            pos += chunk;
+        }
+    }
+
+    /// Write bytes through the CoW layer.
+    ///
+    /// For each 4 KB page touched, ensures a dirty copy exists (copying
+    /// from the base image on first write), then modifies the dirty copy.
+    fn cow_write(&mut self, offset: usize, data: &[u8]) {
+        let mut pos = 0;
+        while pos < data.len() {
+            let abs = offset + pos;
+            let page_idx = abs / PAGE_SIZE;
+            let in_page = abs % PAGE_SIZE;
+            let page_remaining = self.page_len(page_idx) - in_page;
+            let chunk = page_remaining.min(data.len() - pos);
+
+            let dirty_page = self.ensure_dirty(page_idx);
+            dirty_page[in_page..in_page + chunk].copy_from_slice(&data[pos..pos + chunk]);
+
+            pos += chunk;
+        }
+    }
+
+    /// Ensure a dirty copy of the given page exists, creating one from
+    /// the base image if needed. Returns a mutable reference to the page.
+    fn ensure_dirty(&mut self, page_idx: usize) -> &mut Vec<u8> {
+        self.dirty.entry(page_idx).or_insert_with(|| {
+            let start = page_idx * PAGE_SIZE;
+            let end = (start + PAGE_SIZE).min(self.base.len());
+            self.base[start..end].to_vec()
+        })
+    }
+
+    /// Length of the given page (4096 for all but possibly the last page).
+    fn page_len(&self, page_idx: usize) -> usize {
+        let start = page_idx * PAGE_SIZE;
+        (start + PAGE_SIZE).min(self.base.len()) - start
+    }
+
+    // ── bounds / fault helpers ────────────────────────────────────
+
+    /// Check whether `[offset, offset+len)` is within the device.
+    fn check_bounds(&self, offset: u64, len: u64) -> Result<(), BlockError> {
+        crate::verified::block::check_bounds(self.base.len() as u64, offset, len)
+    }
+
+    /// Find the first fault in the queue matching `predicate`.
     fn find_fault(&self, predicate: impl Fn(&BlockFault) -> bool) -> Option<usize> {
         crate::verified::block::find_matching_fault(&self.faults, predicate)
     }
@@ -260,6 +383,8 @@ impl DeterministicBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── basic read/write ─────────────────────────────────────────
 
     #[test]
     fn read_write_roundtrip() {
@@ -295,6 +420,8 @@ mod tests {
         let err = blk.write(510, &[0u8; 8]).unwrap_err();
         assert!(matches!(err, BlockError::OutOfBounds { .. }));
     }
+
+    // ── fault injection ──────────────────────────────────────────
 
     #[test]
     fn injected_read_error() {
@@ -371,6 +498,8 @@ mod tests {
         blk.read(0, &mut buf).unwrap();
     }
 
+    // ── stats ────────────────────────────────────────────────────
+
     #[test]
     fn stats_tracking() {
         let mut blk = DeterministicBlock::new(1024);
@@ -385,6 +514,8 @@ mod tests {
         assert_eq!(blk.stats().reads, 1);
         assert_eq!(blk.stats().bytes_read, 64);
     }
+
+    // ── snapshot / restore ───────────────────────────────────────
 
     #[test]
     fn snapshot_restore() {
@@ -419,5 +550,246 @@ mod tests {
 
         let blk2 = DeterministicBlock::from_image(vec![0; 8192]);
         assert_eq!(blk2.size(), 8192);
+    }
+
+    // ── CoW-specific tests ───────────────────────────────────────
+
+    #[test]
+    fn cow_no_dirty_pages_on_read_only() {
+        let image = vec![0xAB; 8192];
+        let mut blk = DeterministicBlock::from_image(image);
+
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        blk.read(4096, &mut buf).unwrap();
+
+        assert_eq!(
+            blk.dirty_page_count(),
+            0,
+            "reads must not create dirty pages"
+        );
+    }
+
+    #[test]
+    fn cow_single_page_write() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.write(0, &[0xAA; 100]).unwrap();
+
+        assert_eq!(
+            blk.dirty_page_count(),
+            1,
+            "write within one page = 1 dirty page"
+        );
+    }
+
+    #[test]
+    fn cow_cross_page_write() {
+        let mut blk = DeterministicBlock::new(8192);
+        // Write spanning page boundary (page 0 and page 1)
+        blk.write(4090, &[0xBB; 20]).unwrap();
+
+        assert_eq!(
+            blk.dirty_page_count(),
+            2,
+            "cross-page write = 2 dirty pages"
+        );
+
+        let mut buf = [0u8; 20];
+        blk.read(4090, &mut buf).unwrap();
+        assert_eq!(buf, [0xBB; 20]);
+    }
+
+    #[test]
+    fn cow_snapshot_shares_base() {
+        let image = vec![0xCC; 16384]; // 4 pages
+        let mut blk = DeterministicBlock::from_image(image);
+
+        // Dirty only page 0
+        blk.write(0, &[0xDD; 512]).unwrap();
+        assert_eq!(blk.dirty_page_count(), 1);
+
+        let snap = blk.snapshot();
+
+        // After snapshot, original and snapshot share the same base Arc
+        assert!(Arc::ptr_eq(&blk.base, &snap.base));
+
+        // Snapshot has the same dirty page count
+        let restored = DeterministicBlock::restore(&snap);
+        assert_eq!(restored.dirty_page_count(), 1);
+    }
+
+    #[test]
+    fn cow_snapshot_isolation() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.write(0, b"before snap").unwrap();
+
+        let snap = blk.snapshot();
+
+        // Mutate original (different page)
+        blk.write(4096, b"after snap").unwrap();
+
+        // Restore from snapshot — should not see the mutation
+        let mut restored = DeterministicBlock::restore(&snap);
+        let mut buf = [0u8; 10];
+        restored.read(4096, &mut buf).unwrap();
+        assert_eq!(
+            buf, [0u8; 10],
+            "restored device must not see post-snapshot writes"
+        );
+    }
+
+    #[test]
+    fn cow_materialize() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.write(0, &[0xAA; 100]).unwrap();
+        blk.write(4096, &[0xBB; 200]).unwrap();
+
+        let flat = blk.materialize();
+        assert_eq!(flat.len(), 8192);
+        assert_eq!(&flat[0..100], &[0xAA; 100]);
+        assert_eq!(&flat[100..4096], &vec![0u8; 3996]);
+        assert_eq!(&flat[4096..4296], &[0xBB; 200]);
+    }
+
+    #[test]
+    fn cow_multiple_snapshots_share_base() {
+        let image = vec![0x11; 65536]; // 16 pages
+        let mut blk = DeterministicBlock::from_image(image);
+
+        // Write different pages
+        blk.write(0, &[0x22; 512]).unwrap(); // page 0
+        let snap1 = blk.snapshot();
+
+        blk.write(4096, &[0x33; 512]).unwrap(); // page 1
+        let snap2 = blk.snapshot();
+
+        blk.write(8192, &[0x44; 512]).unwrap(); // page 2
+        let snap3 = blk.snapshot();
+
+        // All snapshots share the same base
+        assert!(Arc::ptr_eq(&snap1.base, &snap2.base));
+        assert!(Arc::ptr_eq(&snap2.base, &snap3.base));
+
+        // But have different dirty page counts
+        let r1 = DeterministicBlock::restore(&snap1);
+        let r2 = DeterministicBlock::restore(&snap2);
+        let r3 = DeterministicBlock::restore(&snap3);
+        assert_eq!(r1.dirty_page_count(), 1);
+        assert_eq!(r2.dirty_page_count(), 2);
+        assert_eq!(r3.dirty_page_count(), 3);
+    }
+
+    #[test]
+    fn cow_dirty_bytes() {
+        let mut blk = DeterministicBlock::new(8192);
+        assert_eq!(blk.dirty_bytes(), 0);
+
+        blk.write(0, &[1u8; 10]).unwrap(); // dirties page 0 (4096 bytes)
+        assert_eq!(blk.dirty_bytes(), 4096);
+
+        blk.write(4096, &[2u8; 10]).unwrap(); // dirties page 1 (4096 bytes)
+        assert_eq!(blk.dirty_bytes(), 8192);
+    }
+
+    #[test]
+    fn cow_last_page_partial() {
+        // Device size not a multiple of PAGE_SIZE
+        let mut blk = DeterministicBlock::new(5000);
+        assert_eq!(blk.size(), 5000);
+
+        // Write to the last partial page (page 1: bytes 4096..5000 = 904 bytes)
+        blk.write(4096, &[0xEE; 904]).unwrap();
+        assert_eq!(blk.dirty_page_count(), 1);
+
+        let mut buf = [0u8; 904];
+        blk.read(4096, &mut buf).unwrap();
+        assert_eq!(buf, [0xEE; 904]);
+    }
+
+    #[test]
+    fn cow_from_image_file_not_found() {
+        let err = DeterministicBlock::from_image_file("/nonexistent/disk.img").unwrap_err();
+        assert!(matches!(err, BlockError::ImageRead { .. }));
+    }
+
+    #[test]
+    fn cow_from_image_file_roundtrip() {
+        // Create a temp file with known content
+        let dir = std::env::temp_dir().join("chaoscontrol-block-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test.img");
+        let data = vec![0x42; 8192];
+        std::fs::write(&path, &data).unwrap();
+
+        let mut blk = DeterministicBlock::from_image_file(path.to_str().unwrap()).unwrap();
+        let mut buf = [0u8; 8192];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(buf.to_vec(), data);
+        assert_eq!(blk.dirty_page_count(), 0);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn cow_write_then_snapshot_then_diverge() {
+        // Simulates exploration: base → write → snapshot → two divergent branches
+        let mut blk = DeterministicBlock::from_image(vec![0u8; 16384]);
+
+        // Common prefix
+        blk.write(0, b"shared state").unwrap();
+        let snap = blk.snapshot();
+
+        // Branch A: writes to page 1
+        let mut branch_a = DeterministicBlock::restore(&snap);
+        branch_a.write(4096, b"branch A data").unwrap();
+
+        // Branch B: writes to page 2
+        let mut branch_b = DeterministicBlock::restore(&snap);
+        branch_b.write(8192, b"branch B data").unwrap();
+
+        // Verify isolation
+        let mut buf_a = [0u8; 13];
+        branch_a.read(4096, &mut buf_a).unwrap();
+        assert_eq!(&buf_a, b"branch A data");
+
+        let mut buf_b = [0u8; 13];
+        branch_b.read(8192, &mut buf_b).unwrap();
+        assert_eq!(&buf_b, b"branch B data");
+
+        // Branch A should NOT see branch B's write
+        let mut check = [0u8; 13];
+        branch_a.read(8192, &mut check).unwrap();
+        assert_eq!(check, [0u8; 13]);
+
+        // Branch B should NOT see branch A's write
+        branch_b.read(4096, &mut check).unwrap();
+        assert_eq!(check, [0u8; 13]);
+
+        // Both share the same base
+        assert!(Arc::ptr_eq(&branch_a.base, &branch_b.base));
+    }
+
+    #[test]
+    fn cow_fault_injection_through_cow() {
+        // Verify fault injection works correctly with CoW layer
+        let mut blk = DeterministicBlock::from_image(vec![0u8; 8192]);
+
+        // Write, snapshot, inject fault, restore
+        blk.write(0, &[0xAA; 512]).unwrap();
+        blk.inject_fault(BlockFault::TornWrite {
+            offset: 0,
+            bytes_written: 4,
+        });
+        let snap = blk.snapshot();
+
+        let mut restored = DeterministicBlock::restore(&snap);
+        let err = restored.write(0, &[0xBB; 512]).unwrap_err();
+        assert!(matches!(err, BlockError::InjectedTornWrite { .. }));
+
+        // Only 4 bytes should have been written
+        let mut buf = [0u8; 512];
+        restored.read(0, &mut buf).unwrap();
+        assert_eq!(&buf[..4], &[0xBB; 4]);
+        assert_eq!(&buf[4..512], &[0xAA; 508]);
     }
 }

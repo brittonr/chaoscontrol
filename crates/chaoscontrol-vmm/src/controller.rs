@@ -37,6 +37,11 @@ pub struct SimulationConfig {
     pub quantum: u64,
     /// Fault schedule to execute.
     pub schedule: FaultSchedule,
+    /// Optional disk image path for virtio-blk devices.
+    ///
+    /// When set, each VM's block device is initialized from this file.
+    /// The file is read once per VM; copy-on-write makes snapshots cheap.
+    pub disk_image_path: Option<String>,
 }
 
 impl Default for SimulationConfig {
@@ -49,6 +54,7 @@ impl Default for SimulationConfig {
             seed: 42,
             quantum: 100,
             schedule: FaultSchedule::default(),
+            disk_image_path: None,
         }
     }
 }
@@ -572,6 +578,7 @@ impl SimulationController {
             // Derive per-VM seed from master seed and VM index
             let mut vm_config = config.vm_config.clone();
             vm_config.cpu.seed = config.seed.wrapping_add(i as u64);
+            vm_config.disk_image_path = config.disk_image_path.clone();
 
             let mut vm = DeterministicVm::new(vm_config)?;
             vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;

@@ -49,6 +49,9 @@ pub struct RecordingConfig {
     pub quantum: u64,
     /// Take a checkpoint every N ticks.
     pub checkpoint_interval: u64,
+    /// Optional disk image path for virtio-blk devices.
+    #[serde(default)]
+    pub disk_image_path: Option<String>,
 }
 
 /// An event recorded during execution.
@@ -218,6 +221,7 @@ mod tests {
             initrd_path: None,
             quantum: 100,
             checkpoint_interval: 1000,
+            disk_image_path: None,
         }
     }
 

@@ -42,6 +42,9 @@ pub struct CheckpointConfig {
     pub max_frontier: usize,
     pub quantum: u64,
     pub coverage_gpa: u64,
+    /// Optional disk image path (defaults to None for backward compat).
+    #[serde(default)]
+    pub disk_image_path: Option<String>,
 }
 
 /// Serializable fault representation.
@@ -461,6 +464,7 @@ mod tests {
                 max_frontier: 50,
                 quantum: 100,
                 coverage_gpa: 0x1000000,
+                disk_image_path: None,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -498,6 +502,7 @@ mod tests {
                 max_frontier: 25,
                 quantum: 50,
                 coverage_gpa: 0x2000000,
+                disk_image_path: None,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],

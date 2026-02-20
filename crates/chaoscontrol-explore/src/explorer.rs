@@ -61,6 +61,10 @@ pub struct ExplorerConfig {
     pub coverage_gpa: u64,
     /// Optional output directory for checkpoints and reports.
     pub output_dir: Option<String>,
+    /// Optional disk image path for virtio-blk devices.
+    ///
+    /// When set, each VM's block device is loaded from this file.
+    pub disk_image_path: Option<String>,
 }
 
 impl Default for ExplorerConfig {
@@ -80,6 +84,7 @@ impl Default for ExplorerConfig {
             mutation: MutationConfig::default(),
             coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
             output_dir: None,
+            disk_image_path: None,
         }
     }
 }
@@ -291,6 +296,7 @@ impl Explorer {
             seed: self.config.seed,
             quantum: self.config.quantum,
             schedule: FaultSchedule::new(),
+            disk_image_path: self.config.disk_image_path.clone(),
         };
 
         self.controller = Some(SimulationController::new(sim_config)?);
@@ -541,6 +547,7 @@ impl Explorer {
             max_frontier: self.config.max_frontier,
             quantum: self.config.quantum,
             coverage_gpa: self.config.coverage_gpa,
+            disk_image_path: self.config.disk_image_path.clone(),
         };
 
         let bugs: Vec<SerializableBug> = self.corpus.bugs().iter().map(|b| b.into()).collect();
@@ -578,6 +585,7 @@ impl Explorer {
             mutation: MutationConfig::default(),
             coverage_gpa: checkpoint.config.coverage_gpa,
             output_dir: None, // Will be set by caller if needed
+            disk_image_path: checkpoint.config.disk_image_path,
         };
 
         let frontier = Frontier::new(config.max_frontier);

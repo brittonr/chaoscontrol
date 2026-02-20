@@ -64,7 +64,10 @@ fn main() {
     println!();
     println!("Guest output:");
     for line in serial.lines() {
-        if line.contains("chaoscontrol-guest") || line.contains("heartbeat") || line.contains("kcov") {
+        if line.contains("chaoscontrol-guest")
+            || line.contains("heartbeat")
+            || line.contains("kcov")
+        {
             println!("  {line}");
         }
     }

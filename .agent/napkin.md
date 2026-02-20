@@ -169,6 +169,19 @@
   6. PIT channel 2 frozen (count_load_time = i64::MAX / 2), CPUID 0x15 provides 3GHz
   7. Serial verified with `strip_nondeterministic()` (strips timestamps, Memory line, TSC MHz)
 
+## Copy-on-Write Block Device (2026-02-19)
+- **CoW architecture**: `base: Arc<Vec<u8>>` (shared immutable) + `dirty: BTreeMap<usize, Vec<u8>>` (4KB page granularity)
+- **Snapshot cost**: O(dirty pages), not O(device size). 512MB image with 1MB dirty = ~1MB per snapshot
+- **from_image_file()**: reads disk image once, wraps in Arc for sharing
+- **Page math**: `page_idx = offset / 4096`, handle last partial page for non-4K-aligned sizes
+- **materialize()**: flattens CoW into contiguous Vec for inspection/export
+- **Config plumbing**: `disk_image_path: Option<String>` through VmConfig → SimulationConfig → ExplorerConfig → CLI
+- **CLI**: `--disk-image <path>` on chaoscontrol-explore
+- **Checkpoint**: `disk_image_path` saved in CheckpointConfig with `#[serde(default)]` for backward compat
+- **RecordingConfig**: `disk_image_path` with `#[serde(default)]` for backward compat
+- **BlockError::ImageRead**: stores path + reason as strings (std::io::Error doesn't impl Clone)
+- **667 tests pass**, 13 new CoW-specific tests
+
 ## Completed (2026-02-18 session)
 1. ✅ Fix virtual TSC: sync_tsc_to_guest() writes virtual TSC to IA32_TSC MSR before every vcpu.run()
 2. ✅ Multi-VM SimulationController (round-robin scheduling, NetworkFabric, fault dispatch)

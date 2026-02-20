@@ -29,6 +29,7 @@
 //!     initrd_path: None,
 //!     quantum: 100,
 //!     checkpoint_interval: 1000, // Checkpoint every 1000 ticks
+//!     disk_image_path: None,
 //! };
 //!
 //! let schedule = FaultSchedule::new();
@@ -192,6 +193,7 @@ mod tests {
             initrd_path: None,
             quantum: 100,
             checkpoint_interval: 1000,
+            disk_image_path: None,
         };
 
         // EventFilter
@@ -213,6 +215,7 @@ mod tests {
             initrd_path: None,
             quantum: 100,
             checkpoint_interval: 1000,
+            disk_image_path: None,
         };
 
         let schedule = FaultSchedule::new();

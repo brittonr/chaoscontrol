@@ -329,6 +329,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -377,6 +378,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -413,6 +415,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -546,6 +549,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -624,6 +628,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -689,6 +694,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -783,6 +789,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -882,6 +889,7 @@ fn main() {
                 seed: 77,
                 quantum: 5000,
                 schedule,
+                disk_image_path: None,
             }
         };
 
@@ -1005,6 +1013,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1096,6 +1105,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule,
+            disk_image_path: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1205,6 +1215,7 @@ fn main() {
                 seed: 42,
                 quantum: 5000,
                 schedule: schedule.clone(),
+                disk_image_path: None,
             };
 
             // Run controller to a point, snapshot, then continue with sends
@@ -1332,6 +1343,7 @@ fn main() {
                 seed,
                 quantum: 5000,
                 schedule: make_schedule(),
+                disk_image_path: None,
             };
 
             let collect_traffic = |config: SimulationConfig| -> (Vec<u64>, u64) {
@@ -1428,6 +1440,7 @@ fn main() {
             seed: 42,
             quantum: 5000,
             schedule: schedule.clone(),
+            disk_image_path: None,
         };
 
         let collect_stats = |config: SimulationConfig| -> NetworkStats {
@@ -1730,7 +1743,10 @@ fn main() {
             // Coverage bitmap should have more edges with KCOV
             let bitmap = vm.read_coverage_bitmap();
             let edges = bitmap.iter().filter(|&&b| b > 0).count();
-            println!("    → Coverage bitmap: {} edges (userspace + kernel)", edges);
+            println!(
+                "    → Coverage bitmap: {} edges (userspace + kernel)",
+                edges
+            );
         } else if output.contains("kcov=unavailable") {
             println!();
             println!("    → Kernel lacks CONFIG_KCOV — userspace coverage only");

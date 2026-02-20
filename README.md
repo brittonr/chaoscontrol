@@ -33,11 +33,15 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
 - **Instant restore**: Resume execution from any captured checkpoint
 - **Fork support**: Create divergent execution paths from a single
   snapshot point
+- **Copy-on-write block device**: Snapshots share the base disk image
+  via `Arc`; only dirty 4 KB pages are cloned — a 512 MB disk with 1 MB
+  of writes costs ~1 MB per snapshot, not 512 MB
 
 ### Deterministic Devices
 - **Entropy**: Seeded ChaCha20 PRNG replacing hardware RNG, with
   snapshot/restore and reseed for exploration
-- **Block**: In-memory block device with fault injection (read errors,
+- **Block**: Copy-on-write block device with optional disk image file
+  backing (`--disk-image`). Supports fault injection (read errors,
   write errors, torn writes, corruption)
 - **Network**: Simulated network with RX/TX queues, latency, jitter,
   bandwidth limiting, packet loss/corruption/reorder/duplication for
@@ -111,7 +115,7 @@ nix develop
 # Build
 cargo build
 
-# Run tests (616 unit + doc tests)
+# Run tests (667 unit + doc tests)
 cargo test
 
 # Boot a kernel
@@ -123,6 +127,12 @@ cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 # Exploration — coverage-guided fault schedule search
 cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
+  --vms 3 --rounds 200 --branches 16 --output results/
+
+# Exploration with persistent disk image
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel <kernel-path> --initrd <initrd-path> \
+  --disk-image <path-to-ext4.img> \
   --vms 3 --rounds 200 --branches 16 --output results/
 
 # Replay — reproduce a recorded session

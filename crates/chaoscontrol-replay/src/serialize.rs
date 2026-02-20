@@ -156,6 +156,7 @@ mod tests {
                 initrd_path: Some("/test/initrd".to_string()),
                 quantum: 100,
                 checkpoint_interval: 1000,
+                disk_image_path: None,
             },
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),

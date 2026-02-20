@@ -81,6 +81,7 @@ impl SimulationRunner for RealSimulationRunner {
             seed,
             quantum: config.quantum,
             schedule,
+            disk_image_path: config.disk_image_path.clone(),
         };
 
         let controller = SimulationController::new(sim_config)?;
@@ -472,6 +473,7 @@ mod tests {
                 initrd_path: None,
                 quantum: 100,
                 checkpoint_interval: 1000,
+                disk_image_path: None,
             },
             checkpoints,
             schedule: FaultSchedule::new(),

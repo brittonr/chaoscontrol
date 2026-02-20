@@ -330,6 +330,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -379,6 +380,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -416,6 +418,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -550,6 +553,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -629,6 +633,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -695,6 +700,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -790,6 +796,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -890,6 +897,7 @@ fn main() {
                 quantum: 5000,
                 schedule,
                 disk_image_path: None,
+            base_core: None,
             }
         };
 
@@ -1014,6 +1022,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1106,6 +1115,7 @@ fn main() {
             quantum: 5000,
             schedule,
             disk_image_path: None,
+            base_core: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1216,6 +1226,7 @@ fn main() {
                 quantum: 5000,
                 schedule: schedule.clone(),
                 disk_image_path: None,
+            base_core: None,
             };
 
             // Run controller to a point, snapshot, then continue with sends
@@ -1344,6 +1355,7 @@ fn main() {
                 quantum: 5000,
                 schedule: make_schedule(),
                 disk_image_path: None,
+            base_core: None,
             };
 
             let collect_traffic = |config: SimulationConfig| -> (Vec<u64>, u64) {
@@ -1441,6 +1453,7 @@ fn main() {
             quantum: 5000,
             schedule: schedule.clone(),
             disk_image_path: None,
+            base_core: None,
         };
 
         let collect_stats = |config: SimulationConfig| -> NetworkStats {

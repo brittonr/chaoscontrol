@@ -82,6 +82,7 @@ impl SimulationRunner for RealSimulationRunner {
             quantum: config.quantum,
             schedule,
             disk_image_path: config.disk_image_path.clone(),
+            base_core: None,
         };
 
         let controller = SimulationController::new(sim_config)?;

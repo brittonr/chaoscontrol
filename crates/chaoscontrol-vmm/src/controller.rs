@@ -42,6 +42,16 @@ pub struct SimulationConfig {
     /// When set, each VM's block device is initialized from this file.
     /// The file is read once per VM; copy-on-write makes snapshots cheap.
     pub disk_image_path: Option<String>,
+
+    /// Base core index for CPU affinity pinning.
+    ///
+    /// When set, VM `i` is pinned to core `base_core + i`. This matches
+    /// the Antithesis model where each VM runs on a dedicated physical
+    /// core, eliminating host scheduler jitter and ensuring consistent
+    /// PMC behavior.
+    ///
+    /// When `None`, no affinity is set (OS scheduler decides).
+    pub base_core: Option<usize>,
 }
 
 impl Default for SimulationConfig {
@@ -55,6 +65,7 @@ impl Default for SimulationConfig {
             quantum: 100,
             schedule: FaultSchedule::default(),
             disk_image_path: None,
+            base_core: None,
         }
     }
 }
@@ -579,6 +590,8 @@ impl SimulationController {
             let mut vm_config = config.vm_config.clone();
             vm_config.cpu.seed = config.seed.wrapping_add(i as u64);
             vm_config.disk_image_path = config.disk_image_path.clone();
+            // Pin each VM to a dedicated core: VM i → core base + i.
+            vm_config.core_affinity = config.base_core.map(|base| base + i);
 
             let mut vm = DeterministicVm::new(vm_config)?;
             vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;

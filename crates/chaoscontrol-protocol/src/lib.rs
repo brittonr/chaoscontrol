@@ -32,10 +32,23 @@
 /// memory and will not use it.
 pub const HYPERCALL_PAGE_ADDR: u64 = 0x000F_E000;
 
-/// I/O port used to trigger a hypercall.
+/// I/O port used to trigger a hypercall (legacy transport).
 ///
 /// Guest writes `outb(SDK_PORT, 0)` after filling the hypercall page.
+/// Superseded by VMCALL transport when available, but kept for fallback.
 pub const SDK_PORT: u16 = 0x0510;
+
+/// KVM hypercall number for the ChaosControl SDK (VMCALL transport).
+///
+/// When the guest executes `vmcall` with `RAX = VMCALL_NR`, KVM exits
+/// to the VMM via `KVM_EXIT_HYPERCALL`.  This is faster than port I/O
+/// (no I/O emulation path) and semantically cleaner — VMCALL is the
+/// canonical x86 mechanism for guest-to-hypervisor communication.
+///
+/// Number 48 is chosen to avoid collision with KVM's built-in hypercalls
+/// (numbers 1–12) while fitting in the 64-bit bitmask used by
+/// `KVM_CAP_EXIT_HYPERCALL`.
+pub const VMCALL_NR: u64 = 48;
 
 /// Size of the hypercall page in bytes.
 pub const HYPERCALL_PAGE_SIZE: usize = 4096;
@@ -489,5 +502,17 @@ mod tests {
         const { assert!(COVERAGE_PORT != SDK_PORT) };
         const { assert!(COVERAGE_PORT < 0x3F8 || COVERAGE_PORT > 0x3FF) }; // Not serial
         const { assert!(COVERAGE_PORT != 0x40 && COVERAGE_PORT != 0x43) }; // Not PIT
+    }
+
+    #[test]
+    fn vmcall_nr_fits_in_bitmask() {
+        // KVM_CAP_EXIT_HYPERCALL uses a u64 bitmask, so nr must be 0..63.
+        const { assert!(VMCALL_NR < 64) };
+    }
+
+    #[test]
+    fn vmcall_nr_no_conflict_with_kvm_builtins() {
+        // KVM built-in hypercalls are numbered 1 through 12.
+        const { assert!(VMCALL_NR > 12) };
     }
 }

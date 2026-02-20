@@ -305,6 +305,7 @@ impl Explorer {
             quantum: self.config.quantum,
             schedule: FaultSchedule::new(),
             disk_image_path: self.config.disk_image_path.clone(),
+            base_core: None,
         };
 
         self.controller = Some(SimulationController::new(sim_config)?);

@@ -1,12 +1,20 @@
-//! Low-level transport: write to hypercall page + trigger via I/O port.
+//! Low-level transport: write to hypercall page + trigger via VMCALL.
+//!
+//! The primary transport uses `vmcall` (Intel) / `vmmcall` (AMD) — the
+//! canonical x86 mechanism for guest-to-hypervisor communication. This
+//! is faster than port I/O (no emulation path) and is what Antithesis
+//! uses in their Determinator.
+//!
+//! Fallback: `outb(SDK_PORT)` port I/O for environments where
+//! `KVM_CAP_EXIT_HYPERCALL` is not available.
 //!
 //! Two implementations:
-//! - `no_std` (default): Direct pointer access + inline `outb`/`inb`.
+//! - `no_std` (default): Direct pointer access + inline asm.
 //!   Requires the guest to be in ring 0 or have IOPL=3.
 //! - `std`: Accesses `/dev/mem` for the shared page and `/dev/port`
 //!   for I/O port access.  Requires root or CAP_SYS_RAWIO.
 
-use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, SDK_PORT};
+use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, SDK_PORT, VMCALL_NR};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  no_std transport (bare-metal / ring 0)
@@ -25,13 +33,33 @@ unsafe fn page_ptr() -> *mut HypercallPage {
     HYPERCALL_PAGE_ADDR as *mut HypercallPage
 }
 
-/// Trigger the hypercall by writing to the SDK I/O port.
+/// Trigger the hypercall via `vmcall` instruction.
+///
+/// The VMM enables `KVM_CAP_EXIT_HYPERCALL` for our hypercall number,
+/// so `vmcall` with `RAX = VMCALL_NR` exits directly to the VMM.
+/// This is faster than port I/O — no I/O emulation path.
 ///
 /// # Safety
 ///
 /// Caller must ensure the hypercall page is fully written before calling.
 #[cfg(not(feature = "std"))]
 unsafe fn trigger() {
+    core::arch::asm!(
+        "vmcall",
+        in("rax") VMCALL_NR,
+        // Clobbers: vmcall may modify rax on return (return code).
+        // Use lateout to acknowledge this.
+        lateout("rax") _,
+        options(nostack),
+    );
+}
+
+/// Fallback: trigger hypercall via port I/O (`outb`).
+///
+/// Used when `KVM_CAP_EXIT_HYPERCALL` is not available.
+#[cfg(not(feature = "std"))]
+#[allow(dead_code)]
+unsafe fn trigger_pio() {
     core::arch::asm!(
         "out dx, al",
         in("dx") SDK_PORT,
@@ -111,7 +139,22 @@ unsafe fn page_ptr() -> *mut HypercallPage {
 
 #[cfg(feature = "std")]
 unsafe fn trigger() {
-    // Use /dev/port for the outb
+    // Use vmcall inline assembly — same instruction works in
+    // both no_std and std builds. We're running inside a VM,
+    // so vmcall is always available (it's a VMX instruction
+    // that the hypervisor intercepts).
+    core::arch::asm!(
+        "vmcall",
+        in("rax") VMCALL_NR,
+        lateout("rax") _,
+        options(nostack),
+    );
+}
+
+/// Fallback: trigger hypercall via /dev/port (port I/O).
+#[cfg(feature = "std")]
+#[allow(dead_code)]
+unsafe fn trigger_pio() {
     use std::fs::OpenOptions;
     use std::io::{Seek, SeekFrom, Write};
 

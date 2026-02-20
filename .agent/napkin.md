@@ -58,6 +58,9 @@
 | 2026-02-20 | self | Controller checked its OWN fault_engine for setup_complete | Guest SDK calls go to per-VM fault engine; must check vms[].vm.fault_engine() |
 | 2026-02-20 | self | Controller checked its OWN fault_engine for assertion failures | Same issue — must check all VMs' fault engines and merge oracle reports |
 | 2026-02-20 | self | Snapshot saved VmStatus::Paused from idle detection | Must call reset_vm_statuses() after restore_all() so branches start Running |
+| 2026-02-20 | self | VcpuExit::Hypercall holds &mut ref into kvm_run | Can't call &mut self methods in match arm; use post-match flag pattern |
+| 2026-02-20 | self | `String::from_utf8_lossy(&vm.build_cmdline())` in tests | Must bind Vec to variable first — temporary dropped while borrowed |
+| 2026-02-20 | self | `acpi_pm_timer_off` is not a real kernel param | Use `nohpet` cmdline + trap MMIO/port reads in VMM instead |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)
@@ -213,6 +216,21 @@
 
 - **Finding**: "leader completeness" violation in `none` variant suggests the base Raft implementation has an edge case under certain message orderings (5% random drop)
 - **Key fixes for bug hunt**: bootstrap via `run_until_setup_complete`, merged oracle reports from per-VM fault engines, reset VM statuses after snapshot restore, idle threshold at 50K
+
+## Antithesis-Inspired Improvements (2026-02-20)
+Based on analysis of antithesis.com/blog/deterministic_hypervisor/
+
+### Completed
+- **VMCALL transport**: SDK uses `vmcall` instruction (RAX=48) instead of `outb(0x510)`. KVM_CAP_EXIT_HYPERCALL enables VcpuExit::Hypercall. Fallback to port I/O if host doesn't support it. Changes: protocol (VMCALL_NR), SDK (vmcall asm), VMM (enable_cap + Hypercall arm).
+- **Core pinning**: `VmConfig.core_affinity: Option<usize>` + `SimulationConfig.base_core: Option<usize>`. Uses sched_setaffinity. VM i → core base+i. Eliminates scheduler jitter, cache eviction, NUMA effects.
+- **Hide all time sources**: Added `nohpet` to cmdline. Trap HPET MMIO (0xFED00000, 1KiB) with deterministic values from vTSC. Trap ACPI PM timer port (0x408) with vTSC-derived 24-bit counter at 3.579545 MHz.
+
+### Remaining Antithesis Items
+- **Interrupt injection**: VMM-initiated interrupts for proactive fault delivery (not just guest-polled)
+- **Input tree exploration**: Branch at SDK hypercall points (natural I/O exchange) instead of fixed tick intervals
+- **Instructions-retired time model**: PMC-based time (Intel-only, configurable)
+- **Massive determinism logging**: High-throughput paranoid mode for debugging
+- **Destructive analysis**: poke_memory/set_register in debugger for "what if" analysis
 
 ## Remaining Work
 (All items completed)

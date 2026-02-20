@@ -42,7 +42,7 @@
 use kvm_bindings::{kvm_cpuid_entry2, CpuId, KVM_MAX_CPUID_ENTRIES};
 use kvm_ioctls::{Kvm, VcpuFd};
 use log::info;
-use thiserror::Error;
+use snafu::{ResultExt, Snafu};
 
 // ─── CPUID leaf constants ────────────────────────────────────────────
 
@@ -183,22 +183,22 @@ const CRYSTAL_CLOCK_HZ: u32 = 25_000_000;
 // ─── Error type ──────────────────────────────────────────────────────
 
 /// Errors that can occur during CPU determinism configuration.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
 pub enum CpuError {
     /// KVM refused to return the host-supported CPUID table.
-    #[error("Failed to get supported CPUID from KVM: {0}")]
-    GetCpuid(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to get supported CPUID from KVM"))]
+    GetCpuid { source: kvm_ioctls::Error },
 
     /// KVM refused the filtered CPUID table we tried to apply.
-    #[error("Failed to set CPUID on vCPU: {0}")]
-    SetCpuid(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set CPUID on vCPU"))]
+    SetCpuid { source: kvm_ioctls::Error },
 
     /// KVM could not pin the TSC to the requested frequency (e.g. the
     /// host kernel does not support TSC scaling).
-    #[error("Failed to set TSC frequency to {freq_khz} kHz: {source}")]
+    #[snafu(display("Failed to set TSC frequency to {freq_khz} kHz"))]
     SetTscKhz {
         freq_khz: u32,
-        #[source]
         source: kvm_ioctls::Error,
     },
 }
@@ -318,7 +318,7 @@ impl Default for CpuConfig {
 pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
     let mut cpuid = kvm
         .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)
-        .map_err(CpuError::GetCpuid)?;
+        .context(GetCpuidSnafu)?;
 
     let mut modified = 0u32;
 
@@ -352,8 +352,9 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
             edx: 0,
             padding: [0; 3],
         });
-        cpuid = CpuId::from_entries(&entries)
-            .map_err(|_| CpuError::GetCpuid(kvm_ioctls::Error::new(libc::ENOMEM)))?;
+        cpuid = CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
+            source: kvm_ioctls::Error::new(libc::ENOMEM),
+        })?;
         modified += 1;
         info!(
             "Injected CPUID leaf 0x15: crystal={}Hz, ratio={}/{}",
@@ -385,11 +386,7 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
 /// | 0x1  | EBX\[23:16\] | Max addressable logical processor IDs |
 /// | 0xB (all sub-leaves) | EDX | x2APIC ID |
 /// | 0x1F (all sub-leaves) | EDX | x2APIC ID |
-pub fn patch_cpuid_apic_id(
-    cpuid: &CpuId,
-    apic_id: u32,
-    num_vcpus: u32,
-) -> Result<CpuId, CpuError> {
+pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Result<CpuId, CpuError> {
     let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
     for entry in entries.iter_mut() {
         match entry.function {
@@ -409,8 +406,9 @@ pub fn patch_cpuid_apic_id(
             _ => {}
         }
     }
-    CpuId::from_entries(&entries)
-        .map_err(|_| CpuError::GetCpuid(kvm_ioctls::Error::new(libc::ENOMEM)))
+    CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
+        source: kvm_ioctls::Error::new(libc::ENOMEM),
+    })
 }
 
 /// Pin the vCPU's TSC to a fixed frequency.
@@ -422,10 +420,8 @@ pub fn patch_cpuid_apic_id(
 ///
 /// This should be called once per vCPU, before the first `vcpu.run()`.
 pub fn setup_tsc(vcpu: &VcpuFd, tsc_khz: u32) -> Result<(), CpuError> {
-    vcpu.set_tsc_khz(tsc_khz).map_err(|e| CpuError::SetTscKhz {
-        freq_khz: tsc_khz,
-        source: e,
-    })?;
+    vcpu.set_tsc_khz(tsc_khz)
+        .context(SetTscKhzSnafu { freq_khz: tsc_khz })?;
 
     info!(
         "TSC pinned to {} kHz ({:.1} GHz)",

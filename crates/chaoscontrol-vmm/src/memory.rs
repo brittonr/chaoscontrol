@@ -49,7 +49,7 @@
 
 use kvm_bindings::kvm_segment;
 use log::info;
-use thiserror::Error;
+use snafu::Snafu;
 use vm_memory::{Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -221,38 +221,40 @@ pub fn build_e820_map(memory_size: u64) -> Vec<E820Entry> {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Errors that can occur during guest memory operations.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum MemoryError {
     /// The `vm-memory` crate failed to create the guest memory region.
-    #[error("Failed to create guest memory region of {size} bytes")]
+    #[snafu(display("Failed to create guest memory region of {size} bytes"))]
     Create {
         /// Requested allocation size.
         size: usize,
     },
 
     /// A write to guest physical memory failed.
-    #[error("Failed to write to guest memory at {address:#x}")]
+    #[snafu(display("Failed to write to guest memory at {address:#x}"))]
     Write {
         /// Guest physical address of the failed write.
         address: u64,
     },
 
     /// A read from guest physical memory failed.
-    #[error("Failed to read from guest memory at {address:#x}")]
+    #[snafu(display("Failed to read from guest memory at {address:#x}"))]
     Read {
         /// Guest physical address of the failed read.
         address: u64,
     },
 
     /// The kernel command line exceeds [`CMDLINE_MAX_SIZE`].
-    #[error("Kernel command line too long: {len} bytes exceeds maximum of {CMDLINE_MAX_SIZE}")]
+    #[snafu(display(
+        "Kernel command line too long: {len} bytes exceeds maximum of {CMDLINE_MAX_SIZE}"
+    ))]
     CmdlineTooLong {
         /// Actual command-line length (including NUL terminator).
         len: usize,
     },
 
     /// Snapshot data length does not match the guest memory size.
-    #[error("Snapshot size mismatch: expected {expected} bytes, got {actual}")]
+    #[snafu(display("Snapshot size mismatch: expected {expected} bytes, got {actual}"))]
     SnapshotSizeMismatch {
         /// Expected byte count (the guest memory size).
         expected: usize,
@@ -261,7 +263,7 @@ pub enum MemoryError {
     },
 
     /// The host virtual address for the guest memory could not be resolved.
-    #[error("Failed to resolve host virtual address for guest memory")]
+    #[snafu(display("Failed to resolve host virtual address for guest memory"))]
     HostAddress,
 }
 
@@ -331,7 +333,7 @@ impl GuestMemoryManager {
     pub fn new(size: usize) -> Result<Self, MemoryError> {
         let regions = vec![(GuestAddress(0), size)];
         let memory =
-            GuestMemoryMmap::from_ranges(&regions).map_err(|_| MemoryError::Create { size })?;
+            GuestMemoryMmap::from_ranges(&regions).map_err(|_| CreateSnafu { size }.build())?;
 
         info!(
             "Guest memory created: {} MB ({} bytes)",
@@ -365,15 +367,21 @@ impl GuestMemoryManager {
         // PML4[0] → PDPTE (present + writable).
         self.memory
             .write_obj(PDPTE_START | PTE_PRESENT_WRITABLE, GuestAddress(PML4_START))
-            .map_err(|_| MemoryError::Write {
-                address: PML4_START,
+            .map_err(|_| {
+                WriteSnafu {
+                    address: PML4_START,
+                }
+                .build()
             })?;
 
         // PDPTE[0] → PDE (present + writable).
         self.memory
             .write_obj(PDE_START | PTE_PRESENT_WRITABLE, GuestAddress(PDPTE_START))
-            .map_err(|_| MemoryError::Write {
-                address: PDPTE_START,
+            .map_err(|_| {
+                WriteSnafu {
+                    address: PDPTE_START,
+                }
+                .build()
             })?;
 
         // PDE: 512 entries × 2 MB = 1 GB identity map.
@@ -382,7 +390,7 @@ impl GuestMemoryManager {
             let addr = PDE_START + i * 8;
             self.memory
                 .write_obj(entry, GuestAddress(addr))
-                .map_err(|_| MemoryError::Write { address: addr })?;
+                .map_err(|_| WriteSnafu { address: addr }.build())?;
         }
 
         info!(
@@ -428,14 +436,17 @@ impl GuestMemoryManager {
             let addr = BOOT_GDT_OFFSET + (i as u64 * 8);
             self.memory
                 .write_obj(*entry, GuestAddress(addr))
-                .map_err(|_| MemoryError::Write { address: addr })?;
+                .map_err(|_| WriteSnafu { address: addr }.build())?;
         }
 
         // Write an empty IDT placeholder.
         self.memory
             .write_obj(0u64, GuestAddress(BOOT_IDT_OFFSET))
-            .map_err(|_| MemoryError::Write {
-                address: BOOT_IDT_OFFSET,
+            .map_err(|_| {
+                WriteSnafu {
+                    address: BOOT_IDT_OFFSET,
+                }
+                .build()
             })?;
 
         info!(
@@ -462,13 +473,16 @@ impl GuestMemoryManager {
         let total_len = cmdline.len() + if needs_nul { 1 } else { 0 };
 
         if total_len > CMDLINE_MAX_SIZE {
-            return Err(MemoryError::CmdlineTooLong { len: total_len });
+            return CmdlineTooLongSnafu { len: total_len }.fail();
         }
 
         self.memory
             .write_slice(cmdline, GuestAddress(CMDLINE_START))
-            .map_err(|_| MemoryError::Write {
-                address: CMDLINE_START,
+            .map_err(|_| {
+                WriteSnafu {
+                    address: CMDLINE_START,
+                }
+                .build()
             })?;
 
         // Append NUL terminator if the caller didn't include one.
@@ -476,7 +490,7 @@ impl GuestMemoryManager {
             let nul_addr = CMDLINE_START + cmdline.len() as u64;
             self.memory
                 .write_obj(0u8, GuestAddress(nul_addr))
-                .map_err(|_| MemoryError::Write { address: nul_addr })?;
+                .map_err(|_| WriteSnafu { address: nul_addr }.build())?;
         }
 
         info!(
@@ -519,15 +533,16 @@ impl GuestMemoryManager {
     /// - [`MemoryError::Write`] if the write to guest memory fails.
     pub fn restore(&self, data: &[u8]) -> Result<(), MemoryError> {
         if data.len() != self.size {
-            return Err(MemoryError::SnapshotSizeMismatch {
+            return SnapshotSizeMismatchSnafu {
                 expected: self.size,
                 actual: data.len(),
-            });
+            }
+            .fail();
         }
 
         self.memory
             .write_slice(data, GuestAddress(0))
-            .map_err(|_| MemoryError::Write { address: 0 })?;
+            .map_err(|_| WriteSnafu { address: 0u64 }.build())?;
 
         info!("Guest memory restored: {} bytes", self.size);
 

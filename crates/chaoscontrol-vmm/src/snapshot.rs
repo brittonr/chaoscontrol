@@ -12,6 +12,7 @@ use kvm_bindings::{
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
+use snafu::ResultExt;
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
 /// Snapshot of a single virtio device's host-side state.
@@ -61,13 +62,13 @@ impl VcpuSnapshot {
     /// Capture all register state from a single vCPU.
     pub fn capture(vcpu: &VcpuFd) -> Result<Self, SnapshotError> {
         Ok(Self {
-            regs: vcpu.get_regs().map_err(SnapshotError::GetRegs)?,
-            sregs: vcpu.get_sregs().map_err(SnapshotError::GetSregs)?,
-            fpu: vcpu.get_fpu().map_err(SnapshotError::GetFpu)?,
-            debug_regs: vcpu.get_debug_regs().map_err(SnapshotError::GetDebugRegs)?,
-            lapic: vcpu.get_lapic().map_err(SnapshotError::GetLapic)?,
-            xcrs: vcpu.get_xcrs().map_err(SnapshotError::GetXcrs)?,
-            mp_state: vcpu.get_mp_state().map_err(SnapshotError::GetMpState)?,
+            regs: vcpu.get_regs().context(GetRegsSnafu)?,
+            sregs: vcpu.get_sregs().context(GetSregsSnafu)?,
+            fpu: vcpu.get_fpu().context(GetFpuSnafu)?,
+            debug_regs: vcpu.get_debug_regs().context(GetDebugRegsSnafu)?,
+            lapic: vcpu.get_lapic().context(GetLapicSnafu)?,
+            xcrs: vcpu.get_xcrs().context(GetXcrsSnafu)?,
+            mp_state: vcpu.get_mp_state().context(GetMpStateSnafu)?,
         })
     }
 
@@ -75,17 +76,14 @@ impl VcpuSnapshot {
     pub fn restore(&self, vcpu: &VcpuFd) -> Result<(), SnapshotError> {
         // MP state MUST be set before registers — KVM refuses register
         // writes on vCPUs in UNINITIALIZED state on some host kernels.
-        vcpu.set_mp_state(self.mp_state)
-            .map_err(SnapshotError::SetMpState)?;
-        vcpu.set_sregs(&self.sregs)
-            .map_err(SnapshotError::SetSregs)?;
-        vcpu.set_regs(&self.regs).map_err(SnapshotError::SetRegs)?;
-        vcpu.set_fpu(&self.fpu).map_err(SnapshotError::SetFpu)?;
+        vcpu.set_mp_state(self.mp_state).context(SetMpStateSnafu)?;
+        vcpu.set_sregs(&self.sregs).context(SetSregsSnafu)?;
+        vcpu.set_regs(&self.regs).context(SetRegsSnafu)?;
+        vcpu.set_fpu(&self.fpu).context(SetFpuSnafu)?;
         vcpu.set_debug_regs(&self.debug_regs)
-            .map_err(SnapshotError::SetDebugRegs)?;
-        vcpu.set_lapic(&self.lapic)
-            .map_err(SnapshotError::SetLapic)?;
-        vcpu.set_xcrs(&self.xcrs).map_err(SnapshotError::SetXcrs)?;
+            .context(SetDebugRegsSnafu)?;
+        vcpu.set_lapic(&self.lapic).context(SetLapicSnafu)?;
+        vcpu.set_xcrs(&self.xcrs).context(SetXcrsSnafu)?;
         Ok(())
     }
 }
@@ -162,33 +160,30 @@ impl VmSnapshot {
             chip_id: KVM_IRQCHIP_PIC_MASTER,
             ..Default::default()
         };
-        vm.get_irqchip(&mut pic_master)
-            .map_err(SnapshotError::GetIrqchip)?;
+        vm.get_irqchip(&mut pic_master).context(GetIrqchipSnafu)?;
 
         let mut pic_slave = kvm_irqchip {
             chip_id: KVM_IRQCHIP_PIC_SLAVE,
             ..Default::default()
         };
-        vm.get_irqchip(&mut pic_slave)
-            .map_err(SnapshotError::GetIrqchip)?;
+        vm.get_irqchip(&mut pic_slave).context(GetIrqchipSnafu)?;
 
         let mut ioapic = kvm_irqchip {
             chip_id: KVM_IRQCHIP_IOAPIC,
             ..Default::default()
         };
-        vm.get_irqchip(&mut ioapic)
-            .map_err(SnapshotError::GetIrqchip)?;
+        vm.get_irqchip(&mut ioapic).context(GetIrqchipSnafu)?;
 
         // Capture PIT and clock
-        let pit = vm.get_pit2().map_err(SnapshotError::GetPit)?;
-        let clock = vm.get_clock().map_err(SnapshotError::GetClock)?;
+        let pit = vm.get_pit2().context(GetPitSnafu)?;
+        let clock = vm.get_clock().context(GetClockSnafu)?;
 
         // Capture guest memory
         let memory_size = guest_memory.last_addr().raw_value() as usize + 1;
         let mut memory = vec![0u8; memory_size];
         guest_memory
             .read_slice(&mut memory, GuestAddress(0))
-            .map_err(|_| SnapshotError::ReadMemory)?;
+            .map_err(|_| ReadMemorySnafu.build())?;
 
         info!(
             "Snapshot captured: {} vCPUs, {} MB memory, BSP RIP=0x{:x}",
@@ -231,26 +226,24 @@ impl VmSnapshot {
         guest_memory: &GuestMemoryMmap,
     ) -> Result<(), SnapshotError> {
         if vcpus.len() != self.vcpu_snapshots.len() {
-            return Err(SnapshotError::VcpuCountMismatch {
+            return VcpuCountMismatchSnafu {
                 snapshot: self.vcpu_snapshots.len(),
                 current: vcpus.len(),
-            });
+            }
+            .fail();
         }
 
         // Restore guest memory
         guest_memory
             .write_slice(&self.memory, GuestAddress(0))
-            .map_err(|_| SnapshotError::WriteMemory)?;
+            .map_err(|_| WriteMemorySnafu.build())?;
 
         // Restore in-kernel devices BEFORE vCPU state
-        vm.set_pit2(&self.pit).map_err(SnapshotError::SetPit)?;
-        vm.set_clock(&self.clock).map_err(SnapshotError::SetClock)?;
-        vm.set_irqchip(&self.pic_master)
-            .map_err(SnapshotError::SetIrqchip)?;
-        vm.set_irqchip(&self.pic_slave)
-            .map_err(SnapshotError::SetIrqchip)?;
-        vm.set_irqchip(&self.ioapic)
-            .map_err(SnapshotError::SetIrqchip)?;
+        vm.set_pit2(&self.pit).context(SetPitSnafu)?;
+        vm.set_clock(&self.clock).context(SetClockSnafu)?;
+        vm.set_irqchip(&self.pic_master).context(SetIrqchipSnafu)?;
+        vm.set_irqchip(&self.pic_slave).context(SetIrqchipSnafu)?;
+        vm.set_irqchip(&self.ioapic).context(SetIrqchipSnafu)?;
 
         // Restore per-vCPU state
         for (vcpu_snap, vcpu) in self.vcpu_snapshots.iter().zip(vcpus.iter()) {
@@ -267,52 +260,52 @@ impl VmSnapshot {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, snafu::Snafu)]
 pub enum SnapshotError {
-    #[error("Failed to get registers: {0}")]
-    GetRegs(kvm_ioctls::Error),
-    #[error("Failed to get special registers: {0}")]
-    GetSregs(kvm_ioctls::Error),
-    #[error("Failed to get FPU: {0}")]
-    GetFpu(kvm_ioctls::Error),
-    #[error("Failed to get debug registers: {0}")]
-    GetDebugRegs(kvm_ioctls::Error),
-    #[error("Failed to get LAPIC: {0}")]
-    GetLapic(kvm_ioctls::Error),
-    #[error("Failed to get XCRs: {0}")]
-    GetXcrs(kvm_ioctls::Error),
-    #[error("Failed to get MP state: {0}")]
-    GetMpState(kvm_ioctls::Error),
-    #[error("Failed to get IRQ chip: {0}")]
-    GetIrqchip(kvm_ioctls::Error),
-    #[error("Failed to get PIT: {0}")]
-    GetPit(kvm_ioctls::Error),
-    #[error("Failed to get clock: {0}")]
-    GetClock(kvm_ioctls::Error),
-    #[error("Failed to read guest memory")]
+    #[snafu(display("Failed to get registers"))]
+    GetRegs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get special registers"))]
+    GetSregs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get FPU"))]
+    GetFpu { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get debug registers"))]
+    GetDebugRegs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get LAPIC"))]
+    GetLapic { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get XCRs"))]
+    GetXcrs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get MP state"))]
+    GetMpState { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get IRQ chip"))]
+    GetIrqchip { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get PIT"))]
+    GetPit { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get clock"))]
+    GetClock { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to read guest memory"))]
     ReadMemory,
-    #[error("Failed to set registers: {0}")]
-    SetRegs(kvm_ioctls::Error),
-    #[error("Failed to set special registers: {0}")]
-    SetSregs(kvm_ioctls::Error),
-    #[error("Failed to set FPU: {0}")]
-    SetFpu(kvm_ioctls::Error),
-    #[error("Failed to set debug registers: {0}")]
-    SetDebugRegs(kvm_ioctls::Error),
-    #[error("Failed to set LAPIC: {0}")]
-    SetLapic(kvm_ioctls::Error),
-    #[error("Failed to set XCRs: {0}")]
-    SetXcrs(kvm_ioctls::Error),
-    #[error("Failed to set MP state: {0}")]
-    SetMpState(kvm_ioctls::Error),
-    #[error("Failed to set IRQ chip: {0}")]
-    SetIrqchip(kvm_ioctls::Error),
-    #[error("Failed to set PIT: {0}")]
-    SetPit(kvm_ioctls::Error),
-    #[error("Failed to set clock: {0}")]
-    SetClock(kvm_ioctls::Error),
-    #[error("Failed to write guest memory")]
+    #[snafu(display("Failed to set registers"))]
+    SetRegs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set special registers"))]
+    SetSregs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set FPU"))]
+    SetFpu { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set debug registers"))]
+    SetDebugRegs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set LAPIC"))]
+    SetLapic { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set XCRs"))]
+    SetXcrs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set MP state"))]
+    SetMpState { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set IRQ chip"))]
+    SetIrqchip { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set PIT"))]
+    SetPit { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set clock"))]
+    SetClock { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to write guest memory"))]
     WriteMemory,
-    #[error("vCPU count mismatch: snapshot has {snapshot}, VM has {current}")]
+    #[snafu(display("vCPU count mismatch: snapshot has {snapshot}, VM has {current}"))]
     VcpuCountMismatch { snapshot: usize, current: usize },
 }

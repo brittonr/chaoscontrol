@@ -9,7 +9,7 @@ chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
 log = "0.4"
-thiserror = "2"
+snafu = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }

@@ -3,7 +3,8 @@
 use crate::checkpoint::Checkpoint;
 use crate::recording::{RecordedEvent, Recording};
 use crate::replay::{
-    MemoryModification, ReplayEngine, ReplayError, ReplayResult, SimulationRunner,
+    InvalidStateSnafu, MemoryModification, ReplayEngine, ReplayError, ReplayResult,
+    SimulationRunner,
 };
 use serde::{Deserialize, Serialize};
 
@@ -82,10 +83,10 @@ impl<R: SimulationRunner> Debugger<R> {
                 }
             }
         }
-        Err(ReplayError::InvalidState(format!(
-            "Bug {} not found",
-            bug_id
-        )))
+        InvalidStateSnafu {
+            message: format!("Bug {} not found", bug_id),
+        }
+        .fail()
     }
 
     /// Read guest memory at the current position.
@@ -97,18 +98,20 @@ impl<R: SimulationRunner> Debugger<R> {
     ) -> Result<Vec<u8>, ReplayError> {
         // Would need to access VM memory through snapshot
         log::warn!("Memory reading not yet implemented");
-        Err(ReplayError::InvalidState(
-            "Memory reading not implemented".to_string(),
-        ))
+        InvalidStateSnafu {
+            message: "Memory reading not implemented".to_string(),
+        }
+        .fail()
     }
 
     /// Read VM registers at the current position.
     pub fn read_registers(&self, _vm_index: usize) -> Result<RegisterState, ReplayError> {
         // Would need to access VM registers through snapshot
         log::warn!("Register reading not yet implemented");
-        Err(ReplayError::InvalidState(
-            "Register reading not implemented".to_string(),
-        ))
+        InvalidStateSnafu {
+            message: "Register reading not implemented".to_string(),
+        }
+        .fail()
     }
 
     /// Get serial output up to the current position.
@@ -140,7 +143,10 @@ impl<R: SimulationRunner> Debugger<R> {
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
         let checkpoint_id = self.current_checkpoint.ok_or_else(|| {
-            ReplayError::InvalidState("No checkpoint available for counterfactual".to_string())
+            InvalidStateSnafu {
+                message: "No checkpoint available for counterfactual".to_string(),
+            }
+            .build()
         })?;
 
         self.replay
@@ -296,11 +302,11 @@ mod tests {
             _config: &RecordingConfig,
             _schedule: FaultSchedule,
             _seed: u64,
-        ) -> Result<Self, Box<dyn std::error::Error>> {
+        ) -> Result<Self, ReplayError> {
             Ok(Self { tick: 0 })
         }
 
-        fn step_round(&mut self) -> Result<RoundResult, Box<dyn std::error::Error>> {
+        fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
             self.tick += 1;
             Ok(RoundResult {
                 tick: self.tick,
@@ -311,7 +317,7 @@ mod tests {
             })
         }
 
-        fn snapshot_all(&self) -> Result<SimulationSnapshot, Box<dyn std::error::Error>> {
+        fn snapshot_all(&self) -> Result<SimulationSnapshot, ReplayError> {
             use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 
             let engine = FaultEngine::new(EngineConfig::default());
@@ -337,10 +343,7 @@ mod tests {
             })
         }
 
-        fn restore_all(
-            &mut self,
-            snapshot: &SimulationSnapshot,
-        ) -> Result<(), Box<dyn std::error::Error>> {
+        fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), ReplayError> {
             self.tick = snapshot.tick;
             Ok(())
         }

@@ -5,7 +5,7 @@
 //! routing, and deterministic scheduling.
 
 use crate::snapshot::VmSnapshot;
-use crate::vm::{DeterministicVm, VmConfig, VmError};
+use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
@@ -14,6 +14,7 @@ use log::{debug, info, warn};
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use snafu::ResultExt;
 use std::collections::VecDeque;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -540,11 +541,17 @@ impl SimulationController {
         );
 
         if config.num_vms == 0 {
-            return Err(VmError::Snapshot("num_vms must be > 0".to_string()));
+            return SnapshotSnafu {
+                message: "num_vms must be > 0",
+            }
+            .fail();
         }
 
         if config.kernel_path.is_empty() {
-            return Err(VmError::Snapshot("kernel_path is required".to_string()));
+            return SnapshotSnafu {
+                message: "kernel_path is required",
+            }
+            .fail();
         }
 
         // Create fault engine with shared seed and num_vms
@@ -927,10 +934,12 @@ impl SimulationController {
 
     /// Restart a VM from its initial snapshot.
     fn restart_vm(&mut self, target: usize) -> Result<(), VmError> {
-        let slot = self
-            .vms
-            .get_mut(target)
-            .ok_or_else(|| VmError::Snapshot(format!("VM{} not found", target)))?;
+        let slot = self.vms.get_mut(target).ok_or_else(|| {
+            SnapshotSnafu {
+                message: format!("VM{} not found", target),
+            }
+            .build()
+        })?;
 
         if let Some(snapshot) = &slot.initial_snapshot {
             info!("Restarting VM{} from initial snapshot", target);
@@ -987,7 +996,10 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
         if snapshot.vm_snapshots.len() != self.vms.len() {
-            return Err(VmError::Snapshot("Snapshot VM count mismatch".to_string()));
+            return SnapshotSnafu {
+                message: "Snapshot VM count mismatch",
+            }
+            .fail();
         }
 
         self.tick = snapshot.tick;

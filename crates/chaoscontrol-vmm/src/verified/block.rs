@@ -44,11 +44,13 @@ use crate::devices::block::{BlockError, BlockFault};
 /// ```
 pub fn check_bounds(device_size: u64, offset: u64, len: u64) -> Result<(), BlockError> {
     if offset.saturating_add(len) > device_size {
-        let result = Err(BlockError::OutOfBounds {
+        use crate::devices::block::OutOfBoundsSnafu;
+        let result: Result<(), BlockError> = OutOfBoundsSnafu {
             offset,
             len,
             device_size,
-        });
+        }
+        .fail();
 
         // Postcondition: error carries the correct parameters.
         debug_assert!(matches!(

@@ -2,21 +2,21 @@
 
 use crate::recording::Recording;
 use crate::triage::TriageReport;
+use snafu::Snafu;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-use thiserror::Error;
 
 #[cfg(test)]
 use std::io::Read;
 
 /// Errors that can occur during serialization.
-#[derive(Debug, Error)]
+#[derive(Debug, Snafu)]
 pub enum SerializeError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    #[snafu(display("IO error"), context(false))]
+    Io { source: std::io::Error },
+    #[snafu(display("JSON error"), context(false))]
+    Json { source: serde_json::Error },
 }
 
 /// Save a recording to a JSON file.

@@ -50,11 +50,11 @@ const LAPIC_DEFAULT_ADDR: u32 = 0xFEE0_0000;
 const IOAPIC_DEFAULT_ADDR: u32 = 0xFEC0_0000;
 
 /// Errors from ACPI table generation.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, snafu::Snafu)]
 pub enum AcpiError {
-    #[error("Failed to write ACPI tables to guest memory")]
+    #[snafu(display("Failed to write ACPI tables to guest memory"))]
     WriteMemory,
-    #[error("Too many CPUs for ACPI table region (max 128)")]
+    #[snafu(display("Too many CPUs for ACPI table region (max 128)"))]
     TooManyCpus,
 }
 
@@ -70,7 +70,7 @@ pub fn write_acpi_tables(
     num_cpus: usize,
 ) -> Result<u64, AcpiError> {
     if num_cpus > 128 {
-        return Err(AcpiError::TooManyCpus);
+        return TooManyCpusSnafu.fail();
     }
 
     let rsdp_addr = ACPI_TABLE_BASE + RSDP_OFFSET;
@@ -81,19 +81,19 @@ pub fn write_acpi_tables(
     let madt = build_madt(num_cpus, madt_addr as u32);
     guest_memory
         .write_slice(&madt, GuestAddress(madt_addr))
-        .map_err(|_| AcpiError::WriteMemory)?;
+        .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Build RSDT ──────────────────────────────────────────────────
     let rsdt = build_rsdt(madt_addr as u32);
     guest_memory
         .write_slice(&rsdt, GuestAddress(rsdt_addr))
-        .map_err(|_| AcpiError::WriteMemory)?;
+        .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Build RSDP ──────────────────────────────────────────────────
     let rsdp = build_rsdp(rsdt_addr as u32);
     guest_memory
         .write_slice(&rsdp, GuestAddress(rsdp_addr))
-        .map_err(|_| AcpiError::WriteMemory)?;
+        .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Set EBDA pointer ────────────────────────────────────────────
     // BDA at 0x40E contains the EBDA segment (paragraph address).
@@ -102,7 +102,7 @@ pub fn write_acpi_tables(
     let ebda_segment = (ACPI_TABLE_BASE >> 4) as u16;
     guest_memory
         .write_obj(ebda_segment, GuestAddress(0x40E))
-        .map_err(|_| AcpiError::WriteMemory)?;
+        .map_err(|_| WriteMemorySnafu.build())?;
 
     log::info!(
         "ACPI tables written: RSDP={:#x} RSDT={:#x} MADT={:#x} ({} CPUs)",

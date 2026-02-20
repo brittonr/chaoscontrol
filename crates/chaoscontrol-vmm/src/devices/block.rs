@@ -4,13 +4,15 @@
 //! supports snapshot/restore and programmable fault injection for testing
 //! storage error paths (torn writes, corruption, I/O errors).
 
+use snafu::Snafu;
 use std::collections::VecDeque;
 
 /// Errors returned by block device operations.
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Clone, Debug, Snafu)]
+#[snafu(visibility(pub))]
 pub enum BlockError {
     /// The requested range falls outside the device.
-    #[error("out of bounds: offset {offset}, len {len}, device size {device_size}")]
+    #[snafu(display("out of bounds: offset {offset}, len {len}, device size {device_size}"))]
     OutOfBounds {
         offset: u64,
         len: u64,
@@ -18,15 +20,17 @@ pub enum BlockError {
     },
 
     /// An injected read error.
-    #[error("injected read error at offset {offset}")]
+    #[snafu(display("injected read error at offset {offset}"))]
     InjectedReadError { offset: u64 },
 
     /// An injected write error.
-    #[error("injected write error at offset {offset}")]
+    #[snafu(display("injected write error at offset {offset}"))]
     InjectedWriteError { offset: u64 },
 
     /// An injected torn write – only `bytes_written` of the payload landed.
-    #[error("injected torn write at offset {offset}: only {bytes_written} bytes written")]
+    #[snafu(display(
+        "injected torn write at offset {offset}: only {bytes_written} bytes written"
+    ))]
     InjectedTornWrite { offset: u64, bytes_written: usize },
 }
 
@@ -125,7 +129,7 @@ impl DeterministicBlock {
         {
             let fault = self.faults.remove(idx).unwrap();
             if let BlockFault::ReadError { offset } = fault {
-                return Err(BlockError::InjectedReadError { offset });
+                return InjectedReadSnafu { offset }.fail();
             }
         }
 
@@ -156,7 +160,7 @@ impl DeterministicBlock {
             let fault = self.faults.remove(idx).unwrap();
             match fault {
                 BlockFault::WriteError { offset } => {
-                    return Err(BlockError::InjectedWriteError { offset });
+                    return InjectedWriteSnafu { offset }.fail();
                 }
                 BlockFault::TornWrite {
                     offset,
@@ -168,10 +172,11 @@ impl DeterministicBlock {
                     self.data[start..start + actual].copy_from_slice(&data[..actual]);
                     self.stats.writes += 1;
                     self.stats.bytes_written += actual as u64;
-                    return Err(BlockError::InjectedTornWrite {
+                    return InjectedTornWriteSnafu {
                         offset,
                         bytes_written: actual,
-                    });
+                    }
+                    .fail();
                 }
                 BlockFault::Corruption {
                     offset: _,

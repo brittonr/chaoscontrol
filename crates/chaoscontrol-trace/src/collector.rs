@@ -10,10 +10,10 @@ use crate::events::{RawEvent, TraceEvent};
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
 use libbpf_rs::MapCore;
 use log::info;
+use snafu::{ResultExt, Snafu};
 use std::mem::MaybeUninit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use thiserror::Error;
 
 // Generated skeleton from libbpf-cargo build step
 mod kvm_trace_skel {
@@ -25,27 +25,27 @@ use kvm_trace_skel::*;
 //  Error type
 // ═══════════════════════════════════════════════════════════════════════
 
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum CollectorError {
-    #[error("Failed to open BPF skeleton: {0}")]
-    Open(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to open BPF skeleton"))]
+    Open { source: libbpf_rs::Error },
 
-    #[error("Failed to load BPF programs: {0}")]
-    Load(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to load BPF programs"))]
+    Load { source: libbpf_rs::Error },
 
-    #[error("Failed to attach BPF programs: {0}")]
-    Attach(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to attach BPF programs"))]
+    Attach { source: libbpf_rs::Error },
 
-    #[error("Failed to update BPF map: {0}")]
-    MapUpdate(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to update BPF map"))]
+    MapUpdate { source: libbpf_rs::Error },
 
-    #[error("Failed to build ring buffer: {0}")]
-    RingBuffer(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to build ring buffer"))]
+    RingBuffer { source: libbpf_rs::Error },
 
-    #[error("Failed to poll ring buffer: {0}")]
-    Poll(#[source] libbpf_rs::Error),
+    #[snafu(display("Failed to poll ring buffer"))]
+    Poll { source: libbpf_rs::Error },
 
-    #[error("Not running as root (CAP_SYS_ADMIN required for BPF)")]
+    #[snafu(display("Not running as root (CAP_SYS_ADMIN required for BPF)"))]
     NotRoot,
 }
 
@@ -140,7 +140,7 @@ impl Collector {
     pub fn attach(config: CollectorConfig) -> Result<Self, CollectorError> {
         // Check root
         if unsafe { libc::geteuid() != 0 } {
-            return Err(CollectorError::NotRoot);
+            return NotRootSnafu.fail();
         }
 
         info!(
@@ -156,12 +156,10 @@ impl Collector {
 
         // Open BPF skeleton
         let skel_builder = KvmTraceSkelBuilder::default();
-        let open_skel = skel_builder
-            .open(open_object)
-            .map_err(CollectorError::Open)?;
+        let open_skel = skel_builder.open(open_object).context(OpenSnafu)?;
 
         // Load BPF programs into kernel
-        let mut skel = open_skel.load().map_err(CollectorError::Load)?;
+        let mut skel = open_skel.load().context(LoadSnafu)?;
 
         // Set target PID filter
         let key = 0u32.to_ne_bytes();
@@ -169,12 +167,12 @@ impl Collector {
         skel.maps
             .target_pid
             .update(&key, &val, libbpf_rs::MapFlags::ANY)
-            .map_err(CollectorError::MapUpdate)?;
+            .context(MapUpdateSnafu)?;
 
         info!("BPF programs loaded, setting up ring buffer");
 
         // Attach all tracepoint programs
-        skel.attach().map_err(CollectorError::Attach)?;
+        skel.attach().context(AttachSnafu)?;
 
         info!("Attached to KVM tracepoints");
 
@@ -194,9 +192,9 @@ impl Collector {
                 }
                 0 // continue processing
             })
-            .map_err(CollectorError::RingBuffer)?;
+            .context(RingBufferSnafu)?;
 
-        let ring_buf = builder.build().map_err(CollectorError::RingBuffer)?;
+        let ring_buf = builder.build().context(RingBufferSnafu)?;
 
         info!("Ring buffer ready, collector active");
 
@@ -228,7 +226,7 @@ impl Collector {
         let before = self.events.lock().unwrap().len();
         self.ring_buf
             .poll(self.config.poll_timeout)
-            .map_err(CollectorError::Poll)?;
+            .context(PollSnafu)?;
         let after = self.events.lock().unwrap().len();
         let new = after - before;
         self.total_events += new as u64;

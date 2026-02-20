@@ -1,11 +1,29 @@
 //! ChaosControl Replay CLI — time-travel debugging and bug triage
 
 use chaoscontrol_replay::recording::RecordedEvent;
-use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine};
-use chaoscontrol_replay::serialize::{load_recording, save_triage_json, save_triage_report};
+use chaoscontrol_replay::replay::{RealSimulationRunner, ReplayEngine, ReplayError};
+use chaoscontrol_replay::serialize::{
+    load_recording, save_triage_json, save_triage_report, SerializeError,
+};
 use chaoscontrol_replay::triage::TriageEngine;
 use clap::{Parser, Subcommand};
+use snafu::Snafu;
 use std::path::PathBuf;
+
+/// CLI errors for the replay binary.
+#[derive(Debug, Snafu)]
+enum CliError {
+    #[snafu(display("Replay error"), context(false))]
+    Replay { source: ReplayError },
+    #[snafu(display("Serialization error"), context(false))]
+    Serialize { source: SerializeError },
+    #[snafu(display("I/O error"), context(false))]
+    Io { source: std::io::Error },
+    #[snafu(display("JSON error"), context(false))]
+    Json { source: serde_json::Error },
+    #[snafu(display("{message}"))]
+    Other { message: String },
+}
 
 #[derive(Parser)]
 #[command(name = "chaoscontrol-replay")]
@@ -140,7 +158,7 @@ fn cmd_replay(
     recording_path: PathBuf,
     checkpoint_id: Option<u64>,
     ticks: Option<u64>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     println!("Loading recording from {:?}...", recording_path);
     let recording = load_recording(&recording_path)?;
 
@@ -196,13 +214,17 @@ fn cmd_triage(
     bug_id: u64,
     format: OutputFormat,
     output: Option<PathBuf>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     println!("Loading recording from {:?}...", recording_path);
     let recording = load_recording(&recording_path)?;
 
     println!("Triaging bug #{}...", bug_id);
-    let report = TriageEngine::triage(&recording, bug_id)
-        .ok_or_else(|| format!("Bug #{} not found in recording", bug_id))?;
+    let report = TriageEngine::triage(&recording, bug_id).ok_or_else(|| {
+        OtherSnafu {
+            message: format!("Bug #{} not found in recording", bug_id),
+        }
+        .build()
+    })?;
 
     match (format, output) {
         (OutputFormat::Markdown, Some(path)) => {
@@ -225,7 +247,7 @@ fn cmd_triage(
     Ok(())
 }
 
-fn cmd_info(recording_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_info(recording_path: PathBuf) -> Result<(), CliError> {
     let recording = load_recording(&recording_path)?;
 
     println!("=== Recording Info ===");
@@ -287,7 +309,7 @@ fn cmd_events(
     filter: EventFilterType,
     from: Option<u64>,
     to: Option<u64>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     let recording = load_recording(&recording_path)?;
 
     let from_tick = from.unwrap_or(0);
@@ -320,7 +342,7 @@ fn cmd_events(
     Ok(())
 }
 
-fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), Box<dyn std::error::Error>> {
+fn cmd_debug(recording_path: PathBuf, tick: u64) -> Result<(), CliError> {
     let recording = load_recording(&recording_path)?;
 
     println!("=== Debug State at Tick {} ===", tick);

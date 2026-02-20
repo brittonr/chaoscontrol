@@ -11,19 +11,19 @@ use chaoscontrol_protocol::*;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use thiserror::Error;
+use snafu::Snafu;
 
 /// Errors from the fault engine.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum EngineError {
-    #[error("No active run — call begin_run() first")]
+    #[snafu(display("No active run — call begin_run() first"))]
     NoActiveRun,
 
-    #[error("Payload decode failed")]
+    #[snafu(display("Payload decode failed"))]
     PayloadDecode,
 
-    #[error("Unknown command: {0:#x}")]
-    UnknownCommand(u8),
+    #[snafu(display("Unknown command: {value:#x}"))]
+    UnknownCommand { value: u8 },
 }
 
 /// Configuration for the fault engine.

@@ -15,18 +15,18 @@ use crate::corpus::BugReport;
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use serde::{Deserialize, Serialize};
+use snafu::Snafu;
 use std::fs;
 use std::path::Path;
-use thiserror::Error;
 
 /// Errors from checkpoint operations.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum CheckpointError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    #[snafu(display("I/O error"), context(false))]
+    Io { source: std::io::Error },
 
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    #[snafu(display("JSON error"), context(false))]
+    Json { source: serde_json::Error },
 }
 
 /// Configuration subset needed to resume exploration.

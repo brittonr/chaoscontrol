@@ -16,16 +16,18 @@ use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use thiserror::Error;
+use snafu::Snafu;
 
 /// Errors from the exploration engine.
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
 pub enum ExploreError {
-    #[error("VM error: {0}")]
-    Vm(#[from] chaoscontrol_vmm::vm::VmError),
+    #[snafu(display("VM error"), context(false))]
+    Vm {
+        source: chaoscontrol_vmm::vm::VmError,
+    },
 
-    #[error("Configuration error: {0}")]
-    Config(String),
+    #[snafu(display("Configuration error: {message}"))]
+    Config { message: String },
 }
 
 /// Configuration for an exploration session.

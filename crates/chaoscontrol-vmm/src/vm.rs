@@ -46,9 +46,9 @@ use linux_loader::loader::bootparam::boot_params;
 use linux_loader::loader::elf::Elf;
 use linux_loader::loader::KernelLoader;
 use log::info;
+use snafu::{ResultExt, Snafu};
 use std::fs::File;
 use std::io;
-use thiserror::Error;
 use vm_memory::{Address, Bytes, GuestAddress};
 use vmm_sys_util::eventfd::EventFd;
 
@@ -190,61 +190,62 @@ impl Default for VmConfig {
 //  Error type
 // ═══════════════════════════════════════════════════════════════════════
 
-#[derive(Error, Debug)]
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
 pub enum VmError {
-    #[error("Failed to create KVM instance: {0}")]
-    KvmCreate(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to create KVM instance"))]
+    KvmCreate { source: kvm_ioctls::Error },
 
-    #[error("Failed to create VM: {0}")]
-    VmCreate(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to create VM"))]
+    VmCreate { source: kvm_ioctls::Error },
 
-    #[error("Failed to create vCPU: {0}")]
-    VcpuCreate(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to create vCPU"))]
+    VcpuCreate { source: kvm_ioctls::Error },
 
-    #[error("Failed to set user memory region: {0}")]
-    SetUserMemoryRegion(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set user memory region"))]
+    SetUserMemoryRegion { source: kvm_ioctls::Error },
 
-    #[error("Guest memory error: {0}")]
-    Memory(#[from] memory::MemoryError),
+    #[snafu(display("Guest memory error"), context(false))]
+    Memory { source: memory::MemoryError },
 
-    #[error("CPU configuration error: {0}")]
-    Cpu(#[from] cpu::CpuError),
+    #[snafu(display("CPU configuration error"), context(false))]
+    Cpu { source: cpu::CpuError },
 
-    #[error("Failed to load kernel: {0}")]
-    KernelLoad(#[source] linux_loader::loader::Error),
+    #[snafu(display("Failed to load kernel"))]
+    KernelLoad { source: linux_loader::loader::Error },
 
-    #[error("Failed to write to guest memory")]
+    #[snafu(display("Failed to write to guest memory"))]
     GuestMemoryWrite,
 
-    #[error("Failed to set vCPU registers: {0}")]
-    SetRegisters(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set vCPU registers"))]
+    SetRegisters { source: kvm_ioctls::Error },
 
-    #[error("Failed to set vCPU special registers: {0}")]
-    SetSregs(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set vCPU special registers"))]
+    SetSregs { source: kvm_ioctls::Error },
 
-    #[error("Failed to get vCPU special registers: {0}")]
-    GetSregs(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to get vCPU special registers"))]
+    GetSregs { source: kvm_ioctls::Error },
 
-    #[error("Failed to set FPU: {0}")]
-    SetFpu(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set FPU"))]
+    SetFpu { source: kvm_ioctls::Error },
 
-    #[error("Failed to create in-kernel IRQ chip: {0}")]
-    CreateIrqChip(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to create in-kernel IRQ chip"))]
+    CreateIrqChip { source: kvm_ioctls::Error },
 
-    #[error("Failed to configure PIT: {0}")]
-    CreatePit(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to configure PIT"))]
+    CreatePit { source: kvm_ioctls::Error },
 
-    #[error("Failed to set KVM clock: {0}")]
-    SetClock(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to set KVM clock"))]
+    SetClock { source: kvm_ioctls::Error },
 
-    #[error("Failed to run vCPU: {0}")]
-    VcpuRun(#[source] kvm_ioctls::Error),
+    #[snafu(display("Failed to run vCPU"))]
+    VcpuRun { source: kvm_ioctls::Error },
 
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
+    #[snafu(display("IO error"), context(false))]
+    Io { source: io::Error },
 
-    #[error("Snapshot error: {0}")]
-    Snapshot(String),
+    #[snafu(display("Snapshot error: {message}"))]
+    Snapshot { message: String },
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -418,8 +419,8 @@ impl DeterministicVm {
     /// console. The VM is ready for [`load_kernel`](Self::load_kernel)
     /// after construction.
     pub fn new(config: VmConfig) -> Result<Self, VmError> {
-        let kvm = Kvm::new().map_err(VmError::KvmCreate)?;
-        let vm = kvm.create_vm().map_err(VmError::VmCreate)?;
+        let kvm = Kvm::new().context(KvmCreateSnafu)?;
+        let vm = kvm.create_vm().context(VmCreateSnafu)?;
 
         // Create guest memory
         let memory = GuestMemoryManager::new(config.memory_size)?;
@@ -434,15 +435,15 @@ impl DeterministicVm {
         };
         unsafe {
             vm.set_user_memory_region(mem_region)
-                .map_err(VmError::SetUserMemoryRegion)?;
+                .context(SetUserMemoryRegionSnafu)?;
         }
 
         // Set TSS address — MUST be before create_irq_chip on x86_64
         vm.set_tss_address(KVM_TSS_ADDRESS)
-            .map_err(VmError::CreateIrqChip)?;
+            .context(CreateIrqChipSnafu)?;
 
         // Create in-kernel IRQ chip (PIC, IOAPIC, LAPIC) — MUST be before create_vcpu
-        vm.create_irq_chip().map_err(VmError::CreateIrqChip)?;
+        vm.create_irq_chip().context(CreateIrqChipSnafu)?;
 
         // Create KVM PIT with speaker dummy flag.
         // KVM's PIT handles I/O ports 0x40-0x43, 0x61 internally and
@@ -453,13 +454,13 @@ impl DeterministicVm {
             flags: KVM_PIT_SPEAKER_DUMMY,
             ..Default::default()
         };
-        vm.create_pit2(pit_config).map_err(VmError::CreatePit)?;
+        vm.create_pit2(pit_config).context(CreatePitSnafu)?;
 
         // Immediately disable KVM PIT channel 0 timer so it never fires
         // on host time. We'll deliver IRQ 0 ourselves via set_irq_line
         // at deterministic virtual-time points.
         {
-            let mut pit_state = vm.get_pit2().map_err(VmError::CreatePit)?;
+            let mut pit_state = vm.get_pit2().context(CreatePitSnafu)?;
             // Set channel 0 to mode 0 (one-shot) with max count and
             // a far-future load time so it never triggers
             pit_state.channels[0].count = 0; // 0 = 65536
@@ -467,7 +468,7 @@ impl DeterministicVm {
             pit_state.channels[0].gate = 1;
             // Set count_load_time far in the future (year 2100)
             pit_state.channels[0].count_load_time = i64::MAX / 2;
-            vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+            vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
         }
 
         // DETERMINISM: Set KVM clock to zero so guest always sees the same
@@ -477,7 +478,7 @@ impl DeterministicVm {
             clock: 0,
             ..Default::default()
         };
-        vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
+        vm.set_clock(&clock_data).context(SetClockSnafu)?;
         info!("KVM clock set to 0 (deterministic)");
 
         // Create vCPUs AFTER irqchip (so each gets an in-kernel LAPIC).
@@ -490,14 +491,13 @@ impl DeterministicVm {
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
         for i in 0..num_vcpus {
-            let vcpu = vm.create_vcpu(i as u64).map_err(VmError::VcpuCreate)?;
+            let vcpu = vm.create_vcpu(i as u64).context(VcpuCreateSnafu)?;
             // Each vCPU needs its own CPUID table with its unique APIC ID
             // in leaf 0x1 EBX[31:24] and leaf 0xB/0x1F EDX. Without this,
             // all vCPUs report APIC ID 0, causing "APIC ID mismatch"
             // firmware bug warnings from the kernel.
             let vcpu_cpuid = cpu::patch_cpuid_apic_id(&cpuid, i as u32, num_vcpus as u32)?;
-            vcpu.set_cpuid2(&vcpu_cpuid)
-                .map_err(cpu::CpuError::SetCpuid)?;
+            vcpu.set_cpuid2(&vcpu_cpuid).context(cpu::SetCpuidSnafu)?;
             cpu::setup_tsc(&vcpu, config.cpu.tsc_khz)?;
             vcpus.push(vcpu);
         }
@@ -514,14 +514,14 @@ impl DeterministicVm {
         let pit = DeterministicPit::new(config.cpu.tsc_khz);
 
         // Set up serial port with interrupt support
-        let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
-        let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
+        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
+        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
         let serial_writer = CapturingWriter::new();
         let serial = vm_superio::Serial::new(serial_trigger, serial_writer.clone());
 
         // Register the serial EventFd with KVM IRQ line 4 (COM1)
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
-            .map_err(VmError::CreateIrqChip)?;
+            .context(CreateIrqChipSnafu)?;
 
         // Create intra-VM vCPU scheduler
         let scheduler = VcpuScheduler::new(&SchedulerConfig {
@@ -730,7 +730,7 @@ impl DeterministicVm {
             &mut kernel_file,
             Some(GuestAddress(HIMEM_START)),
         )
-        .map_err(VmError::KernelLoad)?;
+        .context(KernelLoadSnafu)?;
 
         let entry_point = kernel_load_result.kernel_load;
         let kernel_end = kernel_load_result.kernel_end;
@@ -748,7 +748,7 @@ impl DeterministicVm {
             self.memory
                 .inner()
                 .write_slice(&initrd_data, GuestAddress(initrd_addr))
-                .map_err(|_| VmError::GuestMemoryWrite)?;
+                .map_err(|_| GuestMemoryWriteSnafu.build())?;
             info!(
                 "Initrd loaded at {:#x}, size: {} bytes",
                 initrd_addr,
@@ -773,8 +773,12 @@ impl DeterministicVm {
 
         // Write ACPI tables for SMP when num_vcpus > 1
         if self.vcpus.len() > 1 {
-            acpi::write_acpi_tables(self.memory.inner(), self.vcpus.len())
-                .map_err(|e| VmError::Snapshot(format!("ACPI table generation: {e}")))?;
+            acpi::write_acpi_tables(self.memory.inner(), self.vcpus.len()).map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("ACPI table generation: {e}"),
+                }
+                .build()
+            })?;
             info!("ACPI tables written for {} vCPUs", self.vcpus.len());
         }
 
@@ -803,11 +807,11 @@ impl DeterministicVm {
             data: value,
             ..Default::default()
         }])
-        .map_err(|_| VmError::GuestMemoryWrite)?;
+        .map_err(|_| GuestMemoryWriteSnafu.build())?;
 
         self.vcpus[self.active_vcpu]
             .set_msrs(&msrs)
-            .map_err(VmError::SetRegisters)?;
+            .context(SetRegistersSnafu)?;
         Ok(())
     }
 
@@ -862,14 +866,14 @@ impl DeterministicVm {
         // Write boot params to zero page
         let boot_params = BootParams::new(&params, GuestAddress(ZERO_PAGE_START));
         LinuxBootConfigurator::write_bootparams(&boot_params, self.memory.inner())
-            .map_err(|_| VmError::GuestMemoryWrite)?;
+            .map_err(|_| GuestMemoryWriteSnafu.build())?;
 
         Ok(())
     }
 
     /// Set up segment registers for the BSP (vCPU 0).
     fn setup_sregs(&self) -> Result<(), VmError> {
-        let mut sregs = self.vcpus[0].get_sregs().map_err(VmError::GetSregs)?;
+        let mut sregs = self.vcpus[0].get_sregs().context(GetSregsSnafu)?;
 
         // Use segment helpers from memory module
         sregs.cs = code64_segment();
@@ -895,7 +899,7 @@ impl DeterministicVm {
         sregs.cr4 |= X86_CR4_PAE;
         sregs.efer |= EFER_LME | EFER_LMA;
 
-        self.vcpus[0].set_sregs(&sregs).map_err(VmError::SetSregs)?;
+        self.vcpus[0].set_sregs(&sregs).context(SetSregsSnafu)?;
         Ok(())
     }
 
@@ -909,9 +913,7 @@ impl DeterministicVm {
             rflags: 0x2,          // Reserved bit must be set
             ..Default::default()
         };
-        self.vcpus[0]
-            .set_regs(&regs)
-            .map_err(VmError::SetRegisters)?;
+        self.vcpus[0].set_regs(&regs).context(SetRegistersSnafu)?;
         Ok(())
     }
 
@@ -922,7 +924,7 @@ impl DeterministicVm {
             mxcsr: 0x1f80,
             ..Default::default()
         };
-        self.vcpus[0].set_fpu(&fpu).map_err(VmError::SetFpu)?;
+        self.vcpus[0].set_fpu(&fpu).context(SetFpuSnafu)?;
         Ok(())
     }
 
@@ -940,7 +942,7 @@ impl DeterministicVm {
             clock: 0,
             ..Default::default()
         };
-        self.vm.set_clock(&clock_data).map_err(VmError::SetClock)?;
+        self.vm.set_clock(&clock_data).context(SetClockSnafu)?;
 
         // KVM PIT channel 0 is disabled (count_load_time = far future)
         // so it won't fire. Our DeterministicPit delivers IRQ 0 instead.
@@ -1230,14 +1232,24 @@ impl DeterministicVm {
         };
 
         crate::snapshot::VmSnapshot::capture(&self.vcpus, &self.vm, self.memory.inner(), params)
-            .map_err(|e| VmError::Snapshot(e.to_string()))
+            .map_err(|e| {
+                SnapshotSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })
     }
 
     /// Restore VM state from a snapshot.
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
-            .map_err(|e| VmError::Snapshot(e.to_string()))?;
+            .map_err(|e| {
+                SnapshotSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
 
         // Restore deterministic entropy PRNG state
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
@@ -1294,8 +1306,8 @@ impl DeterministicVm {
         }
 
         // Restore serial state with new EventFd and our capturing writer
-        let serial_evt = EventFd::new(libc::EFD_NONBLOCK).map_err(VmError::Io)?;
-        let serial_trigger = SerialTrigger(serial_evt.try_clone().map_err(VmError::Io)?);
+        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
+        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
         self.serial_writer = CapturingWriter::new();
         self.serial = vm_superio::Serial::from_state(
             &snapshot.serial_state,
@@ -1303,12 +1315,17 @@ impl DeterministicVm {
             vm_superio::serial::NoEvents,
             self.serial_writer.clone(),
         )
-        .map_err(|e| VmError::Snapshot(format!("serial restore: {e}")))?;
+        .map_err(|e| {
+            SnapshotSnafu {
+                message: format!("serial restore: {e}"),
+            }
+            .build()
+        })?;
 
         // Re-register IRQ fd
         self.vm
             .register_irqfd(&serial_evt, SERIAL_IRQ)
-            .map_err(VmError::CreateIrqChip)?;
+            .context(CreateIrqChipSnafu)?;
 
         // Reset host-side preemption state that is NOT part of the
         // deterministic snapshot but affects scheduling decisions.
@@ -1353,7 +1370,7 @@ impl DeterministicVm {
     /// then suppress KVM's timer by pushing count_load_time to far future.
     /// We deliver IRQ 0 ourselves at deterministic virtual-time points.
     fn sync_and_suppress_pit(&mut self) -> Result<(), VmError> {
-        let mut pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+        let mut pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
         let current_tsc = self.virtual_tsc.read();
         let tsc_khz = self.virtual_tsc.tsc_khz() as u128;
 
@@ -1401,16 +1418,16 @@ impl DeterministicVm {
         // Freeze channel 2: set count_load_time far in the future.
         pit_state.channels[2].count_load_time = i64::MAX / 2;
 
-        self.vm.set_pit2(&pit_state).map_err(VmError::CreatePit)?;
+        self.vm.set_pit2(&pit_state).context(CreatePitSnafu)?;
 
         // ── Deliver deterministic IRQ 0 ─────────────────────────────
         if self.pit.pending_irq(current_tsc) {
             self.vm
                 .set_irq_line(PIT_IRQ, true)
-                .map_err(VmError::CreateIrqChip)?;
+                .context(CreateIrqChipSnafu)?;
             self.vm
                 .set_irq_line(PIT_IRQ, false)
-                .map_err(VmError::CreateIrqChip)?;
+                .context(CreateIrqChipSnafu)?;
             self.pit.acknowledge_irq();
         }
         Ok(())
@@ -1661,7 +1678,7 @@ impl DeterministicVm {
                 // Read KVM PIT state to find channel 0's reload value,
                 // then fast-forward virtual TSC by one PIT period and
                 // inject the interrupt deterministically.
-                let pit_state = self.vm.get_pit2().map_err(VmError::CreatePit)?;
+                let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
                 let ch0 = &pit_state.channels[0];
                 let reload = if ch0.count == 0 {
                     65536u64
@@ -1681,10 +1698,10 @@ impl DeterministicVm {
                     // Inject the timer interrupt deterministically
                     self.vm
                         .set_irq_line(PIT_IRQ, true)
-                        .map_err(VmError::CreateIrqChip)?;
+                        .context(CreateIrqChipSnafu)?;
                     self.vm
                         .set_irq_line(PIT_IRQ, false)
-                        .map_err(VmError::CreateIrqChip)?;
+                        .context(CreateIrqChipSnafu)?;
 
                     self.maybe_switch_vcpu();
                     Ok(false)
@@ -1846,7 +1863,7 @@ impl DeterministicVm {
                     }
                     return Ok(false);
                 }
-                Err(VmError::VcpuRun(e))
+                Err(VmError::VcpuRun { source: e })
             }
         }
     }

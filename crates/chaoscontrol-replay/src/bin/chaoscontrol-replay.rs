@@ -482,7 +482,7 @@ fn format_triage_markdown(report: &chaoscontrol_replay::triage::TriageReport) ->
             .unwrap_or_else(|| "-".to_string());
         md.push_str(&format!("| {} | {} | {} |\n", entry.tick, vm, entry.event));
     }
-    md.push_str("\n");
+    md.push('\n');
 
     md.push_str("## VM States at Failure\n\n");
     for vm_state in &report.vm_states {

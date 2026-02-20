@@ -214,6 +214,18 @@
 - **Key insight**: NetworkFabric is `Clone` → snapshot = clone → RNG state preserved by ChaCha20's `get_seed()` (stored in the struct fields, not external state)
 - 630 unit tests, 22/22 integration tests pass
 
+## Kernel Coverage / KCOV (2026-02-19)
+- **Custom kernel**: flake.nix `kcov-kernel` + `kcov-vmlinux` packages using `linuxPackages_latest.kernel.override`
+- **SDK module**: `chaoscontrol_sdk::kcov` — std-only, cfg(feature = "std"), mounts debugfs, opens KCOV device
+- **KCOV ioctls**: KCOV_INIT_TRACE (0x80086301), KCOV_ENABLE (0x6364), KCOV_DISABLE (0x6365)
+- **Edge hashing**: Separate `prev_pc` from userspace SanCov's `prev_location` to avoid cross-domain interference
+- **Coverage merging**: Kernel PCs hashed into same 64KB bitmap via `coverage::record_hit()` — zero VMM changes
+- **Graceful fallback**: `kcov::init()` returns false on non-KCOV kernel (errno from open /sys/kernel/debug/kcov)
+- **Guest integration**: Both chaoscontrol-guest and chaoscontrol-raft-guest call `kcov::init()` + `kcov::collect()`
+- **Initrd change**: Added `/sys/kernel/debug` directory to build scripts
+- **Integration test 26**: KCOV graceful degradation (passes with both kernel types)
+- **Clippy cleanup**: Fixed ~20 pre-existing clippy issues from Rust 1.93 (c-string literals, const asserts, field_reassign_with_default, matches!, push_str, redundant closures, is_multiple_of)
+
 ## Completed (2026-02-19 SMP end-to-end)
 26. ✅ SMP snapshot/restore integration test (Test 25) — two restores produce identical execution
 27. ✅ num_vcpus + SchedulingStrategy wired through VmConfig → SimulationConfig → ExplorerConfig → CLI

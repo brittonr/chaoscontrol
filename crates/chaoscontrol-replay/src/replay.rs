@@ -344,7 +344,7 @@ fn event_tick(event: &RecordedEvent) -> u64 {
 mod tests {
     use super::*;
     use crate::checkpoint::{Checkpoint, CheckpointStore};
-    use chaoscontrol_fault::engine::EngineSnapshot;
+
     use chaoscontrol_vmm::controller::NetworkFabric;
     use rand::SeedableRng;
 

@@ -16,8 +16,10 @@ fn strip_nondeterministic(s: &str) -> String {
 }
 
 fn run_boot(kernel: &str, initrd: &str, num_vcpus: usize) -> (u64, u64, String) {
-    let mut config = VmConfig::default();
-    config.num_vcpus = num_vcpus;
+    let config = VmConfig {
+        num_vcpus,
+        ..Default::default()
+    };
     let mut vm = DeterministicVm::new(config).expect("create VM");
     vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
 

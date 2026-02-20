@@ -17,7 +17,7 @@ use chaoscontrol_raft_guest::{
     check_election_safety, check_leader_completeness, check_log_matching, LogEntry, Message, Node,
     Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL, NUM_NODES,
 };
-use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
+use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Init
@@ -25,11 +25,11 @@ use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
 
 fn mount_devtmpfs() {
     unsafe {
-        libc::mkdir(b"/dev\0".as_ptr() as *const _, 0o755);
+        libc::mkdir(c"/dev".as_ptr().cast(), 0o755);
         let ret = libc::mount(
-            b"devtmpfs\0".as_ptr() as *const _,
-            b"/dev\0".as_ptr() as *const _,
-            b"devtmpfs\0".as_ptr() as *const _,
+            c"devtmpfs".as_ptr().cast(),
+            c"/dev".as_ptr().cast(),
+            c"devtmpfs".as_ptr().cast(),
             0,
             std::ptr::null(),
         );
@@ -51,8 +51,12 @@ fn main() {
     println!("raft: starting 3-node cluster");
 
     coverage::init();
+    let kcov_ok = kcov::init();
     lifecycle::setup_complete(&[("program", "raft-guest"), ("nodes", "3")]);
-    println!("raft: setup_complete");
+    println!(
+        "raft: setup_complete (kcov={})",
+        if kcov_ok { "active" } else { "unavailable" }
+    );
 
     // Initialize 3 nodes
     let mut nodes: Vec<Node> = (0..NUM_NODES).map(Node::new).collect();
@@ -173,8 +177,11 @@ fn main() {
         assert::sometimes(values_committed > 0, "value committed", &[]);
         assert::sometimes(values_committed >= 3, "3+ values committed", &[]);
 
+        // ── Drain kernel coverage into bitmap ───────────────
+        kcov::collect();
+
         // ── Heartbeat ───────────────────────────────────────
-        if tick % 40 == 0 {
+        if tick.is_multiple_of(40) {
             let leader_id = nodes.iter().find(|n| n.role == Role::Leader).map(|n| n.id);
             println!(
                 "raft: tick={} leader={:?} terms=[{},{},{}] commits=[{},{},{}] proposed={}",

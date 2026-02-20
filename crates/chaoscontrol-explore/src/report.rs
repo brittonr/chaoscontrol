@@ -20,7 +20,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
-    output.push_str("\n");
+    output.push('\n');
 
     // Coverage stats
     output.push_str("─── Coverage Statistics ───────────────────────────────────────────────\n");
@@ -36,7 +36,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
         "Avg edges/run:          {:.2}\n",
         report.coverage_stats.edges_per_run_avg
     ));
-    output.push_str("\n");
+    output.push('\n');
 
     // Network stats
     let ns = &report.network_stats;
@@ -102,7 +102,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
         for (i, bug) in report.bugs.iter().enumerate() {
             output.push_str(&format!("\n{}. Bug #{}\n", i + 1, bug.bug_id));
             output.push_str(&format_bug(bug));
-            output.push_str("\n");
+            output.push('\n');
         }
     } else {
         output

@@ -337,10 +337,7 @@ mod tests {
         assert_eq!(flags & 1, 1, "PCAT_COMPAT flag must be set");
     }
 
-    #[test]
-    fn too_many_cpus_rejected() {
-        // We can't easily test write_acpi_tables without guest memory,
-        // but we can verify the limit check would apply.
-        assert!(129 > 128);
-    }
+    // MAX_CPUS limit (128) is enforced by write_acpi_tables returning
+    // an error.  This requires guest memory setup so is tested in
+    // integration tests, not here.
 }

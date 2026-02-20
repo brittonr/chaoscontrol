@@ -20,8 +20,10 @@ fn main() {
     };
 
     // Run single-vCPU boot, recording PMU counter at each step
-    let mut config = VmConfig::default();
-    config.num_vcpus = 1;
+    let config = VmConfig {
+        num_vcpus: 1,
+        ..Default::default()
+    };
     let mut vm = DeterministicVm::new(config).expect("create VM");
     vm.load_kernel(&args[1], Some(&args[2]))
         .expect("load kernel");

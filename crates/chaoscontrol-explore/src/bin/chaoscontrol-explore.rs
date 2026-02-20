@@ -173,6 +173,7 @@ fn main() {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_run(
     kernel: String,
     initrd: Option<String>,
@@ -225,9 +226,11 @@ fn cmd_run(
     };
 
     // Build VM config with SMP settings
-    let mut vm_config = VmConfig::default();
-    vm_config.num_vcpus = vcpus;
-    vm_config.scheduling_strategy = scheduling_strategy;
+    let vm_config = VmConfig {
+        num_vcpus: vcpus,
+        scheduling_strategy,
+        ..Default::default()
+    };
 
     // Build configuration
     let config = ExplorerConfig {

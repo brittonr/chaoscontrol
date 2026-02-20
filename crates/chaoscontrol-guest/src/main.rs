@@ -24,7 +24,7 @@
 //! cargo run --release --bin sdk_guest_test -- result-dev/vmlinux
 //! ```
 
-use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
+use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Init helpers — mount devtmpfs so /dev/mem + /dev/port exist
@@ -37,11 +37,11 @@ use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
 fn mount_devtmpfs() {
     unsafe {
         // Ensure /dev exists (may already from initramfs)
-        libc::mkdir(b"/dev\0".as_ptr() as *const _, 0o755);
+        libc::mkdir(c"/dev".as_ptr().cast(), 0o755);
         let ret = libc::mount(
-            b"devtmpfs\0".as_ptr() as *const _,
-            b"/dev\0".as_ptr() as *const _,
-            b"devtmpfs\0".as_ptr() as *const _,
+            c"devtmpfs".as_ptr().cast(),
+            c"/dev".as_ptr().cast(),
+            c"devtmpfs".as_ptr().cast(),
             0,
             std::ptr::null(),
         );
@@ -71,7 +71,11 @@ fn main() {
 
     // ── Phase 1: coverage init ──────────────────────────────────
     coverage::init();
-    println!("chaoscontrol-guest: coverage initialized");
+    let kcov_ok = kcov::init();
+    println!(
+        "chaoscontrol-guest: coverage initialized (kcov={})",
+        if kcov_ok { "active" } else { "unavailable" }
+    );
 
     // ── Phase 2: signal setup complete ──────────────────────────
     lifecycle::setup_complete(&[("program", "chaoscontrol-guest"), ("version", "0.1.0")]);
@@ -120,6 +124,9 @@ fn main() {
             }
         }
 
+        // ── Drain kernel coverage into bitmap ────────────────────
+        kcov::collect();
+
         // ── Heartbeat every 10 iterations ───────────────────────
         if i % 10 == 0 {
             println!("heartbeat {}", i / 10);
@@ -138,6 +145,12 @@ fn main() {
         "chaoscontrol-guest: choices={},{},{},{}",
         choice_counts[0], choice_counts[1], choice_counts[2], choice_counts[3],
     );
+    if kcov::is_active() {
+        println!(
+            "chaoscontrol-guest: kcov collected {} kernel PCs",
+            kcov::total_pcs_collected()
+        );
+    }
 
     // ── Phase 5: halt ───────────────────────────────────────────
     // Returning from init causes a kernel panic — loop forever and

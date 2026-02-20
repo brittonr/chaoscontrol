@@ -78,6 +78,30 @@ chaoscontrol/
     └── chaoscontrol-trace/                # eBPF-based KVM tracing
 ```
 
+### Kernel Coverage (KCOV)
+
+When the guest kernel is built with `CONFIG_KCOV=y`, the SDK
+automatically collects kernel code coverage and merges it into the
+same AFL-style bitmap used by userspace SanCov.  This gives the
+explorer visibility into kernel code paths exercised by different
+fault schedules — filesystem error handling, network stack branches,
+scheduler decisions, etc.
+
+```bash
+# Build KCOV-enabled kernel (first time takes ~20 min)
+nix build .#kcov-vmlinux -o result-kcov
+
+# Run exploration with kernel coverage
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel result-kcov/vmlinux --initrd guest/initrd-raft.gz \
+  --vms 3 --rounds 200 --branches 16
+
+# Guest SDK auto-detects KCOV — no code changes needed
+```
+
+On a standard kernel (without `CONFIG_KCOV`), the SDK gracefully
+falls back to userspace-only coverage — no crash, no error.
+
 ## Building
 
 ```bash
@@ -296,4 +320,5 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Coverage feedback from guest (kcov / breakpoints)
 - [x] Coverage-guided seed exploration
 - [x] Network simulation fidelity (jitter, bandwidth, duplication)
+- [x] Kernel coverage (KCOV) — kernel code path visibility for exploration
 

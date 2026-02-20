@@ -269,7 +269,7 @@ mod tests {
         let mut recorder = Recorder::new(config, schedule, 42);
 
         // Tick 100 - no checkpoint yet (interval is 1000)
-        recorder.on_tick(100, || dummy_snapshot(), vec![]);
+        recorder.on_tick(100, dummy_snapshot, vec![]);
 
         assert_eq!(recorder.recording.total_ticks, 100);
         assert_eq!(recorder.recording.checkpoints.len(), 0);
@@ -282,7 +282,7 @@ mod tests {
         let mut recorder = Recorder::new(config, schedule, 42);
 
         // Tick 1000 - checkpoint
-        recorder.on_tick(1000, || dummy_snapshot(), vec![String::from("output")]);
+        recorder.on_tick(1000, dummy_snapshot, vec![String::from("output")]);
 
         assert_eq!(recorder.recording.total_ticks, 1000);
         assert_eq!(recorder.recording.checkpoints.len(), 1);
@@ -299,9 +299,9 @@ mod tests {
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
 
-        recorder.on_tick(1000, || dummy_snapshot(), vec![]);
-        recorder.on_tick(2000, || dummy_snapshot(), vec![]);
-        recorder.on_tick(3000, || dummy_snapshot(), vec![]);
+        recorder.on_tick(1000, dummy_snapshot, vec![]);
+        recorder.on_tick(2000, dummy_snapshot, vec![]);
+        recorder.on_tick(3000, dummy_snapshot, vec![]);
 
         assert_eq!(recorder.recording.checkpoints.len(), 3);
         assert_eq!(recorder.recording.checkpoints.all()[0].id, 0);
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn test_event_tick_extraction() {
-        let events = vec![
+        let events = [
             RecordedEvent::FaultFired {
                 tick: 100,
                 fault: "test".to_string(),
@@ -390,14 +390,14 @@ mod tests {
         });
 
         // Take checkpoint at 1000
-        recorder.on_tick(1000, || dummy_snapshot(), vec![]);
+        recorder.on_tick(1000, dummy_snapshot, vec![]);
 
         // First checkpoint should include events up to tick 1000
         let cp1 = &recorder.recording.checkpoints.all()[0];
         assert_eq!(cp1.events_since_last.len(), 2); // f1 and f2
 
         // Take checkpoint at 2000
-        recorder.on_tick(2000, || dummy_snapshot(), vec![]);
+        recorder.on_tick(2000, dummy_snapshot, vec![]);
 
         // Second checkpoint should include events after 1000
         let cp2 = &recorder.recording.checkpoints.all()[1];

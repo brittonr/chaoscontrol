@@ -26,7 +26,7 @@ echo "    Binary size: ${SIZE} bytes"
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-mkdir -p "$TMPDIR"/{dev,proc,sys}
+mkdir -p "$TMPDIR"/{dev,proc,sys/kernel/debug}
 cp "$BINARY" "$TMPDIR/init"
 chmod +x "$TMPDIR/init"
 

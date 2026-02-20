@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn test_event_tick_extraction() {
-        let events = vec![
+        let events = [
             RecordedEvent::FaultFired {
                 tick: 100,
                 fault: "test".to_string(),

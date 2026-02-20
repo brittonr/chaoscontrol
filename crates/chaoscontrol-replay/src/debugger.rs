@@ -257,17 +257,27 @@ pub enum EventFilter {
 impl EventFilter {
     /// Check if an event matches this filter.
     pub fn matches(&self, event: &RecordedEvent) -> bool {
-        match (self, event) {
-            (EventFilter::AnyFault, RecordedEvent::FaultFired { .. }) => true,
-            (EventFilter::AnyAssertion, RecordedEvent::AssertionHit { .. }) => true,
-            (EventFilter::FailedAssertion, RecordedEvent::AssertionHit { passed: false, .. }) => {
-                true
-            }
-            (EventFilter::AnyBug, RecordedEvent::BugDetected { .. }) => true,
-            (EventFilter::VmStatusChange, RecordedEvent::VmStatusChange { .. }) => true,
-            (EventFilter::SerialOutput, RecordedEvent::SerialOutput { .. }) => true,
-            _ => false,
-        }
+        matches!(
+            (self, event),
+            (EventFilter::AnyFault, RecordedEvent::FaultFired { .. })
+                | (
+                    EventFilter::AnyAssertion,
+                    RecordedEvent::AssertionHit { .. }
+                )
+                | (
+                    EventFilter::FailedAssertion,
+                    RecordedEvent::AssertionHit { passed: false, .. }
+                )
+                | (EventFilter::AnyBug, RecordedEvent::BugDetected { .. })
+                | (
+                    EventFilter::VmStatusChange,
+                    RecordedEvent::VmStatusChange { .. }
+                )
+                | (
+                    EventFilter::SerialOutput,
+                    RecordedEvent::SerialOutput { .. }
+                )
+        )
     }
 }
 

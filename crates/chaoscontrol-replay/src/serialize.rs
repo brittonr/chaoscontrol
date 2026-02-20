@@ -78,7 +78,7 @@ fn format_triage_markdown(report: &TriageReport) -> String {
             .unwrap_or_else(|| "-".to_string());
         md.push_str(&format!("| {} | {} | {} |\n", entry.tick, vm, entry.event));
     }
-    md.push_str("\n");
+    md.push('\n');
 
     // VM States
     md.push_str("## VM States at Failure\n\n");

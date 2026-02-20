@@ -14,7 +14,6 @@ use log::{debug, info, warn};
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use snafu::ResultExt;
 use std::collections::VecDeque;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2038,7 +2037,7 @@ mod tests {
 
         let (ticks_a1, stats_a1) = send_and_collect(42);
         let (ticks_a2, stats_a2) = send_and_collect(42);
-        let (ticks_b, stats_b) = send_and_collect(99);
+        let (ticks_b, _stats_b) = send_and_collect(99);
 
         // Same seed = same results
         assert_eq!(ticks_a1, ticks_a2, "Same seed must produce same ticks");

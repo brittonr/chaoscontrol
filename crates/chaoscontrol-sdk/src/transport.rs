@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn payload_max_fits_in_page() {
-        assert!(PAYLOAD_MAX > 0);
-        assert!(PAYLOAD_MAX <= 4096);
+        const { assert!(PAYLOAD_MAX > 0) };
+        const { assert!(PAYLOAD_MAX <= 4096) };
     }
 }

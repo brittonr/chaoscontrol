@@ -313,7 +313,11 @@ mod tests {
 
         // All in range
         for &q in &quanta {
-            assert!(q >= 10 && q < 100, "Quantum {} out of range [10, 100)", q);
+            assert!(
+                (10..100).contains(&q),
+                "Quantum {} out of range [10, 100)",
+                q
+            );
         }
     }
 

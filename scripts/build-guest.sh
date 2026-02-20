@@ -37,7 +37,7 @@ echo "    Linked: $(file "$BINARY" | grep -o 'statically linked' || echo 'dynami
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
-mkdir -p "$TMPDIR"/{dev,proc,sys}
+mkdir -p "$TMPDIR"/{dev,proc,sys/kernel/debug}
 cp "$BINARY" "$TMPDIR/init"
 chmod +x "$TMPDIR/init"
 

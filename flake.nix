@@ -58,10 +58,29 @@
           chaoscontrol = craneLib.buildPackage (commonArgs // {
             inherit cargoArtifacts;
           });
+
+          # Custom Linux kernel with KCOV support for coverage-guided fuzzing
+          kcovKernel = pkgs.linuxPackages_latest.kernel.override {
+            structuredExtraConfig = with pkgs.lib.kernel; {
+              KCOV = yes;
+              KCOV_INSTRUMENT_ALL = yes;
+              KCOV_ENABLE_COMPARISONS = yes;
+              DEBUG_FS = yes;
+            };
+          };
         in
         {
           default = chaoscontrol;
           chaoscontrol-vmm = chaoscontrol;
+
+          # Custom Linux kernel with KCOV (coverage-guided fuzzing)
+          kcov-kernel = kcovKernel;
+
+          # Expose vmlinux directly for convenience
+          kcov-vmlinux = pkgs.runCommand "kcov-vmlinux" {} ''
+            mkdir -p $out
+            ln -s ${kcovKernel.dev}/vmlinux $out/vmlinux
+          '';
         }
       );
 
@@ -190,6 +209,10 @@
               echo "  cargo build -p chaoscontrol-trace    Build trace harness"
               echo "  sudo chaoscontrol-trace live --pid <PID>"
               echo "  chaoscontrol-trace verify --trace-a a.json --trace-b b.json"
+              echo ""
+              echo "KCOV Kernel (coverage-guided fuzzing):"
+              echo "  nix build .#kcov-kernel       Build custom kernel with CONFIG_KCOV"
+              echo "  nix build .#kcov-vmlinux      Build and symlink vmlinux"
             '';
           };
         }

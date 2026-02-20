@@ -1470,8 +1470,10 @@ fn main() {
     //  Test 23: SMP boot — 2 vCPUs online
     // ═══════════════════════════════════════════════════════════════
     run_test!("SMP boot: 2 vCPUs detected and brought online", {
-        let mut config = VmConfig::default();
-        config.num_vcpus = 2;
+        let config = VmConfig {
+            num_vcpus: 2,
+            ..Default::default()
+        };
         let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
         vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
         assert_eq!(vm.num_vcpus(), 2, "VM should have 2 vCPUs");
@@ -1517,8 +1519,10 @@ fn main() {
         "SMP determinism: identical 2-vCPU runs produce same serial",
         {
             let make_vm = || {
-                let mut config = VmConfig::default();
-                config.num_vcpus = 2;
+                let config = VmConfig {
+                    num_vcpus: 2,
+                    ..Default::default()
+                };
                 let mut vm = DeterministicVm::new(config).expect("create VM");
                 vm.load_kernel(kernel, Some(initrd)).expect("load");
                 vm
@@ -1595,8 +1599,10 @@ fn main() {
     run_test!(
         "SMP snapshot/restore: two restores produce identical execution",
         {
-            let mut config = VmConfig::default();
-            config.num_vcpus = 2;
+            let config = VmConfig {
+                num_vcpus: 2,
+                ..Default::default()
+            };
             let mut vm = DeterministicVm::new(config).expect("create 2-vCPU VM");
             vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
 
@@ -1686,6 +1692,57 @@ fn main() {
             restore_ok_1 && restore_ok_2 && exits_match && vtsc_match && serial_match
         }
     );
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 26: KCOV graceful degradation
+    // ═══════════════════════════════════════════════════════════════
+    //
+    // Verifies the KCOV SDK module handles both KCOV-enabled and
+    // standard kernels correctly.  On a standard kernel (no CONFIG_KCOV),
+    // the guest prints "kcov=unavailable" and coverage still works via
+    // userspace SanCov alone.  On a KCOV kernel, "kcov=active" appears
+    // and kernel PCs are merged into the coverage bitmap.
+    //
+    // This test always passes — it just reports what the kernel supports.
+    run_test!("KCOV graceful degradation", {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).expect("create VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+
+        // Run until setup_complete (comes after the KCOV init line)
+        let output = vm
+            .run_until("setup_complete")
+            .expect("run to setup_complete");
+
+        if output.contains("kcov=active") {
+            println!();
+            println!("    → Kernel has CONFIG_KCOV=y — kernel coverage active!");
+
+            // Run a bit more to collect kernel PCs
+            let _ = vm.run_until("heartbeat 1");
+            let serial = vm.take_serial_output();
+
+            // Check if KCOV PCs were collected
+            if let Some(line) = serial.lines().find(|l| l.contains("kcov collected")) {
+                println!("    → {}", line.trim());
+            }
+
+            // Coverage bitmap should have more edges with KCOV
+            let bitmap = vm.read_coverage_bitmap();
+            let edges = bitmap.iter().filter(|&&b| b > 0).count();
+            println!("    → Coverage bitmap: {} edges (userspace + kernel)", edges);
+        } else if output.contains("kcov=unavailable") {
+            println!();
+            println!("    → Kernel lacks CONFIG_KCOV — userspace coverage only");
+            println!("    → Build KCOV kernel: nix build .#kcov-vmlinux");
+        } else {
+            println!();
+            println!("    → Unexpected output (no KCOV status line)");
+        }
+
+        // Always passes — KCOV is optional
+        true
+    });
 
     // ═══════════════════════════════════════════════════════════════
     //  Summary

@@ -6,15 +6,17 @@ fn main() {
 
     for num_vcpus in [4, 8] {
         println!("\n=== Testing {} vCPUs ===", num_vcpus);
-        let mut config = VmConfig::default();
-        config.num_vcpus = num_vcpus;
+        let config = VmConfig {
+            num_vcpus,
+            ..Default::default()
+        };
         let mut vm = DeterministicVm::new(config).expect("create VM");
         vm.load_kernel("result-dev/vmlinux", Some("guest/initrd.gz"))
             .expect("load kernel");
 
         let mut output = String::new();
         for chunk in 0..30 {
-            let (exits, halted) = vm.run_bounded(10_000).expect("run");
+            let (_exits, halted) = vm.run_bounded(10_000).expect("run");
             output.push_str(&vm.take_serial_output());
             if output.contains("Brought up") || output.contains("login:") || halted {
                 println!(

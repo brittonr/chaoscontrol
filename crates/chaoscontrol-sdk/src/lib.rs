@@ -41,6 +41,8 @@
 
 pub mod assert;
 pub mod coverage;
+#[cfg(feature = "std")]
+pub mod kcov;
 pub mod lifecycle;
 pub mod random;
 mod transport;

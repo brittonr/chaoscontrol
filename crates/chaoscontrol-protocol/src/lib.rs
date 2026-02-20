@@ -453,40 +453,41 @@ mod tests {
     #[test]
     fn sdk_port_does_not_conflict_with_serial_or_pit() {
         // Serial: 0x3F8..=0x3FF
-        assert!(SDK_PORT < 0x3F8 || SDK_PORT > 0x3FF);
+        const { assert!(SDK_PORT < 0x3F8 || SDK_PORT > 0x3FF) };
         // PIT: 0x40..=0x43, 0x61
-        assert!(SDK_PORT != 0x40 && SDK_PORT != 0x41 && SDK_PORT != 0x42);
-        assert!(SDK_PORT != 0x43 && SDK_PORT != 0x61);
+        const { assert!(SDK_PORT != 0x40 && SDK_PORT != 0x41 && SDK_PORT != 0x42) };
+        const { assert!(SDK_PORT != 0x43 && SDK_PORT != 0x61) };
     }
 
     #[test]
     fn hypercall_page_addr_in_e820_gap() {
         // Must be >= LOW_MEMORY_END (0x9FC00) and < HIMEM_START (0x100000)
-        assert!(HYPERCALL_PAGE_ADDR >= 0x9FC00);
-        assert!(HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64 <= 0x100000);
+        const { assert!(HYPERCALL_PAGE_ADDR >= 0x9FC00) };
+        const { assert!(HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64 <= 0x100000) };
     }
 
     #[test]
     fn coverage_bitmap_in_e820_gap() {
         // Must be >= LOW_MEMORY_END and within reserved BIOS area
-        assert!(COVERAGE_BITMAP_ADDR >= 0xA0000); // Video RAM starts here
-        assert!(COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64 <= 0x100000);
+        const { assert!(COVERAGE_BITMAP_ADDR >= 0xA0000) }; // Video RAM starts here
+        const { assert!(COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64 <= 0x100000) };
     }
 
     #[test]
     fn coverage_bitmap_does_not_overlap_hypercall_page() {
-        let cov_end = COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64;
         // Coverage: 0xE0000..0xF0000, Hypercall: 0xFE000..0xFF000
-        assert!(
-            cov_end <= HYPERCALL_PAGE_ADDR
-                || COVERAGE_BITMAP_ADDR >= HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64
-        );
+        const {
+            assert!(
+                COVERAGE_BITMAP_ADDR + COVERAGE_BITMAP_SIZE as u64 <= HYPERCALL_PAGE_ADDR
+                    || COVERAGE_BITMAP_ADDR >= HYPERCALL_PAGE_ADDR + HYPERCALL_PAGE_SIZE as u64
+            )
+        };
     }
 
     #[test]
     fn coverage_port_does_not_conflict() {
-        assert_ne!(COVERAGE_PORT, SDK_PORT);
-        assert!(COVERAGE_PORT < 0x3F8 || COVERAGE_PORT > 0x3FF); // Not serial
-        assert!(COVERAGE_PORT != 0x40 && COVERAGE_PORT != 0x43); // Not PIT
+        const { assert!(COVERAGE_PORT != SDK_PORT) };
+        const { assert!(COVERAGE_PORT < 0x3F8 || COVERAGE_PORT > 0x3FF) }; // Not serial
+        const { assert!(COVERAGE_PORT != 0x40 && COVERAGE_PORT != 0x43) }; // Not PIT
     }
 }

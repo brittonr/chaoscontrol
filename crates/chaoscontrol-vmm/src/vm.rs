@@ -86,6 +86,7 @@ const KVM_TSS_ADDRESS: usize = 0xfffb_d000;
 /// Get the current CLOCK_MONOTONIC time in nanoseconds.
 ///
 /// Used to synchronize KVM PIT's `count_load_time` with our virtual time.
+#[allow(dead_code)]
 fn monotonic_ns() -> i64 {
     let mut ts = libc::timespec {
         tv_sec: 0,
@@ -362,6 +363,7 @@ pub struct DeterministicVm {
     /// Accumulated guest instructions for the current vCPU's turn.
     insn_count: u64,
     /// Instruction quantum: total guest instructions per vCPU turn.
+    #[allow(dead_code)]
     insn_quantum: u64,
 
     /// Single-step state for exact preemption.
@@ -1372,7 +1374,7 @@ impl DeterministicVm {
     fn sync_and_suppress_pit(&mut self) -> Result<(), VmError> {
         let mut pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
         let current_tsc = self.virtual_tsc.read();
-        let tsc_khz = self.virtual_tsc.tsc_khz() as u128;
+        let _tsc_khz = self.virtual_tsc.tsc_khz() as u128;
 
         // ── Channel 0: mirror config + suppress KVM timer ──────────
         let ch0 = &pit_state.channels[0];
@@ -1557,6 +1559,7 @@ impl DeterministicVm {
     /// Switch to the next runnable vCPU after a quantum expires.
     /// Disables single-stepping, resets instruction count, re-arms the PMU
     /// counter for the new vCPU's turn.
+    #[allow(dead_code)]
     fn switch_vcpu_at_quantum(&mut self) {
         self.disable_singlestep();
         self.insn_count = 0;

@@ -65,6 +65,7 @@
 | 2026-02-20 | self | Worker used `vcpu: u32` for NMI target | Use `vcpu: usize` for consistency with rest of crate (usize for indices) |
 | 2026-02-20 | self | Worker classified InjectInterrupt as FaultCategory::Resource | Should be FaultCategory::Interrupt (new category) |
 | 2026-02-20 | self | BugMode::from_str shadows std::str::FromStr trait | Rename to BugMode::parse — clippy `should_implement_trait` |
+| 2026-02-20 | self | `run_bounded` used `for i in 0..max_exits` loop counter | SIGALRM (VcpuExit::Intr) doesn't increment exit_count but consumes a loop slot → ±1 exit non-determinism in SMP. Fix: track `self.exit_count - start_exits` instead of loop iterations |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)

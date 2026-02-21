@@ -1180,14 +1180,27 @@ impl DeterministicVm {
         /// single SDK call in that time, it's truly idle.
         const SDK_IDLE_THRESHOLD: u64 = 50_000;
 
-        for i in 0..max_exits {
+        // Track real exits via exit_count, NOT loop iterations.
+        // SIGALRM (VcpuExit::Intr) does not increment exit_count,
+        // so using a simple `for i in 0..max_exits` loop would
+        // consume a budget slot on each SIGALRM without producing
+        // a real exit — causing non-deterministic total exit counts
+        // in SMP mode where SIGALRM fires at wall-clock intervals.
+        let start_exits = self.exit_count;
+
+        loop {
+            let real_exits = self.exit_count - start_exits;
+            if real_exits >= max_exits {
+                break;
+            }
+
             if self.step()? {
                 // Disarm timer on early exit to prevent stale SIGALRMs
                 // from leaking into subsequent VM runs in the same process.
                 if self.vcpus.len() > 1 {
                     self.disarm_preemption_timer();
                 }
-                return Ok((i + 1, true));
+                return Ok((self.exit_count - start_exits, true));
             }
             // Idle counter incremented in step() on every exit except
             // SDK/coverage port accesses (which reset it to 0).
@@ -1205,7 +1218,7 @@ impl DeterministicVm {
                 if self.vcpus.len() > 1 {
                     self.disarm_preemption_timer();
                 }
-                return Ok((i + 1, true));
+                return Ok((self.exit_count - start_exits, true));
             }
         }
         // Disarm preemption timer at end of bounded run so it doesn't
@@ -1213,7 +1226,7 @@ impl DeterministicVm {
         if self.vcpus.len() > 1 {
             self.disarm_preemption_timer();
         }
-        Ok((max_exits, false))
+        Ok((self.exit_count - start_exits, false))
     }
 
     // ─── Public API: serial output ───────────────────────────────────

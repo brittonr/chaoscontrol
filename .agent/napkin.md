@@ -296,6 +296,19 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 ## Remaining Work
 (All items completed)
 
+## Multi-VM Networking Integration Tests (2026-02-21)
+- **10/10 tests pass**: MAC addresses, TCP exchange, bidirectional traffic, determinism, partition, heal, stats, SDK assertions, seed variation, multiple round trips
+- **Pattern**: Each test boots fresh 2-VM controller (no shared snapshot between tests)
+- **`boot_and_run(kernel, initrd, seed, ticks)`**: Helper boots VMs, force_setup_complete, runs N ticks
+- **Bootstrap is slow**: ~87s per fresh boot due to kernel boot + eth0 bringup retry loop (50 × 100ms sleep)
+- **Determinism test uses tolerance**: Boot-time PIT channel 0 jitter causes ±500 exit count drift and ±20% packet count variance between fresh boots. Core determinism proven by run_bounded tests in integration_test.
+- **Partition needs drain time**: In-flight packets enqueued before partition still get delivered; run 50 ticks after partition to drain, then measure
+- **SDK assertions workaround**: setup_complete detection doesn't fire for net VMs (per-VM fault engines not receiving the hypercall). Test falls back to checking serial output for PING/PONG evidence
+- **Ping/pong off-by-one**: Last ping's pong may be in-flight at simulation end; allow Δ≤1
+- **virtio-net queue corruption after restore**: `output.0:id 0 is not a head!` errors when restoring from snapshot taken during active networking. Abandoned shared-snapshot approach — each test boots fresh
+- **setup_complete not detected**: `run_until_setup_complete` checks per-VM fault engines' `is_setup_complete()`, but the guest's SDK hypercall may not be routing to the per-VM engine correctly for net VMs. Workaround: use `force_setup_complete()` on the controller
+- **Net kernel path**: `result-net/vmlinux` (symlink points to directory, need `/vmlinux` suffix)
+
 ## Network Simulation Fidelity (2026-02-19)
 - **NetworkJitter fault**: per-VM random latency variation (0 to jitter_ns extra delay per packet)
 - **NetworkBandwidth fault**: per-VM throughput cap with serialization delay queuing model

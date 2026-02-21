@@ -1,184 +1,30 @@
 //! Low-level transport: write to hypercall page + trigger via VMCALL.
 //!
-//! The primary transport uses `vmcall` (Intel) / `vmmcall` (AMD) — the
-//! canonical x86 mechanism for guest-to-hypervisor communication. This
-//! is faster than port I/O (no emulation path) and is what Antithesis
-//! uses in their Determinator.
+//! ## Full mode (default)
 //!
-//! Fallback: `outb(SDK_PORT)` port I/O for environments where
-//! `KVM_CAP_EXIT_HYPERCALL` is not available.
+//! Auto-detects whether we're inside a ChaosControl VM:
+//! - **In VM**: uses shared memory page at [`HYPERCALL_PAGE_ADDR`] + `vmcall`
+//! - **Outside VM**: logs to `CHAOSCONTROL_SDK_LOCAL_OUTPUT` file (JSON), or
+//!   silently discards if the env var is not set.
 //!
-//! Two implementations:
-//! - `no_std` (default): Direct pointer access + inline asm.
-//!   Requires the guest to be in ring 0 or have IOPL=3.
-//! - `std`: Accesses `/dev/mem` for the shared page and `/dev/port`
-//!   for I/O port access.  Requires root or CAP_SYS_RAWIO.
-
-use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR, SDK_PORT, VMCALL_NR};
-
-// ═══════════════════════════════════════════════════════════════════════
-//  no_std transport (bare-metal / ring 0)
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Get a mutable pointer to the hypercall page.
-///
-/// # Safety
-///
-/// Caller must ensure:
-/// - Identity mapping is active (virt == phys for this address)
-/// - No concurrent access to the page
-/// - We are in a ChaosControl guest (the page is backed by VMM memory)
-#[cfg(not(feature = "std"))]
-unsafe fn page_ptr() -> *mut HypercallPage {
-    HYPERCALL_PAGE_ADDR as *mut HypercallPage
-}
-
-/// Trigger the hypercall via `vmcall` instruction.
-///
-/// The VMM enables `KVM_CAP_EXIT_HYPERCALL` for our hypercall number,
-/// so `vmcall` with `RAX = VMCALL_NR` exits directly to the VMM.
-/// This is faster than port I/O — no I/O emulation path.
-///
-/// # Safety
-///
-/// Caller must ensure the hypercall page is fully written before calling.
-#[cfg(not(feature = "std"))]
-unsafe fn trigger() {
-    core::arch::asm!(
-        "vmcall",
-        in("rax") VMCALL_NR,
-        // Clobbers: vmcall may modify rax on return (return code).
-        // Use lateout to acknowledge this.
-        lateout("rax") _,
-        options(nostack),
-    );
-}
-
-/// Fallback: trigger hypercall via port I/O (`outb`).
-///
-/// Used when `KVM_CAP_EXIT_HYPERCALL` is not available.
-#[cfg(not(feature = "std"))]
-#[allow(dead_code)]
-unsafe fn trigger_pio() {
-    core::arch::asm!(
-        "out dx, al",
-        in("dx") SDK_PORT,
-        in("al") 0u8,
-        options(nostack, preserves_flags),
-    );
-}
-
-/// Read a byte from an I/O port.
-#[cfg(not(feature = "std"))]
-#[allow(dead_code)]
-unsafe fn inb(port: u16) -> u8 {
-    let val: u8;
-    core::arch::asm!(
-        "in al, dx",
-        out("al") val,
-        in("dx") port,
-        options(nostack, preserves_flags),
-    );
-    val
-}
+//! ## No-op mode (`default-features = false`)
+//!
+//! All transport functions are no-ops. Arguments are evaluated but
+//! discarded. Zero runtime cost.
+//!
+//! [`HYPERCALL_PAGE_ADDR`]: chaoscontrol_protocol::HYPERCALL_PAGE_ADDR
 
 // ═══════════════════════════════════════════════════════════════════════
-//  std transport (Linux userspace)
-// ═══════════════════════════════════════════════════════════════════════
-
-#[cfg(feature = "std")]
-use std::sync::OnceLock;
-
-#[cfg(feature = "std")]
-static PAGE: OnceLock<PageMapping> = OnceLock::new();
-
-#[cfg(feature = "std")]
-struct PageMapping {
-    ptr: *mut HypercallPage,
-}
-
-// Safety: we ensure single-threaded access via the hypercall flow.
-#[cfg(feature = "std")]
-unsafe impl Send for PageMapping {}
-#[cfg(feature = "std")]
-unsafe impl Sync for PageMapping {}
-
-#[cfg(feature = "std")]
-fn init_mapping() -> PageMapping {
-    use std::fs::OpenOptions;
-    use std::os::unix::io::AsRawFd;
-
-    let fd = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/mem")
-        .expect("chaoscontrol-sdk: failed to open /dev/mem (need root or CAP_SYS_RAWIO)");
-
-    let ptr = unsafe {
-        libc::mmap(
-            core::ptr::null_mut(),
-            4096,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_SHARED,
-            fd.as_raw_fd(),
-            HYPERCALL_PAGE_ADDR as libc::off_t,
-        )
-    };
-    if ptr == libc::MAP_FAILED {
-        panic!("chaoscontrol-sdk: mmap /dev/mem failed");
-    }
-    PageMapping {
-        ptr: ptr as *mut HypercallPage,
-    }
-}
-
-#[cfg(feature = "std")]
-unsafe fn page_ptr() -> *mut HypercallPage {
-    PAGE.get_or_init(init_mapping).ptr
-}
-
-#[cfg(feature = "std")]
-unsafe fn trigger() {
-    // Use vmcall inline assembly — same instruction works in
-    // both no_std and std builds. We're running inside a VM,
-    // so vmcall is always available (it's a VMX instruction
-    // that the hypervisor intercepts).
-    core::arch::asm!(
-        "vmcall",
-        in("rax") VMCALL_NR,
-        lateout("rax") _,
-        options(nostack),
-    );
-}
-
-/// Fallback: trigger hypercall via /dev/port (port I/O).
-#[cfg(feature = "std")]
-#[allow(dead_code)]
-unsafe fn trigger_pio() {
-    use std::fs::OpenOptions;
-    use std::io::{Seek, SeekFrom, Write};
-
-    let mut f = OpenOptions::new()
-        .write(true)
-        .open("/dev/port")
-        .expect("chaoscontrol-sdk: failed to open /dev/port");
-    f.seek(SeekFrom::Start(SDK_PORT as u64)).unwrap();
-    f.write_all(&[0u8]).unwrap();
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Public API (used by assert/lifecycle/random modules)
+//  Full mode: auto-detecting transport
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Issue a hypercall with the given command, flags, id, and payload.
 ///
-/// Writes the request to the shared page, triggers via I/O port, and
-/// returns the host-written result and status.
+/// In VM mode: writes request to shared page, triggers vmcall, returns
+/// host-written result and status.
 ///
-/// # Safety
-///
-/// This function performs raw memory access and I/O port operations.
-/// It must only be called from within a ChaosControl guest VM.
+/// In local/noop mode: logs to file or discards; returns `(0, 0)`.
+#[cfg(feature = "full")]
 pub(crate) fn hypercall(
     command: u8,
     flags: u8,
@@ -186,44 +32,143 @@ pub(crate) fn hypercall(
     message: &str,
     details: &[(&str, &str)],
 ) -> (u64, u8) {
-    unsafe {
-        let page = &mut *page_ptr();
+    if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        // ── VM transport ────────────────────────────────────────
+        unsafe {
+            let page = &mut *page_ptr;
+            page.command = command;
+            page.flags = flags;
+            page.id = id;
+            page.result = 0;
+            page.status = 0;
 
-        // Write request fields
-        page.command = command;
-        page.flags = flags;
-        page.id = id;
-        page.result = 0;
-        page.status = 0;
+            let payload_len =
+                chaoscontrol_protocol::encode_payload(&mut page.payload, message, details)
+                    .unwrap_or(0);
+            page.payload_len = payload_len as u16;
 
-        // Encode payload
-        let payload_len =
-            chaoscontrol_protocol::encode_payload(&mut page.payload, message, details).unwrap_or(0);
-        page.payload_len = payload_len as u16;
+            crate::internal::vm_trigger();
 
-        // Trigger the hypercall
-        trigger();
-
-        // Read response
-        (page.result, page.status)
+            (page.result, page.status)
+        }
+    } else {
+        // ── Local / noop fallback ───────────────────────────────
+        dispatch_local(command, flags, id, message, details);
+        (0, 0)
     }
 }
 
 /// Issue a minimal hypercall (no payload) and return the result.
+#[cfg(feature = "full")]
 pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
-    unsafe {
-        let page = &mut *page_ptr();
-        page.command = command;
-        page.flags = 0;
-        page.id = id;
-        page.payload_len = 0;
-        page.result = 0;
-        page.status = 0;
+    if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        unsafe {
+            let page = &mut *page_ptr;
+            page.command = command;
+            page.flags = 0;
+            page.id = id;
+            page.payload_len = 0;
+            page.result = 0;
+            page.status = 0;
 
-        trigger();
+            crate::internal::vm_trigger();
 
-        (page.result, page.status)
+            (page.result, page.status)
+        }
+    } else {
+        // Random fallback: return local random
+        use chaoscontrol_protocol::{CMD_RANDOM_CHOICE, CMD_RANDOM_GET};
+        match command {
+            CMD_RANDOM_GET => (crate::internal::local_random_u64(), 0),
+            CMD_RANDOM_CHOICE => {
+                let n = id as u64;
+                if n <= 1 {
+                    (0, 0)
+                } else {
+                    (crate::internal::local_random_u64() % n, 0)
+                }
+            }
+            _ => (0, 0),
+        }
     }
+}
+
+/// Dispatch assertion/lifecycle events to local output when outside a VM.
+#[cfg(feature = "full")]
+fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&str, &str)]) {
+    use chaoscontrol_protocol::*;
+
+    let condition = flags & 0x01 != 0;
+    use crate::internal::LocalAssert;
+
+    match command {
+        CMD_ASSERT_ALWAYS => {
+            crate::internal::local_emit_assert(&LocalAssert {
+                assert_type: "always",
+                hit: true,
+                condition,
+                message,
+                id,
+                details,
+            });
+        }
+        CMD_ASSERT_SOMETIMES => {
+            crate::internal::local_emit_assert(&LocalAssert {
+                assert_type: "sometimes",
+                hit: true,
+                condition,
+                message,
+                id,
+                details,
+            });
+        }
+        CMD_ASSERT_REACHABLE => {
+            crate::internal::local_emit_assert(&LocalAssert {
+                assert_type: "reachability",
+                hit: true,
+                condition: true,
+                message,
+                id,
+                details,
+            });
+        }
+        CMD_ASSERT_UNREACHABLE => {
+            crate::internal::local_emit_assert(&LocalAssert {
+                assert_type: "reachability",
+                hit: true,
+                condition: false,
+                message,
+                id,
+                details,
+            });
+        }
+        CMD_LIFECYCLE_SETUP_COMPLETE | CMD_LIFECYCLE_SEND_EVENT => {
+            crate::internal::local_emit_lifecycle(message, details);
+        }
+        _ => {}
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  No-op mode: stubs when `full` is disabled
+// ═══════════════════════════════════════════════════════════════════════
+
+/// No-op hypercall — evaluates args but does nothing.
+#[cfg(not(feature = "full"))]
+pub(crate) fn hypercall(
+    _command: u8,
+    _flags: u8,
+    _id: u32,
+    _message: &str,
+    _details: &[(&str, &str)],
+) -> (u64, u8) {
+    (0, 0)
+}
+
+/// No-op hypercall_simple — evaluates args but does nothing.
+#[cfg(not(feature = "full"))]
+pub(crate) fn hypercall_simple(_command: u8, _id: u32) -> (u64, u8) {
+    (0, 0)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

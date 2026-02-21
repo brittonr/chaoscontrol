@@ -7,9 +7,11 @@ license.workspace = true
 description = "Guest-side SDK for ChaosControl deterministic simulation testing"
 
 [features]
-default = []
-std = ["chaoscontrol-protocol/std", "libc"]
+default = ["full"]
+full = ["dep:libc", "dep:rand", "dep:serde_json", "chaoscontrol-protocol/std"]
 
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
 libc = { version = "0.2", optional = true }
+rand = { version = "0.8", optional = true }
+serde_json = { version = "1.0", optional = true }

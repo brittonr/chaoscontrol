@@ -394,6 +394,27 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **Key fix**: Must call force_setup_complete() when guest doesn't use SDK, faults are gated by setup_complete flag
 - **Kernel loading**: Must use vmlinux (ELF), not bzImage — ELF loader rejects bzImage magic
 
+## SDK Antithesis Parity (2026-02-20)
+- **Feature flags**: `default = ["full"]` matches Antithesis convention. `default-features = false` → zero-cost no-op stubs
+- **Three runtime modes**: VM (vmcall transport), Local Output (JSON to `CHAOSCONTROL_SDK_LOCAL_OUTPUT` file), No-op (silent discard)
+- **Local JSON fallback**: Assertions logged in [Antithesis Assertion Schema](https://antithesis.com/docs/using_antithesis/sdk/fallback/schema/) format
+- **`chaoscontrol_init()`**: Detects transport mode at startup. Lazy init on first use if not called.
+- **`ChaosControlRng`**: Implements `rand::RngCore` + `rand::CryptoRng` for full `rand` ecosystem integration
+- **`random_choice_from(&[T]) -> Option<&T>`**: Antithesis-style typed random choice from slices
+- **`always_or_unreachable`**: Composite assertion — always(true) + unreachable(false)
+- **18 assertion macros**: `cc_assert_always_{lt,le,gt,ge,eq,ne}`, `cc_assert_sometimes_{lt,le,gt,ge,eq,ne}`, `cc_assert_always_some`, `cc_assert_sometimes_some`, `cc_assert_always_or_unreachable`
+- **Prelude module**: `use chaoscontrol_sdk::prelude::*` imports everything
+- **`is_in_vm()` / `is_local_output()`**: Runtime mode introspection
+- **Coverage graceful fallback**: Outside VM, coverage uses heap-allocated dummy bitmap (no crash)
+- **Guest Cargo.toml**: Changed from `features = ["std"]` to defaults (simpler)
+- **Old `std` feature removed**: Replaced by `full` which implies std + rand + serde_json
+- **no_std preserved**: `#![cfg_attr(not(feature = "full"), no_std)]` for no-op mode
+
+### Remaining Antithesis SDK gaps
+- **JSON details**: `details: &serde_json::Value` instead of `&[(&str, &str)]` (big cross-cutting change)
+- **Assertion catalog**: `linkme` distributed slice to register ALL assertion sites at compile time
+- **`assert_raw()`**: Low-level function for third-party framework integration
+
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode
 - **chaoscontrol-sdk**: Guest SDK crate, `no_std` default + `std` feature. Antithesis-style API: assert::{always,sometimes,reachable,unreachable}, lifecycle::{setup_complete,send_event}, random::{get_random,random_choice}

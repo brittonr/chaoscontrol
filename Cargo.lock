@@ -226,6 +226,8 @@ version = "0.1.0"
 dependencies = [
  "chaoscontrol-protocol",
  "libc",
+ "rand",
+ "serde_json",
 ]
 
 [[package]]

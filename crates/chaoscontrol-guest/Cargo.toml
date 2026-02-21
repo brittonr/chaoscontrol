@@ -7,5 +7,5 @@ license.workspace = true
 description = "Minimal SDK-instrumented guest for ChaosControl exploration"
 
 [dependencies]
-chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["std"] }
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 libc = "0.2"

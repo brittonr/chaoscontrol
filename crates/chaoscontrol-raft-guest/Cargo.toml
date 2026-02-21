@@ -15,5 +15,5 @@ name = "chaoscontrol-raft-guest"
 path = "src/main.rs"
 
 [dependencies]
-chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["std"] }
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 libc = "0.2"

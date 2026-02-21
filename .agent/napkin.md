@@ -66,6 +66,10 @@
 | 2026-02-20 | self | Worker classified InjectInterrupt as FaultCategory::Resource | Should be FaultCategory::Interrupt (new category) |
 | 2026-02-20 | self | BugMode::from_str shadows std::str::FromStr trait | Rename to BugMode::parse — clippy `should_implement_trait` |
 | 2026-02-20 | self | `run_bounded` used `for i in 0..max_exits` loop counter | SIGALRM (VcpuExit::Intr) doesn't increment exit_count but consumes a loop slot → ±1 exit non-determinism in SMP. Fix: track `self.exit_count - start_exits` instead of loop iterations |
+| 2026-02-20 | self | `check_leader_completeness` checked ALL leaders including stale ones | Only check leaders with `current_term >= max_term` — stale leaders are zombies that haven't learned about the new election yet |
+| 2026-02-20 | self | AppendEntriesResponse returned `self.log.len()` as match_index | Must return `prev_log_index + entries.len()` — only the verified point. Returning log.len() makes leader think unverified trailing entries from a previous leader are replicated, enabling premature commits of wrong entries |
+| 2026-02-20 | self | Bug hunt `none` variant "leader completeness" was a real Raft bug | Root cause: match_index protocol bug. Leader sent empty heartbeat, follower reported full log length (including stale entries from old leader). Leader counted stale entries toward commit quorum → committed wrong entry |
+| 2026-02-20 | self | LeaderNoStepdown/AcceptStaleTerm detected via false-positive checker | These bugs were caught through the SAME match_index bug — not their actual safety effect. With correct match_index, they mainly cause liveness issues in simple 3-node clusters |
 
 ## User Preferences
 - Building a deterministic hypervisor (ChaosControl)

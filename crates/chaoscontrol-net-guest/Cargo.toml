@@ -1,0 +1,17 @@
+[package]
+name = "chaoscontrol-net-guest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Multi-VM TCP networking demo guest for ChaosControl"
+
+[[bin]]
+name = "chaoscontrol-net-guest"
+path = "src/main.rs"
+
+[dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
+chaoscontrol-guest-net = { path = "../chaoscontrol-guest-net" }
+libc = "0.2"
+serde_json = "1.0"

@@ -59,6 +59,19 @@
             inherit cargoArtifacts;
           });
 
+          # Custom Linux kernel with built-in virtio for multi-VM networking.
+          # Default kernel has CONFIG_VIRTIO=m (modules), but our minimal
+          # initrds have no module loading. Build them all in.
+          netKernel = pkgs.linuxPackages_latest.kernel.override {
+            structuredExtraConfig = with pkgs.lib.kernel; {
+              VIRTIO = yes;
+              VIRTIO_MMIO = yes;
+              VIRTIO_NET = yes;
+              VIRTIO_BLK = yes;
+              PACKET = yes;          # AF_PACKET for smoltcp raw sockets
+            };
+          };
+
           # Custom Linux kernel with KCOV support for coverage-guided fuzzing
           kcovKernel = pkgs.linuxPackages_latest.kernel.override {
             structuredExtraConfig = with pkgs.lib.kernel; {
@@ -66,6 +79,7 @@
               KCOV_INSTRUMENT_ALL = yes;
               KCOV_ENABLE_COMPARISONS = yes;
               DEBUG_FS = yes;
+              VIRTIO_NET = yes;  # Also enable for KCOV kernel
             };
           };
         in
@@ -75,6 +89,13 @@
 
           # Custom Linux kernel with KCOV (coverage-guided fuzzing)
           kcov-kernel = kcovKernel;
+
+          # Kernel with built-in virtio-net for multi-VM networking
+          net-kernel = netKernel;
+          net-vmlinux = pkgs.runCommand "net-vmlinux" {} ''
+            mkdir -p $out
+            ln -s ${netKernel.dev}/vmlinux $out/vmlinux
+          '';
 
           # Expose vmlinux directly for convenience
           kcov-vmlinux = pkgs.runCommand "kcov-vmlinux" {} ''

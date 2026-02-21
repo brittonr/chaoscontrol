@@ -693,6 +693,19 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
             entry.ebx != orig || entry.ecx != orig_ecx || entry.edx != orig_edx
         }
 
+        // ── Leaf 0x7 sub-leaf 1: Extended Features ─────────────
+        // AVX512_BF16 is EAX bit 5 in sub-leaf 1. If AVX-512 is
+        // disabled we must strip it too, otherwise the kernel warns
+        // "avx512_bf16 enabled but avx512vl disabled" and on 6.19+
+        // the guest may GPF on illegal instructions.
+        CPUID_LEAF_STRUCTURED_EXT if entry.index == 1 => {
+            let orig = entry.eax;
+            if !config.allow_avx512 {
+                entry.eax &= !(1 << 5); // AVX512_BF16
+            }
+            entry.eax != orig
+        }
+
         // ── Leaf 0x15: TSC / Crystal Clock ─────────────────────
         CPUID_LEAF_TSC_INFO => {
             let (denominator, numerator) = tsc_crystal_ratio(config.tsc_khz);

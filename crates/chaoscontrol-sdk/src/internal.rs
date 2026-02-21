@@ -18,7 +18,9 @@ use std::sync::{Mutex, OnceLock};
 /// How the SDK communicates assertion/lifecycle/random data.
 enum TransportMode {
     /// Running inside a ChaosControl VM — use vmcall via shared page.
-    Vm { page_ptr: *mut HypercallPage },
+    VmVmcall { page_ptr: *mut HypercallPage },
+    /// Running inside a ChaosControl VM — use port I/O via shared page.
+    VmPortIo { page_ptr: *mut HypercallPage },
     /// Running locally — log assertions to a JSON file.
     LocalOutput { writer: Mutex<BufWriter<File>> },
     /// No output — silently discard everything.
@@ -44,7 +46,27 @@ fn detect_mode() -> TransportMode {
     // Try to mmap the hypercall page via /dev/mem.
     // If this succeeds, we're inside a ChaosControl VM.
     if let Some(ptr) = try_mmap_hypercall_page() {
-        return TransportMode::Vm { page_ptr: ptr };
+        // Enable I/O port access for the port I/O fallback transport.
+        // When running as PID 1 (init) in a VM, we have CAP_SYS_RAWIO.
+        // This is needed because the 6.19+ kernels enforce IOPL checks
+        // even though KVM intercepts the port I/O at the hypervisor level.
+        #[cfg(target_os = "linux")]
+        unsafe {
+            libc::iopl(3);
+        }
+        // Read the transport mode byte written by the VMM at a fixed
+        // offset within the hypercall page (_reserved2 area).
+        let mode_byte = unsafe {
+            let base = ptr as *const u8;
+            *base.add(chaoscontrol_protocol::TRANSPORT_MODE_OFFSET as usize)
+        };
+        if mode_byte == chaoscontrol_protocol::TRANSPORT_VMCALL {
+            return TransportMode::VmVmcall { page_ptr: ptr };
+        } else {
+            // Default to port I/O (safe fallback) — covers both
+            // TRANSPORT_PORT_IO and unrecognized/zero values.
+            return TransportMode::VmPortIo { page_ptr: ptr };
+        }
     }
 
     // Not in a VM — check for local output env var.
@@ -116,7 +138,10 @@ pub fn init() {
 
 /// Returns `true` if running inside a ChaosControl VM.
 pub fn is_in_vm() -> bool {
-    matches!(get_mode(), TransportMode::Vm { .. })
+    matches!(
+        get_mode(),
+        TransportMode::VmVmcall { .. } | TransportMode::VmPortIo { .. }
+    )
 }
 
 /// Returns `true` if local output is configured.
@@ -131,23 +156,41 @@ pub fn is_local_output() -> bool {
 /// Get the hypercall page pointer, or `None` if not in a VM.
 pub(crate) fn vm_page_ptr() -> Option<*mut HypercallPage> {
     match get_mode() {
-        TransportMode::Vm { page_ptr } => Some(*page_ptr),
+        TransportMode::VmVmcall { page_ptr } | TransportMode::VmPortIo { page_ptr } => {
+            Some(*page_ptr)
+        }
         _ => None,
     }
 }
 
-/// Trigger the VMM via `vmcall` instruction.
+/// Trigger the VMM after filling the hypercall page.
+///
+/// Uses `vmcall` if the VMM enabled KVM_CAP_EXIT_HYPERCALL,
+/// otherwise falls back to port I/O (`outb(SDK_PORT, 0)`).
 ///
 /// # Safety
 ///
 /// Caller must ensure the hypercall page is fully written.
 pub(crate) unsafe fn vm_trigger() {
-    core::arch::asm!(
-        "vmcall",
-        in("rax") chaoscontrol_protocol::VMCALL_NR,
-        lateout("rax") _,
-        options(nostack),
-    );
+    match get_mode() {
+        TransportMode::VmVmcall { .. } => {
+            core::arch::asm!(
+                "vmcall",
+                in("rax") chaoscontrol_protocol::VMCALL_NR,
+                lateout("rax") _,
+                options(nostack),
+            );
+        }
+        TransportMode::VmPortIo { .. } => {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") chaoscontrol_protocol::SDK_PORT,
+                in("al") 0u8,
+                options(nostack, nomem),
+            );
+        }
+        _ => {}
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -357,10 +357,16 @@ pub struct VirtioMmioDevice {
     backend: Box<dyn VirtioBackend>,
 }
 
+/// VIRTIO_F_VERSION_1 (bit 32) — required for modern (v2) virtio devices.
+/// Without this, Linux's virtio-mmio driver (version 2) rejects the device
+/// with "must provide VIRTIO_F_VERSION_1 feature!".
+const VIRTIO_F_VERSION_1: u64 = 1 << 32;
+
 impl VirtioMmioDevice {
     /// Create a new virtio MMIO device.
     pub fn new(base_addr: u64, irq: u32, backend: Box<dyn VirtioBackend>) -> Self {
-        let device_features = backend.device_features();
+        // Always include VIRTIO_F_VERSION_1 for modern (v2) MMIO transport.
+        let device_features = backend.device_features() | VIRTIO_F_VERSION_1;
         let num_queues = backend.num_queues();
         let queues = (0..num_queues)
             .map(|_| VirtQueue::new(QUEUE_SIZE_MAX))

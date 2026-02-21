@@ -187,6 +187,22 @@ impl std::fmt::Display for NetworkStats {
     }
 }
 
+/// A raw packet in flight (virtio-net TX/RX level).
+///
+/// Used for VM-to-VM packet bridging through the NetworkFabric's
+/// fault injection pipeline.
+#[derive(Debug, Clone)]
+pub struct PacketInFlight {
+    /// Source VM index.
+    pub from: usize,
+    /// Destination VM index.
+    pub to: usize,
+    /// Raw packet data (Ethernet frame).
+    pub data: Vec<u8>,
+    /// Delivery tick (after latency, jitter, bandwidth, etc.).
+    pub deliver_at_tick: u64,
+}
+
 /// Virtual network with partition awareness and packet-level fault injection.
 ///
 /// Models real-world network impairments: latency, jitter, bandwidth limits,
@@ -207,6 +223,8 @@ pub struct NetworkFabric {
     pub next_free_tick: Vec<u64>,
     /// Messages in flight (not yet delivered).
     pub in_flight: Vec<NetworkMessage>,
+    /// Raw packets in flight (VM-to-VM bridging).
+    pub packet_in_flight: Vec<PacketInFlight>,
     /// Per-VM packet loss rate in parts per million (0 = no loss).
     pub loss_rate_ppm: Vec<u32>,
     /// Per-VM packet corruption rate in parts per million (0 = no corruption).
@@ -235,6 +253,7 @@ impl NetworkFabric {
             bandwidth_bps: vec![0; num_vms],
             next_free_tick: vec![0; num_vms],
             in_flight: Vec::new(),
+            packet_in_flight: Vec::new(),
             loss_rate_ppm: vec![0; num_vms],
             corruption_rate_ppm: vec![0; num_vms],
             reorder_window: vec![0; num_vms],
@@ -422,6 +441,185 @@ impl NetworkFabric {
         true
     }
 
+    /// Send a raw packet (VM-to-VM bridging) through the fault pipeline.
+    ///
+    /// Applies the same fault injection logic as `send()` but for raw
+    /// Ethernet frames from virtio-net TX queues. Packets are enqueued
+    /// in `packet_in_flight` and delivered via `deliver_packets()`.
+    ///
+    /// Returns `true` if the packet was enqueued, `false` if dropped
+    /// by partition or loss.
+    pub fn send_packet(
+        &mut self,
+        from: usize,
+        to: usize,
+        data: Vec<u8>,
+        current_tick: u64,
+    ) -> bool {
+        self.stats.packets_sent += 1;
+
+        // 1. Partition check
+        if !self.can_reach(from, to) {
+            debug!("Packet from VM{} to VM{} dropped by partition", from, to);
+            self.stats.packets_dropped_partition += 1;
+            return false;
+        }
+
+        // 2. Packet loss — max(sender, receiver) rate
+        let sender_loss = self.loss_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_loss = self.loss_rate_ppm.get(to).copied().unwrap_or(0);
+        let loss_rate = sender_loss.max(receiver_loss);
+        if loss_rate > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < loss_rate {
+                debug!(
+                    "Packet from VM{} to VM{} dropped by packet loss ({}ppm)",
+                    from, to, loss_rate
+                );
+                self.stats.packets_dropped_loss += 1;
+                return false;
+            }
+        }
+
+        // 3. Bandwidth — serialization delay with queuing
+        let mut bandwidth_delay_ticks: u64 = 0;
+        let sender_bw = self.bandwidth_bps.get(from).copied().unwrap_or(0);
+        let receiver_bw = self.bandwidth_bps.get(to).copied().unwrap_or(0);
+        let effective_bw = match (sender_bw, receiver_bw) {
+            (0, 0) => 0,          // both unlimited
+            (0, b) | (b, 0) => b, // one is limited
+            (a, b) => a.min(b),   // bottleneck
+        };
+        if effective_bw > 0 && !data.is_empty() {
+            let bits = data.len() as u64 * 8;
+            let serialization_ticks = (bits * 1000).saturating_div(effective_bw);
+            let tx_start = current_tick.max(self.next_free_tick.get(from).copied().unwrap_or(0));
+            if let Some(slot) = self.next_free_tick.get_mut(from) {
+                *slot = tx_start + serialization_ticks;
+            }
+            bandwidth_delay_ticks = (tx_start + serialization_ticks).saturating_sub(current_tick);
+            self.stats.packets_bandwidth_delayed += 1;
+            self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
+            debug!(
+                "Packet from VM{} to VM{}: bandwidth delay {} ticks ({}B @ {}B/s)",
+                from,
+                to,
+                bandwidth_delay_ticks,
+                data.len(),
+                effective_bw
+            );
+        }
+
+        // 4. Packet corruption — flip a random byte
+        let mut data = data;
+        let sender_corrupt = self.corruption_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_corrupt = self.corruption_rate_ppm.get(to).copied().unwrap_or(0);
+        let corrupt_rate = sender_corrupt.max(receiver_corrupt);
+        if corrupt_rate > 0 && !data.is_empty() {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < corrupt_rate {
+                let byte_idx = (self.rng.next_u64() as usize) % data.len();
+                let flip = (self.rng.next_u64() & 0xFF) as u8 | 1; // At least 1 bit flipped
+                data[byte_idx] ^= flip;
+                self.stats.packets_corrupted += 1;
+                debug!(
+                    "Packet from VM{} to VM{} corrupted at byte {}",
+                    from, to, byte_idx
+                );
+            }
+        }
+
+        // 5. Latency + jitter — base delay plus random variation
+        let sender_latency = self.latency.get(from).copied().unwrap_or(0);
+        let receiver_latency = self.latency.get(to).copied().unwrap_or(0);
+        let latency_ticks = sender_latency.max(receiver_latency);
+
+        let sender_jitter = self.jitter.get(from).copied().unwrap_or(0);
+        let receiver_jitter = self.jitter.get(to).copied().unwrap_or(0);
+        let jitter_max = sender_jitter.max(receiver_jitter);
+        let jitter_ticks = if jitter_max > 0 {
+            let jt = self.rng.next_u64() % (jitter_max + 1);
+            if jt > 0 {
+                self.stats.packets_jittered += 1;
+                self.stats.total_jitter_ticks += jt;
+            }
+            jt
+        } else {
+            0
+        };
+
+        let mut deliver_at_tick =
+            current_tick + bandwidth_delay_ticks + latency_ticks + jitter_ticks;
+
+        // 6. Packet reorder — additional random shuffle within window
+        let sender_reorder = self.reorder_window.get(from).copied().unwrap_or(0);
+        let receiver_reorder = self.reorder_window.get(to).copied().unwrap_or(0);
+        let reorder_win = sender_reorder.max(receiver_reorder);
+        if reorder_win > 0 {
+            let reorder_jitter = self.rng.next_u64() % (reorder_win + 1);
+            deliver_at_tick += reorder_jitter;
+            if reorder_jitter > 0 {
+                self.stats.packets_reordered += 1;
+            }
+            debug!(
+                "Packet from VM{} to VM{} reordered by {} ticks",
+                from, to, reorder_jitter
+            );
+        }
+
+        // 7. Packet duplication — maybe enqueue a second copy
+        let sender_dup = self.duplicate_rate_ppm.get(from).copied().unwrap_or(0);
+        let receiver_dup = self.duplicate_rate_ppm.get(to).copied().unwrap_or(0);
+        let dup_rate = sender_dup.max(receiver_dup);
+        if dup_rate > 0 {
+            let roll = (self.rng.next_u64() % 1_000_000) as u32;
+            if roll < dup_rate {
+                // Duplicate arrives with slight offset (0–2 extra ticks)
+                let dup_offset = self.rng.next_u64() % 3;
+                self.packet_in_flight.push(PacketInFlight {
+                    from,
+                    to,
+                    data: data.clone(),
+                    deliver_at_tick: deliver_at_tick + dup_offset,
+                });
+                self.stats.packets_duplicated += 1;
+                debug!(
+                    "Packet from VM{} to VM{} duplicated (+{} ticks)",
+                    from, to, dup_offset
+                );
+            }
+        }
+
+        self.packet_in_flight.push(PacketInFlight {
+            from,
+            to,
+            data,
+            deliver_at_tick,
+        });
+
+        self.stats.packets_delivered += 1;
+        true
+    }
+
+    /// Deliver packets whose delivery tick has arrived.
+    ///
+    /// Returns `(vm_id, packet_data)` pairs for injection into VMs.
+    pub fn deliver_packets(&mut self, current_tick: u64) -> Vec<(usize, Vec<u8>)> {
+        let mut delivered = Vec::new();
+        let mut pending = Vec::new();
+
+        for pkt in self.packet_in_flight.drain(..) {
+            if pkt.deliver_at_tick <= current_tick {
+                delivered.push((pkt.to, pkt.data));
+            } else {
+                pending.push(pkt);
+            }
+        }
+
+        self.packet_in_flight = pending;
+        delivered
+    }
+
     /// Add a network partition between two sides.
     fn add_partition(&mut self, side_a: Vec<usize>, side_b: Vec<usize>) {
         info!("Network partition: {:?} | {:?}", side_a, side_b);
@@ -592,6 +790,8 @@ impl SimulationController {
             vm_config.disk_image_path = config.disk_image_path.clone();
             // Pin each VM to a dedicated core: VM i → core base + i.
             vm_config.core_affinity = config.base_core.map(|base| base + i);
+            // Set unique VM ID for networking
+            vm_config.vm_id = i;
 
             let mut vm = DeterministicVm::new(vm_config)?;
             vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;
@@ -778,6 +978,9 @@ impl SimulationController {
                 }
             }
         }
+
+        // Bridge network packets between VMs (virtio-net TX → RX)
+        self.bridge_network_packets();
 
         // Advance global tick
         self.tick += 1;
@@ -1086,6 +1289,37 @@ impl SimulationController {
         delivered
     }
 
+    /// Bridge network packets between VMs (virtio-net TX → RX).
+    ///
+    /// This is the core VM-to-VM networking logic:
+    /// 1. Drain TX queues from all VMs
+    /// 2. For each packet: broadcast to all other VMs (hub model)
+    /// 3. Route through NetworkFabric for fault injection
+    /// 4. Deliver arrived packets to destination VM RX queues
+    fn bridge_network_packets(&mut self) {
+        // Phase 1: Drain TX queues and enqueue into NetworkFabric
+        for from_id in 0..self.vms.len() {
+            let packets = self.vms[from_id].vm.drain_net_tx();
+            for packet in packets {
+                // Broadcast to all other VMs (simple hub model)
+                for to_id in 0..self.vms.len() {
+                    if to_id != from_id {
+                        self.network
+                            .send_packet(from_id, to_id, packet.clone(), self.tick);
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Deliver packets that have arrived
+        let delivered = self.network.deliver_packets(self.tick);
+        for (vm_id, packet) in delivered {
+            if let Some(slot) = self.vms.get_mut(vm_id) {
+                slot.vm.inject_net_rx(packet);
+            }
+        }
+    }
+
     /// Snapshot all VMs and simulation state.
     pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
@@ -1221,6 +1455,16 @@ impl SimulationController {
         self.fault_engine.force_setup_complete();
     }
 
+    /// Get a reference to a VM by index.
+    pub fn vm(&self, index: usize) -> &DeterministicVm {
+        &self.vms[index].vm
+    }
+
+    /// Get a mutable reference to a VM by index.
+    pub fn vm_mut(&mut self, index: usize) -> &mut DeterministicVm {
+        &mut self.vms[index].vm
+    }
+
     /// Get a reference to the network fabric.
     pub fn network(&self) -> &NetworkFabric {
         &self.network
@@ -1229,6 +1473,11 @@ impl SimulationController {
     /// Get a mutable reference to the network fabric.
     pub fn network_mut(&mut self) -> &mut NetworkFabric {
         &mut self.network
+    }
+
+    /// Get network statistics.
+    pub fn network_stats(&self) -> &NetworkStats {
+        &self.network.stats
     }
 
     /// Replace the fault schedule (used by the explorer between branches).
@@ -2421,5 +2670,217 @@ mod tests {
         ));
 
         assert_eq!(schedule.remaining(), 0);
+    }
+
+    // ── Multi-VM networking tests ──────────────────────────────
+
+    #[test]
+    #[ignore]
+    fn test_unique_mac_per_vm() {
+        let config = SimulationConfig {
+            num_vms: 3,
+            kernel_path: "/path/to/vmlinux".to_string(),
+            ..Default::default()
+        };
+
+        let controller = SimulationController::new(config).unwrap();
+
+        // Verify each VM has a unique MAC address
+        let mac0 = controller.vms[0].vm.net_mac().unwrap();
+        let mac1 = controller.vms[1].vm.net_mac().unwrap();
+        let mac2 = controller.vms[2].vm.net_mac().unwrap();
+
+        assert_ne!(mac0, mac1);
+        assert_ne!(mac1, mac2);
+        assert_ne!(mac0, mac2);
+
+        // Verify MACs follow the pattern [0x52, 0x54, 0x00, 0x12, 0x34, vm_id]
+        assert_eq!(mac0, [0x52, 0x54, 0x00, 0x12, 0x34, 0x00]);
+        assert_eq!(mac1, [0x52, 0x54, 0x00, 0x12, 0x34, 0x01]);
+        assert_eq!(mac2, [0x52, 0x54, 0x00, 0x12, 0x34, 0x02]);
+    }
+
+    #[test]
+    fn test_packet_in_flight_struct() {
+        let pkt = PacketInFlight {
+            from: 0,
+            to: 1,
+            data: vec![1, 2, 3, 4],
+            deliver_at_tick: 42,
+        };
+
+        assert_eq!(pkt.from, 0);
+        assert_eq!(pkt.to, 1);
+        assert_eq!(pkt.data, vec![1, 2, 3, 4]);
+        assert_eq!(pkt.deliver_at_tick, 42);
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet() {
+        let mut fabric = NetworkFabric::new(2, 42);
+
+        let sent = fabric.send_packet(0, 1, vec![0xAA, 0xBB, 0xCC], 0);
+        assert!(sent);
+
+        assert_eq!(fabric.packet_in_flight.len(), 1);
+        assert_eq!(fabric.packet_in_flight[0].from, 0);
+        assert_eq!(fabric.packet_in_flight[0].to, 1);
+        assert_eq!(fabric.packet_in_flight[0].data, vec![0xAA, 0xBB, 0xCC]);
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_respects_partition() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.add_partition(vec![0], vec![1]);
+
+        let sent = fabric.send_packet(0, 1, vec![0xAA], 0);
+        assert!(!sent); // Dropped by partition
+        assert!(fabric.packet_in_flight.is_empty());
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_applies_loss() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_loss_rate(0, 1_000_000); // 100% loss
+
+        let sent = fabric.send_packet(0, 1, vec![0xAA], 0);
+        assert!(!sent); // Dropped by loss
+        assert!(fabric.packet_in_flight.is_empty());
+    }
+
+    #[test]
+    fn test_network_fabric_deliver_packets() {
+        let mut fabric = NetworkFabric::new(3, 42);
+
+        // Send packets with different delivery times
+        fabric.send_packet(0, 1, vec![0xAA], 0); // deliver at 0
+        fabric.send_packet(1, 2, vec![0xBB], 0); // deliver at 0
+        fabric.send_packet(2, 0, vec![0xCC], 100); // deliver at 100 (with some latency)
+
+        // At tick 0, should deliver the first two
+        let delivered = fabric.deliver_packets(0);
+        assert_eq!(delivered.len(), 2);
+
+        // Third packet still in flight
+        assert_eq!(fabric.packet_in_flight.len(), 1);
+
+        // At tick 100, should deliver the third
+        let delivered = fabric.deliver_packets(100);
+        assert_eq!(delivered.len(), 1);
+        assert_eq!(delivered[0].0, 0); // vm_id
+        assert_eq!(delivered[0].1, vec![0xCC]); // data
+
+        assert!(fabric.packet_in_flight.is_empty());
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_applies_latency() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_latency(0, 50); // 50 ticks
+
+        fabric.send_packet(0, 1, vec![0xAA], 0);
+
+        assert_eq!(fabric.packet_in_flight.len(), 1);
+        assert_eq!(fabric.packet_in_flight[0].deliver_at_tick, 50);
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_applies_corruption() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_corruption_rate(0, 1_000_000); // 100%
+
+        let original = vec![0xAA; 32];
+        fabric.send_packet(0, 1, original.clone(), 0);
+
+        assert_eq!(fabric.packet_in_flight.len(), 1);
+        // Packet should be corrupted (different from original)
+        assert_ne!(fabric.packet_in_flight[0].data, original);
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_applies_bandwidth() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_bandwidth(0, 8000); // 8000 B/s
+
+        // 100 bytes should take 100 ticks
+        fabric.send_packet(0, 1, vec![0xAA; 100], 0);
+
+        assert_eq!(fabric.packet_in_flight.len(), 1);
+        assert_eq!(fabric.packet_in_flight[0].deliver_at_tick, 100);
+    }
+
+    #[test]
+    fn test_network_fabric_send_packet_applies_duplication() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.set_duplicate_rate(0, 1_000_000); // 100%
+
+        fabric.send_packet(0, 1, vec![0xAA, 0xBB], 0);
+
+        // Should have 2 packets: original + duplicate
+        assert_eq!(fabric.packet_in_flight.len(), 2);
+        assert_eq!(fabric.packet_in_flight[0].data, vec![0xAA, 0xBB]);
+        assert_eq!(fabric.packet_in_flight[1].data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_vm_drain_net_tx() {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).unwrap();
+
+        // Initially, TX queue is empty
+        let packets = vm.drain_net_tx();
+        assert!(packets.is_empty());
+
+        // After injecting and draining, should still be empty
+        // (guest would need to transmit, but we're testing the API)
+        let packets = vm.drain_net_tx();
+        assert!(packets.is_empty());
+    }
+
+    #[test]
+    fn test_vm_inject_net_rx() {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).unwrap();
+
+        // Should not panic when injecting a packet
+        vm.inject_net_rx(vec![0xFF; 64]);
+
+        // Multiple packets should also work
+        vm.inject_net_rx(vec![0xAA; 32]);
+        vm.inject_net_rx(vec![0xBB; 16]);
+    }
+
+    #[test]
+    fn test_vm_net_mac() {
+        let config = VmConfig {
+            vm_id: 42,
+            ..Default::default()
+        };
+        let vm = DeterministicVm::new(config).unwrap();
+
+        let mac = vm.net_mac().unwrap();
+        assert_eq!(mac, [0x52, 0x54, 0x00, 0x12, 0x34, 42]);
+    }
+
+    #[test]
+    fn test_network_stats_tracks_packet_send() {
+        let mut fabric = NetworkFabric::new(2, 42);
+
+        fabric.send_packet(0, 1, vec![0xAA], 0);
+        fabric.send_packet(1, 0, vec![0xBB], 0);
+
+        assert_eq!(fabric.stats.packets_sent, 2);
+        assert_eq!(fabric.stats.packets_delivered, 2);
+    }
+
+    #[test]
+    fn test_packet_in_flight_survives_clone() {
+        let mut fabric = NetworkFabric::new(2, 42);
+        fabric.send_packet(0, 1, vec![0xAA, 0xBB], 0);
+
+        let cloned = fabric.clone();
+
+        assert_eq!(cloned.packet_in_flight.len(), 1);
+        assert_eq!(cloned.packet_in_flight[0].data, vec![0xAA, 0xBB]);
     }
 }

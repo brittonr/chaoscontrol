@@ -38,6 +38,22 @@ pub const HYPERCALL_PAGE_ADDR: u64 = 0x000F_E000;
 /// Superseded by VMCALL transport when available, but kept for fallback.
 pub const SDK_PORT: u16 = 0x0510;
 
+/// Transport mode: use `vmcall` instruction (fast path).
+pub const TRANSPORT_VMCALL: u8 = 1;
+
+/// Transport mode: use `outb(SDK_PORT, 0)` port I/O (fallback).
+pub const TRANSPORT_PORT_IO: u8 = 2;
+
+/// Byte offset within the hypercall page where the VMM writes
+/// the transport mode indicator (`TRANSPORT_VMCALL` or
+/// `TRANSPORT_PORT_IO`).  This lives in the `_reserved2` area
+/// (offset 0x19) so it doesn't change the struct layout.
+///
+/// The VMM writes this byte to guest memory before the first vCPU
+/// run.  The SDK reads it after mmapping `/dev/mem` to decide
+/// whether to use `vmcall` or `outb`.
+pub const TRANSPORT_MODE_OFFSET: u64 = 0x19;
+
 /// KVM hypercall number for the ChaosControl SDK (VMCALL transport).
 ///
 /// When the guest executes `vmcall` with `RAX = VMCALL_NR`, KVM exits

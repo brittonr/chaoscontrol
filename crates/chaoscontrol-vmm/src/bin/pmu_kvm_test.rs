@@ -68,7 +68,12 @@ fn main() {
         }
 
         let total: u64 = per_exit.iter().sum();
-        println!("Run {}: {} exits, {} total insns", i + 1, per_exit.len(), total);
+        println!(
+            "Run {}: {} exits, {} total insns",
+            i + 1,
+            per_exit.len(),
+            total
+        );
         all_per_exit.push(per_exit);
     }
 
@@ -105,7 +110,10 @@ fn main() {
         total_comparisons,
         exact_matches as f64 / total_comparisons as f64 * 100.0
     );
-    println!("|Δ| percentiles: p50={}, p90={}, p99={}, max={}", p50, p90, p99, max);
+    println!(
+        "|Δ| percentiles: p50={}, p90={}, p99={}, max={}",
+        p50, p90, p99, max
+    );
 
     println!("\nTop deltas:");
     let mut sorted_hist: Vec<(i64, usize)> = delta_hist.into_iter().collect();
@@ -138,7 +146,10 @@ fn main() {
     if exact_matches == total_comparisons {
         println!("✅ DETERMINISTIC — instructions-retired time model viable");
     } else if p50 == 0 && p90 <= 5 {
-        println!("⚠️  Near-deterministic (p50=0, p90={}) — may work with single-step cleanup", p90);
+        println!(
+            "⚠️  Near-deterministic (p50=0, p90={}) — may work with single-step cleanup",
+            p90
+        );
     } else {
         println!(
             "❌ NON-DETERMINISTIC (p50={}, max={}) — SVM boundary skid, use exit-count model",

@@ -1,0 +1,18 @@
+[package]
+name = "chaoscontrol-guest-net"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "TCP/IP networking for ChaosControl guest programs via smoltcp"
+
+[dependencies]
+smoltcp = { version = "0.12", default-features = false, features = [
+    "std",
+    "phy-raw_socket",
+    "proto-ipv4",
+    "socket-tcp",
+    "medium-ethernet",
+] }
+libc = "0.2"
+log = "0.4"

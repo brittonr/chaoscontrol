@@ -189,6 +189,12 @@ pub struct VmConfig {
     /// When `None` (default), no affinity is set and the OS scheduler
     /// decides core placement.
     pub core_affinity: Option<usize>,
+
+    /// VM identifier for multi-VM networking (default: 0).
+    ///
+    /// Used to generate unique MAC addresses: `[0x52, 0x54, 0x00, 0x12, 0x34, vm_id as u8]`.
+    /// Also passed to the guest kernel via `vm_id=N` cmdline parameter.
+    pub vm_id: usize,
 }
 
 impl Default for VmConfig {
@@ -239,6 +245,7 @@ impl Default for VmConfig {
             disk_image_path: None,
             extra_cmdline: None,
             core_affinity: None,
+            vm_id: 0,
         }
     }
 }
@@ -460,6 +467,9 @@ pub struct DeterministicVm {
 
     /// Extra kernel command line parameters (from VmConfig).
     extra_cmdline: Option<String>,
+
+    /// VM identifier for multi-VM networking.
+    vm_id: usize,
 }
 
 impl DeterministicVm {
@@ -671,8 +681,11 @@ impl DeterministicVm {
         });
 
         // Create virtio MMIO devices
-        let virtio_devices =
-            Self::create_virtio_devices(config.cpu.seed, config.disk_image_path.as_deref())?;
+        let virtio_devices = Self::create_virtio_devices(
+            config.cpu.seed,
+            config.disk_image_path.as_deref(),
+            config.vm_id,
+        )?;
 
         // Pin VM thread to a specific physical CPU core if requested.
         // This eliminates host scheduler jitter and ensures consistent
@@ -765,6 +778,7 @@ impl DeterministicVm {
             vmcall_enabled,
             skip_tsc_sync: false,
             extra_cmdline: config.extra_cmdline.clone(),
+            vm_id: config.vm_id,
         })
     }
 
@@ -773,9 +787,12 @@ impl DeterministicVm {
     /// If `disk_image_path` is `Some`, the block device is initialized
     /// from that file (read once, then copy-on-write for snapshots).
     /// Otherwise a zero-filled 16 MB disk is created.
+    ///
+    /// The `vm_id` is used to generate a unique MAC address for the network device.
     fn create_virtio_devices(
         seed: u64,
         disk_image_path: Option<&str>,
+        vm_id: usize,
     ) -> Result<Vec<VirtioMmioDevice>, VmError> {
         use crate::devices::block::DeterministicBlock;
         use crate::devices::net::DeterministicNet;
@@ -804,8 +821,8 @@ impl DeterministicVm {
         let blk_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0, blk_backend);
         devices.push(blk_device);
 
-        // Device 1: virtio-net
-        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, 0x56]; // QEMU-style MAC
+        // Device 1: virtio-net (unique MAC per VM)
+        let mac = [0x52, 0x54, 0x00, 0x12, 0x34, vm_id as u8];
         let net = DeterministicNet::new(mac);
         let net_backend = Box::new(VirtioNet::new(net));
         let net_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1, net_backend);
@@ -823,8 +840,9 @@ impl DeterministicVm {
             VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0
         );
         info!(
-            "  Device 1: virtio-net  @ {:#010x} IRQ {}",
-            VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1
+            "  Device 1: virtio-net  @ {:#010x} IRQ {} MAC {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1,
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
         );
         info!(
             "  Device 2: virtio-rng  @ {:#010x} IRQ {}",
@@ -838,7 +856,8 @@ impl DeterministicVm {
     ///
     /// For single-vCPU mode: includes `nosmp noapic`.
     /// For multi-vCPU mode: includes `maxcpus=N` and omits `nosmp noapic`.
-    fn build_cmdline(&self) -> Vec<u8> {
+    /// Always includes `vm_id=N` for multi-VM networking identification.
+    fn build_cmdline(&self, vm_id: usize) -> Vec<u8> {
         let num_vcpus = self.vcpus.len();
         let (smp_params, clock_params) = if num_vcpus > 1 {
             // SMP: use jiffies clocksource (driven by deterministic PIT).
@@ -869,6 +888,7 @@ impl DeterministicVm {
              virtio_mmio.device=4K@0xd0000000:5 \
              virtio_mmio.device=4K@0xd0001000:6 \
              virtio_mmio.device=4K@0xd0002000:7 \
+             vm_id={vm_id} \
              {extra} \
              panic=-1\0"
         );
@@ -953,6 +973,31 @@ impl DeterministicVm {
             info!("ACPI tables written for {} vCPUs", self.vcpus.len());
         }
 
+        // Write the SDK transport mode to the hypercall page so the
+        // guest SDK knows whether to use vmcall or port I/O.
+        let transport = if self.vmcall_enabled {
+            chaoscontrol_protocol::TRANSPORT_VMCALL
+        } else {
+            chaoscontrol_protocol::TRANSPORT_PORT_IO
+        };
+        self.memory
+            .inner()
+            .write_slice(
+                &[transport],
+                GuestAddress(
+                    HYPERCALL_PAGE_ADDR + chaoscontrol_protocol::TRANSPORT_MODE_OFFSET,
+                ),
+            )
+            .map_err(|_| GuestMemoryWriteSnafu.build())?;
+        info!(
+            "SDK transport: {} (written to hypercall page)",
+            if self.vmcall_enabled {
+                "vmcall"
+            } else {
+                "port I/O"
+            }
+        );
+
         Ok(())
     }
 
@@ -1001,8 +1046,8 @@ impl DeterministicVm {
         const KERNEL_LOADER_OTHER: u8 = 0xff;
         const KERNEL_MIN_ALIGNMENT_BYTES: u32 = 0x0100_0000;
 
-        // Write kernel command line (dynamic based on num_vcpus)
-        let cmdline = self.build_cmdline();
+        // Write kernel command line (dynamic based on num_vcpus and vm_id)
+        let cmdline = self.build_cmdline(self.vm_id);
         self.memory.write_cmdline(&cmdline)?;
 
         let mut hdr = linux_loader::loader::bootparam::setup_header {
@@ -1389,6 +1434,59 @@ impl DeterministicVm {
             }
         }
         false
+    }
+
+    /// Drain all TX packets from the network device.
+    ///
+    /// Returns packets transmitted by the guest since the last drain.
+    /// The network device is at index 1 in the virtio devices array.
+    pub fn drain_net_tx(&mut self) -> Vec<Vec<u8>> {
+        // Device index 1 is virtio-net (0=block, 1=net, 2=rng)
+        if let Some(device) = self.virtio_devices.get_mut(1) {
+            if let Some(virtio_net) = device
+                .backend_mut()
+                .as_any_mut()
+                .downcast_mut::<crate::devices::virtio_net::VirtioNet>()
+            {
+                return virtio_net.net_mut().drain_tx();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Inject a packet into the network device's RX queue.
+    ///
+    /// The packet will be delivered to the guest on the next virtqueue kick.
+    /// The network device is at index 1 in the virtio devices array.
+    pub fn inject_net_rx(&mut self, packet: Vec<u8>) {
+        // Device index 1 is virtio-net (0=block, 1=net, 2=rng)
+        if let Some(device) = self.virtio_devices.get_mut(1) {
+            if let Some(virtio_net) = device
+                .backend_mut()
+                .as_any_mut()
+                .downcast_mut::<crate::devices::virtio_net::VirtioNet>()
+            {
+                virtio_net.net_mut().inject_packet(packet);
+            }
+        }
+    }
+
+    /// Get the MAC address of the network device.
+    ///
+    /// Returns `None` if the network device is not found.
+    /// The network device is at index 1 in the virtio devices array.
+    pub fn net_mac(&self) -> Option<[u8; 6]> {
+        // Device index 1 is virtio-net (0=block, 1=net, 2=rng)
+        if let Some(device) = self.virtio_devices.get(1) {
+            if let Some(virtio_net) = device
+                .backend()
+                .as_any()
+                .downcast_ref::<crate::devices::virtio_net::VirtioNet>()
+            {
+                return Some(*virtio_net.net().mac());
+            }
+        }
+        None
     }
 
     // ─── Public API: interrupt injection ─────────────────────────────
@@ -2393,7 +2491,7 @@ mod tests {
     fn test_nohpet_in_cmdline() {
         let config = VmConfig::default();
         let vm = DeterministicVm::new(config).unwrap();
-        let bytes = vm.build_cmdline();
+        let bytes = vm.build_cmdline(0);
         let cmdline = String::from_utf8_lossy(&bytes);
         assert!(cmdline.contains("nohpet"), "cmdline must disable HPET");
     }
@@ -2405,7 +2503,7 @@ mod tests {
             ..VmConfig::default()
         };
         let vm = DeterministicVm::new(config).unwrap();
-        let bytes = vm.build_cmdline();
+        let bytes = vm.build_cmdline(0);
         let cmdline = String::from_utf8_lossy(&bytes);
         assert!(cmdline.contains("nohpet"), "SMP cmdline must disable HPET");
     }

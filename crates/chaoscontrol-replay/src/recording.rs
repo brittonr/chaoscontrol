@@ -244,6 +244,7 @@ mod tests {
                 bandwidth_bps: vec![],
                 next_free_tick: vec![],
                 in_flight: vec![],
+                packet_in_flight: vec![],
                 loss_rate_ppm: vec![],
                 corruption_rate_ppm: vec![],
                 reorder_window: vec![],

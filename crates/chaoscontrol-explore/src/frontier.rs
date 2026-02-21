@@ -142,6 +142,7 @@ mod tests {
             bandwidth_bps: vec![0, 0],
             next_free_tick: vec![0, 0],
             in_flight: Vec::new(),
+            packet_in_flight: Vec::new(),
             loss_rate_ppm: Vec::new(),
             corruption_rate_ppm: Vec::new(),
             reorder_window: Vec::new(),

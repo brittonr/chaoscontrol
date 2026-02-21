@@ -67,6 +67,11 @@
 | 2026-02-20 | self | BugMode::from_str shadows std::str::FromStr trait | Rename to BugMode::parse — clippy `should_implement_trait` |
 | 2026-02-20 | self | `run_bounded` used `for i in 0..max_exits` loop counter | SIGALRM (VcpuExit::Intr) doesn't increment exit_count but consumes a loop slot → ±1 exit non-determinism in SMP. Fix: track `self.exit_count - start_exits` instead of loop iterations |
 | 2026-02-20 | self | `check_leader_completeness` checked ALL leaders including stale ones | Only check leaders with `current_term >= max_term` — stale leaders are zombies that haven't learned about the new election yet |
+| 2026-02-21 | self | Guest binary crashed with GPF on Linux 6.19 kernel | SDK port I/O (`outb`) requires iopl(3) in userspace. 6.19 enforces IOPL even though KVM intercepts port I/O. Fix: SDK sets iopl(3) in detect_mode() |
+| 2026-02-21 | self | SDK issued vmcall when VMM didn't enable KVM_CAP_EXIT_HYPERCALL | VMM must write transport mode to hypercall page before boot. SDK reads it to choose vmcall vs outb. |
+| 2026-02-21 | self | AVX512_BF16 not stripped in CPUID leaf 7 sub-leaf 1 | Added sub-leaf 1 filtering: clear EAX bit 5 when allow_avx512=false |
+| 2026-02-21 | self | Default kernel has VIRTIO_NET=m, PACKET=m (modules) | Custom netKernel with all virtio + AF_PACKET built-in (=y) required for minimal initrd |
+| 2026-02-21 | self | VIRTIO_F_VERSION_1 (bit 32) missing from device features | Linux v2 virtio driver requires it; added to all virtio MMIO devices |
 | 2026-02-20 | self | AppendEntriesResponse returned `self.log.len()` as match_index | Must return `prev_log_index + entries.len()` — only the verified point. Returning log.len() makes leader think unverified trailing entries from a previous leader are replicated, enabling premature commits of wrong entries |
 | 2026-02-20 | self | Bug hunt `none` variant "leader completeness" was a real Raft bug | Root cause: match_index protocol bug. Leader sent empty heartbeat, follower reported full log length (including stale entries from old leader). Leader counted stale entries toward commit quorum → committed wrong entry |
 | 2026-02-20 | self | LeaderNoStepdown/AcceptStaleTerm detected via false-positive checker | These bugs were caught through the SAME match_index bug — not their actual safety effect. With correct match_index, they mainly cause liveness issues in simple 3-node clusters |
@@ -273,6 +278,20 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **Key insight**: Override at position K means choices 0..K-1 replay identically (same RNG state), choice K diverges, subsequent choices diverge naturally because guest is on a different code path
 - **Snapshot alignment**: choice_count saved/restored in EngineSnapshot so overrides target the correct sequence position after restore
 - **Override cleanup**: clear_all_choice_overrides() called after each branch to prevent leaking
+
+## Multi-VM Networking (2026-02-21)
+- **Working**: VM₀ ↔ VM₁ TCP communication through deterministic NetworkFabric
+- **Stack**: smoltcp 0.12 (pure Rust TCP/IP) over AF_PACKET raw sockets on eth0
+- **IP scheme**: VM i gets 10.0.0.{i+1}/24, static configuration
+- **MAC scheme**: 52:54:00:12:34:{vm_id}
+- **Custom kernel**: `netKernel` in flake.nix with VIRTIO=y, VIRTIO_MMIO=y, VIRTIO_NET=y, VIRTIO_BLK=y, PACKET=y (all built-in, no modules)
+- **VIRTIO_F_VERSION_1 (bit 32)**: Required by Linux virtio v2 driver, must be set in device_features
+- **iopl(3) required**: Linux 6.19+ enforces IOPL checks on `outb` in userspace even though KVM intercepts port I/O at hypervisor level. SDK's detect_mode() calls iopl(3) when running inside a VM.
+- **Transport negotiation**: VMM writes TRANSPORT_VMCALL or TRANSPORT_PORT_IO to hypercall page offset 0x19 (_reserved2). SDK reads it to choose vmcall vs outb. Prevents GPF when KVM_CAP_EXIT_HYPERCALL unavailable.
+- **AVX512_BF16 (leaf 7, sub-leaf 1, EAX bit 5)**: Must strip when AVX-512 disabled, or 6.19 kernel warns and may GPF
+- **SIOCGIFFLAGS retry loop**: eth0 appears before virtio_net log output; retry 50× with 100ms sleep
+- **Demo guest**: VM0 = TCP server (echo PING→PONG), VM1 = TCP client. 136 packets exchanged in 2000 ticks.
+- **Crates**: `chaoscontrol-guest-net` (lib), `chaoscontrol-net-guest` (bin), `scripts/build-net-guest.sh`
 
 ## Remaining Work
 (All items completed)

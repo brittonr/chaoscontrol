@@ -9,3 +9,4 @@ description = "Minimal SDK-instrumented guest for ChaosControl exploration"
 [dependencies]
 chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 libc = "0.2"
+serde_json = "1.0"

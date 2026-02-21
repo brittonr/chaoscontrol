@@ -188,7 +188,9 @@ impl FaultEngine {
                 (0, STATUS_OK)
             }
             CMD_LIFECYCLE_SEND_EVENT => {
-                let (name, details) = self.decode_event(page);
+                let (name, json_details) = self.decode_event(page);
+                let details = serde_json::from_slice::<serde_json::Value>(&json_details)
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
                 self.oracle.record_event(&name, details);
                 (0, STATUS_OK)
             }
@@ -321,15 +323,15 @@ impl FaultEngine {
         decode_payload(buf).map(|p| p.message).unwrap_or_default()
     }
 
-    fn decode_event(&self, page: &HypercallPage) -> (String, Vec<(String, String)>) {
+    fn decode_event(&self, page: &HypercallPage) -> (String, Vec<u8>) {
         let payload_len = page.payload_len as usize;
         if payload_len == 0 {
-            return (String::new(), Vec::new());
+            return (String::new(), b"{}".to_vec());
         }
         let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
         decode_payload(buf)
-            .map(|p| (p.message, p.details))
-            .unwrap_or_default()
+            .map(|p| (p.message, p.json_details))
+            .unwrap_or_else(|| (String::new(), b"{}".to_vec()))
     }
 
     fn generate_random_fault(&mut self) -> Option<Fault> {
@@ -413,10 +415,10 @@ mod tests {
         flags: u8,
         id: u32,
         message: &str,
-        details: &[(&str, &str)],
+        json_details: &[u8],
     ) -> HypercallPage {
         let mut page = make_page(command, flags, id);
-        if let Some(len) = encode_payload(&mut page.payload, message, details) {
+        if let Some(len) = encode_payload(&mut page.payload, message, json_details) {
             page.payload_len = len as u16;
         }
         page
@@ -427,7 +429,7 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
-        let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "test", &[]);
+        let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "test", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
         assert_eq!(status, STATUS_OK);
         assert!(!engine.has_assertion_failure());
@@ -438,7 +440,7 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
-        let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x00, 1, "bad", &[]);
+        let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x00, 1, "bad", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
         assert_eq!(status, STATUS_ASSERTION_FAILED);
         assert!(engine.has_assertion_failure());
@@ -449,7 +451,7 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
-        let page = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 1, "rare", &[]);
+        let page = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 1, "rare", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
         assert_eq!(status, STATUS_OK); // sometimes(false) is not an immediate failure
     }
@@ -459,7 +461,7 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
-        let page = make_page_with_payload(CMD_ASSERT_UNREACHABLE, 0x00, 1, "impossible", &[]);
+        let page = make_page_with_payload(CMD_ASSERT_UNREACHABLE, 0x00, 1, "impossible", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
         assert_eq!(status, STATUS_UNREACHABLE_REACHED);
         assert!(engine.has_assertion_failure());
@@ -606,8 +608,8 @@ mod tests {
 
         // Run 0: always=true, sometimes=false
         engine.begin_run();
-        let p1 = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "stable", &[]);
-        let p2 = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 2, "rare", &[]);
+        let p1 = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "stable", b"{}");
+        let p2 = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 2, "rare", b"{}");
         engine.handle_hypercall(&p1);
         engine.handle_hypercall(&p2);
         engine.end_run();
@@ -615,7 +617,7 @@ mod tests {
         // Run 1: always=true, sometimes=true
         engine.begin_run();
         engine.handle_hypercall(&p1);
-        let p2_true = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x01, 2, "rare", &[]);
+        let p2_true = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x01, 2, "rare", b"{}");
         engine.handle_hypercall(&p2_true);
         engine.end_run();
 

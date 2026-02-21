@@ -25,6 +25,7 @@
 //! ```
 
 use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
+use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Init helpers — mount devtmpfs so /dev/mem + /dev/port exist
@@ -78,7 +79,7 @@ fn main() {
     );
 
     // ── Phase 2: signal setup complete ──────────────────────────
-    lifecycle::setup_complete(&[("program", "chaoscontrol-guest"), ("version", "0.1.0")]);
+    lifecycle::setup_complete(&json!({"program": "chaoscontrol-guest", "version": "0.1.0"}));
     println!("chaoscontrol-guest: setup_complete");
 
     // ── Phase 3: SDK-instrumented workload ──────────────────────
@@ -93,34 +94,34 @@ fn main() {
         coverage::record_edge(i * 31 + choice * 17);
 
         // ── Safety property: choice always in range ─────────────
-        assert::always(choice < NUM_CHOICES, "random choice in range", &[]);
+        assert::always(choice < NUM_CHOICES, "random choice in range", &json!({}));
 
         // ── Liveness: eventually see each choice value ──────────
-        assert::sometimes(choice == 0, "saw choice 0", &[]);
-        assert::sometimes(choice == 1, "saw choice 1", &[]);
-        assert::sometimes(choice == 2, "saw choice 2", &[]);
-        assert::sometimes(choice == 3, "saw choice 3", &[]);
+        assert::sometimes(choice == 0, "saw choice 0", &json!({}));
+        assert::sometimes(choice == 1, "saw choice 1", &json!({}));
+        assert::sometimes(choice == 2, "saw choice 2", &json!({}));
+        assert::sometimes(choice == 3, "saw choice 3", &json!({}));
 
         // ── Path-specific coverage + reachability ───────────────
         match choice {
             0 => {
-                assert::reachable("path A", &[]);
+                assert::reachable("path A", &json!({}));
                 coverage::record_edge(10_000);
             }
             1 => {
-                assert::reachable("path B", &[]);
+                assert::reachable("path B", &json!({}));
                 coverage::record_edge(20_000);
             }
             2 => {
-                assert::reachable("path C", &[]);
+                assert::reachable("path C", &json!({}));
                 coverage::record_edge(30_000);
             }
             3 => {
-                assert::reachable("path D", &[]);
+                assert::reachable("path D", &json!({}));
                 coverage::record_edge(40_000);
             }
             _ => {
-                assert::unreachable("impossible choice value", &[]);
+                assert::unreachable("impossible choice value", &json!({}));
             }
         }
 
@@ -134,11 +135,9 @@ fn main() {
     }
 
     // ── Phase 4: summary ────────────────────────────────────────
-    // Additional liveness: workload ran to completion
-    assert::sometimes(true, "workload completed", &[]);
+    assert::sometimes(true, "workload completed", &json!({}));
 
-    // Send a structured event with final stats
-    lifecycle::send_event("workload_done", &[("iterations", "50")]);
+    lifecycle::send_event("workload_done", &json!({"iterations": 50}));
 
     println!("chaoscontrol-guest: workload complete");
     println!(
@@ -153,8 +152,6 @@ fn main() {
     }
 
     // ── Phase 5: halt ───────────────────────────────────────────
-    // Returning from init causes a kernel panic — loop forever and
-    // let the VMM terminate via exit-count budget or serial pattern.
     println!("chaoscontrol-guest: done, idling");
     loop {
         unsafe {

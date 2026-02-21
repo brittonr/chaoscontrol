@@ -161,7 +161,8 @@ pub(crate) struct LocalAssert<'a> {
     pub condition: bool,
     pub message: &'a str,
     pub id: u32,
-    pub details: &'a [(&'a str, &'a str)],
+    /// Pre-serialized JSON bytes for details (e.g. `b"{}"`).
+    pub json_details: &'a [u8],
 }
 
 /// Write a local assertion record to the output file.
@@ -173,16 +174,8 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
         return;
     };
 
-    let details_json = if params.details.is_empty() {
-        "{}".to_owned()
-    } else {
-        let pairs: Vec<String> = params
-            .details
-            .iter()
-            .map(|(k, v)| format!("\"{}\": \"{}\"", escape_json(k), escape_json(v)))
-            .collect();
-        format!("{{{}}}", pairs.join(", "))
-    };
+    // json_details is already valid JSON — embed it directly
+    let details_str = std::str::from_utf8(params.json_details).unwrap_or("{}");
 
     let must_hit = matches!(params.assert_type, "sometimes" | "reachability");
     let record = format!(
@@ -205,7 +198,7 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
         id = params.id,
         message = escape_json(params.message),
         display_type = params.assert_type,
-        details = details_json,
+        details = details_str,
     );
 
     if let Ok(mut guard) = writer.lock() {
@@ -215,29 +208,21 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
 }
 
 /// Write a local lifecycle event to the output file.
-pub(crate) fn local_emit_lifecycle(event_name: &str, details: &[(&str, &str)]) {
+pub(crate) fn local_emit_lifecycle(event_name: &str, json_details: &[u8]) {
     let mode = get_mode();
     let TransportMode::LocalOutput { writer } = mode else {
         return;
     };
 
-    let details_json = if details.is_empty() {
-        "{}".to_owned()
-    } else {
-        let pairs: Vec<String> = details
-            .iter()
-            .map(|(k, v)| format!("\"{}\": \"{}\"", escape_json(k), escape_json(v)))
-            .collect();
-        format!("{{{}}}", pairs.join(", "))
-    };
+    let details_str = std::str::from_utf8(json_details).unwrap_or("{}");
 
     let record = if event_name == "setup_complete" {
         format!(
             "{{\"antithesis_setup\": {{\"status\": \"complete\", \"details\": {}}}}}\n",
-            details_json
+            details_str
         )
     } else {
-        format!("{{\"{}\": {}}}\n", escape_json(event_name), details_json)
+        format!("{{\"{}\": {}}}\n", escape_json(event_name), details_str)
     };
 
     if let Ok(mut guard) = writer.lock() {

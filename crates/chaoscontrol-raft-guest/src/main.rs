@@ -19,6 +19,7 @@ use chaoscontrol_raft_guest::{
     NUM_NODES,
 };
 use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
+use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Init
@@ -84,11 +85,7 @@ fn main() {
 
     coverage::init();
     let kcov_ok = kcov::init();
-    lifecycle::setup_complete(&[
-        ("program", "raft-guest"),
-        ("nodes", "3"),
-        ("bug", bug.name()),
-    ]);
+    lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": 3, "bug": bug.name()}));
     println!(
         "raft: setup_complete (kcov={}, bug={})",
         if kcov_ok { "active" } else { "unavailable" },
@@ -191,28 +188,28 @@ fn main() {
         assert::always(
             election_violations.is_empty(),
             "election safety: at most one leader per term",
-            &[],
+            &json!({}),
         );
 
         let log_violations = check_log_matching(&nodes);
         assert::always(
             log_violations.is_empty(),
             "log matching: divergence before agreement",
-            &[],
+            &json!({}),
         );
 
         let completeness_violations = check_leader_completeness(&nodes);
         assert::always(
             completeness_violations.is_empty(),
             "leader completeness: committed entry preserved",
-            &[],
+            &json!({}),
         );
 
         // ── Liveness checks ─────────────────────────────────
         let has_leader = nodes.iter().any(|n| n.role == Role::Leader);
-        assert::sometimes(has_leader, "leader elected", &[]);
-        assert::sometimes(values_committed > 0, "value committed", &[]);
-        assert::sometimes(values_committed >= 3, "3+ values committed", &[]);
+        assert::sometimes(has_leader, "leader elected", &json!({}));
+        assert::sometimes(values_committed > 0, "value committed", &json!({}));
+        assert::sometimes(values_committed >= 3, "3+ values committed", &json!({}));
 
         // ── Drain kernel coverage into bitmap ───────────────
         kcov::collect();

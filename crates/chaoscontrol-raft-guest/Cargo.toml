@@ -17,3 +17,4 @@ path = "src/main.rs"
 [dependencies]
 chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
 libc = "0.2"
+serde_json = "1.0"

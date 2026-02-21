@@ -167,8 +167,8 @@ pub struct OracleEvent {
     pub run_id: u32,
     /// Event name.
     pub name: String,
-    /// Key-value details.
-    pub details: Vec<(String, String)>,
+    /// Structured JSON details.
+    pub details: serde_json::Value,
 }
 
 /// Report produced by the oracle after all runs.
@@ -352,7 +352,7 @@ impl PropertyOracle {
     }
 
     /// Record a lifecycle event.
-    pub fn record_event(&mut self, name: &str, details: Vec<(String, String)>) {
+    pub fn record_event(&mut self, name: &str, details: serde_json::Value) {
         let run_id = self.current_run_id();
         self.events.push(OracleEvent {
             run_id,
@@ -620,7 +620,7 @@ mod tests {
     fn lifecycle_events() {
         let mut oracle = PropertyOracle::new();
         oracle.begin_run();
-        oracle.record_event("leader_elected", vec![("node".into(), "2".into())]);
+        oracle.record_event("leader_elected", serde_json::json!({"node": "2"}));
         oracle.end_run();
 
         let report = oracle.report();

@@ -20,6 +20,8 @@
 
 /// Issue a hypercall with the given command, flags, id, and payload.
 ///
+/// `json_details` is pre-serialized compact JSON bytes (e.g. `b"{}"`).
+///
 /// In VM mode: writes request to shared page, triggers vmcall, returns
 /// host-written result and status.
 ///
@@ -30,7 +32,7 @@ pub(crate) fn hypercall(
     flags: u8,
     id: u32,
     message: &str,
-    details: &[(&str, &str)],
+    json_details: &[u8],
 ) -> (u64, u8) {
     if let Some(page_ptr) = crate::internal::vm_page_ptr() {
         // ── VM transport ────────────────────────────────────────
@@ -43,7 +45,7 @@ pub(crate) fn hypercall(
             page.status = 0;
 
             let payload_len =
-                chaoscontrol_protocol::encode_payload(&mut page.payload, message, details)
+                chaoscontrol_protocol::encode_payload(&mut page.payload, message, json_details)
                     .unwrap_or(0);
             page.payload_len = payload_len as u16;
 
@@ -53,7 +55,7 @@ pub(crate) fn hypercall(
         }
     } else {
         // ── Local / noop fallback ───────────────────────────────
-        dispatch_local(command, flags, id, message, details);
+        dispatch_local(command, flags, id, message, json_details);
         (0, 0)
     }
 }
@@ -95,13 +97,23 @@ pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
 
 /// Dispatch assertion/lifecycle events to local output when outside a VM.
 #[cfg(feature = "full")]
-fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&str, &str)]) {
+fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: &[u8]) {
     use chaoscontrol_protocol::*;
 
     let condition = flags & 0x01 != 0;
     use crate::internal::LocalAssert;
 
     match command {
+        CMD_ASSERT_CATALOG => {
+            crate::internal::local_emit_assert(&LocalAssert {
+                assert_type: "always",
+                hit: false,
+                condition,
+                message,
+                id,
+                json_details,
+            });
+        }
         CMD_ASSERT_ALWAYS => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "always",
@@ -109,7 +121,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&s
                 condition,
                 message,
                 id,
-                details,
+                json_details,
             });
         }
         CMD_ASSERT_SOMETIMES => {
@@ -119,7 +131,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&s
                 condition,
                 message,
                 id,
-                details,
+                json_details,
             });
         }
         CMD_ASSERT_REACHABLE => {
@@ -129,7 +141,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&s
                 condition: true,
                 message,
                 id,
-                details,
+                json_details,
             });
         }
         CMD_ASSERT_UNREACHABLE => {
@@ -139,11 +151,11 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, details: &[(&s
                 condition: false,
                 message,
                 id,
-                details,
+                json_details,
             });
         }
         CMD_LIFECYCLE_SETUP_COMPLETE | CMD_LIFECYCLE_SEND_EVENT => {
-            crate::internal::local_emit_lifecycle(message, details);
+            crate::internal::local_emit_lifecycle(message, json_details);
         }
         _ => {}
     }
@@ -160,7 +172,7 @@ pub(crate) fn hypercall(
     _flags: u8,
     _id: u32,
     _message: &str,
-    _details: &[(&str, &str)],
+    _json_details: &[u8],
 ) -> (u64, u8) {
     (0, 0)
 }

@@ -59,6 +59,11 @@ pub mod prelude;
 pub mod random;
 mod transport;
 
+/// Re-export serde_json for use by macros via `$crate::serde_json`.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+pub use serde_json;
+
 #[cfg(feature = "full")]
 mod internal;
 

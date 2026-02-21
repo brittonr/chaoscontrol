@@ -44,7 +44,17 @@ pub const fn location_id(location: &str) -> u32 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Core assertions
+//  JSON serialization helper
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Serialize details to JSON bytes. Only available with `full` feature.
+#[cfg(feature = "full")]
+fn to_json_bytes(details: &serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Core assertions (full mode)
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Assert that `cond` is true **every** time this point is reached.
@@ -56,21 +66,25 @@ pub const fn location_id(location: &str) -> u32 {
 /// # Example
 ///
 /// ```rust,ignore
+/// use serde_json::json;
 /// chaoscontrol_sdk::assert::always(
 ///     leader_id < cluster_size,
 ///     "leader ID is valid",
-///     &[("leader", "2"), ("cluster_size", "3")],
+///     &json!({"leader": leader_id, "cluster_size": cluster_size}),
 /// );
 /// ```
-pub fn always(cond: bool, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn always(cond: bool, message: &str, details: &serde_json::Value) {
     let id = location_id(message);
     always_with_id(cond, id, message, details);
 }
 
 /// Like [`always`] but with an explicit assertion ID.
-pub fn always_with_id(cond: bool, id: u32, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn always_with_id(cond: bool, id: u32, message: &str, details: &serde_json::Value) {
     let flags = if cond { 0x01 } else { 0x00 };
-    transport::hypercall(CMD_ASSERT_ALWAYS, flags, id, message, details);
+    let json_bytes = to_json_bytes(details);
+    transport::hypercall(CMD_ASSERT_ALWAYS, flags, id, message, &json_bytes);
 }
 
 /// Assert that `cond` is true **at least once** across all runs.
@@ -80,111 +94,116 @@ pub fn always_with_id(cond: bool, id: u32, message: &str, details: &[(&str, &str
 ///
 /// Use this for liveness properties: "eventually, something good
 /// happens."
-///
-/// # Example
-///
-/// ```rust,ignore
-/// chaoscontrol_sdk::assert::sometimes(
-///     write_succeeded,
-///     "at least one write succeeds",
-///     &[("attempt", &attempt.to_string())],
-/// );
-/// ```
-pub fn sometimes(cond: bool, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn sometimes(cond: bool, message: &str, details: &serde_json::Value) {
     let id = location_id(message);
     sometimes_with_id(cond, id, message, details);
 }
 
 /// Like [`sometimes`] but with an explicit assertion ID.
-pub fn sometimes_with_id(cond: bool, id: u32, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn sometimes_with_id(cond: bool, id: u32, message: &str, details: &serde_json::Value) {
     let flags = if cond { 0x01 } else { 0x00 };
-    transport::hypercall(CMD_ASSERT_SOMETIMES, flags, id, message, details);
+    let json_bytes = to_json_bytes(details);
+    transport::hypercall(CMD_ASSERT_SOMETIMES, flags, id, message, &json_bytes);
 }
 
 /// Assert that this code point is **reached at least once** across runs.
-///
-/// Useful for verifying that fault injection actually exercises the
-/// error-handling paths you care about.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// if let Err(e) = disk.write(offset, &data) {
-///     chaoscontrol_sdk::assert::reachable(
-///         "disk write error path exercised",
-///         &[("error", &e.to_string())],
-///     );
-///     // handle error...
-/// }
-/// ```
-pub fn reachable(message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn reachable(message: &str, details: &serde_json::Value) {
     let id = location_id(message);
     reachable_with_id(id, message, details);
 }
 
 /// Like [`reachable`] but with an explicit assertion ID.
-pub fn reachable_with_id(id: u32, message: &str, details: &[(&str, &str)]) {
-    transport::hypercall(CMD_ASSERT_REACHABLE, 0x01, id, message, details);
+#[cfg(feature = "full")]
+pub fn reachable_with_id(id: u32, message: &str, details: &serde_json::Value) {
+    let json_bytes = to_json_bytes(details);
+    transport::hypercall(CMD_ASSERT_REACHABLE, 0x01, id, message, &json_bytes);
 }
 
 /// Assert that this code point is **never reached** in any run.
-///
-/// If execution reaches this point, the test fails immediately.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// match state {
-///     State::Valid => { /* ok */ }
-///     State::Invalid => {
-///         chaoscontrol_sdk::assert::unreachable(
-///             "reached invalid state",
-///             &[("state", &format!("{:?}", state))],
-///         );
-///     }
-/// }
-/// ```
-pub fn unreachable(message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn unreachable(message: &str, details: &serde_json::Value) {
     let id = location_id(message);
     unreachable_with_id(id, message, details);
 }
 
 /// Like [`unreachable`] but with an explicit assertion ID.
-pub fn unreachable_with_id(id: u32, message: &str, details: &[(&str, &str)]) {
-    transport::hypercall(CMD_ASSERT_UNREACHABLE, 0x00, id, message, details);
+#[cfg(feature = "full")]
+pub fn unreachable_with_id(id: u32, message: &str, details: &serde_json::Value) {
+    let json_bytes = to_json_bytes(details);
+    transport::hypercall(CMD_ASSERT_UNREACHABLE, 0x00, id, message, &json_bytes);
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Composite assertions
-// ═══════════════════════════════════════════════════════════════════════
-
 /// Assert `always` when true, `unreachable` when false.
-///
-/// This is for invariants that should *always* hold and whose violation
-/// is severe enough to halt testing immediately.  Equivalent to
-/// Antithesis's `assert_always_or_unreachable!`.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// chaoscontrol_sdk::assert::always_or_unreachable(
-///     data.len() < MAX_SIZE,
-///     "data size within bounds",
-///     &[("size", &data.len().to_string())],
-/// );
-/// ```
-pub fn always_or_unreachable(cond: bool, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn always_or_unreachable(cond: bool, message: &str, details: &serde_json::Value) {
     let id = location_id(message);
     always_or_unreachable_with_id(cond, id, message, details);
 }
 
 /// Like [`always_or_unreachable`] but with an explicit assertion ID.
-pub fn always_or_unreachable_with_id(cond: bool, id: u32, message: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn always_or_unreachable_with_id(
+    cond: bool,
+    id: u32,
+    message: &str,
+    details: &serde_json::Value,
+) {
     if cond {
         always_with_id(cond, id, message, details);
     } else {
         unreachable_with_id(id, message, details);
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Core assertions (no-op mode)
+// ═══════════════════════════════════════════════════════════════════════
+
+#[cfg(not(feature = "full"))]
+pub fn always(_cond: bool, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn always_with_id(_cond: bool, _id: u32, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn sometimes(_cond: bool, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn sometimes_with_id(_cond: bool, _id: u32, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn reachable(_message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn reachable_with_id(_id: u32, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn unreachable(_message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn unreachable_with_id(_id: u32, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn always_or_unreachable(_cond: bool, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn always_or_unreachable_with_id(_cond: bool, _id: u32, _message: &str, _details: &()) {}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Macros: empty JSON helper
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Internal macro to produce empty JSON details.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_empty_json {
+    () => {
+        $crate::serde_json::json!({})
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_empty_json {
+    () => {
+        ()
+    };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -194,210 +213,224 @@ pub fn always_or_unreachable_with_id(cond: bool, id: u32, message: &str, details
 /// Assert-always with automatic source location ID.
 ///
 /// ```rust,ignore
-/// cc_assert_always!(leader_id < 3, "valid leader", ("leader", "2"));
+/// cc_assert_always!(leader_id < 3, "valid leader");
+/// cc_assert_always!(leader_id < 3, "valid leader", &json!({"id": leader_id}));
 /// ```
 #[macro_export]
 macro_rules! cc_assert_always {
-    ($cond:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(
             concat!(file!(), ":", line!(), ":", $msg)
         );
-        $crate::assert::always_with_id($cond, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($cond:expr, $msg:expr, $details:expr) => {{
+        const _ID: u32 = $crate::assert::location_id(
+            concat!(file!(), ":", line!(), ":", $msg)
+        );
+        $crate::assert::always_with_id($cond, _ID, $msg, $details);
     }};
 }
 
 /// Assert-sometimes with automatic source location ID.
 #[macro_export]
 macro_rules! cc_assert_sometimes {
-    ($cond:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(
             concat!(file!(), ":", line!(), ":", $msg)
         );
-        $crate::assert::sometimes_with_id($cond, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($cond:expr, $msg:expr, $details:expr) => {{
+        const _ID: u32 = $crate::assert::location_id(
+            concat!(file!(), ":", line!(), ":", $msg)
+        );
+        $crate::assert::sometimes_with_id($cond, _ID, $msg, $details);
     }};
 }
 
 /// Assert-reachable with automatic source location ID.
 #[macro_export]
 macro_rules! cc_assert_reachable {
-    ($msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(
             concat!(file!(), ":", line!(), ":", $msg)
         );
-        $crate::assert::reachable_with_id(_ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::reachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($msg:expr, $details:expr) => {{
+        const _ID: u32 = $crate::assert::location_id(
+            concat!(file!(), ":", line!(), ":", $msg)
+        );
+        $crate::assert::reachable_with_id(_ID, $msg, $details);
     }};
 }
 
 /// Assert-unreachable with automatic source location ID.
 #[macro_export]
 macro_rules! cc_assert_unreachable {
-    ($msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(
             concat!(file!(), ":", line!(), ":", $msg)
         );
-        $crate::assert::unreachable_with_id(_ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::unreachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($msg:expr, $details:expr) => {{
+        const _ID: u32 = $crate::assert::location_id(
+            concat!(file!(), ":", line!(), ":", $msg)
+        );
+        $crate::assert::unreachable_with_id(_ID, $msg, $details);
     }};
 }
 
 /// Assert-always-or-unreachable with automatic source location ID.
-///
-/// ```rust,ignore
-/// cc_assert_always_or_unreachable!(x < MAX, "x within bounds");
-/// ```
 #[macro_export]
 macro_rules! cc_assert_always_or_unreachable {
-    ($cond:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(
             concat!(file!(), ":", line!(), ":", $msg)
         );
-        $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($cond:expr, $msg:expr, $details:expr) => {{
+        const _ID: u32 = $crate::assert::location_id(
+            concat!(file!(), ":", line!(), ":", $msg)
+        );
+        $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, $details);
     }};
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Numeric comparison macros (Antithesis-style)
+//  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
-//
-// These macros automatically include left/right operand values in the
-// details, giving richer failure messages than a bare `always(a < b)`.
 
 /// Assert `left < right` always holds.
-///
-/// ```rust,ignore
-/// cc_assert_always_lt!(used, capacity, "within capacity");
-/// ```
 #[macro_export]
 macro_rules! cc_assert_always_lt {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left < $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left <= right` always holds.
 #[macro_export]
 macro_rules! cc_assert_always_le {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left <= $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left > right` always holds.
 #[macro_export]
 macro_rules! cc_assert_always_gt {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left > $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left >= right` always holds.
 #[macro_export]
 macro_rules! cc_assert_always_ge {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left >= $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left == right` always holds.
 #[macro_export]
 macro_rules! cc_assert_always_eq {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left == $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left != right` always holds.
 #[macro_export]
 macro_rules! cc_assert_always_ne {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($left != $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
-/// Assert `left < right` sometimes holds (at least once across runs).
+/// Assert `left < right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_lt {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left < $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left <= right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_le {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left <= $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left > right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_gt {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left > $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left >= right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ge {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left >= $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left == right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_eq {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left == $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert `left != right` sometimes holds.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ne {
-    ($left:expr, $right:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($left != $right, _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
-/// Assert that an option is `Some` every time this point is reached.
-///
-/// ```rust,ignore
-/// cc_assert_always_some!(map.get(&key), "key exists in map");
-/// ```
+/// Assert that an option is `Some` every time.
 #[macro_export]
 macro_rules! cc_assert_always_some {
-    ($expr:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($expr:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::always_with_id($expr.is_some(), _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::always_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
 
 /// Assert that an option is `Some` at least once across runs.
-///
-/// ```rust,ignore
-/// cc_assert_sometimes_some!(rare_event(), "rare event occurred");
-/// ```
 #[macro_export]
 macro_rules! cc_assert_sometimes_some {
-    ($expr:expr, $msg:expr $(, ($k:expr, $v:expr))* $(,)?) => {{
+    ($expr:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
-        $crate::assert::sometimes_with_id($expr.is_some(), _ID, $msg, &[$(($k, $v)),*]);
+        $crate::assert::sometimes_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
+
+// serde_json re-exported from lib.rs for macro use via $crate::serde_json
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Tests
@@ -424,7 +457,6 @@ mod tests {
     #[test]
     fn location_id_empty_string() {
         let id = location_id("");
-        // Should be FNV offset basis since no bytes are hashed
         assert_eq!(id, 0x811c_9dc5);
     }
 
@@ -435,16 +467,20 @@ mod tests {
         assert_ne!(a, b);
     }
 
-    // ── Macro compilation tests ──────────────────────────────────
-    // These verify the macros compile and expand correctly.
-    // Outside a VM, they're effectively no-ops.
-
     #[test]
     fn basic_macros_compile() {
         cc_assert_always!(true, "test always");
         cc_assert_sometimes!(true, "test sometimes");
         cc_assert_reachable!("test reachable");
         cc_assert_always_or_unreachable!(true, "test always_or_unreachable");
+    }
+
+    #[test]
+    fn macros_with_json_details() {
+        use serde_json::json;
+        cc_assert_always!(true, "msg", &json!({"key": 42}));
+        cc_assert_sometimes!(true, "msg2", &json!({"x": "y"}));
+        cc_assert_reachable!("msg3", &json!({}));
     }
 
     #[test]
@@ -474,14 +510,8 @@ mod tests {
     }
 
     #[test]
-    fn macros_with_extra_details() {
-        cc_assert_always!(true, "msg", ("k1", "v1"), ("k2", "v2"));
-        cc_assert_always_lt!(1, 2, "msg", ("ctx", "test"));
-        cc_assert_always_or_unreachable!(true, "msg", ("a", "b"));
-    }
-
-    #[test]
     fn always_or_unreachable_when_true() {
-        always_or_unreachable(true, "test", &[("key", "val")]);
+        use serde_json::json;
+        always_or_unreachable(true, "test", &json!({"key": "val"}));
     }
 }

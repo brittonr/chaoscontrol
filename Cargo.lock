@@ -179,6 +179,7 @@ dependencies = [
  "chaoscontrol-protocol",
  "rand",
  "rand_chacha",
+ "serde_json",
  "snafu",
 ]
 
@@ -188,6 +189,7 @@ version = "0.1.0"
 dependencies = [
  "chaoscontrol-sdk",
  "libc",
+ "serde_json",
 ]
 
 [[package]]
@@ -200,6 +202,7 @@ version = "0.1.0"
 dependencies = [
  "chaoscontrol-sdk",
  "libc",
+ "serde_json",
 ]
 
 [[package]]

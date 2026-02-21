@@ -2,9 +2,10 @@
 //!
 //! ```rust,ignore
 //! use chaoscontrol_sdk::prelude::*;
+//! use serde_json::json;
 //!
 //! chaoscontrol_init();
-//! setup_complete(&[("nodes", "3")]);
+//! setup_complete(&json!({"nodes": 3}));
 //!
 //! cc_assert_always!(leader_id < 3, "valid leader");
 //! cc_assert_sometimes!(write_ok, "write succeeded");
@@ -55,3 +56,9 @@ pub use crate::random::{fill_bytes, get_random, random_choice};
 
 #[cfg(feature = "full")]
 pub use crate::random::{random_choice_from, ChaosControlRng};
+
+// ── Re-export serde_json for json!() macro convenience ───────────────
+#[cfg(feature = "full")]
+pub use serde_json;
+#[cfg(feature = "full")]
+pub use serde_json::json;

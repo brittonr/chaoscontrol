@@ -16,22 +16,31 @@ use chaoscontrol_protocol::*;
 /// # Example
 ///
 /// ```rust,ignore
+/// use serde_json::json;
 /// start_raft_cluster(&config);
 /// wait_for_leader_election();
-/// chaoscontrol_sdk::lifecycle::setup_complete(&[
-///     ("nodes", "3"),
-///     ("protocol", "raft"),
-/// ]);
+/// chaoscontrol_sdk::lifecycle::setup_complete(&json!({
+///     "nodes": 3,
+///     "protocol": "raft",
+/// }));
 /// // Faults may now be injected
 /// ```
-pub fn setup_complete(details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn setup_complete(details: &serde_json::Value) {
+    let json_bytes = serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec());
     transport::hypercall(
         CMD_LIFECYCLE_SETUP_COMPLETE,
         0,
         0,
         "setup_complete",
-        details,
+        &json_bytes,
     );
+}
+
+/// No-op stub for `setup_complete` when SDK features are disabled.
+#[cfg(not(feature = "full"))]
+pub fn setup_complete(_details: &()) {
+    transport::hypercall(CMD_LIFECYCLE_SETUP_COMPLETE, 0, 0, "setup_complete", b"{}");
 }
 
 /// Emit a named structured event.
@@ -43,12 +52,21 @@ pub fn setup_complete(details: &[(&str, &str)]) {
 /// # Example
 ///
 /// ```rust,ignore
-/// chaoscontrol_sdk::lifecycle::send_event("leader_elected", &[
-///     ("node_id", "2"),
-///     ("term", "5"),
-/// ]);
+/// use serde_json::json;
+/// chaoscontrol_sdk::lifecycle::send_event("leader_elected", &json!({
+///     "node_id": 2,
+///     "term": 5,
+/// }));
 /// ```
-pub fn send_event(name: &str, details: &[(&str, &str)]) {
+#[cfg(feature = "full")]
+pub fn send_event(name: &str, details: &serde_json::Value) {
     let id = crate::assert::location_id(name);
-    transport::hypercall(CMD_LIFECYCLE_SEND_EVENT, 0, id, name, details);
+    let json_bytes = serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec());
+    transport::hypercall(CMD_LIFECYCLE_SEND_EVENT, 0, id, name, &json_bytes);
+}
+
+/// No-op stub for `send_event` when SDK features are disabled.
+#[cfg(not(feature = "full"))]
+pub fn send_event(_name: &str, _details: &()) {
+    // No-op: transport discards everything
 }

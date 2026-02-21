@@ -99,6 +99,12 @@ pub const CMD_ASSERT_REACHABLE: u8 = 0x03;
 /// Assertion: this point must never be reached in any run.
 pub const CMD_ASSERT_UNREACHABLE: u8 = 0x04;
 
+/// Assertion catalog registration (emitted at init for every assertion site).
+pub const CMD_ASSERT_CATALOG: u8 = 0x05;
+
+/// Guidance data (numeric/boolean distance-to-violation hints).
+pub const CMD_GUIDANCE: u8 = 0x07;
+
 /// Lifecycle: workload setup is complete, testing begins.
 pub const CMD_LIFECYCLE_SETUP_COMPLETE: u8 = 0x10;
 
@@ -227,19 +233,19 @@ impl HypercallPage {
 //  Payload encoding / decoding
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Encode a message string and key-value details into a payload buffer.
+/// Encode a message string and JSON detail bytes into a payload buffer.
 ///
 /// Returns the number of bytes written, or `None` if the buffer is too small.
+///
+/// `json_details` is pre-serialized compact JSON (e.g. `b"{}"` for empty).
+/// The protocol crate does not parse JSON — it just shuttles bytes.
 ///
 /// # Wire format
 ///
 /// ```text
-/// [u16 message_len] [message bytes]
-/// [u16 num_details]
-/// for each detail:
-///   [u16 key_len] [key bytes] [u16 value_len] [value bytes]
+/// [u16 message_len] [message bytes] [u16 json_len] [json bytes]
 /// ```
-pub fn encode_payload(buf: &mut [u8], message: &str, details: &[(&str, &str)]) -> Option<usize> {
+pub fn encode_payload(buf: &mut [u8], message: &str, json_details: &[u8]) -> Option<usize> {
     let mut offset = 0;
 
     // Message length + bytes
@@ -256,43 +262,23 @@ pub fn encode_payload(buf: &mut [u8], message: &str, details: &[(&str, &str)]) -
     buf[offset..offset + msg_len].copy_from_slice(msg_bytes);
     offset += msg_len;
 
-    // Number of details
-    let num_details = details.len();
-    if num_details > u16::MAX as usize {
+    // JSON details length + bytes
+    let json_len = json_details.len();
+    if json_len > u16::MAX as usize {
         return None;
     }
-    if offset + 2 > buf.len() {
+    if offset + 2 + json_len > buf.len() {
         return None;
     }
-    buf[offset..offset + 2].copy_from_slice(&(num_details as u16).to_le_bytes());
+    buf[offset..offset + 2].copy_from_slice(&(json_len as u16).to_le_bytes());
     offset += 2;
-
-    // Each detail: key_len, key, value_len, value
-    for &(key, value) in details {
-        let key_bytes = key.as_bytes();
-        let val_bytes = value.as_bytes();
-        let klen = key_bytes.len();
-        let vlen = val_bytes.len();
-        if klen > u16::MAX as usize || vlen > u16::MAX as usize {
-            return None;
-        }
-        if offset + 2 + klen + 2 + vlen > buf.len() {
-            return None;
-        }
-        buf[offset..offset + 2].copy_from_slice(&(klen as u16).to_le_bytes());
-        offset += 2;
-        buf[offset..offset + klen].copy_from_slice(key_bytes);
-        offset += klen;
-        buf[offset..offset + 2].copy_from_slice(&(vlen as u16).to_le_bytes());
-        offset += 2;
-        buf[offset..offset + vlen].copy_from_slice(val_bytes);
-        offset += vlen;
-    }
+    buf[offset..offset + json_len].copy_from_slice(json_details);
+    offset += json_len;
 
     Some(offset)
 }
 
-/// Decoded payload: message string and key-value detail pairs.
+/// Decoded payload: message string and raw JSON detail bytes.
 ///
 /// Only available with the `std` feature (requires heap allocation).
 #[cfg(feature = "std")]
@@ -302,10 +288,11 @@ extern crate alloc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedPayload {
     pub message: alloc::string::String,
-    pub details: alloc::vec::Vec<(alloc::string::String, alloc::string::String)>,
+    /// Raw JSON bytes for the details object.
+    pub json_details: alloc::vec::Vec<u8>,
 }
 
-/// Decode a payload buffer into a message and details.
+/// Decode a payload buffer into a message and JSON detail bytes.
 ///
 /// Only available with the `std` feature.
 #[cfg(feature = "std")]
@@ -328,37 +315,18 @@ pub fn decode_payload(buf: &[u8]) -> Option<DecodedPayload> {
     if offset + 2 > buf.len() {
         return None;
     }
-    let num_details = u16::from_le_bytes([buf[offset], buf[offset + 1]]) as usize;
+    let json_len = u16::from_le_bytes([buf[offset], buf[offset + 1]]) as usize;
     offset += 2;
 
-    let mut details = alloc::vec::Vec::with_capacity(num_details);
-    for _ in 0..num_details {
-        if offset + 2 > buf.len() {
-            return None;
-        }
-        let klen = u16::from_le_bytes([buf[offset], buf[offset + 1]]) as usize;
-        offset += 2;
-        if offset + klen > buf.len() {
-            return None;
-        }
-        let key = String::from_utf8_lossy(&buf[offset..offset + klen]).into_owned();
-        offset += klen;
-
-        if offset + 2 > buf.len() {
-            return None;
-        }
-        let vlen = u16::from_le_bytes([buf[offset], buf[offset + 1]]) as usize;
-        offset += 2;
-        if offset + vlen > buf.len() {
-            return None;
-        }
-        let value = String::from_utf8_lossy(&buf[offset..offset + vlen]).into_owned();
-        offset += vlen;
-
-        details.push((key, value));
+    if offset + json_len > buf.len() {
+        return None;
     }
+    let json_details = buf[offset..offset + json_len].to_vec();
 
-    Some(DecodedPayload { message, details })
+    Some(DecodedPayload {
+        message,
+        json_details,
+    })
 }
 
 #[cfg(test)]
@@ -406,48 +374,46 @@ mod tests {
     }
 
     #[test]
-    fn encode_simple_message() {
+    fn encode_simple_message_with_empty_json() {
         let mut buf = [0u8; 256];
-        let len = encode_payload(&mut buf, "hello", &[]).unwrap();
-        // 2 bytes msg_len + 5 bytes "hello" + 2 bytes num_details(0)
-        assert_eq!(len, 9);
+        let len = encode_payload(&mut buf, "hello", b"{}").unwrap();
+        // 2 bytes msg_len + 5 bytes "hello" + 2 bytes json_len + 2 bytes "{}"
+        assert_eq!(len, 11);
         assert_eq!(&buf[2..7], b"hello");
     }
 
     #[test]
-    fn encode_with_details() {
+    fn encode_message_with_json_details() {
         let mut buf = [0u8; 256];
-        let details = [("key1", "val1"), ("key2", "val2")];
-        let len = encode_payload(&mut buf, "msg", &details).unwrap();
-        // 2 + 3 + 2 + (2+4+2+4) + (2+4+2+4) = 29
-        assert_eq!(len, 31);
+        let json = b"{\"key\":42}";
+        let len = encode_payload(&mut buf, "msg", json).unwrap();
+        // 2 + 3 + 2 + 10 = 17
+        assert_eq!(len, 17);
     }
 
     #[test]
-    fn encode_empty_message_and_details() {
+    fn encode_empty_message_and_empty_json() {
         let mut buf = [0u8; 256];
-        let len = encode_payload(&mut buf, "", &[]).unwrap();
-        assert_eq!(len, 4); // 2 + 0 + 2
+        let len = encode_payload(&mut buf, "", b"{}").unwrap();
+        assert_eq!(len, 6); // 2 + 0 + 2 + 2
     }
 
     #[test]
     fn encode_buffer_too_small() {
         let mut buf = [0u8; 4];
-        assert!(encode_payload(&mut buf, "hello world", &[]).is_none());
+        assert!(encode_payload(&mut buf, "hello world", b"{}").is_none());
     }
 
     #[cfg(feature = "std")]
     #[test]
     fn encode_decode_roundtrip() {
         let mut buf = [0u8; 1024];
-        let details = [("host", "vm-1"), ("component", "raft")];
-        let len = encode_payload(&mut buf, "leader elected", &details).unwrap();
+        let json = b"{\"host\":\"vm-1\",\"component\":\"raft\"}";
+        let len = encode_payload(&mut buf, "leader elected", json).unwrap();
 
         let decoded = decode_payload(&buf[..len]).unwrap();
         assert_eq!(decoded.message, "leader elected");
-        assert_eq!(decoded.details.len(), 2);
-        assert_eq!(decoded.details[0], ("host".into(), "vm-1".into()));
-        assert_eq!(decoded.details[1], ("component".into(), "raft".into()));
+        assert_eq!(decoded.json_details, json.to_vec());
     }
 
     #[cfg(feature = "std")]

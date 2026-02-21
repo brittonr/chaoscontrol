@@ -239,9 +239,27 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - ✅ **Input tree exploration** (2026-02-20): Branch at SDK random_choice()/get_random() hypercall points. Three modes: fault-schedule, input-tree, hybrid. Choice recording + overrides in FaultEngine, selection heuristics (small-n priority, depth weighting), probe-first strategy. 733 tests, 0 failures.
 
 ### Remaining Antithesis Items
-- **Instructions-retired time model**: PMC-based time (Intel-only, configurable)
+- **Instructions-retired time model**: ❌ NOT VIABLE on AMD Zen5 (see PMU investigation below). Would work on Intel (PEBS zero-skid) or RISC-V (`instret` CSR, architecturally precise). Exit-count model is the production answer.
 - **Massive determinism logging**: High-throughput paranoid mode for debugging
 - **Destructive analysis**: poke_memory/set_register in debugger for "what if" analysis
+
+## PMU Investigation (2026-02-20)
+- **Hardware**: AMD Ryzen 9 9950X3D (Zen 5), family 26 model 68, `perfmon_v2 perfctr_core ibs amd_lbr_v2`
+- **perf_event_paranoid**: -1 (full access)
+- **Kernel**: 6.18.10
+- **Overflow mode (SIGIO)**: ❌ Never delivered on AMD Zen5. SIGIO count = 0 across all tests. Known issue: SVM PMU overflow→signal path incomplete.
+- **Counting mode**: ✅ Works — reads non-zero guest instruction counts with `exclude_host=1`.
+- **Determinism test (10K exits × 5 runs)**: Exit counts perfectly deterministic (10000×5). Instruction counts NON-DETERMINISTIC: 240M-241.6M, spread=1.55M (0.64%). Root cause: PIT calibration loop executes variable iterations (host-time dependent).
+- **Per-exit determinism (500 exits × 5 runs from same snapshot)**:
+  - 0/500 exits had identical instruction counts across all runs
+  - Dominant delta: Δ=-41 instructions (78.8% of exits) — SVM VMRUN/VMEXIT boundary skid
+  - |Δ| percentiles: p50=41, p90=65, p99=16543, max=35956
+  - Cumulative divergence: up to 196K instructions over 500 exits
+- **Root cause**: AMD SVM's `exclude_host` PMU filtering boundary is not cycle-exact. ~41 instructions of skid at each VM entry/exit, with occasional large spikes (interrupts, NMI).
+- **Verdict**: `perf_event_open` + `exclude_host=1` on AMD Zen5 cannot provide deterministic guest instruction counting. Not viable for instructions-retired time model.
+- **Why Antithesis works**: Intel VMX has architecturally precise PMU boundaries via VMCS `IA32_PERF_GLOBAL_CTRL` MSR load areas. Zero skid. PEBS gives exact instruction-boundary events.
+- **RISC-V alternative**: `instret` CSR (mandatory base ISA) counts retired instructions with architectural precision. H extension traps are synchronous — delta at trap entry is exact. No boundary skid. Ideal platform for deterministic hypervisor, but hardware still immature.
+- **Decision**: Keep exit-count time model (proven perfectly deterministic on AMD + Intel).
 
 ## Input Tree Exploration (2026-02-20)
 - **Architecture**: FaultEngine records ChoiceRecord(sequence_id, n_options, value) on every CMD_RANDOM_CHOICE/CMD_RANDOM_GET

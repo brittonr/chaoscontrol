@@ -331,4 +331,5 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Coverage-guided seed exploration
 - [x] Network simulation fidelity (jitter, bandwidth, duplication)
 - [x] Kernel coverage (KCOV) — kernel code path visibility for exploration
+- [x] Input tree exploration — branch at random_choice() decision points
 

@@ -235,11 +235,26 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **Hide all time sources**: Added `nohpet` to cmdline. Trap HPET MMIO (0xFED00000, 1KiB) with deterministic values from vTSC. Trap ACPI PM timer port (0x408) with vTSC-derived 24-bit counter at 3.579545 MHz.
 - **Interrupt injection**: `Fault::InjectInterrupt{target, irq}` + `Fault::InjectNmi{target, vcpu}`. IRQ via `set_irq_line()` (edge-triggered pulse), NMI via raw `KVM_NMI` ioctl (0xae9a) on VcpuFd. Controller dispatches at tick boundaries. FaultCategory::Interrupt. Random generation in engine (13 types) and mutator (15 types). Checkpoint serialization. Graceful ENOTTY fallback for NMI. 2 integration tests (VM-level + controller schedule).
 
+### Completed Antithesis Items
+- ✅ **Input tree exploration** (2026-02-20): Branch at SDK random_choice()/get_random() hypercall points. Three modes: fault-schedule, input-tree, hybrid. Choice recording + overrides in FaultEngine, selection heuristics (small-n priority, depth weighting), probe-first strategy. 733 tests, 0 failures.
+
 ### Remaining Antithesis Items
-- **Input tree exploration**: Branch at SDK hypercall points (natural I/O exchange) instead of fixed tick intervals
 - **Instructions-retired time model**: PMC-based time (Intel-only, configurable)
 - **Massive determinism logging**: High-throughput paranoid mode for debugging
 - **Destructive analysis**: poke_memory/set_register in debugger for "what if" analysis
+
+## Input Tree Exploration (2026-02-20)
+- **Architecture**: FaultEngine records ChoiceRecord(sequence_id, n_options, value) on every CMD_RANDOM_CHOICE/CMD_RANDOM_GET
+- **Overrides**: `random_overrides: BTreeMap<u64, u64>` maps sequence_id → forced value. RNG token still consumed for state consistency.
+- **Selection heuristic**: Score = `1/n_options × 1/(1 + seq_id × 0.01)` — small-n, early choices get highest priority
+- **Small n (≤10)**: enumerate ALL alternatives (e.g., random_choice(3) with value=1 → try 0 and 2)
+- **Large n (>10)**: sample 3 random alternatives
+- **Probe-first**: Each round runs a probe branch (no overrides) to record choices, then generates alternatives
+- **Three modes**: FaultSchedule (default, original), InputTree (new), Hybrid (alternating rounds)
+- **CLI**: `--mode fault-schedule|input-tree|hybrid`
+- **Key insight**: Override at position K means choices 0..K-1 replay identically (same RNG state), choice K diverges, subsequent choices diverge naturally because guest is on a different code path
+- **Snapshot alignment**: choice_count saved/restored in EngineSnapshot so overrides target the correct sequence position after restore
+- **Override cleanup**: clear_all_choice_overrides() called after each branch to prevent leaking
 
 ## Remaining Work
 (All items completed)

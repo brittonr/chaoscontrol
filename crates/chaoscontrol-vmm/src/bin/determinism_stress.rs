@@ -159,10 +159,7 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        eprintln!(
-            "Usage: {} <kernel-path> <initrd-path> [N=10]",
-            args[0]
-        );
+        eprintln!("Usage: {} <kernel-path> <initrd-path> [N=10]", args[0]);
         std::process::exit(1);
     }
 
@@ -171,7 +168,10 @@ fn main() {
     let n: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10);
 
     println!("╔══════════════════════════════════════════════════════════════╗");
-    println!("║       Determinism Stress Test — {} runs per config           ║", n);
+    println!(
+        "║       Determinism Stress Test — {} runs per config           ║",
+        n
+    );
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
@@ -186,21 +186,36 @@ fn main() {
         let max_exits = 70_000;
 
         let reference = run_single_vm(kernel, initrd, 1, max_exits);
-        print!("  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n", reference.exit_count, reference.virtual_tsc);
+        print!(
+            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n",
+            reference.exit_count, reference.virtual_tsc
+        );
 
         let mut mismatches = 0;
         for i in 2..=n {
             let fp = run_single_vm(kernel, initrd, 1, max_exits);
             let ok = fp == reference;
             if ok {
-                print!("  run {:>2}: exits={:<8} vtsc={:<16} ✅\n", i, fp.exit_count, fp.virtual_tsc);
+                print!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅\n",
+                    i, fp.exit_count, fp.virtual_tsc
+                );
             } else {
-                print!("  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n", i, fp.exit_count, fp.virtual_tsc);
+                print!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n",
+                    i, fp.exit_count, fp.virtual_tsc
+                );
                 if fp.exit_count != reference.exit_count {
-                    eprintln!("         exit_count: {} vs reference {}", fp.exit_count, reference.exit_count);
+                    eprintln!(
+                        "         exit_count: {} vs reference {}",
+                        fp.exit_count, reference.exit_count
+                    );
                 }
                 if fp.virtual_tsc != reference.virtual_tsc {
-                    eprintln!("         virtual_tsc: {} vs reference {}", fp.virtual_tsc, reference.virtual_tsc);
+                    eprintln!(
+                        "         virtual_tsc: {} vs reference {}",
+                        fp.virtual_tsc, reference.virtual_tsc
+                    );
                 }
                 if fp.serial_stripped != reference.serial_stripped {
                     // Find first differing line
@@ -215,7 +230,11 @@ fn main() {
                         }
                     }
                     if ref_lines.len() != fp_lines.len() {
-                        eprintln!("         serial line count: {} vs reference {}", fp_lines.len(), ref_lines.len());
+                        eprintln!(
+                            "         serial line count: {} vs reference {}",
+                            fp_lines.len(),
+                            ref_lines.len()
+                        );
                     }
                 }
                 mismatches += 1;
@@ -224,9 +243,19 @@ fn main() {
 
         let elapsed = start.elapsed();
         if mismatches == 0 {
-            println!("  ✅ PASS: {}/{} runs identical ({:.1}s)\n", n, n, elapsed.as_secs_f64());
+            println!(
+                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
+                n,
+                n,
+                elapsed.as_secs_f64()
+            );
         } else {
-            println!("  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n", mismatches, n, elapsed.as_secs_f64());
+            println!(
+                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
+                mismatches,
+                n,
+                elapsed.as_secs_f64()
+            );
             all_passed = false;
         }
     }
@@ -235,26 +264,44 @@ fn main() {
     //  Test 2: Single VM, 2 vCPUs (SMP), N runs
     // ═══════════════════════════════════════════════════════════════
     {
-        println!("━━━ Test 2: Single VM, 2 vCPUs (SMP), {} runs × 70K exits ━━━", n);
+        println!(
+            "━━━ Test 2: Single VM, 2 vCPUs (SMP), {} runs × 70K exits ━━━",
+            n
+        );
         let start = Instant::now();
         let max_exits = 70_000;
 
         let reference = run_single_vm(kernel, initrd, 2, max_exits);
-        print!("  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n", reference.exit_count, reference.virtual_tsc);
+        print!(
+            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n",
+            reference.exit_count, reference.virtual_tsc
+        );
 
         let mut mismatches = 0;
         for i in 2..=n {
             let fp = run_single_vm(kernel, initrd, 2, max_exits);
             let ok = fp == reference;
             if ok {
-                print!("  run {:>2}: exits={:<8} vtsc={:<16} ✅\n", i, fp.exit_count, fp.virtual_tsc);
+                print!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅\n",
+                    i, fp.exit_count, fp.virtual_tsc
+                );
             } else {
-                print!("  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n", i, fp.exit_count, fp.virtual_tsc);
+                print!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n",
+                    i, fp.exit_count, fp.virtual_tsc
+                );
                 if fp.exit_count != reference.exit_count {
-                    eprintln!("         exit_count: {} vs reference {}", fp.exit_count, reference.exit_count);
+                    eprintln!(
+                        "         exit_count: {} vs reference {}",
+                        fp.exit_count, reference.exit_count
+                    );
                 }
                 if fp.virtual_tsc != reference.virtual_tsc {
-                    eprintln!("         virtual_tsc: {} vs reference {}", fp.virtual_tsc, reference.virtual_tsc);
+                    eprintln!(
+                        "         virtual_tsc: {} vs reference {}",
+                        fp.virtual_tsc, reference.virtual_tsc
+                    );
                 }
                 if fp.serial_stripped != reference.serial_stripped {
                     let ref_lines: Vec<&str> = reference.serial_stripped.lines().collect();
@@ -274,9 +321,19 @@ fn main() {
 
         let elapsed = start.elapsed();
         if mismatches == 0 {
-            println!("  ✅ PASS: {}/{} runs identical ({:.1}s)\n", n, n, elapsed.as_secs_f64());
+            println!(
+                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
+                n,
+                n,
+                elapsed.as_secs_f64()
+            );
         } else {
-            println!("  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n", mismatches, n, elapsed.as_secs_f64());
+            println!(
+                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
+                mismatches,
+                n,
+                elapsed.as_secs_f64()
+            );
             all_passed = false;
         }
     }
@@ -290,25 +347,44 @@ fn main() {
         let seed = 42u64;
 
         let reference = run_controller(kernel, initrd, 3, 1, seed, 10);
-        print!("  run  1: tick={:<4} exits={:?} ✅ (reference)\n", reference.tick, reference.vm_exits);
+        print!(
+            "  run  1: tick={:<4} exits={:?} ✅ (reference)\n",
+            reference.tick, reference.vm_exits
+        );
 
         let mut mismatches = 0;
         for i in 2..=n {
             let fp = run_controller(kernel, initrd, 3, 1, seed, 10);
             let ok = fp == reference;
             if ok {
-                print!("  run {:>2}: tick={:<4} exits={:?} ✅\n", i, fp.tick, fp.vm_exits);
+                print!(
+                    "  run {:>2}: tick={:<4} exits={:?} ✅\n",
+                    i, fp.tick, fp.vm_exits
+                );
             } else {
-                print!("  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n", i, fp.tick, fp.vm_exits);
+                print!(
+                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n",
+                    i, fp.tick, fp.vm_exits
+                );
                 if fp.tick != reference.tick {
                     eprintln!("         tick: {} vs reference {}", fp.tick, reference.tick);
                 }
-                for (j, (a, b)) in fp.vm_exits.iter().zip(reference.vm_exits.iter()).enumerate() {
+                for (j, (a, b)) in fp
+                    .vm_exits
+                    .iter()
+                    .zip(reference.vm_exits.iter())
+                    .enumerate()
+                {
                     if a != b {
                         eprintln!("         VM{} exits: {} vs reference {}", j, a, b);
                     }
                 }
-                for (j, (a, b)) in fp.vm_vtscs.iter().zip(reference.vm_vtscs.iter()).enumerate() {
+                for (j, (a, b)) in fp
+                    .vm_vtscs
+                    .iter()
+                    .zip(reference.vm_vtscs.iter())
+                    .enumerate()
+                {
                     if a != b {
                         eprintln!("         VM{} vtsc: {} vs reference {}", j, a, b);
                     }
@@ -319,9 +395,19 @@ fn main() {
 
         let elapsed = start.elapsed();
         if mismatches == 0 {
-            println!("  ✅ PASS: {}/{} runs identical ({:.1}s)\n", n, n, elapsed.as_secs_f64());
+            println!(
+                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
+                n,
+                n,
+                elapsed.as_secs_f64()
+            );
         } else {
-            println!("  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n", mismatches, n, elapsed.as_secs_f64());
+            println!(
+                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
+                mismatches,
+                n,
+                elapsed.as_secs_f64()
+            );
             all_passed = false;
         }
     }
@@ -330,30 +416,52 @@ fn main() {
     //  Test 4: 3 VMs, 2 vCPUs each (SMP), N runs via Controller
     // ═══════════════════════════════════════════════════════════════
     {
-        println!("━━━ Test 4: 3 VMs × 2 vCPUs (SMP), {} runs × 10 ticks ━━━", n);
+        println!(
+            "━━━ Test 4: 3 VMs × 2 vCPUs (SMP), {} runs × 10 ticks ━━━",
+            n
+        );
         let start = Instant::now();
         let seed = 42u64;
 
         let reference = run_controller(kernel, initrd, 3, 2, seed, 10);
-        print!("  run  1: tick={:<4} exits={:?} ✅ (reference)\n", reference.tick, reference.vm_exits);
+        print!(
+            "  run  1: tick={:<4} exits={:?} ✅ (reference)\n",
+            reference.tick, reference.vm_exits
+        );
 
         let mut mismatches = 0;
         for i in 2..=n {
             let fp = run_controller(kernel, initrd, 3, 2, seed, 10);
             let ok = fp == reference;
             if ok {
-                print!("  run {:>2}: tick={:<4} exits={:?} ✅\n", i, fp.tick, fp.vm_exits);
+                print!(
+                    "  run {:>2}: tick={:<4} exits={:?} ✅\n",
+                    i, fp.tick, fp.vm_exits
+                );
             } else {
-                print!("  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n", i, fp.tick, fp.vm_exits);
+                print!(
+                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n",
+                    i, fp.tick, fp.vm_exits
+                );
                 if fp.tick != reference.tick {
                     eprintln!("         tick: {} vs reference {}", fp.tick, reference.tick);
                 }
-                for (j, (a, b)) in fp.vm_exits.iter().zip(reference.vm_exits.iter()).enumerate() {
+                for (j, (a, b)) in fp
+                    .vm_exits
+                    .iter()
+                    .zip(reference.vm_exits.iter())
+                    .enumerate()
+                {
                     if a != b {
                         eprintln!("         VM{} exits: {} vs reference {}", j, a, b);
                     }
                 }
-                for (j, (a, b)) in fp.vm_vtscs.iter().zip(reference.vm_vtscs.iter()).enumerate() {
+                for (j, (a, b)) in fp
+                    .vm_vtscs
+                    .iter()
+                    .zip(reference.vm_vtscs.iter())
+                    .enumerate()
+                {
                     if a != b {
                         eprintln!("         VM{} vtsc: {} vs reference {}", j, a, b);
                     }
@@ -364,9 +472,19 @@ fn main() {
 
         let elapsed = start.elapsed();
         if mismatches == 0 {
-            println!("  ✅ PASS: {}/{} runs identical ({:.1}s)\n", n, n, elapsed.as_secs_f64());
+            println!(
+                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
+                n,
+                n,
+                elapsed.as_secs_f64()
+            );
         } else {
-            println!("  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n", mismatches, n, elapsed.as_secs_f64());
+            println!(
+                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
+                mismatches,
+                n,
+                elapsed.as_secs_f64()
+            );
             all_passed = false;
         }
     }
@@ -376,7 +494,10 @@ fn main() {
     // ═══════════════════════════════════════════════════════════════
     println!("╔══════════════════════════════════════════════════════════════╗");
     if all_passed {
-        println!("║  ✅ ALL CONFIGURATIONS DETERMINISTIC ({} runs each)         ║", n);
+        println!(
+            "║  ✅ ALL CONFIGURATIONS DETERMINISTIC ({} runs each)         ║",
+            n
+        );
     } else {
         println!("║  ❌ DETERMINISM FAILURES DETECTED                           ║");
     }

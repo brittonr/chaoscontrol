@@ -219,15 +219,11 @@ macro_rules! __cc_empty_json {
 #[macro_export]
 macro_rules! cc_assert_always {
     ($cond:expr, $msg:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::always_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::always_with_id($cond, _ID, $msg, $details);
     }};
 }
@@ -236,15 +232,11 @@ macro_rules! cc_assert_always {
 #[macro_export]
 macro_rules! cc_assert_sometimes {
     ($cond:expr, $msg:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::sometimes_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::sometimes_with_id($cond, _ID, $msg, $details);
     }};
 }
@@ -253,15 +245,11 @@ macro_rules! cc_assert_sometimes {
 #[macro_export]
 macro_rules! cc_assert_reachable {
     ($msg:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::reachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($msg:expr, $details:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::reachable_with_id(_ID, $msg, $details);
     }};
 }
@@ -270,15 +258,11 @@ macro_rules! cc_assert_reachable {
 #[macro_export]
 macro_rules! cc_assert_unreachable {
     ($msg:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::unreachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($msg:expr, $details:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::unreachable_with_id(_ID, $msg, $details);
     }};
 }
@@ -287,15 +271,16 @@ macro_rules! cc_assert_unreachable {
 #[macro_export]
 macro_rules! cc_assert_always_or_unreachable {
     ($cond:expr, $msg:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::assert::always_or_unreachable_with_id(
+            $cond,
+            _ID,
+            $msg,
+            &$crate::__cc_empty_json!(),
         );
-        $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
-        const _ID: u32 = $crate::assert::location_id(
-            concat!(file!(), ":", line!(), ":", $msg)
-        );
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, $details);
     }};
 }

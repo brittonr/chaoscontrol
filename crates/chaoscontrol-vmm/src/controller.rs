@@ -1244,6 +1244,49 @@ impl SimulationController {
             slot.status = VmStatus::Running;
         }
     }
+
+    // ── Input tree exploration ──────────────────────────────────
+
+    /// Drain choice histories from all VMs.
+    ///
+    /// Returns `(vm_id, choices)` pairs for VMs that made at least one
+    /// random choice since the last drain (or since snapshot restore).
+    pub fn drain_choice_histories(
+        &mut self,
+    ) -> Vec<(usize, Vec<chaoscontrol_fault::engine::ChoiceRecord>)> {
+        self.vms
+            .iter_mut()
+            .enumerate()
+            .map(|(i, slot)| {
+                let history = slot.vm.fault_engine_mut().drain_choice_history();
+                (i, history)
+            })
+            .filter(|(_, h)| !h.is_empty())
+            .collect()
+    }
+
+    /// Set random choice overrides for a specific VM's fault engine.
+    ///
+    /// These overrides force specific return values at specific choice
+    /// sequence positions when the guest calls `random_choice()` or
+    /// `get_random()`.  Used by the input tree explorer to try
+    /// alternative execution paths.
+    pub fn set_choice_overrides(
+        &mut self,
+        vm_id: usize,
+        overrides: std::collections::BTreeMap<u64, u64>,
+    ) {
+        if let Some(slot) = self.vms.get_mut(vm_id) {
+            slot.vm.fault_engine_mut().set_random_overrides(overrides);
+        }
+    }
+
+    /// Clear random choice overrides for all VMs.
+    pub fn clear_all_choice_overrides(&mut self) {
+        for slot in &mut self.vms {
+            slot.vm.fault_engine_mut().clear_random_overrides();
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

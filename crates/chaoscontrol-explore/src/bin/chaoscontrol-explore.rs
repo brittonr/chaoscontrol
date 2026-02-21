@@ -39,7 +39,7 @@
 //! so we don't re-explore known territory.
 
 use chaoscontrol_explore::checkpoint::load_checkpoint;
-use chaoscontrol_explore::explorer::{Explorer, ExplorerConfig};
+use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_explore::mutator::MutationConfig;
 use chaoscontrol_explore::report::format_report;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
@@ -123,6 +123,14 @@ enum Commands {
         #[arg(long)]
         extra_cmdline: Option<String>,
 
+        /// Exploration mode: "fault-schedule", "input-tree", or "hybrid".
+        ///
+        /// fault-schedule: mutate fault schedules (original mode).
+        /// input-tree:     branch at random_choice() decision points.
+        /// hybrid:         alternate between both strategies.
+        #[arg(long, default_value = "fault-schedule")]
+        mode: String,
+
         /// Bootstrap tick budget (kernel boot + guest init).
         /// Exploration waits for setup_complete or this limit.
         #[arg(long, default_value = "10000")]
@@ -170,6 +178,7 @@ fn main() {
             output,
             disk_image,
             extra_cmdline,
+            mode,
             bootstrap_budget,
         } => cmd_run(
             kernel,
@@ -186,6 +195,7 @@ fn main() {
             output,
             disk_image,
             extra_cmdline,
+            mode,
             bootstrap_budget,
         ),
         Commands::Resume {
@@ -213,6 +223,7 @@ fn cmd_run(
     output: Option<String>,
     disk_image: Option<String>,
     extra_cmdline: Option<String>,
+    mode: String,
     bootstrap_budget: u64,
 ) {
     // Validate inputs
@@ -259,6 +270,20 @@ fn cmd_run(
         }
     };
 
+    // Parse exploration mode
+    let exploration_mode = match mode.as_str() {
+        "fault-schedule" | "faults" | "fs" => ExplorationMode::FaultSchedule,
+        "input-tree" | "inputs" | "it" => ExplorationMode::InputTree,
+        "hybrid" | "both" => ExplorationMode::Hybrid,
+        other => {
+            eprintln!(
+                "Error: unknown exploration mode '{}'. Use 'fault-schedule', 'input-tree', or 'hybrid'.",
+                other
+            );
+            std::process::exit(1);
+        }
+    };
+
     // Build VM config with SMP settings
     let vm_config = VmConfig {
         num_vcpus: vcpus,
@@ -281,6 +306,7 @@ fn cmd_run(
         quantum,
         scheduling_strategy,
         mutation: MutationConfig::default(),
+        exploration_mode,
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
         disk_image_path: disk_image.clone(),
@@ -304,6 +330,7 @@ fn cmd_run(
     eprintln!("  Quantum:        {}", quantum);
     eprintln!("  vCPUs/VM:       {}", vcpus);
     eprintln!("  Scheduling:     {}", scheduling);
+    eprintln!("  Mode:           {}", mode);
     eprintln!("  Max frontier:   {}", max_frontier);
     eprintln!("  Bootstrap:      {} ticks", bootstrap_budget);
     if let Some(ref disk_image_path) = disk_image {

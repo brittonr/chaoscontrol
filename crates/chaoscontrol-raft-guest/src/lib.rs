@@ -1951,10 +1951,7 @@ mod tests {
         nodes[1].current_term = 2;
         nodes[1].log = vec![
             LogEntry { term: 1, value: 1 },
-            LogEntry {
-                term: 2,
-                value: 99,
-            }, // different from node 0's entry
+            LogEntry { term: 2, value: 99 }, // different from node 0's entry
         ];
         nodes[1].commit_index = 2;
 
@@ -1962,10 +1959,7 @@ mod tests {
         nodes[2].current_term = 2;
         nodes[2].log = vec![
             LogEntry { term: 1, value: 1 },
-            LogEntry {
-                term: 2,
-                value: 99,
-            },
+            LogEntry { term: 2, value: 99 },
         ];
         nodes[2].commit_index = 2;
 

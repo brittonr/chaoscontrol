@@ -6,6 +6,7 @@ use crate::checkpoint::{
 use crate::corpus::{BugReport, Corpus, CorpusEntry};
 use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 use crate::frontier::{Frontier, FrontierEntry};
+use crate::input_tree;
 use crate::mutator::{MutationConfig, ScheduleMutator};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
@@ -17,6 +18,7 @@ use log::{debug, info, warn};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
+use std::collections::BTreeMap;
 
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
@@ -28,6 +30,28 @@ pub enum ExploreError {
 
     #[snafu(display("Configuration error: {message}"))]
     Config { message: String },
+}
+
+/// How the explorer branches the execution tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExplorationMode {
+    /// Mutate fault schedules — the original mode.
+    /// Branches by varying which faults (partitions, crashes, etc.)
+    /// are injected at what times.
+    #[default]
+    FaultSchedule,
+
+    /// Branch at random choice points — the Antithesis input tree model.
+    /// Records what `random_choice()` / `get_random()` calls the guest
+    /// makes, then re-runs from the same snapshot with different values
+    /// at selected decision points.
+    InputTree,
+
+    /// Alternate between fault schedule mutation (even rounds) and
+    /// input tree exploration (odd rounds).  Both modes share the same
+    /// frontier — an input tree branch can be further explored via
+    /// fault mutation and vice versa.
+    Hybrid,
 }
 
 /// Configuration for an exploration session.
@@ -57,6 +81,8 @@ pub struct ExplorerConfig {
     pub scheduling_strategy: SchedulingStrategy,
     /// Mutation config.
     pub mutation: MutationConfig,
+    /// Exploration mode — how to branch the execution tree.
+    pub exploration_mode: ExplorationMode,
     /// Guest physical address of coverage bitmap (0 = blind mode).
     pub coverage_gpa: u64,
     /// Optional output directory for checkpoints and reports.
@@ -86,6 +112,7 @@ impl Default for ExplorerConfig {
             quantum: 100,
             scheduling_strategy: SchedulingStrategy::RoundRobin,
             mutation: MutationConfig::default(),
+            exploration_mode: ExplorationMode::default(),
             coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
             output_dir: None,
             disk_image_path: None,
@@ -160,7 +187,17 @@ impl Explorer {
         for round in 0..self.config.max_rounds {
             info!("=== Round {}/{} ===", round + 1, self.config.max_rounds);
 
-            let round_report = self.explore_round()?;
+            let round_report = match self.config.exploration_mode {
+                ExplorationMode::FaultSchedule => self.explore_round()?,
+                ExplorationMode::InputTree => self.explore_input_tree_round()?,
+                ExplorationMode::Hybrid => {
+                    if round % 2 == 0 {
+                        self.explore_round()?
+                    } else {
+                        self.explore_input_tree_round()?
+                    }
+                }
+            };
             self.rounds_completed += 1;
 
             info!(
@@ -276,6 +313,174 @@ impl Explorer {
             }
 
             // Update global coverage
+            self.coverage.update_global(&result.coverage);
+        }
+
+        Ok(RoundReport {
+            branches_run,
+            new_coverage_edges,
+            bugs_found,
+            frontier_size: self.frontier.len(),
+        })
+    }
+
+    /// Execute one input tree exploration round:
+    ///
+    /// 1. Select a frontier entry (same as fault schedule mode)
+    /// 2. Run a "probe" branch from that snapshot — recording all random
+    ///    choices the guest makes
+    /// 3. Examine the choice history — select interesting decision points
+    /// 4. For each selected choice point, restore the snapshot, override
+    ///    that choice to an alternate value, and re-run
+    /// 5. Score results, add interesting ones to frontier and corpus
+    fn explore_input_tree_round(&mut self) -> Result<RoundReport, ExploreError> {
+        let mut branches_run = 0;
+        let mut new_coverage_edges = 0;
+        let mut bugs_found = 0;
+
+        // Select entry from frontier
+        let (snapshot, base_schedule, parent_id, parent_depth) =
+            if let Some(entry) = self.frontier.select(&mut self.rng) {
+                (
+                    Some(entry.snapshot.clone()),
+                    entry.schedule.clone(),
+                    Some(entry.id),
+                    entry.depth,
+                )
+            } else {
+                (None, FaultSchedule::new(), None, 0)
+            };
+
+        // Phase 1: Run a "probe" branch to discover choice points.
+        // This uses the base schedule (no overrides) — same as the
+        // parent run, but we record the choice history.
+        let probe_result = self.run_branch(&snapshot, base_schedule.clone())?;
+        branches_run += 1;
+        self.total_branches_run += 1;
+
+        // Check if the probe itself found new coverage
+        let probe_new = probe_result
+            .coverage
+            .has_new_coverage(self.coverage.global_coverage());
+        if probe_new > 0 {
+            new_coverage_edges += probe_new;
+            self.add_to_corpus(
+                probe_result.clone(),
+                base_schedule.clone(),
+                probe_new,
+                parent_depth + 1,
+            );
+            if let Some(snap) = probe_result.snapshot.clone() {
+                self.add_to_frontier(
+                    snap,
+                    probe_result.clone(),
+                    base_schedule.clone(),
+                    parent_id,
+                    parent_depth + 1,
+                );
+            }
+        }
+        self.coverage.update_global(&probe_result.coverage);
+
+        // Phase 2: Drain choice histories from all VMs.
+        self.ensure_controller()?;
+        let histories = self.controller.as_mut().unwrap().drain_choice_histories();
+
+        if histories.is_empty() {
+            debug!("No random choices recorded — skipping input tree branching");
+            return Ok(RoundReport {
+                branches_run,
+                new_coverage_edges,
+                bugs_found,
+                frontier_size: self.frontier.len(),
+            });
+        }
+
+        let total_choices: usize = histories.iter().map(|(_, h)| h.len()).sum();
+        debug!(
+            "Recorded {} choices across {} VMs",
+            total_choices,
+            histories.len()
+        );
+
+        // Phase 3: Select interesting alternatives.
+        // Budget = branch_factor - 1 (one branch was used for the probe).
+        let alt_budget = self.config.branch_factor.saturating_sub(1);
+        let alternatives = input_tree::select_alternatives(&histories, alt_budget, &mut self.rng);
+
+        if alternatives.is_empty() {
+            debug!("No viable alternatives found");
+            return Ok(RoundReport {
+                branches_run,
+                new_coverage_edges,
+                bugs_found,
+                frontier_size: self.frontier.len(),
+            });
+        }
+
+        let num_vms = self.config.num_vms;
+        let override_sets = input_tree::alternatives_to_overrides(&alternatives, num_vms);
+
+        info!(
+            "Input tree: {} choice points recorded, {} alternatives to explore",
+            total_choices,
+            override_sets.len()
+        );
+
+        // Phase 4: Run each alternative.
+        for (i, per_vm_overrides) in override_sets.iter().enumerate() {
+            debug!(
+                "Running input tree branch {}/{} (choice seq={}, alt={})",
+                i + 1,
+                override_sets.len(),
+                alternatives[i].sequence_id,
+                alternatives[i].alternative_value
+            );
+
+            let result =
+                self.run_branch_with_overrides(&snapshot, base_schedule.clone(), per_vm_overrides)?;
+            branches_run += 1;
+            self.total_branches_run += 1;
+
+            // Check for new coverage
+            let new_edges = result
+                .coverage
+                .has_new_coverage(self.coverage.global_coverage());
+
+            if new_edges > 0 {
+                debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
+                new_coverage_edges += new_edges;
+
+                self.add_to_corpus(
+                    result.clone(),
+                    base_schedule.clone(),
+                    new_edges,
+                    parent_depth + 1,
+                );
+
+                if let Some(snap) = result.snapshot.clone() {
+                    self.add_to_frontier(
+                        snap,
+                        result.clone(),
+                        base_schedule.clone(),
+                        parent_id,
+                        parent_depth + 1,
+                    );
+                }
+            }
+
+            // Check for bugs
+            let branch_bugs = self.extract_bugs(&result, &base_schedule);
+            bugs_found += branch_bugs.len();
+
+            if !branch_bugs.is_empty() {
+                warn!(
+                    "Input tree branch {} found {} bugs!",
+                    i + 1,
+                    branch_bugs.len()
+                );
+            }
+
             self.coverage.update_global(&result.coverage);
         }
 
@@ -413,6 +618,80 @@ impl Explorer {
         let total_ticks = controller.tick();
 
         // Collect coverage from first VM
+        let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
+            if let Some(vm_slot) = controller.vm_slot(0) {
+                self.coverage
+                    .collect_from_guest(vm_slot.vm.memory().inner())
+            } else {
+                CoverageBitmap::new()
+            }
+        } else {
+            self.assertion_coverage(&result_info)
+        };
+
+        let snap = controller.snapshot_all().ok();
+
+        Ok(BranchResult {
+            coverage,
+            oracle_report: result_info,
+            schedule,
+            exit_counts: vm_exit_counts,
+            halted: total_ticks >= self.config.ticks_per_branch,
+            total_ticks,
+            bugs: Vec::new(),
+            snapshot: snap,
+        })
+    }
+
+    /// Run a single branch with choice overrides for input tree exploration.
+    ///
+    /// Same as `run_branch` but also sets per-VM random choice overrides
+    /// before running, and clears them after.
+    fn run_branch_with_overrides(
+        &mut self,
+        snapshot: &Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+        schedule: FaultSchedule,
+        per_vm_overrides: &[BTreeMap<u64, u64>],
+    ) -> Result<BranchResult, ExploreError> {
+        self.ensure_controller()?;
+
+        // Phase 1: restore + set overrides + run
+        {
+            let controller = self.controller.as_mut().unwrap();
+
+            if let Some(snap) = snapshot {
+                controller.restore_all(snap)?;
+                controller.reset_vm_statuses();
+            }
+
+            controller.set_schedule(schedule.clone());
+
+            // Set per-VM choice overrides
+            for (vm_id, vm_overrides) in per_vm_overrides.iter().enumerate() {
+                if !vm_overrides.is_empty() {
+                    controller.set_choice_overrides(vm_id, vm_overrides.clone());
+                }
+            }
+
+            controller.clear_all_coverage();
+            controller.run(self.config.ticks_per_branch)?;
+        }
+
+        // Clear overrides to prevent leaking into subsequent branches
+        self.controller
+            .as_mut()
+            .unwrap()
+            .clear_all_choice_overrides();
+
+        // Phase 2: collect results (same as run_branch)
+        let controller = self.controller.as_ref().unwrap();
+
+        let result_info = controller.report();
+        let vm_exit_counts: Vec<u64> = (0..controller.num_vms())
+            .map(|i| controller.vm_slot(i).map_or(0, |s| s.vm.exit_count()))
+            .collect();
+        let total_ticks = controller.tick();
+
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
                 self.coverage
@@ -652,6 +931,7 @@ impl Explorer {
             quantum: checkpoint.config.quantum,
             scheduling_strategy: SchedulingStrategy::RoundRobin,
             mutation: MutationConfig::default(),
+            exploration_mode: ExplorationMode::default(),
             coverage_gpa: checkpoint.config.coverage_gpa,
             output_dir: None, // Will be set by caller if needed
             disk_image_path: checkpoint.config.disk_image_path,

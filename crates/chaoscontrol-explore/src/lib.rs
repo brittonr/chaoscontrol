@@ -69,6 +69,7 @@ pub mod corpus;
 pub mod coverage;
 pub mod explorer;
 pub mod frontier;
+pub mod input_tree;
 pub mod mutator;
 pub mod report;
 
@@ -80,10 +81,11 @@ pub use checkpoint::{
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 pub use explorer::{
-    BranchResult, ExplorationReport, ExplorationStats, ExploreError, Explorer, ExplorerConfig,
-    RoundReport,
+    BranchResult, ExplorationMode, ExplorationReport, ExplorationStats, ExploreError, Explorer,
+    ExplorerConfig, RoundReport,
 };
 pub use frontier::{Frontier, FrontierEntry};
+pub use input_tree::{alternatives_to_overrides, select_alternatives, ChoiceAlternative};
 pub use mutator::{MutationConfig, ScheduleMutator};
 
 #[cfg(test)]

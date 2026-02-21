@@ -12,6 +12,27 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use snafu::Snafu;
+use std::collections::BTreeMap;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Choice recording for input tree exploration
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Record of a single random choice made by the guest via the SDK.
+///
+/// The explorer uses these records to identify decision points in the
+/// guest's execution and generate alternative branches.
+#[derive(Debug, Clone)]
+pub struct ChoiceRecord {
+    /// Monotonic sequence number within this engine instance.
+    /// Resets when the engine is restored from a snapshot.
+    pub sequence_id: u64,
+    /// Number of options: `random_choice(n)` → `n`, `get_random()` → `0`.
+    /// Zero indicates an unbounded random value (u64).
+    pub n_options: u32,
+    /// The value that was actually returned to the guest.
+    pub value: u64,
+}
 
 /// Errors from the fault engine.
 #[derive(Debug, Snafu)]
@@ -64,6 +85,9 @@ pub struct EngineSnapshot {
     faults_injected: u64,
     setup_complete: bool,
     next_random_fault_time_ns: u64,
+    /// Choice counter at snapshot time — restored so sequence IDs
+    /// align with overrides set by the explorer.
+    choice_count: u64,
 }
 
 /// The central fault injection engine.
@@ -117,6 +141,16 @@ pub struct FaultEngine {
     setup_complete: bool,
     /// Next time (virtual ns) to consider injecting a random fault.
     next_random_fault_time_ns: u64,
+    /// History of random choices made since last drain.
+    /// Used by the explorer to discover decision points.
+    choice_history: Vec<ChoiceRecord>,
+    /// Per-sequence overrides: `sequence_id → forced value`.
+    /// When set, the override value is used instead of the RNG.
+    /// The RNG token is still consumed to keep state consistent.
+    random_overrides: BTreeMap<u64, u64>,
+    /// Monotonic counter of random hypercalls (CMD_RANDOM_CHOICE + CMD_RANDOM_GET).
+    /// Resets on restore to align with the snapshot's position.
+    choice_count: u64,
 }
 
 impl FaultEngine {
@@ -134,6 +168,9 @@ impl FaultEngine {
             faults_injected: 0,
             setup_complete: false,
             next_random_fault_time_ns,
+            choice_history: Vec::new(),
+            random_overrides: BTreeMap::new(),
+            choice_count: 0,
         }
     }
 
@@ -143,6 +180,7 @@ impl FaultEngine {
         self.setup_complete = false;
         self.schedule.reset();
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
+        self.choice_history.clear();
     }
 
     /// End the current test run.
@@ -195,16 +233,44 @@ impl FaultEngine {
                 (0, STATUS_OK)
             }
             CMD_RANDOM_GET => {
-                let value = self.rng.next_u64();
+                let seq = self.choice_count;
+                self.choice_count += 1;
+                let value = if let Some(&override_val) = self.random_overrides.get(&seq) {
+                    // Consume the RNG token to keep state consistent
+                    // for all subsequent choices.
+                    let _ = self.rng.next_u64();
+                    override_val
+                } else {
+                    self.rng.next_u64()
+                };
+                self.choice_history.push(ChoiceRecord {
+                    sequence_id: seq,
+                    n_options: 0,
+                    value,
+                });
                 (value, STATUS_OK)
             }
             CMD_RANDOM_CHOICE => {
+                let seq = self.choice_count;
+                self.choice_count += 1;
                 let n = page.id; // n is passed via id field
-                let value = if n <= 1 {
+                let value = if let Some(&override_val) = self.random_overrides.get(&seq) {
+                    let _ = self.rng.next_u64();
+                    if n <= 1 {
+                        0
+                    } else {
+                        override_val % n as u64
+                    }
+                } else if n <= 1 {
                     0
                 } else {
                     self.rng.next_u64() % n as u64
                 };
+                self.choice_history.push(ChoiceRecord {
+                    sequence_id: seq,
+                    n_options: n,
+                    value,
+                });
                 (value, STATUS_OK)
             }
             _cmd => {
@@ -291,6 +357,7 @@ impl FaultEngine {
             faults_injected: self.faults_injected,
             setup_complete: self.setup_complete,
             next_random_fault_time_ns: self.next_random_fault_time_ns,
+            choice_count: self.choice_count,
         }
     }
 
@@ -304,6 +371,40 @@ impl FaultEngine {
         self.faults_injected = snapshot.faults_injected;
         self.setup_complete = snapshot.setup_complete;
         self.next_random_fault_time_ns = snapshot.next_random_fault_time_ns;
+        self.choice_count = snapshot.choice_count;
+        // Clear history — new run starts recording fresh.
+        // random_overrides are NOT cleared — they're set externally
+        // before each branch by the explorer.
+        self.choice_history.clear();
+    }
+
+    // ── Input tree exploration ────────────────────────────────
+
+    /// Drain the choice history — returns all records and clears the buffer.
+    ///
+    /// The explorer calls this after each branch run to examine what
+    /// random decisions the guest made.
+    pub fn drain_choice_history(&mut self) -> Vec<ChoiceRecord> {
+        std::mem::take(&mut self.choice_history)
+    }
+
+    /// Set overrides for specific choice sequence positions.
+    ///
+    /// On the next run, when `choice_count` reaches a key in this map,
+    /// that value is returned to the guest instead of the RNG's value.
+    /// The RNG token is still consumed to keep subsequent state consistent.
+    pub fn set_random_overrides(&mut self, overrides: BTreeMap<u64, u64>) {
+        self.random_overrides = overrides;
+    }
+
+    /// Clear all random overrides.
+    pub fn clear_random_overrides(&mut self) {
+        self.random_overrides.clear();
+    }
+
+    /// Get the current choice sequence counter.
+    pub fn choice_count(&self) -> u64 {
+        self.choice_count
     }
 
     // ── Internal ────────────────────────────────────────────────
@@ -635,5 +736,179 @@ mod tests {
         let page = make_page(0xFF, 0, 0);
         let (_, status) = engine.handle_hypercall(&page);
         assert_eq!(status, STATUS_ERROR);
+    }
+
+    // ── Input tree exploration tests ────────────────────────────
+
+    #[test]
+    fn choice_history_recorded() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        // random_choice(5)
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 5);
+        let (val, _) = engine.handle_hypercall(&page);
+
+        // get_random()
+        let page2 = make_page(CMD_RANDOM_GET, 0, 0);
+        let (val2, _) = engine.handle_hypercall(&page2);
+
+        let history = engine.drain_choice_history();
+        assert_eq!(history.len(), 2);
+
+        assert_eq!(history[0].sequence_id, 0);
+        assert_eq!(history[0].n_options, 5);
+        assert_eq!(history[0].value, val);
+
+        assert_eq!(history[1].sequence_id, 1);
+        assert_eq!(history[1].n_options, 0); // get_random
+        assert_eq!(history[1].value, val2);
+
+        assert_eq!(engine.choice_count(), 2);
+    }
+
+    #[test]
+    fn drain_choice_history_clears() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 3);
+        engine.handle_hypercall(&page);
+
+        let h1 = engine.drain_choice_history();
+        assert_eq!(h1.len(), 1);
+
+        // Second drain is empty
+        let h2 = engine.drain_choice_history();
+        assert!(h2.is_empty());
+
+        // But choice_count persists
+        assert_eq!(engine.choice_count(), 1);
+    }
+
+    #[test]
+    fn random_override_forces_value() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        // Override sequence 0 → force value 2
+        let mut overrides = BTreeMap::new();
+        overrides.insert(0, 2);
+        engine.set_random_overrides(overrides);
+
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 5);
+        let (val, status) = engine.handle_hypercall(&page);
+        assert_eq!(status, STATUS_OK);
+        assert_eq!(val, 2); // Forced!
+
+        let history = engine.drain_choice_history();
+        assert_eq!(history[0].value, 2);
+    }
+
+    #[test]
+    fn random_override_clamps_to_n() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        // Override with value 99, but n=3 → 99 % 3 = 0
+        let mut overrides = BTreeMap::new();
+        overrides.insert(0, 99);
+        engine.set_random_overrides(overrides);
+
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 3);
+        let (val, _) = engine.handle_hypercall(&page);
+        assert_eq!(val, 0); // 99 % 3 = 0
+    }
+
+    #[test]
+    fn random_override_preserves_rng_state() {
+        // Two engines with same seed. One uses override at seq 0,
+        // the other uses normal RNG. After seq 0, both should
+        // produce the same values (RNG token consumed either way).
+        let mut e1 = FaultEngine::new(EngineConfig {
+            seed: 42,
+            ..Default::default()
+        });
+        let mut e2 = FaultEngine::new(EngineConfig {
+            seed: 42,
+            ..Default::default()
+        });
+        e1.begin_run();
+        e2.begin_run();
+
+        // Override seq 0 on e1 only
+        let mut overrides = BTreeMap::new();
+        overrides.insert(0, 999);
+        e1.set_random_overrides(overrides);
+
+        // Seq 0: different values
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 1000);
+        let (v1_0, _) = e1.handle_hypercall(&page);
+        let (v2_0, _) = e2.handle_hypercall(&page);
+        assert_eq!(v1_0, 999); // override
+        assert_ne!(v2_0, 999); // natural
+
+        // Seq 1: SAME values (RNG state in sync)
+        let (v1_1, _) = e1.handle_hypercall(&page);
+        let (v2_1, _) = e2.handle_hypercall(&page);
+        assert_eq!(v1_1, v2_1);
+    }
+
+    #[test]
+    fn choice_count_survives_snapshot() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let page = make_page(CMD_RANDOM_CHOICE, 0, 5);
+        engine.handle_hypercall(&page);
+        engine.handle_hypercall(&page);
+        assert_eq!(engine.choice_count(), 2);
+
+        let snap = engine.snapshot();
+
+        // Advance further
+        engine.handle_hypercall(&page);
+        assert_eq!(engine.choice_count(), 3);
+
+        // Restore → back to 2
+        engine.restore(&snap);
+        assert_eq!(engine.choice_count(), 2);
+
+        // History cleared on restore
+        assert!(engine.drain_choice_history().is_empty());
+    }
+
+    #[test]
+    fn overrides_persist_across_restore() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        // Set override
+        let mut overrides = BTreeMap::new();
+        overrides.insert(0, 42);
+        engine.set_random_overrides(overrides);
+
+        // Take snapshot and restore
+        let snap = engine.snapshot();
+        engine.restore(&snap);
+
+        // Override still active
+        let page = make_page(CMD_RANDOM_GET, 0, 0);
+        let (val, _) = engine.handle_hypercall(&page);
+        assert_eq!(val, 42);
+    }
+
+    #[test]
+    fn get_random_override() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let mut overrides = BTreeMap::new();
+        overrides.insert(0, 0xDEAD_BEEF);
+        engine.set_random_overrides(overrides);
+
+        let page = make_page(CMD_RANDOM_GET, 0, 0);
+        let (val, _) = engine.handle_hypercall(&page);
+        assert_eq!(val, 0xDEAD_BEEF);
     }
 }

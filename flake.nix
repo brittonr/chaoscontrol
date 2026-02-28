@@ -143,6 +143,19 @@
             strictDeps = true;
             pname = "chaoscontrol";
             version = "0.1.0";
+
+            # libbpf-sys (via chaoscontrol-trace) needs pkg-config + system libs
+            nativeBuildInputs = [
+              pkgs.pkg-config
+              pkgs.llvmPackages.clang-unwrapped  # BPF compilation
+            ];
+            buildInputs = [
+              pkgs.elfutils   # libelf
+              pkgs.zlib       # zlib
+              pkgs.libbpf     # libbpf
+            ];
+
+            CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
           };
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         in

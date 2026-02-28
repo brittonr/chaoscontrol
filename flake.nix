@@ -201,6 +201,9 @@
 
               # Guest binary (musl static linking)
               pkgs.pkgsCross.musl64.stdenv.cc   # x86_64-unknown-linux-musl-gcc
+
+              # OpenSpec — spec-driven development
+              pkgs.nodejs_22
             ];
 
             # libbpf-sys needs to find libelf and zlib
@@ -214,6 +217,8 @@
             CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
 
             shellHook = ''
+              export PATH="$PWD/scripts:$PATH"
+
               echo "ChaosControl development environment"
               echo "Rust: $(rustc --version)"
               echo "Clang: $(clang --version | head -1)"
@@ -234,6 +239,13 @@
               echo "KCOV Kernel (coverage-guided fuzzing):"
               echo "  nix build .#kcov-kernel       Build custom kernel with CONFIG_KCOV"
               echo "  nix build .#kcov-vmlinux      Build and symlink vmlinux"
+              echo ""
+              echo "OpenSpec (spec-driven development):"
+              echo "  openspec status              Show spec/change status"
+              echo "  /opsx:propose <idea>         Propose a new change"
+              echo "  /opsx:apply                  Implement change tasks"
+              echo "  /opsx:explore                Explore ideas interactively"
+              echo "  /opsx:archive                Archive completed change"
             '';
           };
         }

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# OpenSpec CLI wrapper — runs via npx so no global install needed.
+# Used by agent skills (opsx:propose, opsx:apply, etc.) and developers.
+exec npx -y @fission-ai/openspec@latest "$@"

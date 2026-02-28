@@ -2,3 +2,8 @@ result
 result-dev
 result-bin
 result-kcov
+result-net
+
+# Node.js (OpenSpec CLI)
+node_modules/
+.npm/

@@ -186,8 +186,8 @@ fn main() {
         let max_exits = 70_000;
 
         let reference = run_single_vm(kernel, initrd, 1, max_exits);
-        print!(
-            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n",
+        println!(
+            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)",
             reference.exit_count, reference.virtual_tsc
         );
 
@@ -196,13 +196,13 @@ fn main() {
             let fp = run_single_vm(kernel, initrd, 1, max_exits);
             let ok = fp == reference;
             if ok {
-                print!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅\n",
+                println!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅",
                     i, fp.exit_count, fp.virtual_tsc
                 );
             } else {
-                print!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n",
+                println!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH",
                     i, fp.exit_count, fp.virtual_tsc
                 );
                 if fp.exit_count != reference.exit_count {
@@ -272,8 +272,8 @@ fn main() {
         let max_exits = 70_000;
 
         let reference = run_single_vm(kernel, initrd, 2, max_exits);
-        print!(
-            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)\n",
+        println!(
+            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)",
             reference.exit_count, reference.virtual_tsc
         );
 
@@ -282,13 +282,13 @@ fn main() {
             let fp = run_single_vm(kernel, initrd, 2, max_exits);
             let ok = fp == reference;
             if ok {
-                print!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅\n",
+                println!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅",
                     i, fp.exit_count, fp.virtual_tsc
                 );
             } else {
-                print!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH\n",
+                println!(
+                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH",
                     i, fp.exit_count, fp.virtual_tsc
                 );
                 if fp.exit_count != reference.exit_count {
@@ -347,8 +347,8 @@ fn main() {
         let seed = 42u64;
 
         let reference = run_controller(kernel, initrd, 3, 1, seed, 10);
-        print!(
-            "  run  1: tick={:<4} exits={:?} ✅ (reference)\n",
+        println!(
+            "  run  1: tick={:<4} exits={:?} ✅ (reference)",
             reference.tick, reference.vm_exits
         );
 
@@ -357,13 +357,13 @@ fn main() {
             let fp = run_controller(kernel, initrd, 3, 1, seed, 10);
             let ok = fp == reference;
             if ok {
-                print!(
-                    "  run {:>2}: tick={:<4} exits={:?} ✅\n",
+                println!(
+                    "  run {:>2}: tick={:<4} exits={:?} ✅",
                     i, fp.tick, fp.vm_exits
                 );
             } else {
-                print!(
-                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n",
+                println!(
+                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH",
                     i, fp.tick, fp.vm_exits
                 );
                 if fp.tick != reference.tick {
@@ -424,8 +424,8 @@ fn main() {
         let seed = 42u64;
 
         let reference = run_controller(kernel, initrd, 3, 2, seed, 10);
-        print!(
-            "  run  1: tick={:<4} exits={:?} ✅ (reference)\n",
+        println!(
+            "  run  1: tick={:<4} exits={:?} ✅ (reference)",
             reference.tick, reference.vm_exits
         );
 
@@ -434,13 +434,13 @@ fn main() {
             let fp = run_controller(kernel, initrd, 3, 2, seed, 10);
             let ok = fp == reference;
             if ok {
-                print!(
-                    "  run {:>2}: tick={:<4} exits={:?} ✅\n",
+                println!(
+                    "  run {:>2}: tick={:<4} exits={:?} ✅",
                     i, fp.tick, fp.vm_exits
                 );
             } else {
-                print!(
-                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH\n",
+                println!(
+                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH",
                     i, fp.tick, fp.vm_exits
                 );
                 if fp.tick != reference.tick {

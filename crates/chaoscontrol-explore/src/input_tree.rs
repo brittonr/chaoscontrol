@@ -236,7 +236,7 @@ mod tests {
 
         // Should get up to 3 alternatives for large n
         assert!(alts.len() <= 3);
-        assert!(alts.len() >= 1);
+        assert!(!alts.is_empty());
         for alt in &alts {
             assert!(alt.alternative_value < 100);
         }

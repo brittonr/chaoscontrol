@@ -17,8 +17,8 @@ fn main() {
     let vmlinux_h = out_dir.join("vmlinux.h");
     if !vmlinux_h.exists() {
         // Allow overriding the BTF source via env var (useful for CI/Nix)
-        let btf_path = env::var("VMLINUX_BTF")
-            .unwrap_or_else(|_| "/sys/kernel/btf/vmlinux".to_string());
+        let btf_path =
+            env::var("VMLINUX_BTF").unwrap_or_else(|_| "/sys/kernel/btf/vmlinux".to_string());
 
         if PathBuf::from(&btf_path).exists() {
             let output = Command::new("bpftool")
@@ -43,11 +43,8 @@ fn main() {
                 "WARNING: {} not found, generating minimal vmlinux.h stub",
                 btf_path
             );
-            std::fs::write(
-                &vmlinux_h,
-                include_str!("vmlinux_stub.h"),
-            )
-            .expect("failed to write vmlinux.h stub");
+            std::fs::write(&vmlinux_h, include_str!("vmlinux_stub.h"))
+                .expect("failed to write vmlinux.h stub");
         }
     }
 

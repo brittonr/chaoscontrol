@@ -984,9 +984,7 @@ impl DeterministicVm {
             .inner()
             .write_slice(
                 &[transport],
-                GuestAddress(
-                    HYPERCALL_PAGE_ADDR + chaoscontrol_protocol::TRANSPORT_MODE_OFFSET,
-                ),
+                GuestAddress(HYPERCALL_PAGE_ADDR + chaoscontrol_protocol::TRANSPORT_MODE_OFFSET),
             )
             .map_err(|_| GuestMemoryWriteSnafu.build())?;
         info!(

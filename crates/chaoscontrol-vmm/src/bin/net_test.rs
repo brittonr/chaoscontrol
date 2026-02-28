@@ -235,8 +235,12 @@ fn main() {
         assert!(
             exit_diff_0 <= 500 && exit_diff_1 <= 500,
             "Exit count drift too large: VM0 {}vs{} (Δ={}), VM1 {}vs{} (Δ={})",
-            exits_a[0], exits_b[0], exit_diff_0,
-            exits_a[1], exits_b[1], exit_diff_1,
+            exits_a[0],
+            exits_b[0],
+            exit_diff_0,
+            exits_a[1],
+            exits_b[1],
+            exit_diff_1,
         );
 
         // Both runs should produce similar networking activity.
@@ -256,8 +260,16 @@ fn main() {
         );
 
         // Both runs should produce meaningful networking
-        assert!(pings_a >= 5, "Run A should produce >= 5 pings, got {}", pings_a);
-        assert!(pings_b >= 5, "Run B should produce >= 5 pings, got {}", pings_b);
+        assert!(
+            pings_a >= 5,
+            "Run A should produce >= 5 pings, got {}",
+            pings_a
+        );
+        assert!(
+            pings_b >= 5,
+            "Run B should produce >= 5 pings, got {}",
+            pings_b
+        );
 
         true
     });
@@ -274,15 +286,10 @@ fn main() {
         // Record baseline pong count
         let output1_pre = ctrl.vm_mut(1).take_serial_output();
         let pongs_pre = count_occurrences(&output1_pre, "verified");
-        assert!(
-            pongs_pre > 0,
-            "Expected at least 1 pong before partition"
-        );
+        assert!(pongs_pre > 0, "Expected at least 1 pong before partition");
 
         // Partition VM0 from VM1
-        ctrl.network_mut()
-            .partitions
-            .push((vec![0], vec![1]));
+        ctrl.network_mut().partitions.push((vec![0], vec![1]));
 
         // Run a few ticks to drain in-flight packets that were enqueued
         // before the partition took effect
@@ -297,8 +304,7 @@ fn main() {
         let output1_during = ctrl.vm_mut(1).take_serial_output();
         let pongs_during = count_occurrences(&output1_during, "verified");
         let stats_post = ctrl.network_stats();
-        let new_drops =
-            stats_post.packets_dropped_partition - stats_pre.packets_dropped_partition;
+        let new_drops = stats_post.packets_dropped_partition - stats_pre.packets_dropped_partition;
 
         // No new PONGs during sustained partition
         assert_eq!(
@@ -308,10 +314,7 @@ fn main() {
         );
 
         // Packets should have been dropped
-        assert!(
-            new_drops > 0,
-            "Expected partition drops, got 0"
-        );
+        assert!(new_drops > 0, "Expected partition drops, got 0");
 
         true
     });
@@ -325,9 +328,7 @@ fn main() {
         ctrl.vm_mut(1).take_serial_output();
 
         // Partition
-        ctrl.network_mut()
-            .partitions
-            .push((vec![0], vec![1]));
+        ctrl.network_mut().partitions.push((vec![0], vec![1]));
         ctrl.run(200).expect("run partitioned");
         ctrl.vm_mut(1).take_serial_output(); // drain partitioned output
 
@@ -339,10 +340,7 @@ fn main() {
         let pongs_after = count_occurrences(&output1, "verified");
 
         // After heal, traffic should resume
-        assert!(
-            pongs_after > 0,
-            "Expected PONGs after network heal, got 0"
-        );
+        assert!(pongs_after > 0, "Expected PONGs after network heal, got 0");
 
         true
     });
@@ -423,7 +421,8 @@ fn main() {
 
         // No assertion failures (all always(true) calls)
         assert_eq!(
-            report.failed, 0,
+            report.failed,
+            0,
             "No assertion failures expected, got {} failures ({:?})",
             report.failed,
             report
@@ -467,12 +466,17 @@ fn main() {
         // should produce different ping counts (the guest uses
         // random_choice(5) for cooldown between pings)
         // Note: may be the same by chance, but unlikely at 2000 ticks
-        let _different_pattern =
-            pings_a != pings_b || stats_a.packets_sent != stats_b.packets_sent;
+        let _different_pattern = pings_a != pings_b || stats_a.packets_sent != stats_b.packets_sent;
 
         // At minimum, both must work
-        assert!(stats_a.packets_delivered > 0, "Seed 42 must deliver packets");
-        assert!(stats_b.packets_delivered > 0, "Seed 99 must deliver packets");
+        assert!(
+            stats_a.packets_delivered > 0,
+            "Seed 42 must deliver packets"
+        );
+        assert!(
+            stats_b.packets_delivered > 0,
+            "Seed 99 must deliver packets"
+        );
 
         true
     });
@@ -508,7 +512,8 @@ fn main() {
         assert!(
             diff <= 1,
             "Ping count ({}) and pong count ({}) differ by more than 1",
-            server_pings, client_pongs
+            server_pings,
+            client_pongs
         );
 
         true

@@ -26,8 +26,15 @@
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
-          # Filter source to only include Rust-relevant files
-          src = craneLib.cleanCargoSource ./.;
+          # Filter source to include Rust-relevant files + BPF sources
+          # (cleanCargoSource strips .c/.h files needed by chaoscontrol-trace)
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: type:
+              (craneLib.filterCargoSources path type)
+              || (builtins.match ".*\\.bpf\\.c$" path != null)
+              || (builtins.match ".*\\.h$" path != null);
+          };
 
           # Common build arguments shared between deps and final build
           commonArgs = {
@@ -138,7 +145,13 @@
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-          src = craneLib.cleanCargoSource ./.;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: type:
+              (craneLib.filterCargoSources path type)
+              || (builtins.match ".*\\.bpf\\.c$" path != null)
+              || (builtins.match ".*\\.h$" path != null);
+          };
           commonArgs = {
             inherit src;
             strictDeps = true;

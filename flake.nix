@@ -40,6 +40,7 @@
             nativeBuildInputs = [
               pkgs.pkg-config
               pkgs.llvmPackages.clang-unwrapped  # BPF compilation
+              pkgs.bpftools                      # bpftool (vmlinux.h generation)
             ];
             buildInputs = [
               pkgs.elfutils   # libelf
@@ -148,6 +149,7 @@
             nativeBuildInputs = [
               pkgs.pkg-config
               pkgs.llvmPackages.clang-unwrapped  # BPF compilation
+              pkgs.bpftools                      # bpftool (vmlinux.h generation)
             ];
             buildInputs = [
               pkgs.elfutils   # libelf

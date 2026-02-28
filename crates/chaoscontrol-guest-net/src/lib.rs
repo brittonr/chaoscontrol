@@ -37,7 +37,7 @@
 //! }
 //! ```
 
-use log::{debug, info, warn};
+use log::{debug, info};
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet};
 use smoltcp::phy::{Medium, RawSocket};
 use smoltcp::socket::tcp;
@@ -85,8 +85,8 @@ fn bring_up_interface(name: &str) -> bool {
         let mut ifr: libc::ifreq = std::mem::zeroed();
         let name_bytes = name.as_bytes();
         let copy_len = name_bytes.len().min(libc::IFNAMSIZ - 1);
-        for i in 0..copy_len {
-            ifr.ifr_name[i] = name_bytes[i] as libc::c_char;
+        for (i, &byte) in name_bytes.iter().enumerate().take(copy_len) {
+            ifr.ifr_name[i] = byte as libc::c_char;
         }
 
         if libc::ioctl(sock, libc::SIOCGIFFLAGS as libc::Ioctl, &mut ifr) < 0 {

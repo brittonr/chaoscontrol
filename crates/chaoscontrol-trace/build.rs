@@ -9,6 +9,7 @@ const VMLINUX_STUB: &str = r#"
 #ifndef __VMLINUX_H__
 #define __VMLINUX_H__
 
+/* Basic integer types */
 typedef unsigned char       __u8;
 typedef unsigned short      __u16;
 typedef unsigned int        __u32;
@@ -28,15 +29,114 @@ typedef __s32 s32;
 typedef __s64 s64;
 
 typedef _Bool bool;
-
 enum { false = 0, true = 1 };
 
+/* Network byte-order types (referenced by bpf_helper_defs.h) */
+typedef __u16 __be16;
+typedef __u32 __be32;
+typedef __u64 __be64;
+typedef __u16 __le16;
+typedef __u32 __le32;
+typedef __u64 __le64;
+typedef __u32 __wsum;
+typedef __u32 __sum16;
+
+/* BPF map types (referenced by __uint(type, ...) macros) */
+enum bpf_map_type {
+    BPF_MAP_TYPE_UNSPEC = 0,
+    BPF_MAP_TYPE_HASH = 1,
+    BPF_MAP_TYPE_ARRAY = 2,
+    BPF_MAP_TYPE_PROG_ARRAY = 3,
+    BPF_MAP_TYPE_PERF_EVENT_ARRAY = 4,
+    BPF_MAP_TYPE_PERCPU_HASH = 5,
+    BPF_MAP_TYPE_PERCPU_ARRAY = 6,
+    BPF_MAP_TYPE_STACK_TRACE = 7,
+    BPF_MAP_TYPE_CGROUP_ARRAY = 8,
+    BPF_MAP_TYPE_LRU_HASH = 9,
+    BPF_MAP_TYPE_LRU_PERCPU_HASH = 10,
+    BPF_MAP_TYPE_LPM_TRIE = 11,
+    BPF_MAP_TYPE_ARRAY_OF_MAPS = 12,
+    BPF_MAP_TYPE_HASH_OF_MAPS = 13,
+    BPF_MAP_TYPE_DEVMAP = 14,
+    BPF_MAP_TYPE_SOCKMAP = 15,
+    BPF_MAP_TYPE_CPUMAP = 16,
+    BPF_MAP_TYPE_XSKMAP = 17,
+    BPF_MAP_TYPE_SOCKHASH = 18,
+    BPF_MAP_TYPE_CGROUP_STORAGE = 19,
+    BPF_MAP_TYPE_REUSEPORT_SOCKARRAY = 20,
+    BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE = 21,
+    BPF_MAP_TYPE_QUEUE = 22,
+    BPF_MAP_TYPE_STACK = 23,
+    BPF_MAP_TYPE_SK_STORAGE = 24,
+    BPF_MAP_TYPE_DEVMAP_HASH = 25,
+    BPF_MAP_TYPE_STRUCT_OPS = 26,
+    BPF_MAP_TYPE_RINGBUF = 27,
+    BPF_MAP_TYPE_INODE_STORAGE = 28,
+    BPF_MAP_TYPE_TASK_STORAGE = 29,
+    BPF_MAP_TYPE_BLOOM_FILTER = 30,
+    BPF_MAP_TYPE_USER_RINGBUF = 31,
+    BPF_MAP_TYPE_CGRP_STORAGE = 32,
+    BPF_MAP_TYPE_ARENA = 33,
+};
+
+/* Tracepoint entry header */
 struct trace_entry {
     unsigned short type;
     unsigned char  flags;
     unsigned char  preempt_count;
     int            pid;
 };
+
+/* Stub structures referenced by bpf_helper_defs.h */
+struct __sk_buff { int len; };
+struct bpf_sock { __u32 bound_dev_if; };
+struct bpf_sock_addr { __u32 user_family; };
+struct bpf_sock_ops { __u32 op; };
+struct xdp_md { __u32 data; };
+struct bpf_cgroup_dev_ctx { __u32 access_type; };
+struct bpf_sysctl { __u32 write; };
+struct bpf_sockopt { int optname; };
+struct sk_msg_md { int family; };
+struct bpf_perf_event_data { __u64 addr; };
+struct bpf_perf_event_value { __u64 counter; };
+struct bpf_pidns_info { __u32 pid; };
+struct bpf_sk_lookup { __u32 family; };
+struct bpf_ct_opts { __u16 l4proto; };
+struct bpf_cpumask { unsigned long bits; };
+struct bpf_dynptr { };
+struct bpf_map { };
+struct bpf_timer { };
+struct bpf_spin_lock { int val; };
+struct bpf_list_head { };
+struct bpf_list_node { };
+struct bpf_rb_root { };
+struct bpf_rb_node { };
+struct bpf_refcount { };
+struct linux_binprm { };
+struct pt_regs { unsigned long ip; };
+struct bpf_tcp_sock { __u32 snd_cwnd; };
+struct bpf_tunnel_key { __u32 tunnel_id; };
+struct bpf_xfrm_state { __u32 reqid; };
+struct tcp_timewait_sock { };
+struct tcp_request_sock { };
+struct bpf_fib_lookup { __u8 family; };
+struct bpf_redir_neigh { __u32 nh_family; };
+struct task_struct { int pid; };
+struct inode { unsigned long i_ino; };
+struct socket { };
+struct file { };
+struct bpf_flow_keys { __u16 proto; };
+struct bpf_func_info { };
+struct path { };
+struct btf_ptr { };
+struct inode_storage_ptr { };
+struct task_storage_ptr { };
+struct cgroup_storage_ptr { };
+struct sk_storage_ptr { };
+struct user_namespace { };
+struct cgroup { };
+struct unix_sock { };
+struct mptcp_sock { };
 
 #endif /* __VMLINUX_H__ */
 "#;

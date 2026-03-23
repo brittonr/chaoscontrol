@@ -484,6 +484,7 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **JSON details**: `details: &serde_json::Value` instead of `&[(&str, &str)]` (big cross-cutting change)
 - **Assertion catalog**: `linkme` distributed slice to register ALL assertion sites at compile time
 - **`assert_raw()`**: Low-level function for third-party framework integration
+- **Assertion density**: Raft guest has 6 assertions (3 safety, 3 liveness) — needs handler-level reachability, `sometimes` pairs on branches, state transition coverage, inline data invariants. See `docs/assertion-guidelines.md`.
 
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode

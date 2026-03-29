@@ -139,9 +139,19 @@ enum Commands {
         /// Directory for determinism log files.
         ///
         /// When set, each VM writes a binary .dlog file per run.
-        /// Use `chaoscontrol-replay dlog-diff` to compare two runs.
+        /// Use `chaoscontrol-replay dlog diff` to compare two runs.
         #[arg(long)]
         dlog: Option<String>,
+
+        /// Emit a full RegisterDump dlog record every N exits.
+        /// 0 (default) disables register dumps.
+        #[arg(long, default_value = "0")]
+        dlog_register_interval: u64,
+
+        /// Hash guest memory pages at snapshot boundaries and emit
+        /// MemoryHash dlog records.
+        #[arg(long)]
+        dlog_memory_hash: bool,
     },
 
     /// Resume from saved checkpoint.
@@ -188,6 +198,8 @@ fn main() {
             mode,
             bootstrap_budget,
             dlog,
+            dlog_register_interval,
+            dlog_memory_hash,
         } => cmd_run(
             kernel,
             initrd,
@@ -206,6 +218,8 @@ fn main() {
             mode,
             bootstrap_budget,
             dlog,
+            dlog_register_interval,
+            dlog_memory_hash,
         ),
         Commands::Resume {
             corpus,
@@ -235,6 +249,8 @@ fn cmd_run(
     mode: String,
     bootstrap_budget: u64,
     dlog: Option<String>,
+    dlog_register_interval: u64,
+    dlog_memory_hash: bool,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -299,6 +315,8 @@ fn cmd_run(
         num_vcpus: vcpus,
         scheduling_strategy,
         extra_cmdline: extra_cmdline.clone(),
+        dlog_register_interval,
+        dlog_memory_hash,
         ..Default::default()
     };
 
@@ -322,6 +340,8 @@ fn cmd_run(
         disk_image_path: disk_image.clone(),
         bootstrap_budget,
         dlog_dir: dlog.as_ref().map(std::path::PathBuf::from),
+        dlog_register_interval,
+        dlog_memory_hash,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");

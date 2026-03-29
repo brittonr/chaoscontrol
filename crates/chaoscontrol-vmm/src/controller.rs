@@ -951,6 +951,11 @@ impl SimulationController {
         let mut vms_running = 0;
         let mut vms_halted = 0;
 
+        // Emit tick markers into each VM's dlog (for cross-VM correlation).
+        for i in 0..self.vms.len() {
+            self.vms[i].vm.dlog_tick_marker(self.tick);
+        }
+
         // Step each VM by quantum exits (round-robin)
         for i in 0..self.vms.len() {
             match self.vms[i].status {

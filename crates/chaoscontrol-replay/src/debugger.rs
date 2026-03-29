@@ -3,15 +3,17 @@
 use crate::checkpoint::Checkpoint;
 use crate::recording::{RecordedEvent, Recording};
 use crate::replay::{
-    InvalidStateSnafu, MemoryModification, ReplayEngine, ReplayError, ReplayResult,
-    SimulationRunner,
+    InvalidStateSnafu, MemoryModification, RegisterModification, ReplayEngine, ReplayError,
+    ReplayResult, SimulationRunner,
 };
-use serde::{Deserialize, Serialize};
+use chaoscontrol_vmm::registers::{Register, RegisterState};
 
 /// Interactive time-travel debugger.
 pub struct Debugger<R: SimulationRunner> {
     recording: Recording,
     replay: ReplayEngine<R>,
+    /// Live runner holding VM state at `current_tick`.
+    runner: Option<R>,
     /// Current position in the recording.
     current_tick: u64,
     /// Current checkpoint (the one we're "at" or just after).
@@ -25,13 +27,30 @@ impl<R: SimulationRunner> Debugger<R> {
         Self {
             recording,
             replay,
+            runner: None,
             current_tick: 0,
             current_checkpoint: None,
         }
     }
 
+    /// Ensure we have a live runner, creating one if needed.
+    fn ensure_runner(&mut self) -> Result<(), ReplayError> {
+        if self.runner.is_none() {
+            let runner = R::create(
+                &self.recording.config,
+                self.recording.schedule.clone(),
+                self.recording.seed,
+            )?;
+            self.runner = Some(runner);
+        }
+        Ok(())
+    }
+
     /// Jump to a specific tick (finds nearest checkpoint, replays forward).
     pub fn goto(&mut self, tick: u64) -> Result<DebugState, ReplayError> {
+        self.ensure_runner()?;
+        let runner = self.runner.as_mut().unwrap();
+
         // Find the nearest checkpoint at or before target tick
         let checkpoint = self.recording.checkpoints.at_or_before(tick);
 
@@ -39,8 +58,16 @@ impl<R: SimulationRunner> Debugger<R> {
             self.current_checkpoint = Some(cp.id);
             let ticks_to_run = tick.saturating_sub(cp.tick);
 
-            let result = self.replay.replay_from(Some(cp.id), ticks_to_run)?;
-            self.current_tick = cp.tick + result.ticks_executed;
+            if let Some(snapshot) = &cp.snapshot {
+                runner.restore_all(snapshot)?;
+            }
+            for _ in 0..ticks_to_run {
+                let round = runner.step_round()?;
+                if round.vms_running == 0 {
+                    break;
+                }
+            }
+            self.current_tick = runner.tick();
         } else {
             // No checkpoint before target, replay from beginning
             let result = self.replay.replay_from(None, tick)?;
@@ -89,29 +116,73 @@ impl<R: SimulationRunner> Debugger<R> {
         .fail()
     }
 
-    /// Read guest memory at the current position.
+    /// Read guest physical memory at the current position.
     pub fn read_memory(
         &self,
-        _vm_index: usize,
-        _address: u64,
-        _size: usize,
+        vm_index: usize,
+        address: u64,
+        size: usize,
     ) -> Result<Vec<u8>, ReplayError> {
-        // Would need to access VM memory through snapshot
-        log::warn!("Memory reading not yet implemented");
-        InvalidStateSnafu {
-            message: "Memory reading not implemented".to_string(),
-        }
-        .fail()
+        let runner = self.runner.as_ref().ok_or_else(|| {
+            InvalidStateSnafu {
+                message: "No runner — call goto() first".to_string(),
+            }
+            .build()
+        })?;
+        runner.read_memory(vm_index, address, size)
     }
 
     /// Read VM registers at the current position.
-    pub fn read_registers(&self, _vm_index: usize) -> Result<RegisterState, ReplayError> {
-        // Would need to access VM registers through snapshot
-        log::warn!("Register reading not yet implemented");
-        InvalidStateSnafu {
-            message: "Register reading not implemented".to_string(),
-        }
-        .fail()
+    pub fn read_registers(
+        &self,
+        vm_index: usize,
+        vcpu: usize,
+    ) -> Result<RegisterState, ReplayError> {
+        let runner = self.runner.as_ref().ok_or_else(|| {
+            InvalidStateSnafu {
+                message: "No runner — call goto() first".to_string(),
+            }
+            .build()
+        })?;
+        runner.read_registers(vm_index, vcpu)
+    }
+
+    /// Write bytes to guest physical memory (destructive analysis).
+    ///
+    /// The modification is live — subsequent `step_forward` will see it.
+    /// Use `goto()` to rewind to the original state.
+    pub fn poke_memory(
+        &mut self,
+        vm_index: usize,
+        address: u64,
+        data: &[u8],
+    ) -> Result<(), ReplayError> {
+        let runner = self.runner.as_mut().ok_or_else(|| {
+            InvalidStateSnafu {
+                message: "No runner — call goto() first".to_string(),
+            }
+            .build()
+        })?;
+        runner.write_memory(vm_index, address, data)
+    }
+
+    /// Set a single register on a vCPU (destructive analysis).
+    pub fn set_register(
+        &mut self,
+        vm_index: usize,
+        vcpu: usize,
+        reg: Register,
+        value: u64,
+    ) -> Result<(), ReplayError> {
+        let runner = self.runner.as_mut().ok_or_else(|| {
+            InvalidStateSnafu {
+                message: "No runner — call goto() first".to_string(),
+            }
+            .build()
+        })?;
+        let mut state = runner.read_registers(vm_index, vcpu)?;
+        reg.set(&mut state, value);
+        runner.set_registers(vm_index, vcpu, &state)
     }
 
     /// Get serial output up to the current position.
@@ -136,10 +207,12 @@ impl<R: SimulationRunner> Debugger<R> {
             .collect()
     }
 
-    /// Counterfactual: modify memory at current position and continue.
+    /// Counterfactual: modify memory and/or registers at current position
+    /// and continue execution for N ticks.
     pub fn counterfactual(
         &mut self,
-        modifications: Vec<MemoryModification>,
+        memory_mods: Vec<MemoryModification>,
+        register_mods: Vec<RegisterModification>,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
         let checkpoint_id = self.current_checkpoint.ok_or_else(|| {
@@ -150,7 +223,7 @@ impl<R: SimulationRunner> Debugger<R> {
         })?;
 
         self.replay
-            .replay_with_modification(checkpoint_id, modifications, ticks)
+            .replay_with_modification(checkpoint_id, memory_mods, register_mods, ticks)
     }
 
     /// List all checkpoints.
@@ -211,37 +284,7 @@ pub struct DebugState {
     pub serial_snippets: Vec<String>,
 }
 
-/// VM register state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegisterState {
-    pub rip: u64,
-    pub rsp: u64,
-    pub rax: u64,
-    pub rbx: u64,
-    pub rcx: u64,
-    pub rdx: u64,
-    pub rsi: u64,
-    pub rdi: u64,
-    pub rbp: u64,
-    pub r8: u64,
-    pub r9: u64,
-    pub r10: u64,
-    pub r11: u64,
-    pub r12: u64,
-    pub r13: u64,
-    pub r14: u64,
-    pub r15: u64,
-    pub rflags: u64,
-    pub cs: u64,
-    pub ss: u64,
-    pub ds: u64,
-    pub es: u64,
-    pub fs: u64,
-    pub gs: u64,
-    pub cr0: u64,
-    pub cr3: u64,
-    pub cr4: u64,
-}
+// RegisterState re-exported from chaoscontrol_vmm::registers
 
 /// Filter for finding events.
 #[derive(Debug, Clone)]
@@ -376,6 +419,69 @@ mod tests {
 
         fn serial_output(&self, _vm_index: usize) -> String {
             String::new()
+        }
+
+        fn read_memory(
+            &self,
+            _vm_index: usize,
+            _addr: u64,
+            size: usize,
+        ) -> Result<Vec<u8>, ReplayError> {
+            Ok(vec![0xAA; size])
+        }
+
+        fn write_memory(
+            &mut self,
+            _vm_index: usize,
+            _addr: u64,
+            _data: &[u8],
+        ) -> Result<(), ReplayError> {
+            Ok(())
+        }
+
+        fn read_registers(
+            &self,
+            _vm_index: usize,
+            _vcpu: usize,
+        ) -> Result<RegisterState, ReplayError> {
+            Ok(RegisterState {
+                rip: 0x1000,
+                rsp: 0x2000,
+                rax: 0,
+                rbx: 0,
+                rcx: 0,
+                rdx: 0,
+                rsi: 0,
+                rdi: 0,
+                rbp: 0,
+                r8: 0,
+                r9: 0,
+                r10: 0,
+                r11: 0,
+                r12: 0,
+                r13: 0,
+                r14: 0,
+                r15: 0,
+                rflags: 0x202,
+                cs: 0,
+                ss: 0,
+                ds: 0,
+                es: 0,
+                fs: 0,
+                gs: 0,
+                cr0: 0,
+                cr3: 0,
+                cr4: 0,
+            })
+        }
+
+        fn set_registers(
+            &mut self,
+            _vm_index: usize,
+            _vcpu: usize,
+            _state: &RegisterState,
+        ) -> Result<(), ReplayError> {
+            Ok(())
         }
     }
 

@@ -208,6 +208,18 @@ pub struct VmConfig {
     /// When `None` (default), no logging occurs and there is zero
     /// overhead on the hot path.
     pub dlog_path: Option<PathBuf>,
+
+    /// Emit a full RegisterDump dlog record every N VM exits.
+    ///
+    /// When 0 (default), no RegisterDump records are emitted.
+    /// A value of 100 means one dump every 100 exits.
+    pub dlog_register_interval: u64,
+
+    /// Hash guest memory pages at snapshot boundaries and emit
+    /// MemoryHash dlog records with CRC32 per page.
+    ///
+    /// Off by default — adds ~50ms per snapshot for 256 MB guests.
+    pub dlog_memory_hash: bool,
 }
 
 impl Default for VmConfig {
@@ -260,6 +272,8 @@ impl Default for VmConfig {
             core_affinity: None,
             vm_id: 0,
             dlog_path: None,
+            dlog_register_interval: 0,
+            dlog_memory_hash: false,
         }
     }
 }
@@ -294,6 +308,9 @@ pub enum VmError {
 
     #[snafu(display("Failed to write to guest memory"))]
     GuestMemoryWrite,
+
+    #[snafu(display("Failed to get vCPU registers"))]
+    GetRegisters { source: kvm_ioctls::Error },
 
     #[snafu(display("Failed to set vCPU registers"))]
     SetRegisters { source: kvm_ioctls::Error },
@@ -487,6 +504,8 @@ pub struct DeterministicVm {
 
     /// Determinism log writer — records every VM exit when enabled.
     dlog: Option<DlogWriter>,
+    dlog_register_interval: u64,
+    dlog_memory_hash: bool,
 }
 
 impl DeterministicVm {
@@ -809,6 +828,8 @@ impl DeterministicVm {
             extra_cmdline: config.extra_cmdline.clone(),
             vm_id: config.vm_id,
             dlog,
+            dlog_register_interval: config.dlog_register_interval,
+            dlog_memory_hash: config.dlog_memory_hash,
         })
     }
 
@@ -2516,8 +2537,58 @@ impl DeterministicVm {
 
         // ── Post-match phase ──────────────────────────────────
         // Emit deferred dlog record now that the KVM borrow is released.
-        if let Some(rec) = pending_dlog {
+        // Enrich exit-type records with RSP[31:0] + RFLAGS[31:0] in
+        // the extra field. This costs one get_regs() ioctl per exit
+        // but only when dlog is enabled.
+        if let Some(mut rec) = pending_dlog {
+            if self.dlog.is_some() {
+                let enrich = matches!(
+                    rec.tag(),
+                    Some(DlogTag::IoIn)
+                        | Some(DlogTag::IoOut)
+                        | Some(DlogTag::MmioRead)
+                        | Some(DlogTag::MmioWrite)
+                        | Some(DlogTag::Hlt)
+                        | Some(DlogTag::Hypercall)
+                );
+                if enrich {
+                    if let Ok(regs) = self.vcpus[self.active_vcpu].get_regs() {
+                        rec.rip = regs.rip;
+                        let rsp_lo = (regs.rsp as u32).to_le_bytes();
+                        let rfl_lo = (regs.rflags as u32).to_le_bytes();
+                        rec.extra = [
+                            rsp_lo[0], rsp_lo[1], rsp_lo[2], rsp_lo[3], rfl_lo[0], rfl_lo[1],
+                            rfl_lo[2], rfl_lo[3],
+                        ];
+                    }
+                }
+            }
             self.dlog_emit(rec);
+
+            // Periodic full register dump (if configured).
+            if self.dlog_register_interval > 0 && self.exit_count % self.dlog_register_interval == 0
+            {
+                if let Ok(regs) = self.vcpus[self.active_vcpu].get_regs() {
+                    let dump = DlogRecord::new(
+                        0,
+                        self.virtual_tsc.read(),
+                        self.exit_count,
+                        regs.rip,
+                        DlogTag::RegisterDump,
+                        self.active_vcpu as u8,
+                    )
+                    .with_data_u64(regs.rax)
+                    .with_extra(&{
+                        let rsp_lo = (regs.rsp as u32).to_le_bytes();
+                        let rfl_lo = (regs.rflags as u32).to_le_bytes();
+                        [
+                            rsp_lo[0], rsp_lo[1], rsp_lo[2], rsp_lo[3], rfl_lo[0], rfl_lo[1],
+                            rfl_lo[2], rfl_lo[3],
+                        ]
+                    });
+                    self.dlog_emit(dump);
+                }
+            }
         }
 
         // Deferred from the Hypercall arm because HypercallExit held
@@ -2531,6 +2602,95 @@ impl DeterministicVm {
         }
 
         result
+    }
+
+    // ─── Guest memory / register access ────────────────────────
+
+    /// Read bytes from guest physical memory.
+    ///
+    /// Returns up to `size` bytes starting at guest physical address `addr`.
+    /// Fails if the address range is outside guest memory.
+    pub fn read_guest_memory(&self, addr: u64, size: usize) -> Result<Vec<u8>, VmError> {
+        use vm_memory::{Bytes, GuestAddress};
+        let mut buf = vec![0u8; size];
+        self.memory
+            .inner()
+            .read_slice(&mut buf, GuestAddress(addr))
+            .map_err(|_| VmError::DiskImage {
+                message: format!(
+                    "read_guest_memory: addr=0x{:x} size={} out of bounds",
+                    addr, size
+                ),
+            })?;
+        Ok(buf)
+    }
+
+    /// Write bytes to guest physical memory.
+    ///
+    /// Writes `data` starting at guest physical address `addr`.
+    /// Fails if the address range is outside guest memory.
+    pub fn write_guest_memory(&self, addr: u64, data: &[u8]) -> Result<(), VmError> {
+        use vm_memory::{Bytes, GuestAddress};
+        self.memory
+            .inner()
+            .write_slice(data, GuestAddress(addr))
+            .map_err(|_| VmError::DiskImage {
+                message: format!(
+                    "write_guest_memory: addr=0x{:x} size={} out of bounds",
+                    addr,
+                    data.len()
+                ),
+            })?;
+        Ok(())
+    }
+
+    /// Read a vCPU's register state.
+    ///
+    /// Only valid when the vCPU is not inside `KVM_RUN` (i.e. after
+    /// `run_bounded` returns or from a restored snapshot).
+    pub fn read_vcpu_registers(
+        &self,
+        vcpu: usize,
+    ) -> Result<crate::registers::RegisterState, VmError> {
+        if vcpu >= self.vcpus.len() {
+            return Err(VmError::DiskImage {
+                message: format!(
+                    "read_vcpu_registers: vcpu {} out of range (have {})",
+                    vcpu,
+                    self.vcpus.len()
+                ),
+            });
+        }
+        let regs = self.vcpus[vcpu].get_regs().context(GetRegistersSnafu)?;
+        let sregs = self.vcpus[vcpu].get_sregs().context(GetRegistersSnafu)?;
+        Ok(crate::registers::RegisterState::from_kvm(&regs, &sregs))
+    }
+
+    /// Set a vCPU's general-purpose registers.
+    ///
+    /// Applies the GP registers and RFLAGS from `state`. Segment and
+    /// control registers are read-only through this API (use
+    /// `set_sregs` directly for those).
+    pub fn set_vcpu_registers(
+        &mut self,
+        vcpu: usize,
+        state: &crate::registers::RegisterState,
+    ) -> Result<(), VmError> {
+        if vcpu >= self.vcpus.len() {
+            return Err(VmError::DiskImage {
+                message: format!(
+                    "set_vcpu_registers: vcpu {} out of range (have {})",
+                    vcpu,
+                    self.vcpus.len()
+                ),
+            });
+        }
+        let mut regs = self.vcpus[vcpu].get_regs().context(GetRegistersSnafu)?;
+        state.apply_to_kvm_regs(&mut regs);
+        self.vcpus[vcpu]
+            .set_regs(&regs)
+            .context(SetRegistersSnafu)?;
+        Ok(())
     }
 
     // ─── Determinism log helpers ────────────────────────────────
@@ -2566,6 +2726,7 @@ impl DeterministicVm {
             self.dlog_record(DlogTag::SnapshotTaken)
                 .with_data_u64(self.exit_count),
         );
+        self.dlog_emit_memory_hashes();
         self.dlog_flush();
     }
 
@@ -2591,6 +2752,58 @@ impl DeterministicVm {
             self.dlog_record(DlogTag::NmiInjected)
                 .with_data_u64(target_vcpu),
         );
+    }
+
+    /// Emit a tick marker into the dlog (called by the controller).
+    pub fn dlog_tick_marker(&mut self, tick: u64) {
+        self.dlog_emit(self.dlog_record(DlogTag::TickMarker).with_data_u64(tick));
+    }
+
+    /// Hash selected guest memory pages and emit MemoryHash dlog records.
+    ///
+    /// Called at snapshot boundaries when `dlog_memory_hash` is enabled.
+    /// Hashes: coverage bitmap (0xE0000), hypercall page (0xFE000),
+    /// stack area (0x8000–0x9000), and first 1 MB in 4 KB pages.
+    pub fn dlog_emit_memory_hashes(&mut self) {
+        if self.dlog.is_none() || !self.dlog_memory_hash {
+            return;
+        }
+
+        use vm_memory::{Bytes, GuestAddress};
+
+        // Well-known pages to hash.
+        let mut pages: Vec<u64> = Vec::new();
+
+        // First 1 MB in 4 KB pages (256 pages).
+        for pfn in 0..256u64 {
+            pages.push(pfn);
+        }
+        // Coverage bitmap: 0xE0000 (16 pages for 64 KB).
+        // Already covered by first 1 MB range above.
+
+        // Hypercall page: 0xFE000.
+        // Already covered by first 1 MB range above.
+
+        pages.sort_unstable();
+        pages.dedup();
+
+        let mut buf = [0u8; 4096];
+        for pfn in pages {
+            let gpa = pfn * 4096;
+            if self
+                .memory
+                .inner()
+                .read_slice(&mut buf, GuestAddress(gpa))
+                .is_ok()
+            {
+                let crc = crc32fast::hash(&buf);
+                let rec = self
+                    .dlog_record(DlogTag::MemoryHash)
+                    .with_mmio_addr(pfn)
+                    .with_data(&crc.to_le_bytes());
+                self.dlog_emit(rec);
+            }
+        }
     }
 
     /// Flush the dlog to disk (for snapshot boundaries, etc.).

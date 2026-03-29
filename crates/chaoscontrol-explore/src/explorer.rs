@@ -102,6 +102,10 @@ pub struct ExplorerConfig {
     /// Primarily useful for debugging determinism issues on a specific
     /// seed — produces ~6 MB per 100K exits per VM.
     pub dlog_dir: Option<std::path::PathBuf>,
+    /// Emit a full RegisterDump dlog record every N VM exits.
+    pub dlog_register_interval: u64,
+    /// Hash guest memory pages at snapshot boundaries.
+    pub dlog_memory_hash: bool,
 }
 
 impl Default for ExplorerConfig {
@@ -125,6 +129,8 @@ impl Default for ExplorerConfig {
             disk_image_path: None,
             bootstrap_budget: 10_000,
             dlog_dir: None,
+            dlog_register_interval: 0,
+            dlog_memory_hash: false,
         }
     }
 }
@@ -946,6 +952,8 @@ impl Explorer {
             disk_image_path: checkpoint.config.disk_image_path,
             bootstrap_budget: checkpoint.config.bootstrap_budget,
             dlog_dir: None,
+            dlog_register_interval: 0,
+            dlog_memory_hash: false,
         };
 
         let frontier = Frontier::new(config.max_frontier);

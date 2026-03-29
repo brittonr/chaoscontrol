@@ -293,6 +293,16 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **Demo guest**: VM0 = TCP server (echo PING→PONG), VM1 = TCP client. 136 packets exchanged in 2000 ticks.
 - **Crates**: `chaoscontrol-guest-net` (lib), `chaoscontrol-net-guest` (bin), `scripts/build-net-guest.sh`
 
+## Massive Dlog + Destructive Analysis (2026-03-29)
+- **RegisterState lives in chaoscontrol-vmm::registers**: Avoids circular dep between vmm and replay. Replay re-exports it.
+- **RSP+RFLAGS enrichment costs one get_regs() ioctl per exit**: Only when dlog enabled. Adds ~0.5µs per exit — negligible vs KVM_RUN overhead.
+- **Memory hashing at snapshot boundaries**: CRC32 via crc32fast (SSE4.2). Hash first 1 MB in 4 KB pages. ~0.25ms for 256 pages.
+- **Debugger holds Option<R> runner**: Created on first goto(), reused for read_memory/poke_memory. goto() restores checkpoint on the live runner, not via ReplayEngine.
+- **DlogTag::from_u8 must be pub**: Needed by CLI stats command to format tag names.
+- **RegisterModification must be pub re-exported from replay.rs**: Private `use` in replay.rs doesn't make it visible to debugger.rs through `crate::replay::`.
+- **counterfactual() now takes 3 args**: memory_mods, register_mods, ticks. Memory patches applied before register overrides.
+- **Dlog CLI restructured**: Flat DlogDiff/DlogDump → nested `dlog {dump, diff, stats}` subcommand group.
+
 ## Remaining Work
 (All items completed)
 

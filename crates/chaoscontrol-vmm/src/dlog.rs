@@ -52,11 +52,14 @@ pub enum DlogTag {
     SnapshotTaken = 17,
     SnapshotRestored = 18,
     CoverageSync = 19,
+    RegisterDump = 20,
+    MemoryHash = 21,
+    TickMarker = 22,
     Marker = 255,
 }
 
 impl DlogTag {
-    fn from_u8(v: u8) -> Option<Self> {
+    pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::IoIn),
             2 => Some(Self::IoOut),
@@ -77,6 +80,9 @@ impl DlogTag {
             17 => Some(Self::SnapshotTaken),
             18 => Some(Self::SnapshotRestored),
             19 => Some(Self::CoverageSync),
+            20 => Some(Self::RegisterDump),
+            21 => Some(Self::MemoryHash),
+            22 => Some(Self::TickMarker),
             255 => Some(Self::Marker),
             _ => None,
         }
@@ -103,6 +109,9 @@ impl DlogTag {
             Self::SnapshotTaken => "SnapTaken",
             Self::SnapshotRestored => "SnapRestored",
             Self::CoverageSync => "CovSync",
+            Self::RegisterDump => "RegDump",
+            Self::MemoryHash => "MemHash",
+            Self::TickMarker => "TickMarker",
             Self::Marker => "Marker",
         }
     }
@@ -297,6 +306,37 @@ impl fmt::Display for DlogRecord {
             Some(DlogTag::NmiInjected) => {
                 write!(f, "target_vcpu={}", u64::from_le_bytes(self.data))?;
             }
+            Some(DlogTag::RegisterDump) => {
+                // data[0..8] = RIP (or low bits), extra[0..4] = RSP[31:0], extra[4..8] = RFLAGS[31:0]
+                let rip = u64::from_le_bytes(self.data);
+                let rsp_lo = u32::from_le_bytes([
+                    self.extra[0],
+                    self.extra[1],
+                    self.extra[2],
+                    self.extra[3],
+                ]);
+                let rfl_lo = u32::from_le_bytes([
+                    self.extra[4],
+                    self.extra[5],
+                    self.extra[6],
+                    self.extra[7],
+                ]);
+                write!(
+                    f,
+                    "rip=0x{:x} rsp_lo=0x{:x} rflags_lo=0x{:x}",
+                    rip, rsp_lo, rfl_lo
+                )?;
+            }
+            Some(DlogTag::MemoryHash) => {
+                let pfn = self.mmio_addr();
+                let crc =
+                    u32::from_le_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]);
+                write!(f, "pfn={} crc32=0x{:08x}", pfn, crc)?;
+            }
+            Some(DlogTag::TickMarker) => {
+                let tick = u64::from_le_bytes(self.data);
+                write!(f, "tick={}", tick)?;
+            }
             _ => {
                 // RIP is generally useful for everything else.
                 write!(f, "rip=0x{:x}", self.rip)?;
@@ -453,6 +493,32 @@ impl fmt::Display for DiffResult {
                 record_b,
             } => {
                 writeln!(f, "Divergence at record #{index}")?;
+
+                // Extra detail for MemoryHash divergence.
+                if record_a.tag() == Some(DlogTag::MemoryHash)
+                    && record_b.tag() == Some(DlogTag::MemoryHash)
+                {
+                    let pfn_a = record_a.mmio_addr();
+                    let pfn_b = record_b.mmio_addr();
+                    let crc_a = u32::from_le_bytes([
+                        record_a.data[0],
+                        record_a.data[1],
+                        record_a.data[2],
+                        record_a.data[3],
+                    ]);
+                    let crc_b = u32::from_le_bytes([
+                        record_b.data[0],
+                        record_b.data[1],
+                        record_b.data[2],
+                        record_b.data[3],
+                    ]);
+                    writeln!(
+                        f,
+                        "  Memory page divergence: pfn_a={pfn_a} pfn_b={pfn_b} \
+                         crc_a=0x{crc_a:08x} crc_b=0x{crc_b:08x}"
+                    )?;
+                }
+
                 writeln!(f)?;
                 let ctx_start = index.saturating_sub(context_a.len() as u64);
                 for (i, rec) in context_a.iter().enumerate() {
@@ -581,6 +647,21 @@ pub fn dlog_dump(path: &Path, from: u64, count: u64, out: &mut dyn Write) -> io:
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Stats
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Count records by tag. Returns a map from raw tag byte to count.
+pub fn dlog_stats(path: &Path) -> io::Result<std::collections::BTreeMap<u8, u64>> {
+    let mut counts = std::collections::BTreeMap::new();
+    let reader = DlogReader::open(path)?;
+    for rec in reader {
+        let rec = rec?;
+        *counts.entry(rec.tag).or_insert(0) += 1;
+    }
+    Ok(counts)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -644,13 +725,13 @@ mod tests {
     #[test]
     fn tag_round_trip() {
         for val in [
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 255,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 255,
         ] {
             let tag = DlogTag::from_u8(val).unwrap();
             assert_eq!(tag as u8, val);
         }
         assert!(DlogTag::from_u8(0).is_none());
-        assert!(DlogTag::from_u8(20).is_none());
+        assert!(DlogTag::from_u8(23).is_none());
         assert!(DlogTag::from_u8(254).is_none());
     }
 
@@ -818,6 +899,58 @@ mod tests {
     }
 
     #[test]
+    fn display_register_dump() {
+        let rec = DlogRecord::new(0, 5000, 10, 0xDEAD, DlogTag::RegisterDump, 0)
+            .with_data_u64(0x42) // RAX
+            .with_extra(&{
+                let rsp = 0x7FFF_0000u32.to_le_bytes();
+                let rfl = 0x0000_0202u32.to_le_bytes();
+                [
+                    rsp[0], rsp[1], rsp[2], rsp[3], rfl[0], rfl[1], rfl[2], rfl[3],
+                ]
+            });
+        let s = format!("{rec}");
+        assert!(s.contains("RegDump"), "got: {s}");
+        assert!(s.contains("rsp_lo=0x7fff0000"), "got: {s}");
+        assert!(s.contains("rflags_lo=0x202"), "got: {s}");
+    }
+
+    #[test]
+    fn display_memory_hash() {
+        let rec = DlogRecord::new(0, 5000, 10, 0, DlogTag::MemoryHash, 0)
+            .with_mmio_addr(42) // pfn=42
+            .with_data(&0xDEAD_BEEFu32.to_le_bytes());
+        let s = format!("{rec}");
+        assert!(s.contains("MemHash"), "got: {s}");
+        assert!(s.contains("pfn=42"), "got: {s}");
+        assert!(s.contains("crc32=0xdeadbeef"), "got: {s}");
+    }
+
+    #[test]
+    fn display_tick_marker() {
+        let rec = DlogRecord::new(0, 5000, 10, 0, DlogTag::TickMarker, 0).with_data_u64(999);
+        let s = format!("{rec}");
+        assert!(s.contains("TickMarker"), "got: {s}");
+        assert!(s.contains("tick=999"), "got: {s}");
+    }
+
+    #[test]
+    fn new_tags_round_trip() {
+        for (tag, val) in [
+            (DlogTag::RegisterDump, 20u8),
+            (DlogTag::MemoryHash, 21),
+            (DlogTag::TickMarker, 22),
+        ] {
+            let rec = DlogRecord::new(7, 100, 50, 0x1234, tag, 0);
+            let bytes = rec.to_bytes();
+            let decoded = DlogRecord::from_bytes(bytes);
+            assert_eq!(decoded.tag, val);
+            assert_eq!(decoded.seq, 7);
+            assert_eq!(decoded.virtual_tsc, 100);
+        }
+    }
+
+    #[test]
     fn dump_skip_past_end() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.dlog");
@@ -833,5 +966,60 @@ mod tests {
         let mut buf = Vec::new();
         let printed = dlog_dump(&path, 100, 10, &mut buf).unwrap();
         assert_eq!(printed, 0);
+    }
+
+    #[test]
+    fn diff_memory_hash_divergence() {
+        let dir = tempfile::tempdir().unwrap();
+        let pa = dir.path().join("a.dlog");
+        let pb = dir.path().join("b.dlog");
+
+        let make_hash = |pfn: u64, crc: u32| {
+            DlogRecord::new(0, 0, 0, 0, DlogTag::MemoryHash, 0)
+                .with_mmio_addr(pfn)
+                .with_data(&crc.to_le_bytes())
+        };
+
+        {
+            let mut w = DlogWriter::create(&pa).unwrap();
+            w.emit(make_hash(42, 0xAAAA_BBBB)).unwrap();
+        }
+        {
+            let mut w = DlogWriter::create(&pb).unwrap();
+            w.emit(make_hash(42, 0xCCCC_DDDD)).unwrap();
+        }
+
+        let result = dlog_diff(&pa, &pb, false).unwrap();
+        let text = format!("{result}");
+        assert!(text.contains("Memory page divergence"), "got: {text}");
+        assert!(text.contains("pfn_a=42"), "got: {text}");
+        assert!(text.contains("0xaaaabbbb"), "got: {text}");
+        assert!(text.contains("0xccccdddd"), "got: {text}");
+    }
+
+    #[test]
+    fn stats_counts_by_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.dlog");
+
+        {
+            let mut w = DlogWriter::create(&path).unwrap();
+            for _ in 0..10 {
+                w.emit(DlogRecord::new(0, 0, 0, 0, DlogTag::IoIn, 0))
+                    .unwrap();
+            }
+            for _ in 0..5 {
+                w.emit(DlogRecord::new(0, 0, 0, 0, DlogTag::Hlt, 0))
+                    .unwrap();
+            }
+            w.emit(DlogRecord::new(0, 0, 0, 0, DlogTag::TickMarker, 0))
+                .unwrap();
+        }
+
+        let counts = dlog_stats(&path).unwrap();
+        assert_eq!(counts[&(DlogTag::IoIn as u8)], 10);
+        assert_eq!(counts[&(DlogTag::Hlt as u8)], 5);
+        assert_eq!(counts[&(DlogTag::TickMarker as u8)], 1);
+        assert_eq!(counts.values().sum::<u64>(), 16);
     }
 }

@@ -13,3 +13,5 @@
 {"text":"what next?","timestamp":1774758283991}
 {"text":"1","timestamp":1774758398372}
 {"text":"yes","timestamp":1774758628237}
+{"text":"what next","timestamp":1774760255689}
+{"text":"Remaining Antithesis-inspired items:\n - Massive determinism logging — high-throughput paranoid mode for debugging (dlog was\n just added, could expand)\n - Destructive analysis — poke_memory/set_register in the replay debugger for \"what\n if\" scenarios","timestamp":1774760356669}

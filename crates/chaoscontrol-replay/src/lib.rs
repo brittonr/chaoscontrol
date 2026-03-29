@@ -159,13 +159,15 @@ pub mod serialize;
 pub mod triage;
 
 // Re-export main types for convenience
+pub use chaoscontrol_vmm::registers::{Register, RegisterModification, RegisterState};
 pub use checkpoint::{Checkpoint, CheckpointStore};
-pub use debugger::{DebugState, Debugger, EventFilter, RegisterState};
+pub use debugger::{DebugState, Debugger, EventFilter};
 pub use recording::{RecordedEvent, Recorder, Recording, RecordingConfig};
 pub use replay::{
     MemoryModification, RealSimulationRunner, ReplayEngine, ReplayError, ReplayResult,
     SimulationRunner,
 };
+
 pub use serialize::{
     load_recording, load_triage_json, save_recording, save_triage_json, save_triage_report,
     SerializeError,

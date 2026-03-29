@@ -6,6 +6,7 @@ use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{
     RoundResult, SimulationConfig, SimulationController, SimulationSnapshot,
 };
+pub use chaoscontrol_vmm::registers::{RegisterModification, RegisterState};
 use chaoscontrol_vmm::vm::VmError;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -52,6 +53,23 @@ pub trait SimulationRunner {
 
     /// Get serial output for a specific VM.
     fn serial_output(&self, vm_index: usize) -> String;
+
+    /// Read bytes from guest physical memory.
+    fn read_memory(&self, vm_index: usize, addr: u64, size: usize) -> Result<Vec<u8>, ReplayError>;
+
+    /// Write bytes to guest physical memory.
+    fn write_memory(&mut self, vm_index: usize, addr: u64, data: &[u8]) -> Result<(), ReplayError>;
+
+    /// Read a vCPU's register state.
+    fn read_registers(&self, vm_index: usize, vcpu: usize) -> Result<RegisterState, ReplayError>;
+
+    /// Set a vCPU's register state.
+    fn set_registers(
+        &mut self,
+        vm_index: usize,
+        vcpu: usize,
+        state: &RegisterState,
+    ) -> Result<(), ReplayError>;
 }
 
 /// Real implementation using SimulationController.
@@ -114,6 +132,33 @@ impl SimulationRunner for RealSimulationRunner {
         // Serial output collection would need mutable access to controller
         // For now, return empty string as serial output is captured in checkpoints
         String::new()
+    }
+
+    fn read_memory(&self, vm_index: usize, addr: u64, size: usize) -> Result<Vec<u8>, ReplayError> {
+        Ok(self.controller.vm(vm_index).read_guest_memory(addr, size)?)
+    }
+
+    fn write_memory(&mut self, vm_index: usize, addr: u64, data: &[u8]) -> Result<(), ReplayError> {
+        Ok(self
+            .controller
+            .vm(vm_index)
+            .write_guest_memory(addr, data)?)
+    }
+
+    fn read_registers(&self, vm_index: usize, vcpu: usize) -> Result<RegisterState, ReplayError> {
+        Ok(self.controller.vm(vm_index).read_vcpu_registers(vcpu)?)
+    }
+
+    fn set_registers(
+        &mut self,
+        vm_index: usize,
+        vcpu: usize,
+        state: &RegisterState,
+    ) -> Result<(), ReplayError> {
+        Ok(self
+            .controller
+            .vm_mut(vm_index)
+            .set_vcpu_registers(vcpu, state)?)
     }
 }
 
@@ -288,16 +333,76 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         })
     }
 
-    /// Replay with a memory modification at the checkpoint.
+    /// Replay with memory and/or register modifications at the checkpoint.
+    ///
+    /// Restores the checkpoint, applies all modifications (memory first,
+    /// then registers), and runs for `ticks` ticks.
     pub fn replay_with_modification(
         &self,
         checkpoint_id: u64,
-        _modifications: Vec<MemoryModification>,
+        memory_mods: Vec<MemoryModification>,
+        register_mods: Vec<RegisterModification>,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
-        // For now, just replay without modifications (would need VM memory access)
-        log::warn!("Memory modifications not yet implemented, replaying without changes");
-        self.replay_from(Some(checkpoint_id), ticks)
+        let checkpoint = self
+            .recording
+            .checkpoints
+            .get(checkpoint_id)
+            .ok_or(CheckpointNotFoundSnafu { id: checkpoint_id }.build())?;
+
+        let snapshot = checkpoint.snapshot.as_ref().ok_or_else(|| {
+            InvalidStateSnafu {
+                message: format!("Checkpoint {} has no snapshot", checkpoint_id),
+            }
+            .build()
+        })?;
+
+        let mut runner = R::create(
+            &self.recording.config,
+            self.recording.schedule.clone(),
+            self.recording.seed,
+        )?;
+
+        runner.restore_all(snapshot)?;
+
+        // Apply memory modifications first.
+        for mem_mod in &memory_mods {
+            runner.write_memory(mem_mod.vm_index, mem_mod.address, &mem_mod.data)?;
+        }
+
+        // Apply register modifications second.
+        for reg_mod in &register_mods {
+            let mut state = runner.read_registers(reg_mod.vm_index, reg_mod.vcpu)?;
+            for (reg, value) in &reg_mod.changes {
+                reg.set(&mut state, *value);
+            }
+            runner.set_registers(reg_mod.vm_index, reg_mod.vcpu, &state)?;
+        }
+
+        let start_tick = checkpoint.tick;
+        let target_tick = start_tick + ticks;
+
+        while runner.tick() < target_tick {
+            let result = runner.step_round()?;
+            if result.vms_running == 0 {
+                break;
+            }
+        }
+
+        let oracle_report = runner.report();
+        let serial_output: Vec<String> = (0..self.recording.config.num_vms)
+            .map(|i| runner.serial_output(i))
+            .collect();
+
+        let final_snapshot = runner.snapshot_all().ok();
+
+        Ok(ReplayResult {
+            ticks_executed: runner.tick() - start_tick,
+            oracle_report,
+            serial_output,
+            events: Vec::new(),
+            final_snapshot,
+        })
     }
 
     /// Get the recording info.
@@ -429,6 +534,69 @@ mod tests {
 
         fn serial_output(&self, _vm_index: usize) -> String {
             String::new()
+        }
+
+        fn read_memory(
+            &self,
+            _vm_index: usize,
+            _addr: u64,
+            size: usize,
+        ) -> Result<Vec<u8>, ReplayError> {
+            Ok(vec![0xBB; size])
+        }
+
+        fn write_memory(
+            &mut self,
+            _vm_index: usize,
+            _addr: u64,
+            _data: &[u8],
+        ) -> Result<(), ReplayError> {
+            Ok(())
+        }
+
+        fn read_registers(
+            &self,
+            _vm_index: usize,
+            _vcpu: usize,
+        ) -> Result<RegisterState, ReplayError> {
+            Ok(RegisterState {
+                rip: 0x1000,
+                rsp: 0x2000,
+                rax: 0,
+                rbx: 0,
+                rcx: 0,
+                rdx: 0,
+                rsi: 0,
+                rdi: 0,
+                rbp: 0,
+                r8: 0,
+                r9: 0,
+                r10: 0,
+                r11: 0,
+                r12: 0,
+                r13: 0,
+                r14: 0,
+                r15: 0,
+                rflags: 0x202,
+                cs: 0,
+                ss: 0,
+                ds: 0,
+                es: 0,
+                fs: 0,
+                gs: 0,
+                cr0: 0,
+                cr3: 0,
+                cr4: 0,
+            })
+        }
+
+        fn set_registers(
+            &mut self,
+            _vm_index: usize,
+            _vcpu: usize,
+            _state: &RegisterState,
+        ) -> Result<(), ReplayError> {
+            Ok(())
         }
     }
 

@@ -120,7 +120,209 @@ fn main() {
             // Drain inbox
             let inbox: Vec<(usize, Message)> = node.inbox.drain(..).collect();
             for (from, msg) in inbox {
+                // ── Handler reachability (1.1–1.4) ───────────
+                match &msg {
+                    Message::RequestVote {
+                        term,
+                        candidate_id,
+                        ..
+                    } => {
+                        assert::reachable(
+                            "request_vote handler",
+                            &json!({"node": active, "from": from, "term": *term, "candidate_id": *candidate_id}),
+                        );
+                    }
+                    Message::RequestVoteResponse { term, vote_granted } => {
+                        assert::reachable(
+                            "request_vote_response handler",
+                            &json!({"node": active, "from": from, "term": *term, "vote_granted": *vote_granted}),
+                        );
+                    }
+                    Message::AppendEntries { term, entries, .. } => {
+                        assert::reachable(
+                            "append_entries handler",
+                            &json!({"node": active, "from": from, "term": *term, "entry_count": entries.len()}),
+                        );
+                    }
+                    Message::AppendEntriesResponse {
+                        term,
+                        success,
+                        match_index,
+                    } => {
+                        assert::reachable(
+                            "append_entries_response handler",
+                            &json!({"node": active, "from": from, "term": *term, "success": *success, "match_index": *match_index}),
+                        );
+                    }
+                }
+
+                // Capture pre-state for post-call checks
+                let old_role = node.role;
+                let old_term = node.current_term;
+                let old_commit = node.commit_index;
+                let is_ae = matches!(&msg, Message::AppendEntries { .. });
+                let is_aer = matches!(&msg, Message::AppendEntriesResponse { .. });
+
+                // Capture AE context for log conflict detection (5.1–5.3)
+                let ae_context =
+                    if let Message::AppendEntries {
+                        prev_log_index,
+                        entries,
+                        ..
+                    } = &msg
+                    {
+                        if !entries.is_empty() {
+                            let old_terms: Vec<Option<u64>> = (0..entries.len())
+                                .map(|i| {
+                                    let idx = *prev_log_index + i;
+                                    if idx < node.log.len() {
+                                        Some(node.log[idx].term)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            let new_terms: Vec<u64> =
+                                entries.iter().map(|e| e.term).collect();
+                            Some((*prev_log_index, old_terms, new_terms))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                // Capture RequestVote candidate_id for voted_for check (4.4)
+                let rv_candidate =
+                    if let Message::RequestVote { candidate_id, .. } = &msg {
+                        Some(*candidate_id)
+                    } else {
+                        None
+                    };
+
                 let replies = node.handle_message(from, msg, jitter);
+
+                // ── State transitions (2.2, 2.3, 2.4) ───────
+                if node.current_term > old_term && node.role == Role::Follower {
+                    assert::reachable(
+                        "stepped down to follower",
+                        &json!({"node": active, "old_term": old_term, "new_term": node.current_term}),
+                    );
+                }
+                if old_role == Role::Candidate && node.role == Role::Follower && is_ae {
+                    assert::reachable(
+                        "candidate stepped down on append_entries",
+                        &json!({"node": active, "term": node.current_term}),
+                    );
+                }
+                if old_role == Role::Candidate && node.role == Role::Leader {
+                    assert::reachable(
+                        "candidate won election",
+                        &json!({"node": active, "term": node.current_term}),
+                    );
+                }
+
+                // ── Data invariant: commit_index bounded (4.1) ──
+                if node.commit_index != old_commit {
+                    assert::always(
+                        node.commit_index <= node.log.len(),
+                        "commit_index within log bounds",
+                        &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
+                    );
+                }
+
+                // ── Reply-based sometimes-pairs + invariants ─
+                for (to, reply) in &replies {
+                    match reply {
+                        // 3.4: vote granted vs denied
+                        Message::RequestVoteResponse { vote_granted, .. } => {
+                            assert::sometimes(
+                                *vote_granted,
+                                "vote granted",
+                                &json!({"voter": active, "candidate": *to}),
+                            );
+                            assert::sometimes(
+                                !*vote_granted,
+                                "vote denied",
+                                &json!({"voter": active, "candidate": *to}),
+                            );
+                            // 4.4: voted_for consistent after grant
+                            if let (true, Some(cid)) = (*vote_granted, rv_candidate) {
+                                assert::always(
+                                    node.voted_for == Some(cid),
+                                    "voted_for matches granted candidate",
+                                    &json!({"node": active, "candidate_id": cid}),
+                                );
+                            }
+                        }
+                        // 3.5: append accepted vs rejected
+                        Message::AppendEntriesResponse { success, .. } => {
+                            assert::sometimes(
+                                *success,
+                                "append accepted",
+                                &json!({"node": active, "from": from}),
+                            );
+                            assert::sometimes(
+                                !*success,
+                                "append rejected",
+                                &json!({"node": active, "from": from}),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
+                // ── Data invariants for leader processing AER (4.2, 4.3) ──
+                if node.role == Role::Leader && is_aer {
+                    assert::always(
+                        node.match_index[from] <= node.log.len(),
+                        "match_index within bounds",
+                        &json!({"leader": active, "peer": from, "match_index": node.match_index[from], "log_len": node.log.len()}),
+                    );
+                    assert::always(
+                        node.next_index[from] >= 1,
+                        "next_index stays positive",
+                        &json!({"leader": active, "peer": from, "next_index": node.next_index[from]}),
+                    );
+                }
+
+                // ── Log conflict paths (5.1–5.3) ────────────
+                let ae_accepted = replies.iter().any(|(_to, r)| {
+                    matches!(r, Message::AppendEntriesResponse { success: true, .. })
+                });
+                if ae_accepted {
+                    if let Some((prev_idx, ref old_terms, ref new_terms)) = ae_context {
+                        let mut had_conflict = false;
+                        let mut had_consistent = false;
+                        let mut had_new = false;
+                        for (old_opt, new_t) in old_terms.iter().zip(new_terms.iter()) {
+                            match old_opt {
+                                Some(old_t) if old_t != new_t => had_conflict = true,
+                                Some(_) => had_consistent = true,
+                                None => had_new = true,
+                            }
+                        }
+                        if had_conflict {
+                            assert::reachable(
+                                "log conflict: truncated",
+                                &json!({"node": active, "prev_log_index": prev_idx}),
+                            );
+                        }
+                        if had_consistent {
+                            assert::reachable(
+                                "log entries consistent",
+                                &json!({"node": active}),
+                            );
+                        }
+                        if had_new {
+                            assert::reachable(
+                                "new entries appended",
+                                &json!({"node": active, "count": old_terms.iter().filter(|t| t.is_none()).count()}),
+                            );
+                        }
+                    }
+                }
+
                 for (to, reply) in replies {
                     outbox.push((active, to, reply));
                 }
@@ -129,7 +331,25 @@ fn main() {
             // Timer logic
             match node.role {
                 Role::Follower | Role::Candidate => {
-                    if node.election_timer == 0 {
+                    // 3.2: election timeout sometimes-pair
+                    let timer_expired = node.election_timer == 0;
+                    assert::sometimes(
+                        timer_expired,
+                        "election timeout fired",
+                        &json!({"node": active}),
+                    );
+                    assert::sometimes(
+                        !timer_expired,
+                        "election timer decremented",
+                        &json!({"node": active}),
+                    );
+
+                    if timer_expired {
+                        // 2.1: follower started election
+                        assert::reachable(
+                            "follower started election",
+                            &json!({"node": active, "new_term": node.current_term + 1}),
+                        );
                         let msgs = node.become_candidate(jitter);
                         coverage::record_edge(1000 + node.id * 100);
                         for (to, msg) in msgs {
@@ -151,7 +371,8 @@ fn main() {
                     }
 
                     // Leader proposes a value sometimes
-                    if random::random_choice(4) == 0 {
+                    let proposed = random::random_choice(4) == 0;
+                    if proposed {
                         values_proposed += 1;
                         let entry = LogEntry {
                             term: node.current_term,
@@ -159,9 +380,45 @@ fn main() {
                         };
                         node.log.push(entry);
                         node.match_index[node.id] = node.log.len();
+                        // 4.5: leader match_index self-consistent
+                        assert::always(
+                            node.match_index[node.id] == node.log.len(),
+                            "leader self match_index tracks log",
+                            &json!({"node": active, "match_index": node.match_index[node.id], "log_len": node.log.len()}),
+                        );
+                        let old_commit = node.commit_index;
                         node.try_advance_commit();
+                        // 3.1: commit advancement sometimes-pair
+                        let commit_advanced = node.commit_index > old_commit;
+                        assert::sometimes(
+                            commit_advanced,
+                            "commit index advanced",
+                            &json!({"node": active, "commit": node.commit_index}),
+                        );
+                        assert::sometimes(
+                            !commit_advanced,
+                            "commit index not advanced",
+                            &json!({"node": active, "commit": node.commit_index}),
+                        );
+                        // 4.1: commit_index bounded after leader advance
+                        assert::always(
+                            node.commit_index <= node.log.len(),
+                            "commit_index within log bounds",
+                            &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
+                        );
                         coverage::record_edge(7000 + values_proposed as usize);
                     }
+                    // 3.6: leader proposed vs skipped
+                    assert::sometimes(
+                        proposed,
+                        "leader proposed value",
+                        &json!({"node": active}),
+                    );
+                    assert::sometimes(
+                        !proposed,
+                        "leader skipped proposal",
+                        &json!({"node": active}),
+                    );
                 }
             }
         }
@@ -170,6 +427,17 @@ fn main() {
         // SDK randomness controls whether messages arrive
         for (from, to, msg) in outbox {
             let deliver = random::random_choice(100) < 95; // 5% drop rate
+            // 3.3: message delivered vs dropped
+            assert::sometimes(
+                deliver,
+                "message delivered",
+                &json!({"from": from, "to": to}),
+            );
+            assert::sometimes(
+                !deliver,
+                "message dropped",
+                &json!({"from": from, "to": to}),
+            );
             if deliver {
                 nodes[to].inbox.push((from, msg));
             } else {

@@ -519,6 +519,14 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **musl compatible**: linkme works with musl static linking (guest binaries)
 - **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
 
+## Per-Assertion Detail in Reports (2026-03-29)
+- **AssertionDetail struct**: id, message, kind, verdict, hit_count, true_count, false_count (serde Serialize/Deserialize)
+- **Fixed collect_assertion_stats()**: Was only calling `register_catalog_entry()` on fresh oracle → all assertions appeared unexercised. Now properly merges by summing hit/true/false counts across per-VM oracles.
+- **Merge strategy**: Same assertion ID across VMs → sum counts, max runs_hit/runs_satisfied, preserve first_failure_run
+- **Report sections**: Failed (✗ with hit ratio), Unexercised (○), Passed (✓ with hit count) — sorted failed-first
+- **assertions.json**: Saved alongside report.txt in both `run` and `resume` paths. Machine-readable for CI/comparison.
+- **3 new tests**: detail formatting, serialization roundtrip, empty details
+
 ## Per-Round Exploration History (2026-03-29)
 - **RoundHistory struct**: round, branches_run, new_edges, cumulative_edges, bugs_found, cumulative_bugs, frontier_size, corpus_size
 - **Explorer stores Vec<RoundHistory>**: populated after each round, carried through checkpoint save/restore

@@ -519,6 +519,16 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **musl compatible**: linkme works with musl static linking (guest binaries)
 - **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
 
+## Reproduce Subcommand (2026-03-29)
+- **CLI**: `chaoscontrol-explore reproduce --kernel vmlinux --initrd initrd.gz --bug bug_0.json [--serial]`
+- **Workflow**: explore → minimize → reproduce. Verifies bug still triggers after minimization or on different host.
+- **Loads bug_N.json**: Same SerializableBug format as minimize. Reconstructs FaultSchedule.
+- **Bootstrap + snapshot + restore + run**: Same pattern as minimizer's triggers_bug(), but reports results instead of returning bool.
+- **Assertion check**: Merges oracle across all VMs, checks if target assertion_id has Verdict::Failed.
+- **Output**: `✗ BUG REPRODUCED` or `○ Bug NOT reproduced` + per-assertion verdict list.
+- **--serial flag**: Dumps per-VM serial console output for debugging.
+- **Exit code**: 0 = bug reproduced (success for CI "expected failure" checks), 1 = not reproduced.
+
 ## Per-Assertion Detail in Reports (2026-03-29)
 - **AssertionDetail struct**: id, message, kind, verdict, hit_count, true_count, false_count (serde Serialize/Deserialize)
 - **Fixed collect_assertion_stats()**: Was only calling `register_catalog_entry()` on fresh oracle → all assertions appeared unexercised. Now properly merges by summing hit/true/false counts across per-VM oracles.

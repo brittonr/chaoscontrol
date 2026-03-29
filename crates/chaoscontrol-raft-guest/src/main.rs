@@ -18,7 +18,8 @@ use chaoscontrol_raft_guest::{
     Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL,
     NUM_NODES,
 };
-use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
+use chaoscontrol_sdk::prelude::*;
+use chaoscontrol_sdk::{coverage, kcov, lifecycle, random};
 use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -83,6 +84,7 @@ fn main() {
     let bug = parse_bug_mode();
     println!("raft: starting 3-node cluster (bug={})", bug.name());
 
+    chaoscontrol_init();
     coverage::init();
     let kcov_ok = kcov::init();
     lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": 3, "bug": bug.name()}));
@@ -125,19 +127,19 @@ fn main() {
                     Message::RequestVote {
                         term, candidate_id, ..
                     } => {
-                        assert::reachable(
+                        cc_assert_reachable!(
                             "request_vote handler",
                             &json!({"node": active, "from": from, "term": *term, "candidate_id": *candidate_id}),
                         );
                     }
                     Message::RequestVoteResponse { term, vote_granted } => {
-                        assert::reachable(
+                        cc_assert_reachable!(
                             "request_vote_response handler",
                             &json!({"node": active, "from": from, "term": *term, "vote_granted": *vote_granted}),
                         );
                     }
                     Message::AppendEntries { term, entries, .. } => {
-                        assert::reachable(
+                        cc_assert_reachable!(
                             "append_entries handler",
                             &json!({"node": active, "from": from, "term": *term, "entry_count": entries.len()}),
                         );
@@ -147,7 +149,7 @@ fn main() {
                         success,
                         match_index,
                     } => {
-                        assert::reachable(
+                        cc_assert_reachable!(
                             "append_entries_response handler",
                             &json!({"node": active, "from": from, "term": *term, "success": *success, "match_index": *match_index}),
                         );
@@ -199,19 +201,19 @@ fn main() {
 
                 // ── State transitions (2.2, 2.3, 2.4) ───────
                 if node.current_term > old_term && node.role == Role::Follower {
-                    assert::reachable(
+                    cc_assert_reachable!(
                         "stepped down to follower",
                         &json!({"node": active, "old_term": old_term, "new_term": node.current_term}),
                     );
                 }
                 if old_role == Role::Candidate && node.role == Role::Follower && is_ae {
-                    assert::reachable(
+                    cc_assert_reachable!(
                         "candidate stepped down on append_entries",
                         &json!({"node": active, "term": node.current_term}),
                     );
                 }
                 if old_role == Role::Candidate && node.role == Role::Leader {
-                    assert::reachable(
+                    cc_assert_reachable!(
                         "candidate won election",
                         &json!({"node": active, "term": node.current_term}),
                     );
@@ -219,7 +221,7 @@ fn main() {
 
                 // ── Data invariant: commit_index bounded (4.1) ──
                 if node.commit_index != old_commit {
-                    assert::always(
+                    cc_assert_always!(
                         node.commit_index <= node.log.len(),
                         "commit_index within log bounds",
                         &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
@@ -231,19 +233,19 @@ fn main() {
                     match reply {
                         // 3.4: vote granted vs denied
                         Message::RequestVoteResponse { vote_granted, .. } => {
-                            assert::sometimes(
+                            cc_assert_sometimes!(
                                 *vote_granted,
                                 "vote granted",
                                 &json!({"voter": active, "candidate": *to}),
                             );
-                            assert::sometimes(
+                            cc_assert_sometimes!(
                                 !*vote_granted,
                                 "vote denied",
                                 &json!({"voter": active, "candidate": *to}),
                             );
                             // 4.4: voted_for consistent after grant
                             if let (true, Some(cid)) = (*vote_granted, rv_candidate) {
-                                assert::always(
+                                cc_assert_always!(
                                     node.voted_for == Some(cid),
                                     "voted_for matches granted candidate",
                                     &json!({"node": active, "candidate_id": cid}),
@@ -252,12 +254,12 @@ fn main() {
                         }
                         // 3.5: append accepted vs rejected
                         Message::AppendEntriesResponse { success, .. } => {
-                            assert::sometimes(
+                            cc_assert_sometimes!(
                                 *success,
                                 "append accepted",
                                 &json!({"node": active, "from": from}),
                             );
-                            assert::sometimes(
+                            cc_assert_sometimes!(
                                 !*success,
                                 "append rejected",
                                 &json!({"node": active, "from": from}),
@@ -269,12 +271,12 @@ fn main() {
 
                 // ── Data invariants for leader processing AER (4.2, 4.3) ──
                 if node.role == Role::Leader && is_aer {
-                    assert::always(
+                    cc_assert_always!(
                         node.match_index[from] <= node.log.len(),
                         "match_index within bounds",
                         &json!({"leader": active, "peer": from, "match_index": node.match_index[from], "log_len": node.log.len()}),
                     );
-                    assert::always(
+                    cc_assert_always!(
                         node.next_index[from] >= 1,
                         "next_index stays positive",
                         &json!({"leader": active, "peer": from, "next_index": node.next_index[from]}),
@@ -298,16 +300,19 @@ fn main() {
                             }
                         }
                         if had_conflict {
-                            assert::reachable(
+                            cc_assert_reachable!(
                                 "log conflict: truncated",
                                 &json!({"node": active, "prev_log_index": prev_idx}),
                             );
                         }
                         if had_consistent {
-                            assert::reachable("log entries consistent", &json!({"node": active}));
+                            cc_assert_reachable!(
+                                "log entries consistent",
+                                &json!({"node": active})
+                            );
                         }
                         if had_new {
-                            assert::reachable(
+                            cc_assert_reachable!(
                                 "new entries appended",
                                 &json!({"node": active, "count": old_terms.iter().filter(|t| t.is_none()).count()}),
                             );
@@ -325,12 +330,12 @@ fn main() {
                 Role::Follower | Role::Candidate => {
                     // 3.2: election timeout sometimes-pair
                     let timer_expired = node.election_timer == 0;
-                    assert::sometimes(
+                    cc_assert_sometimes!(
                         timer_expired,
                         "election timeout fired",
                         &json!({"node": active}),
                     );
-                    assert::sometimes(
+                    cc_assert_sometimes!(
                         !timer_expired,
                         "election timer decremented",
                         &json!({"node": active}),
@@ -338,7 +343,7 @@ fn main() {
 
                     if timer_expired {
                         // 2.1: follower started election
-                        assert::reachable(
+                        cc_assert_reachable!(
                             "follower started election",
                             &json!({"node": active, "new_term": node.current_term + 1}),
                         );
@@ -373,7 +378,7 @@ fn main() {
                         node.log.push(entry);
                         node.match_index[node.id] = node.log.len();
                         // 4.5: leader match_index self-consistent
-                        assert::always(
+                        cc_assert_always!(
                             node.match_index[node.id] == node.log.len(),
                             "leader self match_index tracks log",
                             &json!({"node": active, "match_index": node.match_index[node.id], "log_len": node.log.len()}),
@@ -382,18 +387,18 @@ fn main() {
                         node.try_advance_commit();
                         // 3.1: commit advancement sometimes-pair
                         let commit_advanced = node.commit_index > old_commit;
-                        assert::sometimes(
+                        cc_assert_sometimes!(
                             commit_advanced,
                             "commit index advanced",
                             &json!({"node": active, "commit": node.commit_index}),
                         );
-                        assert::sometimes(
+                        cc_assert_sometimes!(
                             !commit_advanced,
                             "commit index not advanced",
                             &json!({"node": active, "commit": node.commit_index}),
                         );
                         // 4.1: commit_index bounded after leader advance
-                        assert::always(
+                        cc_assert_always!(
                             node.commit_index <= node.log.len(),
                             "commit_index within log bounds",
                             &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
@@ -401,8 +406,12 @@ fn main() {
                         coverage::record_edge(7000 + values_proposed as usize);
                     }
                     // 3.6: leader proposed vs skipped
-                    assert::sometimes(proposed, "leader proposed value", &json!({"node": active}));
-                    assert::sometimes(
+                    cc_assert_sometimes!(
+                        proposed,
+                        "leader proposed value",
+                        &json!({"node": active})
+                    );
+                    cc_assert_sometimes!(
                         !proposed,
                         "leader skipped proposal",
                         &json!({"node": active}),
@@ -416,12 +425,12 @@ fn main() {
         for (from, to, msg) in outbox {
             let deliver = random::random_choice(100) < 95; // 5% drop rate
                                                            // 3.3: message delivered vs dropped
-            assert::sometimes(
+            cc_assert_sometimes!(
                 deliver,
                 "message delivered",
                 &json!({"from": from, "to": to}),
             );
-            assert::sometimes(
+            cc_assert_sometimes!(
                 !deliver,
                 "message dropped",
                 &json!({"from": from, "to": to}),
@@ -441,21 +450,21 @@ fn main() {
 
         // ── Safety invariants ───────────────────────────────
         let election_violations = check_election_safety(&nodes);
-        assert::always(
+        cc_assert_always!(
             election_violations.is_empty(),
             "election safety: at most one leader per term",
             &json!({}),
         );
 
         let log_violations = check_log_matching(&nodes);
-        assert::always(
+        cc_assert_always!(
             log_violations.is_empty(),
             "log matching: divergence before agreement",
             &json!({}),
         );
 
         let completeness_violations = check_leader_completeness(&nodes);
-        assert::always(
+        cc_assert_always!(
             completeness_violations.is_empty(),
             "leader completeness: committed entry preserved",
             &json!({}),
@@ -463,9 +472,9 @@ fn main() {
 
         // ── Liveness checks ─────────────────────────────────
         let has_leader = nodes.iter().any(|n| n.role == Role::Leader);
-        assert::sometimes(has_leader, "leader elected", &json!({}));
-        assert::sometimes(values_committed > 0, "value committed", &json!({}));
-        assert::sometimes(values_committed >= 3, "3+ values committed", &json!({}));
+        cc_assert_sometimes!(has_leader, "leader elected", &json!({}));
+        cc_assert_sometimes!(values_committed > 0, "value committed", &json!({}));
+        cc_assert_sometimes!(values_committed >= 3, "3+ values committed", &json!({}));
 
         // ── Drain kernel coverage into bitmap ───────────────
         kcov::collect();

@@ -24,7 +24,8 @@
 //! cargo run --release --bin sdk_guest_test -- result-dev/vmlinux
 //! ```
 
-use chaoscontrol_sdk::{assert, coverage, kcov, lifecycle, random};
+use chaoscontrol_sdk::prelude::*;
+use chaoscontrol_sdk::{coverage, kcov, lifecycle, random};
 use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -71,6 +72,7 @@ fn main() {
     println!("chaoscontrol-guest: starting");
 
     // ── Phase 1: coverage init ──────────────────────────────────
+    chaoscontrol_init();
     coverage::init();
     let kcov_ok = kcov::init();
     println!(
@@ -94,34 +96,34 @@ fn main() {
         coverage::record_edge(i * 31 + choice * 17);
 
         // ── Safety property: choice always in range ─────────────
-        assert::always(choice < NUM_CHOICES, "random choice in range", &json!({}));
+        cc_assert_always!(choice < NUM_CHOICES, "random choice in range", &json!({}));
 
         // ── Liveness: eventually see each choice value ──────────
-        assert::sometimes(choice == 0, "saw choice 0", &json!({}));
-        assert::sometimes(choice == 1, "saw choice 1", &json!({}));
-        assert::sometimes(choice == 2, "saw choice 2", &json!({}));
-        assert::sometimes(choice == 3, "saw choice 3", &json!({}));
+        cc_assert_sometimes!(choice == 0, "saw choice 0", &json!({}));
+        cc_assert_sometimes!(choice == 1, "saw choice 1", &json!({}));
+        cc_assert_sometimes!(choice == 2, "saw choice 2", &json!({}));
+        cc_assert_sometimes!(choice == 3, "saw choice 3", &json!({}));
 
         // ── Path-specific coverage + reachability ───────────────
         match choice {
             0 => {
-                assert::reachable("path A", &json!({}));
+                cc_assert_reachable!("path A", &json!({}));
                 coverage::record_edge(10_000);
             }
             1 => {
-                assert::reachable("path B", &json!({}));
+                cc_assert_reachable!("path B", &json!({}));
                 coverage::record_edge(20_000);
             }
             2 => {
-                assert::reachable("path C", &json!({}));
+                cc_assert_reachable!("path C", &json!({}));
                 coverage::record_edge(30_000);
             }
             3 => {
-                assert::reachable("path D", &json!({}));
+                cc_assert_reachable!("path D", &json!({}));
                 coverage::record_edge(40_000);
             }
             _ => {
-                assert::unreachable("impossible choice value", &json!({}));
+                cc_assert_unreachable!("impossible choice value", &json!({}));
             }
         }
 
@@ -135,7 +137,7 @@ fn main() {
     }
 
     // ── Phase 4: summary ────────────────────────────────────────
-    assert::sometimes(true, "workload completed", &json!({}));
+    cc_assert_sometimes!(true, "workload completed", &json!({}));
 
     lifecycle::send_event("workload_done", &json!({"iterations": 50}));
 

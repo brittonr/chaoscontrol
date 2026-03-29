@@ -500,9 +500,24 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 
 ### Remaining Antithesis SDK gaps
 - **JSON details**: `details: &serde_json::Value` instead of `&[(&str, &str)]` (big cross-cutting change)
-- **Assertion catalog**: `linkme` distributed slice to register ALL assertion sites at compile time
+- ✅ **Assertion catalog**: `linkme` distributed slice to register ALL assertion sites at compile time — DONE (2026-03-29). Every `cc_assert_*!` macro registers a `CatalogEntry` at link time. `chaoscontrol_init()` sends catalog to VMM via `CMD_ASSERT_CATALOG`. Oracle pre-populates records so "never hit" → `Unexercised` verdict. Explorer report shows "Assertion Coverage" section with registered/passed/failed/unexercised counts + exercise percentage.
 - **`assert_raw()`**: Low-level function for third-party framework integration
-- **Assertion density**: Raft guest has 6 assertions (3 safety, 3 liveness) — needs handler-level reachability, `sometimes` pairs on branches, state transition coverage, inline data invariants. See `docs/assertion-guidelines.md`.
+- **Assertion density**: Raft guest has 35 assertions — needs handler-level reachability, `sometimes` pairs on branches, state transition coverage, inline data invariants. See `docs/assertion-guidelines.md`.
+
+## Assertion Catalog (2026-03-29)
+- **linkme 0.3**: `distributed_slice` collects `CatalogEntry` statics across all compilation units
+- **CatalogEntry**: `{ id: u32, message: &'static str, kind: u8, file: &'static str, line: u32 }`
+- **CATALOG_KIND_***: 0=Always, 1=Sometimes, 2=Reachable, 3=Unreachable
+- **__cc_register_catalog! macro**: Uses `const _: () = { ... }` trick for anonymous const — no name collisions between multiple macro invocations
+- **emit_catalog()**: Iterates ASSERTION_CATALOG slice, sends CMD_ASSERT_CATALOG (0x05) per entry
+- **FaultEngine**: Handles CMD_ASSERT_CATALOG → `oracle.register_catalog_entry(id, kind, message)`
+- **Oracle**: `register_catalog_entry()` creates AssertionRecord with hit_count=0 (idempotent — doesn't overwrite existing runtime records)
+- **OracleReport**: Added `catalog_size: usize` field
+- **Explorer**: `AssertionStats { catalog_size, passed, failed, unexercised }` in ExplorationReport
+- **Report format**: "Assertion Coverage" section with exercise percentage
+- **no_std mode**: `__cc_register_catalog!` is no-op without `full` feature — no linkme dependency
+- **musl compatible**: linkme works with musl static linking (guest binaries)
+- **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
 
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode

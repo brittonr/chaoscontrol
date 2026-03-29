@@ -54,6 +54,8 @@
 
 pub mod assert;
 pub mod coverage;
+#[cfg(feature = "full")]
+pub mod details;
 pub mod lifecycle;
 pub mod prelude;
 pub mod random;

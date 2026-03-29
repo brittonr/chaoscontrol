@@ -1,87 +1,80 @@
 ## ADDED Requirements
 
-### Requirement: Read guest memory
-The Debugger SHALL support reading arbitrary guest physical memory at the
-current replay position.
+### Requirement: Memory reading from snapshots
+The debugger SHALL implement `read_memory()` to extract guest memory content from the snapshot at the current debugger position. It MUST support both guest physical addresses (GPA) and guest virtual addresses (GVA), with GVA translated to GPA via CR3 page table walks.
 
-#### Scenario: Read a single page
-- **WHEN** `read_memory(vm_index=0, address=0x1000, size=4096)` is called after `goto(tick)`
-- **THEN** 4096 bytes of guest physical memory starting at GPA 0x1000 SHALL be returned
+#### Scenario: Read physical memory at current position
+- **WHEN** the debugger calls `read_memory(vm_index, gpa, size)` with a guest physical address
+- **THEN** it returns the exact bytes from the guest memory at that GPA in the current checkpoint snapshot
 
-#### Scenario: Read out-of-bounds address
-- **WHEN** `read_memory` is called with an address beyond guest memory size
-- **THEN** an error SHALL be returned (not a panic)
+#### Scenario: Read virtual memory with page table translation
+- **WHEN** the debugger calls `read_memory(vm_index, gva, size)` with a guest virtual address  
+- **THEN** it translates GVA to GPA using CR3 from the vCPU snapshot, then returns memory content at the resulting GPA
 
-### Requirement: Read guest registers
-The Debugger SHALL support reading vCPU register state at the current replay
-position.
+#### Scenario: Handle invalid addresses gracefully
+- **WHEN** the debugger tries to read from unmapped GVA or out-of-bounds GPA
+- **THEN** it returns a `ReplayError::InvalidAddress` instead of crashing or returning garbage data
 
-#### Scenario: Read BSP registers
-- **WHEN** `read_registers(vm_index=0, vcpu=0)` is called after `goto(tick)`
-- **THEN** a RegisterState containing RIP, RSP, RAX through R15, RFLAGS, segment registers, and CR0/CR3/CR4 SHALL be returned
+### Requirement: Register reading from snapshots  
+The debugger SHALL implement `read_registers()` to extract complete vCPU register state from `VcpuSnapshot` at the current position. It MUST populate all fields in `RegisterState` from the corresponding `kvm_regs`, `kvm_sregs`, and `kvm_fpu` structures.
 
-#### Scenario: Read AP registers in SMP
-- **WHEN** `read_registers(vm_index=0, vcpu=1)` is called on a 2-vCPU VM
-- **THEN** the AP's register state SHALL be returned
+#### Scenario: Read general purpose registers
+- **WHEN** the debugger calls `read_registers(vm_index, vcpu_index)`
+- **THEN** it returns `RegisterState` with `rax`, `rbx`, `rcx`, etc. populated from `vcpu_snapshot.regs`
 
-### Requirement: Write guest memory (poke_memory)
-The Debugger SHALL support writing arbitrary bytes to guest physical memory
-at the current replay position, creating a "what if" fork.
+#### Scenario: Read segment and control registers
+- **WHEN** reading registers from a vCPU snapshot
+- **THEN** `RegisterState` includes `cs`, `ss`, `rip`, `rsp`, `rflags` from the appropriate snapshot fields
 
-#### Scenario: Poke a single byte
-- **WHEN** `poke_memory(vm_index=0, address=0x2000, data=[0x42])` is called
-- **THEN** guest physical address 0x2000 SHALL contain 0x42
-- **AND** subsequent `step_forward` SHALL execute with the modified memory
+#### Scenario: Handle invalid vCPU index
+- **WHEN** the debugger requests registers for a non-existent vCPU index
+- **THEN** it returns `ReplayError::InvalidVcpu` with the invalid index
 
-#### Scenario: Poke and continue
-- **WHEN** `poke_memory` is called followed by `step_forward(100)`
-- **THEN** the simulation SHALL run for 100 ticks using the modified guest memory
+### Requirement: Memory modification with replay
+The debugger SHALL implement `write_memory()` that modifies guest memory at the current position and replays forward to show the effect. It MUST build a `MemoryModification` and use the existing `counterfactual()` replay mechanism.
 
-#### Scenario: Poke does not mutate the underlying recording
-- **WHEN** `poke_memory` is called and then `goto(0)` rewinds to the start
-- **THEN** the original memory contents SHALL be intact
+#### Scenario: Poke memory and replay forward
+- **WHEN** the debugger calls `write_memory(vm_index, addr, data)` and then `step_forward(N)`  
+- **THEN** memory at `addr` contains the new `data` during subsequent execution for N ticks
 
-### Requirement: Set guest registers
-The Debugger SHALL support writing vCPU register values at the current replay
-position.
+#### Scenario: Memory modifications are ephemeral
+- **WHEN** a debug session modifies memory and then navigates to a different tick
+- **THEN** the memory changes are lost and the original recorded values are restored
 
-#### Scenario: Set RIP
-- **WHEN** `set_register(vm_index=0, vcpu=0, reg=RIP, value=0x5000)` is called
-- **THEN** the vCPU's instruction pointer SHALL be 0x5000
-- **AND** subsequent `step_forward` SHALL resume execution from 0x5000
+#### Scenario: Multiple memory modifications in one operation
+- **WHEN** the debugger applies multiple `MemoryModification` via `counterfactual(modifications, ticks)`
+- **THEN** all modifications take effect simultaneously before replay begins
 
-#### Scenario: Set general-purpose register
-- **WHEN** `set_register(vm_index=0, vcpu=0, reg=RAX, value=0xFF)` is called
-- **THEN** RAX SHALL contain 0xFF on the next VM entry
+### Requirement: Register modification with replay
+The debugger SHALL implement `set_register()` that modifies vCPU register values at the current position and replays forward. It MUST introduce a new `RegisterModification` type parallel to `MemoryModification`.
 
-### Requirement: Counterfactual replay with register overrides
-The `counterfactual()` method SHALL accept both memory modifications and
-register modifications.
+#### Scenario: Set general purpose register and replay
+- **WHEN** the debugger calls `set_register(vm_index, vcpu_index, "rax", 0x1337)` and replays forward
+- **THEN** the vCPU's `rax` register contains `0x1337` during subsequent execution
 
-#### Scenario: Counterfactual with register override
-- **WHEN** `counterfactual(modifications=[], register_mods=[{vm:0, vcpu:0, reg:RAX, value:1}], ticks=200)` is called
-- **THEN** the replay SHALL execute 200 ticks with RAX=1 from the current checkpoint
+#### Scenario: Register modifications combine with memory modifications  
+- **WHEN** the debugger applies both `MemoryModification` and `RegisterModification` in one `counterfactual()` call
+- **THEN** both memory and register changes take effect before replay begins
 
-#### Scenario: Combined memory and register override
-- **WHEN** `counterfactual` is called with both a memory patch and a register override
-- **THEN** both modifications SHALL be applied before resuming execution
+#### Scenario: Invalid register names are rejected
+- **WHEN** the debugger tries to set a non-existent register name like "xyz"
+- **THEN** it returns `ReplayError::InvalidRegister` without modifying any state
 
-### Requirement: SimulationRunner memory/register access
-The `SimulationRunner` trait SHALL expose methods for reading and writing
-guest memory and registers so the Debugger can access live VM state.
+### Requirement: CLI integration for interactive debugging
+The debugger CLI SHALL support interactive commands for memory and register access: `read`, `regs`, `poke`, `setreg`. Each command MUST provide human-readable output with hex formatting for addresses and values.
 
-#### Scenario: Read memory through runner
-- **WHEN** `runner.read_memory(vm_index, address, size)` is called
-- **THEN** bytes from the guest's physical memory SHALL be returned
+#### Scenario: Interactive memory reading
+- **WHEN** the user types `read 0x401000 64` in the debugger CLI
+- **THEN** it displays 64 bytes from address 0x401000 in hex dump format with ASCII representation
 
-#### Scenario: Write memory through runner
-- **WHEN** `runner.write_memory(vm_index, address, data)` is called
-- **THEN** the bytes SHALL be written to the guest's physical memory
+#### Scenario: Register display
+- **WHEN** the user types `regs 0` to show vCPU 0 registers  
+- **THEN** it displays all general purpose, segment, and control registers in name=value format
 
-#### Scenario: Read registers through runner
-- **WHEN** `runner.read_registers(vm_index, vcpu)` is called
-- **THEN** the vCPU's current register state SHALL be returned
+#### Scenario: Memory poking  
+- **WHEN** the user types `poke 0x401000 deadbeef` 
+- **THEN** it writes the bytes `0xdeadbeef` to address `0x401000` and confirms the modification
 
-#### Scenario: Set registers through runner
-- **WHEN** `runner.set_registers(vm_index, vcpu, register_state)` is called
-- **THEN** the vCPU's registers SHALL be updated
+#### Scenario: Register setting
+- **WHEN** the user types `setreg 0 rax 0x1337`
+- **THEN** it sets vCPU 0's `rax` register to `0x1337` and shows the updated value

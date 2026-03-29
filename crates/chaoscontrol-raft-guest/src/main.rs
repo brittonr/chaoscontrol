@@ -18,9 +18,18 @@ use chaoscontrol_raft_guest::{
     Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL,
     NUM_NODES,
 };
+use chaoscontrol_sdk::assert::details;
 use chaoscontrol_sdk::prelude::*;
 use chaoscontrol_sdk::{coverage, kcov, lifecycle, random};
 use serde_json::json;
+
+fn role_str(r: Role) -> &'static str {
+    match r {
+        Role::Follower => "follower",
+        Role::Candidate => "candidate",
+        Role::Leader => "leader",
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Init
@@ -428,12 +437,12 @@ fn main() {
             cc_assert_sometimes!(
                 deliver,
                 "message delivered",
-                &json!({"from": from, "to": to}),
+                &details::network(from, to, true),
             );
             cc_assert_sometimes!(
                 !deliver,
                 "message dropped",
-                &json!({"from": from, "to": to}),
+                &details::network(from, to, false),
             );
             if deliver {
                 nodes[to].inbox.push((from, msg));
@@ -449,32 +458,55 @@ fn main() {
         }
 
         // ── Safety invariants ───────────────────────────────
+        let leader_node = nodes.iter().find(|n| n.role == Role::Leader);
+        let leader_term = leader_node.map_or(0, |n| n.current_term);
+        let leader_detail = details::node(
+            leader_node.map_or(usize::MAX, |n| n.id),
+            leader_term,
+            leader_node.map_or("none", |n| role_str(n.role)),
+        );
+
         let election_violations = check_election_safety(&nodes);
         cc_assert_always!(
             election_violations.is_empty(),
             "election safety: at most one leader per term",
-            &json!({}),
+            &leader_detail,
         );
 
         let log_violations = check_log_matching(&nodes);
         cc_assert_always!(
             log_violations.is_empty(),
             "log matching: divergence before agreement",
-            &json!({}),
+            &details::merge(
+                &leader_detail,
+                &details::log(
+                    max_commit,
+                    leader_term,
+                    nodes.iter().map(|n| n.log.len()).max().unwrap_or(0),
+                ),
+            ),
         );
 
         let completeness_violations = check_leader_completeness(&nodes);
         cc_assert_always!(
             completeness_violations.is_empty(),
             "leader completeness: committed entry preserved",
-            &json!({}),
+            &details::merge(&leader_detail, &json!({"max_commit": max_commit})),
         );
 
         // ── Liveness checks ─────────────────────────────────
-        let has_leader = nodes.iter().any(|n| n.role == Role::Leader);
-        cc_assert_sometimes!(has_leader, "leader elected", &json!({}));
-        cc_assert_sometimes!(values_committed > 0, "value committed", &json!({}));
-        cc_assert_sometimes!(values_committed >= 3, "3+ values committed", &json!({}));
+        let has_leader = leader_node.is_some();
+        cc_assert_sometimes!(has_leader, "leader elected", &leader_detail);
+        cc_assert_sometimes!(
+            values_committed > 0,
+            "value committed",
+            &details::node(active, nodes[active].current_term, role_str(nodes[active].role)),
+        );
+        cc_assert_sometimes!(
+            values_committed >= 3,
+            "3+ values committed",
+            &details::node(active, nodes[active].current_term, role_str(nodes[active].role)),
+        );
 
         // ── Drain kernel coverage into bitmap ───────────────
         kcov::collect();

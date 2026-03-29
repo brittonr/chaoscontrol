@@ -143,6 +143,19 @@ pub fn format_report(report: &ExplorationReport) -> String {
                     "  ✗ [{}] {} ({}): {} hits, {}/{} true\n",
                     a.kind, a.message, a.id, a.hit_count, a.true_count, a.hit_count
                 ));
+                if let Some(details) = &a.last_failure_details {
+                    // Pretty-print JSON if valid, otherwise raw
+                    let pretty = serde_json::from_str::<serde_json::Value>(details)
+                        .ok()
+                        .and_then(|v| serde_json::to_string_pretty(&v).ok());
+                    if let Some(formatted) = pretty {
+                        for line in formatted.lines() {
+                            output.push_str(&format!("      {}\n", line));
+                        }
+                    } else {
+                        output.push_str(&format!("      {}\n", details));
+                    }
+                }
             }
             output.push('\n');
         }
@@ -625,6 +638,7 @@ mod tests {
                 hit_count: 500,
                 true_count: 500,
                 false_count: 0,
+                last_failure_details: None,
             },
             AssertionDetail {
                 id: 200,
@@ -634,6 +648,9 @@ mod tests {
                 hit_count: 300,
                 true_count: 290,
                 false_count: 10,
+                last_failure_details: Some(
+                    r#"{"node_id":2,"term":5,"commit_index":3}"#.into(),
+                ),
             },
             AssertionDetail {
                 id: 300,
@@ -643,6 +660,7 @@ mod tests {
                 hit_count: 0,
                 true_count: 0,
                 false_count: 0,
+                last_failure_details: None,
             },
             AssertionDetail {
                 id: 400,
@@ -652,6 +670,7 @@ mod tests {
                 hit_count: 0,
                 true_count: 0,
                 false_count: 0,
+                last_failure_details: None,
             },
         ];
 
@@ -683,6 +702,10 @@ mod tests {
         assert!(formatted.contains("Failed Assertions"));
         assert!(formatted.contains("✗"));
         assert!(formatted.contains("log matching"));
+        // Failure details are printed as indented JSON
+        assert!(formatted.contains("\"node_id\": 2"));
+        assert!(formatted.contains("\"term\": 5"));
+        assert!(formatted.contains("\"commit_index\": 3"));
 
         // Unexercised section
         assert!(formatted.contains("Unexercised Assertions"));
@@ -708,6 +731,7 @@ mod tests {
             hit_count: 1000,
             true_count: 1000,
             false_count: 0,
+            last_failure_details: None,
         };
 
         let json = serde_json::to_string(&detail).unwrap();

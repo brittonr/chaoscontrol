@@ -917,6 +917,11 @@ impl Explorer {
                     if existing.first_failure_run.is_none() {
                         existing.first_failure_run = record.first_failure_run;
                     }
+                    // Keep most recent failure details
+                    if record.last_failure_details.is_some() {
+                        existing.last_failure_details =
+                            record.last_failure_details.clone();
+                    }
                 } else {
                     merged.insert(*id, record.clone());
                 }
@@ -937,6 +942,10 @@ impl Explorer {
                 Verdict::Unexercised => unexercised += 1,
             }
 
+            let failure_details = record.last_failure_details.as_ref().and_then(|bytes| {
+                std::str::from_utf8(bytes).ok().map(|s| s.to_string())
+            });
+
             details.push(AssertionDetail {
                 id: *id,
                 message: record.message.clone(),
@@ -945,6 +954,7 @@ impl Explorer {
                 hit_count: record.hit_count,
                 true_count: record.true_count,
                 false_count: record.false_count,
+                last_failure_details: failure_details,
             });
         }
 
@@ -1203,6 +1213,9 @@ pub struct AssertionDetail {
     pub true_count: u64,
     /// Times condition was false (always/sometimes only).
     pub false_count: u64,
+    /// JSON details from the most recent failure (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_failure_details: Option<String>,
 }
 
 /// Current exploration statistics.
@@ -1313,6 +1326,7 @@ mod tests {
                 runs_hit: 1,
                 runs_satisfied: 1,
                 first_failure_run: None,
+                last_failure_details: None,
             },
         );
 

@@ -46,6 +46,7 @@ impl TriageEngine {
                             location: location.clone(),
                             kind: "always".to_string(), // Would need to track assertion types
                             description: description.clone(),
+                            details: None,
                         });
                     }
                 }
@@ -56,6 +57,7 @@ impl TriageEngine {
                 location: "unknown".to_string(),
                 kind: "unknown".to_string(),
                 description: description.clone(),
+                details: None,
             });
 
         // Build timeline: events leading up to the bug
@@ -171,6 +173,9 @@ pub struct AssertionInfo {
     pub location: String,
     pub kind: String, // "always", "sometimes", "reachable"
     pub description: String,
+    /// JSON details from the assertion (if available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }
 
 /// A single entry in the bug timeline.

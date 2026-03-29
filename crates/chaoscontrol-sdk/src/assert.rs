@@ -23,6 +23,10 @@
 use crate::transport;
 use chaoscontrol_protocol::*;
 
+/// Re-export the details module for `assert::details::*` access.
+#[cfg(feature = "full")]
+pub use crate::details;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Assertion catalog (compile-time registration via linkme)
 // ═══════════════════════════════════════════════════════════════════════

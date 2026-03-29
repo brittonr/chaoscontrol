@@ -18,6 +18,7 @@
 //! ```
 
 use chaoscontrol_guest_net::{vm_id, GuestNetwork, TcpHandle, TcpState};
+use chaoscontrol_sdk::assert::details;
 use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
 use serde_json::json;
 
@@ -114,7 +115,10 @@ impl Server {
                             assert::always(
                                 true,
                                 "server responds to ping",
-                                &json!({"client": client_id, "pong_count": self.pong_count}),
+                                &details::merge(
+                                    &details::network(client_id.parse().unwrap_or(0), 0, true),
+                                    &json!({"pong_count": self.pong_count}),
+                                ),
                             );
                             assert::sometimes(
                                 self.pong_count >= 2,
@@ -211,15 +215,18 @@ impl Client {
                         assert::always(
                             true,
                             "client receives correct pong",
-                            &json!({
-                                "vm_id": self.my_id,
-                                "pongs": self.pongs_received,
-                            }),
+                            &details::merge(
+                                &details::network(0, self.my_id, true),
+                                &json!({"pongs": self.pongs_received}),
+                            ),
                         );
                         assert::sometimes(
                             self.pongs_received >= 3,
                             "client gets 3+ pongs",
-                            &json!({"vm_id": self.my_id, "pongs": self.pongs_received}),
+                            &details::merge(
+                                &details::network(0, self.my_id, true),
+                                &json!({"pongs": self.pongs_received}),
+                            ),
                         );
                         self.state = ClientState::GotPong;
                     }

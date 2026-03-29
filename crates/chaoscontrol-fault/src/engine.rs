@@ -210,8 +210,10 @@ impl FaultEngine {
             }
             CMD_ASSERT_ALWAYS => {
                 let cond = page.condition();
-                let message = self.decode_message(page);
-                self.oracle.record_always(page.id, cond, &message);
+                let (message, details) = self.decode_message_and_details(page);
+                let details_ref = if cond { None } else { Some(details.as_slice()) };
+                self.oracle
+                    .record_always_with_details(page.id, cond, &message, details_ref);
                 if cond {
                     (0, STATUS_OK)
                 } else {
@@ -220,8 +222,10 @@ impl FaultEngine {
             }
             CMD_ASSERT_SOMETIMES => {
                 let cond = page.condition();
-                let message = self.decode_message(page);
-                self.oracle.record_sometimes(page.id, cond, &message);
+                let (message, details) = self.decode_message_and_details(page);
+                let details_ref = if cond { None } else { Some(details.as_slice()) };
+                self.oracle
+                    .record_sometimes_with_details(page.id, cond, &message, details_ref);
                 (0, STATUS_OK)
             }
             CMD_ASSERT_REACHABLE => {
@@ -230,8 +234,12 @@ impl FaultEngine {
                 (0, STATUS_OK)
             }
             CMD_ASSERT_UNREACHABLE => {
-                let message = self.decode_message(page);
-                self.oracle.record_unreachable(page.id, &message);
+                let (message, details) = self.decode_message_and_details(page);
+                self.oracle.record_unreachable_with_details(
+                    page.id,
+                    &message,
+                    Some(details.as_slice()),
+                );
                 (0, STATUS_UNREACHABLE_REACHED)
             }
             CMD_LIFECYCLE_SETUP_COMPLETE => {
@@ -436,6 +444,17 @@ impl FaultEngine {
         }
         let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
         decode_payload(buf).map(|p| p.message).unwrap_or_default()
+    }
+
+    fn decode_message_and_details(&self, page: &HypercallPage) -> (String, Vec<u8>) {
+        let payload_len = page.payload_len as usize;
+        if payload_len == 0 {
+            return (String::new(), b"{}".to_vec());
+        }
+        let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
+        decode_payload(buf)
+            .map(|p| (p.message, p.json_details))
+            .unwrap_or_else(|| (String::new(), b"{}".to_vec()))
     }
 
     fn decode_event(&self, page: &HypercallPage) -> (String, Vec<u8>) {

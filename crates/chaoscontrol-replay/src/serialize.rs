@@ -179,6 +179,7 @@ mod tests {
                 location: "test.rs:123".to_string(),
                 kind: "always".to_string(),
                 description: "Leader must be valid".to_string(),
+                details: None,
             },
             timeline: vec![
                 TimelineEntry {

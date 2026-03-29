@@ -35,6 +35,8 @@ pub struct AssertionRecord {
     pub runs_satisfied: u32,
     /// ID of the first run that caused a failure (if any).
     pub first_failure_run: Option<u32>,
+    /// JSON bytes from the most recent failure (None if never failed).
+    pub last_failure_details: Option<Vec<u8>>,
 }
 
 /// The kind of assertion.
@@ -57,6 +59,7 @@ impl AssertionRecord {
             runs_hit: 0,
             runs_satisfied: 0,
             first_failure_run: None,
+            last_failure_details: None,
         }
     }
 
@@ -273,6 +276,20 @@ impl PropertyOracle {
     ///
     /// Returns `true` if the assertion passed (condition was true).
     pub fn record_always(&mut self, id: u32, condition: bool, message: &str) -> bool {
+        self.record_always_with_details(id, condition, message, None)
+    }
+
+    /// Record an `assert_always` evaluation with optional failure details.
+    ///
+    /// Details are stored only when `condition` is false (failure).
+    /// Passing assertions never overwrite stored failure details.
+    pub fn record_always_with_details(
+        &mut self,
+        id: u32,
+        condition: bool,
+        message: &str,
+        details: Option<&[u8]>,
+    ) -> bool {
         let run_id = self.current_run_id();
         let record = self
             .assertions
@@ -286,6 +303,9 @@ impl PropertyOracle {
             record.false_count += 1;
             if record.first_failure_run.is_none() {
                 record.first_failure_run = Some(run_id);
+            }
+            if let Some(d) = details {
+                record.last_failure_details = Some(d.to_vec());
             }
         }
 
@@ -303,6 +323,19 @@ impl PropertyOracle {
 
     /// Record an `assert_sometimes` evaluation.
     pub fn record_sometimes(&mut self, id: u32, condition: bool, message: &str) {
+        self.record_sometimes_with_details(id, condition, message, None)
+    }
+
+    /// Record an `assert_sometimes` evaluation with optional failure details.
+    ///
+    /// Details are stored only when `condition` is false.
+    pub fn record_sometimes_with_details(
+        &mut self,
+        id: u32,
+        condition: bool,
+        message: &str,
+        details: Option<&[u8]>,
+    ) {
         let record = self
             .assertions
             .entry(id)
@@ -313,6 +346,9 @@ impl PropertyOracle {
             record.true_count += 1;
         } else {
             record.false_count += 1;
+            if let Some(d) = details {
+                record.last_failure_details = Some(d.to_vec());
+            }
         }
 
         if let Some(run) = &mut self.current_run {
@@ -343,6 +379,16 @@ impl PropertyOracle {
     ///
     /// Returns `false` always (reaching an unreachable point is a failure).
     pub fn record_unreachable(&mut self, id: u32, message: &str) -> bool {
+        self.record_unreachable_with_details(id, message, None)
+    }
+
+    /// Record an `assert_unreachable` evaluation with optional details.
+    pub fn record_unreachable_with_details(
+        &mut self,
+        id: u32,
+        message: &str,
+        details: Option<&[u8]>,
+    ) -> bool {
         let run_id = self.current_run_id();
         let record = self.assertions.entry(id).or_insert_with(|| {
             AssertionRecord::new(message.to_string(), AssertionKind::Unreachable)
@@ -352,6 +398,9 @@ impl PropertyOracle {
         record.false_count += 1;
         if record.first_failure_run.is_none() {
             record.first_failure_run = Some(run_id);
+        }
+        if let Some(d) = details {
+            record.last_failure_details = Some(d.to_vec());
         }
 
         if let Some(run) = &mut self.current_run {
@@ -741,5 +790,37 @@ mod tests {
         oracle.restore(&snap);
         assert_eq!(oracle.report().assertions[&1].verdict(), Verdict::Passed);
         assert_eq!(oracle.total_runs(), 1);
+    }
+
+    #[test]
+    fn failure_stores_details_pass_does_not_overwrite() {
+        let mut oracle = PropertyOracle::new();
+        oracle.begin_run();
+
+        // Pass — no details stored
+        oracle.record_always_with_details(1, true, "test", Some(b"{\"pass\":true}"));
+        assert!(oracle.report().assertions[&1].last_failure_details.is_none());
+
+        // Fail — details stored
+        oracle.record_always_with_details(1, false, "test", Some(b"{\"x\":1}"));
+        assert_eq!(
+            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            Some(b"{\"x\":1}".as_slice()),
+        );
+
+        // Another pass — failure details NOT overwritten
+        oracle.record_always_with_details(1, true, "test", Some(b"{\"pass\":true}"));
+        assert_eq!(
+            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            Some(b"{\"x\":1}".as_slice()),
+        );
+
+        // Another fail — details updated
+        oracle.record_always_with_details(1, false, "test", Some(b"{\"x\":2}"));
+        assert_eq!(
+            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            Some(b"{\"x\":2}".as_slice()),
+        );
+        oracle.end_run();
     }
 }

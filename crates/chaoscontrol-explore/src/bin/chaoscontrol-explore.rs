@@ -211,6 +211,61 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// Reproduce a bug from a bug report file.
+    ///
+    /// Boots the simulation, applies the fault schedule from the bug report,
+    /// runs for the configured ticks, and reports whether the assertion fails.
+    /// Use this to verify a bug after minimization or on a different host.
+    Reproduce {
+        /// Path to kernel (vmlinux).
+        #[arg(short, long)]
+        kernel: String,
+
+        /// Path to initrd (optional).
+        #[arg(short, long)]
+        initrd: Option<String>,
+
+        /// Path to the bug report file (JSON).
+        #[arg(short, long)]
+        bug: String,
+
+        /// Random seed (must match exploration run).
+        #[arg(short, long, default_value = "42")]
+        seed: u64,
+
+        /// Number of VMs.
+        #[arg(short, long, default_value = "2")]
+        vms: usize,
+
+        /// Ticks to run after bootstrap.
+        #[arg(short, long, default_value = "1000")]
+        ticks: u64,
+
+        /// Scheduling quantum.
+        #[arg(short, long, default_value = "100")]
+        quantum: u64,
+
+        /// Number of vCPUs per VM.
+        #[arg(long, default_value = "1")]
+        vcpus: usize,
+
+        /// Scheduling strategy: "round-robin" or "randomized".
+        #[arg(long, default_value = "round-robin")]
+        scheduling: String,
+
+        /// Path to disk image (optional).
+        #[arg(long)]
+        disk_image: Option<String>,
+
+        /// Bootstrap tick budget.
+        #[arg(long, default_value = "10000")]
+        bootstrap_budget: u64,
+
+        /// Show serial output from each VM.
+        #[arg(long)]
+        serial: bool,
+    },
+
     /// Resume from saved checkpoint.
     Resume {
         /// Path to corpus directory (containing checkpoint.json).
@@ -277,6 +332,33 @@ fn main() {
             dlog,
             dlog_register_interval,
             dlog_memory_hash,
+        ),
+        Commands::Reproduce {
+            kernel,
+            initrd,
+            bug,
+            seed,
+            vms,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            disk_image,
+            bootstrap_budget,
+            serial,
+        } => cmd_reproduce(
+            kernel,
+            initrd,
+            bug,
+            seed,
+            vms,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            disk_image,
+            bootstrap_budget,
+            serial,
         ),
         Commands::Resume {
             corpus,
@@ -910,5 +992,236 @@ fn cmd_minimize(
                 eprintln!("Warning: failed to serialize: {}", e);
             }
         }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_reproduce(
+    kernel: String,
+    initrd: Option<String>,
+    bug_path: String,
+    seed: u64,
+    vms: usize,
+    ticks: u64,
+    quantum: u64,
+    vcpus: usize,
+    scheduling: String,
+    disk_image: Option<String>,
+    bootstrap_budget: u64,
+    show_serial: bool,
+) {
+    use chaoscontrol_fault::oracle::Verdict;
+    use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+
+    // Validate inputs
+    if !Path::new(&kernel).exists() {
+        eprintln!("Error: kernel file not found: {}", kernel);
+        std::process::exit(1);
+    }
+    if !Path::new(&bug_path).exists() {
+        eprintln!("Error: bug file not found: {}", bug_path);
+        std::process::exit(1);
+    }
+
+    // Load bug report
+    let bug_json = match fs::read_to_string(&bug_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: failed to read bug file: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let serialized_bug: chaoscontrol_explore::checkpoint::SerializableBug =
+        match serde_json::from_str(&bug_json) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("Error: failed to parse bug file: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+    let schedule: FaultSchedule = (&serialized_bug.schedule).into();
+    let target_assertion = serialized_bug.assertion_id;
+
+    // Parse scheduling strategy
+    let scheduling_strategy = match scheduling.as_str() {
+        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
+        "randomized" | "rand" => SchedulingStrategy::Randomized {
+            min_quantum: 50,
+            max_quantum: 200,
+        },
+        other => {
+            eprintln!("Error: unknown scheduling strategy '{}'", other);
+            std::process::exit(1);
+        }
+    };
+
+    let vm_config = VmConfig {
+        num_vcpus: vcpus,
+        scheduling_strategy,
+        ..Default::default()
+    };
+
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!("  ChaosControl Bug Reproducer");
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!();
+    eprintln!("Bug report:       {}", bug_path);
+    eprintln!("Assertion ID:     {}", target_assertion);
+    eprintln!("Assertion:        {}", serialized_bug.assertion_location);
+    eprintln!("Faults:           {}", schedule.total());
+    eprintln!();
+    eprintln!("Configuration:");
+    eprintln!("  Kernel:         {}", kernel);
+    if let Some(ref initrd_path) = initrd {
+        eprintln!("  Initrd:         {}", initrd_path);
+    }
+    eprintln!("  VMs:            {}", vms);
+    eprintln!("  Seed:           {}", seed);
+    eprintln!("  Ticks:          {}", ticks);
+    eprintln!("  Quantum:        {}", quantum);
+    if let Some(ref di) = disk_image {
+        eprintln!("  Disk image:     {}", di);
+    }
+    eprintln!();
+
+    // Print fault schedule
+    let faults = schedule.faults();
+    if !faults.is_empty() {
+        eprintln!("Fault schedule:");
+        for (i, fault) in faults.iter().enumerate() {
+            eprintln!("  [{}] @ {}ns: {:?}", i + 1, fault.time_ns, fault.fault);
+        }
+        eprintln!();
+    }
+
+    eprintln!("Bootstrapping...");
+
+    // Create simulation controller
+    let sim_config = SimulationConfig {
+        num_vms: vms,
+        vm_config,
+        kernel_path: kernel.clone(),
+        initrd_path: initrd.clone(),
+        seed,
+        quantum,
+        schedule: FaultSchedule::new(), // empty during bootstrap
+        disk_image_path: disk_image,
+        base_core: None,
+        dlog_dir: None,
+    };
+
+    let mut controller = match SimulationController::new(sim_config) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: failed to create simulation: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Bootstrap
+    if let Err(e) = controller.run_until_setup_complete(bootstrap_budget) {
+        eprintln!("Error: bootstrap failed: {}", e);
+        std::process::exit(1);
+    }
+
+    let bootstrap_tick = controller.tick();
+    eprintln!("Bootstrap complete at tick {}", bootstrap_tick);
+    eprintln!();
+
+    // Snapshot, then restore with fault schedule
+    let snapshot = match controller.snapshot_all() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: snapshot failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(e) = controller.restore_all(&snapshot) {
+        eprintln!("Error: restore failed: {}", e);
+        std::process::exit(1);
+    }
+    controller.reset_vm_statuses();
+    controller.set_schedule(schedule);
+    controller.clear_all_coverage();
+
+    eprintln!("Running {} ticks with fault schedule...", ticks);
+
+    // Run
+    if let Err(e) = controller.run(ticks) {
+        eprintln!("Error: simulation failed: {}", e);
+        std::process::exit(1);
+    }
+
+    eprintln!();
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!("  Reproduction Result");
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!();
+
+    // Check assertion results across all VMs
+    let mut target_failed = false;
+    let mut all_assertions = Vec::new();
+
+    for i in 0..controller.num_vms() {
+        let oracle = controller.vm(i).fault_engine().oracle();
+        for (id, record) in oracle.assertions() {
+            let verdict = record.verdict();
+            if *id == target_assertion as u32 && verdict == Verdict::Failed {
+                target_failed = true;
+            }
+            // Deduplicate by id
+            if !all_assertions.iter().any(|(aid, _, _, _)| aid == id) {
+                all_assertions.push((*id, record.message.clone(), record.kind, verdict));
+            }
+        }
+    }
+
+    if target_failed {
+        eprintln!("  ✗ BUG REPRODUCED — assertion {} failed", target_assertion);
+    } else {
+        eprintln!(
+            "  ○ Bug NOT reproduced — assertion {} did not fail",
+            target_assertion
+        );
+    }
+    eprintln!();
+
+    // Show all assertion verdicts
+    if !all_assertions.is_empty() {
+        eprintln!("  Assertion results:");
+        for (id, message, _kind, verdict) in &all_assertions {
+            let icon = match verdict {
+                Verdict::Failed => "✗",
+                Verdict::Passed => "✓",
+                Verdict::Unexercised => "○",
+            };
+            eprintln!("    {} [{}] {}", icon, id, message);
+        }
+        eprintln!();
+    }
+
+    // Show serial output if requested
+    if show_serial {
+        for i in 0..controller.num_vms() {
+            let serial = controller.vm_mut(i).take_serial_output();
+            if !serial.is_empty() {
+                eprintln!(
+                    "─── VM {} Serial Output ──────────────────────────────────────────────",
+                    i
+                );
+                eprintln!("{}", serial);
+                eprintln!();
+            }
+        }
+    }
+
+    // Exit code: 0 if bug reproduced, 1 if not
+    if target_failed {
+        std::process::exit(0);
+    } else {
+        std::process::exit(1);
     }
 }

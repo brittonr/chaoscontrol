@@ -499,10 +499,10 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **no_std preserved**: `#![cfg_attr(not(feature = "full"), no_std)]` for no-op mode
 
 ### Remaining Antithesis SDK gaps
-- **JSON details**: `details: &serde_json::Value` instead of `&[(&str, &str)]` (big cross-cutting change)
-- ✅ **Assertion catalog**: `linkme` distributed slice to register ALL assertion sites at compile time — DONE (2026-03-29). Every `cc_assert_*!` macro registers a `CatalogEntry` at link time. `chaoscontrol_init()` sends catalog to VMM via `CMD_ASSERT_CATALOG`. Oracle pre-populates records so "never hit" → `Unexercised` verdict. Explorer report shows "Assertion Coverage" section with registered/passed/failed/unexercised counts + exercise percentage.
+- ✅ **JSON details**: SDK already uses `&serde_json::Value`. Raft guest passes `&json!({...})`. Gap was already closed.
+- ✅ **Assertion catalog**: `linkme` distributed slice — DONE (2026-03-29). Guests migrated to macros (2026-03-29).
 - **`assert_raw()`**: Low-level function for third-party framework integration
-- **Assertion density**: Raft guest has 35 assertions — needs handler-level reachability, `sometimes` pairs on branches, state transition coverage, inline data invariants. See `docs/assertion-guidelines.md`.
+- ✅ **Assertion density**: Raft guest has 35 assertions with handler reachability, sometimes-pairs, state transitions, data invariants. Guidelines doc gaps addressed (2026-02-20).
 
 ## Assertion Catalog (2026-03-29)
 - **linkme 0.3**: `distributed_slice` collects `CatalogEntry` statics across all compilation units
@@ -518,6 +518,15 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **no_std mode**: `__cc_register_catalog!` is no-op without `full` feature — no linkme dependency
 - **musl compatible**: linkme works with musl static linking (guest binaries)
 - **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
+
+## Assertion Catalog Activation (2026-03-29)
+- **Root cause**: Both guest binaries used `assert::always()` function-call API which bypasses the `linkme` catalog. Macros (`cc_assert_always!()`) are required for compile-time registration.
+- **Migration**: 35 Raft guest + 10 SDK guest assertions → `cc_assert_*!()` macros
+- **`chaoscontrol_init()`**: Added to both guests. Emits catalog entries to VMM at startup via `CMD_ASSERT_CATALOG`.
+- **Trailing comma fix**: Added `$(,)?` to all 5 assertion macro patterns (always, sometimes, reachable, unreachable, always_or_unreachable). Without this, `rustfmt` would break multi-line macro invocations by inserting trailing commas that the macro parser rejected.
+- **`linkme` dep**: Added to both guest Cargo.toml files.
+- **Effect**: Assertion Coverage section in exploration reports now shows 45 registered sites with actual exercise percentages.
+- **JSON details gap closed**: SDK already uses `&serde_json::Value` (not `&[(&str, &str)]` as napkin said). The Raft guest already passes `&json!({...})`.
 
 ## Reproduce Subcommand (2026-03-29)
 - **CLI**: `chaoscontrol-explore reproduce --kernel vmlinux --initrd initrd.gz --bug bug_0.json [--serial]`

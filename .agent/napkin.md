@@ -519,6 +519,17 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **musl compatible**: linkme works with musl static linking (guest binaries)
 - **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
 
+## Per-Round Exploration History (2026-03-29)
+- **RoundHistory struct**: round, branches_run, new_edges, cumulative_edges, bugs_found, cumulative_bugs, frontier_size, corpus_size
+- **Explorer stores Vec<RoundHistory>**: populated after each round, carried through checkpoint save/restore
+- **Report table**: tabular progress with `Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus`
+- **Long history truncation**: >20 rounds shows first 5 + `⋮` + last 5
+- **Coverage growth summary**: first → midpoint → last edge counts
+- **Plateau detection**: counts rounds with zero new edges as percentage
+- **Bug discovery timeline**: lists which rounds found bugs
+- **Checkpoint backward compat**: `round_history: Option<Vec<RoundHistory>>` with `#[serde(default)]`
+- **5 new tests**: formatting, truncation, empty history, checkpoint roundtrip, backward compat
+
 ## Fault Schedule Minimization (2026-03-29)
 - **Delta debugging (ddmin)**: Zeller's algorithm — partition schedule into N chunks, try removing each chunk, try each chunk alone, increase granularity until single-fault level
 - **FaultSchedule::faults()**: New read-only accessor for the fault list (previously private)

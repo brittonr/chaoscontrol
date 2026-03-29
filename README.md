@@ -18,6 +18,8 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
   enabling fully deterministic time progression
 - **Fixed processor identity**: Optional model/family/stepping override
   for cross-host reproducibility
+- **SMP support**: Multi-vCPU VMs with serialized execution (Antithesis-style),
+  deterministic round-robin or randomized scheduling
 
 ### VM Infrastructure
 - **x86_64 boot**: Full long mode setup with GDT, identity-mapped page
@@ -25,6 +27,7 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
 - **In-kernel IRQ chip**: PIC, IOAPIC, and LAPIC via KVM
 - **Serial console**: COM1 with interrupt-driven I/O and output capture
 - **Linux kernel support**: Loads ELF kernels via linux-loader
+- **ACPI tables**: RSDP/RSDT/MADT for SMP CPU topology
 
 ### Snapshot / Restore
 - **Complete state capture**: CPU registers, FPU, debug registers, LAPIC,
@@ -47,6 +50,25 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
   bandwidth limiting, packet loss/corruption/reorder/duplication for
   fully controlled packet delivery between VMs
 
+### Exploration & Bug Finding
+- **Coverage-guided exploration**: AFL-style edge coverage bitmaps,
+  fork-from-snapshot branching, frontier-based search
+- **Three exploration modes**: fault-schedule mutation, input-tree
+  branching at `random_choice()` points, or hybrid
+- **Fault schedule minimization**: Delta debugging (ddmin) to find
+  the smallest schedule that triggers a bug
+- **Bug reproduction**: Replay a bug report to verify it still triggers
+- **Assertion catalog**: Compile-time registration of all assertion sites
+  via `linkme`; reports show which assertions are exercised/unexercised
+- **Per-round history**: Coverage growth curves, plateau detection,
+  bug discovery timeline
+
+### Determinism Logging
+- **Binary dlog format**: Per-exit event log for diagnosing non-determinism
+- **Structural diff**: Compare two runs ignoring data payloads
+- **Register dumps**: Periodic full-register snapshots in dlog
+- **Memory hashing**: CRC32 page hashes at snapshot boundaries
+
 ## Project Structure
 
 ```
@@ -55,31 +77,16 @@ chaoscontrol/
 ├── Cargo.toml                             # Workspace root
 └── crates/
     ├── chaoscontrol-protocol/             # SDK ↔ VMM wire protocol (no_std)
-    │   └── src/lib.rs                     # Hypercall page layout, commands, encoding
     ├── chaoscontrol-sdk/                  # Guest-side SDK (Antithesis-style)
-    │   └── src/
-    │       ├── lib.rs                     # Public API
-    │       ├── assert.rs                  # always, sometimes, reachable, unreachable
-    │       ├── lifecycle.rs               # setup_complete, send_event
-    │       ├── random.rs                  # Guided randomness (get_random, random_choice)
-    │       └── transport.rs               # Hypercall page + I/O port transport
     ├── chaoscontrol-fault/                # Host-side fault injection engine
-    │   └── src/
-    │       ├── lib.rs
-    │       ├── faults.rs                  # Fault types (network, disk, process, clock)
-    │       ├── engine.rs                  # FaultEngine: schedule + inject + dispatch
-    │       ├── schedule.rs                # Time-based fault scheduling
-    │       └── oracle.rs                  # Property oracle (cross-run assertion tracking)
     ├── chaoscontrol-vmm/                  # VMM implementation
-    │   └── src/
-    │       ├── lib.rs                     # Library root
-    │       ├── vm.rs                      # Core VM + SDK hypercall handler
-    │       ├── cpu.rs                     # CPUID filtering, TSC, virtual TSC
-    │       ├── memory.rs                  # Guest memory, page tables, GDT
-    │       ├── snapshot.rs                # VM state snapshot/restore
-    │       ├── devices/                   # Deterministic device backends
-    │       └── verified/                  # Pure functions for formal verification
-    └── chaoscontrol-trace/                # eBPF-based KVM tracing
+    ├── chaoscontrol-explore/              # Coverage-guided exploration engine
+    ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger
+    ├── chaoscontrol-trace/                # eBPF-based KVM tracing
+    ├── chaoscontrol-guest/                # Minimal SDK-instrumented guest binary
+    ├── chaoscontrol-raft-guest/           # 3-node Raft consensus guest (35 assertions)
+    ├── chaoscontrol-guest-net/            # Network guest library (smoltcp)
+    └── chaoscontrol-net-guest/            # Network demo guest binary
 ```
 
 ### Kernel Coverage (KCOV)
@@ -115,7 +122,7 @@ nix develop
 # Build
 cargo build
 
-# Run tests (667 unit + doc tests)
+# Run tests (827 unit + doc tests)
 cargo test
 
 # Boot a kernel
@@ -123,19 +130,63 @@ cargo run --bin boot -- <kernel-path> [initrd-path]
 
 # Snapshot demo
 cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
+```
 
-# Exploration — coverage-guided fault schedule search
+## CLI Tools
+
+### Exploration
+
+```bash
+# Coverage-guided exploration
 cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
   --vms 3 --rounds 200 --branches 16 --output results/
 
-# Exploration with persistent disk image
+# With persistent disk image
 cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
   --disk-image <path-to-ext4.img> \
   --vms 3 --rounds 200 --branches 16 --output results/
 
-# Replay — reproduce a recorded session
+# Input-tree mode (branch at random_choice() points)
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel <kernel-path> --initrd <initrd-path> \
+  --mode input-tree --output results/
+
+# Resume from checkpoint
+cargo run --release --bin chaoscontrol-explore -- resume \
+  --corpus results/ --rounds 500
+```
+
+Output directory contains:
+- `checkpoint.json` — resumable exploration state
+- `report.txt` — human-readable report with per-round history
+- `assertions.json` — per-assertion verdicts and hit counts
+- `bug_N.json` — bug reports (consumable by minimize/reproduce)
+
+### Bug Workflow
+
+```bash
+# 1. Explore — find bugs
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel vmlinux --initrd initrd.gz \
+  --vms 3 --rounds 100 --output results/
+
+# 2. Minimize — shrink the fault schedule
+cargo run --release --bin chaoscontrol-explore -- minimize \
+  --kernel vmlinux --initrd initrd.gz \
+  --bug results/bug_0.json --output minimized.json
+
+# 3. Reproduce — verify the bug
+cargo run --release --bin chaoscontrol-explore -- reproduce \
+  --kernel vmlinux --initrd initrd.gz \
+  --bug minimized.json --serial
+```
+
+### Replay & Debugging
+
+```bash
+# Replay a recorded session
 cargo run --release --bin chaoscontrol-replay -- replay \
   --recording session.json --ticks 5000
 
@@ -143,9 +194,24 @@ cargo run --release --bin chaoscontrol-replay -- replay \
 cargo run --release --bin chaoscontrol-replay -- triage \
   --recording session.json --bug-id 1 --format markdown
 
-# Info — inspect recording metadata
+# Show recording metadata
 cargo run --release --bin chaoscontrol-replay -- info \
   --recording session.json
+
+# Determinism log tools
+cargo run --release --bin chaoscontrol-replay -- dlog diff a.dlog b.dlog
+cargo run --release --bin chaoscontrol-replay -- dlog dump run.dlog
+cargo run --release --bin chaoscontrol-replay -- dlog stats run.dlog
+```
+
+### eBPF Tracing
+
+```bash
+# Live KVM trace (requires sudo)
+sudo chaoscontrol-trace live --pid <VMM_PID> --output trace.json
+
+# Verify determinism between two traces
+chaoscontrol-trace verify --trace-a run1.json --trace-b run2.json
 ```
 
 ## Architecture
@@ -198,43 +264,6 @@ let ns = vtsc.elapsed_ns();    // Convert to nanoseconds
 let snap = vtsc.snapshot();    // Serialize for checkpoints
 ```
 
-### Memory Layout (`memory.rs`)
-
-Standard Linux x86_64 boot layout:
-
-```
-0x0000_0500  GDT (4 entries)
-0x0000_0520  IDT (empty)
-0x0000_7000  Zero page (boot_params)
-0x0000_8FF0  Boot stack
-0x0000_9000  PML4 → PDPTE → PDE (1 GB identity map)
-0x0002_0000  Kernel command line
-0x0010_0000  HIMEM_START (kernel load, 1 MB)
-```
-
-### Deterministic Devices
-
-```rust
-use chaoscontrol_vmm::devices::entropy::DeterministicEntropy;
-use chaoscontrol_vmm::devices::block::{DeterministicBlock, BlockFault};
-use chaoscontrol_vmm::devices::net::DeterministicNet;
-
-// Seeded entropy — same seed = same random bytes
-let mut entropy = DeterministicEntropy::new(42);
-let val = entropy.next_u64();
-
-// Block device with fault injection
-let mut disk = DeterministicBlock::new(1024 * 1024);
-disk.write(0, b"hello")?;
-disk.inject_fault(BlockFault::TornWrite { offset: 512, bytes_written: 3 });
-
-// Simulated network
-let mut net = DeterministicNet::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
-net.inject_packet(vec![/* ethernet frame */]);
-let sent = net.drain_tx();
-```
-
-
 ### Guest SDK (Antithesis-style)
 
 The `chaoscontrol-sdk` crate provides a guest-side testing API inspired by
@@ -242,28 +271,32 @@ The `chaoscontrol-sdk` crate provides a guest-side testing API inspired by
 properties and receive guided random values:
 
 ```rust
-use chaoscontrol_sdk::{assert, lifecycle, random};
+use chaoscontrol_sdk::prelude::*;
+
+chaoscontrol_init();
 
 // Signal setup complete — faults may begin
 lifecycle::setup_complete(&[("nodes", "3")]);
 
 // Safety property: must always hold
-assert::always(leader < num_nodes, "valid leader", &[]);
+cc_assert_always!(leader < num_nodes, "valid leader");
 
 // Liveness property: must hold at least once across all runs
-assert::sometimes(write_ok, "write succeeded", &[]);
+cc_assert_sometimes!(write_ok, "write succeeded");
+
+// Reachability
+cc_assert_reachable!("leader elected");
+cc_assert_unreachable!("split brain");
 
 // Guided random choice for exploration
 let action = random::random_choice(3);
 ```
 
-Communication uses a shared memory page at `0xFE000` (E820 reserved gap)
-plus an `outb(0x510)` trigger. The VMM reads the page, dispatches to the
-fault engine, and writes the result back.
+All assertion sites are registered at compile time via `linkme` and
+reported to the VMM at startup. The exploration report shows which
+assertions were exercised, passed, failed, or never reached.
 
 ### Fault Injection Engine
-
-The `chaoscontrol-fault` crate provides host-side chaos engineering:
 
 ```rust
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
@@ -276,21 +309,24 @@ let schedule = FaultScheduleBuilder::new()
     })
     .at_ns(5_000_000_000, Fault::NetworkHeal)
     .at_ns(8_000_000_000, Fault::ProcessKill { target: 1 })
+    .at_ns(10_000_000_000, Fault::InjectInterrupt { target: 0, irq: 5 })
     .build();
 ```
 
-Supported fault categories: **network** (partition, latency, jitter,
-bandwidth, loss, corruption, reorder, duplication), **disk** (I/O errors,
-torn writes, corruption, full), **process** (kill, pause, restart),
-**clock** (skew, jump), **resource** (memory pressure).
+**27 fault types** across 6 categories: network (partition, latency,
+jitter, bandwidth, loss, corruption, reorder, duplication, heal), disk
+(I/O errors, torn writes, corruption, full), process (kill, pause,
+restart), clock (skew, jump), resource (memory pressure), interrupt
+(IRQ injection, NMI).
+
 ### Run Loop
 
 The VM run loop handles exits and advances the virtual TSC deterministically:
 
-- **IoIn/IoOut**: Serial port I/O, device access
-- **Hlt**: VM halted (clean shutdown)
-- **Shutdown**: VM shutdown event
-- **MmioRead/MmioWrite**: Memory-mapped I/O
+- **IoIn/IoOut**: Serial port I/O, device access, SDK hypercalls
+- **Hlt**: VM halted — fast-forward TSC + inject timer IRQ
+- **MmioRead/MmioWrite**: Virtio MMIO, HPET, ACPI PM timer
+- **Hypercall**: VMCALL-based SDK transport (preferred over port I/O)
 - Every exit increments the virtual TSC by a fixed amount
 
 Execution modes:
@@ -304,10 +340,12 @@ Execution modes:
 kvm-ioctls = "0.19"       # KVM API
 kvm-bindings = "0.10"     # KVM structures
 vm-memory = "0.17"        # Guest memory management
-linux-loader = "0.13"     # Kernel loading (ELF/bzImage)
+linux-loader = "0.13"     # Kernel loading (ELF)
 vm-superio = "0.8"        # Serial port emulation
 vmm-sys-util = "0.12"     # EventFd, utilities
 rand_chacha = "0.3"       # Seeded PRNG
+linkme = "0.3"            # Compile-time assertion catalog
+snafu = "0.8"             # Error handling
 ```
 
 ## Roadmap
@@ -322,14 +360,22 @@ rand_chacha = "0.3"       # Seeded PRNG
 - [x] Guest SDK (Antithesis-style assertions + guided randomness)
 - [x] Fault injection engine (network, disk, process, clock faults)
 - [x] Property oracle (cross-run assertion tracking + verdicts)
-- [x] VMM ↔ SDK hypercall integration
-- [x] Virtio transport layer (MMIO-based)
-- [x] Wire devices into VM run loop via virtio
-- [x] Multi-VM simulation controller
+- [x] VMM ↔ SDK hypercall integration (VMCALL + port I/O fallback)
+- [x] Virtio transport layer (MMIO-based, blk + net + rng)
+- [x] Multi-VM simulation controller with network fabric
 - [x] Deterministic scheduling across VMs
-- [x] Coverage feedback from guest (kcov / breakpoints)
-- [x] Coverage-guided seed exploration
-- [x] Network simulation fidelity (jitter, bandwidth, duplication)
-- [x] Kernel coverage (KCOV) — kernel code path visibility for exploration
+- [x] SMP — multi-vCPU with serialized execution
+- [x] Coverage-guided exploration (AFL-style edge bitmaps)
 - [x] Input tree exploration — branch at random_choice() decision points
-
+- [x] Network simulation fidelity (jitter, bandwidth, duplication)
+- [x] Kernel coverage (KCOV) — kernel code path visibility
+- [x] Assertion catalog — compile-time registration via linkme
+- [x] Fault schedule minimization — delta debugging
+- [x] Bug reproduction from JSON reports
+- [x] Determinism logging (dlog) — binary event log + diff + stats
+- [x] Time-travel debugger with counterfactual analysis
+- [x] Per-round exploration history and plateau detection
+- [x] Per-assertion detail reports with JSON export
+- [x] Multi-VM networking (virtio-net + smoltcp TCP/IP)
+- [x] Interrupt injection faults (IRQ + NMI)
+- [x] Core pinning for reduced scheduling jitter

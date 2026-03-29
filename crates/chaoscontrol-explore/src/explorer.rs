@@ -149,6 +149,8 @@ pub struct Explorer {
     /// Stats tracking.
     rounds_completed: u64,
     total_branches_run: u64,
+    /// Per-round history.
+    round_history: Vec<RoundHistory>,
 }
 
 impl Explorer {
@@ -174,6 +176,7 @@ impl Explorer {
             controller: None,
             rounds_completed: 0,
             total_branches_run: 0,
+            round_history: Vec::new(),
         }
     }
 
@@ -213,6 +216,19 @@ impl Explorer {
                 }
             };
             self.rounds_completed += 1;
+
+            // Record per-round history
+            let history_entry = RoundHistory {
+                round: self.rounds_completed,
+                branches_run: round_report.branches_run,
+                new_edges: round_report.new_coverage_edges,
+                cumulative_edges: self.coverage.stats().total_edges,
+                bugs_found: round_report.bugs_found,
+                cumulative_bugs: self.corpus.bugs().len(),
+                frontier_size: round_report.frontier_size,
+                corpus_size: self.corpus.stats().total_entries,
+            };
+            self.round_history.push(history_entry);
 
             info!(
                 "Round {}: {} branches, {} new edges, {} bugs, frontier: {}",
@@ -865,6 +881,7 @@ impl Explorer {
             coverage_stats,
             network_stats,
             assertion_stats,
+            round_history: self.round_history.clone(),
         }
     }
 
@@ -951,6 +968,7 @@ impl Explorer {
             total_branches_run: self.total_branches_run,
             total_edges: self.coverage.stats().total_edges,
             seed: self.config.seed,
+            round_history: Some(self.round_history.clone()),
         }
     }
 
@@ -1010,6 +1028,7 @@ impl Explorer {
             controller: None,
             rounds_completed: checkpoint.rounds_completed,
             total_branches_run: checkpoint.total_branches_run,
+            round_history: checkpoint.round_history.unwrap_or_default(),
         }
     }
 }
@@ -1050,6 +1069,30 @@ pub struct RoundReport {
     pub frontier_size: usize,
 }
 
+/// Per-round snapshot of exploration progress.
+///
+/// Captured after each round completes, these records track coverage growth,
+/// bug discovery timing, and frontier evolution across the campaign.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RoundHistory {
+    /// Round number (1-indexed).
+    pub round: u64,
+    /// Branches executed this round.
+    pub branches_run: usize,
+    /// New coverage edges discovered this round.
+    pub new_edges: usize,
+    /// Cumulative unique edges after this round.
+    pub cumulative_edges: usize,
+    /// Bugs found this round.
+    pub bugs_found: usize,
+    /// Cumulative bugs after this round.
+    pub cumulative_bugs: usize,
+    /// Frontier size after this round.
+    pub frontier_size: usize,
+    /// Corpus size after this round.
+    pub corpus_size: usize,
+}
+
 /// Final exploration report.
 #[derive(Debug, Clone)]
 pub struct ExplorationReport {
@@ -1061,6 +1104,8 @@ pub struct ExplorationReport {
     pub coverage_stats: CoverageStats,
     pub network_stats: chaoscontrol_vmm::controller::NetworkStats,
     pub assertion_stats: AssertionStats,
+    /// Per-round exploration history.
+    pub round_history: Vec<RoundHistory>,
 }
 
 /// Summary of assertion coverage across all exploration branches.

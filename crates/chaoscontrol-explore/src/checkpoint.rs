@@ -427,6 +427,9 @@ pub struct ExplorationCheckpoint {
     pub total_branches_run: u64,
     pub total_edges: usize,
     pub seed: u64,
+    /// Per-round exploration history (optional for backward compat).
+    #[serde(default)]
+    pub round_history: Option<Vec<crate::explorer::RoundHistory>>,
 }
 
 /// Save a checkpoint to a JSON file.
@@ -497,6 +500,7 @@ mod tests {
             total_branches_run: 80,
             total_edges: 1234,
             seed: 42,
+            round_history: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -536,6 +540,7 @@ mod tests {
             total_branches_run: 20,
             total_edges: 567,
             seed: 123,
+            round_history: None,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -547,5 +552,95 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_checkpoint_round_history_roundtrip() {
+        use crate::explorer::RoundHistory;
+
+        let history = vec![
+            RoundHistory {
+                round: 1,
+                branches_run: 8,
+                new_edges: 42,
+                cumulative_edges: 42,
+                bugs_found: 0,
+                cumulative_bugs: 0,
+                frontier_size: 3,
+                corpus_size: 3,
+            },
+            RoundHistory {
+                round: 2,
+                branches_run: 8,
+                new_edges: 10,
+                cumulative_edges: 52,
+                bugs_found: 1,
+                cumulative_bugs: 1,
+                frontier_size: 5,
+                corpus_size: 5,
+            },
+        ];
+
+        let checkpoint = ExplorationCheckpoint {
+            config: CheckpointConfig {
+                num_vms: 2,
+                kernel_path: "k".to_string(),
+                initrd_path: None,
+                seed: 1,
+                branch_factor: 8,
+                ticks_per_branch: 1000,
+                max_rounds: 10,
+                max_frontier: 50,
+                quantum: 100,
+                coverage_gpa: 0xE0000,
+                disk_image_path: None,
+                bootstrap_budget: 10_000,
+            },
+            global_coverage: vec![],
+            bugs: vec![],
+            rounds_completed: 2,
+            total_branches_run: 16,
+            total_edges: 52,
+            seed: 1,
+            round_history: Some(history.clone()),
+        };
+
+        let json = serde_json::to_string(&checkpoint).unwrap();
+        let loaded: ExplorationCheckpoint = serde_json::from_str(&json).unwrap();
+
+        let restored = loaded.round_history.unwrap();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(restored[0].round, 1);
+        assert_eq!(restored[0].new_edges, 42);
+        assert_eq!(restored[1].cumulative_bugs, 1);
+    }
+
+    #[test]
+    fn test_checkpoint_backward_compat_no_round_history() {
+        // Simulate loading a checkpoint from before round_history was added
+        let json = r#"{
+            "config": {
+                "num_vms": 2,
+                "kernel_path": "k",
+                "initrd_path": null,
+                "seed": 1,
+                "branch_factor": 8,
+                "ticks_per_branch": 1000,
+                "max_rounds": 10,
+                "max_frontier": 50,
+                "quantum": 100,
+                "coverage_gpa": 917504
+            },
+            "global_coverage": [],
+            "bugs": [],
+            "rounds_completed": 5,
+            "total_branches_run": 40,
+            "total_edges": 100,
+            "seed": 1
+        }"#;
+
+        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
+        assert_eq!(checkpoint.rounds_completed, 5);
+        assert!(checkpoint.round_history.is_none());
     }
 }

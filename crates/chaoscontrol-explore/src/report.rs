@@ -115,6 +115,92 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push('\n');
     }
 
+    // Per-round history
+    if !report.round_history.is_empty() {
+        output.push_str(
+            "─── Exploration Progress ────���─────────────────────────────────────────\n",
+        );
+        output.push_str("  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus\n");
+        output.push_str("  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼───────\n");
+
+        let history = &report.round_history;
+
+        // Show all rounds if ≤ 20, otherwise show first 5 + last 5 with a gap
+        let show_all = history.len() <= 20;
+        let rows: Vec<(usize, &crate::explorer::RoundHistory)> = if show_all {
+            history.iter().enumerate().collect()
+        } else {
+            let mut rows: Vec<(usize, &crate::explorer::RoundHistory)> =
+                history.iter().enumerate().take(5).collect();
+            rows.push((usize::MAX, &history[0])); // sentinel for "..."
+            rows.extend(history.iter().enumerate().skip(history.len() - 5));
+            rows
+        };
+
+        for (i, entry) in &rows {
+            if *i == usize::MAX {
+                output.push_str(
+                    "     ⋮  │    ⋮     │     ⋮     │      ⋮     │  ⋮   │    ⋮     │   ⋮\n",
+                );
+                continue;
+            }
+            output.push_str(&format!(
+                "  {:>5} │ {:>8} │ {:>9} │ {:>10} │ {:>4} │ {:>8} │ {:>6}\n",
+                entry.round,
+                entry.branches_run,
+                entry.new_edges,
+                entry.cumulative_edges,
+                entry.cumulative_bugs,
+                entry.frontier_size,
+                entry.corpus_size,
+            ));
+        }
+
+        // Coverage growth summary
+        if history.len() >= 2 {
+            let first = &history[0];
+            let last = &history[history.len() - 1];
+            let mid = &history[history.len() / 2];
+
+            output.push('\n');
+            output.push_str(&format!(
+                "  Coverage growth: {} → {} → {} edges (round 1 → {} → {})\n",
+                first.cumulative_edges,
+                mid.cumulative_edges,
+                last.cumulative_edges,
+                mid.round,
+                last.round,
+            ));
+
+            // Rounds with zero new edges (plateau indicator)
+            let plateau_rounds = history.iter().filter(|h| h.new_edges == 0).count();
+            if plateau_rounds > 0 {
+                output.push_str(&format!(
+                    "  Plateau rounds:  {}/{} ({:.0}% produced no new coverage)\n",
+                    plateau_rounds,
+                    history.len(),
+                    plateau_rounds as f64 / history.len() as f64 * 100.0,
+                ));
+            }
+
+            // Bug discovery timeline
+            let bug_rounds: Vec<u64> = history
+                .iter()
+                .filter(|h| h.bugs_found > 0)
+                .map(|h| h.round)
+                .collect();
+            if !bug_rounds.is_empty() {
+                let round_list: Vec<String> = bug_rounds.iter().map(|r| r.to_string()).collect();
+                output.push_str(&format!(
+                    "  Bugs found in:   round{} {}\n",
+                    if bug_rounds.len() > 1 { "s" } else { "" },
+                    round_list.join(", "),
+                ));
+            }
+        }
+        output.push('\n');
+    }
+
     // Bug details
     if !report.bugs.is_empty() {
         output
@@ -215,6 +301,7 @@ mod tests {
                 failed: 0,
                 unexercised: 15,
             },
+            round_history: Vec::new(),
         };
 
         let formatted = format_report(&report);
@@ -240,6 +327,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            round_history: Vec::new(),
         };
 
         let formatted = format_report(&report);
@@ -269,6 +357,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            round_history: Vec::new(),
         };
 
         let formatted = format_report(&report);
@@ -313,6 +402,152 @@ mod tests {
         assert!(formatted.contains("Fault Schedule:"));
         assert!(formatted.contains("@ 1000ns:"));
         assert!(formatted.contains("@ 2000ns:"));
+    }
+
+    #[test]
+    fn test_format_report_with_round_history() {
+        use crate::explorer::RoundHistory;
+
+        let history = vec![
+            RoundHistory {
+                round: 1,
+                branches_run: 8,
+                new_edges: 50,
+                cumulative_edges: 50,
+                bugs_found: 0,
+                cumulative_bugs: 0,
+                frontier_size: 3,
+                corpus_size: 3,
+            },
+            RoundHistory {
+                round: 2,
+                branches_run: 8,
+                new_edges: 30,
+                cumulative_edges: 80,
+                bugs_found: 1,
+                cumulative_bugs: 1,
+                frontier_size: 5,
+                corpus_size: 5,
+            },
+            RoundHistory {
+                round: 3,
+                branches_run: 8,
+                new_edges: 0,
+                cumulative_edges: 80,
+                bugs_found: 0,
+                cumulative_bugs: 1,
+                frontier_size: 4,
+                corpus_size: 5,
+            },
+        ];
+
+        let report = ExplorationReport {
+            rounds: 3,
+            total_branches: 24,
+            total_edges: 80,
+            bugs: Vec::new(),
+            corpus_size: 5,
+            coverage_stats: CoverageStats {
+                total_edges: 80,
+                total_runs: 24,
+                edges_per_run_avg: 3.3,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            round_history: history,
+        };
+
+        let formatted = format_report(&report);
+
+        // Table header present
+        assert!(formatted.contains("Exploration Progress"));
+        assert!(formatted.contains("Round"));
+        assert!(formatted.contains("New Edges"));
+
+        // Row data present
+        assert!(formatted.contains("50"));
+        assert!(formatted.contains("80"));
+
+        // Coverage growth summary
+        assert!(formatted.contains("Coverage growth:"));
+        assert!(formatted.contains("50"));
+        assert!(formatted.contains("80"));
+
+        // Plateau detection
+        assert!(formatted.contains("Plateau rounds:"));
+        assert!(formatted.contains("1/3"));
+
+        // Bug discovery timeline
+        assert!(formatted.contains("Bugs found in:"));
+        assert!(formatted.contains("round 2"));
+    }
+
+    #[test]
+    fn test_format_report_round_history_truncation() {
+        use crate::explorer::RoundHistory;
+
+        // 25 rounds — should show first 5, gap, last 5
+        let history: Vec<RoundHistory> = (1..=25)
+            .map(|r| RoundHistory {
+                round: r,
+                branches_run: 8,
+                new_edges: if r <= 10 { 5 } else { 0 },
+                cumulative_edges: (r as usize).min(10) * 5,
+                bugs_found: 0,
+                cumulative_bugs: 0,
+                frontier_size: 3,
+                corpus_size: r as usize,
+            })
+            .collect();
+
+        let report = ExplorationReport {
+            rounds: 25,
+            total_branches: 200,
+            total_edges: 50,
+            bugs: Vec::new(),
+            corpus_size: 25,
+            coverage_stats: CoverageStats {
+                total_edges: 50,
+                total_runs: 200,
+                edges_per_run_avg: 2.0,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            round_history: history,
+        };
+
+        let formatted = format_report(&report);
+
+        // Should contain the ellipsis row
+        assert!(formatted.contains("⋮"));
+
+        // First and last rounds should appear
+        assert!(formatted.contains("     1"));
+        assert!(formatted.contains("    25"));
+    }
+
+    #[test]
+    fn test_format_report_empty_round_history() {
+        let report = ExplorationReport {
+            rounds: 0,
+            total_branches: 0,
+            total_edges: 0,
+            bugs: Vec::new(),
+            corpus_size: 0,
+            coverage_stats: CoverageStats {
+                total_edges: 0,
+                total_runs: 0,
+                edges_per_run_avg: 0.0,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            round_history: Vec::new(),
+        };
+
+        let formatted = format_report(&report);
+
+        // No progress section when history is empty
+        assert!(!formatted.contains("Exploration Progress"));
     }
 
     #[test]

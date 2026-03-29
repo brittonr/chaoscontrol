@@ -184,6 +184,8 @@ pub struct OracleReport {
     pub failed: usize,
     /// Number of assertions never exercised.
     pub unexercised: usize,
+    /// Total registered assertion sites (catalog + runtime).
+    pub catalog_size: usize,
     /// All lifecycle events.
     pub events: Vec<OracleEvent>,
 }
@@ -242,6 +244,27 @@ impl PropertyOracle {
             .as_ref()
             .and_then(|r| r.immediate_failure.as_ref())
             .map(|(id, msg)| (*id, msg.as_str()))
+    }
+
+    // ── Catalog registration ────────────────────────────────────
+
+    /// Register an assertion site from the compile-time catalog.
+    ///
+    /// Creates a record with `hit_count = 0` so the oracle knows this
+    /// assertion exists even if it's never evaluated at runtime.  This
+    /// turns "unknown" into "Unexercised" in the final report.
+    ///
+    /// If the assertion was already recorded (via a runtime hit before
+    /// catalog registration), the existing record is kept unchanged.
+    pub fn register_catalog_entry(&mut self, id: u32, kind: AssertionKind, message: &str) {
+        self.assertions
+            .entry(id)
+            .or_insert_with(|| AssertionRecord::new(message.to_string(), kind));
+    }
+
+    /// Number of registered assertion sites (from catalog + runtime).
+    pub fn catalog_size(&self) -> usize {
+        self.assertions.len()
     }
 
     // ── Recording methods ───────────────────────────────────────
@@ -383,6 +406,7 @@ impl PropertyOracle {
             passed,
             failed,
             unexercised,
+            catalog_size: self.assertions.len(),
             events: self.events.clone(),
         }
     }
@@ -627,6 +651,74 @@ mod tests {
         assert_eq!(report.events.len(), 1);
         assert_eq!(report.events[0].name, "leader_elected");
         assert_eq!(report.events[0].run_id, 0);
+    }
+
+    #[test]
+    fn catalog_entry_creates_unexercised() {
+        let mut oracle = PropertyOracle::new();
+        oracle.register_catalog_entry(10, AssertionKind::Always, "never hit");
+        oracle.register_catalog_entry(11, AssertionKind::Sometimes, "never hit either");
+        oracle.register_catalog_entry(12, AssertionKind::Reachable, "never reached");
+
+        let report = oracle.report();
+        assert_eq!(report.catalog_size, 3);
+        assert_eq!(report.unexercised, 3);
+        assert_eq!(report.assertions[&10].verdict(), Verdict::Unexercised);
+        assert_eq!(report.assertions[&11].verdict(), Verdict::Unexercised);
+        assert_eq!(report.assertions[&12].verdict(), Verdict::Unexercised);
+    }
+
+    #[test]
+    fn catalog_entry_does_not_overwrite_runtime() {
+        let mut oracle = PropertyOracle::new();
+        oracle.begin_run();
+        oracle.record_always(10, true, "passes");
+        oracle.end_run();
+
+        // Catalog registration after runtime hit — should NOT reset the record.
+        oracle.register_catalog_entry(10, AssertionKind::Always, "passes");
+
+        let report = oracle.report();
+        assert_eq!(report.assertions[&10].verdict(), Verdict::Passed);
+        assert_eq!(report.assertions[&10].hit_count, 1);
+    }
+
+    #[test]
+    fn catalog_then_runtime_hit() {
+        let mut oracle = PropertyOracle::new();
+        oracle.register_catalog_entry(10, AssertionKind::Sometimes, "event");
+
+        // Initially unexercised
+        assert_eq!(
+            oracle.report().assertions[&10].verdict(),
+            Verdict::Unexercised
+        );
+
+        // Now hit it
+        oracle.begin_run();
+        oracle.record_sometimes(10, true, "event");
+        oracle.end_run();
+
+        let report = oracle.report();
+        assert_eq!(report.assertions[&10].verdict(), Verdict::Passed);
+        assert_eq!(report.assertions[&10].hit_count, 1);
+    }
+
+    #[test]
+    fn catalog_size_in_report() {
+        let mut oracle = PropertyOracle::new();
+        oracle.register_catalog_entry(1, AssertionKind::Always, "a");
+        oracle.register_catalog_entry(2, AssertionKind::Sometimes, "b");
+
+        oracle.begin_run();
+        oracle.record_always(1, true, "a");
+        oracle.record_always(3, true, "c"); // runtime-only, not in catalog
+        oracle.end_run();
+
+        let report = oracle.report();
+        assert_eq!(report.catalog_size, 3); // 2 from catalog + 1 runtime-only
+        assert_eq!(report.passed, 2); // id=1 (always true), id=3 (always true)
+        assert_eq!(report.unexercised, 1); // id=2 (never hit)
     }
 
     #[test]

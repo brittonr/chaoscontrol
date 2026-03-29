@@ -1976,7 +1976,12 @@ fn main() {
                 eprintln!("    ERROR: different seeds produced identical dlogs");
                 false
             }
-            DiffResult::Diverged { index, record_a, record_b, .. } => {
+            DiffResult::Diverged {
+                index,
+                record_a,
+                record_b,
+                ..
+            } => {
                 eprintln!(
                     "    divergence at record #{}: A={} vs B={}",
                     index,
@@ -1985,7 +1990,11 @@ fn main() {
                 );
                 true
             }
-            DiffResult::LengthMismatch { matched, len_a, len_b } => {
+            DiffResult::LengthMismatch {
+                matched,
+                len_a,
+                len_b,
+            } => {
                 eprintln!(
                     "    length mismatch: {} matched, A={}, B={}",
                     matched, len_a, len_b

@@ -2566,7 +2566,8 @@ impl DeterministicVm {
             self.dlog_emit(rec);
 
             // Periodic full register dump (if configured).
-            if self.dlog_register_interval > 0 && self.exit_count % self.dlog_register_interval == 0
+            if self.dlog_register_interval > 0
+                && self.exit_count.is_multiple_of(self.dlog_register_interval)
             {
                 if let Ok(regs) = self.vcpus[self.active_vcpu].get_regs() {
                     let dump = DlogRecord::new(

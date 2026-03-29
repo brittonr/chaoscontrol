@@ -24,6 +24,72 @@ use crate::transport;
 use chaoscontrol_protocol::*;
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Assertion catalog (compile-time registration via linkme)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Catalog kind constants for `CatalogEntry::kind`.
+pub const CATALOG_KIND_ALWAYS: u8 = 0;
+pub const CATALOG_KIND_SOMETIMES: u8 = 1;
+pub const CATALOG_KIND_REACHABLE: u8 = 2;
+pub const CATALOG_KIND_UNREACHABLE: u8 = 3;
+
+/// A registered assertion site, created at link time by assertion macros.
+///
+/// Every `cc_assert_*!` macro emits a static `CatalogEntry` into the
+/// `ASSERTION_CATALOG` distributed slice.  At initialization, the SDK
+/// sends all catalog entries to the VMM so the oracle can distinguish
+/// "never hit" from "never registered."
+pub struct CatalogEntry {
+    /// Unique assertion ID (FNV-1a hash of location string).
+    pub id: u32,
+    /// Human-readable assertion message.
+    pub message: &'static str,
+    /// Kind of assertion: one of `CATALOG_KIND_*` constants.
+    pub kind: u8,
+    /// Source file where the assertion macro was invoked.
+    pub file: &'static str,
+    /// Source line where the assertion macro was invoked.
+    pub line: u32,
+}
+
+// Safety: CatalogEntry only contains &'static references and Copy types.
+unsafe impl Send for CatalogEntry {}
+unsafe impl Sync for CatalogEntry {}
+
+/// Distributed slice collecting all assertion sites across the binary.
+///
+/// Populated at link time by `cc_assert_*!` macros.  Iterated during
+/// `chaoscontrol_init()` to register every assertion site with the VMM.
+#[cfg(feature = "full")]
+#[linkme::distributed_slice]
+pub static ASSERTION_CATALOG: [CatalogEntry];
+
+/// Send all catalog entries to the VMM (or local output).
+///
+/// Called once during `chaoscontrol_init()`.  Each entry becomes a
+/// `CMD_ASSERT_CATALOG` hypercall so the oracle knows about every
+/// assertion site — including ones that are never reached.
+#[cfg(feature = "full")]
+pub(crate) fn emit_catalog() {
+    for entry in ASSERTION_CATALOG.iter() {
+        let kind_byte = entry.kind;
+        // Encode location as JSON details: {"file":"foo.rs","line":42}
+        let details = serde_json::json!({
+            "file": entry.file,
+            "line": entry.line,
+        });
+        let json_bytes = serde_json::to_vec(&details).unwrap_or_else(|_| b"{}".to_vec());
+        transport::hypercall(
+            CMD_ASSERT_CATALOG,
+            kind_byte,
+            entry.id,
+            entry.message,
+            &json_bytes,
+        );
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Location ID
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -212,6 +278,9 @@ macro_rules! __cc_empty_json {
 
 /// Assert-always with automatic source location ID.
 ///
+/// Registers the assertion site in the compile-time catalog so the oracle
+/// can detect whether the explorer ever exercises this code path.
+///
 /// ```rust,ignore
 /// cc_assert_always!(leader_id < 3, "valid leader");
 /// cc_assert_always!(leader_id < 3, "valid leader", &json!({"id": leader_id}));
@@ -220,10 +289,12 @@ macro_rules! __cc_empty_json {
 macro_rules! cc_assert_always {
     ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($cond, _ID, $msg, $details);
     }};
 }
@@ -233,10 +304,12 @@ macro_rules! cc_assert_always {
 macro_rules! cc_assert_sometimes {
     ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($cond, _ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($cond, _ID, $msg, $details);
     }};
 }
@@ -246,10 +319,12 @@ macro_rules! cc_assert_sometimes {
 macro_rules! cc_assert_reachable {
     ($msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_REACHABLE);
         $crate::assert::reachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($msg:expr, $details:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_REACHABLE);
         $crate::assert::reachable_with_id(_ID, $msg, $details);
     }};
 }
@@ -259,10 +334,12 @@ macro_rules! cc_assert_reachable {
 macro_rules! cc_assert_unreachable {
     ($msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_UNREACHABLE);
         $crate::assert::unreachable_with_id(_ID, $msg, &$crate::__cc_empty_json!());
     }};
     ($msg:expr, $details:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_UNREACHABLE);
         $crate::assert::unreachable_with_id(_ID, $msg, $details);
     }};
 }
@@ -272,6 +349,7 @@ macro_rules! cc_assert_unreachable {
 macro_rules! cc_assert_always_or_unreachable {
     ($cond:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_or_unreachable_with_id(
             $cond,
             _ID,
@@ -281,8 +359,42 @@ macro_rules! cc_assert_always_or_unreachable {
     }};
     ($cond:expr, $msg:expr, $details:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, $details);
     }};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Catalog registration helper macro
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Internal macro to register an assertion site in the compile-time catalog.
+///
+/// When `full` is enabled, emits a static `CatalogEntry` into the
+/// `ASSERTION_CATALOG` distributed slice.  No-op without `full`.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_catalog {
+    ($id:expr, $msg:expr, $kind:expr) => {
+        const _: () = {
+            #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
+                id: $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg)),
+                message: $msg,
+                kind: $kind,
+                file: file!(),
+                line: line!(),
+            };
+        };
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_catalog {
+    ($id:expr, $msg:expr, $kind:expr) => {};
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -294,6 +406,7 @@ macro_rules! cc_assert_always_or_unreachable {
 macro_rules! cc_assert_always_lt {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -303,6 +416,7 @@ macro_rules! cc_assert_always_lt {
 macro_rules! cc_assert_always_le {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -312,6 +426,7 @@ macro_rules! cc_assert_always_le {
 macro_rules! cc_assert_always_gt {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -321,6 +436,7 @@ macro_rules! cc_assert_always_gt {
 macro_rules! cc_assert_always_ge {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -330,6 +446,7 @@ macro_rules! cc_assert_always_ge {
 macro_rules! cc_assert_always_eq {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -339,6 +456,7 @@ macro_rules! cc_assert_always_eq {
 macro_rules! cc_assert_always_ne {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -348,6 +466,7 @@ macro_rules! cc_assert_always_ne {
 macro_rules! cc_assert_sometimes_lt {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -357,6 +476,7 @@ macro_rules! cc_assert_sometimes_lt {
 macro_rules! cc_assert_sometimes_le {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -366,6 +486,7 @@ macro_rules! cc_assert_sometimes_le {
 macro_rules! cc_assert_sometimes_gt {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -375,6 +496,7 @@ macro_rules! cc_assert_sometimes_gt {
 macro_rules! cc_assert_sometimes_ge {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -384,6 +506,7 @@ macro_rules! cc_assert_sometimes_ge {
 macro_rules! cc_assert_sometimes_eq {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -393,6 +516,7 @@ macro_rules! cc_assert_sometimes_eq {
 macro_rules! cc_assert_sometimes_ne {
     ($left:expr, $right:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -402,6 +526,7 @@ macro_rules! cc_assert_sometimes_ne {
 macro_rules! cc_assert_always_some {
     ($expr:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }
@@ -411,6 +536,7 @@ macro_rules! cc_assert_always_some {
 macro_rules! cc_assert_sometimes_some {
     ($expr:expr, $msg:expr) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
         $crate::assert::sometimes_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
     }};
 }

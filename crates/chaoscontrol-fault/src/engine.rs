@@ -5,7 +5,7 @@
 //! engine on every hypercall and on every exit to check if faults are due.
 
 use crate::faults::Fault;
-use crate::oracle::PropertyOracle;
+use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
 use rand::RngCore;
@@ -194,6 +194,20 @@ impl FaultEngine {
     /// the result and status to write back.
     pub fn handle_hypercall(&mut self, page: &HypercallPage) -> (u64, u8) {
         match page.command {
+            CMD_ASSERT_CATALOG => {
+                let kind = page.flags;
+                let message = self.decode_message(page);
+                let oracle_kind = match kind {
+                    0 => AssertionKind::Always,
+                    1 => AssertionKind::Sometimes,
+                    2 => AssertionKind::Reachable,
+                    3 => AssertionKind::Unreachable,
+                    _ => AssertionKind::Always,
+                };
+                self.oracle
+                    .register_catalog_entry(page.id, oracle_kind, &message);
+                (0, STATUS_OK)
+            }
             CMD_ASSERT_ALWAYS => {
                 let cond = page.condition();
                 let message = self.decode_message(page);

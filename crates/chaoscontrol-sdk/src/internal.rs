@@ -133,6 +133,9 @@ pub fn init() {
     INITIALIZED.get_or_init(|| {
         // Force mode detection
         let _ = get_mode();
+        // Emit the assertion catalog so the VMM/oracle knows about
+        // every assertion site, including ones never reached at runtime.
+        crate::assert::emit_catalog();
     });
 }
 

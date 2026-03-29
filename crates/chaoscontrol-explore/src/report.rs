@@ -95,6 +95,26 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push('\n');
     }
 
+    // Assertion coverage
+    let ast = &report.assertion_stats;
+    if ast.catalog_size > 0 {
+        output
+            .push_str("─── Assertion Coverage ────────────────────────────────────────────────\n");
+        output.push_str(&format!("Registered sites:       {}\n", ast.catalog_size));
+        output.push_str(&format!("Passed:                 {}\n", ast.passed));
+        output.push_str(&format!("Failed:                 {}\n", ast.failed));
+        output.push_str(&format!("Unexercised:            {}\n", ast.unexercised));
+        if ast.catalog_size > 0 {
+            let exercised = ast.catalog_size - ast.unexercised;
+            let pct = exercised as f64 / ast.catalog_size as f64 * 100.0;
+            output.push_str(&format!(
+                "Exercised:              {}/{} ({:.1}%)\n",
+                exercised, ast.catalog_size, pct
+            ));
+        }
+        output.push('\n');
+    }
+
     // Bug details
     if !report.bugs.is_empty() {
         output
@@ -180,6 +200,38 @@ mod tests {
     }
 
     #[test]
+    fn test_format_report_with_assertion_stats() {
+        use crate::explorer::AssertionStats;
+
+        let report = ExplorationReport {
+            rounds: 10,
+            total_branches: 80,
+            total_edges: 256,
+            bugs: Vec::new(),
+            corpus_size: 15,
+            coverage_stats: CoverageStats {
+                total_edges: 256,
+                total_runs: 80,
+                edges_per_run_avg: 3.2,
+            },
+            network_stats: Default::default(),
+            assertion_stats: AssertionStats {
+                catalog_size: 35,
+                passed: 20,
+                failed: 0,
+                unexercised: 15,
+            },
+        };
+
+        let formatted = format_report(&report);
+        assert!(formatted.contains("Assertion Coverage"));
+        assert!(formatted.contains("Registered sites:       35"));
+        assert!(formatted.contains("Passed:                 20"));
+        assert!(formatted.contains("Unexercised:            15"));
+        assert!(formatted.contains("Exercised:              20/35 (57.1%)"));
+    }
+
+    #[test]
     fn test_format_report_no_bugs() {
         let report = ExplorationReport {
             rounds: 10,
@@ -193,6 +245,7 @@ mod tests {
                 edges_per_run_avg: 3.2,
             },
             network_stats: Default::default(),
+            assertion_stats: Default::default(),
         };
 
         let formatted = format_report(&report);
@@ -221,6 +274,7 @@ mod tests {
                 edges_per_run_avg: 3.2,
             },
             network_stats: Default::default(),
+            assertion_stats: Default::default(),
         };
 
         let formatted = format_report(&report);

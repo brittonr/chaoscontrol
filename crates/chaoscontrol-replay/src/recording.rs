@@ -340,6 +340,7 @@ mod tests {
             passed: 0,
             failed: 0,
             unexercised: 0,
+            catalog_size: 0,
             events: vec![],
         };
 

@@ -1435,6 +1435,7 @@ impl SimulationController {
                 chaoscontrol_fault::oracle::Verdict::Unexercised => combined.unexercised += 1,
             }
         }
+        combined.catalog_size = combined.assertions.len();
 
         combined
     }

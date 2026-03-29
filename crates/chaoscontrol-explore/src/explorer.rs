@@ -853,6 +853,9 @@ impl Explorer {
             .map(|c| c.network().stats().clone())
             .unwrap_or_default();
 
+        // Collect assertion stats from latest oracle reports
+        let assertion_stats = self.collect_assertion_stats();
+
         ExplorationReport {
             rounds: self.rounds_completed,
             total_branches: self.total_branches_run,
@@ -861,6 +864,31 @@ impl Explorer {
             corpus_size: corpus_stats.total_entries,
             coverage_stats,
             network_stats,
+            assertion_stats,
+        }
+    }
+
+    /// Collect assertion stats from the controller's per-VM oracles.
+    fn collect_assertion_stats(&self) -> AssertionStats {
+        let Some(controller) = &self.controller else {
+            return AssertionStats::default();
+        };
+
+        // Merge oracle reports from all VMs
+        let mut merged = chaoscontrol_fault::oracle::PropertyOracle::new();
+        for i in 0..controller.num_vms() {
+            let report = controller.vm(i).fault_engine().oracle().report();
+            for (id, record) in &report.assertions {
+                merged.register_catalog_entry(*id, record.kind, &record.message);
+            }
+        }
+
+        let report = merged.report();
+        AssertionStats {
+            catalog_size: report.catalog_size,
+            passed: report.passed,
+            failed: report.failed,
+            unexercised: report.unexercised,
         }
     }
 
@@ -1032,6 +1060,20 @@ pub struct ExplorationReport {
     pub corpus_size: usize,
     pub coverage_stats: CoverageStats,
     pub network_stats: chaoscontrol_vmm::controller::NetworkStats,
+    pub assertion_stats: AssertionStats,
+}
+
+/// Summary of assertion coverage across all exploration branches.
+#[derive(Debug, Clone, Default)]
+pub struct AssertionStats {
+    /// Total registered assertion sites (catalog + runtime).
+    pub catalog_size: usize,
+    /// Assertions that passed across all runs.
+    pub passed: usize,
+    /// Assertions that failed in at least one run.
+    pub failed: usize,
+    /// Assertions registered but never evaluated.
+    pub unexercised: usize,
 }
 
 /// Current exploration statistics.
@@ -1096,6 +1138,7 @@ mod tests {
                 passed: 0,
                 failed: 0,
                 unexercised: 0,
+                catalog_size: 0,
                 events: Vec::new(),
             },
             schedule: FaultSchedule::new(),
@@ -1126,6 +1169,7 @@ mod tests {
             passed: 0,
             failed: 0,
             unexercised: 0,
+            catalog_size: 0,
             events: Vec::new(),
         };
 

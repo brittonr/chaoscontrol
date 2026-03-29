@@ -33,6 +33,63 @@ pub const CATALOG_KIND_SOMETIMES: u8 = 1;
 pub const CATALOG_KIND_REACHABLE: u8 = 2;
 pub const CATALOG_KIND_UNREACHABLE: u8 = 3;
 
+/// The kind of assertion being made.
+///
+/// Maps to the four assertion semantics supported by ChaosControl.
+/// Used with [`assert_raw`] and [`cc_assert_raw!`] to specify which
+/// protocol command to dispatch.
+///
+/// # Third-party framework integration
+///
+/// ```rust,ignore
+/// use chaoscontrol_sdk::prelude::*;
+///
+/// // Route a proptest property through ChaosControl:
+/// let result = my_proptest_check();
+/// assert_raw(
+///     AssertionKind::Always,
+///     result.is_ok(),
+///     "proptest property holds",
+///     &json!({"error": format!("{:?}", result)}),
+/// );
+/// ```
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AssertionKind {
+    /// Must be true every time the assertion is reached.
+    Always,
+    /// Must be true at least once across all runs.
+    Sometimes,
+    /// This code point must be reached at least once across all runs.
+    Reachable,
+    /// This code point must never be reached.
+    Unreachable,
+}
+
+impl AssertionKind {
+    /// Map to the corresponding `CATALOG_KIND_*` constant.
+    ///
+    /// This is `const` so it can be used in static catalog entries
+    /// (e.g. inside [`cc_assert_raw!`] macro expansion).
+    pub const fn to_catalog_kind(&self) -> u8 {
+        match self {
+            AssertionKind::Always => CATALOG_KIND_ALWAYS,
+            AssertionKind::Sometimes => CATALOG_KIND_SOMETIMES,
+            AssertionKind::Reachable => CATALOG_KIND_REACHABLE,
+            AssertionKind::Unreachable => CATALOG_KIND_UNREACHABLE,
+        }
+    }
+
+    /// Map to the corresponding `CMD_ASSERT_*` protocol command.
+    pub fn to_command(&self) -> u8 {
+        match self {
+            AssertionKind::Always => CMD_ASSERT_ALWAYS,
+            AssertionKind::Sometimes => CMD_ASSERT_SOMETIMES,
+            AssertionKind::Reachable => CMD_ASSERT_REACHABLE,
+            AssertionKind::Unreachable => CMD_ASSERT_UNREACHABLE,
+        }
+    }
+}
+
 /// A registered assertion site, created at link time by assertion macros.
 ///
 /// Every `cc_assert_*!` macro emits a static `CatalogEntry` into the
@@ -224,6 +281,79 @@ pub fn always_or_unreachable_with_id(
     }
 }
 
+/// Generic assertion that dispatches any kind through the hypercall transport.
+///
+/// Computes the assertion ID from `message` via [`location_id`]. Use
+/// [`assert_raw_with_id`] when you maintain your own ID scheme.
+///
+/// For `Reachable` and `Unreachable` kinds, `cond` is ignored — reachable
+/// fires on any call, unreachable always records a failure.
+///
+/// # Third-party framework integration
+///
+/// ```rust,ignore
+/// use chaoscontrol_sdk::prelude::*;
+///
+/// // proptest integration
+/// let result = my_property_check();
+/// assert_raw(
+///     AssertionKind::Always,
+///     result.is_ok(),
+///     "property holds",
+///     &json!({"error": format!("{:?}", result)}),
+/// );
+///
+/// // quickcheck liveness check
+/// assert_raw(
+///     AssertionKind::Sometimes,
+///     found_interesting_case,
+///     "interesting case found",
+///     &json!({"input": input_val}),
+/// );
+/// ```
+#[cfg(feature = "full")]
+pub fn assert_raw(kind: AssertionKind, cond: bool, message: &str, details: &serde_json::Value) {
+    let id = location_id(message);
+    assert_raw_with_id(kind, cond, id, message, details);
+}
+
+/// Like [`assert_raw`] but with an explicit assertion ID.
+///
+/// Use this when your framework maintains its own assertion ID scheme
+/// and you want consistent IDs across code changes.
+///
+/// ```rust,ignore
+/// use chaoscontrol_sdk::prelude::*;
+///
+/// let my_id: u32 = framework.assertion_id();
+/// assert_raw_with_id(
+///     AssertionKind::Always,
+///     check_passed,
+///     my_id,
+///     "framework check",
+///     &json!({"check": "consistency"}),
+/// );
+/// ```
+#[cfg(feature = "full")]
+pub fn assert_raw_with_id(
+    kind: AssertionKind,
+    cond: bool,
+    id: u32,
+    message: &str,
+    details: &serde_json::Value,
+) {
+    let command = kind.to_command();
+    let flags = match kind {
+        AssertionKind::Always | AssertionKind::Sometimes => {
+            if cond { 0x01 } else { 0x00 }
+        }
+        AssertionKind::Reachable => 0x01,
+        AssertionKind::Unreachable => 0x00,
+    };
+    let json_bytes = to_json_bytes(details);
+    transport::hypercall(command, flags, id, message, &json_bytes);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Core assertions (no-op mode)
 // ═══════════════════════════════════════════════════════════════════════
@@ -248,6 +378,17 @@ pub fn unreachable_with_id(_id: u32, _message: &str, _details: &()) {}
 pub fn always_or_unreachable(_cond: bool, _message: &str, _details: &()) {}
 #[cfg(not(feature = "full"))]
 pub fn always_or_unreachable_with_id(_cond: bool, _id: u32, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn assert_raw(_kind: AssertionKind, _cond: bool, _message: &str, _details: &()) {}
+#[cfg(not(feature = "full"))]
+pub fn assert_raw_with_id(
+    _kind: AssertionKind,
+    _cond: bool,
+    _id: u32,
+    _message: &str,
+    _details: &(),
+) {
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Macros: empty JSON helper
@@ -361,6 +502,39 @@ macro_rules! cc_assert_always_or_unreachable {
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
         $crate::assert::always_or_unreachable_with_id($cond, _ID, $msg, $details);
+    }};
+}
+
+/// Generic assertion macro with catalog registration.
+///
+/// Like [`cc_assert_always!`] and friends, but takes the assertion kind
+/// as a parameter. Registers the assertion site in the compile-time
+/// catalog and dispatches through [`assert_raw_with_id`] at runtime.
+///
+/// The `kind` argument must be a const-evaluable expression (e.g.
+/// `AssertionKind::Always`). For runtime-computed kinds, use
+/// [`assert_raw`] directly (no catalog registration).
+///
+/// ```rust,ignore
+/// use chaoscontrol_sdk::prelude::*;
+///
+/// // Equivalent to cc_assert_always!(cond, "msg"):
+/// cc_assert_raw!(AssertionKind::Always, cond, "msg");
+///
+/// // With details:
+/// cc_assert_raw!(AssertionKind::Sometimes, cond, "msg", &json!({"k": "v"}));
+/// ```
+#[macro_export]
+macro_rules! cc_assert_raw {
+    ($kind:expr, $cond:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $kind.to_catalog_kind());
+        $crate::assert::assert_raw_with_id($kind, $cond, _ID, $msg, &$crate::__cc_empty_json!());
+    }};
+    ($kind:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $kind.to_catalog_kind());
+        $crate::assert::assert_raw_with_id($kind, $cond, _ID, $msg, $details);
     }};
 }
 
@@ -625,4 +799,70 @@ mod tests {
         use serde_json::json;
         always_or_unreachable(true, "test", &json!({"key": "val"}));
     }
+
+    #[test]
+    fn assertion_kind_to_catalog_kind() {
+        assert_eq!(AssertionKind::Always.to_catalog_kind(), CATALOG_KIND_ALWAYS);
+        assert_eq!(
+            AssertionKind::Sometimes.to_catalog_kind(),
+            CATALOG_KIND_SOMETIMES,
+        );
+        assert_eq!(
+            AssertionKind::Reachable.to_catalog_kind(),
+            CATALOG_KIND_REACHABLE,
+        );
+        assert_eq!(
+            AssertionKind::Unreachable.to_catalog_kind(),
+            CATALOG_KIND_UNREACHABLE,
+        );
+    }
+
+    #[test]
+    fn assertion_kind_to_command() {
+        use chaoscontrol_protocol::*;
+        assert_eq!(AssertionKind::Always.to_command(), CMD_ASSERT_ALWAYS);
+        assert_eq!(AssertionKind::Sometimes.to_command(), CMD_ASSERT_SOMETIMES);
+        assert_eq!(AssertionKind::Reachable.to_command(), CMD_ASSERT_REACHABLE);
+        assert_eq!(
+            AssertionKind::Unreachable.to_command(),
+            CMD_ASSERT_UNREACHABLE,
+        );
+    }
+
+    #[test]
+    fn assert_raw_macro_compiles() {
+        cc_assert_raw!(AssertionKind::Always, true, "raw always");
+        cc_assert_raw!(AssertionKind::Sometimes, true, "raw sometimes");
+        cc_assert_raw!(AssertionKind::Reachable, true, "raw reachable");
+        cc_assert_raw!(AssertionKind::Unreachable, true, "raw unreachable");
+    }
+
+    #[test]
+    fn assert_raw_macro_with_details() {
+        use serde_json::json;
+        cc_assert_raw!(AssertionKind::Always, true, "raw details", &json!({"k": "v"}));
+        cc_assert_raw!(AssertionKind::Sometimes, false, "raw details 2", &json!({}),);
+    }
+
+    #[test]
+    fn assert_raw_functions_accept_json_details() {
+        use serde_json::json;
+        assert_raw(
+            AssertionKind::Always,
+            true,
+            "raw fn test",
+            &json!({"key": "value"}),
+        );
+        assert_raw_with_id(
+            AssertionKind::Sometimes,
+            false,
+            42,
+            "raw fn with id test",
+            &json!({"count": 1}),
+        );
+    }
+
+    // no_std stubs (assert_raw, assert_raw_with_id, cc_assert_raw!) compile
+    // without the `full` feature. Verified by building the crate with
+    // `default-features = false` in CI.
 }

@@ -82,8 +82,8 @@ pub use checkpoint::{
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 pub use explorer::{
-    AssertionStats, BranchResult, ExplorationMode, ExplorationReport, ExplorationStats,
-    ExploreError, Explorer, ExplorerConfig, RoundHistory, RoundReport,
+    AssertionDetail, AssertionStats, BranchResult, ExplorationMode, ExplorationReport,
+    ExplorationStats, ExploreError, Explorer, ExplorerConfig, RoundHistory, RoundReport,
 };
 pub use frontier::{Frontier, FrontierEntry};
 pub use input_tree::{alternatives_to_overrides, select_alternatives, ChoiceAlternative};

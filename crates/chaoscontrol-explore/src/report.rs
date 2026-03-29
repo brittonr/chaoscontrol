@@ -115,6 +115,62 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push('\n');
     }
 
+    // Per-assertion detail
+    if !report.assertion_details.is_empty() {
+        // Group by verdict for readability
+        let failed: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "failed")
+            .collect();
+        let unexercised: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "unexercised")
+            .collect();
+        let passed: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "passed")
+            .collect();
+
+        if !failed.is_empty() {
+            output.push_str(
+                "─── Failed Assertions ────────────────────────────────────────────────\n",
+            );
+            for a in &failed {
+                output.push_str(&format!(
+                    "  ✗ [{}] {} ({}): {} hits, {}/{} true\n",
+                    a.kind, a.message, a.id, a.hit_count, a.true_count, a.hit_count
+                ));
+            }
+            output.push('\n');
+        }
+
+        if !unexercised.is_empty() {
+            output.push_str(
+                "─── Unexercised Assertions ───────────────────────────────────────────\n",
+            );
+            for a in &unexercised {
+                output.push_str(&format!("  ○ [{}] {} ({})\n", a.kind, a.message, a.id));
+            }
+            output.push('\n');
+        }
+
+        if !passed.is_empty() {
+            output.push_str(
+                "─── Passed Assertions ────────────────────────────────────────────────\n",
+            );
+            for a in &passed {
+                output.push_str(&format!(
+                    "  ✓ [{}] {} ({}) — {} hits\n",
+                    a.kind, a.message, a.id, a.hit_count
+                ));
+            }
+            output.push('\n');
+        }
+    }
+
     // Per-round history
     if !report.round_history.is_empty() {
         output.push_str(
@@ -301,6 +357,7 @@ mod tests {
                 failed: 0,
                 unexercised: 15,
             },
+            assertion_details: Vec::new(),
             round_history: Vec::new(),
         };
 
@@ -327,6 +384,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
             round_history: Vec::new(),
         };
 
@@ -357,6 +415,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
             round_history: Vec::new(),
         };
 
@@ -454,6 +513,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
             round_history: history,
         };
 
@@ -513,6 +573,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
             round_history: history,
         };
 
@@ -541,6 +602,7 @@ mod tests {
             },
             network_stats: Default::default(),
             assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
             round_history: Vec::new(),
         };
 
@@ -548,6 +610,140 @@ mod tests {
 
         // No progress section when history is empty
         assert!(!formatted.contains("Exploration Progress"));
+    }
+
+    #[test]
+    fn test_format_report_assertion_details() {
+        use crate::explorer::{AssertionDetail, AssertionStats};
+
+        let details = vec![
+            AssertionDetail {
+                id: 100,
+                message: "election safety".into(),
+                kind: "always".into(),
+                verdict: "passed".into(),
+                hit_count: 500,
+                true_count: 500,
+                false_count: 0,
+            },
+            AssertionDetail {
+                id: 200,
+                message: "log matching".into(),
+                kind: "always".into(),
+                verdict: "failed".into(),
+                hit_count: 300,
+                true_count: 290,
+                false_count: 10,
+            },
+            AssertionDetail {
+                id: 300,
+                message: "value committed".into(),
+                kind: "sometimes".into(),
+                verdict: "unexercised".into(),
+                hit_count: 0,
+                true_count: 0,
+                false_count: 0,
+            },
+            AssertionDetail {
+                id: 400,
+                message: "split brain".into(),
+                kind: "unreachable".into(),
+                verdict: "passed".into(),
+                hit_count: 0,
+                true_count: 0,
+                false_count: 0,
+            },
+        ];
+
+        let report = ExplorationReport {
+            rounds: 5,
+            total_branches: 40,
+            total_edges: 100,
+            bugs: Vec::new(),
+            corpus_size: 10,
+            coverage_stats: CoverageStats {
+                total_edges: 100,
+                total_runs: 40,
+                edges_per_run_avg: 2.5,
+            },
+            network_stats: Default::default(),
+            assertion_stats: AssertionStats {
+                catalog_size: 4,
+                passed: 2,
+                failed: 1,
+                unexercised: 1,
+            },
+            assertion_details: details,
+            round_history: Vec::new(),
+        };
+
+        let formatted = format_report(&report);
+
+        // Failed section
+        assert!(formatted.contains("Failed Assertions"));
+        assert!(formatted.contains("✗"));
+        assert!(formatted.contains("log matching"));
+
+        // Unexercised section
+        assert!(formatted.contains("Unexercised Assertions"));
+        assert!(formatted.contains("○"));
+        assert!(formatted.contains("value committed"));
+
+        // Passed section
+        assert!(formatted.contains("Passed Assertions"));
+        assert!(formatted.contains("✓"));
+        assert!(formatted.contains("election safety"));
+        assert!(formatted.contains("split brain"));
+    }
+
+    #[test]
+    fn test_assertion_detail_serialization() {
+        use crate::explorer::AssertionDetail;
+
+        let detail = AssertionDetail {
+            id: 42,
+            message: "safety property".into(),
+            kind: "always".into(),
+            verdict: "passed".into(),
+            hit_count: 1000,
+            true_count: 1000,
+            false_count: 0,
+        };
+
+        let json = serde_json::to_string(&detail).unwrap();
+        let roundtrip: AssertionDetail = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(roundtrip.id, 42);
+        assert_eq!(roundtrip.message, "safety property");
+        assert_eq!(roundtrip.hit_count, 1000);
+        assert_eq!(roundtrip.verdict, "passed");
+    }
+
+    #[test]
+    fn test_format_report_no_assertion_details() {
+        let report = ExplorationReport {
+            rounds: 1,
+            total_branches: 8,
+            total_edges: 10,
+            bugs: Vec::new(),
+            corpus_size: 1,
+            coverage_stats: CoverageStats {
+                total_edges: 10,
+                total_runs: 8,
+                edges_per_run_avg: 1.25,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
+            round_history: Vec::new(),
+        };
+
+        let formatted = format_report(&report);
+
+        // No assertion detail sections when details are empty
+        assert!(!formatted.contains("Failed Assertions"));
+        assert!(!formatted.contains("Unexercised Assertions"));
+        assert!(!formatted.contains("Passed Assertions"));
     }
 
     #[test]

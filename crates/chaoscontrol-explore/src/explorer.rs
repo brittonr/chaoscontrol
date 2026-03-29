@@ -869,8 +869,8 @@ impl Explorer {
             .map(|c| c.network().stats().clone())
             .unwrap_or_default();
 
-        // Collect assertion stats from latest oracle reports
-        let assertion_stats = self.collect_assertion_stats();
+        // Collect assertion stats + per-assertion detail from oracle reports
+        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
 
         ExplorationReport {
             rounds: self.rounds_completed,
@@ -881,32 +881,95 @@ impl Explorer {
             coverage_stats,
             network_stats,
             assertion_stats,
+            assertion_details,
             round_history: self.round_history.clone(),
         }
     }
 
-    /// Collect assertion stats from the controller's per-VM oracles.
-    fn collect_assertion_stats(&self) -> AssertionStats {
+    /// Collect assertion stats and per-assertion detail from all VM oracles.
+    ///
+    /// Merges assertion records across VMs by summing hit/true/false counts
+    /// and taking the worst-case verdict per assertion ID.
+    fn collect_assertion_detail(&self) -> (AssertionStats, Vec<AssertionDetail>) {
+        use chaoscontrol_fault::oracle::Verdict;
+
         let Some(controller) = &self.controller else {
-            return AssertionStats::default();
+            return (AssertionStats::default(), Vec::new());
         };
 
-        // Merge oracle reports from all VMs
-        let mut merged = chaoscontrol_fault::oracle::PropertyOracle::new();
+        // Merge per-assertion records across all VMs.
+        // Same assertion ID may appear in multiple VMs (e.g. catalog entries);
+        // sum their counts so verdicts reflect the full exploration.
+        let mut merged: BTreeMap<u32, chaoscontrol_fault::oracle::AssertionRecord> =
+            BTreeMap::new();
+
         for i in 0..controller.num_vms() {
             let report = controller.vm(i).fault_engine().oracle().report();
             for (id, record) in &report.assertions {
-                merged.register_catalog_entry(*id, record.kind, &record.message);
+                if let Some(existing) = merged.get_mut(id) {
+                    existing.hit_count += record.hit_count;
+                    existing.true_count += record.true_count;
+                    existing.false_count += record.false_count;
+                    // Keep the highest runs_hit / runs_satisfied across VMs
+                    existing.runs_hit = existing.runs_hit.max(record.runs_hit);
+                    existing.runs_satisfied = existing.runs_satisfied.max(record.runs_satisfied);
+                    // Preserve first failure
+                    if existing.first_failure_run.is_none() {
+                        existing.first_failure_run = record.first_failure_run;
+                    }
+                } else {
+                    merged.insert(*id, record.clone());
+                }
             }
         }
 
-        let report = merged.report();
-        AssertionStats {
-            catalog_size: report.catalog_size,
-            passed: report.passed,
-            failed: report.failed,
-            unexercised: report.unexercised,
+        // Build stats + detail
+        let mut passed = 0usize;
+        let mut failed = 0usize;
+        let mut unexercised = 0usize;
+        let mut details = Vec::with_capacity(merged.len());
+
+        for (id, record) in &merged {
+            let verdict = record.verdict();
+            match verdict {
+                Verdict::Passed => passed += 1,
+                Verdict::Failed => failed += 1,
+                Verdict::Unexercised => unexercised += 1,
+            }
+
+            details.push(AssertionDetail {
+                id: *id,
+                message: record.message.clone(),
+                kind: format!("{:?}", record.kind).to_lowercase(),
+                verdict: format!("{:?}", verdict).to_lowercase(),
+                hit_count: record.hit_count,
+                true_count: record.true_count,
+                false_count: record.false_count,
+            });
         }
+
+        // Sort: failed first, then unexercised, then passed
+        details.sort_by(|a, b| {
+            let order = |v: &str| -> u8 {
+                match v {
+                    "failed" => 0,
+                    "unexercised" => 1,
+                    _ => 2,
+                }
+            };
+            order(&a.verdict)
+                .cmp(&order(&b.verdict))
+                .then(a.id.cmp(&b.id))
+        });
+
+        let stats = AssertionStats {
+            catalog_size: merged.len(),
+            passed,
+            failed,
+            unexercised,
+        };
+
+        (stats, details)
     }
 
     /// Get current exploration stats.
@@ -1104,6 +1167,8 @@ pub struct ExplorationReport {
     pub coverage_stats: CoverageStats,
     pub network_stats: chaoscontrol_vmm::controller::NetworkStats,
     pub assertion_stats: AssertionStats,
+    /// Per-assertion detail — individual verdicts, hit counts, messages.
+    pub assertion_details: Vec<AssertionDetail>,
     /// Per-round exploration history.
     pub round_history: Vec<RoundHistory>,
 }
@@ -1119,6 +1184,25 @@ pub struct AssertionStats {
     pub failed: usize,
     /// Assertions registered but never evaluated.
     pub unexercised: usize,
+}
+
+/// Per-assertion detail for the exploration report.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AssertionDetail {
+    /// Assertion ID (FNV-1a hash of location).
+    pub id: u32,
+    /// Human-readable message.
+    pub message: String,
+    /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
+    pub kind: String,
+    /// Final verdict: "passed", "failed", "unexercised".
+    pub verdict: String,
+    /// Total evaluation count across all runs.
+    pub hit_count: u64,
+    /// Times condition was true (always/sometimes only).
+    pub true_count: u64,
+    /// Times condition was false (always/sometimes only).
+    pub false_count: u64,
 }
 
 /// Current exploration statistics.

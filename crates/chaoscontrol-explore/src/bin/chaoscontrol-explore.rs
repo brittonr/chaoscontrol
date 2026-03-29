@@ -520,6 +520,27 @@ fn cmd_run(
                 eprintln!("Warning: failed to save bug {} txt: {}", bug.bug_id, e);
             }
         }
+
+        // Save per-assertion detail as JSON
+        if !report.assertion_details.is_empty() {
+            let assertions_path = format!("{}/assertions.json", output_dir);
+            match serde_json::to_string_pretty(&report.assertion_details) {
+                Ok(json) => {
+                    if let Err(e) = fs::write(&assertions_path, &json) {
+                        eprintln!("Warning: failed to save assertions: {}", e);
+                    } else {
+                        eprintln!(
+                            "Saved {} assertion details to: {}",
+                            report.assertion_details.len(),
+                            assertions_path
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to serialize assertions: {}", e);
+                }
+            }
+        }
     }
 
     // Exit with error code if bugs found
@@ -687,6 +708,27 @@ fn cmd_resume(
             eprintln!("Warning: failed to save bug {}: {}", bug.bug_id, e);
         } else {
             eprintln!("Saved bug {} to: {}", bug.bug_id, bug_path);
+        }
+    }
+
+    // Save per-assertion detail as JSON
+    if !report.assertion_details.is_empty() {
+        let assertions_path = format!("{}/assertions.json", corpus);
+        match serde_json::to_string_pretty(&report.assertion_details) {
+            Ok(json) => {
+                if let Err(e) = fs::write(&assertions_path, &json) {
+                    eprintln!("Warning: failed to save assertions: {}", e);
+                } else {
+                    eprintln!(
+                        "Saved {} assertion details to: {}",
+                        report.assertion_details.len(),
+                        assertions_path
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to serialize assertions: {}", e);
+            }
         }
     }
 

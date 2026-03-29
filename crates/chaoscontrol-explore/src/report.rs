@@ -157,13 +157,7 @@ pub fn format_bug(bug: &BugReport) -> String {
     if bug.schedule.total() > 0 {
         output.push_str("\n   Fault Schedule:\n");
 
-        // Clone and drain to list faults
-        let mut sched_clone = bug.schedule.clone();
-        sched_clone.reset();
-        let mut faults = Vec::new();
-        while let Some(time) = sched_clone.next_time() {
-            faults.extend(sched_clone.drain_due(time));
-        }
+        let faults = bug.schedule.faults();
 
         for (i, fault) in faults.iter().take(10).enumerate() {
             output.push_str(&format!(

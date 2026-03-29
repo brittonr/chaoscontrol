@@ -70,6 +70,7 @@ pub mod coverage;
 pub mod explorer;
 pub mod frontier;
 pub mod input_tree;
+pub mod minimizer;
 pub mod mutator;
 pub mod report;
 
@@ -86,6 +87,7 @@ pub use explorer::{
 };
 pub use frontier::{Frontier, FrontierEntry};
 pub use input_tree::{alternatives_to_overrides, select_alternatives, ChoiceAlternative};
+pub use minimizer::{MinimizeConfig, MinimizeResult, Minimizer};
 pub use mutator::{MutationConfig, ScheduleMutator};
 
 #[cfg(test)]

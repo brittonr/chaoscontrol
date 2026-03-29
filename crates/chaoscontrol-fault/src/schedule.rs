@@ -89,6 +89,25 @@ impl FaultSchedule {
         self.faults.len()
     }
 
+    /// Read-only access to the fault list.
+    pub fn faults(&self) -> &[ScheduledFault] {
+        &self.faults
+    }
+
+    /// Build a new schedule from a subset of faults (by index).
+    ///
+    /// Used by the minimizer to create candidate schedules with some
+    /// faults removed.
+    pub fn subset(&self, indices: &[usize]) -> Self {
+        let mut schedule = Self::new();
+        for &i in indices {
+            if i < self.faults.len() {
+                schedule.add(self.faults[i].clone());
+            }
+        }
+        schedule
+    }
+
     /// Reset the cursor to replay the schedule from the beginning.
     pub fn reset(&mut self) {
         self.cursor = 0;

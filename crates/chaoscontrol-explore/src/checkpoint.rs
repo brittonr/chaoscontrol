@@ -367,22 +367,15 @@ pub struct SerializableSchedule {
 
 impl From<&FaultSchedule> for SerializableSchedule {
     fn from(schedule: &FaultSchedule) -> Self {
-        // We need to reconstruct the schedule from its faults
-        // Since FaultSchedule doesn't expose faults directly, we'll work around it
-        let mut temp_schedule = schedule.clone();
-        temp_schedule.reset();
-
-        let mut faults = Vec::new();
-        // Drain all faults by advancing to u64::MAX
-        let all_faults = temp_schedule.drain_due(u64::MAX);
-
-        for sf in all_faults {
-            faults.push(SerializableScheduledFault {
+        let faults = schedule
+            .faults()
+            .iter()
+            .map(|sf| SerializableScheduledFault {
                 time_ns: sf.time_ns,
                 fault: (&sf.fault).into(),
-                label: sf.label,
-            });
-        }
+                label: sf.label.clone(),
+            })
+            .collect();
 
         SerializableSchedule { faults }
     }

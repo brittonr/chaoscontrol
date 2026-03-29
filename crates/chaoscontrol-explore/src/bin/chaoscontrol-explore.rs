@@ -39,9 +39,12 @@
 //! so we don't re-explore known territory.
 
 use chaoscontrol_explore::checkpoint::load_checkpoint;
+use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
+use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
 use chaoscontrol_explore::mutator::MutationConfig;
 use chaoscontrol_explore::report::format_report;
+use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
@@ -154,6 +157,60 @@ enum Commands {
         dlog_memory_hash: bool,
     },
 
+    /// Minimize a bug-triggering fault schedule.
+    ///
+    /// Takes a bug report from a previous exploration run and produces
+    /// the smallest fault schedule that still triggers the same failure.
+    Minimize {
+        /// Path to kernel (vmlinux).
+        #[arg(short, long)]
+        kernel: String,
+
+        /// Path to initrd (optional).
+        #[arg(short, long)]
+        initrd: Option<String>,
+
+        /// Path to the bug report file (from exploration output).
+        #[arg(short, long)]
+        bug: String,
+
+        /// Random seed (must match exploration run).
+        #[arg(short, long, default_value = "42")]
+        seed: u64,
+
+        /// Number of VMs.
+        #[arg(short, long, default_value = "2")]
+        vms: usize,
+
+        /// Ticks per branch.
+        #[arg(short, long, default_value = "1000")]
+        ticks: u64,
+
+        /// Scheduling quantum.
+        #[arg(short, long, default_value = "100")]
+        quantum: u64,
+
+        /// Number of vCPUs per VM.
+        #[arg(long, default_value = "1")]
+        vcpus: usize,
+
+        /// Scheduling strategy: "round-robin" or "randomized".
+        #[arg(long, default_value = "round-robin")]
+        scheduling: String,
+
+        /// Path to disk image (optional).
+        #[arg(long)]
+        disk_image: Option<String>,
+
+        /// Bootstrap tick budget.
+        #[arg(long, default_value = "10000")]
+        bootstrap_budget: u64,
+
+        /// Output file for minimized schedule.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+
     /// Resume from saved checkpoint.
     Resume {
         /// Path to corpus directory (containing checkpoint.json).
@@ -227,6 +284,33 @@ fn main() {
             initrd,
             rounds,
         } => cmd_resume(corpus, kernel, initrd, rounds),
+        Commands::Minimize {
+            kernel,
+            initrd,
+            bug,
+            seed,
+            vms,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            disk_image,
+            bootstrap_budget,
+            output,
+        } => cmd_minimize(
+            kernel,
+            initrd,
+            bug,
+            seed,
+            vms,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            disk_image,
+            bootstrap_budget,
+            output,
+        ),
     }
 }
 
@@ -411,15 +495,29 @@ fn cmd_run(
             eprintln!("Saved report to: {}", report_path);
         }
 
-        // Save each bug as Debug-formatted text (JSON serialization would require
-        // adding #[derive(Serialize)] to BugReport in library code)
+        // Save bugs as JSON (consumable by `minimize` subcommand) + Debug text
         for bug in &report.bugs {
-            let bug_path = format!("{}/bug_{}.txt", output_dir, bug.bug_id);
+            // JSON format (for minimize subcommand)
+            let serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+            let json_path = format!("{}/bug_{}.json", output_dir, bug.bug_id);
+            match serde_json::to_string_pretty(&serialized) {
+                Ok(json) => {
+                    if let Err(e) = fs::write(&json_path, &json) {
+                        eprintln!("Warning: failed to save bug {} JSON: {}", bug.bug_id, e);
+                    } else {
+                        eprintln!("Saved bug {} to: {}", bug.bug_id, json_path);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: failed to serialize bug {}: {}", bug.bug_id, e);
+                }
+            }
+
+            // Debug format (human-readable)
+            let txt_path = format!("{}/bug_{}.txt", output_dir, bug.bug_id);
             let bug_text = format!("{:#?}", bug);
-            if let Err(e) = fs::write(&bug_path, bug_text) {
-                eprintln!("Warning: failed to save bug {}: {}", bug.bug_id, e);
-            } else {
-                eprintln!("Saved bug {} to: {}", bug.bug_id, bug_path);
+            if let Err(e) = fs::write(&txt_path, bug_text) {
+                eprintln!("Warning: failed to save bug {} txt: {}", bug.bug_id, e);
             }
         }
     }
@@ -595,5 +693,180 @@ fn cmd_resume(
     // Exit with error code if bugs found
     if !report.bugs.is_empty() {
         std::process::exit(1);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_minimize(
+    kernel: String,
+    initrd: Option<String>,
+    bug_path: String,
+    seed: u64,
+    vms: usize,
+    ticks: u64,
+    quantum: u64,
+    vcpus: usize,
+    scheduling: String,
+    disk_image: Option<String>,
+    bootstrap_budget: u64,
+    output: Option<String>,
+) {
+    // Validate inputs
+    if !Path::new(&kernel).exists() {
+        eprintln!("Error: kernel file not found: {}", kernel);
+        std::process::exit(1);
+    }
+    if !Path::new(&bug_path).exists() {
+        eprintln!("Error: bug file not found: {}", bug_path);
+        std::process::exit(1);
+    }
+
+    // Load bug report (JSON with SerializableBug structure)
+    let bug_json = match fs::read_to_string(&bug_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: failed to read bug file: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let serialized_bug: chaoscontrol_explore::checkpoint::SerializableBug =
+        match serde_json::from_str(&bug_json) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("Error: failed to parse bug file: {}", e);
+                eprintln!("Expected JSON with fields: bug_id, assertion_id, assertion_location, schedule, tick");
+                std::process::exit(1);
+            }
+        };
+
+    // Convert serialized schedule back to FaultSchedule
+    let schedule: FaultSchedule = (&serialized_bug.schedule).into();
+
+    let bug = BugReport {
+        bug_id: serialized_bug.bug_id,
+        assertion_id: serialized_bug.assertion_id,
+        assertion_location: serialized_bug.assertion_location.clone(),
+        schedule,
+        snapshot: None,
+        tick: serialized_bug.tick,
+    };
+
+    // Parse scheduling strategy
+    let scheduling_strategy = match scheduling.as_str() {
+        "round-robin" | "rr" => SchedulingStrategy::RoundRobin,
+        "randomized" | "rand" => SchedulingStrategy::Randomized {
+            min_quantum: 50,
+            max_quantum: 200,
+        },
+        other => {
+            eprintln!("Error: unknown scheduling strategy '{}'", other);
+            std::process::exit(1);
+        }
+    };
+
+    let vm_config = VmConfig {
+        num_vcpus: vcpus,
+        scheduling_strategy,
+        ..Default::default()
+    };
+
+    let config = MinimizeConfig {
+        num_vms: vms,
+        vm_config,
+        kernel_path: kernel.clone(),
+        initrd_path: initrd.clone(),
+        seed,
+        quantum,
+        scheduling_strategy,
+        ticks_per_branch: ticks,
+        disk_image_path: disk_image.clone(),
+        bootstrap_budget,
+        coverage_gpa: COVERAGE_BITMAP_ADDR,
+    };
+
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!("  ChaosControl Schedule Minimizer");
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!();
+    eprintln!("Bug report:       {}", bug_path);
+    eprintln!("Assertion ID:     {}", bug.assertion_id);
+    eprintln!("Assertion:        {}", bug.assertion_location);
+    eprintln!("Original faults:  {}", bug.schedule.total());
+    eprintln!("Bug tick:         {}", bug.tick);
+    eprintln!();
+    eprintln!("Configuration:");
+    eprintln!("  Kernel:         {}", kernel);
+    if let Some(ref initrd_path) = initrd {
+        eprintln!("  Initrd:         {}", initrd_path);
+    }
+    eprintln!("  VMs:            {}", vms);
+    eprintln!("  Seed:           {}", seed);
+    eprintln!("  Ticks/branch:   {}", ticks);
+    eprintln!("  Quantum:        {}", quantum);
+    eprintln!();
+    eprintln!("Minimizing...");
+    eprintln!();
+
+    let mut minimizer = Minimizer::new(config, bug);
+
+    let result = match minimizer.minimize() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Minimization failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    eprintln!();
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!("  Minimization Result");
+    eprintln!("═══════════════════════════════════════════════════════════════════════");
+    eprintln!();
+    eprintln!("  Original faults:   {}", result.original_faults);
+    eprintln!("  Minimized faults:  {}", result.minimized_faults);
+    let reduction = if result.original_faults > 0 {
+        (1.0 - result.minimized_faults as f64 / result.original_faults as f64) * 100.0
+    } else {
+        0.0
+    };
+    eprintln!("  Reduction:         {:.1}%", reduction);
+    eprintln!("  Candidates tested: {}", result.candidates_tested);
+    eprintln!();
+
+    // Print minimized schedule
+    let faults = result.schedule.faults();
+    if faults.is_empty() {
+        eprintln!("  No faults needed (bug triggers without fault injection)");
+    } else {
+        eprintln!("  Minimized fault schedule:");
+        for (i, fault) in faults.iter().enumerate() {
+            eprintln!("    [{}] @ {}ns: {:?}", i + 1, fault.time_ns, fault.fault);
+        }
+    }
+    eprintln!();
+
+    // Save minimized bug report
+    if let Some(ref output_path) = output {
+        let minimized_bug = chaoscontrol_explore::checkpoint::SerializableBug {
+            bug_id: result.assertion_id,
+            assertion_id: result.assertion_id,
+            assertion_location: String::new(),
+            schedule: (&result.schedule).into(),
+            tick: 0,
+        };
+
+        match serde_json::to_string_pretty(&minimized_bug) {
+            Ok(json) => {
+                if let Err(e) = fs::write(output_path, &json) {
+                    eprintln!("Warning: failed to save minimized schedule: {}", e);
+                } else {
+                    eprintln!("Saved minimized bug to: {}", output_path);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to serialize: {}", e);
+            }
+        }
     }
 }

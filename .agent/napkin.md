@@ -519,6 +519,16 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **musl compatible**: linkme works with musl static linking (guest binaries)
 - **4 new oracle tests**: catalog_entry_creates_unexercised, catalog_entry_does_not_overwrite_runtime, catalog_then_runtime_hit, catalog_size_in_report
 
+## Fault Schedule Minimization (2026-03-29)
+- **Delta debugging (ddmin)**: Zeller's algorithm — partition schedule into N chunks, try removing each chunk, try each chunk alone, increase granularity until single-fault level
+- **FaultSchedule::faults()**: New read-only accessor for the fault list (previously private)
+- **FaultSchedule::subset(&[usize])**: Build a new schedule from a subset of fault indices
+- **Minimizer struct**: Takes MinimizeConfig + BugReport, bootstraps VM, confirms bug reproduces, then iteratively removes faults
+- **CLI**: `chaoscontrol-explore minimize --bug bug_0.json --kernel vmlinux --initrd initrd.gz -o minimized.json`
+- **Bug reports now saved as JSON**: Explorer saves `bug_N.json` (SerializableBug format) alongside `bug_N.txt` (Debug format)
+- **Checkpoint serialization simplified**: `From<&FaultSchedule> for SerializableSchedule` now uses `faults()` accessor instead of clone+reset+drain_due workaround
+- **Report format_bug simplified**: Same — uses `faults()` instead of clone+drain
+
 ## SDK + Fault Injection (2026-02-18)
 - **chaoscontrol-protocol**: Wire format crate, `no_std`, zero deps. Defines HypercallPage (4096 bytes, `repr(C, align(4096))`), command IDs, payload encode/decode
 - **chaoscontrol-sdk**: Guest SDK crate, `no_std` default + `std` feature. Antithesis-style API: assert::{always,sometimes,reachable,unreachable}, lifecycle::{setup_complete,send_event}, random::{get_random,random_choice}

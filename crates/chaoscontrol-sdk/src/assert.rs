@@ -349,7 +349,11 @@ pub fn assert_raw_with_id(
     let command = kind.to_command();
     let flags = match kind {
         AssertionKind::Always | AssertionKind::Sometimes => {
-            if cond { 0x01 } else { 0x00 }
+            if cond {
+                0x01
+            } else {
+                0x00
+            }
         }
         AssertionKind::Reachable => 0x01,
         AssertionKind::Unreachable => 0x00,
@@ -844,7 +848,12 @@ mod tests {
     #[test]
     fn assert_raw_macro_with_details() {
         use serde_json::json;
-        cc_assert_raw!(AssertionKind::Always, true, "raw details", &json!({"k": "v"}));
+        cc_assert_raw!(
+            AssertionKind::Always,
+            true,
+            "raw details",
+            &json!({"k": "v"})
+        );
         cc_assert_raw!(AssertionKind::Sometimes, false, "raw details 2", &json!({}),);
     }
 

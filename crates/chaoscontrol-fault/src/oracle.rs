@@ -799,26 +799,34 @@ mod tests {
 
         // Pass — no details stored
         oracle.record_always_with_details(1, true, "test", Some(b"{\"pass\":true}"));
-        assert!(oracle.report().assertions[&1].last_failure_details.is_none());
+        assert!(oracle.report().assertions[&1]
+            .last_failure_details
+            .is_none());
 
         // Fail — details stored
         oracle.record_always_with_details(1, false, "test", Some(b"{\"x\":1}"));
         assert_eq!(
-            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            oracle.report().assertions[&1]
+                .last_failure_details
+                .as_deref(),
             Some(b"{\"x\":1}".as_slice()),
         );
 
         // Another pass — failure details NOT overwritten
         oracle.record_always_with_details(1, true, "test", Some(b"{\"pass\":true}"));
         assert_eq!(
-            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            oracle.report().assertions[&1]
+                .last_failure_details
+                .as_deref(),
             Some(b"{\"x\":1}".as_slice()),
         );
 
         // Another fail — details updated
         oracle.record_always_with_details(1, false, "test", Some(b"{\"x\":2}"));
         assert_eq!(
-            oracle.report().assertions[&1].last_failure_details.as_deref(),
+            oracle.report().assertions[&1]
+                .last_failure_details
+                .as_deref(),
             Some(b"{\"x\":2}".as_slice()),
         );
         oracle.end_run();

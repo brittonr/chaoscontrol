@@ -500,12 +500,20 @@ fn main() {
         cc_assert_sometimes!(
             values_committed > 0,
             "value committed",
-            &details::node(active, nodes[active].current_term, role_str(nodes[active].role)),
+            &details::node(
+                active,
+                nodes[active].current_term,
+                role_str(nodes[active].role)
+            ),
         );
         cc_assert_sometimes!(
             values_committed >= 3,
             "3+ values committed",
-            &details::node(active, nodes[active].current_term, role_str(nodes[active].role)),
+            &details::node(
+                active,
+                nodes[active].current_term,
+                role_str(nodes[active].role)
+            ),
         );
 
         // ── Drain kernel coverage into bitmap ───────────────

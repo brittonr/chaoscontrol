@@ -10,13 +10,21 @@
     };
   };
 
-  outputs = { self, nixpkgs, crane, rust-overlay }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      crane,
+      rust-overlay,
+    }:
     let
       supportedSystems = [ "x86_64-linux" ]; # KVM is Linux-only
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-    in
-    {
-      packages = forAllSystems (system:
+
+      # Shared per-system definitions — computed once, used by
+      # packages, checks, apps, and devShells.
+      eachSystem = forAllSystems (
+        system:
         let
           pkgs = import nixpkgs {
             inherit system;
@@ -30,29 +38,29 @@
           # (cleanCargoSource strips .c/.h files needed by chaoscontrol-trace)
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
-            filter = path: type:
+            filter =
+              path: type:
               (craneLib.filterCargoSources path type)
               || (builtins.match ".*\\.bpf\\.c$" path != null)
               || (builtins.match ".*\\.h$" path != null);
           };
 
-          # Common build arguments shared between deps and final build
+          # Common build arguments shared across all crane invocations
           commonArgs = {
             inherit src;
             strictDeps = true;
             pname = "chaoscontrol";
             version = "0.1.0";
 
-            # libbpf-sys (via chaoscontrol-trace) needs pkg-config + system libs
             nativeBuildInputs = [
               pkgs.pkg-config
-              pkgs.llvmPackages.clang-unwrapped  # BPF compilation
-              pkgs.bpftools                      # bpftool (vmlinux.h generation)
+              pkgs.llvmPackages.clang-unwrapped # BPF compilation
+              pkgs.bpftools # bpftool (vmlinux.h generation)
             ];
             buildInputs = [
-              pkgs.elfutils   # libelf
-              pkgs.zlib       # zlib
-              pkgs.libbpf     # libbpf
+              pkgs.elfutils # libelf
+              pkgs.zlib # zlib
+              pkgs.libbpf # libbpf
             ];
 
             # libbpf-cargo needs unwrapped clang for BPF target
@@ -63,20 +71,16 @@
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
           # Build the full workspace
-          chaoscontrol = craneLib.buildPackage (commonArgs // {
-            inherit cargoArtifacts;
-          });
+          chaoscontrol = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
 
-          # Custom Linux kernel with built-in virtio for multi-VM networking.
-          # Default kernel has CONFIG_VIRTIO=m (modules), but our minimal
-          # initrds have no module loading. Build them all in.
+          # Custom Linux kernel with built-in virtio for multi-VM networking
           netKernel = pkgs.linuxPackages_latest.kernel.override {
             structuredExtraConfig = with pkgs.lib.kernel; {
               VIRTIO = yes;
               VIRTIO_MMIO = yes;
               VIRTIO_NET = yes;
               VIRTIO_BLK = yes;
-              PACKET = yes;          # AF_PACKET for smoltcp raw sockets
+              PACKET = yes;
             };
           };
 
@@ -87,161 +91,117 @@
               KCOV_INSTRUMENT_ALL = yes;
               KCOV_ENABLE_COMPARISONS = yes;
               DEBUG_FS = yes;
-              VIRTIO_NET = yes;  # Also enable for KCOV kernel
+              VIRTIO_NET = yes;
             };
           };
         in
         {
-          default = chaoscontrol;
-          chaoscontrol-vmm = chaoscontrol;
+          inherit
+            pkgs
+            craneLib
+            src
+            commonArgs
+            cargoArtifacts
+            chaoscontrol
+            ;
 
-          # Custom Linux kernel with KCOV (coverage-guided fuzzing)
-          kcov-kernel = kcovKernel;
+          packages = {
+            default = chaoscontrol;
+            chaoscontrol-vmm = chaoscontrol;
 
-          # Kernel with built-in virtio-net for multi-VM networking
-          net-kernel = netKernel;
-          net-vmlinux = pkgs.runCommand "net-vmlinux" {} ''
-            mkdir -p $out
-            ln -s ${netKernel.dev}/vmlinux $out/vmlinux
-          '';
+            kcov-kernel = kcovKernel;
 
-          # Expose vmlinux directly for convenience
-          kcov-vmlinux = pkgs.runCommand "kcov-vmlinux" {} ''
-            mkdir -p $out
-            ln -s ${kcovKernel.dev}/vmlinux $out/vmlinux
-          '';
-        }
-      );
+            net-kernel = netKernel;
+            net-vmlinux = pkgs.runCommand "net-vmlinux" { } ''
+              mkdir -p $out
+              ln -s ${netKernel.dev}/vmlinux $out/vmlinux
+            '';
 
-      # nix run .#boot -- <kernel> [initrd]
-      # nix run .#snapshot-demo -- <kernel> <initrd>
-      apps = forAllSystems (system:
-        let
-          pkg = self.packages.${system}.default;
-        in
-        {
-          default = {
-            type = "app";
-            program = "${pkg}/bin/boot";
-          };
-          boot = {
-            type = "app";
-            program = "${pkg}/bin/boot";
-          };
-          snapshot-demo = {
-            type = "app";
-            program = "${pkg}/bin/snapshot_demo";
-          };
-        }
-      );
-
-      # nix flake check
-      checks = forAllSystems (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ (import rust-overlay) ];
+            kcov-vmlinux = pkgs.runCommand "kcov-vmlinux" { } ''
+              mkdir -p $out
+              ln -s ${kcovKernel.dev}/vmlinux $out/vmlinux
+            '';
           };
 
-          rustToolchain = pkgs.rust-bin.stable.latest.default;
-          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-          src = pkgs.lib.cleanSourceWith {
-            src = ./.;
-            filter = path: type:
-              (craneLib.filterCargoSources path type)
-              || (builtins.match ".*\\.bpf\\.c$" path != null)
-              || (builtins.match ".*\\.h$" path != null);
-          };
-          commonArgs = {
-            inherit src;
-            strictDeps = true;
-            pname = "chaoscontrol";
-            version = "0.1.0";
+          checks = {
+            # Build the full workspace
+            package = chaoscontrol;
 
-            # libbpf-sys (via chaoscontrol-trace) needs pkg-config + system libs
-            nativeBuildInputs = [
-              pkgs.pkg-config
-              pkgs.llvmPackages.clang-unwrapped  # BPF compilation
-              pkgs.bpftools                      # bpftool (vmlinux.h generation)
-            ];
+            # Clippy — deny warnings
+            clippy = craneLib.cargoClippy (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+              }
+            );
+
+            # Rust formatting
+            fmt = craneLib.cargoFmt {
+              inherit src;
+              pname = "chaoscontrol";
+              version = "0.1.0";
+            };
+
+            # Unit tests (KVM integration tests are #[ignore] —
+            # the Nix sandbox has no /dev/kvm)
+            tests = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+
+            # Nix formatting
+            nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = [ pkgs.nixfmt-rfc-style ]; } ''
+              cd ${self}
+              nixfmt --check .
+              touch $out
+            '';
+          };
+
+          apps = {
+            default = {
+              type = "app";
+              program = "${chaoscontrol}/bin/boot";
+            };
+            boot = {
+              type = "app";
+              program = "${chaoscontrol}/bin/boot";
+            };
+            snapshot-demo = {
+              type = "app";
+              program = "${chaoscontrol}/bin/snapshot_demo";
+            };
+          };
+
+          devShell = pkgs.mkShell {
             buildInputs = [
-              pkgs.elfutils   # libelf
-              pkgs.zlib       # zlib
-              pkgs.libbpf     # libbpf
-            ];
-
-            CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
-          };
-          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-        in
-        {
-          # Build
-          package = self.packages.${system}.default;
-
-          # Clippy
-          clippy = craneLib.cargoClippy (commonArgs // {
-            inherit cargoArtifacts;
-            cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-          });
-
-          # Formatting
-          fmt = craneLib.cargoFmt {
-            inherit src;
-            pname = "chaoscontrol";
-            version = "0.1.0";
-          };
-
-          # Tests (note: KVM tests need /dev/kvm, which isn't
-          # available in the Nix sandbox — those are filtered out)
-          tests = craneLib.cargoTest (commonArgs // {
-            inherit cargoArtifacts;
-          });
-        }
-      );
-
-      # nix develop
-      devShells = forAllSystems (system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ (import rust-overlay) ];
-          };
-
-          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-            extensions = [ "rust-src" "rust-analyzer" ];
-            targets = [ "x86_64-unknown-linux-musl" ];
-          };
-        in
-        {
-          default = pkgs.mkShell {
-            buildInputs = [
-              rustToolchain
+              (pkgs.rust-bin.stable.latest.default.override {
+                extensions = [
+                  "rust-src"
+                  "rust-analyzer"
+                ];
+                targets = [ "x86_64-unknown-linux-musl" ];
+              })
               pkgs.cargo-watch
               pkgs.cargo-edit
 
-              # eBPF tracing harness dependencies
-              pkgs.clang              # BPF program compilation
-              pkgs.libbpf             # BPF library (headers + lib)
-              pkgs.bpftools           # bpftool (vmlinux.h generation)
-              pkgs.elfutils           # libelf (libbpf-sys dependency)
-              pkgs.zlib               # libbpf-sys dependency
-              pkgs.pkg-config         # find system libs
+              # eBPF tracing harness
+              pkgs.clang
+              pkgs.libbpf
+              pkgs.bpftools
+              pkgs.elfutils
+              pkgs.zlib
+              pkgs.pkg-config
 
               # Guest binary (musl static linking)
-              pkgs.pkgsCross.musl64.stdenv.cc   # x86_64-unknown-linux-musl-gcc
+              pkgs.pkgsCross.musl64.stdenv.cc
 
-              # OpenSpec — spec-driven development
+              # OpenSpec
               pkgs.nodejs_22
+
+              # Nix formatting (matches CI check)
+              pkgs.nixfmt-rfc-style
             ];
 
-            # libbpf-sys needs to find libelf and zlib
-            nativeBuildInputs = [
-              pkgs.pkg-config
-            ];
+            nativeBuildInputs = [ pkgs.pkg-config ];
 
-            # BPF compilation needs unwrapped clang (nix wrapper adds
-            # flags like -fzero-call-used-regs that the BPF target
-            # doesn't support). libbpf-cargo reads $CLANG.
             CLANG = "${pkgs.llvmPackages.clang-unwrapped}/bin/clang";
 
             shellHook = ''
@@ -259,24 +219,29 @@
               echo "  cargo watch -x check     Watch for changes"
               echo "  cargo clippy             Lint"
               echo ""
+              echo "CI:"
+              echo "  nix flake check          Run all checks (build, test, clippy, fmt, nixfmt)"
+              echo ""
               echo "Tracing:"
               echo "  cargo build -p chaoscontrol-trace    Build trace harness"
               echo "  sudo chaoscontrol-trace live --pid <PID>"
               echo "  chaoscontrol-trace verify --trace-a a.json --trace-b b.json"
               echo ""
-              echo "KCOV Kernel (coverage-guided fuzzing):"
-              echo "  nix build .#kcov-kernel       Build custom kernel with CONFIG_KCOV"
-              echo "  nix build .#kcov-vmlinux      Build and symlink vmlinux"
-              echo ""
-              echo "OpenSpec (spec-driven development):"
-              echo "  openspec status              Show spec/change status"
-              echo "  /opsx:propose <idea>         Propose a new change"
-              echo "  /opsx:apply                  Implement change tasks"
-              echo "  /opsx:explore                Explore ideas interactively"
-              echo "  /opsx:archive                Archive completed change"
+              echo "Kernels:"
+              echo "  nix build .#kcov-kernel       KCOV kernel (coverage-guided fuzzing)"
+              echo "  nix build .#kcov-vmlinux      KCOV vmlinux"
+              echo "  nix build .#net-kernel        Virtio-net kernel (multi-VM networking)"
             '';
           };
         }
       );
+    in
+    {
+      packages = forAllSystems (system: eachSystem.${system}.packages);
+      checks = forAllSystems (system: eachSystem.${system}.checks);
+      apps = forAllSystems (system: eachSystem.${system}.apps);
+      devShells = forAllSystems (system: {
+        default = eachSystem.${system}.devShell;
+      });
     };
 }

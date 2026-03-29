@@ -919,8 +919,7 @@ impl Explorer {
                     }
                     // Keep most recent failure details
                     if record.last_failure_details.is_some() {
-                        existing.last_failure_details =
-                            record.last_failure_details.clone();
+                        existing.last_failure_details = record.last_failure_details.clone();
                     }
                 } else {
                     merged.insert(*id, record.clone());
@@ -942,9 +941,10 @@ impl Explorer {
                 Verdict::Unexercised => unexercised += 1,
             }
 
-            let failure_details = record.last_failure_details.as_ref().and_then(|bytes| {
-                std::str::from_utf8(bytes).ok().map(|s| s.to_string())
-            });
+            let failure_details = record
+                .last_failure_details
+                .as_ref()
+                .and_then(|bytes| std::str::from_utf8(bytes).ok().map(|s| s.to_string()));
 
             details.push(AssertionDetail {
                 id: *id,

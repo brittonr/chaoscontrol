@@ -648,9 +648,7 @@ mod tests {
                 hit_count: 300,
                 true_count: 290,
                 false_count: 10,
-                last_failure_details: Some(
-                    r#"{"node_id":2,"term":5,"commit_index":3}"#.into(),
-                ),
+                last_failure_details: Some(r#"{"node_id":2,"term":5,"commit_index":3}"#.into()),
             },
             AssertionDetail {
                 id: 300,

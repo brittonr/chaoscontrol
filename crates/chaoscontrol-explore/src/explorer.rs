@@ -95,6 +95,13 @@ pub struct ExplorerConfig {
     /// Bootstrap runs until `setup_complete` or this limit.
     /// Default: 10_000 (enough for kernel boot + guest init).
     pub bootstrap_budget: u64,
+
+    /// Directory for determinism log files.
+    ///
+    /// When set, per-VM `.dlog` files are written during exploration.
+    /// Primarily useful for debugging determinism issues on a specific
+    /// seed — produces ~6 MB per 100K exits per VM.
+    pub dlog_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for ExplorerConfig {
@@ -117,6 +124,7 @@ impl Default for ExplorerConfig {
             output_dir: None,
             disk_image_path: None,
             bootstrap_budget: 10_000,
+            dlog_dir: None,
         }
     }
 }
@@ -511,6 +519,7 @@ impl Explorer {
             schedule: FaultSchedule::new(),
             disk_image_path: self.config.disk_image_path.clone(),
             base_core: None,
+            dlog_dir: self.config.dlog_dir.clone(),
         };
 
         self.controller = Some(SimulationController::new(sim_config)?);
@@ -936,6 +945,7 @@ impl Explorer {
             output_dir: None, // Will be set by caller if needed
             disk_image_path: checkpoint.config.disk_image_path,
             bootstrap_budget: checkpoint.config.bootstrap_budget,
+            dlog_dir: None,
         };
 
         let frontier = Frontier::new(config.max_frontier);

@@ -106,6 +106,29 @@ enum Commands {
         #[arg(short, long)]
         tick: u64,
     },
+
+    /// Compare two determinism log files and find divergence
+    DlogDiff {
+        /// First dlog file
+        a: PathBuf,
+        /// Second dlog file
+        b: PathBuf,
+        /// Include RIP in comparison (catches KASLR differences)
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Dump determinism log records as human-readable text
+    DlogDump {
+        /// Dlog file to dump
+        file: PathBuf,
+        /// First record index to show (default: 0)
+        #[arg(long, default_value = "0")]
+        from: u64,
+        /// Number of records to show (default: all)
+        #[arg(long, default_value = "18446744073709551615")]
+        count: u64,
+    },
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -146,6 +169,8 @@ fn main() {
             to,
         } => cmd_events(recording, filter, from, to),
         Commands::Debug { recording, tick } => cmd_debug(recording, tick),
+        Commands::DlogDiff { a, b, strict } => cmd_dlog_diff(a, b, strict),
+        Commands::DlogDump { file, from, count } => cmd_dlog_dump(file, from, count),
     };
 
     if let Err(e) = result {
@@ -518,4 +543,33 @@ fn format_triage_markdown(report: &chaoscontrol_replay::triage::TriageReport) ->
     md.push_str("\n```\n\n");
 
     md
+}
+
+fn cmd_dlog_diff(a: PathBuf, b: PathBuf, strict: bool) -> Result<(), CliError> {
+    use chaoscontrol_vmm::dlog;
+
+    let result = dlog::dlog_diff(&a, &b, strict).map_err(|e| CliError::Other {
+        message: format!("dlog diff: {e}"),
+    })?;
+
+    println!("{result}");
+
+    match result {
+        dlog::DiffResult::Identical { .. } => std::process::exit(0),
+        dlog::DiffResult::Diverged { .. } => std::process::exit(1),
+        dlog::DiffResult::LengthMismatch { .. } => std::process::exit(2),
+    }
+}
+
+fn cmd_dlog_dump(file: PathBuf, from: u64, count: u64) -> Result<(), CliError> {
+    use chaoscontrol_vmm::dlog;
+
+    let mut stdout = std::io::stdout().lock();
+    let printed =
+        dlog::dlog_dump(&file, from, count, &mut stdout).map_err(|e| CliError::Other {
+            message: format!("dlog dump: {e}"),
+        })?;
+
+    eprintln!("{printed} records");
+    Ok(())
 }

@@ -106,6 +106,11 @@ impl VcpuScheduler {
 
     /// Get the currently active vCPU index.
     #[inline]
+    /// Exits remaining in the current vCPU's quantum.
+    pub fn quantum_remaining(&self) -> u64 {
+        self.remaining
+    }
+
     pub fn active(&self) -> usize {
         self.active
     }

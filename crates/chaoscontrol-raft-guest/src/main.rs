@@ -123,9 +123,7 @@ fn main() {
                 // ── Handler reachability (1.1–1.4) ───────────
                 match &msg {
                     Message::RequestVote {
-                        term,
-                        candidate_id,
-                        ..
+                        term, candidate_id, ..
                     } => {
                         assert::reachable(
                             "request_vote handler",
@@ -164,41 +162,38 @@ fn main() {
                 let is_aer = matches!(&msg, Message::AppendEntriesResponse { .. });
 
                 // Capture AE context for log conflict detection (5.1–5.3)
-                let ae_context =
-                    if let Message::AppendEntries {
-                        prev_log_index,
-                        entries,
-                        ..
-                    } = &msg
-                    {
-                        if !entries.is_empty() {
-                            let old_terms: Vec<Option<u64>> = (0..entries.len())
-                                .map(|i| {
-                                    let idx = *prev_log_index + i;
-                                    if idx < node.log.len() {
-                                        Some(node.log[idx].term)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            let new_terms: Vec<u64> =
-                                entries.iter().map(|e| e.term).collect();
-                            Some((*prev_log_index, old_terms, new_terms))
-                        } else {
-                            None
-                        }
+                let ae_context = if let Message::AppendEntries {
+                    prev_log_index,
+                    entries,
+                    ..
+                } = &msg
+                {
+                    if !entries.is_empty() {
+                        let old_terms: Vec<Option<u64>> = (0..entries.len())
+                            .map(|i| {
+                                let idx = *prev_log_index + i;
+                                if idx < node.log.len() {
+                                    Some(node.log[idx].term)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        let new_terms: Vec<u64> = entries.iter().map(|e| e.term).collect();
+                        Some((*prev_log_index, old_terms, new_terms))
                     } else {
                         None
-                    };
+                    }
+                } else {
+                    None
+                };
 
                 // Capture RequestVote candidate_id for voted_for check (4.4)
-                let rv_candidate =
-                    if let Message::RequestVote { candidate_id, .. } = &msg {
-                        Some(*candidate_id)
-                    } else {
-                        None
-                    };
+                let rv_candidate = if let Message::RequestVote { candidate_id, .. } = &msg {
+                    Some(*candidate_id)
+                } else {
+                    None
+                };
 
                 let replies = node.handle_message(from, msg, jitter);
 
@@ -309,10 +304,7 @@ fn main() {
                             );
                         }
                         if had_consistent {
-                            assert::reachable(
-                                "log entries consistent",
-                                &json!({"node": active}),
-                            );
+                            assert::reachable("log entries consistent", &json!({"node": active}));
                         }
                         if had_new {
                             assert::reachable(
@@ -409,11 +401,7 @@ fn main() {
                         coverage::record_edge(7000 + values_proposed as usize);
                     }
                     // 3.6: leader proposed vs skipped
-                    assert::sometimes(
-                        proposed,
-                        "leader proposed value",
-                        &json!({"node": active}),
-                    );
+                    assert::sometimes(proposed, "leader proposed value", &json!({"node": active}));
                     assert::sometimes(
                         !proposed,
                         "leader skipped proposal",
@@ -427,7 +415,7 @@ fn main() {
         // SDK randomness controls whether messages arrive
         for (from, to, msg) in outbox {
             let deliver = random::random_choice(100) < 95; // 5% drop rate
-            // 3.3: message delivered vs dropped
+                                                           // 3.3: message delivered vs dropped
             assert::sometimes(
                 deliver,
                 "message delivered",

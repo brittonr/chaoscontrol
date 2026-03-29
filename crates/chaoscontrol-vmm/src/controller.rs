@@ -52,6 +52,13 @@ pub struct SimulationConfig {
     ///
     /// When `None`, no affinity is set (OS scheduler decides).
     pub base_core: Option<usize>,
+
+    /// Directory for determinism log files.
+    ///
+    /// When set, each VM writes a binary dlog file to
+    /// `<dlog_dir>/vm_<i>.dlog`. Use `dlog_diff` to compare
+    /// two runs of the same seed.
+    pub dlog_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for SimulationConfig {
@@ -66,6 +73,7 @@ impl Default for SimulationConfig {
             schedule: FaultSchedule::default(),
             disk_image_path: None,
             base_core: None,
+            dlog_dir: None,
         }
     }
 }
@@ -792,6 +800,14 @@ impl SimulationController {
             vm_config.core_affinity = config.base_core.map(|base| base + i);
             // Set unique VM ID for networking
             vm_config.vm_id = i;
+
+            // Wire up per-VM determinism log path.
+            if let Some(ref dir) = config.dlog_dir {
+                std::fs::create_dir_all(dir).map_err(|e| VmError::DiskImage {
+                    message: format!("create dlog dir {}: {e}", dir.display()),
+                })?;
+                vm_config.dlog_path = Some(dir.join(format!("vm_{i}.dlog")));
+            }
 
             let mut vm = DeterministicVm::new(vm_config)?;
             vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;

@@ -21,6 +21,7 @@ use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
 use crate::devices::virtio_mmio::VirtioMmioDevice;
+use crate::dlog::{DlogRecord, DlogTag, DlogWriter};
 use crate::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 
 use crate::memory::{
@@ -49,6 +50,7 @@ use log::info;
 use snafu::{ResultExt, Snafu};
 use std::fs::File;
 use std::io;
+use std::path::PathBuf;
 use vm_memory::{Address, Bytes, GuestAddress};
 use vmm_sys_util::eventfd::EventFd;
 
@@ -195,6 +197,17 @@ pub struct VmConfig {
     /// Used to generate unique MAC addresses: `[0x52, 0x54, 0x00, 0x12, 0x34, vm_id as u8]`.
     /// Also passed to the guest kernel via `vm_id=N` cmdline parameter.
     pub vm_id: usize,
+
+    /// Path to write a determinism log (dlog) file.
+    ///
+    /// When set, every VM exit and significant event is recorded as a
+    /// fixed-size 64-byte binary record. Two logs from runs with the
+    /// same seed can be compared with `dlog_diff` to find the exact
+    /// exit where execution diverged.
+    ///
+    /// When `None` (default), no logging occurs and there is zero
+    /// overhead on the hot path.
+    pub dlog_path: Option<PathBuf>,
 }
 
 impl Default for VmConfig {
@@ -246,6 +259,7 @@ impl Default for VmConfig {
             extra_cmdline: None,
             core_affinity: None,
             vm_id: 0,
+            dlog_path: None,
         }
     }
 }
@@ -470,6 +484,9 @@ pub struct DeterministicVm {
 
     /// VM identifier for multi-VM networking.
     vm_id: usize,
+
+    /// Determinism log writer — records every VM exit when enabled.
+    dlog: Option<DlogWriter>,
 }
 
 impl DeterministicVm {
@@ -687,6 +704,18 @@ impl DeterministicVm {
             config.vm_id,
         )?;
 
+        // Open determinism log writer if requested.
+        let dlog = match &config.dlog_path {
+            Some(path) => {
+                let w = DlogWriter::create(path).map_err(|e| VmError::DiskImage {
+                    message: format!("dlog create {}: {e}", path.display()),
+                })?;
+                info!("Determinism log: {}", path.display());
+                Some(w)
+            }
+            None => None,
+        };
+
         // Pin VM thread to a specific physical CPU core if requested.
         // This eliminates host scheduler jitter and ensures consistent
         // PMC behavior. Antithesis pins each VM to a dedicated core.
@@ -779,6 +808,7 @@ impl DeterministicVm {
             skip_tsc_sync: false,
             extra_cmdline: config.extra_cmdline.clone(),
             vm_id: config.vm_id,
+            dlog,
         })
     }
 
@@ -1602,13 +1632,21 @@ impl DeterministicVm {
             singlestep_remaining: self.singlestep_remaining,
         };
 
-        crate::snapshot::VmSnapshot::capture(&self.vcpus, &self.vm, self.memory.inner(), params)
-            .map_err(|e| {
-                SnapshotSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })
+        let result = crate::snapshot::VmSnapshot::capture(
+            &self.vcpus,
+            &self.vm,
+            self.memory.inner(),
+            params,
+        )
+        .map_err(|e| {
+            SnapshotSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        });
+        // Can't call self.dlog_emit since snapshot takes &self.
+        // Caller should use dlog_emit_snapshot_taken() after snapshot.
+        result
     }
 
     /// Restore VM state from a snapshot.
@@ -1699,6 +1737,12 @@ impl DeterministicVm {
         self.vm
             .register_irqfd(&serial_evt, SERIAL_IRQ)
             .context(CreateIrqChipSnafu)?;
+
+        self.dlog_emit(
+            self.dlog_record(DlogTag::SnapshotRestored)
+                .with_data_u64(snapshot.exit_count),
+        );
+        self.dlog_flush();
 
         // Reset host-side preemption state that is NOT part of the
         // deterministic snapshot but affects scheduling decisions.
@@ -1828,6 +1872,7 @@ impl DeterministicVm {
             return;
         }
         if self.scheduler.tick() {
+            let prev = self.active_vcpu;
             // Scheduler says switch. Use advance() for deterministic next vCPU.
             let next = self.scheduler.advance();
             // Find next RUNNABLE vCPU starting from scheduler's choice.
@@ -1838,6 +1883,11 @@ impl DeterministicVm {
                     if candidate != next {
                         self.scheduler.set_active(candidate);
                     }
+                    self.dlog_emit(
+                        self.dlog_record(DlogTag::SchedulerSwitch)
+                            .with_data(&[prev as u8])
+                            .with_extra_u64(self.scheduler.quantum_remaining()),
+                    );
                     return;
                 }
             }
@@ -1996,6 +2046,11 @@ impl DeterministicVm {
         }
         let run_result = self.vcpus[self.active_vcpu].run();
 
+        // Deferred dlog record — built inside the match arm (copying
+        // data out of the KVM exit struct), emitted after the match
+        // closes so there's no borrow conflict with self.vcpus.
+        let mut pending_dlog: Option<DlogRecord> = None;
+
         let result = match run_result {
             Ok(VcpuExit::IoIn(port, data)) => {
                 self.exit_count += 1;
@@ -2043,6 +2098,23 @@ impl DeterministicVm {
                         *byte = 0xff;
                     }
                 }
+                if self.dlog.is_some() {
+                    let mut dbuf = [0u8; 8];
+                    let n = data.len().min(8);
+                    dbuf[..n].copy_from_slice(&data[..n]);
+                    pending_dlog = Some(
+                        DlogRecord::new(
+                            0,
+                            self.virtual_tsc.read(),
+                            self.exit_count,
+                            0,
+                            DlogTag::IoIn,
+                            self.active_vcpu as u8,
+                        )
+                        .with_port(port)
+                        .with_data(&dbuf),
+                    );
+                }
                 self.maybe_switch_vcpu();
                 Ok(false)
             }
@@ -2058,18 +2130,36 @@ impl DeterministicVm {
                 }
                 self.virtual_tsc.tick();
 
+                // Copy data and port before any &mut self calls — data
+                // borrows from self.vcpus via the KVM run struct.
+                let io_port = port;
+                let io_byte = data[0];
+                if self.dlog.is_some() {
+                    pending_dlog = Some(
+                        DlogRecord::new(
+                            0,
+                            self.virtual_tsc.read(),
+                            self.exit_count,
+                            0,
+                            DlogTag::IoOut,
+                            self.active_vcpu as u8,
+                        )
+                        .with_port(io_port)
+                        .with_data(&[io_byte]),
+                    );
+                }
+
                 let tsc = self.virtual_tsc.read();
-                if port == SDK_PORT {
+                if io_port == SDK_PORT {
                     self.handle_sdk_hypercall();
-                } else if port == COVERAGE_PORT {
+                } else if io_port == COVERAGE_PORT {
                     self.coverage_active = true;
                     log::info!("Coverage instrumentation activated by guest");
-                } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&port) {
-                    let offset = (port - SERIAL_PORT_BASE) as u8;
-                    let byte = data[0];
-                    let _ = self.serial.write(offset, byte);
-                } else if DeterministicPit::handles_port(port) {
-                    self.pit.write_port(port, data[0], tsc);
+                } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&io_port) {
+                    let offset = (io_port - SERIAL_PORT_BASE) as u8;
+                    let _ = self.serial.write(offset, io_byte);
+                } else if DeterministicPit::handles_port(io_port) {
+                    self.pit.write_port(io_port, io_byte, tsc);
                 }
                 self.maybe_switch_vcpu();
                 Ok(false)
@@ -2108,9 +2198,25 @@ impl DeterministicVm {
                         .set_irq_line(PIT_IRQ, false)
                         .context(CreateIrqChipSnafu)?;
 
+                    pending_dlog = Some(DlogRecord::new(
+                        0,
+                        self.virtual_tsc.read(),
+                        self.exit_count,
+                        0,
+                        DlogTag::Hlt,
+                        self.active_vcpu as u8,
+                    ));
                     self.maybe_switch_vcpu();
                     Ok(false)
                 } else {
+                    pending_dlog = Some(DlogRecord::new(
+                        0,
+                        self.virtual_tsc.read(),
+                        self.exit_count,
+                        0,
+                        DlogTag::Hlt,
+                        self.active_vcpu as u8,
+                    ));
                     info!(
                         "VM halted (exit_count={}, vtsc={})",
                         self.exit_count,
@@ -2121,6 +2227,14 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::Shutdown) => {
                 self.exit_count += 1;
+                pending_dlog = Some(DlogRecord::new(
+                    0,
+                    self.virtual_tsc.read(),
+                    self.exit_count,
+                    0,
+                    DlogTag::Shutdown,
+                    self.active_vcpu as u8,
+                ));
                 info!("VM shutdown (exit_count={})", self.exit_count);
                 Ok(true)
             }
@@ -2184,12 +2298,26 @@ impl DeterministicVm {
 
                     if !handled {
                         // Unknown MMIO region — return zeros
-                        for byte in data {
+                        for byte in &mut *data {
                             *byte = 0;
                         }
                     }
                 }
 
+                if self.dlog.is_some() {
+                    pending_dlog = Some(
+                        DlogRecord::new(
+                            0,
+                            self.virtual_tsc.read(),
+                            self.exit_count,
+                            0,
+                            DlogTag::MmioRead,
+                            self.active_vcpu as u8,
+                        )
+                        .with_mmio_addr(addr)
+                        .with_data(data),
+                    );
+                }
                 self.maybe_switch_vcpu();
                 Ok(false)
             }
@@ -2214,6 +2342,20 @@ impl DeterministicVm {
                     }
                 }
 
+                if self.dlog.is_some() {
+                    pending_dlog = Some(
+                        DlogRecord::new(
+                            0,
+                            self.virtual_tsc.read(),
+                            self.exit_count,
+                            0,
+                            DlogTag::MmioWrite,
+                            self.active_vcpu as u8,
+                        )
+                        .with_mmio_addr(addr)
+                        .with_data(data),
+                    );
+                }
                 self.maybe_switch_vcpu();
                 Ok(false)
             }
@@ -2235,9 +2377,6 @@ impl DeterministicVm {
                 self.skip_tsc_sync = true;
                 if num_vcpus > 1 {
                     self.sigalrm_without_exit += 1;
-                    // Threshold: 2 consecutive SIGALRMs with no real exit.
-                    // At 500µs per SIGALRM, this triggers after ~1ms of
-                    // no real exits — clearly a spin-wait loop.
                     if self.sigalrm_without_exit >= 2 {
                         for offset in 1..self.vcpus.len() {
                             let candidate = (self.active_vcpu + offset) % self.vcpus.len();
@@ -2249,6 +2388,14 @@ impl DeterministicVm {
                         }
                     }
                 }
+                pending_dlog = Some(DlogRecord::new(
+                    0,
+                    self.virtual_tsc.read(),
+                    self.exit_count,
+                    0,
+                    DlogTag::Intr,
+                    self.active_vcpu as u8,
+                ));
                 Ok(false)
             }
             Ok(VcpuExit::Hypercall(exit)) => {
@@ -2272,24 +2419,53 @@ impl DeterministicVm {
                 } else {
                     (-libc::ENOSYS) as u64
                 };
+                {
+                    let nr = exit.nr;
+                    pending_dlog = Some(
+                        DlogRecord::new(
+                            0,
+                            self.virtual_tsc.read(),
+                            self.exit_count,
+                            0,
+                            DlogTag::Hypercall,
+                            self.active_vcpu as u8,
+                        )
+                        .with_data_u64(nr),
+                    );
+                }
                 Ok(false)
             }
             Ok(VcpuExit::Debug(_debug)) => {
-                // Debug exit (reserved for future single-step support).
+                pending_dlog = Some(DlogRecord::new(
+                    0,
+                    self.virtual_tsc.read(),
+                    self.exit_count,
+                    0,
+                    DlogTag::Debug,
+                    self.active_vcpu as u8,
+                ));
                 Ok(false)
             }
             Ok(VcpuExit::IrqWindowOpen) => {
-                // KVM needs to inject a pending interrupt — retry immediately.
+                pending_dlog = Some(DlogRecord::new(
+                    0,
+                    self.virtual_tsc.read(),
+                    self.exit_count,
+                    0,
+                    DlogTag::IrqWindowOpen,
+                    self.active_vcpu as u8,
+                ));
                 Ok(false)
             }
             Ok(VcpuExit::InternalError) => {
-                // KVM_EXIT_INTERNAL_ERROR: emulation failure or inconsistent
-                // vCPU state. In SMP mode this can happen after snapshot/restore
-                // if the active vCPU (AP) was HALTED and the in-kernel LAPIC
-                // state wasn't perfectly consistent for re-entry.
-                //
-                // Recovery: switch to another runnable vCPU (fall back to BSP).
-                // If this is a single-vCPU VM, treat it as a fatal halt.
+                pending_dlog = Some(DlogRecord::new(
+                    0,
+                    self.virtual_tsc.read(),
+                    self.exit_count,
+                    0,
+                    DlogTag::InternalError,
+                    self.active_vcpu as u8,
+                ));
                 if self.vcpus.len() > 1 {
                     log::warn!(
                         "InternalError on vCPU {} — switching to next runnable vCPU",
@@ -2338,17 +2514,90 @@ impl DeterministicVm {
             }
         };
 
-        // ── Post-match phase: VMCALL SDK handling ──────────────
+        // ── Post-match phase ──────────────────────────────────
+        // Emit deferred dlog record now that the KVM borrow is released.
+        if let Some(rec) = pending_dlog {
+            self.dlog_emit(rec);
+        }
+
         // Deferred from the Hypercall arm because HypercallExit held
         // a &mut ref into the vcpu's kvm_run struct, preventing &mut
         // self calls. Now that the match is closed, the borrow is
         // released and we can safely call handle_sdk_hypercall().
         if vmcall_sdk_pending {
             self.handle_sdk_hypercall();
+            self.dlog_emit(self.dlog_record(DlogTag::SdkHypercall));
             self.maybe_switch_vcpu();
         }
 
         result
+    }
+
+    // ─── Determinism log helpers ────────────────────────────────
+
+    /// Emit a dlog record if logging is enabled. No-op otherwise.
+    ///
+    /// The sequence number is assigned automatically by the writer.
+    /// RIP is set to 0 on the hot path (getting it requires an extra
+    /// ioctl); callers that have it can fill it in via the builder.
+    #[inline]
+    fn dlog_emit(&mut self, record: DlogRecord) {
+        if let Some(dlog) = &mut self.dlog {
+            let _ = dlog.emit(record);
+        }
+    }
+
+    /// Build a dlog record pre-filled with current VM state.
+    #[inline]
+    fn dlog_record(&self, tag: DlogTag) -> DlogRecord {
+        DlogRecord::new(
+            0, // seq assigned by writer
+            self.virtual_tsc.read(),
+            self.exit_count,
+            0, // rip: not fetched on hot path
+            tag,
+            self.active_vcpu as u8,
+        )
+    }
+
+    /// Emit a snapshot-taken marker. Call after `snapshot()` succeeds.
+    pub fn dlog_snapshot_taken(&mut self) {
+        self.dlog_emit(
+            self.dlog_record(DlogTag::SnapshotTaken)
+                .with_data_u64(self.exit_count),
+        );
+        self.dlog_flush();
+    }
+
+    /// Emit a fault-applied record.
+    pub fn dlog_fault_applied(&mut self, fault_type_id: u64) {
+        self.dlog_emit(
+            self.dlog_record(DlogTag::FaultApplied)
+                .with_data_u64(fault_type_id),
+        );
+    }
+
+    /// Emit an interrupt-injected record.
+    pub fn dlog_interrupt_injected(&mut self, irq: u64) {
+        self.dlog_emit(
+            self.dlog_record(DlogTag::InterruptInjected)
+                .with_data_u64(irq),
+        );
+    }
+
+    /// Emit an NMI-injected record.
+    pub fn dlog_nmi_injected(&mut self, target_vcpu: u64) {
+        self.dlog_emit(
+            self.dlog_record(DlogTag::NmiInjected)
+                .with_data_u64(target_vcpu),
+        );
+    }
+
+    /// Flush the dlog to disk (for snapshot boundaries, etc.).
+    fn dlog_flush(&mut self) {
+        if let Some(dlog) = &mut self.dlog {
+            let _ = dlog.flush();
+        }
     }
 
     // ─── Public API: fault injection engine ─────────────────────

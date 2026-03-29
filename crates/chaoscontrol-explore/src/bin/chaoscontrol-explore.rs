@@ -135,6 +135,13 @@ enum Commands {
         /// Exploration waits for setup_complete or this limit.
         #[arg(long, default_value = "10000")]
         bootstrap_budget: u64,
+
+        /// Directory for determinism log files.
+        ///
+        /// When set, each VM writes a binary .dlog file per run.
+        /// Use `chaoscontrol-replay dlog-diff` to compare two runs.
+        #[arg(long)]
+        dlog: Option<String>,
     },
 
     /// Resume from saved checkpoint.
@@ -180,6 +187,7 @@ fn main() {
             extra_cmdline,
             mode,
             bootstrap_budget,
+            dlog,
         } => cmd_run(
             kernel,
             initrd,
@@ -197,6 +205,7 @@ fn main() {
             extra_cmdline,
             mode,
             bootstrap_budget,
+            dlog,
         ),
         Commands::Resume {
             corpus,
@@ -225,6 +234,7 @@ fn cmd_run(
     extra_cmdline: Option<String>,
     mode: String,
     bootstrap_budget: u64,
+    dlog: Option<String>,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -311,6 +321,7 @@ fn cmd_run(
         output_dir: output.clone(),
         disk_image_path: disk_image.clone(),
         bootstrap_budget,
+        dlog_dir: dlog.as_ref().map(std::path::PathBuf::from),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -335,6 +346,9 @@ fn cmd_run(
     eprintln!("  Bootstrap:      {} ticks", bootstrap_budget);
     if let Some(ref disk_image_path) = disk_image {
         eprintln!("  Disk image:     {}", disk_image_path);
+    }
+    if let Some(ref dlog_dir) = dlog {
+        eprintln!("  Dlog dir:       {}", dlog_dir);
     }
     if let Some(ref extra) = extra_cmdline {
         eprintln!("  Extra cmdline:  {}", extra);

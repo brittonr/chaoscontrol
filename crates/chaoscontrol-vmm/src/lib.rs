@@ -18,6 +18,7 @@ pub mod acpi;
 pub mod controller;
 pub mod cpu;
 pub mod devices;
+pub mod dlog;
 pub mod memory;
 pub mod perf;
 pub mod scheduler;

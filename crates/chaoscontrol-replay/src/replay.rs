@@ -83,6 +83,7 @@ impl SimulationRunner for RealSimulationRunner {
             schedule,
             disk_image_path: config.disk_image_path.clone(),
             base_core: None,
+            dlog_dir: None,
         };
 
         let controller = SimulationController::new(sim_config)?;

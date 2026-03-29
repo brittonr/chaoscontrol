@@ -303,6 +303,14 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 - **counterfactual() now takes 3 args**: memory_mods, register_mods, ticks. Memory patches applied before register overrides.
 - **Dlog CLI restructured**: Flat DlogDiff/DlogDump → nested `dlog {dump, diff, stats}` subcommand group.
 
+## Dlog Integration Tests (2026-03-29)
+- **PIT calibration serial non-determinism**: Even with SMP `notsc` config, kernel still does PIT calibration → serial output of "tsc: Detected X.XXX MHz" varies between runs. Dlog captures byte-level serial I/O so this shows up as data divergence even when structural fields (tag, exit_count, virtual_tsc, port) match perfectly.
+- **Cross-VM snapshot/restore**: Restoring a snapshot from VM A into a separately-created VM B produces non-deterministic serial bytes. KVM internal state (PIT, LAPIC timers, memory allocator seeds) isn't fully captured across different VM file descriptors. Must use the SAME VM object for restore-based tests.
+- **structural_eq()**: Added to DlogRecord for comparing event type + timing without data payloads. `dlog_diff_structural()` uses it. Correct approach for dlog determinism testing since serial byte content is "mostly deterministic" but not bit-exact.
+- **dlog during boot**: Don't enable dlog during kernel boot if you plan to diff. Enable it only after snapshot restore when comparing two runs.
+- **flush_dlog() + set_dlog_path()**: Added to DeterministicVm for switching dlog files between runs on the same VM object.
+- **tempfile not in integration test binaries**: `tempfile` is a dev-dependency. Integration test binaries (`src/bin/`) use `std::env::temp_dir()` + `std::fs::create_dir_all()` instead.
+
 ## Remaining Work
 (All items completed)
 

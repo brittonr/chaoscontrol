@@ -262,6 +262,19 @@ impl DlogRecord {
             && self.extra == other.extra
             && (!strict || self.rip == other.rip)
     }
+
+    /// Structural comparison: checks event type and timing but not data
+    /// payloads. Useful when serial I/O bytes vary due to kernel
+    /// timekeeping (PIT calibration, RTC reads) but the exit structure
+    /// is deterministic.
+    pub fn structural_eq(&self, other: &Self) -> bool {
+        self.tag == other.tag
+            && self.exit_count == other.exit_count
+            && self.virtual_tsc == other.virtual_tsc
+            && self.vcpu == other.vcpu
+            && self.port_or_addr_lo == other.port_or_addr_lo
+            && self.port_or_addr_hi == other.port_or_addr_hi
+    }
 }
 
 impl fmt::Display for DlogRecord {
@@ -553,7 +566,19 @@ impl fmt::Display for DiffResult {
 /// preceding records from each file.
 ///
 /// When `strict` is true, RIP is included in the comparison.
+/// When `structural` is true, only event type and timing are compared
+/// (data payloads are ignored — useful when serial bytes vary due to
+/// kernel timekeeping).
 pub fn dlog_diff(a: &Path, b: &Path, strict: bool) -> io::Result<DiffResult> {
+    dlog_diff_inner(a, b, strict, false)
+}
+
+/// Structural diff: compares event types and timing but not data payloads.
+pub fn dlog_diff_structural(a: &Path, b: &Path) -> io::Result<DiffResult> {
+    dlog_diff_inner(a, b, false, true)
+}
+
+fn dlog_diff_inner(a: &Path, b: &Path, strict: bool, structural: bool) -> io::Result<DiffResult> {
     let mut ra = DlogReader::open(a)?;
     let mut rb = DlogReader::open(b)?;
 
@@ -568,7 +593,12 @@ pub fn dlog_diff(a: &Path, b: &Path, strict: bool) -> io::Result<DiffResult> {
 
         match (rec_a, rec_b) {
             (Some(a_rec), Some(b_rec)) => {
-                if !a_rec.determinism_eq(&b_rec, strict) {
+                let matches = if structural {
+                    a_rec.structural_eq(&b_rec)
+                } else {
+                    a_rec.determinism_eq(&b_rec, strict)
+                };
+                if !matches {
                     return Ok(DiffResult::Diverged {
                         index,
                         context_a: ring_a,

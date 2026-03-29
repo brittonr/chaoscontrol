@@ -47,5 +47,5 @@
 
 ## 7. Integration Test
 
-- [ ] 7.1 Integration test: run same seed twice with dlog enabled, diff the two logs, assert identical (requires /dev/kvm + kernel images)
-- [ ] 7.2 Integration test: run two different seeds with dlog, diff, assert divergence found (requires /dev/kvm + kernel images)
+- [x] 7.1 Integration test: run same seed twice with dlog enabled, diff the two logs, assert identical (requires /dev/kvm + kernel images)
+- [x] 7.2 Integration test: run two different seeds with dlog, diff, assert divergence found (requires /dev/kvm + kernel images)

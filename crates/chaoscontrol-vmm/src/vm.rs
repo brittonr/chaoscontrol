@@ -2720,6 +2720,25 @@ impl DeterministicVm {
         )
     }
 
+    /// Flush dlog to disk without closing it.
+    pub fn flush_dlog(&mut self) {
+        if let Some(dlog) = &mut self.dlog {
+            let _ = dlog.flush();
+        }
+    }
+
+    /// Replace the dlog file. Flushes and closes the current dlog (if any),
+    /// then opens a new file at `path`. Sequence numbers reset to 0.
+    pub fn set_dlog_path(&mut self, path: &std::path::Path) -> Result<(), VmError> {
+        // Drop the old writer (flushes on Drop).
+        self.dlog = None;
+        let w = DlogWriter::create(path).map_err(|e| VmError::DiskImage {
+            message: format!("dlog create {}: {e}", path.display()),
+        })?;
+        self.dlog = Some(w);
+        Ok(())
+    }
+
     /// Emit a snapshot-taken marker. Call after `snapshot()` succeeds.
     pub fn dlog_snapshot_taken(&mut self) {
         self.dlog_emit(

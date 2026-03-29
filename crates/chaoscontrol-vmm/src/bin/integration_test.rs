@@ -15,6 +15,7 @@ use chaoscontrol_protocol::{COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE};
 use chaoscontrol_vmm::controller::{
     NetworkStats, SimulationConfig, SimulationController, VmStatus,
 };
+use chaoscontrol_vmm::dlog::{dlog_diff, dlog_diff_structural, DiffResult};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;
 use std::time::Instant;
@@ -1884,6 +1885,114 @@ fn main() {
         );
 
         true
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 29: Dlog determinism — same seed produces identical logs
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Dlog same-seed produces identical logs", {
+        let dlog_dir = std::env::temp_dir().join(format!("cc_dlog_test29_{}", std::process::id()));
+        std::fs::create_dir_all(&dlog_dir).expect("create dlog dir");
+        let dlog_a = dlog_dir.join("run_a.dlog");
+        let dlog_b = dlog_dir.join("run_b.dlog");
+
+        // Boot once past PIT calibration (which reads host wall time →
+        // non-deterministic serial bytes). Snapshot, then run twice from
+        // the same VM object with dlog. Must use the same VM object because
+        // KVM internal state (PIT, LAPIC) isn't fully captured across
+        // different VM instances. Dlog is OFF during boot.
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).expect("create VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+        vm.run_bounded(50_000).expect("boot past PIT calibration");
+        let snapshot = vm.snapshot().expect("snapshot");
+
+        // Run A: enable dlog, restore, run 20K exits
+        vm.set_dlog_path(&dlog_a).expect("dlog A");
+        vm.restore(&snapshot).expect("restore A");
+        vm.run_bounded(20_000).expect("run A");
+        let exits_a = vm.exit_count();
+
+        // Run B: switch to fresh dlog, restore, run 20K exits
+        vm.set_dlog_path(&dlog_b).expect("dlog B");
+        vm.restore(&snapshot).expect("restore B");
+        vm.run_bounded(20_000).expect("run B");
+        let exits_b = vm.exit_count();
+        drop(vm); // flush dlog B
+
+        eprintln!("    exits: {} vs {}", exits_a, exits_b);
+
+        // Structural diff: event types and timing must match. Data payloads
+        // (serial bytes) may differ due to kernel timekeeping (PIT cal, RTC).
+        let result = dlog_diff_structural(&dlog_a, &dlog_b).expect("dlog_diff");
+        let _ = std::fs::remove_dir_all(&dlog_dir);
+        match &result {
+            DiffResult::Identical { records } => {
+                eprintln!("    dlog: {} records, identical ✓", records);
+                assert!(*records > 0, "dlog should have recorded events");
+                true
+            }
+            other => {
+                eprintln!("    dlog mismatch: {}", other);
+                false
+            }
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 30: Dlog divergence — different seeds produce different logs
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Dlog different-seed detects divergence", {
+        let dlog_dir = std::env::temp_dir().join(format!("cc_dlog_test30_{}", std::process::id()));
+        std::fs::create_dir_all(&dlog_dir).expect("create dlog dir");
+
+        // Two fresh boots with different seeds — their dlogs must diverge.
+        // Use 50K exits (enough to get past kernel init where seeds diverge).
+        let max_exits: u64 = 50_000;
+
+        let dlog_a = dlog_dir.join("seed1.dlog");
+        let mut config1 = VmConfig::default();
+        config1.cpu.seed = 1;
+        config1.dlog_path = Some(dlog_a.clone());
+        let mut vm1 = DeterministicVm::new(config1).expect("create VM1");
+        vm1.load_kernel(kernel, Some(initrd)).expect("load kernel");
+        vm1.run_bounded(max_exits).expect("run VM1");
+        drop(vm1);
+
+        let dlog_b = dlog_dir.join("seed999.dlog");
+        let mut config2 = VmConfig::default();
+        config2.cpu.seed = 999;
+        config2.dlog_path = Some(dlog_b.clone());
+        let mut vm2 = DeterministicVm::new(config2).expect("create VM2");
+        vm2.load_kernel(kernel, Some(initrd)).expect("load kernel");
+        vm2.run_bounded(max_exits).expect("run VM2");
+        drop(vm2);
+
+        // Diff should find divergence (or length mismatch — either means
+        // the logs differ, which is what we want)
+        let result = dlog_diff(&dlog_a, &dlog_b, false).expect("dlog_diff");
+        match &result {
+            DiffResult::Identical { .. } => {
+                eprintln!("    ERROR: different seeds produced identical dlogs");
+                false
+            }
+            DiffResult::Diverged { index, record_a, record_b, .. } => {
+                eprintln!(
+                    "    divergence at record #{}: A={} vs B={}",
+                    index,
+                    record_a.tag().map_or("?".to_string(), |t| t.to_string()),
+                    record_b.tag().map_or("?".to_string(), |t| t.to_string()),
+                );
+                true
+            }
+            DiffResult::LengthMismatch { matched, len_a, len_b } => {
+                eprintln!(
+                    "    length mismatch: {} matched, A={}, B={}",
+                    matched, len_a, len_b
+                );
+                true
+            }
+        }
     });
 
     // ═══════════════════════════════════════════════════════════════

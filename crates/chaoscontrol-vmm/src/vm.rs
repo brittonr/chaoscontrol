@@ -3360,7 +3360,10 @@ mod tests {
                 break;
             }
         }
-        assert!(!detected, "normal output should not trigger panic detection");
+        assert!(
+            !detected,
+            "normal output should not trigger panic detection"
+        );
     }
 
     #[test]

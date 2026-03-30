@@ -20,6 +20,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
 use std::collections::BTreeMap;
+use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
 /// Errors from the exploration engine.
@@ -168,6 +169,8 @@ pub struct Explorer {
     memory_bases: Vec<Arc<Vec<u8>>>,
     /// Worker pool for parallel branch execution (None = sequential).
     worker_pool: Option<WorkerPool>,
+    /// Optional event sink for live dashboard updates.
+    event_sink: Option<SyncSender<crate::dashboard_types::DashboardEvent>>,
 }
 
 impl Explorer {
@@ -196,7 +199,34 @@ impl Explorer {
             round_history: Vec::new(),
             memory_bases: Vec::new(),
             worker_pool: None,
+            event_sink: None,
         }
+    }
+
+    /// Set an event sink for dashboard updates.
+    ///
+    /// When set, the explorer emits `DashboardEvent`s at round boundaries.
+    /// Uses `try_send` — events are silently dropped if the channel is full.
+    pub fn set_event_sink(&mut self, sink: SyncSender<crate::dashboard_types::DashboardEvent>) {
+        self.event_sink = Some(sink);
+    }
+
+    /// Emit an event to the dashboard (if a sink is configured).
+    fn emit_event(&self, event: crate::dashboard_types::DashboardEvent) {
+        if let Some(ref sink) = self.event_sink {
+            let _ = sink.try_send(event);
+        }
+    }
+
+    /// Emit a Finished event.
+    fn emit_finished(&self, reason: &str) {
+        self.emit_event(crate::dashboard_types::DashboardEvent::Finished {
+            total_rounds: self.rounds_completed,
+            total_branches: self.total_branches_run,
+            total_edges: self.coverage.stats().total_edges,
+            total_bugs: self.corpus.bugs().len(),
+            reason: reason.to_string(),
+        });
     }
 
     /// Run the full exploration loop.
@@ -214,6 +244,33 @@ impl Explorer {
         // branch budgets.
         info!("Bootstrap: booting kernel + guest init...");
         let initial_result = self.bootstrap()?;
+
+        // Emit Started event for dashboard.
+        let catalog_size = self
+            .controller
+            .as_ref()
+            .map(|c| {
+                (0..c.num_vms())
+                    .map(|i| c.vm(i).fault_engine().oracle().report().catalog_size)
+                    .max()
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let mode_str = match self.config.exploration_mode {
+            ExplorationMode::FaultSchedule => "fault-schedule",
+            ExplorationMode::InputTree => "input-tree",
+            ExplorationMode::Hybrid => "hybrid",
+        };
+        self.emit_event(crate::dashboard_types::DashboardEvent::Started {
+            num_vms: self.config.num_vms,
+            seed: self.config.seed,
+            branch_factor: self.config.branch_factor,
+            ticks_per_branch: self.config.ticks_per_branch,
+            max_rounds: self.config.max_rounds,
+            mode: mode_str.to_string(),
+            kernel_path: self.config.kernel_path.clone(),
+            catalog_size,
+        });
 
         if let Some(snapshot) = initial_result.snapshot.clone() {
             self.add_to_frontier(snapshot, initial_result, FaultSchedule::new(), None, 0);
@@ -284,7 +341,20 @@ impl Explorer {
                 frontier_size: round_report.frontier_size,
                 corpus_size: self.corpus.stats().total_entries,
             };
-            self.round_history.push(history_entry);
+            self.round_history.push(history_entry.clone());
+
+            // Emit RoundComplete event for dashboard.
+            self.emit_event(crate::dashboard_types::DashboardEvent::RoundComplete {
+                round: self.rounds_completed,
+                branches_run: round_report.branches_run,
+                new_edges: round_report.new_coverage_edges,
+                cumulative_edges: history_entry.cumulative_edges,
+                bugs_found: round_report.bugs_found,
+                cumulative_bugs: history_entry.cumulative_bugs,
+                frontier_size: round_report.frontier_size,
+                corpus_size: history_entry.corpus_size,
+                assertion_stats: self.collect_assertion_detail().0,
+            });
 
             info!(
                 "Round {}: {} branches, {} new edges, {} bugs, frontier: {}",
@@ -305,14 +375,21 @@ impl Explorer {
             // Check for stopping conditions
             if self.frontier.is_empty() {
                 info!("Frontier exhausted, stopping early");
+                self.emit_finished("frontier_exhausted");
                 break;
             }
 
             // Optionally stop if we found bugs (for testing)
             if round_report.bugs_found > 0 && self.config.max_rounds < 10 {
                 info!("Bug found in short run, stopping");
+                self.emit_finished("bug_found");
                 break;
             }
+        }
+
+        // Emit Finished if we completed all rounds (no early break).
+        if self.rounds_completed >= self.config.max_rounds {
+            self.emit_finished("completed");
         }
 
         // Generate final report
@@ -900,14 +977,26 @@ impl Explorer {
                 record.verdict(),
                 chaoscontrol_fault::oracle::Verdict::Failed
             ) {
-                bugs.push(BugReport {
+                let bug = BugReport {
                     bug_id: 0, // Will be assigned by corpus
                     assertion_id: *assertion_id as u64,
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: result.snapshot.clone(),
                     tick: result.total_ticks,
+                };
+
+                // Emit BugFound event for dashboard.
+                self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
+                    bug_index: self.corpus.bugs().len() + bugs.len(),
+                    assertion_id: *assertion_id as u64,
+                    assertion_message: record.message.clone(),
+                    round: self.rounds_completed,
+                    tick: result.total_ticks,
+                    schedule_length: schedule.total(),
                 });
+
+                bugs.push(bug);
             }
         }
 
@@ -1111,6 +1200,63 @@ impl Explorer {
         }
     }
 
+    /// Get a snapshot of the current exploration state for the dashboard.
+    pub fn snapshot_state(&self) -> crate::dashboard_types::DashboardState {
+        use crate::dashboard_types::*;
+
+        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
+
+        let bugs: Vec<DashboardBug> = self
+            .corpus
+            .bugs()
+            .iter()
+            .map(|b| DashboardBug {
+                bug_id: b.bug_id,
+                assertion_id: b.assertion_id,
+                assertion_message: b.assertion_location.clone(),
+                round: 0, // not tracked per-bug currently
+                tick: b.tick,
+                schedule_length: b.schedule.total(),
+            })
+            .collect();
+
+        let network_stats = self
+            .controller
+            .as_ref()
+            .map(|c| DashboardNetworkStats::from(c.network().stats()))
+            .unwrap_or_default();
+
+        let mode_str = match self.config.exploration_mode {
+            ExplorationMode::FaultSchedule => "fault-schedule",
+            ExplorationMode::InputTree => "input-tree",
+            ExplorationMode::Hybrid => "hybrid",
+        };
+
+        DashboardState {
+            running: true,
+            config: DashboardConfig {
+                num_vms: self.config.num_vms,
+                seed: self.config.seed,
+                branch_factor: self.config.branch_factor,
+                ticks_per_branch: self.config.ticks_per_branch,
+                max_rounds: self.config.max_rounds,
+                mode: mode_str.to_string(),
+                kernel_path: self.config.kernel_path.clone(),
+            },
+            rounds: self.rounds_completed,
+            total_branches: self.total_branches_run,
+            total_edges: self.coverage.stats().total_edges,
+            bugs,
+            corpus_size: self.corpus.len(),
+            coverage_stats: self.coverage.stats(),
+            network_stats,
+            assertion_stats,
+            assertion_details,
+            round_history: self.round_history.clone(),
+            finish_reason: String::new(),
+        }
+    }
+
     /// Get a mutable reference to the config (for runtime adjustments).
     pub fn config_mut(&mut self) -> &mut ExplorerConfig {
         &mut self.config
@@ -1222,6 +1368,7 @@ impl Explorer {
             round_history: checkpoint.round_history.unwrap_or_default(),
             memory_bases: Vec::new(),
             worker_pool: None,
+            event_sink: None,
         }
     }
 }
@@ -1304,7 +1451,7 @@ pub struct ExplorationReport {
 }
 
 /// Summary of assertion coverage across all exploration branches.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct AssertionStats {
     /// Total registered assertion sites (catalog + runtime).
     pub catalog_size: usize,

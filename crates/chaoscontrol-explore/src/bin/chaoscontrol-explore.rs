@@ -163,6 +163,14 @@ enum Commands {
         /// 0: auto-detect based on available cores.
         #[arg(short = 'w', long, default_value = "1")]
         workers: usize,
+
+        /// Enable the live web dashboard.
+        #[arg(long)]
+        dashboard: bool,
+
+        /// Dashboard port (default: 8080).
+        #[arg(long, default_value = "8080")]
+        dashboard_port: u16,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -291,6 +299,14 @@ enum Commands {
         /// Override max rounds (continue for more rounds).
         #[arg(short, long)]
         rounds: Option<u64>,
+
+        /// Enable the live web dashboard.
+        #[arg(long)]
+        dashboard: bool,
+
+        /// Dashboard port (default: 8080).
+        #[arg(long, default_value = "8080")]
+        dashboard_port: u16,
     },
 }
 
@@ -321,6 +337,8 @@ fn main() {
             dlog_register_interval,
             dlog_memory_hash,
             workers,
+            dashboard,
+            dashboard_port,
         } => cmd_run(
             kernel,
             initrd,
@@ -342,6 +360,8 @@ fn main() {
             dlog_register_interval,
             dlog_memory_hash,
             workers,
+            dashboard,
+            dashboard_port,
         ),
         Commands::Reproduce {
             kernel,
@@ -375,7 +395,9 @@ fn main() {
             kernel,
             initrd,
             rounds,
-        } => cmd_resume(corpus, kernel, initrd, rounds),
+            dashboard,
+            dashboard_port,
+        } => cmd_resume(corpus, kernel, initrd, rounds, dashboard, dashboard_port),
         Commands::Minimize {
             kernel,
             initrd,
@@ -428,6 +450,8 @@ fn cmd_run(
     dlog_register_interval: u64,
     dlog_memory_hash: bool,
     workers: usize,
+    dashboard: bool,
+    dashboard_port: u16,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -561,6 +585,28 @@ fn cmd_run(
     // Create explorer and run
     let mut explorer = Explorer::new(config);
 
+    // Start dashboard if requested
+    #[cfg(feature = "dashboard")]
+    if dashboard {
+        match chaoscontrol_explore::server::start(dashboard_port) {
+            Some(sink) => {
+                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                explorer.set_event_sink(sink);
+            }
+            None => {
+                eprintln!(
+                    "Warning: failed to start dashboard on port {}",
+                    dashboard_port
+                );
+            }
+        }
+    }
+    #[cfg(not(feature = "dashboard"))]
+    if dashboard {
+        eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
+    }
+    let _ = (dashboard, dashboard_port);
+
     // Run with progress tracking
     let report = match run_with_progress(&mut explorer) {
         Ok(r) => r,
@@ -669,6 +715,8 @@ fn cmd_resume(
     kernel_override: Option<String>,
     initrd_override: Option<String>,
     rounds_override: Option<u64>,
+    dashboard: bool,
+    dashboard_port: u16,
 ) {
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
@@ -767,6 +815,28 @@ fn cmd_resume(
 
     // Update output directory to continue saving checkpoints
     explorer.config_mut().output_dir = Some(corpus.clone());
+
+    // Start dashboard if requested
+    #[cfg(feature = "dashboard")]
+    if dashboard {
+        match chaoscontrol_explore::server::start(dashboard_port) {
+            Some(sink) => {
+                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                explorer.set_event_sink(sink);
+            }
+            None => {
+                eprintln!(
+                    "Warning: failed to start dashboard on port {}",
+                    dashboard_port
+                );
+            }
+        }
+    }
+    #[cfg(not(feature = "dashboard"))]
+    if dashboard {
+        eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
+    }
+    let _ = (dashboard, dashboard_port);
 
     // Run exploration
     let report = match run_with_progress(&mut explorer) {

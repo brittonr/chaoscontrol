@@ -67,12 +67,15 @@
 pub mod checkpoint;
 pub mod corpus;
 pub mod coverage;
+pub mod dashboard_types;
 pub mod explorer;
 pub mod frontier;
 pub mod input_tree;
 pub mod minimizer;
 pub mod mutator;
 pub mod report;
+#[cfg(feature = "dashboard")]
+pub mod server;
 pub mod worker;
 
 // Re-export main types for convenience
@@ -82,6 +85,9 @@ pub use checkpoint::{
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};
 pub use coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
+pub use dashboard_types::{
+    DashboardBug, DashboardConfig, DashboardEvent, DashboardNetworkStats, DashboardState,
+};
 pub use explorer::{
     AssertionDetail, AssertionStats, BranchResult, ExplorationMode, ExplorationReport,
     ExplorationStats, ExploreError, Explorer, ExplorerConfig, RoundHistory, RoundReport,

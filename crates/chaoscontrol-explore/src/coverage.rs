@@ -199,7 +199,7 @@ impl CoverageCollector {
 }
 
 /// Coverage statistics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CoverageStats {
     pub total_edges: usize,
     pub total_runs: u64,

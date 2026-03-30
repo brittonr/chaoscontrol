@@ -6,6 +6,7 @@ members = [
     "crates/chaoscontrol-vmm",
     "crates/chaoscontrol-trace",
     "crates/chaoscontrol-explore",
+    "crates/chaoscontrol-dashboard",
     "crates/chaoscontrol-replay",
     "crates/chaoscontrol-guest",
     "crates/chaoscontrol-raft-guest",

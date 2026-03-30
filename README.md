@@ -229,6 +229,32 @@ cargo run --release --bin chaoscontrol-replay -- dlog dump run.dlog
 cargo run --release --bin chaoscontrol-replay -- dlog stats run.dlog
 ```
 
+### Live Dashboard
+
+```bash
+# Run exploration with live web dashboard
+cargo run --release --bin chaoscontrol-explore --features dashboard -- run \
+  --kernel vmlinux --initrd initrd.gz \
+  --vms 3 --rounds 100 --dashboard
+
+# Custom dashboard port
+cargo run --release --bin chaoscontrol-explore --features dashboard -- run \
+  --kernel vmlinux --initrd initrd.gz \
+  --dashboard --dashboard-port 9090
+
+# Review past results (standalone mode)
+cargo run --release --bin chaoscontrol-dashboard -- serve --corpus results/
+```
+
+The dashboard shows:
+- Coverage growth chart with bug discovery markers
+- Per-assertion status table (failed/passed/unexercised)
+- Round-by-round progress table
+- Network fabric statistics
+- Live updates via Server-Sent Events
+
+Open `http://localhost:8080` in a browser while exploration runs.
+
 ### eBPF Tracing
 
 ```bash

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChaosControl Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #12121a;
+  --surface: #1a1a2e;
+  --border: #2a2a40;
+  --text: #e0e0e8;
+  --text-dim: #8888a0;
+  --accent: #4fc3f7;
+  --red: #ef5350;
+  --green: #66bb6a;
+  --yellow: #ffa726;
+  --orange: #ff7043;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  background: var(--bg); color: var(--text);
+  font-size: 13px; line-height: 1.5;
+}
+.header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 12px 20px; display: flex; align-items: center; gap: 24px;
+  flex-wrap: wrap;
+}
+.header h1 { font-size: 15px; color: var(--accent); font-weight: 600; }
+.stat { text-align: center; }
+.stat .value { font-size: 20px; font-weight: 700; color: var(--text); }
+.stat .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+.status { padding: 3px 10px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+.status.running { background: rgba(79,195,247,0.15); color: var(--accent); }
+.status.completed { background: rgba(102,187,106,0.15); color: var(--green); }
+.status.idle { background: rgba(136,136,160,0.1); color: var(--text-dim); }
+
+.grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; padding: 12px 20px; max-width: 1600px;
+}
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px;
+}
+.panel h2 {
+  font-size: 12px; color: var(--text-dim); text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600;
+}
+.panel.full { grid-column: 1 / -1; }
+
+/* Chart */
+.chart-wrap { position: relative; height: 300px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { text-align: left; color: var(--text-dim); font-weight: 600;
+     padding: 6px 8px; border-bottom: 1px solid var(--border); }
+td { padding: 5px 8px; border-bottom: 1px solid rgba(42,42,64,0.5); }
+.verdict-failed { color: var(--red); }
+.verdict-passed { color: var(--green); }
+.verdict-unexercised { color: var(--text-dim); }
+
+/* Round table */
+.round-table-wrap { max-height: 300px; overflow-y: auto; }
+
+/* Network panel */
+.net-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.net-stat .ns-value { font-size: 16px; font-weight: 700; }
+.net-stat .ns-label { font-size: 11px; color: var(--text-dim); }
+
+/* Hidden by default */
+.hidden { display: none; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>ChaosControl</h1>
+  <span id="status" class="status idle">Waiting</span>
+  <div class="stat"><div class="value" id="hRounds">0</div><div class="label">Rounds</div></div>
+  <div class="stat"><div class="value" id="hBranches">0</div><div class="label">Branches</div></div>
+  <div class="stat"><div class="value" id="hEdges">0</div><div class="label">Edges</div></div>
+  <div class="stat"><div class="value" id="hBugs">0</div><div class="label">Bugs</div></div>
+  <div class="stat"><div class="value" id="hCorpus">0</div><div class="label">Corpus</div></div>
+</div>
+
+<div class="grid">
+
+  <!-- Coverage chart -->
+  <div class="panel full">
+    <h2>Coverage Growth</h2>
+    <div class="chart-wrap"><canvas id="coverageChart"></canvas></div>
+  </div>
+
+  <!-- Assertion table -->
+  <div class="panel">
+    <h2>Assertions</h2>
+    <div class="round-table-wrap">
+      <table id="assertionTable">
+        <thead><tr><th></th><th>Message</th><th>Kind</th><th>Hits</th><th>Verdict</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Round history -->
+  <div class="panel">
+    <h2>Round History</h2>
+    <div class="round-table-wrap">
+      <table id="roundTable">
+        <thead><tr><th>Round</th><th>Branches</th><th>New</th><th>Cum.</th><th>Bugs</th><th>Frontier</th><th>Corpus</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Network stats -->
+  <div id="netPanel" class="panel full hidden">
+    <h2>Network Fabric</h2>
+    <div class="net-grid" id="netGrid"></div>
+  </div>
+
+</div>
+
+<script>
+// --- State ---
+let state = null;
+let chart = null;
+
+// --- Chart setup ---
+function initChart() {
+  const ctx = document.getElementById('coverageChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Cumulative Edges',
+        data: [],
+        borderColor: '#4fc3f7',
+        backgroundColor: 'rgba(79,195,247,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { title: { display: true, text: 'Round', color: '#8888a0' },
+             ticks: { color: '#8888a0' }, grid: { color: '#2a2a40' } },
+        y: { title: { display: true, text: 'Unique Edges', color: '#8888a0' },
+             ticks: { color: '#8888a0' }, grid: { color: '#2a2a40' }, beginAtZero: true },
+      },
+      plugins: {
+        legend: { display: false },
+        annotation: { annotations: {} },
+      },
+    },
+  });
+}
+
+// --- Update functions ---
+function updateHeader(s) {
+  document.getElementById('hRounds').textContent = s.rounds;
+  document.getElementById('hBranches').textContent = s.total_branches;
+  document.getElementById('hEdges').textContent = s.total_edges;
+  document.getElementById('hBugs').textContent = s.bugs.length;
+  document.getElementById('hCorpus').textContent = s.corpus_size;
+
+  const el = document.getElementById('status');
+  if (s.running) {
+    el.textContent = 'Running'; el.className = 'status running';
+  } else if (s.finish_reason) {
+    el.textContent = 'Completed'; el.className = 'status completed';
+  } else {
+    el.textContent = 'Waiting'; el.className = 'status idle';
+  }
+}
+
+function updateChart(s) {
+  if (!chart) return;
+  const rh = s.round_history || [];
+  chart.data.labels = rh.map(r => r.round);
+  chart.data.datasets[0].data = rh.map(r => r.cumulative_edges);
+
+  // Bug markers as point annotations
+  const annotations = {};
+  (s.bugs || []).forEach((b, i) => {
+    if (b.round > 0) {
+      annotations['bug' + i] = {
+        type: 'line', xMin: b.round, xMax: b.round,
+        borderColor: '#ef5350', borderWidth: 2, borderDash: [4, 2],
+        label: { display: true, content: '🐛 ' + (b.assertion_message || '').slice(0, 30),
+                 position: 'start', backgroundColor: 'rgba(239,83,80,0.8)',
+                 color: '#fff', font: { size: 10 } }
+      };
+    }
+  });
+  if (chart.options.plugins.annotation) {
+    chart.options.plugins.annotation.annotations = annotations;
+  }
+  chart.update('none');
+}
+
+function updateAssertions(s) {
+  const tbody = document.querySelector('#assertionTable tbody');
+  const details = s.assertion_details || [];
+  tbody.innerHTML = details.map(d => {
+    const icon = d.verdict === 'failed' ? '✗' : d.verdict === 'passed' ? '✓' : '○';
+    const cls = 'verdict-' + d.verdict;
+    return `<tr class="${cls}"><td>${icon}</td><td>${esc(d.message)}</td><td>${d.kind}</td><td>${d.hit_count}</td><td>${d.verdict}</td></tr>`;
+  }).join('');
+}
+
+function updateRounds(s) {
+  const tbody = document.querySelector('#roundTable tbody');
+  const rh = (s.round_history || []).slice().reverse();
+  tbody.innerHTML = rh.map(r =>
+    `<tr><td>${r.round}</td><td>${r.branches_run}</td><td>${r.new_edges}</td><td>${r.cumulative_edges}</td><td>${r.bugs_found}</td><td>${r.frontier_size}</td><td>${r.corpus_size}</td></tr>`
+  ).join('');
+}
+
+function updateNetwork(s) {
+  const ns = s.network_stats;
+  const panel = document.getElementById('netPanel');
+  if (!ns || ns.packets_sent === 0) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+
+  const items = [
+    ['Sent', ns.packets_sent], ['Delivered', ns.packets_delivered],
+    ['Dropped (partition)', ns.packets_dropped_partition],
+    ['Dropped (loss)', ns.packets_dropped_loss],
+    ['Corrupted', ns.packets_corrupted], ['Duplicated', ns.packets_duplicated],
+    ['Bandwidth delayed', ns.packets_bandwidth_delayed],
+    ['Jittered', ns.packets_jittered], ['Reordered', ns.packets_reordered],
+  ].filter(([_, v]) => v > 0);
+
+  document.getElementById('netGrid').innerHTML = items.map(([label, val]) =>
+    `<div class="net-stat"><div class="ns-value">${val}</div><div class="ns-label">${label}</div></div>`
+  ).join('');
+}
+
+function updateAll(s) {
+  state = s;
+  updateHeader(s);
+  updateChart(s);
+  updateAssertions(s);
+  updateRounds(s);
+  updateNetwork(s);
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// --- SSE ---
+function connectSSE() {
+  const es = new EventSource('/api/events');
+
+  es.addEventListener('round', e => {
+    // On each round event, refresh full state for simplicity.
+    // The event contains partial data; a full refresh keeps things consistent.
+    fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+  });
+  es.addEventListener('bug', e => {
+    fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+  });
+  es.addEventListener('started', e => {
+    fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+  });
+  es.addEventListener('finished', e => {
+    fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+  });
+
+  es.onerror = () => {
+    // EventSource auto-reconnects. On reconnect, re-fetch state.
+    setTimeout(() => {
+      fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+    }, 1000);
+  };
+}
+
+// --- Init ---
+window.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  // Load initial state
+  fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
+  connectSSE();
+});
+</script>
+</body>
+</html>

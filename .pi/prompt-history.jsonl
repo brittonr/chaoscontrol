@@ -51,3 +51,7 @@
 {"text":"pueue_follow\n evaluation warning: nixfmt-rfc-style is now the same as\n pkgs.nixfmt which should be used instead.\nstilll getting stuck?","timestamp":1774844741548}
 {"text":"shouldnt there be logs tho","timestamp":1774844857094}
 {"text":"lets write an openspec to fix this the correct way","timestamp":1774846516507}
+{"text":"implement panic-halt-recovery","timestamp":1774847002464}
+{"text":"continue","timestamp":1774848391376}
+{"text":"what next","timestamp":1774895890052}
+{"text":"3","timestamp":1774896184726}

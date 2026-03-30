@@ -1,4 +1,9 @@
 # Napkin
+| 2026-03-30 | self | ProcessKill fault only sets VmStatus::Crashed in controller | Doesn't actually kill PID 1 inside VM. For integration testing kernel panic detection, inject NMI directly (inject_nmi) which triggers real kernel panic |
+| 2026-03-30 | self | explore_validation already had panic=0 workaround | extra_cmdline: Some("panic=0") — removed after changing default cmdline |
+| 2026-03-30 | self | Panic detection sliding window: 8 bytes of "Kernel p" as u64 | shift left 8 + OR byte, compare against u64::from_be_bytes(*b"Kernel p"). Only check on serial data register writes (offset 0) |
+| 2026-03-30 | self | panic_match_state must be cleared on restore() | Otherwise a panic from branch A leaks into branch B via stale match state |
+| 2026-03-30 | self | Integration test kernel paths: result-dev/vmlinux + result-initrd-raft | Not result/vmlinux — that symlink points to the test binary package |
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |

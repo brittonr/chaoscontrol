@@ -2172,6 +2172,53 @@ fn main() {
     });
 
     // ═══════════════════════════════════════════════════════════════
+    //  Test 34: Panic halt recovery — NMI causes bounded stop
+    // ═══════════════════════════════════════════════════════════════
+    run_test!(
+        "Panic halt recovery: NMI-induced panic stops VM within bounded exits",
+        {
+            // Boot a VM, take snapshot, then inject NMI and verify the VM
+            // halts within a bounded number of exits. NMI triggers a kernel
+            // panic which (with panic=0) leads to HLT. The serial panic
+            // detector provides defense-in-depth.
+            let config = VmConfig::default();
+            let mut vm = DeterministicVm::new(config).expect("create VM");
+            vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+
+            // Boot until guest is running.
+            let _ = vm.run_until("heartbeat 1").expect("boot to heartbeat");
+            vm.fault_engine_mut().force_setup_complete();
+
+            // Take a snapshot so we have a known-good state.
+            let snap = vm.snapshot().expect("snapshot");
+
+            // Restore and inject NMI to trigger kernel panic.
+            vm.restore(&snap).expect("restore");
+            vm.fault_engine_mut().force_setup_complete();
+
+            // NMI triggers "Kernel panic - not syncing: NMI" on Linux.
+            // With panic=0, the kernel halts (HLT instruction).
+            // Serial panic detection catches "Kernel p" in the output.
+            vm.inject_nmi(0).expect("inject NMI");
+
+            // Run bounded: should stop well within 100K exits.
+            // Before this fix with panic=-1, panic caused infinite
+            // GPF→exception-handler→stack-overflow→GPF cascade.
+            let (exits, halted) = vm.run_bounded(100_000).expect("run after NMI");
+
+            let serial = vm.take_serial_output();
+            let has_panic = serial.contains("Kernel panic");
+
+            eprintln!("    exits={}, halted={}", exits, halted);
+            eprintln!("    panic in serial={}", has_panic);
+
+            // The VM must halt within the budget. With panic=0 + serial
+            // detection, it should stop within a few thousand exits.
+            halted && exits < 100_000
+        }
+    );
+
+    // ═══════════════════════════════════════════════════════════════
     //  Summary
     // ═══════════════════════════════════════════════════════════════
     println!();

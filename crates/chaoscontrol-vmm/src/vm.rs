@@ -101,6 +101,13 @@ const HPET_REG_COUNTER: u64 = 0x0F0;
 /// COM1 IRQ line number (standard PC).
 const SERIAL_IRQ: u32 = 4;
 
+/// Target pattern for serial panic detection: "Kernel p" as big-endian u64.
+///
+/// We match on the first 8 bytes of the panic message ("Kernel p" from
+/// "Kernel panic - not syncing:"). Each serial byte is shifted into a u64
+/// sliding window; when it matches this constant, we set `panic_detected`.
+const PANIC_MATCH_TARGET: u64 = u64::from_be_bytes(*b"Kernel p");
+
 /// PIT timer IRQ line number (standard PC, IRQ 0).
 const PIT_IRQ: u32 = 0;
 
@@ -265,7 +272,7 @@ impl Default for VmConfig {
                        virtio_mmio.device=4K@0xd0000000:5 \
                        virtio_mmio.device=4K@0xd0001000:6 \
                        virtio_mmio.device=4K@0xd0002000:7 \
-                       panic=-1\0"
+                       panic=0\0"
                 .to_vec(),
             disk_image_path: None,
             extra_cmdline: None,
@@ -498,6 +505,14 @@ pub struct DeterministicVm {
     /// next `step()` to skip `sync_tsc_to_guest()` so the TSC resync
     /// doesn't happen at non-deterministic wall-clock times.
     skip_tsc_sync: bool,
+
+    /// Set when serial output contains "Kernel panic".
+    /// Causes `step()` to return halted on the next iteration.
+    panic_detected: bool,
+
+    /// Sliding window for serial panic detection.
+    /// Accumulates the last 8 serial output bytes as a big-endian u64.
+    panic_match_state: u64,
 
     /// Extra kernel command line parameters (from VmConfig).
     extra_cmdline: Option<String>,
@@ -833,6 +848,8 @@ impl DeterministicVm {
             exit_count: 0,
             io_exit_count: 0,
             exits_since_last_sdk: 0,
+            panic_detected: false,
+            panic_match_state: 0,
             coverage_active: false,
             vmcall_enabled,
             skip_tsc_sync: false,
@@ -953,7 +970,7 @@ impl DeterministicVm {
              virtio_mmio.device=4K@0xd0002000:7 \
              vm_id={vm_id} \
              {extra} \
-             panic=-1\0"
+             panic=0\0"
         );
 
         cmdline.into_bytes()
@@ -1879,6 +1896,11 @@ impl DeterministicVm {
         // not inherit the bootstrap's idle state.
         self.exits_since_last_sdk = 0;
 
+        // Clear panic detection state so a panic from a previous
+        // branch doesn't carry into a new branch.
+        self.panic_detected = false;
+        self.panic_match_state = 0;
+
         // Restore DeterministicPit state
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
@@ -2366,6 +2388,14 @@ impl DeterministicVm {
                 } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&io_port) {
                     let offset = (io_port - SERIAL_PORT_BASE) as u8;
                     let _ = self.serial.write(offset, io_byte);
+                    // Sliding window panic detection: shift in each
+                    // serial byte and compare against "Kernel p".
+                    if offset == 0 {
+                        self.panic_match_state = (self.panic_match_state << 8) | (io_byte as u64);
+                        if self.panic_match_state == PANIC_MATCH_TARGET {
+                            self.panic_detected = true;
+                        }
+                    }
                 } else if DeterministicPit::handles_port(io_port) {
                     self.pit.write_port(io_port, io_byte, tsc);
                 }
@@ -2435,6 +2465,7 @@ impl DeterministicVm {
             }
             Ok(VcpuExit::Shutdown) => {
                 self.exit_count += 1;
+                self.panic_detected = true;
                 pending_dlog = Some(DlogRecord::new(
                     0,
                     self.virtual_tsc.read(),
@@ -2443,7 +2474,10 @@ impl DeterministicVm {
                     DlogTag::Shutdown,
                     self.active_vcpu as u8,
                 ));
-                info!("VM shutdown (exit_count={})", self.exit_count);
+                info!(
+                    "VM shutdown/triple-fault — marking as crashed (exit_count={})",
+                    self.exit_count
+                );
                 Ok(true)
             }
             Ok(VcpuExit::MmioRead(addr, data)) => {
@@ -2787,6 +2821,18 @@ impl DeterministicVm {
             self.handle_sdk_hypercall();
             self.dlog_emit(self.dlog_record(DlogTag::SdkHypercall));
             self.maybe_switch_vcpu();
+        }
+
+        // Serial panic detection: if the sliding window matched
+        // "Kernel p" during this exit's serial output, treat the
+        // VM as crashed immediately.
+        if self.panic_detected {
+            log::warn!(
+                "Kernel panic detected via serial output (exit_count={}, vtsc={})",
+                self.exit_count,
+                self.virtual_tsc.read(),
+            );
+            return Ok(true);
         }
 
         result
@@ -3274,5 +3320,102 @@ mod tests {
         // Bitmap should have correct length: ceil(memory_size / page_size / 64)
         let expected_len = mem_size.div_ceil(4096) / 64;
         assert_eq!(bitmap.len(), expected_len);
+    }
+
+    // ─── Panic detection ────────────────────────────────────────
+
+    #[test]
+    fn test_panic_match_target_constant() {
+        // "Kernel p" as big-endian u64
+        let expected = u64::from_be_bytes(*b"Kernel p");
+        assert_eq!(PANIC_MATCH_TARGET, expected);
+    }
+
+    #[test]
+    fn test_panic_sliding_window_detects_kernel_panic() {
+        // Simulate the sliding window match byte-by-byte.
+        let input = b"Kernel panic - not syncing: fatal";
+        let mut state: u64 = 0;
+        let mut detected = false;
+        for &byte in input.iter() {
+            state = (state << 8) | (byte as u64);
+            if state == PANIC_MATCH_TARGET {
+                detected = true;
+                break;
+            }
+        }
+        assert!(detected, "should detect 'Kernel p' in panic message");
+    }
+
+    #[test]
+    fn test_panic_sliding_window_no_false_positive() {
+        // Normal boot output should not trigger detection.
+        let input = b"Linux version 6.19 (root@builder) console=ttyS0 kernel loaded OK";
+        let mut state: u64 = 0;
+        let mut detected = false;
+        for &byte in input.iter() {
+            state = (state << 8) | (byte as u64);
+            if state == PANIC_MATCH_TARGET {
+                detected = true;
+                break;
+            }
+        }
+        assert!(!detected, "normal output should not trigger panic detection");
+    }
+
+    #[test]
+    fn test_panic_sliding_window_partial_match_no_trigger() {
+        // "Kernel " without "p" should not trigger.
+        let input = b"Kernel loading...";
+        let mut state: u64 = 0;
+        let mut detected = false;
+        for &byte in input.iter() {
+            state = (state << 8) | (byte as u64);
+            if state == PANIC_MATCH_TARGET {
+                detected = true;
+                break;
+            }
+        }
+        assert!(!detected, "partial match should not trigger");
+    }
+
+    #[test]
+    fn test_panic_detection_initialized_false() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        assert!(!vm.panic_detected, "panic_detected starts false");
+        assert_eq!(vm.panic_match_state, 0, "match state starts at 0");
+    }
+
+    #[test]
+    fn test_cmdline_uses_panic_zero() {
+        let config = VmConfig::default();
+        let cmdline = String::from_utf8_lossy(&config.cmdline);
+        assert!(
+            cmdline.contains("panic=0"),
+            "default cmdline should use panic=0, got: {}",
+            cmdline
+        );
+        assert!(
+            !cmdline.contains("panic=-1"),
+            "default cmdline should NOT contain panic=-1"
+        );
+    }
+
+    #[test]
+    fn test_build_cmdline_uses_panic_zero() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        let bytes = vm.build_cmdline(0);
+        let cmdline = String::from_utf8_lossy(&bytes);
+        assert!(
+            cmdline.contains("panic=0"),
+            "build_cmdline should use panic=0, got: {}",
+            cmdline
+        );
+        assert!(
+            !cmdline.contains("panic=-1"),
+            "build_cmdline should NOT contain panic=-1"
+        );
     }
 }

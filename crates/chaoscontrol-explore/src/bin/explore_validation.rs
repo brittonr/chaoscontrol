@@ -60,12 +60,11 @@ fn main() {
 /// Coverage edges and bug counts must match.
 fn test_parallel_determinism(kernel: &str, initrd: &str) -> bool {
     let make_config = |workers: usize| {
-        // Use a minimal VM config with short budget. Disable fault
-        // types that cause infinite panic loops (ProcessKill + NMI
-        // with panic=-1 and no BIOS = infinite reboot loop).
-        let mut vm_config = VmConfig::default();
-        // Override cmdline to use panic=0 (halt, don't reboot)
-        vm_config.extra_cmdline = Some("panic=0".to_string());
+        // Use a minimal VM config with short budget.
+        // Default cmdline uses panic=0 (halt, don't reboot), so
+        // ProcessKill/NMI faults cause a clean HLT instead of an
+        // infinite GPF cascade.
+        let vm_config = VmConfig::default();
 
         ExplorerConfig {
             num_vms: 1,
@@ -130,8 +129,8 @@ fn test_parallel_determinism(kernel: &str, initrd: &str) -> bool {
 
 /// Task 7.4: Run a longer exploration to verify no crashes or leaks.
 fn test_stress(kernel: &str, initrd: &str) -> bool {
-    let mut vm_config = VmConfig::default();
-    vm_config.extra_cmdline = Some("panic=0".to_string());
+    // Default cmdline uses panic=0 (halt, don't reboot).
+    let vm_config = VmConfig::default();
 
     let config = ExplorerConfig {
         num_vms: 1,

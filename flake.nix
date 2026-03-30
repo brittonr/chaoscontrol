@@ -270,6 +270,18 @@
               virtioNet = true;
               kcov = true;
             };
+
+            raft-sim = mkChaosTest {
+              name = "raft-sim";
+              kernel = mkChaosKernel { virtioNet = true; };
+              initrd = initrd-raft;
+              vms = 3;
+              rounds = 5;
+              branches = 4;
+              ticks = 500;
+              seed = 42;
+              mode = "hybrid";
+            };
           };
 
           checks = {
@@ -303,18 +315,10 @@
               touch $out
             '';
 
-            # Simulation test (requires /dev/kvm — skipped on machines without it)
-            raft-sim = mkChaosTest {
-              name = "raft-sim";
-              kernel = mkChaosKernel { virtioNet = true; };
-              initrd = initrd-raft;
-              vms = 3;
-              rounds = 5;
-              branches = 4;
-              ticks = 500;
-              seed = 42;
-              mode = "hybrid";
-            };
+            # Simulation tests live in packages, not checks — they take
+            # 10+ minutes and need /dev/kvm.  Run explicitly:
+            #   nix build .#raft-sim
+            #   nix run .#explore-raft
           };
 
           apps = {
@@ -436,7 +440,8 @@
               echo "  nix build .#kcov-net-vmlinux  Both"
               echo ""
               echo "CI:"
-              echo "  nix flake check          All checks (build, test, clippy, fmt, simulation)"
+              echo "  nix flake check          All checks (build, test, clippy, fmt)"
+              echo "  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)"
             '';
           };
         }

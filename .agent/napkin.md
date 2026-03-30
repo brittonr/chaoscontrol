@@ -1,4 +1,10 @@
 # Napkin
+| 2026-03-30 | self | Single-vCPU VMs hang indefinitely under CpuBitflip/fault injection | Guest enters tight CPU loop with no VM exits → vcpu.run() never returns. Fix: per-thread POSIX timers (timer_create + SIGEV_THREAD_ID) + 100ms SIGALRM watchdog + stuck detection after 5 consecutive SIGALRMs |
+| 2026-03-30 | self | ITIMER_REAL is process-wide, not per-thread | Can't use setitimer for parallel workers. Must use timer_create with SIGEV_THREAD_ID for per-thread signal delivery |
+| 2026-03-30 | self | VcpuExit::Intr does NOT increment exit_count or exits_since_last_sdk | SIGALRM watchdog fires but idle detection never triggers because the counter never advances. Must detect stuck VMs via sigalrm_without_exit counter instead |
+| 2026-03-30 | self | SIGALRM default handler kills the process | Must install no-op handler via install_sigalrm_handler() before arming ANY timer, not just for SMP VMs |
+| 2026-03-30 | self | skip_truncate is the only Raft bug variant that violates safety assertions | leader completeness + log matching both fail. All other variants only trigger liveness ("commit index advanced" sometimes-assertion fails under DiskFull) |
+| 2026-03-30 | self | "commit index advanced" sometimes-assertion is not a good discriminator | DiskFull fault naturally prevents commits, so this fires on ALL variants including none (control). Need finer-grained liveness assertions |
 | 2026-03-30 | self | Hegel binary() and vecs(integers::<u8>()) with PAGE_SIZE lengths blows entropy budget | Use deterministic fill patterns from a seed byte drawn via Hegel; only draw small values from Hegel, build large data structures procedurally |
 | 2026-03-30 | self | HealthCheck::LargeBaseExample doesn't exist in hegeltest 0.3.7 | Correct variant is HealthCheck::LargeInitialTestCase |
 | 2026-03-30 | self | FaultSchedule::drain_due drains ALL faults at or before query time | next_time_tracks_cursor test can't assume one drain per distinct time — duplicate times are consumed together |

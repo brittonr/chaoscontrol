@@ -55,3 +55,5 @@
 {"text":"continue","timestamp":1774848391376}
 {"text":"what next","timestamp":1774895890052}
 {"text":"3","timestamp":1774896184726}
+{"text":"what next","timestamp":1774897615763}
+{"text":"- Test/harden — Run the existing test suite, check for gaps,\n write more property-based tests for the snapshot/restore or\n scheduler paths (the napkin has a lot of hard-won edge cases)","timestamp":1774897679795}

@@ -10,3 +10,4 @@ guest/*.gz
 # Node.js (OpenSpec CLI)
 node_modules/
 .npm/
+.hegel/

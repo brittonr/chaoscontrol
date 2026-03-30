@@ -25,4 +25,5 @@ crc32fast = "1"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
+hegeltest = "0.3.7"
 tempfile = "3"

@@ -1,4 +1,7 @@
 # Napkin
+| 2026-03-30 | self | Hegel binary() and vecs(integers::<u8>()) with PAGE_SIZE lengths blows entropy budget | Use deterministic fill patterns from a seed byte drawn via Hegel; only draw small values from Hegel, build large data structures procedurally |
+| 2026-03-30 | self | HealthCheck::LargeBaseExample doesn't exist in hegeltest 0.3.7 | Correct variant is HealthCheck::LargeInitialTestCase |
+| 2026-03-30 | self | FaultSchedule::drain_due drains ALL faults at or before query time | next_time_tracks_cursor test can't assume one drain per distinct time — duplicate times are consumed together |
 | 2026-03-30 | self | ProcessKill fault only sets VmStatus::Crashed in controller | Doesn't actually kill PID 1 inside VM. For integration testing kernel panic detection, inject NMI directly (inject_nmi) which triggers real kernel panic |
 | 2026-03-30 | self | explore_validation already had panic=0 workaround | extra_cmdline: Some("panic=0") — removed after changing default cmdline |
 | 2026-03-30 | self | Panic detection sliding window: 8 bytes of "Kernel p" as u64 | shift left 8 + OR byte, compare against u64::from_be_bytes(*b"Kernel p"). Only check on serial data register writes (offset 0) |

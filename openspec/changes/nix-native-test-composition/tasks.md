@@ -27,8 +27,8 @@
 - [x] 4.1 Implement `mkChaosTest` function that invokes `chaoscontrol-explore run` in a runCommand derivation
 - [x] 4.2 Add `requiredSystemFeatures = [ "kvm" ]` to mkChaosTest derivations
 - [x] 4.3 Wire up exploration parameters (vms, rounds, branches, ticks, seed, mode, diskImage, extraArgs)
-- [ ] 4.4 Verify output artifacts ($out/report.txt, $out/assertions.json) are produced on success
-- [ ] 4.5 Verify non-zero exit code on assertion failure
+- [x] 4.4 Verify output artifacts ($out/report.txt, $out/assertions.json) are produced on success
+- [x] 4.5 Verify non-zero exit code on assertion failure
 
 ## 5. Flake lib and downstream API
 
@@ -40,8 +40,8 @@
 ## 6. Flake checks (simulation tests)
 
 - [x] 6.1 Add `checks.raft-sim` using mkChaosTest with net kernel + raft initrd (small rounds for CI)
-- [ ] 6.2 Verify `nix flake check` passes on KVM-capable machine (unit tests + simulation)
-- [ ] 6.3 Verify `nix flake check` skips simulation checks on non-KVM machine
+- [x] 6.2 Verify `nix flake check` passes on KVM-capable machine (unit tests + simulation)
+- [x] 6.3 Verify `nix flake check` skips simulation checks on non-KVM machine
 
 ## 7. Cleanup and documentation
 

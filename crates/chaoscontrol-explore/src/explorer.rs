@@ -366,9 +366,7 @@ impl Explorer {
                 let branch_results = pool.run_branches(snap, work)?;
                 branch_results.into_iter().zip(variants).collect()
             }
-            _ => {
-                self.run_branches_sequential(&snapshot, variants)?
-            }
+            _ => self.run_branches_sequential(&snapshot, variants)?,
         };
 
         // Process results in deterministic order (by branch index).

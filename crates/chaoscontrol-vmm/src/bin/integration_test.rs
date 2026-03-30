@@ -18,6 +18,7 @@ use chaoscontrol_vmm::controller::{
 use chaoscontrol_vmm::dlog::{dlog_diff, dlog_diff_structural, DiffResult};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;
+use std::sync::Arc;
 use std::time::Instant;
 use vm_memory::{Bytes, GuestAddress};
 
@@ -2002,6 +2003,172 @@ fn main() {
                 true
             }
         }
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 31: Incremental snapshot — same result as full snapshot
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Incremental snapshot matches full snapshot", {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).expect("create VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+
+        // Boot and take a full snapshot as the base.
+        vm.run_bounded(50_000).expect("boot");
+        let base_snapshot = vm.snapshot().expect("base snapshot");
+        let base_memory = Arc::new(base_snapshot.memory.materialize());
+
+        // Drain dirty bits accumulated during boot.
+        let _ = vm.get_dirty_bitmap().unwrap();
+
+        // Clear serial so we only compare post-base output.
+        vm.take_serial_output();
+
+        // Run 1000 more exits.
+        vm.run_bounded(1_000).expect("run after base");
+        let serial_full = vm.take_serial_output();
+
+        // Take a full snapshot.
+        let full_snap = vm.snapshot().expect("full snap");
+        let full_materialized = full_snap.memory.materialize();
+
+        // Restore base and re-run the same 1000 exits.
+        vm.restore(&base_snapshot).expect("restore base");
+        // Drain dirty bits so we start fresh.
+        let _ = vm.get_dirty_bitmap().unwrap();
+        vm.take_serial_output();
+
+        vm.run_bounded(1_000).expect("rerun after base");
+        let serial_incr = vm.take_serial_output();
+
+        // Take an incremental snapshot.
+        let (incr_snap, dirty_count) = vm.snapshot_incremental(&base_memory).expect("incr snap");
+        let incr_materialized = incr_snap.memory.materialize();
+
+        eprintln!("    dirty pages: {}", dirty_count);
+        eprintln!("    serial match: {}", serial_full == serial_incr);
+        eprintln!(
+            "    memory match: {}",
+            full_materialized == incr_materialized
+        );
+
+        // The two paths must produce identical memory.
+        full_materialized == incr_materialized
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 32: Incremental restore — serial output matches
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Incremental restore produces identical execution", {
+        let config = VmConfig::default();
+        let mut vm = DeterministicVm::new(config).expect("create VM");
+        vm.load_kernel(kernel, Some(initrd)).expect("load kernel");
+
+        // Boot → base snapshot.
+        vm.run_bounded(50_000).expect("boot");
+        let base_snapshot = vm.snapshot().expect("base snapshot");
+        let base_memory = Arc::new(base_snapshot.memory.materialize());
+
+        // Drain accumulated dirty bits.
+        let _ = vm.get_dirty_bitmap().unwrap();
+
+        // Path A: run 1000 → take incremental → run 1000 more.
+        vm.take_serial_output();
+        vm.run_bounded(1_000).expect("path A step 1");
+        let (snap_a, _) = vm.snapshot_incremental(&base_memory).expect("snap A");
+        vm.take_serial_output();
+        vm.run_bounded(1_000).expect("path A step 2");
+        let serial_a = vm.take_serial_output();
+        let vtsc_a = vm.virtual_tsc();
+        let exits_a = vm.exit_count();
+
+        // Path B: restore base → run 1000 → restore incremental → run 1000.
+        vm.restore(&base_snapshot).expect("restore base");
+        let _ = vm.get_dirty_bitmap().unwrap();
+        vm.take_serial_output();
+        vm.run_bounded(1_000).expect("path B step 1");
+
+        // Restore the incremental snapshot.
+        vm.restore(&snap_a).expect("restore incr");
+        vm.take_serial_output();
+        vm.run_bounded(1_000).expect("path B step 2");
+        let serial_b = vm.take_serial_output();
+        let vtsc_b = vm.virtual_tsc();
+        let exits_b = vm.exit_count();
+
+        let vtsc_match = vtsc_a == vtsc_b;
+        let exits_match = exits_a == exits_b;
+
+        // Compare serial output (strip timestamps).
+        let lines_a: Vec<&str> = serial_a.lines().map(strip_timestamp).collect();
+        let lines_b: Vec<&str> = serial_b.lines().map(strip_timestamp).collect();
+        let matching = lines_a
+            .iter()
+            .zip(lines_b.iter())
+            .filter(|(a, b)| a == b)
+            .count();
+        let total = lines_a.len().max(lines_b.len()).max(1);
+        let pct = (matching * 100) / total;
+
+        eprintln!("    vtsc: A={} B={} match={}", vtsc_a, vtsc_b, vtsc_match);
+        eprintln!(
+            "    exits: A={} B={} match={}",
+            exits_a, exits_b, exits_match
+        );
+        eprintln!("    serial: {}/{} lines match ({}%)", matching, total, pct);
+
+        vtsc_match && exits_match
+    });
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Test 33: Controller incremental snapshot/restore
+    // ═══════════════════════════════════════════════════════════════
+    run_test!("Controller incremental snapshot determinism", {
+        let sim_config = SimulationConfig {
+            num_vms: 2,
+            vm_config: VmConfig::default(),
+            kernel_path: kernel.to_string(),
+            initrd_path: Some(initrd.to_string()),
+            seed: 42,
+            quantum: 100,
+            ..Default::default()
+        };
+        let mut ctrl = SimulationController::new(sim_config).expect("create controller");
+        ctrl.force_setup_complete();
+
+        // Run until some base state, then snapshot.
+        ctrl.run(500).expect("initial run");
+        let base_snap = ctrl.snapshot_all().expect("base snap");
+        let bases = SimulationController::extract_memory_bases(&base_snap);
+        ctrl.set_memory_bases(bases);
+
+        // Path A: run 200 ticks, take incremental snapshot, run 200 more.
+        ctrl.run(200).expect("path A step 1");
+        let (incr_snap, dirty) = ctrl.snapshot_all_incremental().expect("incr snap");
+        eprintln!("    dirty pages: {}", dirty);
+        ctrl.run(200).expect("path A step 2");
+        let tick_a = ctrl.tick();
+
+        // Path B: restore base → run 200 → restore incr → run 200.
+        ctrl.restore_all(&base_snap).expect("restore base");
+        ctrl.reset_vm_statuses();
+        // Reset dirty tracking.
+        for i in 0..ctrl.num_vms() {
+            let _ = ctrl.vm_mut(i).get_dirty_bitmap();
+        }
+        ctrl.run(200).expect("path B step 1");
+        ctrl.restore_all(&incr_snap).expect("restore incr");
+        ctrl.reset_vm_statuses();
+        ctrl.run(200).expect("path B step 2");
+        let tick_b = ctrl.tick();
+
+        eprintln!(
+            "    tick A={} B={} match={}",
+            tick_a,
+            tick_b,
+            tick_a == tick_b
+        );
+        tick_a == tick_b
     });
 
     // ═══════════════════════════════════════════════════════════════

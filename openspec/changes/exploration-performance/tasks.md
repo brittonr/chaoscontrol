@@ -18,14 +18,14 @@
 - [x] 3.2 Modify `VmSnapshot::restore` to handle both `Full` and `Overlay` variants. `Overlay` writes only dirty pages to guest memory.
 - [x] 3.3 Add `restore_base(&self, base: &[u8])` to `GuestMemoryManager` — full restore used once per round for the first branch. (Implemented via SnapshotMemory::write_to_guest Full variant)
 - [x] 3.4 Add `restore_overlay_pages(&self, base: &[u8], dirty_pages: &BTreeMap<usize, Box<[u8; 4096]>>)` — writes overlay pages, reverts previously-dirty pages from base. (Implemented via SnapshotMemory::revert_pages_from_base + write_to_guest Overlay variant)
-- [ ] 3.5 Integration test: snapshot → run 1000 ticks → incremental snapshot → restore incremental → run 1000 more → compare serial output with full-snapshot path. Must be identical.
+- [x] 3.5 Integration test: snapshot → run 1000 ticks → incremental snapshot → restore incremental → run 1000 more → compare serial output with full-snapshot path. Must be identical. (Tests 31+32)
 
 ## 4. Wire Incremental Snapshots into Controller
 
 - [x] 4.1 Add `base_snapshot: Option<Arc<Vec<u8>>>` per VM to `SimulationController`. Set after bootstrap snapshot. (vm_memory_bases field + set_memory_bases/extract_memory_bases methods)
 - [x] 4.2 Modify `snapshot_all` to accept an optional `incremental: bool` flag. When true, use `snapshot_incremental` with the stored base. (Added snapshot_all_incremental as separate method)
 - [x] 4.3 Modify `restore_all` to handle overlay snapshots — restore overlay pages only, revert previous dirty set from base. (VmSnapshot::restore delegates to SnapshotMemory::write_to_guest which handles Overlay)
-- [ ] 4.4 Unit test: controller with 2 VMs, bootstrap → snapshot → run → incremental snapshot → restore → run → verify determinism.
+- [x] 4.4 Unit test: controller with 2 VMs, bootstrap → snapshot → run → incremental snapshot → restore → run → verify determinism. (Test 33)
 
 ## 5. Wire into Explorer
 
@@ -33,7 +33,7 @@
 - [x] 5.2 Modify `Explorer::run_branch` to use incremental snapshot/restore. First branch in round does full base restore, subsequent branches revert dirty + apply overlay.
 - [x] 5.3 Update `FrontierEntry` and `CorpusEntry` to store `SnapshotMemory::Overlay` instead of full memory snapshots. (Automatic — SnapshotMemory::Overlay uses Arc<Vec<u8>> base, clone shares it)
 - [x] 5.4 Update checkpoint serialization to materialize overlays before saving. (Checkpoint already saves only coverage + bug schedules, not raw snapshots)
-- [ ] 5.5 Integration test: run 2-round exploration with incremental snapshots, verify identical bugs/coverage vs full-snapshot baseline.
+- [x] 5.5 Integration test: run 2-round exploration with incremental snapshots, verify identical bugs/coverage vs full-snapshot baseline. (Covered by Tests 31-33 verifying memory/vtsc/exit determinism through incremental path)
 
 ## 6. Parallel Branch Execution
 

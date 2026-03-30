@@ -4,6 +4,9 @@ result-bin
 result-kcov
 result-net
 
+# Nix build products
+guest/*.gz
+
 # Node.js (OpenSpec CLI)
 node_modules/
 .npm/

@@ -119,11 +119,26 @@ falls back to userspace-only coverage — no crash, no error.
 # Enter development environment
 nix develop
 
-# Build
+# Build VMM + tools
 cargo build
 
 # Run tests (827 unit + doc tests)
 cargo test
+
+# Build guest binaries (statically linked, musl)
+nix build .#guest-sdk    # → result/bin/chaoscontrol-guest
+nix build .#guest-raft   # → result/bin/chaoscontrol-raft-guest
+nix build .#guest-net    # → result/bin/chaoscontrol-net-guest
+
+# Build initrd images (from guest binaries)
+nix build .#initrd-sdk   # → result (gzipped cpio)
+nix build .#initrd-raft
+nix build .#initrd-net
+
+# Build custom kernels
+nix build .#net-vmlinux       # virtio-net enabled
+nix build .#kcov-vmlinux      # KCOV coverage
+nix build .#kcov-net-vmlinux  # both
 
 # Boot a kernel
 cargo run --bin boot -- <kernel-path> [initrd-path]
@@ -133,6 +148,16 @@ cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 ```
 
 ## CLI Tools
+
+### Quick Start (Nix)
+
+```bash
+# Run Raft exploration with one command (builds kernel + guest + initrd)
+nix run .#explore-raft
+
+# Run with custom args (appended after defaults)
+nix run .#explore-raft -- --output results/ --rounds 200
+```
 
 ### Exploration
 
@@ -379,3 +404,52 @@ snafu = "0.8"             # Error handling
 - [x] Multi-VM networking (virtio-net + smoltcp TCP/IP)
 - [x] Interrupt injection faults (IRQ + NMI)
 - [x] Core pinning for reduced scheduling jitter
+- [x] Nix-native build pipeline (guest packages, initrd builder, kernel composer)
+- [x] Declarative simulation tests via `mkChaosTest`
+
+## Using ChaosControl from Your Flake
+
+Add ChaosControl as a flake input and define simulation tests for your
+own guest binaries:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    chaoscontrol.url = "github:user/chaoscontrol";
+  };
+
+  outputs = { self, nixpkgs, chaoscontrol, ... }:
+    let
+      system = "x86_64-linux";
+      cc = chaoscontrol.lib.${system};
+      pkgs = nixpkgs.legacyPackages.${system};
+    in {
+      # Define a simulation test as a flake check
+      checks.${system}.my-consensus-test = cc.mkChaosTest {
+        name = "my-consensus";
+        kernel = cc.mkChaosKernel { virtioNet = true; };
+        initrd = cc.mkChaosInitrd {
+          init = self.packages.${system}.my-guest;
+        };
+        vms = 3;
+        rounds = 100;
+        branches = 8;
+        seed = 42;
+      };
+
+      # Use pre-built kernels to skip kernel compilation
+      checks.${system}.quick-test = cc.mkChaosTest {
+        name = "quick";
+        kernel = chaoscontrol.packages.${system}.net-vmlinux;
+        initrd = cc.mkChaosInitrd {
+          init = self.packages.${system}.my-guest;
+        };
+        rounds = 10;
+      };
+    };
+}
+```
+
+Run with `nix flake check` (requires `system-features = kvm` in
+`nix.conf` for the builder).

@@ -50,3 +50,4 @@
 {"text":"its been stuck for a long time.  [   43.942721] Kernel panic - not syncing: Fatal exception in\n interrupt\n [   43.942732] Kernel Offset: disabled\n [   43.945688] Uhhuh. NMI received for unknown reason 11 on\n CPU 0.\n [   43.945717] Dazed and confused, but trying to continue","timestamp":1774844321305}
 {"text":"pueue_follow\n evaluation warning: nixfmt-rfc-style is now the same as\n pkgs.nixfmt which should be used instead.\nstilll getting stuck?","timestamp":1774844741548}
 {"text":"shouldnt there be logs tho","timestamp":1774844857094}
+{"text":"lets write an openspec to fix this the correct way","timestamp":1774846516507}

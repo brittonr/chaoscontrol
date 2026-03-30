@@ -4,7 +4,7 @@
 //! deterministic RNG into a single coordinator.  The VMM calls into the
 //! engine on every hypercall and on every exit to check if faults are due.
 
-use crate::faults::Fault;
+use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
@@ -474,7 +474,7 @@ impl FaultEngine {
         }
 
         let target = (self.rng.next_u64() as usize) % self.config.num_vms;
-        let fault_type = self.rng.next_u64() % 13;
+        let fault_type = self.rng.next_u64() % 20;
 
         Some(match fault_type {
             0 => Fault::ProcessKill { target },
@@ -525,6 +525,35 @@ impl FaultEngine {
             12 => Fault::InjectNmi {
                 target,
                 vcpu: 0, // BSP — SMP-aware targeting is future work
+            },
+            13 => Fault::DiskSlow {
+                target,
+                delay_ns: (self.rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
+            },
+            14 => Fault::DiskFsyncLie { target },
+            15 => Fault::DiskPartialRead {
+                target,
+                offset: self.rng.next_u64() % (1024 * 1024),
+                max_bytes: ((self.rng.next_u64() % 4095) + 1) as usize,
+            },
+            16 => Fault::CpuBitflip {
+                target,
+                vcpu: 0,
+                register: GpRegister::ALL[(self.rng.next_u64() % 16) as usize],
+                bit: (self.rng.next_u64() % 64) as u8,
+            },
+            17 => Fault::CpuStall {
+                target,
+                vcpu: 0,
+                duration_ticks: (self.rng.next_u64() % 200) + 1,
+            },
+            18 => Fault::ClockFreeze {
+                target,
+                duration_ticks: (self.rng.next_u64() % 500) + 10,
+            },
+            19 => Fault::ClockJitter {
+                target,
+                bound_tsc: (self.rng.next_u64() % 5000) + 100,
             },
             _ => unreachable!(),
         })

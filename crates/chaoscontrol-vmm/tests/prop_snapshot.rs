@@ -65,11 +65,7 @@ fn overlay_materialize_matches_manual_patch(tc: TestCase) {
     let base = make_pages(num_pages, base_seed);
 
     // Pick which pages are dirty
-    let dirty_flags: Vec<bool> = tc.draw(
-        vecs(booleans())
-            .min_size(num_pages)
-            .max_size(num_pages),
-    );
+    let dirty_flags: Vec<bool> = tc.draw(vecs(booleans()).min_size(num_pages).max_size(num_pages));
 
     // Build dirty pages with distinct fill bytes
     let mut dirty_pages = BTreeMap::new();
@@ -107,11 +103,7 @@ fn clone_overlay_shares_base_and_matches_content(tc: TestCase) {
     let base_seed = tc.draw(integers::<u8>());
     let base = Arc::new(make_pages(num_pages, base_seed));
 
-    let dirty_flags: Vec<bool> = tc.draw(
-        vecs(booleans())
-            .min_size(num_pages)
-            .max_size(num_pages),
-    );
+    let dirty_flags: Vec<bool> = tc.draw(vecs(booleans()).min_size(num_pages).max_size(num_pages));
 
     let mut dirty_pages = BTreeMap::new();
     for (idx, &dirty) in dirty_flags.iter().enumerate() {
@@ -129,10 +121,8 @@ fn clone_overlay_shares_base_and_matches_content(tc: TestCase) {
 
     assert_eq!(snap.materialize(), cloned.materialize());
 
-    if let (
-        SnapshotMemory::Overlay { base: b1, .. },
-        SnapshotMemory::Overlay { base: b2, .. },
-    ) = (&snap, &cloned)
+    if let (SnapshotMemory::Overlay { base: b1, .. }, SnapshotMemory::Overlay { base: b2, .. }) =
+        (&snap, &cloned)
     {
         assert!(Arc::ptr_eq(b1, b2), "clone must share base Arc");
     }
@@ -160,13 +150,9 @@ fn from_dirty_round_trips_through_guest_memory(tc: TestCase) {
     let base = Arc::new(vec![0u8; size]);
 
     // Build dirty bitmap
-    let dirty_flags: Vec<bool> = tc.draw(
-        vecs(booleans())
-            .min_size(num_pages)
-            .max_size(num_pages),
-    );
+    let dirty_flags: Vec<bool> = tc.draw(vecs(booleans()).min_size(num_pages).max_size(num_pages));
 
-    let mut bitmap_words = vec![0u64; (num_pages + 63) / 64];
+    let mut bitmap_words = vec![0u64; num_pages.div_ceil(64)];
     for (i, &dirty) in dirty_flags.iter().enumerate() {
         if dirty {
             bitmap_words[i / 64] |= 1u64 << (i % 64);
@@ -206,11 +192,7 @@ fn write_to_guest_then_read_back_matches_materialize(tc: TestCase) {
     let base_seed = tc.draw(integers::<u8>());
     let base = make_pages(num_pages, base_seed);
 
-    let dirty_flags: Vec<bool> = tc.draw(
-        vecs(booleans())
-            .min_size(num_pages)
-            .max_size(num_pages),
-    );
+    let dirty_flags: Vec<bool> = tc.draw(vecs(booleans()).min_size(num_pages).max_size(num_pages));
 
     let mut dirty_pages = BTreeMap::new();
     for (idx, &dirty) in dirty_flags.iter().enumerate() {

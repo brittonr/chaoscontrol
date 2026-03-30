@@ -71,7 +71,11 @@ fn drain_due_returns_in_time_order(tc: TestCase) {
     let n = tc.draw(integers::<usize>().min_value(1).max_value(30));
     let (mut schedule, _) = random_schedule(&tc, n);
 
-    let query_time = tc.draw(integers::<u64>().min_value(50_000_000).max_value(200_000_000));
+    let query_time = tc.draw(
+        integers::<u64>()
+            .min_value(50_000_000)
+            .max_value(200_000_000),
+    );
     let faults = schedule.drain_due(query_time);
 
     for window in faults.windows(2) {
@@ -111,7 +115,11 @@ fn incremental_drain_gets_all_faults(tc: TestCase) {
     let mut last_time = 0u64;
 
     for _ in 0..n_steps {
-        let t = tc.draw(integers::<u64>().min_value(last_time).max_value(200_000_000));
+        let t = tc.draw(
+            integers::<u64>()
+                .min_value(last_time)
+                .max_value(200_000_000),
+        );
         let batch = schedule.drain_due(t);
         for f in &batch {
             assert!(f.time_ns > last_time || total_drained == 0 || f.time_ns <= t);
@@ -162,19 +170,14 @@ fn subset_preserves_selected_faults(tc: TestCase) {
     let (schedule, _) = random_schedule(&tc, n);
 
     // Pick a random subset of indices
-    let indices: Vec<usize> = tc.draw(
-        vecs(booleans())
-            .min_size(n)
-            .max_size(n)
-            .map(move |flags| {
-                flags
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(_, keep)| *keep)
-                    .map(|(i, _)| i)
-                    .collect::<Vec<_>>()
-            }),
-    );
+    let indices: Vec<usize> = tc.draw(vecs(booleans()).min_size(n).max_size(n).map(move |flags| {
+        flags
+            .into_iter()
+            .enumerate()
+            .filter(|(_, keep)| *keep)
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+    }));
 
     let sub = schedule.subset(&indices);
     assert_eq!(sub.total(), indices.len());

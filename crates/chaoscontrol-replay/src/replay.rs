@@ -509,6 +509,9 @@ mod tests {
                     stats: Default::default(),
                 },
                 fault_engine_snapshot: engine.snapshot(),
+                vcpu_stall_until: vec![],
+                clock_freeze: vec![],
+                clock_jitter_bound: vec![],
             })
         }
 
@@ -630,6 +633,9 @@ mod tests {
                     stats: Default::default(),
                 },
                 fault_engine_snapshot: engine.snapshot(),
+                vcpu_stall_until: vec![],
+                clock_freeze: vec![],
+                clock_jitter_bound: vec![],
             }),
             serial_output: vec![],
             events_since_last: vec![],

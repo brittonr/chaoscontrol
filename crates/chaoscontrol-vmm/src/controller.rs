@@ -98,6 +98,12 @@ pub struct VmSlot {
     pub memory_limit_bytes: Option<u64>,
     /// Initial snapshot taken after kernel load, used for restarts.
     pub initial_snapshot: Option<VmSnapshot>,
+    /// Per-vCPU stall: vCPU index → tick at which stall expires.
+    pub vcpu_stall_until: std::collections::BTreeMap<usize, u64>,
+    /// Frozen TSC: `(frozen_tsc_value, expires_at_tick)`. Takes priority over jitter.
+    pub clock_freeze: Option<(u64, u64)>,
+    /// Per-exit TSC jitter bound (±bound). 0 = disabled.
+    pub clock_jitter_bound: u64,
 }
 
 /// Current status of a VM.
@@ -830,6 +836,9 @@ impl SimulationController {
                 tsc_skew: 0,
                 memory_limit_bytes: None,
                 initial_snapshot: Some(initial_snapshot),
+                vcpu_stall_until: std::collections::BTreeMap::new(),
+                clock_freeze: None,
+                clock_jitter_bound: 0,
             });
         }
 
@@ -963,6 +972,17 @@ impl SimulationController {
         // Emit tick markers into each VM's dlog (for cross-VM correlation).
         for i in 0..self.vms.len() {
             self.vms[i].vm.dlog_tick_marker(self.tick);
+        }
+
+        // Expire stalls and clock freezes, clean up expired entries.
+        for slot in &mut self.vms {
+            slot.vcpu_stall_until
+                .retain(|_, expires| *expires > self.tick);
+            if let Some((_, expires)) = slot.clock_freeze {
+                if self.tick >= expires {
+                    slot.clock_freeze = None;
+                }
+            }
         }
 
         // Step each VM by quantum exits (round-robin)
@@ -1166,7 +1186,8 @@ impl SimulationController {
                 if let Some(slot) = self.vms.get_mut(*target) {
                     info!("ProcessKill: VM{} crashed", target);
                     slot.status = VmStatus::Crashed;
-                    // Can be restarted later with ProcessRestart
+                    // Discard volatile writes if fsync-lie was active.
+                    slot.vm.discard_disk_volatile();
                 }
             }
             Fault::ProcessPause {
@@ -1242,6 +1263,99 @@ impl SimulationController {
                     slot.vm.inject_nmi(*vcpu)?;
                 } else {
                     warn!("InjectNmi fault skipped: VM{} not found", target);
+                }
+            }
+
+            // ── Advanced disk faults ──
+            Fault::DiskSlow { target, delay_ns } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("DiskSlow: VM{} delay {} ns", target, delay_ns);
+                    slot.vm.set_disk_slow_delay(*delay_ns);
+                }
+            }
+            Fault::DiskFsyncLie { target } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("DiskFsyncLie: VM{} enabled", target);
+                    slot.vm.enable_disk_fsync_lie();
+                }
+            }
+            Fault::DiskFsyncFlush { target } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("DiskFsyncFlush: VM{} flushing volatile", target);
+                    slot.vm.flush_disk_volatile();
+                }
+            }
+            Fault::DiskPartialRead {
+                target,
+                offset,
+                max_bytes,
+            } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    use crate::devices::block::BlockFault;
+                    let fault = BlockFault::PartialRead {
+                        offset: *offset,
+                        max_bytes: *max_bytes,
+                    };
+                    if slot.vm.inject_disk_fault(fault) {
+                        info!(
+                            "DiskPartialRead: VM{} offset {:#x} max {} bytes",
+                            target, offset, max_bytes
+                        );
+                    }
+                }
+            }
+
+            // ── CPU faults ──
+            Fault::CpuBitflip {
+                target,
+                vcpu,
+                register,
+                bit,
+            } => {
+                if *bit >= 64 {
+                    info!("CpuBitflip: bit {} >= 64, ignoring", bit);
+                } else if let Some(slot) = self.vms.get_mut(*target) {
+                    info!(
+                        "CpuBitflip: VM{} vcpu {} {}[{}]",
+                        target, vcpu, register, bit
+                    );
+                    slot.vm.bitflip_register(*vcpu, *register, *bit)?;
+                }
+            }
+            Fault::CpuStall {
+                target,
+                vcpu,
+                duration_ticks,
+            } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    let expires = self.tick + *duration_ticks;
+                    info!(
+                        "CpuStall: VM{} vcpu {} stalled until tick {}",
+                        target, vcpu, expires
+                    );
+                    slot.vcpu_stall_until.insert(*vcpu, expires);
+                }
+            }
+
+            // ── Advanced clock faults ──
+            Fault::ClockFreeze {
+                target,
+                duration_ticks,
+            } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    let frozen_tsc = slot.vm.virtual_tsc();
+                    let expires = self.tick + *duration_ticks;
+                    info!(
+                        "ClockFreeze: VM{} frozen at TSC {} until tick {}",
+                        target, frozen_tsc, expires
+                    );
+                    slot.clock_freeze = Some((frozen_tsc, expires));
+                }
+            }
+            Fault::ClockJitter { target, bound_tsc } => {
+                if let Some(slot) = self.vms.get_mut(*target) {
+                    info!("ClockJitter: VM{} ±{} TSC", target, bound_tsc);
+                    slot.clock_jitter_bound = *bound_tsc;
                 }
             }
         }
@@ -1359,11 +1473,22 @@ impl SimulationController {
             vm_snapshots.push((vm_snapshot, slot.status));
         }
 
+        let vcpu_stall_until = self
+            .vms
+            .iter()
+            .map(|s| s.vcpu_stall_until.clone())
+            .collect();
+        let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
+        let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+
         Ok(SimulationSnapshot {
             tick: self.tick,
             vm_snapshots,
             network_state: self.network.clone(),
             fault_engine_snapshot: self.fault_engine.snapshot(),
+            vcpu_stall_until,
+            clock_freeze,
+            clock_jitter_bound,
         })
     }
 
@@ -1388,11 +1513,22 @@ impl SimulationController {
             }
         }
 
+        let vcpu_stall_until = self
+            .vms
+            .iter()
+            .map(|s| s.vcpu_stall_until.clone())
+            .collect();
+        let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
+        let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+
         let sim_snap = SimulationSnapshot {
             tick: self.tick,
             vm_snapshots,
             network_state: self.network.clone(),
             fault_engine_snapshot: self.fault_engine.snapshot(),
+            vcpu_stall_until,
+            clock_freeze,
+            clock_jitter_bound,
         };
 
         Ok((sim_snap, total_dirty))
@@ -1433,6 +1569,14 @@ impl SimulationController {
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[i].vm.restore(vm_snap)?;
             self.vms[i].status = *status;
+            if let Some(stalls) = snapshot.vcpu_stall_until.get(i) {
+                self.vms[i].vcpu_stall_until = stalls.clone();
+            } else {
+                self.vms[i].vcpu_stall_until.clear();
+            }
+            self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
+            self.vms[i].clock_jitter_bound =
+                snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
         }
 
         info!(
@@ -1662,6 +1806,12 @@ pub struct SimulationSnapshot {
     pub network_state: NetworkFabric,
     /// Fault engine state.
     pub fault_engine_snapshot: chaoscontrol_fault::engine::EngineSnapshot,
+    /// Per-VM vCPU stall deadlines.
+    pub vcpu_stall_until: Vec<std::collections::BTreeMap<usize, u64>>,
+    /// Per-VM clock freeze state.
+    pub clock_freeze: Vec<Option<(u64, u64)>>,
+    /// Per-VM clock jitter bound.
+    pub clock_jitter_bound: Vec<u64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════

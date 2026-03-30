@@ -156,6 +156,9 @@ mod tests {
             vm_snapshots: Vec::new(),
             network_state,
             fault_engine_snapshot: dummy_engine_snapshot(),
+            vcpu_stall_until: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
         }
     }
 

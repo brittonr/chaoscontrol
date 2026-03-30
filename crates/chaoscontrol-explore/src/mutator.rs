@@ -1,6 +1,6 @@
 //! Fault schedule mutation — generates variant schedules from a base.
 
-use chaoscontrol_fault::faults::Fault;
+use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -226,7 +226,7 @@ impl ScheduleMutator {
         }
 
         let target = rng.gen_range(0..config.num_vms);
-        let fault_type = rng.gen_range(0..15);
+        let fault_type = rng.gen_range(0..22);
 
         match fault_type {
             0 => Fault::ProcessKill { target },
@@ -283,9 +283,35 @@ impl ScheduleMutator {
                 target,
                 irq: rng.gen_range(0..24), // Full x86 PIC/IOAPIC range
             },
-            14 => Fault::InjectNmi {
+            14 => Fault::InjectNmi { target, vcpu: 0 },
+            15 => Fault::DiskSlow {
                 target,
-                vcpu: 0, // BSP — SMP targeting is future work
+                delay_ns: rng.gen_range(1_000_000..100_000_000), // 1ms to 100ms
+            },
+            16 => Fault::DiskFsyncLie { target },
+            17 => Fault::DiskPartialRead {
+                target,
+                offset: rng.gen_range(0..10_000_000),
+                max_bytes: rng.gen_range(1..4096),
+            },
+            18 => Fault::CpuBitflip {
+                target,
+                vcpu: 0,
+                register: GpRegister::ALL[rng.gen_range(0..16)],
+                bit: rng.gen_range(0..64),
+            },
+            19 => Fault::CpuStall {
+                target,
+                vcpu: 0,
+                duration_ticks: rng.gen_range(1..200),
+            },
+            20 => Fault::ClockFreeze {
+                target,
+                duration_ticks: rng.gen_range(10..500),
+            },
+            21 => Fault::ClockJitter {
+                target,
+                bound_tsc: rng.gen_range(100..5000),
             },
             _ => Fault::NetworkHeal,
         }

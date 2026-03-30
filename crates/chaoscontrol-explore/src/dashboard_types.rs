@@ -4,7 +4,7 @@
 //! emit events without depending on the dashboard crate. The dashboard
 //! crate depends on `chaoscontrol-explore` and consumes these types.
 
-use crate::checkpoint::{ExplorationCheckpoint, SerializableBug};
+use crate::checkpoint::ExplorationCheckpoint;
 use crate::coverage::CoverageStats;
 use crate::explorer::{AssertionDetail, AssertionStats, RoundHistory};
 use serde::{Deserialize, Serialize};
@@ -259,6 +259,7 @@ impl DashboardState {
     }
 
     /// Update state from a RoundComplete event.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_round_complete(
         &mut self,
         round: u64,
@@ -297,6 +298,7 @@ impl DashboardState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::checkpoint::SerializableBug;
 
     #[test]
     fn test_dashboard_event_serialization() {

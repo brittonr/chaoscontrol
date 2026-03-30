@@ -69,6 +69,9 @@ pub enum BlockFault {
     TornWrite { offset: u64, bytes_written: usize },
     /// Silently corrupt `len` bytes starting at `offset` (writes garbage).
     Corruption { offset: u64, len: usize },
+    /// Return fewer bytes than requested on a read (short read).
+    /// One-shot: consumed on the next matching read.
+    PartialRead { offset: u64, max_bytes: usize },
 }
 
 /// Read/write statistics for a [`DeterministicBlock`].
@@ -93,8 +96,11 @@ pub struct BlockStats {
 pub struct BlockSnapshot {
     base: Arc<Vec<u8>>,
     dirty: BTreeMap<usize, Vec<u8>>,
+    volatile: BTreeMap<usize, Vec<u8>>,
     faults: VecDeque<BlockFault>,
     stats: BlockStats,
+    slow_delay_ns: u64,
+    fsync_lie: bool,
 }
 
 /// An in-memory block device with copy-on-write snapshots and deterministic
@@ -118,10 +124,16 @@ pub struct DeterministicBlock {
     base: Arc<Vec<u8>>,
     /// Dirty pages: page index → page data (4 KB each, last page may be shorter).
     dirty: BTreeMap<usize, Vec<u8>>,
+    /// Volatile pages (fsync-lie mode): discarded on crash, flushed explicitly.
+    volatile: BTreeMap<usize, Vec<u8>>,
     /// Pending fault injection queue.
     faults: VecDeque<BlockFault>,
     /// I/O statistics.
     stats: BlockStats,
+    /// Per-operation I/O delay in nanoseconds (0 = no delay).
+    slow_delay_ns: u64,
+    /// When true, writes go to the volatile buffer instead of durable storage.
+    fsync_lie: bool,
 }
 
 impl DeterministicBlock {
@@ -130,8 +142,11 @@ impl DeterministicBlock {
         Self {
             base: Arc::new(vec![0u8; size_bytes]),
             dirty: BTreeMap::new(),
+            volatile: BTreeMap::new(),
             faults: VecDeque::new(),
             stats: BlockStats::default(),
+            slow_delay_ns: 0,
+            fsync_lie: false,
         }
     }
 
@@ -140,8 +155,11 @@ impl DeterministicBlock {
         Self {
             base: Arc::new(data),
             dirty: BTreeMap::new(),
+            volatile: BTreeMap::new(),
             faults: VecDeque::new(),
             stats: BlockStats::default(),
+            slow_delay_ns: 0,
+            fsync_lie: false,
         }
     }
 
@@ -175,7 +193,9 @@ impl DeterministicBlock {
     }
 
     /// Read `buf.len()` bytes starting at `offset`.
-    pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+    ///
+    /// Returns the I/O delay in nanoseconds (0 unless [`DiskSlow`] is active).
+    pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<u64, BlockError> {
         let len = buf.len() as u64;
         self.check_bounds(offset, len)?;
 
@@ -189,15 +209,34 @@ impl DeterministicBlock {
             }
         }
 
-        self.cow_read(offset as usize, buf);
+        // Check for partial read fault.
+        if let Some(idx) = self
+            .find_fault(|f| matches!(f, BlockFault::PartialRead { offset: o, .. } if *o == offset))
+        {
+            let fault = self.faults.remove(idx).unwrap();
+            if let BlockFault::PartialRead { max_bytes, .. } = fault {
+                let actual = max_bytes.min(buf.len());
+                // Read the partial portion.
+                self.cow_read_3tier(offset as usize, &mut buf[..actual]);
+                // Zero the rest.
+                buf[actual..].fill(0);
+                self.stats.reads += 1;
+                self.stats.bytes_read += actual as u64;
+                return Ok(self.slow_delay_ns);
+            }
+        }
+
+        self.cow_read_3tier(offset as usize, buf);
 
         self.stats.reads += 1;
         self.stats.bytes_read += len;
-        Ok(())
+        Ok(self.slow_delay_ns)
     }
 
     /// Write `data` starting at `offset`.
-    pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<(), BlockError> {
+    ///
+    /// Returns the I/O delay in nanoseconds (0 unless [`DiskSlow`] is active).
+    pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<u64, BlockError> {
         let len = data.len() as u64;
         self.check_bounds(offset, len)?;
 
@@ -221,7 +260,7 @@ impl DeterministicBlock {
                     bytes_written,
                 } => {
                     let actual = bytes_written.min(data.len());
-                    self.cow_write(offset as usize, &data[..actual]);
+                    self.write_to_layer(offset as usize, &data[..actual]);
                     self.stats.writes += 1;
                     self.stats.bytes_written += actual as u64;
                     return InjectedTornWriteSnafu {
@@ -235,23 +274,23 @@ impl DeterministicBlock {
                     len: corrupt_len,
                 } => {
                     // Write the data normally, then overwrite with garbage.
-                    self.cow_write(offset as usize, data);
+                    self.write_to_layer(offset as usize, data);
                     let corrupt_end = corrupt_len.min(data.len());
                     let garbage = vec![0xFF; corrupt_end];
-                    self.cow_write(offset as usize, &garbage);
+                    self.write_to_layer(offset as usize, &garbage);
                     self.stats.writes += 1;
                     self.stats.bytes_written += data.len() as u64;
-                    return Ok(());
+                    return Ok(self.slow_delay_ns);
                 }
                 _ => unreachable!(),
             }
         }
 
-        self.cow_write(offset as usize, data);
+        self.write_to_layer(offset as usize, data);
 
         self.stats.writes += 1;
         self.stats.bytes_written += len;
-        Ok(())
+        Ok(self.slow_delay_ns)
     }
 
     /// Enqueue a fault to be triggered on a future I/O operation.
@@ -259,6 +298,49 @@ impl DeterministicBlock {
     /// Faults are matched and consumed in FIFO order.
     pub fn inject_fault(&mut self, fault: BlockFault) {
         self.faults.push_back(fault);
+    }
+
+    /// Set the per-I/O delay (nanoseconds). 0 = no delay.
+    pub fn set_slow_delay_ns(&mut self, delay_ns: u64) {
+        self.slow_delay_ns = delay_ns;
+    }
+
+    /// Current slow delay setting.
+    pub fn slow_delay_ns(&self) -> u64 {
+        self.slow_delay_ns
+    }
+
+    /// Enable fsync-lie mode: subsequent writes go to a volatile buffer.
+    pub fn enable_fsync_lie(&mut self) {
+        self.fsync_lie = true;
+    }
+
+    /// Disable fsync-lie mode. Does NOT flush pending volatile writes.
+    pub fn disable_fsync_lie(&mut self) {
+        self.fsync_lie = false;
+    }
+
+    /// Whether fsync-lie mode is currently active.
+    pub fn fsync_lie_active(&self) -> bool {
+        self.fsync_lie
+    }
+
+    /// Flush (commit) the volatile buffer into the durable dirty layer.
+    /// All volatile pages become durable.
+    pub fn flush_volatile(&mut self) {
+        for (page_idx, page_data) in std::mem::take(&mut self.volatile) {
+            self.dirty.insert(page_idx, page_data);
+        }
+    }
+
+    /// Discard all volatile writes (simulates power loss).
+    pub fn discard_volatile(&mut self) {
+        self.volatile.clear();
+    }
+
+    /// Number of volatile (unflushed) pages.
+    pub fn volatile_page_count(&self) -> usize {
+        self.volatile.len()
     }
 
     /// Capture a snapshot of the device (CoW state + faults + stats).
@@ -269,8 +351,11 @@ impl DeterministicBlock {
         BlockSnapshot {
             base: Arc::clone(&self.base),
             dirty: self.dirty.clone(),
+            volatile: self.volatile.clone(),
             faults: self.faults.clone(),
             stats: self.stats.clone(),
+            slow_delay_ns: self.slow_delay_ns,
+            fsync_lie: self.fsync_lie,
         }
     }
 
@@ -281,8 +366,11 @@ impl DeterministicBlock {
         Self {
             base: Arc::clone(&snapshot.base),
             dirty: snapshot.dirty.clone(),
+            volatile: snapshot.volatile.clone(),
             faults: snapshot.faults.clone(),
             stats: snapshot.stats.clone(),
+            slow_delay_ns: snapshot.slow_delay_ns,
+            fsync_lie: snapshot.fsync_lie,
         }
     }
 
@@ -307,11 +395,43 @@ impl DeterministicBlock {
 
     // ── CoW internals ─────────────────────────────────────────────
 
-    /// Read bytes from the CoW layers into `buf`.
-    ///
-    /// For each 4 KB page spanned by the read, checks the dirty map first;
-    /// falls back to the base image for clean pages.
-    fn cow_read(&self, offset: usize, buf: &mut [u8]) {
+    /// Write to the appropriate layer (volatile if fsync_lie, else dirty).
+    fn write_to_layer(&mut self, offset: usize, data: &[u8]) {
+        if self.fsync_lie {
+            self.volatile_write(offset, data);
+        } else {
+            self.cow_write(offset, data);
+        }
+    }
+
+    /// Write bytes into the volatile layer (same page-splitting as cow_write).
+    fn volatile_write(&mut self, offset: usize, data: &[u8]) {
+        let mut pos = 0;
+        while pos < data.len() {
+            let abs = offset + pos;
+            let page_idx = abs / PAGE_SIZE;
+            let in_page = abs % PAGE_SIZE;
+            let page_remaining = self.page_len(page_idx) - in_page;
+            let chunk = page_remaining.min(data.len() - pos);
+
+            let page = self.volatile.entry(page_idx).or_insert_with(|| {
+                // Seed from dirty, then base.
+                if let Some(dirty_page) = self.dirty.get(&page_idx) {
+                    dirty_page.clone()
+                } else {
+                    let start = page_idx * PAGE_SIZE;
+                    let end = (start + PAGE_SIZE).min(self.base.len());
+                    self.base[start..end].to_vec()
+                }
+            });
+            page[in_page..in_page + chunk].copy_from_slice(&data[pos..pos + chunk]);
+
+            pos += chunk;
+        }
+    }
+
+    /// 3-tier read: volatile → dirty → base.
+    fn cow_read_3tier(&self, offset: usize, buf: &mut [u8]) {
         let mut pos = 0;
         while pos < buf.len() {
             let abs = offset + pos;
@@ -320,7 +440,9 @@ impl DeterministicBlock {
             let page_remaining = self.page_len(page_idx) - in_page;
             let chunk = page_remaining.min(buf.len() - pos);
 
-            if let Some(dirty_page) = self.dirty.get(&page_idx) {
+            if let Some(volatile_page) = self.volatile.get(&page_idx) {
+                buf[pos..pos + chunk].copy_from_slice(&volatile_page[in_page..in_page + chunk]);
+            } else if let Some(dirty_page) = self.dirty.get(&page_idx) {
                 buf[pos..pos + chunk].copy_from_slice(&dirty_page[in_page..in_page + chunk]);
             } else {
                 let base_off = page_idx * PAGE_SIZE + in_page;
@@ -791,5 +913,165 @@ mod tests {
         restored.read(0, &mut buf).unwrap();
         assert_eq!(&buf[..4], &[0xBB; 4]);
         assert_eq!(&buf[4..512], &[0xAA; 508]);
+    }
+
+    // ── DiskSlow tests ──────────────────────────────────────────────
+
+    #[test]
+    fn slow_read_returns_delay() {
+        let mut blk = DeterministicBlock::new(4096);
+        blk.set_slow_delay_ns(5_000_000);
+        let delay = blk.read(0, &mut [0u8; 8]).unwrap();
+        assert_eq!(delay, 5_000_000);
+    }
+
+    #[test]
+    fn slow_write_returns_delay() {
+        let mut blk = DeterministicBlock::new(4096);
+        blk.set_slow_delay_ns(10_000_000);
+        let delay = blk.write(0, &[1u8; 8]).unwrap();
+        assert_eq!(delay, 10_000_000);
+    }
+
+    #[test]
+    fn slow_clear_removes_delay() {
+        let mut blk = DeterministicBlock::new(4096);
+        blk.set_slow_delay_ns(5_000_000);
+        assert_eq!(blk.slow_delay_ns(), 5_000_000);
+        blk.set_slow_delay_ns(0);
+        let delay = blk.read(0, &mut [0u8; 8]).unwrap();
+        assert_eq!(delay, 0);
+    }
+
+    #[test]
+    fn slow_snapshot_roundtrip() {
+        let mut blk = DeterministicBlock::new(4096);
+        blk.set_slow_delay_ns(42_000);
+        let snap = blk.snapshot();
+        let restored = DeterministicBlock::restore(&snap);
+        assert_eq!(restored.slow_delay_ns(), 42_000);
+    }
+
+    // ── DiskFsyncLie tests ──────────────────────────────────────────
+
+    #[test]
+    fn fsync_lie_writes_to_volatile() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.enable_fsync_lie();
+        blk.write(0, &[0xAA; 512]).unwrap();
+
+        // Data visible via read (volatile is read-through)
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(buf, [0xAA; 512]);
+
+        // But NOT in the dirty layer
+        assert_eq!(blk.dirty_page_count(), 0);
+        assert_eq!(blk.volatile_page_count(), 1);
+    }
+
+    #[test]
+    fn fsync_lie_discard_on_kill() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.enable_fsync_lie();
+        blk.write(0, &[0xBB; 512]).unwrap();
+        assert_eq!(blk.volatile_page_count(), 1);
+
+        // Simulate ProcessKill
+        blk.discard_volatile();
+        assert_eq!(blk.volatile_page_count(), 0);
+
+        // Data gone
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(buf, [0u8; 512]);
+    }
+
+    #[test]
+    fn fsync_lie_flush_commits() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.enable_fsync_lie();
+        blk.write(0, &[0xCC; 512]).unwrap();
+        assert_eq!(blk.volatile_page_count(), 1);
+        assert_eq!(blk.dirty_page_count(), 0);
+
+        blk.flush_volatile();
+        assert_eq!(blk.volatile_page_count(), 0);
+        assert_eq!(blk.dirty_page_count(), 1);
+
+        // Data survives discard after flush
+        blk.discard_volatile();
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(buf, [0xCC; 512]);
+    }
+
+    #[test]
+    fn fsync_lie_read_through_layers() {
+        let mut blk = DeterministicBlock::from_image(vec![0x11; 8192]);
+        // Write to dirty layer
+        blk.write(0, &[0x22; 256]).unwrap();
+        // Enable fsync-lie, write to volatile
+        blk.enable_fsync_lie();
+        blk.write(0, &[0x33; 128]).unwrap();
+
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        // First 128 bytes from volatile
+        assert_eq!(&buf[..128], &[0x33; 128]);
+        // Bytes 128..256 from dirty (volatile page has dirty seed)
+        // Actually, volatile page was seeded from dirty, so 128..256 = 0x22
+        assert_eq!(&buf[128..256], &[0x22; 128]);
+    }
+
+    #[test]
+    fn fsync_lie_snapshot_roundtrip() {
+        let mut blk = DeterministicBlock::new(8192);
+        blk.enable_fsync_lie();
+        blk.write(0, &[0xDD; 100]).unwrap();
+        let snap = blk.snapshot();
+
+        let mut restored = DeterministicBlock::restore(&snap);
+        assert!(restored.fsync_lie_active());
+        assert_eq!(restored.volatile_page_count(), 1);
+
+        let mut buf = [0u8; 100];
+        restored.read(0, &mut buf).unwrap();
+        assert_eq!(buf, [0xDD; 100]);
+    }
+
+    // ── DiskPartialRead tests ───────────────────────────────────────
+
+    #[test]
+    fn partial_read_short() {
+        let mut blk = DeterministicBlock::from_image(vec![0xFF; 4096]);
+        blk.inject_fault(BlockFault::PartialRead {
+            offset: 0,
+            max_bytes: 256,
+        });
+
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(&buf[..256], &[0xFF; 256]);
+        assert_eq!(&buf[256..], &[0u8; 256]);
+    }
+
+    #[test]
+    fn partial_read_one_shot() {
+        let mut blk = DeterministicBlock::from_image(vec![0xFF; 4096]);
+        blk.inject_fault(BlockFault::PartialRead {
+            offset: 0,
+            max_bytes: 128,
+        });
+
+        // First read: partial
+        let mut buf = [0u8; 512];
+        blk.read(0, &mut buf).unwrap();
+        assert_eq!(&buf[128..], &[0u8; 384]);
+
+        // Second read: full (fault consumed)
+        let mut buf2 = [0u8; 512];
+        blk.read(0, &mut buf2).unwrap();
+        assert_eq!(buf2, [0xFF; 512]);
     }
 }

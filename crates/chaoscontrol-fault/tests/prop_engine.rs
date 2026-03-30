@@ -142,7 +142,11 @@ fn override_preserves_rng_sync(tc: TestCase) {
     let seed = tc.draw(integers::<u64>());
     let override_pos = tc.draw(integers::<u64>().min_value(0).max_value(20));
     let override_val = tc.draw(integers::<u64>());
-    let total_calls = tc.draw(integers::<usize>().min_value((override_pos as usize) + 5).max_value(50));
+    let total_calls = tc.draw(
+        integers::<usize>()
+            .min_value((override_pos as usize) + 5)
+            .max_value(50),
+    );
 
     // Engine A: uses override at position override_pos
     let mut a = FaultEngine::new(EngineConfig {

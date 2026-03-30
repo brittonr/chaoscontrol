@@ -45,6 +45,52 @@ use linux_loader::configurator::linux::LinuxBootConfigurator;
 use linux_loader::configurator::{BootConfigurator, BootParams};
 use linux_loader::loader::bootparam::boot_params;
 use linux_loader::loader::elf::Elf;
+
+use chaoscontrol_fault::faults::GpRegister;
+
+/// Read a general-purpose register from KVM regs.
+fn gp_register_get(regs: &kvm_regs, reg: GpRegister) -> u64 {
+    match reg {
+        GpRegister::Rax => regs.rax,
+        GpRegister::Rbx => regs.rbx,
+        GpRegister::Rcx => regs.rcx,
+        GpRegister::Rdx => regs.rdx,
+        GpRegister::Rsi => regs.rsi,
+        GpRegister::Rdi => regs.rdi,
+        GpRegister::Rbp => regs.rbp,
+        GpRegister::Rsp => regs.rsp,
+        GpRegister::R8 => regs.r8,
+        GpRegister::R9 => regs.r9,
+        GpRegister::R10 => regs.r10,
+        GpRegister::R11 => regs.r11,
+        GpRegister::R12 => regs.r12,
+        GpRegister::R13 => regs.r13,
+        GpRegister::R14 => regs.r14,
+        GpRegister::R15 => regs.r15,
+    }
+}
+
+/// Write a general-purpose register into KVM regs.
+fn gp_register_set(regs: &mut kvm_regs, reg: GpRegister, val: u64) {
+    match reg {
+        GpRegister::Rax => regs.rax = val,
+        GpRegister::Rbx => regs.rbx = val,
+        GpRegister::Rcx => regs.rcx = val,
+        GpRegister::Rdx => regs.rdx = val,
+        GpRegister::Rsi => regs.rsi = val,
+        GpRegister::Rdi => regs.rdi = val,
+        GpRegister::Rbp => regs.rbp = val,
+        GpRegister::Rsp => regs.rsp = val,
+        GpRegister::R8 => regs.r8 = val,
+        GpRegister::R9 => regs.r9 = val,
+        GpRegister::R10 => regs.r10 = val,
+        GpRegister::R11 => regs.r11 = val,
+        GpRegister::R12 => regs.r12 = val,
+        GpRegister::R13 => regs.r13 = val,
+        GpRegister::R14 => regs.r14 = val,
+        GpRegister::R15 => regs.r15 = val,
+    }
+}
 use linux_loader::loader::KernelLoader;
 use log::info;
 use snafu::{ResultExt, Snafu};
@@ -1533,6 +1579,73 @@ impl DeterministicVm {
             }
         }
         false
+    }
+
+    /// Set per-I/O delay on the block device (DiskSlow fault).
+    pub fn set_disk_slow_delay(&mut self, delay_ns: u64) {
+        self.with_block_device(|disk| disk.set_slow_delay_ns(delay_ns));
+    }
+
+    /// Enable fsync-lie mode on the block device.
+    pub fn enable_disk_fsync_lie(&mut self) {
+        self.with_block_device(|disk| disk.enable_fsync_lie());
+    }
+
+    /// Flush volatile writes on the block device (DiskFsyncFlush).
+    pub fn flush_disk_volatile(&mut self) {
+        self.with_block_device(|disk| disk.flush_volatile());
+    }
+
+    /// Discard volatile writes on the block device (crash semantics).
+    pub fn discard_disk_volatile(&mut self) {
+        self.with_block_device(|disk| disk.discard_volatile());
+    }
+
+    /// Helper: run a closure on the virtio-blk disk, if present.
+    fn with_block_device(
+        &mut self,
+        f: impl FnOnce(&mut crate::devices::block::DeterministicBlock),
+    ) {
+        for device in &mut self.virtio_devices {
+            if device.backend().device_id() == 2 {
+                if let Some(virtio_block) = device
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>(
+                ) {
+                    f(virtio_block.disk_mut());
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Flip a single bit in a vCPU's general-purpose register.
+    pub fn bitflip_register(
+        &self,
+        vcpu_idx: usize,
+        register: chaoscontrol_fault::faults::GpRegister,
+        bit: u8,
+    ) -> Result<(), VmError> {
+        if vcpu_idx >= self.vcpus.len() {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "bitflip: vCPU index {} out of range (have {})",
+                    vcpu_idx,
+                    self.vcpus.len()
+                ),
+            });
+        }
+        if bit >= 64 {
+            return Ok(()); // silently ignore out-of-range bits
+        }
+        let vcpu = &self.vcpus[vcpu_idx];
+        let mut regs = vcpu.get_regs().context(GetRegistersSnafu)?;
+        let val = gp_register_get(&regs, register);
+        let flipped = val ^ (1u64 << bit);
+        gp_register_set(&mut regs, register, flipped);
+        vcpu.set_regs(&regs).context(SetRegistersSnafu)?;
+        Ok(())
     }
 
     /// Drain all TX packets from the network device.

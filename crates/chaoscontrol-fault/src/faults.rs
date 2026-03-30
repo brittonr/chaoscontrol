@@ -4,7 +4,75 @@
 //! injected into a running VM.  Faults are deterministic: given the
 //! same seed and schedule, the same faults fire at the same points.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
+
+/// General-purpose register identifier for CPU fault injection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GpRegister {
+    Rax,
+    Rbx,
+    Rcx,
+    Rdx,
+    Rsi,
+    Rdi,
+    Rbp,
+    Rsp,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+}
+
+impl fmt::Display for GpRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            GpRegister::Rax => "rax",
+            GpRegister::Rbx => "rbx",
+            GpRegister::Rcx => "rcx",
+            GpRegister::Rdx => "rdx",
+            GpRegister::Rsi => "rsi",
+            GpRegister::Rdi => "rdi",
+            GpRegister::Rbp => "rbp",
+            GpRegister::Rsp => "rsp",
+            GpRegister::R8 => "r8",
+            GpRegister::R9 => "r9",
+            GpRegister::R10 => "r10",
+            GpRegister::R11 => "r11",
+            GpRegister::R12 => "r12",
+            GpRegister::R13 => "r13",
+            GpRegister::R14 => "r14",
+            GpRegister::R15 => "r15",
+        };
+        write!(f, "{name}")
+    }
+}
+
+impl GpRegister {
+    /// All register variants for iteration.
+    pub const ALL: [GpRegister; 16] = [
+        GpRegister::Rax,
+        GpRegister::Rbx,
+        GpRegister::Rcx,
+        GpRegister::Rdx,
+        GpRegister::Rsi,
+        GpRegister::Rdi,
+        GpRegister::Rbp,
+        GpRegister::Rsp,
+        GpRegister::R8,
+        GpRegister::R9,
+        GpRegister::R10,
+        GpRegister::R11,
+        GpRegister::R12,
+        GpRegister::R13,
+        GpRegister::R14,
+        GpRegister::R15,
+    ];
+}
 
 /// A fault that can be injected into a running VM.
 #[derive(Debug, Clone, PartialEq)]
@@ -197,6 +265,93 @@ pub enum Fault {
         /// Target vCPU index within the VM (0 = BSP).
         vcpu: usize,
     },
+
+    // ── Advanced disk faults ────────────────────────────────
+    /// Add per-operation latency to a VM's block device.
+    ///
+    /// Persists until cleared with `delay_ns: 0`.
+    DiskSlow {
+        /// Target VM index.
+        target: usize,
+        /// Additional delay per I/O operation in nanoseconds of virtual time.
+        delay_ns: u64,
+    },
+
+    /// Enable fsync-lie mode: writes go to a volatile buffer that is
+    /// discarded on ProcessKill. Models power-loss with writeback caching.
+    DiskFsyncLie {
+        /// Target VM index.
+        target: usize,
+    },
+
+    /// Flush (commit) the volatile buffer created by DiskFsyncLie.
+    DiskFsyncFlush {
+        /// Target VM index.
+        target: usize,
+    },
+
+    /// Return fewer bytes than requested on the next read at a
+    /// specific offset. One-shot fault.
+    DiskPartialRead {
+        /// Target VM index.
+        target: usize,
+        /// Block offset that triggers the short read.
+        offset: u64,
+        /// Maximum bytes returned (rest zeroed).
+        max_bytes: usize,
+    },
+
+    // ── CPU faults ──────────────────────────────────────────
+    /// Flip a single bit in a general-purpose register.
+    ///
+    /// Models single-event upsets (cosmic ray bitflips, ECC failures).
+    /// One-shot: the bit is flipped once at the tick boundary.
+    CpuBitflip {
+        /// Target VM index.
+        target: usize,
+        /// Target vCPU index within the VM.
+        vcpu: usize,
+        /// Which general-purpose register to corrupt.
+        register: GpRegister,
+        /// Bit position to flip (0–63). Values >= 64 are silently ignored.
+        bit: u8,
+    },
+
+    /// Stall a single vCPU for a duration while other vCPUs continue.
+    ///
+    /// Models core C-state, thermal throttling, or microcode assist stall.
+    CpuStall {
+        /// Target VM index.
+        target: usize,
+        /// Target vCPU index within the VM.
+        vcpu: usize,
+        /// Number of ticks to stall.
+        duration_ticks: u64,
+    },
+
+    // ── Advanced clock faults ───────────────────────────────
+    /// Freeze the virtual TSC at its current value for a duration.
+    ///
+    /// The guest sees zero time progression during the freeze.
+    /// After expiry, TSC resumes from the frozen value.
+    ClockFreeze {
+        /// Target VM index.
+        target: usize,
+        /// Number of ticks to hold the TSC frozen.
+        duration_ticks: u64,
+    },
+
+    /// Add random per-exit TSC noise within a bound.
+    ///
+    /// Models an unstable oscillator. Jitter is cosmetic — the
+    /// underlying VirtualTsc advances normally. Persists until
+    /// cleared with `bound_tsc: 0`.
+    ClockJitter {
+        /// Target VM index.
+        target: usize,
+        /// Maximum jitter in TSC ticks (±bound). 0 = disabled.
+        bound_tsc: u64,
+    },
 }
 
 impl Fault {
@@ -223,7 +378,15 @@ impl Fault {
             | Fault::ClockJump { target, .. }
             | Fault::MemoryPressure { target, .. }
             | Fault::InjectInterrupt { target, .. }
-            | Fault::InjectNmi { target, .. } => Some(*target),
+            | Fault::InjectNmi { target, .. }
+            | Fault::DiskSlow { target, .. }
+            | Fault::DiskFsyncLie { target }
+            | Fault::DiskFsyncFlush { target }
+            | Fault::DiskPartialRead { target, .. }
+            | Fault::CpuBitflip { target, .. }
+            | Fault::CpuStall { target, .. }
+            | Fault::ClockFreeze { target, .. }
+            | Fault::ClockJitter { target, .. } => Some(*target),
         }
     }
 
@@ -244,17 +407,26 @@ impl Fault {
             | Fault::DiskWriteError { .. }
             | Fault::DiskTornWrite { .. }
             | Fault::DiskCorruption { .. }
-            | Fault::DiskFull { .. } => FaultCategory::Disk,
+            | Fault::DiskFull { .. }
+            | Fault::DiskSlow { .. }
+            | Fault::DiskFsyncLie { .. }
+            | Fault::DiskFsyncFlush { .. }
+            | Fault::DiskPartialRead { .. } => FaultCategory::Disk,
 
             Fault::ProcessKill { .. }
             | Fault::ProcessPause { .. }
             | Fault::ProcessRestart { .. } => FaultCategory::Process,
 
-            Fault::ClockSkew { .. } | Fault::ClockJump { .. } => FaultCategory::Clock,
+            Fault::ClockSkew { .. }
+            | Fault::ClockJump { .. }
+            | Fault::ClockFreeze { .. }
+            | Fault::ClockJitter { .. } => FaultCategory::Clock,
 
             Fault::MemoryPressure { .. } => FaultCategory::Resource,
 
             Fault::InjectInterrupt { .. } | Fault::InjectNmi { .. } => FaultCategory::Interrupt,
+
+            Fault::CpuBitflip { .. } | Fault::CpuStall { .. } => FaultCategory::Cpu,
         }
     }
 }
@@ -337,6 +509,43 @@ impl fmt::Display for Fault {
             Fault::InjectNmi { target, vcpu } => {
                 write!(f, "inject-nmi(vm={target}, vcpu={vcpu})")
             }
+            Fault::DiskSlow { target, delay_ns } => {
+                write!(f, "disk-slow(vm={target}, {delay_ns}ns)")
+            }
+            Fault::DiskFsyncLie { target } => write!(f, "disk-fsync-lie(vm={target})"),
+            Fault::DiskFsyncFlush { target } => write!(f, "disk-fsync-flush(vm={target})"),
+            Fault::DiskPartialRead {
+                target,
+                offset,
+                max_bytes,
+            } => write!(
+                f,
+                "disk-partial-read(vm={target}, offset={offset:#x}, max={max_bytes})"
+            ),
+            Fault::CpuBitflip {
+                target,
+                vcpu,
+                register,
+                bit,
+            } => write!(
+                f,
+                "cpu-bitflip(vm={target}, vcpu={vcpu}, {register}[{bit}])"
+            ),
+            Fault::CpuStall {
+                target,
+                vcpu,
+                duration_ticks,
+            } => write!(
+                f,
+                "cpu-stall(vm={target}, vcpu={vcpu}, {duration_ticks} ticks)"
+            ),
+            Fault::ClockFreeze {
+                target,
+                duration_ticks,
+            } => write!(f, "clock-freeze(vm={target}, {duration_ticks} ticks)"),
+            Fault::ClockJitter { target, bound_tsc } => {
+                write!(f, "clock-jitter(vm={target}, ±{bound_tsc} tsc)")
+            }
         }
     }
 }
@@ -350,6 +559,7 @@ pub enum FaultCategory {
     Clock,
     Resource,
     Interrupt,
+    Cpu,
 }
 
 impl fmt::Display for FaultCategory {
@@ -361,6 +571,7 @@ impl fmt::Display for FaultCategory {
             FaultCategory::Clock => write!(f, "clock"),
             FaultCategory::Resource => write!(f, "resource"),
             FaultCategory::Interrupt => write!(f, "interrupt"),
+            FaultCategory::Cpu => write!(f, "cpu"),
         }
     }
 }
@@ -459,5 +670,183 @@ mod tests {
 
         let f = Fault::InjectNmi { target: 0, vcpu: 0 };
         assert_eq!(f.to_string(), "inject-nmi(vm=0, vcpu=0)");
+    }
+
+    #[test]
+    fn fault_category_cpu() {
+        assert_eq!(
+            Fault::CpuBitflip {
+                target: 0,
+                vcpu: 0,
+                register: GpRegister::Rax,
+                bit: 12
+            }
+            .category(),
+            FaultCategory::Cpu
+        );
+        assert_eq!(
+            Fault::CpuStall {
+                target: 0,
+                vcpu: 0,
+                duration_ticks: 50
+            }
+            .category(),
+            FaultCategory::Cpu
+        );
+    }
+
+    #[test]
+    fn fault_category_new_disk_variants() {
+        assert_eq!(
+            Fault::DiskSlow {
+                target: 0,
+                delay_ns: 1000
+            }
+            .category(),
+            FaultCategory::Disk
+        );
+        assert_eq!(
+            Fault::DiskFsyncLie { target: 0 }.category(),
+            FaultCategory::Disk
+        );
+        assert_eq!(
+            Fault::DiskFsyncFlush { target: 0 }.category(),
+            FaultCategory::Disk
+        );
+        assert_eq!(
+            Fault::DiskPartialRead {
+                target: 0,
+                offset: 0,
+                max_bytes: 256
+            }
+            .category(),
+            FaultCategory::Disk
+        );
+    }
+
+    #[test]
+    fn fault_category_new_clock_variants() {
+        assert_eq!(
+            Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: 100
+            }
+            .category(),
+            FaultCategory::Clock
+        );
+        assert_eq!(
+            Fault::ClockJitter {
+                target: 0,
+                bound_tsc: 500
+            }
+            .category(),
+            FaultCategory::Clock
+        );
+    }
+
+    #[test]
+    fn fault_target_new_variants() {
+        assert_eq!(
+            Fault::DiskSlow {
+                target: 3,
+                delay_ns: 0
+            }
+            .target(),
+            Some(3)
+        );
+        assert_eq!(Fault::DiskFsyncLie { target: 1 }.target(), Some(1));
+        assert_eq!(Fault::DiskFsyncFlush { target: 2 }.target(), Some(2));
+        assert_eq!(
+            Fault::DiskPartialRead {
+                target: 0,
+                offset: 0,
+                max_bytes: 128
+            }
+            .target(),
+            Some(0)
+        );
+        assert_eq!(
+            Fault::CpuBitflip {
+                target: 1,
+                vcpu: 0,
+                register: GpRegister::Rcx,
+                bit: 7
+            }
+            .target(),
+            Some(1)
+        );
+        assert_eq!(
+            Fault::CpuStall {
+                target: 2,
+                vcpu: 1,
+                duration_ticks: 10
+            }
+            .target(),
+            Some(2)
+        );
+        assert_eq!(
+            Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: 50
+            }
+            .target(),
+            Some(0)
+        );
+        assert_eq!(
+            Fault::ClockJitter {
+                target: 1,
+                bound_tsc: 100
+            }
+            .target(),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn fault_display_new_variants() {
+        assert_eq!(
+            Fault::DiskSlow {
+                target: 0,
+                delay_ns: 5_000_000
+            }
+            .to_string(),
+            "disk-slow(vm=0, 5000000ns)"
+        );
+        assert_eq!(
+            Fault::DiskFsyncLie { target: 1 }.to_string(),
+            "disk-fsync-lie(vm=1)"
+        );
+        assert_eq!(
+            Fault::CpuBitflip {
+                target: 0,
+                vcpu: 0,
+                register: GpRegister::R15,
+                bit: 63
+            }
+            .to_string(),
+            "cpu-bitflip(vm=0, vcpu=0, r15[63])"
+        );
+        assert_eq!(
+            Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: 100
+            }
+            .to_string(),
+            "clock-freeze(vm=0, 100 ticks)"
+        );
+    }
+
+    #[test]
+    fn gp_register_all_count() {
+        assert_eq!(GpRegister::ALL.len(), 16);
+    }
+
+    #[test]
+    fn gp_register_serde_roundtrip() {
+        for reg in &GpRegister::ALL {
+            let json = serde_json::to_string(reg).unwrap();
+            let restored: GpRegister = serde_json::from_str(&json).unwrap();
+            assert_eq!(*reg, restored);
+        }
     }
 }

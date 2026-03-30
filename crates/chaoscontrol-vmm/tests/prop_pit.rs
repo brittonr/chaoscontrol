@@ -8,8 +8,7 @@
 //! - LoHiByte write sequence arms channel only after both bytes.
 
 use chaoscontrol_vmm::devices::pit::{
-    DeterministicPit, PIT_FREQ_HZ, PIT_PORT_CHANNEL0, PIT_PORT_COMMAND,
-    PORT_SYSTEM_CONTROL_B,
+    DeterministicPit, PIT_FREQ_HZ, PIT_PORT_CHANNEL0, PIT_PORT_COMMAND, PORT_SYSTEM_CONTROL_B,
 };
 use hegel::generators::*;
 use hegel::TestCase;

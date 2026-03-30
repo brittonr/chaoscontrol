@@ -12,7 +12,7 @@
 //! re-explore known territory.
 
 use crate::corpus::BugReport;
-use chaoscontrol_fault::faults::Fault;
+use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -141,6 +141,40 @@ pub enum SerializableFault {
         target: usize,
         vcpu: usize,
     },
+    DiskSlow {
+        target: usize,
+        delay_ns: u64,
+    },
+    DiskFsyncLie {
+        target: usize,
+    },
+    DiskFsyncFlush {
+        target: usize,
+    },
+    DiskPartialRead {
+        target: usize,
+        offset: u64,
+        max_bytes: usize,
+    },
+    CpuBitflip {
+        target: usize,
+        vcpu: usize,
+        register: GpRegister,
+        bit: u8,
+    },
+    CpuStall {
+        target: usize,
+        vcpu: usize,
+        duration_ticks: u64,
+    },
+    ClockFreeze {
+        target: usize,
+        duration_ticks: u64,
+    },
+    ClockJitter {
+        target: usize,
+        bound_tsc: u64,
+    },
 }
 
 impl From<&Fault> for SerializableFault {
@@ -242,6 +276,54 @@ impl From<&Fault> for SerializableFault {
             Fault::InjectNmi { target, vcpu } => SerializableFault::InjectNmi {
                 target: *target,
                 vcpu: *vcpu,
+            },
+            Fault::DiskSlow { target, delay_ns } => SerializableFault::DiskSlow {
+                target: *target,
+                delay_ns: *delay_ns,
+            },
+            Fault::DiskFsyncLie { target } => SerializableFault::DiskFsyncLie { target: *target },
+            Fault::DiskFsyncFlush { target } => {
+                SerializableFault::DiskFsyncFlush { target: *target }
+            }
+            Fault::DiskPartialRead {
+                target,
+                offset,
+                max_bytes,
+            } => SerializableFault::DiskPartialRead {
+                target: *target,
+                offset: *offset,
+                max_bytes: *max_bytes,
+            },
+            Fault::CpuBitflip {
+                target,
+                vcpu,
+                register,
+                bit,
+            } => SerializableFault::CpuBitflip {
+                target: *target,
+                vcpu: *vcpu,
+                register: *register,
+                bit: *bit,
+            },
+            Fault::CpuStall {
+                target,
+                vcpu,
+                duration_ticks,
+            } => SerializableFault::CpuStall {
+                target: *target,
+                vcpu: *vcpu,
+                duration_ticks: *duration_ticks,
+            },
+            Fault::ClockFreeze {
+                target,
+                duration_ticks,
+            } => SerializableFault::ClockFreeze {
+                target: *target,
+                duration_ticks: *duration_ticks,
+            },
+            Fault::ClockJitter { target, bound_tsc } => SerializableFault::ClockJitter {
+                target: *target,
+                bound_tsc: *bound_tsc,
             },
         }
     }
@@ -346,6 +428,54 @@ impl From<&SerializableFault> for Fault {
             SerializableFault::InjectNmi { target, vcpu } => Fault::InjectNmi {
                 target: *target,
                 vcpu: *vcpu,
+            },
+            SerializableFault::DiskSlow { target, delay_ns } => Fault::DiskSlow {
+                target: *target,
+                delay_ns: *delay_ns,
+            },
+            SerializableFault::DiskFsyncLie { target } => Fault::DiskFsyncLie { target: *target },
+            SerializableFault::DiskFsyncFlush { target } => {
+                Fault::DiskFsyncFlush { target: *target }
+            }
+            SerializableFault::DiskPartialRead {
+                target,
+                offset,
+                max_bytes,
+            } => Fault::DiskPartialRead {
+                target: *target,
+                offset: *offset,
+                max_bytes: *max_bytes,
+            },
+            SerializableFault::CpuBitflip {
+                target,
+                vcpu,
+                register,
+                bit,
+            } => Fault::CpuBitflip {
+                target: *target,
+                vcpu: *vcpu,
+                register: *register,
+                bit: *bit,
+            },
+            SerializableFault::CpuStall {
+                target,
+                vcpu,
+                duration_ticks,
+            } => Fault::CpuStall {
+                target: *target,
+                vcpu: *vcpu,
+                duration_ticks: *duration_ticks,
+            },
+            SerializableFault::ClockFreeze {
+                target,
+                duration_ticks,
+            } => Fault::ClockFreeze {
+                target: *target,
+                duration_ticks: *duration_ticks,
+            },
+            SerializableFault::ClockJitter { target, bound_tsc } => Fault::ClockJitter {
+                target: *target,
+                bound_tsc: *bound_tsc,
             },
         }
     }

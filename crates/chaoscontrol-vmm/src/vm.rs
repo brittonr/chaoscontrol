@@ -48,6 +48,19 @@ use linux_loader::loader::elf::Elf;
 
 use chaoscontrol_fault::faults::GpRegister;
 
+/// Wrapper for `libc::timer_t` to make it `Send`.
+///
+/// `timer_t` is `*mut c_void` which is `!Send`. The POSIX timer is
+/// only used from the thread that created it (via `init_thread_timer`),
+/// and ownership transfers between threads happen only when the
+/// controller moves between the pool and scoped thread spawns.
+struct SendTimerId(libc::timer_t);
+
+// SAFETY: The timer is created per-thread and only accessed from the
+// owning thread. Transfer between threads is guarded by the scoped
+// thread join (controller moves into thread, then back out).
+unsafe impl Send for SendTimerId {}
+
 /// Read a general-purpose register from KVM regs.
 fn gp_register_get(regs: &kvm_regs, reg: GpRegister) -> u64 {
     match reg {
@@ -560,6 +573,16 @@ pub struct DeterministicVm {
     /// Accumulates the last 8 serial output bytes as a big-endian u64.
     panic_match_state: u64,
 
+    /// Per-thread POSIX timer for SIGALRM delivery.
+    /// Created by `init_thread_timer()` for parallel worker threads.
+    /// When `Some`, `arm_preemption_timer()` uses this instead of
+    /// the process-wide `ITIMER_REAL`.
+    ///
+    /// Wrapped in `SendTimerId` because `timer_t` is `*mut c_void`
+    /// which is `!Send`. The timer is only used from the thread that
+    /// created it, so this is safe.
+    thread_timer: Option<SendTimerId>,
+
     /// Extra kernel command line parameters (from VmConfig).
     extra_cmdline: Option<String>,
 
@@ -606,7 +629,8 @@ impl DeterministicVm {
     }
 
     /// Install a no-op SIGALRM handler so the preemption timer doesn't
-    /// kill the process. Called once on first multi-vCPU VM creation.
+    /// kill the process. Called on first multi-vCPU VM creation and
+    /// by `init_thread_timer()` for single-vCPU watchdog timers.
     fn install_sigalrm_handler() {
         use std::sync::Once;
         static ONCE: Once = Once::new();
@@ -896,6 +920,7 @@ impl DeterministicVm {
             exits_since_last_sdk: 0,
             panic_detected: false,
             panic_match_state: 0,
+            thread_timer: None,
             coverage_active: false,
             vmcall_enabled,
             skip_tsc_sync: false,
@@ -1366,9 +1391,7 @@ impl DeterministicVm {
             if self.step()? {
                 // Disarm timer on early exit to prevent stale SIGALRMs
                 // from leaking into subsequent VM runs in the same process.
-                if self.vcpus.len() > 1 {
-                    self.disarm_preemption_timer();
-                }
+                self.disarm_preemption_timer();
                 return Ok((self.exit_count - start_exits, true));
             }
             // Idle counter incremented in step() on every exit except
@@ -1384,17 +1407,13 @@ impl DeterministicVm {
                     self.exit_count,
                     self.io_exit_count,
                 );
-                if self.vcpus.len() > 1 {
-                    self.disarm_preemption_timer();
-                }
+                self.disarm_preemption_timer();
                 return Ok((self.exit_count - start_exits, true));
             }
         }
         // Disarm preemption timer at end of bounded run so it doesn't
         // fire on a future vcpu.run() call from a different VM.
-        if self.vcpus.len() > 1 {
-            self.disarm_preemption_timer();
-        }
+        self.disarm_preemption_timer();
         Ok((self.exit_count - start_exits, false))
     }
 
@@ -2261,6 +2280,26 @@ impl DeterministicVm {
     /// switch to another vCPU. Essential for SMP — without it, the BSP
     /// can monopolize execution while spin-waiting for an AP to come online.
     fn arm_preemption_timer(&self, us: i64) {
+        // Try thread-targeted timer first (works in parallel workers).
+        if let Some(ref tid) = self.thread_timer {
+            let ts = libc::itimerspec {
+                it_interval: libc::timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                },
+                it_value: libc::timespec {
+                    tv_sec: 0,
+                    tv_nsec: if us > 0 { us * 1000 } else { 0 },
+                },
+            };
+            // SAFETY: tid.0 is a valid POSIX timer created in init_thread_timer().
+            unsafe {
+                libc::timer_settime(tid.0, 0, &ts, std::ptr::null_mut());
+            }
+            return;
+        }
+
+        // Fallback: process-wide ITIMER_REAL (only safe for single-worker).
         let timer_spec = libc::itimerval {
             it_interval: libc::timeval {
                 tv_sec: 0,
@@ -2280,6 +2319,39 @@ impl DeterministicVm {
     /// Disarm the preemption timer.
     fn disarm_preemption_timer(&self) {
         self.arm_preemption_timer(0);
+    }
+
+    /// Create a per-thread POSIX timer that sends SIGALRM to this thread.
+    ///
+    /// Must be called from the thread that will call `vcpu.run()` (worker
+    /// thread for parallel execution). This replaces the process-wide
+    /// `ITIMER_REAL` approach, allowing multiple workers to each have
+    /// independent watchdog timers.
+    pub fn init_thread_timer(&mut self) {
+        // Ensure the no-op SIGALRM handler is installed before we start
+        // creating timers that deliver SIGALRM. Without this, the
+        // default SIGALRM disposition (terminate) kills the process.
+        Self::install_sigalrm_handler();
+
+        // SAFETY: timer_create with SIGEV_THREAD_ID targets the signal
+        // at a specific thread (the caller). This is Linux-specific.
+        unsafe {
+            let tid = libc::syscall(libc::SYS_gettid) as i32;
+            let mut sev: libc::sigevent = std::mem::zeroed();
+            sev.sigev_notify = libc::SIGEV_THREAD_ID;
+            sev.sigev_signo = libc::SIGALRM;
+            // sigev_notify_thread_id is in the union at sigev_value offset
+            // on Linux. The libc crate exposes it via the _tid field.
+            sev.sigev_notify_thread_id = tid;
+            let mut timer_id: libc::timer_t = std::ptr::null_mut();
+            let ret = libc::timer_create(libc::CLOCK_MONOTONIC, &mut sev, &mut timer_id);
+            if ret == 0 {
+                self.thread_timer = Some(SendTimerId(timer_id));
+            } else {
+                log::warn!("timer_create failed (errno={}), falling back to ITIMER_REAL",
+                    *libc::__errno_location());
+            }
+        }
     }
 
     /// Enable KVM guest single-stepping on the active vCPU.
@@ -2386,6 +2458,18 @@ impl DeterministicVm {
             // spin loops with threshold=2), slow enough to avoid
             // disturbing PIT calibration (~2-5ms during early boot).
             self.arm_preemption_timer(10_000);
+        } else if self.fault_engine.is_setup_complete() {
+            // Single-vCPU watchdog: 100ms timeout interrupts vcpu.run()
+            // if the guest enters a tight CPU loop (e.g., CpuBitflip
+            // corrupts RIP, kernel double-faults into a spin loop).
+            // Without this, vcpu.run() blocks indefinitely.
+            //
+            // Only armed after setup_complete to avoid disturbing PIT
+            // calibration during boot. Uses per-thread POSIX timer
+            // when available (safe for parallel workers) or falls back
+            // to process-wide ITIMER_REAL.
+            Self::install_sigalrm_handler();
+            self.arm_preemption_timer(100_000);
         }
         let run_result = self.vcpus[self.active_vcpu].run();
 
@@ -2717,21 +2801,23 @@ impl DeterministicVm {
             Ok(VcpuExit::Intr) => {
                 // SIGALRM interrupted vcpu.run().
                 //
-                // Only switch vCPU if this vCPU appears stuck (consecutive
+                // For SMP: switch vCPU if this one appears stuck (consecutive
                 // SIGALRMs without any real exit). Normal code generates
                 // real exits between SIGALRMs, keeping the counter at 0.
                 // Spin-wait loops have no real exits, so the counter
                 // grows until it crosses the threshold → liveness switch.
                 //
-                // The liveness switch is INVISIBLE to the scheduler:
-                // we change active_vcpu but not scheduler state.
+                // For single-vCPU: detect stuck VMs (tight CPU loops from
+                // fault injection, e.g. CpuBitflip corrupts RIP). After
+                // 5 consecutive SIGALRMs (~500ms at 100ms interval) with
+                // no real exits, treat the VM as crashed.
                 self.disarm_preemption_timer();
                 // Skip PIT/TSC sync on next step() — virtual time hasn't
                 // advanced, and skipping avoids disturbing in-progress
                 // PIT channel 2 calibration during early boot.
                 self.skip_tsc_sync = true;
+                self.sigalrm_without_exit += 1;
                 if num_vcpus > 1 {
-                    self.sigalrm_without_exit += 1;
                     if self.sigalrm_without_exit >= 2 {
                         for offset in 1..self.vcpus.len() {
                             let candidate = (self.active_vcpu + offset) % self.vcpus.len();
@@ -2742,6 +2828,19 @@ impl DeterministicVm {
                             }
                         }
                     }
+                } else if self.sigalrm_without_exit >= 5
+                    && self.fault_engine.is_setup_complete()
+                {
+                    // Single-vCPU VM stuck in a tight loop with no exits
+                    // for ~500ms. Treat as crashed.
+                    log::warn!(
+                        "VM stuck: {} consecutive SIGALRMs without exit \
+                         (exit_count={}, vtsc={}), treating as crashed",
+                        self.sigalrm_without_exit,
+                        self.exit_count,
+                        self.virtual_tsc.read(),
+                    );
+                    self.panic_detected = true;
                 }
                 pending_dlog = Some(DlogRecord::new(
                     0,
@@ -2850,8 +2949,8 @@ impl DeterministicVm {
                 if e.errno() == libc::EINTR {
                     self.disarm_preemption_timer();
                     self.skip_tsc_sync = true;
+                    self.sigalrm_without_exit += 1;
                     if self.vcpus.len() > 1 {
-                        self.sigalrm_without_exit += 1;
                         if self.sigalrm_without_exit >= 2 {
                             for offset in 1..self.vcpus.len() {
                                 let candidate = (self.active_vcpu + offset) % self.vcpus.len();
@@ -2862,6 +2961,15 @@ impl DeterministicVm {
                                 }
                             }
                         }
+                    } else if self.sigalrm_without_exit >= 5
+                        && self.fault_engine.is_setup_complete()
+                    {
+                        log::warn!(
+                            "VM stuck (EINTR): {} consecutive SIGALRMs, \
+                             treating as crashed",
+                            self.sigalrm_without_exit,
+                        );
+                        self.panic_detected = true;
                     }
                     return Ok(false);
                 }
@@ -3240,8 +3348,13 @@ impl Drop for DeterministicVm {
         // Disarm the SIGALRM preemption timer to prevent stale signals
         // from interfering with subsequent VMs in the same process
         // (important for test suites that create many VMs sequentially).
-        if self.vcpus.len() > 1 {
-            self.disarm_preemption_timer();
+        self.disarm_preemption_timer();
+        // Destroy per-thread POSIX timer if created.
+        if let Some(tid) = self.thread_timer.take() {
+            // SAFETY: tid.0 was created by timer_create in init_thread_timer.
+            unsafe {
+                libc::timer_delete(tid.0);
+            }
         }
     }
 }

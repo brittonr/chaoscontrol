@@ -180,6 +180,11 @@ impl WorkerPool {
                         let bases = memory_bases;
 
                         s.spawn(move || -> Result<(SimulationController, Vec<BranchResult>), chaoscontrol_vmm::vm::VmError> {
+                            // Initialize per-thread POSIX timers so the
+                            // single-vCPU watchdog SIGALRM targets this
+                            // thread, not the process.
+                            ctrl.init_thread_timers();
+
                             // Set bases for incremental snapshots on this worker's controller.
                             if !bases.is_empty() {
                                 ctrl.set_memory_bases(bases.clone());

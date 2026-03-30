@@ -1543,6 +1543,18 @@ impl SimulationController {
         self.vm_memory_bases = bases.into_iter().map(Some).collect();
     }
 
+    /// Initialize per-thread POSIX timers on all VMs.
+    ///
+    /// Must be called from the worker thread that will run this controller.
+    /// Creates `timer_create` + `SIGEV_THREAD_ID` timers so that SIGALRM
+    /// targets this specific thread, allowing parallel workers to each
+    /// have independent watchdog timers.
+    pub fn init_thread_timers(&mut self) {
+        for slot in &mut self.vms {
+            slot.vm.init_thread_timer();
+        }
+    }
+
     /// Extract the base memory from a full snapshot for use with
     /// incremental snapshots.
     pub fn extract_memory_bases(snapshot: &SimulationSnapshot) -> Vec<std::sync::Arc<Vec<u8>>> {

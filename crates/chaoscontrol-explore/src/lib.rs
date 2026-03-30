@@ -73,6 +73,7 @@ pub mod input_tree;
 pub mod minimizer;
 pub mod mutator;
 pub mod report;
+pub mod worker;
 
 // Re-export main types for convenience
 pub use checkpoint::{

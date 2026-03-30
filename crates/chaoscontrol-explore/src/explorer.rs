@@ -8,6 +8,7 @@ use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 use crate::frontier::{Frontier, FrontierEntry};
 use crate::input_tree;
 use crate::mutator::{MutationConfig, ScheduleMutator};
+use crate::worker::{BranchWork, WorkerPool};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
@@ -107,6 +108,12 @@ pub struct ExplorerConfig {
     pub dlog_register_interval: u64,
     /// Hash guest memory pages at snapshot boundaries.
     pub dlog_memory_hash: bool,
+    /// Number of parallel worker threads for branch execution.
+    ///
+    /// - `1` (default): sequential execution, identical to previous behavior.
+    /// - `N > 1`: N worker controllers run branches in parallel.
+    /// - `0`: auto-detect based on available cores.
+    pub num_workers: usize,
 }
 
 impl Default for ExplorerConfig {
@@ -132,6 +139,7 @@ impl Default for ExplorerConfig {
             dlog_dir: None,
             dlog_register_interval: 0,
             dlog_memory_hash: false,
+            num_workers: 1,
         }
     }
 }
@@ -158,6 +166,8 @@ pub struct Explorer {
     /// by all overlay snapshots in the frontier, so cloning a snapshot
     /// copies only the dirty-page overlay.
     memory_bases: Vec<Arc<Vec<u8>>>,
+    /// Worker pool for parallel branch execution (None = sequential).
+    worker_pool: Option<WorkerPool>,
 }
 
 impl Explorer {
@@ -185,6 +195,7 @@ impl Explorer {
             total_branches_run: 0,
             round_history: Vec::new(),
             memory_bases: Vec::new(),
+            worker_pool: None,
         }
     }
 
@@ -206,6 +217,43 @@ impl Explorer {
 
         if let Some(snapshot) = initial_result.snapshot.clone() {
             self.add_to_frontier(snapshot, initial_result, FaultSchedule::new(), None, 0);
+        }
+
+        // Create worker pool for parallel execution if configured.
+        let effective_workers = match self.config.num_workers {
+            0 => {
+                // Auto-detect: cores / VMs, capped at branch_factor
+                let cores = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(1);
+                let auto = (cores / self.config.num_vms.max(1))
+                    .max(1)
+                    .min(self.config.branch_factor);
+                info!(
+                    "Auto-detected {} workers ({} cores, {} VMs)",
+                    auto, cores, self.config.num_vms
+                );
+                auto
+            }
+            n => n,
+        };
+
+        if effective_workers > 1 {
+            info!("Creating worker pool with {} workers...", effective_workers);
+            match WorkerPool::new(&self.config, effective_workers) {
+                Ok(mut pool) => {
+                    if !self.memory_bases.is_empty() {
+                        pool.set_memory_bases(self.memory_bases.clone());
+                    }
+                    self.worker_pool = Some(pool);
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to create worker pool: {}. Falling back to sequential.",
+                        e
+                    );
+                }
+            }
         }
 
         // Main exploration loop
@@ -278,10 +326,6 @@ impl Explorer {
     /// 4. Score results, add interesting ones to frontier and corpus
     /// 5. Record any bugs found
     fn explore_round(&mut self) -> Result<RoundReport, ExploreError> {
-        let mut branches_run = 0;
-        let mut new_coverage_edges = 0;
-        let mut bugs_found = 0;
-
         // Select entry from frontier
         let (snapshot, base_schedule, parent_id, parent_depth) =
             if let Some(entry) = self.frontier.select(&mut self.rng) {
@@ -296,7 +340,9 @@ impl Explorer {
                 (None, FaultSchedule::new(), None, 0)
             };
 
-        // Generate variant schedules
+        // Generate variant schedules. Pre-compute all variants before
+        // dispatch so the RNG state advances identically regardless of
+        // whether branches run sequentially or in parallel.
         let variants = self.mutator.mutate(
             &base_schedule,
             self.config.branch_factor,
@@ -305,15 +351,35 @@ impl Explorer {
 
         debug!("Generated {} variant schedules", variants.len());
 
-        // Run each variant
-        for (i, schedule) in variants.into_iter().enumerate() {
-            debug!("Running branch {}/{}", i + 1, self.config.branch_factor);
+        // Execute branches — parallel if pool available, sequential otherwise.
+        let results = match (&mut self.worker_pool, &snapshot) {
+            (Some(pool), Some(snap)) => {
+                let work: Vec<BranchWork> = variants
+                    .iter()
+                    .enumerate()
+                    .map(|(i, schedule)| BranchWork {
+                        schedule: schedule.clone(),
+                        branch_index: i,
+                    })
+                    .collect();
 
-            let result = self.run_branch(&snapshot, schedule.clone())?;
+                let branch_results = pool.run_branches(snap, work)?;
+                branch_results.into_iter().zip(variants).collect()
+            }
+            _ => {
+                self.run_branches_sequential(&snapshot, variants)?
+            }
+        };
+
+        // Process results in deterministic order (by branch index).
+        let mut branches_run = 0;
+        let mut new_coverage_edges = 0;
+        let mut bugs_found = 0;
+
+        for (i, (result, schedule)) in results.into_iter().enumerate() {
             branches_run += 1;
             self.total_branches_run += 1;
 
-            // Check for new coverage
             let new_edges = result
                 .coverage
                 .has_new_coverage(self.coverage.global_coverage());
@@ -322,7 +388,6 @@ impl Explorer {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
-                // Add to corpus
                 self.add_to_corpus(
                     result.clone(),
                     schedule.clone(),
@@ -330,7 +395,6 @@ impl Explorer {
                     parent_depth + 1,
                 );
 
-                // Add to frontier if we got a snapshot
                 if let Some(snap) = result.snapshot.clone() {
                     self.add_to_frontier(
                         snap,
@@ -342,7 +406,6 @@ impl Explorer {
                 }
             }
 
-            // Check for bugs
             let branch_bugs = self.extract_bugs(&result, &schedule);
             bugs_found += branch_bugs.len();
 
@@ -350,7 +413,6 @@ impl Explorer {
                 warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
             }
 
-            // Update global coverage
             self.coverage.update_global(&result.coverage);
         }
 
@@ -360,6 +422,21 @@ impl Explorer {
             bugs_found,
             frontier_size: self.frontier.len(),
         })
+    }
+
+    /// Run branches sequentially (original path).
+    fn run_branches_sequential(
+        &mut self,
+        snapshot: &Option<SimulationSnapshot>,
+        variants: Vec<FaultSchedule>,
+    ) -> Result<Vec<(BranchResult, FaultSchedule)>, ExploreError> {
+        let mut results = Vec::with_capacity(variants.len());
+        for (i, schedule) in variants.into_iter().enumerate() {
+            debug!("Running branch {}/{}", i + 1, self.config.branch_factor);
+            let result = self.run_branch(snapshot, schedule.clone())?;
+            results.push((result, schedule));
+        }
+        Ok(results)
     }
 
     /// Execute one input tree exploration round:
@@ -1115,6 +1192,7 @@ impl Explorer {
             dlog_dir: None,
             dlog_register_interval: 0,
             dlog_memory_hash: false,
+            num_workers: 1,
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -1145,6 +1223,7 @@ impl Explorer {
             total_branches_run: checkpoint.total_branches_run,
             round_history: checkpoint.round_history.unwrap_or_default(),
             memory_bases: Vec::new(),
+            worker_pool: None,
         }
     }
 }

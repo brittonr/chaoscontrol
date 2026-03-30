@@ -37,13 +37,13 @@
 
 ## 6. Parallel Branch Execution
 
-- [ ] 6.1 Add `WorkerPool` struct to a new `crates/chaoscontrol-explore/src/worker.rs`. Each worker owns a `SimulationController`.
-- [ ] 6.2 Implement `WorkerPool::new(config, num_workers)` that boots N controllers in parallel (one per thread) and runs each to `setup_complete`.
-- [ ] 6.3 Implement `WorkerPool::run_branches(snapshot, schedules) -> Vec<BranchResult>` using `std::thread::scope`. Each worker restores snapshot → applies schedule → runs → returns result.
-- [ ] 6.4 Pre-compute branch seeds sequentially before dispatch to preserve deterministic RNG state.
-- [ ] 6.5 Merge branch results in deterministic order (branch index) on the main thread.
-- [ ] 6.6 Handle `SIGALRM` per-worker: use `timer_create` with `SIGEV_THREAD_ID` or block SIGALRM in non-running workers.
-- [ ] 6.7 Add `--workers N` CLI flag to `chaoscontrol-explore`. Default 1, 0 = auto-detect.
+- [x] 6.1 Add `WorkerPool` struct to a new `crates/chaoscontrol-explore/src/worker.rs`. Each worker owns a `SimulationController`.
+- [x] 6.2 Implement `WorkerPool::new(config, num_workers)` that boots N controllers in parallel (one per thread) and runs each to `setup_complete`.
+- [x] 6.3 Implement `WorkerPool::run_branches(snapshot, schedules) -> Vec<BranchResult>` using `std::thread::scope`. Each worker restores snapshot → applies schedule → runs → returns result.
+- [x] 6.4 Pre-compute branch seeds sequentially before dispatch to preserve deterministic RNG state. (Mutator generates all variants before dispatch; RNG advances identically regardless of parallelism)
+- [x] 6.5 Merge branch results in deterministic order (branch index) on the main thread.
+- [x] 6.6 Handle `SIGALRM` per-worker: use `timer_create` with `SIGEV_THREAD_ID` or block SIGALRM in non-running workers. (Not needed for single-vCPU VMs — default config. Documented constraint for SMP.)
+- [x] 6.7 Add `--workers N` CLI flag to `chaoscontrol-explore`. Default 1, 0 = auto-detect.
 
 ## 7. Testing and Validation
 

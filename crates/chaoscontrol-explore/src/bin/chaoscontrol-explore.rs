@@ -155,6 +155,14 @@ enum Commands {
         /// MemoryHash dlog records.
         #[arg(long)]
         dlog_memory_hash: bool,
+
+        /// Number of parallel worker threads for branch execution.
+        ///
+        /// 1 (default): sequential, identical to previous behavior.
+        /// N > 1: N workers run branches in parallel.
+        /// 0: auto-detect based on available cores.
+        #[arg(short = 'w', long, default_value = "1")]
+        workers: usize,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -312,6 +320,7 @@ fn main() {
             dlog,
             dlog_register_interval,
             dlog_memory_hash,
+            workers,
         } => cmd_run(
             kernel,
             initrd,
@@ -332,6 +341,7 @@ fn main() {
             dlog,
             dlog_register_interval,
             dlog_memory_hash,
+            workers,
         ),
         Commands::Reproduce {
             kernel,
@@ -417,6 +427,7 @@ fn cmd_run(
     dlog: Option<String>,
     dlog_register_interval: u64,
     dlog_memory_hash: bool,
+    workers: usize,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -508,6 +519,7 @@ fn cmd_run(
         dlog_dir: dlog.as_ref().map(std::path::PathBuf::from),
         dlog_register_interval,
         dlog_memory_hash,
+        num_workers: workers,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");

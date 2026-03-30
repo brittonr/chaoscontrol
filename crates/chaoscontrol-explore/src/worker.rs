@@ -1,0 +1,318 @@
+//! Worker pool for parallel branch execution.
+//!
+//! Each worker owns a [`SimulationController`] with independent KVM VM
+//! file descriptors. Workers are bootstrapped once (kernel boot +
+//! `setup_complete`), then reused across rounds via snapshot restore.
+
+use crate::coverage::{CoverageBitmap, CoverageCollector};
+use crate::explorer::{BranchResult, ExplorerConfig};
+use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
+use log::{debug, info};
+use std::sync::Arc;
+
+/// A unit of work dispatched to a worker thread.
+#[derive(Clone)]
+pub struct BranchWork {
+    /// Fault schedule to apply.
+    pub schedule: FaultSchedule,
+    /// Branch index (for deterministic result ordering).
+    pub branch_index: usize,
+}
+
+/// Pool of worker controllers for parallel branch execution.
+///
+/// Each worker owns a `SimulationController` created and bootstrapped
+/// on construction. Workers are reused across rounds — they restore
+/// from a shared snapshot for each branch instead of rebooting.
+///
+/// **SIGALRM safety:** The SMP preemption timer (`ITIMER_REAL`) is
+/// process-wide and only armed by multi-vCPU VMs. Single-vCPU VMs
+/// (the default) never arm the timer, so parallel workers are safe.
+/// Multi-vCPU parallel exploration would need `timer_create` with
+/// `SIGEV_THREAD_ID` to target signals at specific threads.
+pub struct WorkerPool {
+    /// One controller per worker. Workers are indexed 0..num_workers.
+    /// Using `Option` so we can `take()` controllers into threads.
+    controllers: Vec<Option<SimulationController>>,
+    /// Explorer config for coverage collection settings.
+    coverage_gpa: u64,
+    /// Ticks per branch.
+    ticks_per_branch: u64,
+    /// Per-VM base memory images for incremental snapshots.
+    memory_bases: Vec<Arc<Vec<u8>>>,
+}
+
+impl WorkerPool {
+    /// Create a new worker pool with `num_workers` controllers.
+    ///
+    /// Each controller is created and bootstrapped (kernel boot +
+    /// `setup_complete`) in parallel. This takes ~87s per worker
+    /// but runs concurrently, so wall-clock time is ~87s regardless
+    /// of worker count.
+    pub fn new(
+        config: &ExplorerConfig,
+        num_workers: usize,
+    ) -> Result<Self, chaoscontrol_vmm::vm::VmError> {
+        assert!(num_workers >= 1, "need at least 1 worker");
+
+        info!(
+            "Bootstrapping {} worker controllers in parallel...",
+            num_workers
+        );
+
+        // Build controllers in parallel using scoped threads.
+        // Each thread creates + bootstraps its own controller.
+        let controllers: Vec<Result<SimulationController, _>> = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..num_workers)
+                .map(|worker_id| {
+                    let config = config.clone();
+                    s.spawn(
+                        move || -> Result<SimulationController, chaoscontrol_vmm::vm::VmError> {
+                            let mut vm_config = config.vm_config.clone();
+                            vm_config.scheduling_strategy = config.scheduling_strategy;
+
+                            let sim_config = SimulationConfig {
+                                num_vms: config.num_vms,
+                                vm_config,
+                                kernel_path: config.kernel_path.clone(),
+                                initrd_path: config.initrd_path.clone(),
+                                seed: config.seed,
+                                quantum: config.quantum,
+                                schedule: FaultSchedule::new(),
+                                disk_image_path: config.disk_image_path.clone(),
+                                base_core: None,
+                                dlog_dir: None,
+                            };
+
+                            let mut ctrl = SimulationController::new(sim_config)?;
+                            ctrl.set_schedule(FaultSchedule::new());
+                            ctrl.clear_all_coverage();
+                            ctrl.run_until_setup_complete(config.bootstrap_budget)?;
+
+                            info!("Worker {} bootstrapped", worker_id);
+                            Ok(ctrl)
+                        },
+                    )
+                })
+                .collect();
+
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+
+        // Collect results, propagating the first error.
+        let mut pool_controllers = Vec::with_capacity(num_workers);
+        for result in controllers {
+            pool_controllers.push(Some(result?));
+        }
+
+        info!("All {} workers ready", num_workers);
+
+        Ok(Self {
+            controllers: pool_controllers,
+            coverage_gpa: config.coverage_gpa,
+            ticks_per_branch: config.ticks_per_branch,
+            memory_bases: Vec::new(),
+        })
+    }
+
+    /// Number of workers in the pool.
+    pub fn num_workers(&self) -> usize {
+        self.controllers.len()
+    }
+
+    /// Set per-VM base memory images for incremental snapshots.
+    pub fn set_memory_bases(&mut self, bases: Vec<Arc<Vec<u8>>>) {
+        self.memory_bases = bases;
+    }
+
+    /// Run a batch of branches in parallel across workers.
+    ///
+    /// Each worker restores the snapshot, applies its assigned schedule,
+    /// runs for `ticks_per_branch` ticks, captures a snapshot, and
+    /// returns a `BranchResult`.
+    ///
+    /// Results are returned in branch-index order (deterministic
+    /// regardless of which worker finishes first).
+    pub fn run_branches(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+        work: Vec<BranchWork>,
+    ) -> Result<Vec<BranchResult>, chaoscontrol_vmm::vm::VmError> {
+        if work.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let num_workers = self.controllers.len();
+        let num_branches = work.len();
+
+        debug!(
+            "Dispatching {} branches across {} workers",
+            num_branches, num_workers
+        );
+
+        // Take controllers out of the pool so we can move them into threads.
+        let mut taken: Vec<Option<SimulationController>> =
+            self.controllers.iter_mut().map(|c| c.take()).collect();
+
+        // Split work into chunks, one per worker.
+        let chunk_size = num_branches.div_ceil(num_workers);
+        let work_chunks: Vec<Vec<BranchWork>> = work
+            .into_iter()
+            .collect::<Vec<_>>()
+            .chunks(chunk_size)
+            .map(|c| c.to_vec())
+            .collect();
+
+        let coverage_gpa = self.coverage_gpa;
+        let ticks_per_branch = self.ticks_per_branch;
+        let memory_bases = &self.memory_bases;
+
+        // Run all chunks in parallel.
+        let chunk_results: Vec<Result<(SimulationController, Vec<BranchResult>), _>> =
+            std::thread::scope(|s| {
+                let handles: Vec<_> = work_chunks
+                    .into_iter()
+                    .enumerate()
+                    .map(|(worker_idx, chunk)| {
+                        let mut ctrl = taken[worker_idx].take().expect("controller already taken");
+                        let snap_ref = snapshot;
+                        let bases = memory_bases;
+
+                        s.spawn(move || -> Result<(SimulationController, Vec<BranchResult>), chaoscontrol_vmm::vm::VmError> {
+                            // Set bases for incremental snapshots on this worker's controller.
+                            if !bases.is_empty() {
+                                ctrl.set_memory_bases(bases.clone());
+                            }
+
+                            let mut results = Vec::with_capacity(chunk.len());
+
+                            for item in &chunk {
+                                let result = run_single_branch(
+                                    &mut ctrl,
+                                    snap_ref,
+                                    item.schedule.clone(),
+                                    coverage_gpa,
+                                    ticks_per_branch,
+                                    !bases.is_empty(),
+                                )?;
+                                results.push(result);
+                            }
+
+                            Ok((ctrl, results))
+                        })
+                    })
+                    .collect();
+
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+
+        // Put controllers back and collect results.
+        let mut all_results: Vec<(usize, BranchResult)> = Vec::with_capacity(num_branches);
+        let mut branch_offset = 0;
+
+        for (worker_idx, chunk_result) in chunk_results.into_iter().enumerate() {
+            let (ctrl, branch_results) = chunk_result?;
+            self.controllers[worker_idx] = Some(ctrl);
+
+            for result in branch_results {
+                all_results.push((branch_offset, result));
+                branch_offset += 1;
+            }
+        }
+
+        // Sort by original branch index for deterministic ordering.
+        all_results.sort_by_key(|(idx, _)| *idx);
+        let results = all_results.into_iter().map(|(_, r)| r).collect();
+
+        Ok(results)
+    }
+}
+
+/// Run a single branch on a controller.
+///
+/// Restores snapshot → applies schedule → runs → captures snapshot → returns result.
+fn run_single_branch(
+    controller: &mut SimulationController,
+    snapshot: &SimulationSnapshot,
+    schedule: FaultSchedule,
+    coverage_gpa: u64,
+    ticks_per_branch: u64,
+    use_incremental: bool,
+) -> Result<BranchResult, chaoscontrol_vmm::vm::VmError> {
+    // Restore
+    controller.restore_all(snapshot)?;
+    controller.reset_vm_statuses();
+
+    // Apply schedule
+    controller.set_schedule(schedule.clone());
+
+    // Clear coverage
+    controller.clear_all_coverage();
+
+    // Run
+    controller.run(ticks_per_branch)?;
+
+    // Collect results
+    let result_info = controller.report();
+    let vm_exit_counts: Vec<u64> = (0..controller.num_vms())
+        .map(|i| controller.vm_slot(i).map_or(0, |s| s.vm.exit_count()))
+        .collect();
+    let total_ticks = controller.tick();
+
+    // Collect coverage
+    let coverage = if coverage_gpa != 0 && controller.num_vms() > 0 {
+        if let Some(vm_slot) = controller.vm_slot(0) {
+            let mut collector = CoverageCollector::new(coverage_gpa);
+            collector.collect_from_guest(vm_slot.vm.memory().inner())
+        } else {
+            CoverageBitmap::new()
+        }
+    } else {
+        // Blind mode: derive coverage from assertion variety
+        let mut bitmap = CoverageBitmap::new();
+        for assertion_id in result_info.assertions.keys() {
+            let index = (*assertion_id as usize) % crate::coverage::MAP_SIZE;
+            bitmap.record_hit(index);
+        }
+        bitmap
+    };
+
+    // Capture snapshot
+    let snap = if use_incremental {
+        controller
+            .snapshot_all_incremental()
+            .ok()
+            .map(|(s, dirty)| {
+                debug!("Worker incremental snapshot: {} dirty pages", dirty);
+                s
+            })
+    } else {
+        controller.snapshot_all().ok()
+    };
+
+    Ok(BranchResult {
+        coverage,
+        oracle_report: result_info,
+        schedule,
+        exit_counts: vm_exit_counts,
+        halted: total_ticks >= ticks_per_branch,
+        total_ticks,
+        bugs: Vec::new(),
+        snapshot: snap,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn branch_work_fields() {
+        let work = BranchWork {
+            schedule: FaultSchedule::new(),
+            branch_index: 42,
+        };
+        assert_eq!(work.branch_index, 42);
+    }
+}

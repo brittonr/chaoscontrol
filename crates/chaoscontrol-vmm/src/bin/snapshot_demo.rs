@@ -49,7 +49,7 @@ fn main() {
     let snap_vtsc = vm.virtual_tsc();
     log::info!(
         "Snapshot taken: {} MB memory, exit_count={}, vTSC={}",
-        snapshot.memory.len() / 1024 / 1024,
+        snapshot.memory.memory_size() / 1024 / 1024,
         snap_exit_count,
         snap_vtsc,
     );

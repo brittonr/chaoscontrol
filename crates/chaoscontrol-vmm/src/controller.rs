@@ -752,6 +752,13 @@ pub struct SimulationController {
     quantum: u64,
     /// Simulation config (for VM restarts).
     pub config: SimulationConfig,
+    /// Per-VM base memory for incremental snapshots.
+    ///
+    /// Set after the bootstrap snapshot. Each `Arc<Vec<u8>>` is the
+    /// full memory image taken at the start of the exploration round.
+    /// Incremental snapshots reference this base and store only dirty
+    /// pages.
+    vm_memory_bases: Vec<Option<std::sync::Arc<Vec<u8>>>>,
 }
 
 impl SimulationController {
@@ -828,6 +835,7 @@ impl SimulationController {
 
         let network = NetworkFabric::new(config.num_vms, config.seed);
 
+        let num_vms = vms.len();
         Ok(Self {
             vms,
             fault_engine,
@@ -835,6 +843,7 @@ impl SimulationController {
             tick: 0,
             quantum: config.quantum,
             config,
+            vm_memory_bases: vec![None; num_vms],
         })
     }
 
@@ -1356,6 +1365,56 @@ impl SimulationController {
             network_state: self.network.clone(),
             fault_engine_snapshot: self.fault_engine.snapshot(),
         })
+    }
+
+    /// Take an incremental snapshot of all VMs.
+    ///
+    /// Each VM's memory is captured as a sparse overlay referencing the
+    /// stored base. Call [`set_memory_bases`] before using this.
+    /// Returns the snapshot and total dirty pages across all VMs.
+    pub fn snapshot_all_incremental(&self) -> Result<(SimulationSnapshot, usize), VmError> {
+        let mut vm_snapshots = Vec::with_capacity(self.vms.len());
+        let mut total_dirty = 0usize;
+
+        for (i, slot) in self.vms.iter().enumerate() {
+            if let Some(base) = &self.vm_memory_bases[i] {
+                let (snap, dirty) = slot.vm.snapshot_incremental(base)?;
+                total_dirty += dirty;
+                vm_snapshots.push((snap, slot.status));
+            } else {
+                // No base — fall back to full snapshot
+                let snap = slot.vm.snapshot()?;
+                vm_snapshots.push((snap, slot.status));
+            }
+        }
+
+        let sim_snap = SimulationSnapshot {
+            tick: self.tick,
+            vm_snapshots,
+            network_state: self.network.clone(),
+            fault_engine_snapshot: self.fault_engine.snapshot(),
+        };
+
+        Ok((sim_snap, total_dirty))
+    }
+
+    /// Store base memory images for incremental snapshots.
+    ///
+    /// Call this after bootstrap with the full snapshot's memory data.
+    /// Each entry is an `Arc<Vec<u8>>` that overlay snapshots will
+    /// reference.
+    pub fn set_memory_bases(&mut self, bases: Vec<std::sync::Arc<Vec<u8>>>) {
+        self.vm_memory_bases = bases.into_iter().map(Some).collect();
+    }
+
+    /// Extract the base memory from a full snapshot for use with
+    /// incremental snapshots.
+    pub fn extract_memory_bases(snapshot: &SimulationSnapshot) -> Vec<std::sync::Arc<Vec<u8>>> {
+        snapshot
+            .vm_snapshots
+            .iter()
+            .map(|(vm_snap, _)| std::sync::Arc::new(vm_snap.memory.materialize()))
+            .collect()
     }
 
     /// Restore all VMs from a snapshot.

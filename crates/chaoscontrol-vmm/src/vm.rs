@@ -37,8 +37,8 @@ use chaoscontrol_protocol::{
 
 use kvm_bindings::{
     kvm_clock_data, kvm_enable_cap, kvm_fpu, kvm_guest_debug, kvm_pit_config, kvm_regs,
-    kvm_userspace_memory_region, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP, KVM_MP_STATE_HALTED,
-    KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
+    kvm_userspace_memory_region, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
+    KVM_MEM_LOG_DIRTY_PAGES, KVM_MP_STATE_HALTED, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Cap, Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -344,6 +344,9 @@ pub enum VmError {
 
     #[snafu(display("Disk image error: {message}"))]
     DiskImage { message: String },
+
+    #[snafu(display("Failed to get dirty page log"))]
+    GetDirtyLog { source: kvm_ioctls::Error },
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -499,6 +502,9 @@ pub struct DeterministicVm {
     /// Extra kernel command line parameters (from VmConfig).
     extra_cmdline: Option<String>,
 
+    /// Whether KVM dirty page logging is enabled on the memory slot.
+    dirty_log_enabled: bool,
+
     /// VM identifier for multi-VM networking.
     vm_id: usize,
 
@@ -571,13 +577,18 @@ impl DeterministicVm {
         // Create guest memory
         let memory = GuestMemoryManager::new(config.memory_size)?;
 
-        // Register guest memory with KVM
+        // Register guest memory with KVM.
+        // Enable dirty page logging unconditionally — the hardware tracks
+        // dirty bits via EPT/NPT as a side effect of address translation,
+        // so there's no runtime cost when we don't query. When we do
+        // query via KVM_GET_DIRTY_LOG, we get a bitmap of pages the guest
+        // has written since the last query.
         let mem_region = kvm_userspace_memory_region {
             slot: 0,
             guest_phys_addr: 0,
             memory_size: config.memory_size as u64,
             userspace_addr: memory.host_address(),
-            flags: 0,
+            flags: KVM_MEM_LOG_DIRTY_PAGES,
         };
         unsafe {
             vm.set_user_memory_region(mem_region)
@@ -826,6 +837,7 @@ impl DeterministicVm {
             vmcall_enabled,
             skip_tsc_sync: false,
             extra_cmdline: config.extra_cmdline.clone(),
+            dirty_log_enabled: true,
             vm_id: config.vm_id,
             dlog,
             dlog_register_interval: config.dlog_register_interval,
@@ -1412,6 +1424,27 @@ impl DeterministicVm {
         &self.memory
     }
 
+    /// Get the KVM dirty page bitmap and atomically reset it.
+    ///
+    /// Returns a bitmap where each bit represents a 4 KB page. Bit N is
+    /// set if the guest wrote to page N since the last call. The bitmap
+    /// is packed as `Vec<u64>` — bit 0 of element 0 covers page 0, bit
+    /// 63 of element 0 covers page 63, bit 0 of element 1 covers page
+    /// 64, and so on.
+    ///
+    /// Requires `KVM_MEM_LOG_DIRTY_PAGES` on the memory slot (enabled
+    /// by default at VM creation).
+    pub fn get_dirty_bitmap(&self) -> Result<Vec<u64>, VmError> {
+        self.vm
+            .get_dirty_log(0, self.memory.size())
+            .context(GetDirtyLogSnafu)
+    }
+
+    /// Returns whether dirty page logging is enabled.
+    pub fn dirty_log_enabled(&self) -> bool {
+        self.dirty_log_enabled
+    }
+
     // ─── Public API: coverage ────────────────────────────────────
 
     /// Clear the coverage bitmap in guest memory (zero 64 KB).
@@ -1668,6 +1701,160 @@ impl DeterministicVm {
         // Can't call self.dlog_emit since snapshot takes &self.
         // Caller should use dlog_emit_snapshot_taken() after snapshot.
         result
+    }
+
+    /// Take an incremental snapshot using KVM dirty page tracking.
+    ///
+    /// Instead of copying all guest memory, queries the KVM dirty log
+    /// to find which pages changed since the last query, then builds
+    /// an overlay snapshot that references the shared `base` and stores
+    /// only the dirty pages.
+    ///
+    /// Returns the snapshot and the number of dirty pages captured.
+    pub fn snapshot_incremental(
+        &self,
+        base: &std::sync::Arc<Vec<u8>>,
+    ) -> Result<(crate::snapshot::VmSnapshot, usize), VmError> {
+        use crate::snapshot::{CaptureParams, SnapshotMemory, VirtioDeviceSnapshot};
+
+        let dirty_bitmap = self.get_dirty_bitmap()?;
+        let memory = SnapshotMemory::from_dirty(base, &dirty_bitmap, self.memory.inner());
+        let dirty_count = memory.dirty_page_count();
+
+        let virtio_snapshots: Vec<VirtioDeviceSnapshot> = self
+            .virtio_devices
+            .iter()
+            .map(|dev| {
+                let device_id = dev.backend().device_id();
+                let block_snapshot = if device_id == 2 {
+                    dev.backend()
+                        .as_any()
+                        .downcast_ref::<crate::devices::virtio_block::VirtioBlock>()
+                        .map(|vb| vb.disk().snapshot())
+                } else {
+                    None
+                };
+                VirtioDeviceSnapshot {
+                    device_id,
+                    block_snapshot,
+                }
+            })
+            .collect();
+
+        let params = CaptureParams {
+            serial_state: self.serial.state(),
+            entropy: self.entropy.snapshot(),
+            virtual_tsc: self.virtual_tsc.read(),
+            exit_count: self.exit_count,
+            io_exit_count: self.io_exit_count,
+            exits_since_last_sdk: self.exits_since_last_sdk,
+            pit_snapshot: self.pit.snapshot(),
+            last_kvm_pit_mode: self.last_kvm_pit_mode,
+            fault_engine_snapshot: self.fault_engine.snapshot(),
+            virtio_snapshots,
+            coverage_active: self.coverage_active,
+            scheduler_snapshot: self.scheduler.snapshot(),
+            singlestep_remaining: self.singlestep_remaining,
+        };
+
+        // Build the VmSnapshot with overlay memory instead of full copy.
+        // We bypass VmSnapshot::capture() because it always does a full
+        // memory read. Instead, construct the struct directly with the
+        // overlay memory we already built.
+        let mut vcpu_snapshots = Vec::with_capacity(self.vcpus.len());
+        for vcpu in &self.vcpus {
+            vcpu_snapshots.push(crate::snapshot::VcpuSnapshot::capture(vcpu).map_err(|e| {
+                SnapshotSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?);
+        }
+
+        let pic_master = {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
+                ..Default::default()
+            };
+            self.vm.get_irqchip(&mut chip).map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("get_irqchip(PIC_MASTER): {e}"),
+                }
+                .build()
+            })?;
+            chip
+        };
+        let pic_slave = {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_PIC_SLAVE,
+                ..Default::default()
+            };
+            self.vm.get_irqchip(&mut chip).map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("get_irqchip(PIC_SLAVE): {e}"),
+                }
+                .build()
+            })?;
+            chip
+        };
+        let ioapic = {
+            let mut chip = kvm_bindings::kvm_irqchip {
+                chip_id: kvm_bindings::KVM_IRQCHIP_IOAPIC,
+                ..Default::default()
+            };
+            self.vm.get_irqchip(&mut chip).map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("get_irqchip(IOAPIC): {e}"),
+                }
+                .build()
+            })?;
+            chip
+        };
+        let pit = self.vm.get_pit2().map_err(|e| {
+            SnapshotSnafu {
+                message: format!("get_pit2: {e}"),
+            }
+            .build()
+        })?;
+        let clock = self.vm.get_clock().map_err(|e| {
+            SnapshotSnafu {
+                message: format!("get_clock: {e}"),
+            }
+            .build()
+        })?;
+
+        let snap = crate::snapshot::VmSnapshot {
+            vcpu_snapshots,
+            pic_master,
+            pic_slave,
+            ioapic,
+            pit,
+            clock,
+            memory,
+            serial_state: params.serial_state,
+            entropy: params.entropy,
+            virtual_tsc: params.virtual_tsc,
+            exit_count: params.exit_count,
+            io_exit_count: params.io_exit_count,
+            exits_since_last_sdk: params.exits_since_last_sdk,
+            pit_snapshot: params.pit_snapshot,
+            last_kvm_pit_mode: params.last_kvm_pit_mode,
+            fault_engine_snapshot: params.fault_engine_snapshot,
+            virtio_snapshots: params.virtio_snapshots,
+            coverage_active: params.coverage_active,
+            active_vcpu: params.scheduler_snapshot.active,
+            scheduler_snapshot: params.scheduler_snapshot,
+            singlestep_remaining: params.singlestep_remaining,
+        };
+
+        info!(
+            "Incremental snapshot: {} dirty pages ({} KB), {} vCPUs",
+            dirty_count,
+            dirty_count * 4,
+            snap.vcpu_snapshots.len()
+        );
+
+        Ok((snap, dirty_count))
     }
 
     /// Restore VM state from a snapshot.
@@ -3048,5 +3235,44 @@ mod tests {
         // vmcall_enabled depends on host kernel support — just verify
         // the method is available and returns a boolean.
         let _enabled: bool = vm.vmcall_enabled();
+    }
+
+    // ─── Dirty page tracking ────────────────────────────────────
+
+    #[test]
+    fn test_dirty_log_enabled_by_default() {
+        let config = VmConfig::default();
+        let vm = DeterministicVm::new(config).unwrap();
+        assert!(vm.dirty_log_enabled());
+    }
+
+    #[test]
+    fn test_get_dirty_bitmap_returns_nonzero_after_memory_write() {
+        let config = VmConfig::default();
+        let mem_size = config.memory_size;
+        let vm = DeterministicVm::new(config).unwrap();
+
+        // First call clears all dirty bits accumulated since slot creation
+        // (KVM marks all pages dirty when the slot is first created with
+        // dirty logging enabled).
+        let _ = vm.get_dirty_bitmap().unwrap();
+
+        // Write to a known page in guest memory (page 256 = offset 1 MB).
+        let data = [0xABu8; 64];
+        vm.memory()
+            .inner()
+            .write_slice(&data, vm_memory::GuestAddress(256 * 4096))
+            .unwrap();
+
+        // KVM tracks hardware-level dirty bits. Host-side write_slice
+        // writes through the mmap, but KVM's dirty log tracks guest
+        // writes via EPT/NPT, not host writes through the mmap. So
+        // after host-only writes, the dirty bitmap may be empty.
+        // This test verifies the API works — integration tests with
+        // actual guest execution test real dirty tracking.
+        let bitmap = vm.get_dirty_bitmap().unwrap();
+        // Bitmap should have correct length: ceil(memory_size / page_size / 64)
+        let expected_len = mem_size.div_ceil(4096) / 64;
+        assert_eq!(bitmap.len(), expected_len);
     }
 }

@@ -11,7 +11,7 @@ use crate::mutator::{MutationConfig, ScheduleMutator};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
@@ -19,6 +19,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
@@ -151,6 +152,12 @@ pub struct Explorer {
     total_branches_run: u64,
     /// Per-round history.
     round_history: Vec<RoundHistory>,
+    /// Per-VM base memory images for incremental snapshots.
+    ///
+    /// Set after the bootstrap snapshot. Each `Arc<Vec<u8>>` is shared
+    /// by all overlay snapshots in the frontier, so cloning a snapshot
+    /// copies only the dirty-page overlay.
+    memory_bases: Vec<Arc<Vec<u8>>>,
 }
 
 impl Explorer {
@@ -177,6 +184,7 @@ impl Explorer {
             rounds_completed: 0,
             total_branches_run: 0,
             round_history: Vec::new(),
+            memory_bases: Vec::new(),
         }
     }
 
@@ -586,6 +594,23 @@ impl Explorer {
 
         let snap = controller.snapshot_all().ok();
 
+        // Extract base memory images for incremental snapshots.
+        // Every subsequent overlay snapshot in this round will share
+        // these Arc<Vec<u8>> references instead of copying 256 MB per VM.
+        if let Some(ref s) = snap {
+            self.memory_bases = SimulationController::extract_memory_bases(s);
+        }
+
+        // Set bases on the controller (needs &mut, so reborrow)
+        if !self.memory_bases.is_empty() {
+            let ctrl_mut = self.controller.as_mut().unwrap();
+            ctrl_mut.set_memory_bases(self.memory_bases.clone());
+            info!(
+                "Stored {} base memory images for incremental snapshots",
+                self.memory_bases.len()
+            );
+        }
+
         info!(
             "Bootstrap: {} ticks, {} coverage edges",
             total_ticks,
@@ -611,7 +636,7 @@ impl Explorer {
     /// branch (5s saved per branch).
     fn run_branch(
         &mut self,
-        snapshot: &Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+        snapshot: &Option<SimulationSnapshot>,
         schedule: FaultSchedule,
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
@@ -660,7 +685,20 @@ impl Explorer {
             self.assertion_coverage(&result_info)
         };
 
-        let snap = controller.snapshot_all().ok();
+        // Use incremental snapshots when base memory is available.
+        // This captures only the dirty pages (~1-5% of memory) instead
+        // of copying all 256 MB per VM.
+        let snap = if !self.memory_bases.is_empty() {
+            controller
+                .snapshot_all_incremental()
+                .ok()
+                .map(|(s, dirty)| {
+                    debug!("Incremental snapshot: {} dirty pages total", dirty);
+                    s
+                })
+        } else {
+            controller.snapshot_all().ok()
+        };
 
         Ok(BranchResult {
             coverage,
@@ -680,7 +718,7 @@ impl Explorer {
     /// before running, and clears them after.
     fn run_branch_with_overrides(
         &mut self,
-        snapshot: &Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+        snapshot: &Option<SimulationSnapshot>,
         schedule: FaultSchedule,
         per_vm_overrides: &[BTreeMap<u64, u64>],
     ) -> Result<BranchResult, ExploreError> {
@@ -734,7 +772,11 @@ impl Explorer {
             self.assertion_coverage(&result_info)
         };
 
-        let snap = controller.snapshot_all().ok();
+        let snap = if !self.memory_bases.is_empty() {
+            controller.snapshot_all_incremental().ok().map(|(s, _)| s)
+        } else {
+            controller.snapshot_all().ok()
+        };
 
         Ok(BranchResult {
             coverage,
@@ -1102,6 +1144,7 @@ impl Explorer {
             rounds_completed: checkpoint.rounds_completed,
             total_branches_run: checkpoint.total_branches_run,
             round_history: checkpoint.round_history.unwrap_or_default(),
+            memory_bases: Vec::new(),
         }
     }
 }

@@ -160,12 +160,19 @@ const HPET_REG_COUNTER: u64 = 0x0F0;
 /// COM1 IRQ line number (standard PC).
 const SERIAL_IRQ: u32 = 4;
 
-/// Target pattern for serial panic detection: "Kernel p" as big-endian u64.
+/// Serial crash detection patterns (big-endian u64 sliding windows).
 ///
-/// We match on the first 8 bytes of the panic message ("Kernel p" from
-/// "Kernel panic - not syncing:"). Each serial byte is shifted into a u64
-/// sliding window; when it matches this constant, we set `panic_detected`.
-const PANIC_MATCH_TARGET: u64 = u64::from_be_bytes(*b"Kernel p");
+/// Each serial byte is shifted into a u64 sliding window. When it
+/// matches any of these constants, we set `panic_detected`.
+///
+/// Multiple patterns catch crashes that don't print "Kernel panic"
+/// (e.g., double faults where the GPF handler itself faults).
+const PANIC_PATTERNS: [u64; 4] = [
+    u64::from_be_bytes(*b"Kernel p"),  // "Kernel panic - not syncing:"
+    u64::from_be_bytes(*b"---[ end"),  // "---[ end trace ... ]---" (every oops)
+    u64::from_be_bytes(*b"RIP: 001"),  // kernel-mode crash dump (CS=0x0010)
+    u64::from_be_bytes(*b"end Kern"),  // "end Kernel panic" (panic footer)
+];
 
 /// PIT timer IRQ line number (standard PC, IRQ 0).
 const PIT_IRQ: u32 = 0;
@@ -2585,11 +2592,11 @@ impl DeterministicVm {
                 } else if (SERIAL_PORT_BASE..=SERIAL_PORT_END).contains(&io_port) {
                     let offset = (io_port - SERIAL_PORT_BASE) as u8;
                     let _ = self.serial.write(offset, io_byte);
-                    // Sliding window panic detection: shift in each
-                    // serial byte and compare against "Kernel p".
+                    // Sliding window crash detection: shift in each
+                    // serial byte and compare against multiple patterns.
                     if offset == 0 {
                         self.panic_match_state = (self.panic_match_state << 8) | (io_byte as u64);
-                        if self.panic_match_state == PANIC_MATCH_TARGET {
+                        if PANIC_PATTERNS.contains(&self.panic_match_state) {
                             self.panic_detected = true;
                         }
                     }
@@ -3551,61 +3558,49 @@ mod tests {
     // ─── Panic detection ────────────────────────────────────────
 
     #[test]
-    fn test_panic_match_target_constant() {
-        // "Kernel p" as big-endian u64
-        let expected = u64::from_be_bytes(*b"Kernel p");
-        assert_eq!(PANIC_MATCH_TARGET, expected);
+    fn test_panic_patterns_constants() {
+        assert_eq!(PANIC_PATTERNS[0], u64::from_be_bytes(*b"Kernel p"));
+        assert_eq!(PANIC_PATTERNS[1], u64::from_be_bytes(*b"---[ end"));
+        assert_eq!(PANIC_PATTERNS[2], u64::from_be_bytes(*b"RIP: 001"));
+        assert_eq!(PANIC_PATTERNS[3], u64::from_be_bytes(*b"end Kern"));
+    }
+
+    fn sliding_window_detects(input: &[u8]) -> bool {
+        let mut state: u64 = 0;
+        for &byte in input.iter() {
+            state = (state << 8) | (byte as u64);
+            if PANIC_PATTERNS.contains(&state) {
+                return true;
+            }
+        }
+        false
     }
 
     #[test]
     fn test_panic_sliding_window_detects_kernel_panic() {
-        // Simulate the sliding window match byte-by-byte.
-        let input = b"Kernel panic - not syncing: fatal";
-        let mut state: u64 = 0;
-        let mut detected = false;
-        for &byte in input.iter() {
-            state = (state << 8) | (byte as u64);
-            if state == PANIC_MATCH_TARGET {
-                detected = true;
-                break;
-            }
-        }
-        assert!(detected, "should detect 'Kernel p' in panic message");
+        assert!(sliding_window_detects(b"Kernel panic - not syncing: fatal"));
+    }
+
+    #[test]
+    fn test_panic_sliding_window_detects_end_trace() {
+        assert!(sliding_window_detects(b"---[ end trace 0000000000000000 ]---"));
+    }
+
+    #[test]
+    fn test_panic_sliding_window_detects_rip_dump() {
+        assert!(sliding_window_detects(b"RIP: 0010:entry_SYSCALL_64+0x0/0xe"));
     }
 
     #[test]
     fn test_panic_sliding_window_no_false_positive() {
-        // Normal boot output should not trigger detection.
-        let input = b"Linux version 6.19 (root@builder) console=ttyS0 kernel loaded OK";
-        let mut state: u64 = 0;
-        let mut detected = false;
-        for &byte in input.iter() {
-            state = (state << 8) | (byte as u64);
-            if state == PANIC_MATCH_TARGET {
-                detected = true;
-                break;
-            }
-        }
-        assert!(
-            !detected,
-            "normal output should not trigger panic detection"
-        );
+        assert!(!sliding_window_detects(
+            b"Linux version 6.19 (root@builder) console=ttyS0 kernel loaded OK"
+        ));
     }
 
     #[test]
     fn test_panic_sliding_window_partial_match_no_trigger() {
-        // "Kernel " without "p" should not trigger.
-        let input = b"Kernel loading...";
-        let mut state: u64 = 0;
-        let mut detected = false;
-        for &byte in input.iter() {
-            state = (state << 8) | (byte as u64);
-            if state == PANIC_MATCH_TARGET {
-                detected = true;
-                break;
-            }
-        }
-        assert!(!detected, "partial match should not trigger");
+        assert!(!sliding_window_detects(b"Kernel loading..."));
     }
 
     #[test]

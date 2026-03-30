@@ -653,12 +653,9 @@ fn cmd_run(
                 }
             }
 
-            // Debug format (human-readable)
-            let txt_path = format!("{}/bug_{}.txt", output_dir, bug.bug_id);
-            let bug_text = format!("{:#?}", bug);
-            if let Err(e) = fs::write(&txt_path, bug_text) {
-                eprintln!("Warning: failed to save bug {} txt: {}", bug.bug_id, e);
-            }
+            // Note: Debug format (.txt) not saved — BugReport's snapshot
+            // field contains full guest memory, making .txt files ~12GB each.
+            // Use the JSON format for bug reproduction.
         }
 
         // Save per-assertion detail as JSON
@@ -864,14 +861,21 @@ fn cmd_resume(
         eprintln!("Saved report to: {}", report_path);
     }
 
-    // Save bugs
+    // Save bugs as JSON (for minimize/reproduce subcommands)
     for bug in &report.bugs {
-        let bug_path = format!("{}/bug_{}.txt", corpus, bug.bug_id);
-        let bug_text = format!("{:#?}", bug);
-        if let Err(e) = fs::write(&bug_path, bug_text) {
-            eprintln!("Warning: failed to save bug {}: {}", bug.bug_id, e);
-        } else {
-            eprintln!("Saved bug {} to: {}", bug.bug_id, bug_path);
+        let serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+        let json_path = format!("{}/bug_{}.json", corpus, bug.bug_id);
+        match serde_json::to_string_pretty(&serialized) {
+            Ok(json) => {
+                if let Err(e) = fs::write(&json_path, &json) {
+                    eprintln!("Warning: failed to save bug {} JSON: {}", bug.bug_id, e);
+                } else {
+                    eprintln!("Saved bug {} to: {}", bug.bug_id, json_path);
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to serialize bug {}: {}", bug.bug_id, e);
+            }
         }
     }
 

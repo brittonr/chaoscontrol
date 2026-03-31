@@ -435,6 +435,15 @@ fn main() {
                     );
                 }
 
+                // ── Liveness: commit advances after replication ──
+                if is_aer && node.role == Role::Leader {
+                    cc_assert_sometimes!(
+                        node.commit_index > old_commit,
+                        "leader commit advanced after replication",
+                        &json!({"node": active, "old": old_commit, "new": node.commit_index}),
+                    );
+                }
+
                 // ── Reply-based sometimes-pairs + invariants ─
                 for (to, reply) in &replies {
                     match reply {
@@ -583,14 +592,6 @@ fn main() {
                             node.match_index[node.id] == node.log.len(),
                             "leader self match_index tracks log",
                             &json!({"node": active, "match_index": node.match_index[node.id], "log_len": node.log.len()}),
-                        );
-                        let old_commit = node.commit_index;
-                        node.try_advance_commit();
-                        let commit_advanced = node.commit_index > old_commit;
-                        cc_assert_sometimes!(
-                            commit_advanced,
-                            "leader commit advanced after proposal",
-                            &json!({"node": active, "commit": node.commit_index}),
                         );
                         cc_assert_always!(
                             node.commit_index <= node.log.len(),

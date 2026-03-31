@@ -174,6 +174,8 @@ pub struct Explorer {
     event_sink: Option<SyncSender<crate::dashboard_types::DashboardEvent>>,
     /// Dedup keys for bugs already in the corpus.
     seen_dedup_keys: BTreeSet<u64>,
+    /// Bugs found in branches with no new coverage (not stored in corpus).
+    standalone_bugs: Vec<BugReport>,
 }
 
 impl Explorer {
@@ -204,7 +206,15 @@ impl Explorer {
             worker_pool: None,
             event_sink: None,
             seen_dedup_keys: BTreeSet::new(),
+            standalone_bugs: Vec::new(),
         }
+    }
+
+    /// All bugs found: corpus bugs + standalone bugs from zero-coverage branches.
+    fn all_bugs(&self) -> Vec<BugReport> {
+        let mut bugs = self.corpus.bugs();
+        bugs.extend(self.standalone_bugs.iter().cloned());
+        bugs
     }
 
     /// Set an event sink for dashboard updates.
@@ -228,7 +238,7 @@ impl Explorer {
             total_rounds: self.rounds_completed,
             total_branches: self.total_branches_run,
             total_edges: self.coverage.stats().total_edges,
-            total_bugs: self.corpus.bugs().len(),
+            total_bugs: self.all_bugs().len(),
             reason: reason.to_string(),
         });
     }
@@ -341,7 +351,7 @@ impl Explorer {
                 new_edges: round_report.new_coverage_edges,
                 cumulative_edges: self.coverage.stats().total_edges,
                 bugs_found: round_report.bugs_found,
-                cumulative_bugs: self.corpus.bugs().len(),
+                cumulative_bugs: self.all_bugs().len(),
                 frontier_size: round_report.frontier_size,
                 corpus_size: self.corpus.stats().total_entries,
             };
@@ -490,6 +500,7 @@ impl Explorer {
 
             if !branch_bugs.is_empty() {
                 warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
+                self.standalone_bugs.extend(branch_bugs);
             }
 
             self.coverage.update_global(&result.coverage);
@@ -673,6 +684,7 @@ impl Explorer {
                     i + 1,
                     branch_bugs.len()
                 );
+                self.standalone_bugs.extend(branch_bugs);
             }
 
             self.coverage.update_global(&result.coverage);
@@ -1034,7 +1046,7 @@ impl Explorer {
 
                 // Emit BugFound event for dashboard.
                 self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
-                    bug_index: self.corpus.bugs().len() + bugs.len(),
+                    bug_index: self.all_bugs().len() + bugs.len(),
                     assertion_id: *assertion_id as u64,
                     assertion_message: record.message.clone(),
                     round: self.rounds_completed,
@@ -1111,7 +1123,7 @@ impl Explorer {
 
     /// Generate the final exploration report.
     fn generate_report(&self) -> ExplorationReport {
-        let bugs = self.corpus.bugs();
+        let bugs = self.all_bugs();
         let coverage_stats = self.coverage.stats();
         let corpus_stats = self.corpus.stats();
 
@@ -1240,7 +1252,7 @@ impl Explorer {
             rounds: self.rounds_completed,
             branches: self.total_branches_run,
             edges: self.coverage.stats().total_edges,
-            bugs: self.corpus.bugs().len(),
+            bugs: self.all_bugs().len(),
             frontier_size: self.frontier.len(),
             corpus_size: self.corpus.len(),
         }
@@ -1340,7 +1352,7 @@ impl Explorer {
             bootstrap_budget: self.config.bootstrap_budget,
         };
 
-        let bugs: Vec<SerializableBug> = self.corpus.bugs().iter().map(|b| b.into()).collect();
+        let bugs: Vec<SerializableBug> = self.all_bugs().iter().map(|b| b.into()).collect();
 
         ExplorationCheckpoint {
             config,
@@ -1420,6 +1432,19 @@ impl Explorer {
                 .seen_dedup_keys
                 .unwrap_or_default()
                 .into_iter()
+                .collect(),
+            standalone_bugs: checkpoint
+                .bugs
+                .iter()
+                .map(|b| BugReport {
+                    bug_id: b.bug_id,
+                    assertion_id: b.assertion_id,
+                    assertion_location: b.assertion_location.clone(),
+                    schedule: (&b.schedule).into(),
+                    snapshot: None,
+                    tick: b.tick,
+                    dedup_key: b.dedup_key.unwrap_or(0),
+                })
                 .collect(),
         }
     }

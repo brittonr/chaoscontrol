@@ -1,5 +1,7 @@
 # Napkin
 | 2026-03-30 | self | Single-vCPU VMs hang indefinitely under CpuBitflip/fault injection | Guest enters tight CPU loop with no VM exits → vcpu.run() never returns. Fix: per-thread POSIX timers (timer_create + SIGEV_THREAD_ID) + 100ms SIGALRM watchdog + stuck detection after 5 consecutive SIGALRMs |
+| 2026-03-30 | self | EINTR path early-returns Ok(false), bypassing panic_detected check | Sets panic_detected=true but never acts on it → 26K+ SIGALRMs over 33 minutes. VcpuExit::Intr path works because it sets Ok(false) in the match result (not return). Fix: return Ok(true) from EINTR when panic_detected |
+| 2026-03-30 | self | leader_no_stepdown violates log matching safety property | Only found after EINTR bug fix let all 7 variants complete 20 rounds in 19 min. Previously hung or timed out |
 | 2026-03-30 | self | ITIMER_REAL is process-wide, not per-thread | Can't use setitimer for parallel workers. Must use timer_create with SIGEV_THREAD_ID for per-thread signal delivery |
 | 2026-03-30 | self | VcpuExit::Intr does NOT increment exit_count or exits_since_last_sdk | SIGALRM watchdog fires but idle detection never triggers because the counter never advances. Must detect stuck VMs via sigalrm_without_exit counter instead |
 | 2026-03-30 | self | SIGALRM default handler kills the process | Must install no-op handler via install_sigalrm_handler() before arming ANY timer, not just for SMP VMs |

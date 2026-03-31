@@ -64,6 +64,7 @@
 //! All exploration is deterministic given the same seed. The explorer uses
 //! seeded RNGs throughout and avoids HashMaps (using BTreeMap instead).
 
+pub mod campaign;
 pub mod checkpoint;
 pub mod corpus;
 pub mod coverage;
@@ -79,6 +80,7 @@ pub mod server;
 pub mod worker;
 
 // Re-export main types for convenience
+pub use campaign::{CampaignConfig, CampaignReport, CampaignRunner};
 pub use checkpoint::{
     load_checkpoint, save_checkpoint, CheckpointConfig, CheckpointError, ExplorationCheckpoint,
     SerializableBug, SerializableFault, SerializableSchedule, SerializableScheduledFault,

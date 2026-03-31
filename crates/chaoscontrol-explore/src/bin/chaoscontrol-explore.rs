@@ -38,12 +38,13 @@
 //! On resume, we re-bootstrap the VMs but carry forward the global coverage map,
 //! so we don't re-explore known territory.
 
+use chaoscontrol_explore::campaign::{generate_seeds, CampaignConfig, CampaignRunner};
 use chaoscontrol_explore::checkpoint::load_checkpoint;
 use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
 use chaoscontrol_explore::mutator::MutationConfig;
-use chaoscontrol_explore::report::format_report;
+use chaoscontrol_explore::report::{format_campaign_report, format_report};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
@@ -282,6 +283,89 @@ enum Commands {
         serial: bool,
     },
 
+    /// Run a multi-seed campaign.
+    ///
+    /// Launches N independent explorations with different seeds in parallel,
+    /// then aggregates bugs, coverage, and assertion verdicts into a unified
+    /// report. Each seed runs in its own thread with its own KVM VMs.
+    Campaign {
+        /// Path to kernel (vmlinux or bzImage).
+        #[arg(short, long)]
+        kernel: String,
+
+        /// Path to initrd (optional).
+        #[arg(short, long)]
+        initrd: Option<String>,
+
+        /// Base random seed. Seeds are base, base+1, ..., base+N-1.
+        #[arg(short, long, default_value = "42")]
+        seed: u64,
+
+        /// Number of VMs per simulation.
+        #[arg(short, long, default_value = "2")]
+        vms: usize,
+
+        /// Total exploration rounds per seed.
+        #[arg(short, long, default_value = "100")]
+        rounds: u64,
+
+        /// Branch factor (variants per round).
+        #[arg(short, long, default_value = "8")]
+        branches: usize,
+
+        /// Ticks per branch.
+        #[arg(short, long, default_value = "1000")]
+        ticks: u64,
+
+        /// Scheduling quantum (exits per VM per round).
+        #[arg(short, long, default_value = "100")]
+        quantum: u64,
+
+        /// Number of vCPUs per VM.
+        #[arg(long, default_value = "1")]
+        vcpus: usize,
+
+        /// Scheduling strategy: "round-robin" or "randomized".
+        #[arg(long, default_value = "round-robin")]
+        scheduling: String,
+
+        /// Max frontier size.
+        #[arg(short, long, default_value = "50")]
+        max_frontier: usize,
+
+        /// Output directory for reports and per-seed artifacts (required).
+        #[arg(short, long)]
+        output: String,
+
+        /// Path to a disk image file for the virtio-blk device.
+        #[arg(long)]
+        disk_image: Option<String>,
+
+        /// Extra kernel command line parameters.
+        #[arg(long)]
+        extra_cmdline: Option<String>,
+
+        /// Exploration mode: "fault-schedule", "input-tree", or "hybrid".
+        #[arg(long, default_value = "fault-schedule")]
+        mode: String,
+
+        /// Bootstrap tick budget.
+        #[arg(long, default_value = "10000")]
+        bootstrap_budget: u64,
+
+        /// Number of seeds to run in parallel.
+        #[arg(long, default_value = "4")]
+        campaign_seeds: usize,
+
+        /// Explicit comma-separated seed list (overrides --seed + --campaign-seeds).
+        #[arg(long, value_delimiter = ',')]
+        seeds: Option<Vec<u64>>,
+
+        /// Parallel workers per seed (ignored in campaign mode, logged as warning).
+        #[arg(short = 'w', long, default_value = "1")]
+        workers: usize,
+    },
+
     /// Resume from saved checkpoint.
     Resume {
         /// Path to corpus directory (containing checkpoint.json).
@@ -389,6 +473,47 @@ fn main() {
             disk_image,
             bootstrap_budget,
             serial,
+        ),
+        Commands::Campaign {
+            kernel,
+            initrd,
+            seed,
+            vms,
+            rounds,
+            branches,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            max_frontier,
+            output,
+            disk_image,
+            extra_cmdline,
+            mode,
+            bootstrap_budget,
+            campaign_seeds,
+            seeds,
+            workers,
+        } => cmd_campaign(
+            kernel,
+            initrd,
+            seed,
+            vms,
+            rounds,
+            branches,
+            ticks,
+            quantum,
+            vcpus,
+            scheduling,
+            max_frontier,
+            output,
+            disk_image,
+            extra_cmdline,
+            mode,
+            bootstrap_budget,
+            campaign_seeds,
+            seeds,
+            workers,
         ),
         Commands::Resume {
             corpus,
@@ -705,6 +830,167 @@ fn run_with_progress(
 
     // Let's just call run() - the internal logging will show progress
     explorer.run()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_campaign(
+    kernel: String,
+    initrd: Option<String>,
+    seed: u64,
+    vms: usize,
+    rounds: u64,
+    branches: usize,
+    ticks: u64,
+    quantum: u64,
+    vcpus: usize,
+    scheduling: String,
+    max_frontier: usize,
+    output: String,
+    disk_image: Option<String>,
+    extra_cmdline: Option<String>,
+    mode: String,
+    bootstrap_budget: u64,
+    campaign_seeds: usize,
+    seeds: Option<Vec<u64>>,
+    workers: usize,
+) {
+    // Validate inputs
+    if !Path::new(&kernel).exists() {
+        eprintln!("Error: kernel file not found: {}", kernel);
+        std::process::exit(1);
+    }
+
+    if let Some(ref initrd_path) = initrd {
+        if !Path::new(initrd_path).exists() {
+            eprintln!("Error: initrd file not found: {}", initrd_path);
+            std::process::exit(1);
+        }
+    }
+
+    if let Some(ref disk_image_path) = disk_image {
+        if !Path::new(disk_image_path).exists() {
+            eprintln!("Error: disk image file not found: {}", disk_image_path);
+            std::process::exit(1);
+        }
+    }
+
+    if workers > 1 {
+        eprintln!("Warning: --workers ignored in campaign mode (each seed runs sequentially)");
+    }
+
+    let scheduling_strategy = match scheduling.as_str() {
+        "round-robin" => SchedulingStrategy::RoundRobin,
+        "randomized" | "rand" => SchedulingStrategy::Randomized {
+            min_quantum: 50,
+            max_quantum: 200,
+        },
+        other => {
+            eprintln!("Error: unknown scheduling strategy: {}", other);
+            std::process::exit(1);
+        }
+    };
+
+    let exploration_mode = match mode.as_str() {
+        "fault-schedule" => ExplorationMode::FaultSchedule,
+        "input-tree" => ExplorationMode::InputTree,
+        "hybrid" => ExplorationMode::Hybrid,
+        other => {
+            eprintln!("Error: unknown exploration mode: {}", other);
+            std::process::exit(1);
+        }
+    };
+
+    let vm_config = VmConfig {
+        num_vcpus: vcpus,
+        scheduling_strategy,
+        extra_cmdline,
+        ..VmConfig::default()
+    };
+
+    let base_config = ExplorerConfig {
+        num_vms: vms,
+        vm_config,
+        kernel_path: kernel,
+        initrd_path: initrd,
+        seed, // overridden per-seed by CampaignRunner
+        branch_factor: branches,
+        ticks_per_branch: ticks,
+        max_rounds: rounds,
+        max_frontier,
+        quantum,
+        scheduling_strategy,
+        mutation: MutationConfig::default(),
+        exploration_mode,
+        coverage_gpa: COVERAGE_BITMAP_ADDR,
+        output_dir: None, // set per-seed by CampaignRunner
+        disk_image_path: disk_image,
+        bootstrap_budget,
+        dlog_dir: None,
+        dlog_register_interval: 0,
+        dlog_memory_hash: false,
+        num_workers: 1, // forced to 1 in campaign mode
+    };
+
+    let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
+
+    let campaign_config = CampaignConfig {
+        seeds: seed_list,
+        base_explorer_config: base_config,
+        output_dir: output.clone(),
+    };
+
+    let runner = CampaignRunner::new(campaign_config);
+    match runner.run() {
+        Ok(report) => {
+            // Write reports
+            let formatted = format_campaign_report(&report);
+            println!("{}\n", formatted);
+
+            if let Err(e) = fs::create_dir_all(&output) {
+                eprintln!("Error creating output directory: {}", e);
+            }
+
+            let report_path = format!("{}/campaign_report.txt", output);
+            if let Err(e) = fs::write(&report_path, &formatted) {
+                eprintln!("Error writing report: {}", e);
+            } else {
+                eprintln!("Report saved to {}", report_path);
+            }
+
+            let json_path = format!("{}/campaign_report.json", output);
+            match serde_json::to_string_pretty(&report) {
+                Ok(json) => {
+                    if let Err(e) = fs::write(&json_path, &json) {
+                        eprintln!("Error writing JSON report: {}", e);
+                    } else {
+                        eprintln!("JSON report saved to {}", json_path);
+                    }
+                }
+                Err(e) => eprintln!("Error serializing report: {}", e),
+            }
+
+            let assertions_path = format!("{}/assertions.json", output);
+            match serde_json::to_string_pretty(&report.assertion_details) {
+                Ok(json) => {
+                    if let Err(e) = fs::write(&assertions_path, &json) {
+                        eprintln!("Error writing assertions: {}", e);
+                    } else {
+                        eprintln!("Assertions saved to {}", assertions_path);
+                    }
+                }
+                Err(e) => eprintln!("Error serializing assertions: {}", e),
+            }
+
+            // Exit code: 0 = bugs found, 1 = no bugs
+            if report.bugs.is_empty() {
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Campaign failed: {}", e);
+            std::process::exit(2);
+        }
+    }
 }
 
 fn cmd_resume(

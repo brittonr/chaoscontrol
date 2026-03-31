@@ -1,5 +1,6 @@
 //! Format exploration reports for human consumption.
 
+use crate::campaign::CampaignReport;
 use crate::corpus::BugReport;
 use crate::explorer::ExplorationReport;
 
@@ -328,6 +329,166 @@ pub fn format_bug(bug: &BugReport) -> String {
         }
     }
 
+    output
+}
+
+/// Format a campaign report (multi-seed) for human consumption.
+pub fn format_campaign_report(report: &CampaignReport) -> String {
+    let mut output = String::new();
+
+    output.push_str("═══════════════════════════════════════════════════════════════════════\n");
+    output.push_str("  ChaosControl Campaign Report\n");
+    output.push_str("═══════════════════════════════════════════════════════════════════════\n\n");
+
+    // Summary
+    output.push_str(&format!(
+        "Seeds run:              {}\n",
+        report.seeds_run.len()
+    ));
+    output.push_str(&format!(
+        "Total rounds:           {}\n",
+        report.total_rounds
+    ));
+    output.push_str(&format!(
+        "Total branches:         {}\n",
+        report.total_branches
+    ));
+    output.push_str(&format!("Unique bugs found:      {}\n", report.bugs.len()));
+    output.push_str(&format!(
+        "Seeds with bugs:        {}/{}\n",
+        report.seeds_with_bugs.len(),
+        report.seeds_run.len()
+    ));
+    output.push_str(&format!(
+        "Wall-clock time:        {:.1}s\n",
+        report.wall_clock_seconds
+    ));
+    output.push('\n');
+
+    // Per-seed table
+    output.push_str("─── Per-Seed Results ──────────────────────────────────────────────────\n");
+    output.push_str("  Seed   │ Rounds │ Branches │ Edges │ Bugs │ Time\n");
+    output.push_str("  ───────┼────────┼──────────┼───────┼──────┼──────\n");
+
+    for s in &report.per_seed {
+        output.push_str(&format!(
+            "  {:>6} │ {:>6} │ {:>8} │ {:>5} │ {:>4} │ {:.1}s\n",
+            s.seed, s.rounds, s.total_branches, s.total_edges, s.bugs_found, s.wall_clock_seconds,
+        ));
+    }
+    output.push('\n');
+
+    // Assertion coverage
+    let ast = &report.assertion_stats;
+    if ast.catalog_size > 0 {
+        output
+            .push_str("─── Assertion Coverage (merged) ───────────────────────────────────────\n");
+        output.push_str(&format!("Registered sites:       {}\n", ast.catalog_size));
+        output.push_str(&format!("Passed:                 {}\n", ast.passed));
+        output.push_str(&format!("Failed:                 {}\n", ast.failed));
+        output.push_str(&format!("Unexercised:            {}\n", ast.unexercised));
+        if ast.catalog_size > 0 {
+            let exercised = ast.catalog_size - ast.unexercised;
+            let pct = exercised as f64 / ast.catalog_size as f64 * 100.0;
+            output.push_str(&format!(
+                "Exercised:              {}/{} ({:.1}%)\n",
+                exercised, ast.catalog_size, pct
+            ));
+        }
+        output.push('\n');
+    }
+
+    // Per-assertion detail
+    if !report.assertion_details.is_empty() {
+        let failed: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "failed")
+            .collect();
+        let unexercised: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "unexercised")
+            .collect();
+        let passed: Vec<_> = report
+            .assertion_details
+            .iter()
+            .filter(|a| a.verdict == "passed")
+            .collect();
+
+        if !failed.is_empty() {
+            output.push_str(
+                "─── Failed Assertions ────────────────────────────────────────────────\n",
+            );
+            for a in &failed {
+                output.push_str(&format!(
+                    "  ✗ [{}] {} ({}): {} hits, {}/{} true\n",
+                    a.kind, a.message, a.id, a.hit_count, a.true_count, a.hit_count
+                ));
+            }
+            output.push('\n');
+        }
+
+        if !unexercised.is_empty() {
+            output.push_str(
+                "─── Unexercised Assertions ───────────────────────────────────────────\n",
+            );
+            for a in &unexercised {
+                output.push_str(&format!("  ○ [{}] {} ({})\n", a.kind, a.message, a.id));
+            }
+            output.push('\n');
+        }
+
+        if !passed.is_empty() {
+            output.push_str(
+                "─── Passed Assertions ────────────────────────────────────────────────\n",
+            );
+            for a in &passed {
+                output.push_str(&format!(
+                    "  ✓ [{}] {} ({}) — {} hits\n",
+                    a.kind, a.message, a.id, a.hit_count
+                ));
+            }
+            output.push('\n');
+        }
+    }
+
+    // Bug details
+    if !report.bugs.is_empty() {
+        output
+            .push_str("─── Bugs Found ─────────────────────────────────────────────────────────\n");
+        for (i, cbug) in report.bugs.iter().enumerate() {
+            let seeds_str: Vec<String> =
+                cbug.found_by_seeds.iter().map(|s| s.to_string()).collect();
+            output.push_str(&format!(
+                "\n{}. Assertion: {} (id={})\n",
+                i + 1,
+                cbug.bug.assertion_location,
+                cbug.bug.assertion_id
+            ));
+            output.push_str(&format!("   Tick:       {}\n", cbug.bug.tick));
+            output.push_str(&format!(
+                "   Schedule:   {} faults\n",
+                cbug.bug.schedule.faults.len()
+            ));
+            output.push_str(&format!(
+                "   Found by:   seed{} {}\n",
+                if cbug.found_by_seeds.len() > 1 {
+                    "s"
+                } else {
+                    ""
+                },
+                seeds_str.join(", "),
+            ));
+        }
+        output.push('\n');
+    } else {
+        output
+            .push_str("─── No Bugs Found ──────────────────────────────────────────────────────\n");
+        output.push_str("No assertion failures detected across any seed.\n\n");
+    }
+
+    output.push_str("═══════════════════════════════════════════════════════════════════════\n");
     output
 }
 
@@ -792,5 +953,131 @@ mod tests {
 
         let formatted = format_bug(&bug);
         assert!(formatted.contains("... and 10 more faults"));
+    }
+
+    // ── 6.5: format_campaign_report ─────────────────────────────────
+
+    #[test]
+    fn test_format_campaign_report_contains_sections() {
+        use crate::campaign::{CampaignBug, CampaignReport, SeedSummary};
+        use crate::checkpoint::{SerializableBug, SerializableSchedule};
+        use crate::explorer::{AssertionDetail, AssertionStats};
+
+        let report = CampaignReport {
+            seeds_run: vec![42, 43, 44],
+            seeds_with_bugs: vec![42],
+            total_rounds: 30,
+            total_branches: 240,
+            bugs: vec![CampaignBug {
+                bug: SerializableBug {
+                    bug_id: 0,
+                    assertion_id: 100,
+                    assertion_location: "safety.rs:10".into(),
+                    schedule: SerializableSchedule { faults: Vec::new() },
+                    tick: 500,
+                    dedup_key: Some(0xAAAA),
+                },
+                found_by_seeds: vec![42, 44],
+                first_seed: 42,
+                dedup_key: 0xAAAA,
+            }],
+            per_seed: vec![
+                SeedSummary {
+                    seed: 42,
+                    rounds: 10,
+                    total_branches: 80,
+                    total_edges: 200,
+                    bugs_found: 1,
+                    wall_clock_seconds: 25.3,
+                },
+                SeedSummary {
+                    seed: 43,
+                    rounds: 10,
+                    total_branches: 80,
+                    total_edges: 180,
+                    bugs_found: 0,
+                    wall_clock_seconds: 22.1,
+                },
+                SeedSummary {
+                    seed: 44,
+                    rounds: 10,
+                    total_branches: 80,
+                    total_edges: 190,
+                    bugs_found: 1,
+                    wall_clock_seconds: 24.0,
+                },
+            ],
+            assertion_details: vec![
+                AssertionDetail {
+                    id: 100,
+                    message: "leader completeness".into(),
+                    kind: "always".into(),
+                    verdict: "failed".into(),
+                    hit_count: 300,
+                    true_count: 290,
+                    false_count: 10,
+                    last_failure_details: None,
+                },
+                AssertionDetail {
+                    id: 200,
+                    message: "election safety".into(),
+                    kind: "always".into(),
+                    verdict: "passed".into(),
+                    hit_count: 500,
+                    true_count: 500,
+                    false_count: 0,
+                    last_failure_details: None,
+                },
+            ],
+            assertion_stats: AssertionStats {
+                catalog_size: 2,
+                passed: 1,
+                failed: 1,
+                unexercised: 0,
+            },
+            wall_clock_seconds: 26.0,
+        };
+
+        let formatted = format_campaign_report(&report);
+
+        // Campaign header
+        assert!(formatted.contains("Campaign Report"));
+
+        // Per-seed table
+        assert!(formatted.contains("Per-Seed Results"));
+        assert!(formatted.contains("42"));
+        assert!(formatted.contains("43"));
+        assert!(formatted.contains("44"));
+
+        // Bug section
+        assert!(formatted.contains("safety.rs:10"));
+        assert!(formatted.contains("42, 44")); // found_by_seeds
+
+        // Assertion verdicts
+        assert!(formatted.contains("leader completeness"));
+        assert!(formatted.contains("election safety"));
+        assert!(formatted.contains("Failed Assertions"));
+        assert!(formatted.contains("Passed Assertions"));
+    }
+
+    #[test]
+    fn test_format_campaign_report_no_bugs() {
+        use crate::campaign::CampaignReport;
+
+        let report = CampaignReport {
+            seeds_run: vec![42],
+            seeds_with_bugs: Vec::new(),
+            total_rounds: 10,
+            total_branches: 80,
+            bugs: Vec::new(),
+            per_seed: Vec::new(),
+            assertion_details: Vec::new(),
+            assertion_stats: Default::default(),
+            wall_clock_seconds: 5.0,
+        };
+
+        let formatted = format_campaign_report(&report);
+        assert!(formatted.contains("No Bugs Found"));
+        assert!(formatted.contains("Unique bugs found:      0"));
     }
 }

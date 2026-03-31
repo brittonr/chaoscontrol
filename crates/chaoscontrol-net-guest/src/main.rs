@@ -29,41 +29,6 @@ use serde_json::json;
 const SERVER_PORT: u16 = 8080;
 const NUM_VMS: usize = 3;
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Init helpers
-// ═══════════════════════════════════════════════════════════════════════
-
-fn mount_procfs() {
-    unsafe {
-        libc::mkdir(c"/proc".as_ptr().cast(), 0o555);
-        libc::mount(
-            c"proc".as_ptr().cast(),
-            c"/proc".as_ptr().cast(),
-            c"proc".as_ptr().cast(),
-            0,
-            std::ptr::null(),
-        );
-    }
-}
-
-fn mount_devtmpfs() {
-    unsafe {
-        libc::mkdir(c"/dev".as_ptr().cast(), 0o755);
-        let ret = libc::mount(
-            c"devtmpfs".as_ptr().cast(),
-            c"/dev".as_ptr().cast(),
-            c"devtmpfs".as_ptr().cast(),
-            0,
-            std::ptr::null(),
-        );
-        if ret != 0 {
-            let err = *libc::__errno_location();
-            if err != libc::EBUSY {
-                eprintln!("mount devtmpfs failed (errno={})", err);
-            }
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Server (VM 0)
@@ -276,13 +241,8 @@ impl Client {
 // ═══════════════════════════════════════════════════════════════════════
 
 fn main() {
-    // Initialize SDK early — this also sets iopl(3) for port I/O transport.
-    chaoscontrol_sdk::chaoscontrol_init();
-
+    chaoscontrol_sdk::runtime::guest_init();
     println!("chaoscontrol-net-guest starting...");
-    mount_devtmpfs();
-    mount_procfs();
-    coverage::init();
     let my_id = vm_id();
     let num_vms = chaoscontrol_guest_net::parse_cmdline_param("num_vms").unwrap_or(NUM_VMS);
 

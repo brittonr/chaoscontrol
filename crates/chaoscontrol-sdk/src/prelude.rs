@@ -16,6 +16,10 @@
 // ── Init ─────────────────────────────────────────────────────────────
 pub use crate::{chaoscontrol_init, is_in_vm, is_local_output};
 
+// ── Guest runtime ────────────────────────────────────────────────────
+#[cfg(feature = "full")]
+pub use crate::runtime::guest_init;
+
 // ── Assertion functions ──────────────────────────────────────────────
 pub use crate::assert::{
     always, always_or_unreachable, always_or_unreachable_with_id, always_with_id, assert_raw,

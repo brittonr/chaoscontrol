@@ -29,35 +29,6 @@ use chaoscontrol_sdk::{coverage, kcov, lifecycle, random};
 use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
-//  Init helpers — mount devtmpfs so /dev/mem + /dev/port exist
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Mount devtmpfs on `/dev` so the SDK can access `/dev/mem` (shared
-/// memory page) and `/dev/port` (I/O port trigger).  The kernel has
-/// already opened `/dev/console` for us on fd 0/1/2, so `println!`
-/// works before this call.
-fn mount_devtmpfs() {
-    unsafe {
-        // Ensure /dev exists (may already from initramfs)
-        libc::mkdir(c"/dev".as_ptr().cast(), 0o755);
-        let ret = libc::mount(
-            c"devtmpfs".as_ptr().cast(),
-            c"/dev".as_ptr().cast(),
-            c"devtmpfs".as_ptr().cast(),
-            0,
-            std::ptr::null(),
-        );
-        if ret != 0 {
-            let err = *libc::__errno_location();
-            // EBUSY (16) is fine — already mounted
-            if err != libc::EBUSY {
-                eprintln!("chaoscontrol-guest: mount devtmpfs failed (errno={})", err,);
-            }
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 //  Workload
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -68,17 +39,8 @@ const NUM_CHOICES: usize = 4;
 
 fn main() {
     // ── Phase 0: early init ─────────────────────────────────────
-    mount_devtmpfs();
+    guest_init();
     println!("chaoscontrol-guest: starting");
-
-    // ── Phase 1: coverage init ──────────────────────────────────
-    chaoscontrol_init();
-    coverage::init();
-    let kcov_ok = kcov::init();
-    println!(
-        "chaoscontrol-guest: coverage initialized (kcov={})",
-        if kcov_ok { "active" } else { "unavailable" }
-    );
 
     // ── Phase 2: signal setup complete ──────────────────────────
     lifecycle::setup_complete(&json!({"program": "chaoscontrol-guest", "version": "0.1.0"}));

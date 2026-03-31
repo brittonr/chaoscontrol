@@ -34,45 +34,10 @@ fn role_str(r: Role) -> &'static str {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Init
-// ═══════════════════════════════════════════════════════════════════════
-
-fn mount_devtmpfs() {
-    unsafe {
-        libc::mkdir(c"/dev".as_ptr().cast(), 0o755);
-        let ret = libc::mount(
-            c"devtmpfs".as_ptr().cast(),
-            c"/dev".as_ptr().cast(),
-            c"devtmpfs".as_ptr().cast(),
-            0,
-            std::ptr::null(),
-        );
-        if ret != 0 {
-            let err = *libc::__errno_location();
-            if err != libc::EBUSY {
-                eprintln!("raft: mount devtmpfs failed (errno={})", err);
-            }
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Kernel cmdline parsing
 // ═══════════════════════════════════════════════════════════════════════
-
-fn mount_proc() {
-    unsafe {
-        libc::mkdir(c"/proc".as_ptr().cast(), 0o555);
-        libc::mount(
-            c"proc".as_ptr().cast(),
-            c"/proc".as_ptr().cast(),
-            c"proc".as_ptr().cast(),
-            0,
-            std::ptr::null(),
-        );
-    }
-}
 
 /// Parse `raft_bug=NAME` from /proc/cmdline.
 fn parse_bug_mode() -> BugMode {
@@ -201,21 +166,13 @@ impl CommittedValues {
 // ═══════════════════════════════════════════════════════════════════════
 
 fn main() {
-    mount_devtmpfs();
-    mount_proc();
+    guest_init();
 
     let bug = parse_bug_mode();
     println!("raft: starting 3-node cluster (bug={})", bug.name());
 
-    chaoscontrol_init();
-    coverage::init();
-    let kcov_ok = kcov::init();
     lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": 3, "bug": bug.name()}));
-    println!(
-        "raft: setup_complete (kcov={}, bug={})",
-        if kcov_ok { "active" } else { "unavailable" },
-        bug.name(),
-    );
+    println!("raft: setup_complete (bug={})", bug.name());
 
     // Initialize 3 nodes with the selected bug mode
     let mut nodes: Vec<Node> = (0..NUM_NODES).map(|i| Node::new_with_bug(i, bug)).collect();

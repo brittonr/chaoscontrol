@@ -73,6 +73,9 @@ mod internal;
 #[cfg(feature = "full")]
 pub mod kcov;
 
+#[cfg(feature = "full")]
+pub mod runtime;
+
 /// Initialize the ChaosControl SDK.
 ///
 /// Detects the runtime mode (VM transport, local JSON output, or no-op)

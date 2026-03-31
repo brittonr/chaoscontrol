@@ -29,32 +29,32 @@ pub use crate::{
     cc_assert_always,
     // Always comparisons
     cc_assert_always_eq,
+    cc_assert_always_err,
     cc_assert_always_ge,
     cc_assert_always_gt,
     cc_assert_always_le,
     cc_assert_always_lt,
     cc_assert_always_ne,
+    // Result assertions
+    cc_assert_always_ok,
     cc_assert_always_or_unreachable,
     cc_assert_always_some,
+    // Implication
+    cc_assert_implies,
     cc_assert_raw,
     cc_assert_reachable,
     cc_assert_sometimes,
     // Sometimes comparisons
     cc_assert_sometimes_eq,
+    cc_assert_sometimes_err,
     cc_assert_sometimes_ge,
     cc_assert_sometimes_gt,
     cc_assert_sometimes_le,
     cc_assert_sometimes_lt,
     cc_assert_sometimes_ne,
+    cc_assert_sometimes_ok,
     cc_assert_sometimes_some,
     cc_assert_unreachable,
-    // Implication
-    cc_assert_implies,
-    // Result assertions
-    cc_assert_always_ok,
-    cc_assert_sometimes_ok,
-    cc_assert_always_err,
-    cc_assert_sometimes_err,
 };
 
 // ── Guidance ─────────────────────────────────────────────────────────

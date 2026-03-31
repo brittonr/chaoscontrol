@@ -407,6 +407,7 @@ mod tests {
                 assertion_location: "test assertion".to_string(),
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
+                dedup_key: Some(0),
             }],
             rounds_completed: 10,
             total_branches_run: 80,
@@ -422,6 +423,7 @@ mod tests {
                 frontier_size: 3,
                 corpus_size: 3,
             }]),
+            seen_dedup_keys: None,
         };
 
         let details = vec![AssertionDetail {

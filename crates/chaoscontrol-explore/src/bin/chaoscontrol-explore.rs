@@ -960,6 +960,7 @@ fn cmd_minimize(
         schedule,
         snapshot: None,
         tick: serialized_bug.tick,
+        dedup_key: serialized_bug.dedup_key.unwrap_or(0),
     };
 
     // Parse scheduling strategy
@@ -1064,6 +1065,7 @@ fn cmd_minimize(
             assertion_location: String::new(),
             schedule: (&result.schedule).into(),
             tick: 0,
+            dedup_key: None,
         };
 
         match serde_json::to_string_pretty(&minimized_bug) {

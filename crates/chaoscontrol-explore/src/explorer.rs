@@ -19,7 +19,8 @@ use log::{debug, info, warn};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 
@@ -171,6 +172,8 @@ pub struct Explorer {
     worker_pool: Option<WorkerPool>,
     /// Optional event sink for live dashboard updates.
     event_sink: Option<SyncSender<crate::dashboard_types::DashboardEvent>>,
+    /// Dedup keys for bugs already in the corpus.
+    seen_dedup_keys: BTreeSet<u64>,
 }
 
 impl Explorer {
@@ -200,6 +203,7 @@ impl Explorer {
             memory_bases: Vec::new(),
             worker_pool: None,
             event_sink: None,
+            seen_dedup_keys: BTreeSet::new(),
         }
     }
 
@@ -967,8 +971,29 @@ impl Explorer {
         score
     }
 
-    /// Extract bug reports from a branch result.
-    fn extract_bugs(&self, result: &BranchResult, schedule: &FaultSchedule) -> Vec<BugReport> {
+    /// Compute dedup key from assertion ID and sorted fault type names.
+    fn compute_dedup_key(assertion_id: u64, schedule: &FaultSchedule) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        assertion_id.hash(&mut hasher);
+
+        // Collect unique fault type names, sorted
+        let mut type_names: Vec<&str> = schedule
+            .faults()
+            .iter()
+            .map(|sf| sf.fault.type_name())
+            .collect();
+        type_names.sort_unstable();
+        type_names.dedup();
+        for name in &type_names {
+            name.hash(&mut hasher);
+        }
+
+        hasher.finish()
+    }
+
+    /// Extract bug reports from a branch result, deduplicating by
+    /// (assertion_id, sorted fault type set).
+    fn extract_bugs(&mut self, result: &BranchResult, schedule: &FaultSchedule) -> Vec<BugReport> {
         let mut bugs = Vec::new();
 
         // Check oracle for failed assertions
@@ -977,6 +1002,18 @@ impl Explorer {
                 record.verdict(),
                 chaoscontrol_fault::oracle::Verdict::Failed
             ) {
+                let dedup_key = Self::compute_dedup_key(*assertion_id as u64, schedule);
+
+                // Skip if we've already seen this (assertion, fault_types) pair
+                if self.seen_dedup_keys.contains(&dedup_key) {
+                    debug!(
+                        "Dedup: skipping duplicate bug (assertion={}, dedup_key={:#x})",
+                        record.message, dedup_key
+                    );
+                    continue;
+                }
+                self.seen_dedup_keys.insert(dedup_key);
+
                 let bug = BugReport {
                     bug_id: 0, // Will be assigned by corpus
                     assertion_id: *assertion_id as u64,
@@ -984,6 +1021,7 @@ impl Explorer {
                     schedule: schedule.clone(),
                     snapshot: result.snapshot.clone(),
                     tick: result.total_ticks,
+                    dedup_key,
                 };
 
                 // Emit BugFound event for dashboard.
@@ -1305,6 +1343,7 @@ impl Explorer {
             total_edges: self.coverage.stats().total_edges,
             seed: self.config.seed,
             round_history: Some(self.round_history.clone()),
+            seen_dedup_keys: Some(self.seen_dedup_keys.iter().copied().collect()),
         }
     }
 
@@ -1369,6 +1408,11 @@ impl Explorer {
             memory_bases: Vec::new(),
             worker_pool: None,
             event_sink: None,
+            seen_dedup_keys: checkpoint
+                .seen_dedup_keys
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
         }
     }
 }

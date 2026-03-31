@@ -168,10 +168,10 @@ const SERIAL_IRQ: u32 = 4;
 /// Multiple patterns catch crashes that don't print "Kernel panic"
 /// (e.g., double faults where the GPF handler itself faults).
 const PANIC_PATTERNS: [u64; 4] = [
-    u64::from_be_bytes(*b"Kernel p"),  // "Kernel panic - not syncing:"
-    u64::from_be_bytes(*b"---[ end"),  // "---[ end trace ... ]---" (every oops)
-    u64::from_be_bytes(*b"RIP: 001"),  // kernel-mode crash dump (CS=0x0010)
-    u64::from_be_bytes(*b"end Kern"),  // "end Kernel panic" (panic footer)
+    u64::from_be_bytes(*b"Kernel p"), // "Kernel panic - not syncing:"
+    u64::from_be_bytes(*b"---[ end"), // "---[ end trace ... ]---" (every oops)
+    u64::from_be_bytes(*b"RIP: 001"), // kernel-mode crash dump (CS=0x0010)
+    u64::from_be_bytes(*b"end Kern"), // "end Kernel panic" (panic footer)
 ];
 
 /// PIT timer IRQ line number (standard PC, IRQ 0).
@@ -2355,8 +2355,10 @@ impl DeterministicVm {
             if ret == 0 {
                 self.thread_timer = Some(SendTimerId(timer_id));
             } else {
-                log::warn!("timer_create failed (errno={}), falling back to ITIMER_REAL",
-                    *libc::__errno_location());
+                log::warn!(
+                    "timer_create failed (errno={}), falling back to ITIMER_REAL",
+                    *libc::__errno_location()
+                );
             }
         }
     }
@@ -2835,9 +2837,7 @@ impl DeterministicVm {
                             }
                         }
                     }
-                } else if self.sigalrm_without_exit >= 5
-                    && self.fault_engine.is_setup_complete()
-                {
+                } else if self.sigalrm_without_exit >= 5 && self.fault_engine.is_setup_complete() {
                     // Single-vCPU VM stuck in a tight loop with no exits
                     // for ~500ms. Treat as crashed.
                     log::warn!(
@@ -3584,12 +3584,16 @@ mod tests {
 
     #[test]
     fn test_panic_sliding_window_detects_end_trace() {
-        assert!(sliding_window_detects(b"---[ end trace 0000000000000000 ]---"));
+        assert!(sliding_window_detects(
+            b"---[ end trace 0000000000000000 ]---"
+        ));
     }
 
     #[test]
     fn test_panic_sliding_window_detects_rip_dump() {
-        assert!(sliding_window_detects(b"RIP: 0010:entry_SYSCALL_64+0x0/0xe"));
+        assert!(sliding_window_detects(
+            b"RIP: 0010:entry_SYSCALL_64+0x0/0xe"
+        ));
     }
 
     #[test]

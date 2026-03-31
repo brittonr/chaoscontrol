@@ -533,6 +533,9 @@ pub struct SerializableBug {
     pub assertion_location: String,
     pub schedule: SerializableSchedule,
     pub tick: u64,
+    /// Dedup key: hash of (assertion_id, sorted fault type names).
+    #[serde(default)]
+    pub dedup_key: Option<u64>,
 }
 
 impl From<&BugReport> for SerializableBug {
@@ -543,6 +546,7 @@ impl From<&BugReport> for SerializableBug {
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
+            dedup_key: Some(bug.dedup_key),
         }
     }
 }
@@ -560,6 +564,9 @@ pub struct ExplorationCheckpoint {
     /// Per-round exploration history (optional for backward compat).
     #[serde(default)]
     pub round_history: Option<Vec<crate::explorer::RoundHistory>>,
+    /// Dedup keys for bugs already seen (optional for backward compat).
+    #[serde(default)]
+    pub seen_dedup_keys: Option<Vec<u64>>,
 }
 
 /// Save a checkpoint to a JSON file.
@@ -631,6 +638,7 @@ mod tests {
             total_edges: 1234,
             seed: 42,
             round_history: None,
+            seen_dedup_keys: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -671,6 +679,7 @@ mod tests {
             total_edges: 567,
             seed: 123,
             round_history: None,
+            seen_dedup_keys: None,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -733,6 +742,7 @@ mod tests {
             total_edges: 52,
             seed: 1,
             round_history: Some(history.clone()),
+            seen_dedup_keys: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();

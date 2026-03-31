@@ -550,6 +550,44 @@ impl fmt::Display for Fault {
     }
 }
 
+impl Fault {
+    /// Short discriminant name (no parameters) for dedup hashing.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Fault::NetworkPartition { .. } => "network-partition",
+            Fault::NetworkLatency { .. } => "network-latency",
+            Fault::PacketLoss { .. } => "packet-loss",
+            Fault::PacketCorruption { .. } => "packet-corrupt",
+            Fault::PacketReorder { .. } => "packet-reorder",
+            Fault::NetworkJitter { .. } => "network-jitter",
+            Fault::NetworkBandwidth { .. } => "network-bandwidth",
+            Fault::PacketDuplicate { .. } => "packet-duplicate",
+            Fault::NetworkHeal => "network-heal",
+            Fault::DiskReadError { .. } => "disk-read-error",
+            Fault::DiskWriteError { .. } => "disk-write-error",
+            Fault::DiskTornWrite { .. } => "disk-torn-write",
+            Fault::DiskCorruption { .. } => "disk-corrupt",
+            Fault::DiskFull { .. } => "disk-full",
+            Fault::ProcessKill { .. } => "process-kill",
+            Fault::ProcessPause { .. } => "process-pause",
+            Fault::ProcessRestart { .. } => "process-restart",
+            Fault::ClockSkew { .. } => "clock-skew",
+            Fault::ClockJump { .. } => "clock-jump",
+            Fault::MemoryPressure { .. } => "memory-pressure",
+            Fault::InjectInterrupt { .. } => "inject-irq",
+            Fault::InjectNmi { .. } => "inject-nmi",
+            Fault::DiskSlow { .. } => "disk-slow",
+            Fault::DiskFsyncLie { .. } => "disk-fsync-lie",
+            Fault::DiskFsyncFlush { .. } => "disk-fsync-flush",
+            Fault::DiskPartialRead { .. } => "disk-partial-read",
+            Fault::CpuBitflip { .. } => "cpu-bitflip",
+            Fault::CpuStall { .. } => "cpu-stall",
+            Fault::ClockFreeze { .. } => "clock-freeze",
+            Fault::ClockJitter { .. } => "clock-jitter",
+        }
+    }
+}
+
 /// Broad category for a fault.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaultCategory {

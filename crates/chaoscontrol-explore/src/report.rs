@@ -345,6 +345,7 @@ mod tests {
             schedule: FaultSchedule::new(),
             snapshot: None,
             tick: 1000,
+            dedup_key: 0,
         }
     }
 
@@ -467,6 +468,7 @@ mod tests {
             schedule,
             snapshot: None,
             tick: 5000,
+            dedup_key: 0,
         };
 
         let formatted = format_bug(&bug);
@@ -785,6 +787,7 @@ mod tests {
             schedule,
             snapshot: None,
             tick: 5000,
+            dedup_key: 0,
         };
 
         let formatted = format_bug(&bug);

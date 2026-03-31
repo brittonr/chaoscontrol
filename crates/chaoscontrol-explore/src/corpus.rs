@@ -19,6 +19,8 @@ pub struct BugReport {
     pub snapshot: Option<SimulationSnapshot>,
     /// Tick when the bug was found.
     pub tick: u64,
+    /// Dedup key: hash of (assertion_id, sorted fault type names).
+    pub dedup_key: u64,
 }
 
 /// An entry in the corpus — a schedule that found new coverage or bugs.
@@ -164,6 +166,7 @@ mod tests {
                 schedule: FaultSchedule::new(),
                 snapshot: None,
                 tick: 1000,
+                dedup_key: 0,
             });
         }
 
@@ -279,6 +282,7 @@ mod tests {
             schedule: FaultSchedule::new(),
             snapshot: None,
             tick: 5000,
+            dedup_key: 0,
         };
 
         assert_eq!(bug.bug_id, 42);

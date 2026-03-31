@@ -13,7 +13,7 @@ use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
-use chaoscontrol_vmm::scheduler::SchedulingStrategy;
+use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use chaoscontrol_vmm::vm::VmConfig;
 use log::{debug, info, warn};
 use rand::SeedableRng;
@@ -120,6 +120,16 @@ pub struct ExplorerConfig {
     /// 0 = never stop early due to stale rounds (run all max_rounds).
     /// Default: 10.
     pub stale_round_limit: u64,
+    /// Enable per-branch vCPU schedule diversity.
+    ///
+    /// When `true`, each branch gets a different scheduler seed so
+    /// vCPUs interleave differently across branches. The schedule
+    /// fingerprint is injected into the coverage bitmap so different
+    /// interleavings are treated as distinct.
+    ///
+    /// Default: `true` when `vm_config.num_vcpus > 1`, `false` otherwise.
+    /// No-op when `num_vcpus == 1`.
+    pub schedule_diversity: bool,
 }
 
 impl Default for ExplorerConfig {
@@ -138,7 +148,7 @@ impl Default for ExplorerConfig {
             scheduling_strategy: SchedulingStrategy::RoundRobin,
             mutation: MutationConfig::default(),
             exploration_mode: ExplorationMode::default(),
-            coverage_gpa: COVERAGE_BITMAP_ADDR, // Use protocol-defined address
+            coverage_gpa: COVERAGE_BITMAP_ADDR,
             output_dir: None,
             disk_image_path: None,
             bootstrap_budget: 10_000,
@@ -147,6 +157,7 @@ impl Default for ExplorerConfig {
             dlog_memory_hash: false,
             num_workers: 1,
             stale_round_limit: 10,
+            schedule_diversity: false,
         }
     }
 }
@@ -256,8 +267,11 @@ impl Explorer {
     /// Returns the final report with all bugs found, coverage stats, etc.
     pub fn run(&mut self) -> Result<ExplorationReport, ExploreError> {
         info!(
-            "Starting exploration: {} rounds, {} branches/round, {} VMs",
-            self.config.max_rounds, self.config.branch_factor, self.config.num_vms
+            "Starting exploration: {} rounds, {} branches/round, {} VMs, schedule_diversity={}",
+            self.config.max_rounds,
+            self.config.branch_factor,
+            self.config.num_vms,
+            self.config.schedule_diversity
         );
 
         // Bootstrap: boot kernel + guest init until setup_complete.
@@ -477,6 +491,7 @@ impl Explorer {
                     .map(|(i, schedule)| BranchWork {
                         schedule: schedule.clone(),
                         branch_index: i,
+                        schedule_variant: None,
                     })
                     .collect();
 
@@ -500,6 +515,7 @@ impl Explorer {
             // code coverage saturates.
             let mut enriched = result.coverage.clone();
             Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+            Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
 
@@ -599,6 +615,10 @@ impl Explorer {
         // Check if the probe itself found new coverage
         let mut probe_enriched = probe_result.coverage.clone();
         Self::enrich_with_assertion_state(&mut probe_enriched, &probe_result.oracle_report);
+        Self::enrich_with_schedule_fingerprint(
+            &mut probe_enriched,
+            probe_result.schedule_fingerprint,
+        );
         let probe_new = probe_enriched.has_new_coverage(self.coverage.global_coverage());
         if probe_new > 0 {
             new_coverage_edges += probe_new;
@@ -685,6 +705,7 @@ impl Explorer {
             // Enrich coverage with assertion-state edges.
             let mut enriched = result.coverage.clone();
             Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+            Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
 
@@ -833,6 +854,8 @@ impl Explorer {
             total_ticks,
             bugs: Vec::new(),
             snapshot: snap,
+            schedule_variant: None,
+            schedule_fingerprint: 0,
         })
     }
 
@@ -911,6 +934,8 @@ impl Explorer {
             controller.snapshot_all().ok()
         };
 
+        let schedule_fingerprint = controller.schedule_fingerprint();
+
         Ok(BranchResult {
             coverage,
             oracle_report: result_info,
@@ -920,6 +945,8 @@ impl Explorer {
             total_ticks,
             bugs: Vec::new(),
             snapshot: snap,
+            schedule_variant: None,
+            schedule_fingerprint,
         })
     }
 
@@ -993,6 +1020,8 @@ impl Explorer {
             controller.snapshot_all().ok()
         };
 
+        let schedule_fingerprint = controller.schedule_fingerprint();
+
         Ok(BranchResult {
             coverage,
             oracle_report: result_info,
@@ -1002,6 +1031,8 @@ impl Explorer {
             total_ticks,
             bugs: Vec::new(),
             snapshot: snap,
+            schedule_variant: None,
+            schedule_fingerprint,
         })
     }
 
@@ -1081,6 +1112,7 @@ impl Explorer {
                     snapshot: result.snapshot.clone(),
                     tick: result.total_ticks,
                     dedup_key,
+                    schedule_variant: result.schedule_variant.clone(),
                 };
 
                 // Emit BugFound event for dashboard.
@@ -1190,13 +1222,15 @@ impl Explorer {
             };
 
             // Hash (assertion_id, verdict, hit_bucket) into a coverage edge.
-            // Use high half of MAP_SIZE to avoid collisions with code edges.
+            // Use assertion region: [CODE_REGION_END, ASSERTION_REGION_END)
+            let assertion_region_size =
+                crate::coverage::ASSERTION_REGION_END - crate::coverage::CODE_REGION_END;
             let mut hasher = DefaultHasher::new();
             assertion_id.hash(&mut hasher);
             verdict_code.hash(&mut hasher);
             hit_bucket.hash(&mut hasher);
-            let index = (hasher.finish() as usize % (crate::coverage::MAP_SIZE / 2))
-                + (crate::coverage::MAP_SIZE / 2);
+            let index = (hasher.finish() as usize % assertion_region_size)
+                + crate::coverage::CODE_REGION_END;
             coverage.record_hit(index);
 
             // Also hash true/false ratio bucket for always/sometimes assertions.
@@ -1207,10 +1241,37 @@ impl Explorer {
                 assertion_id.hash(&mut hasher2);
                 0xA55Eu64.hash(&mut hasher2); // domain separator
                 ratio_bucket.hash(&mut hasher2);
-                let index2 = (hasher2.finish() as usize % (crate::coverage::MAP_SIZE / 2))
-                    + (crate::coverage::MAP_SIZE / 2);
+                let index2 = (hasher2.finish() as usize % assertion_region_size)
+                    + crate::coverage::CODE_REGION_END;
                 coverage.record_hit(index2);
             }
+        }
+    }
+
+    /// Enrich a branch's coverage bitmap with the schedule fingerprint.
+    ///
+    /// Hashes the fingerprint into 8 slots in the schedule region
+    /// `[ASSERTION_REGION_END, MAP_SIZE)` so branches with different
+    /// vCPU interleavings look different to the coverage collector.
+    /// No-op when fingerprint is 0 (single-vCPU).
+    fn enrich_with_schedule_fingerprint(coverage: &mut CoverageBitmap, fingerprint: u64) {
+        if fingerprint == 0 {
+            return;
+        }
+
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let schedule_region_size =
+            crate::coverage::MAP_SIZE - crate::coverage::ASSERTION_REGION_END;
+
+        for slot in 0u64..8 {
+            let mut hasher = DefaultHasher::new();
+            fingerprint.hash(&mut hasher);
+            slot.hash(&mut hasher);
+            let index = (hasher.finish() as usize % schedule_region_size)
+                + crate::coverage::ASSERTION_REGION_END;
+            coverage.record_hit(index);
         }
     }
 
@@ -1443,6 +1504,8 @@ impl Explorer {
             coverage_gpa: self.config.coverage_gpa,
             disk_image_path: self.config.disk_image_path.clone(),
             bootstrap_budget: self.config.bootstrap_budget,
+            schedule_diversity: self.config.schedule_diversity,
+            schedule_mutation_ratio: self.config.mutation.schedule_mutation_ratio,
         };
 
         let bugs: Vec<SerializableBug> = self.all_bugs().iter().map(|b| b.into()).collect();
@@ -1490,6 +1553,7 @@ impl Explorer {
             dlog_memory_hash: false,
             num_workers: 1,
             stale_round_limit: 10,
+            schedule_diversity: checkpoint.config.schedule_diversity,
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -1538,6 +1602,7 @@ impl Explorer {
                     snapshot: None,
                     tick: b.tick,
                     dedup_key: b.dedup_key.unwrap_or(0),
+                    schedule_variant: None,
                 })
                 .collect(),
             consecutive_stale_rounds: 0,
@@ -1555,6 +1620,10 @@ pub struct BranchResult {
     pub total_ticks: u64,
     pub bugs: Vec<BugReport>,
     pub snapshot: Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+    /// Schedule variant used for this branch (None = default scheduling).
+    pub schedule_variant: Option<ScheduleVariant>,
+    /// Combined schedule fingerprint from all VMs.
+    pub schedule_fingerprint: u64,
 }
 
 impl Clone for BranchResult {
@@ -1568,6 +1637,8 @@ impl Clone for BranchResult {
             total_ticks: self.total_ticks,
             bugs: self.bugs.clone(),
             snapshot: self.snapshot.clone(),
+            schedule_variant: self.schedule_variant.clone(),
+            schedule_fingerprint: self.schedule_fingerprint,
         }
     }
 }
@@ -1728,6 +1799,8 @@ mod tests {
             total_ticks: 100,
             bugs: Vec::new(),
             snapshot: None,
+            schedule_variant: None,
+            schedule_fingerprint: 0,
         };
 
         // Add some coverage

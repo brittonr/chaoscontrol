@@ -3,6 +3,7 @@
 use crate::coverage::CoverageBitmap;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
+use chaoscontrol_vmm::scheduler::ScheduleVariant;
 
 /// A bug report produced during exploration.
 #[derive(Debug, Clone)]
@@ -21,6 +22,8 @@ pub struct BugReport {
     pub tick: u64,
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     pub dedup_key: u64,
+    /// Schedule variant used for this branch (for reproduction).
+    pub schedule_variant: Option<ScheduleVariant>,
 }
 
 /// An entry in the corpus — a schedule that found new coverage or bugs.
@@ -167,6 +170,7 @@ mod tests {
                 snapshot: None,
                 tick: 1000,
                 dedup_key: 0,
+                schedule_variant: None,
             });
         }
 
@@ -283,6 +287,7 @@ mod tests {
             snapshot: None,
             tick: 5000,
             dedup_key: 0,
+            schedule_variant: None,
         };
 
         assert_eq!(bug.bug_id, 42);

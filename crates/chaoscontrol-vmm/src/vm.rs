@@ -3480,6 +3480,16 @@ impl DeterministicVm {
         &mut self.fault_engine
     }
 
+    /// Get a reference to the vCPU scheduler.
+    pub fn scheduler(&self) -> &VcpuScheduler {
+        &self.scheduler
+    }
+
+    /// Get a mutable reference to the vCPU scheduler.
+    pub fn scheduler_mut(&mut self) -> &mut VcpuScheduler {
+        &mut self.scheduler
+    }
+
     // ─── Internal: SDK hypercall handler ─────────────────────────
 
     /// Handle an SDK hypercall triggered by `outb(0x510, 0)`.

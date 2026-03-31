@@ -2,6 +2,7 @@
 
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -17,6 +18,12 @@ pub struct MutationConfig {
     pub remove_prob: f64,
     pub shift_prob: f64,
     pub replace_prob: f64,
+    /// Fraction of mutations that target scheduling (0.0 = disabled).
+    /// When > 0, each `mutate_with_schedule` call has this probability
+    /// of generating a schedule variant instead of mutating faults.
+    pub schedule_mutation_ratio: f64,
+    /// Base quantum for QuantumShift mutations.
+    pub base_quantum: u64,
 }
 
 impl Default for MutationConfig {
@@ -28,6 +35,8 @@ impl Default for MutationConfig {
             remove_prob: 0.2,
             shift_prob: 0.2,
             replace_prob: 0.2,
+            schedule_mutation_ratio: 0.0,
+            base_quantum: 100,
         }
     }
 }
@@ -217,6 +226,89 @@ impl ScheduleMutator {
         }
 
         *schedule = new_schedule;
+    }
+
+    /// Generate N (fault schedule, schedule variant) pairs.
+    ///
+    /// Each pair may have a schedule variant if schedule diversity is
+    /// enabled (schedule_mutation_ratio > 0). The variant is `None`
+    /// when the mutation targets faults only.
+    pub fn mutate_with_schedule(
+        &mut self,
+        base: &FaultSchedule,
+        n: usize,
+        config: &MutationConfig,
+    ) -> Vec<(FaultSchedule, Option<ScheduleVariant>)> {
+        let mut results = Vec::with_capacity(n);
+        for _ in 0..n {
+            let child_seed = self.seed.wrapping_add(self.counter);
+            self.counter += 1;
+            let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+
+            let variant = if config.schedule_mutation_ratio > 0.0
+                && rng.gen::<f64>() < config.schedule_mutation_ratio
+            {
+                Some(self.random_schedule_variant(config, &mut rng))
+            } else {
+                None
+            };
+
+            // Always mutate the fault schedule too
+            let schedule = self.mutate_once(base, config);
+            results.push((schedule, variant));
+        }
+        results
+    }
+
+    /// Generate a random `ScheduleVariant`.
+    ///
+    /// Picks one of three operators: ReSeed (50%), QuantumShift (30%),
+    /// StrategyFlip (20%).
+    fn random_schedule_variant(
+        &self,
+        config: &MutationConfig,
+        rng: &mut ChaCha8Rng,
+    ) -> ScheduleVariant {
+        let scheduler_seed = rng.gen::<u64>();
+        let roll = rng.gen::<f64>();
+
+        if roll < 0.5 {
+            // ReSeed only — different interleaving, same strategy/quantum
+            ScheduleVariant {
+                scheduler_seed,
+                ..Default::default()
+            }
+        } else if roll < 0.8 {
+            // QuantumShift — multiply or divide by 2-8×
+            let factor = rng.gen_range(2u64..=8);
+            let quantum = if rng.gen_bool(0.5) {
+                config.base_quantum.saturating_mul(factor)
+            } else {
+                (config.base_quantum / factor).max(1)
+            };
+            ScheduleVariant {
+                scheduler_seed,
+                quantum_override: Some(quantum),
+                ..Default::default()
+            }
+        } else {
+            // StrategyFlip — toggle between RoundRobin and Randomized
+            let strategy = if rng.gen_bool(0.5) {
+                SchedulingStrategy::RoundRobin
+            } else {
+                let min_q = (config.base_quantum / 4).max(1);
+                let max_q = config.base_quantum.saturating_mul(4);
+                SchedulingStrategy::Randomized {
+                    min_quantum: min_q,
+                    max_quantum: max_q,
+                }
+            };
+            ScheduleVariant {
+                scheduler_seed,
+                strategy_override: Some(strategy),
+                ..Default::default()
+            }
+        }
     }
 
     /// Generate a random fault suitable for the config.

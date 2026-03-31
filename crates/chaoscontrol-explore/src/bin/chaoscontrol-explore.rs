@@ -647,6 +647,7 @@ fn cmd_run(
     };
 
     // Build configuration
+    let smp = vm_config.num_vcpus > 1;
     let config = ExplorerConfig {
         num_vms: vms,
         vm_config,
@@ -670,6 +671,7 @@ fn cmd_run(
         dlog_memory_hash,
         num_workers: workers,
         stale_round_limit: 10,
+        schedule_diversity: smp,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -908,6 +910,7 @@ fn cmd_campaign(
         ..VmConfig::default()
     };
 
+    let smp = vm_config.num_vcpus > 1;
     let base_config = ExplorerConfig {
         num_vms: vms,
         vm_config,
@@ -931,6 +934,7 @@ fn cmd_campaign(
         dlog_memory_hash: false,
         num_workers: 1, // forced to 1 in campaign mode
         stale_round_limit: 10,
+        schedule_diversity: smp,
     };
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
@@ -1249,6 +1253,7 @@ fn cmd_minimize(
         snapshot: None,
         tick: serialized_bug.tick,
         dedup_key: serialized_bug.dedup_key.unwrap_or(0),
+        schedule_variant: None,
     };
 
     // Parse scheduling strategy
@@ -1354,6 +1359,7 @@ fn cmd_minimize(
             schedule: (&result.schedule).into(),
             tick: 0,
             dedup_key: None,
+            schedule_variant: None,
         };
 
         match serde_json::to_string_pretty(&minimized_bug) {

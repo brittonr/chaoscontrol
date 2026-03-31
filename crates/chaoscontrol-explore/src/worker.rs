@@ -8,6 +8,7 @@ use crate::coverage::{CoverageBitmap, CoverageCollector};
 use crate::explorer::{BranchResult, ExplorerConfig};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
+use chaoscontrol_vmm::scheduler::ScheduleVariant;
 use log::{debug, info};
 use std::sync::Arc;
 
@@ -18,6 +19,8 @@ pub struct BranchWork {
     pub schedule: FaultSchedule,
     /// Branch index (for deterministic result ordering).
     pub branch_index: usize,
+    /// Optional schedule variant for vCPU interleaving diversity.
+    pub schedule_variant: Option<ScheduleVariant>,
 }
 
 /// Pool of worker controllers for parallel branch execution.
@@ -197,6 +200,7 @@ impl WorkerPool {
                                     &mut ctrl,
                                     snap_ref,
                                     item.schedule.clone(),
+                                    item.schedule_variant.as_ref(),
                                     coverage_gpa,
                                     ticks_per_branch,
                                     !bases.is_empty(),
@@ -241,6 +245,7 @@ fn run_single_branch(
     controller: &mut SimulationController,
     snapshot: &SimulationSnapshot,
     schedule: FaultSchedule,
+    schedule_variant: Option<&ScheduleVariant>,
     coverage_gpa: u64,
     ticks_per_branch: u64,
     use_incremental: bool,
@@ -252,6 +257,11 @@ fn run_single_branch(
         controller.restore_all(snapshot)?;
     }
     controller.reset_vm_statuses();
+
+    // Apply schedule variant (vCPU interleaving diversity)
+    if let Some(variant) = schedule_variant {
+        controller.apply_schedule_variant(variant);
+    }
 
     // Apply schedule
     controller.set_schedule(schedule.clone());
@@ -300,6 +310,8 @@ fn run_single_branch(
         controller.snapshot_all().ok()
     };
 
+    let schedule_fingerprint = controller.schedule_fingerprint();
+
     Ok(BranchResult {
         coverage,
         oracle_report: result_info,
@@ -309,6 +321,8 @@ fn run_single_branch(
         total_ticks,
         bugs: Vec::new(),
         snapshot: snap,
+        schedule_variant: schedule_variant.cloned(),
+        schedule_fingerprint,
     })
 }
 
@@ -321,6 +335,7 @@ mod tests {
         let work = BranchWork {
             schedule: FaultSchedule::new(),
             branch_index: 42,
+            schedule_variant: None,
         };
         assert_eq!(work.branch_index, 42);
     }

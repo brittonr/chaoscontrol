@@ -4,6 +4,7 @@
 //! in a single deterministic simulation, handling fault injection, network
 //! routing, and deterministic scheduling.
 
+use crate::scheduler::ScheduleVariant;
 use crate::snapshot::VmSnapshot;
 use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
@@ -1761,6 +1762,39 @@ impl SimulationController {
     /// Replace the fault schedule (used by the explorer between branches).
     pub fn set_schedule(&mut self, schedule: FaultSchedule) {
         self.fault_engine.set_schedule(schedule);
+    }
+
+    /// Apply a [`ScheduleVariant`] to all VMs' vCPU schedulers.
+    ///
+    /// Each VM gets a domain-separated seed: `variant.scheduler_seed + vm_id`.
+    /// Strategy and quantum overrides apply uniformly to all VMs.
+    /// Call this after `restore_all()` and before `run()` to vary the
+    /// interleaving for a specific branch.
+    pub fn apply_schedule_variant(&mut self, variant: &ScheduleVariant) {
+        for (i, slot) in self.vms.iter_mut().enumerate() {
+            let per_vm = ScheduleVariant {
+                scheduler_seed: variant.scheduler_seed.wrapping_add(i as u64),
+                strategy_override: variant.strategy_override,
+                quantum_override: variant.quantum_override,
+            };
+            slot.vm.scheduler_mut().apply_variant(&per_vm);
+        }
+    }
+
+    /// Collect the schedule fingerprint from all VMs.
+    ///
+    /// Returns a combined fingerprint by XOR-ing each VM's per-vCPU
+    /// scheduler fingerprint with a per-VM domain separator.
+    pub fn schedule_fingerprint(&self) -> u64 {
+        let mut combined = 0u64;
+        for (i, slot) in self.vms.iter().enumerate() {
+            combined ^= slot
+                .vm
+                .scheduler()
+                .fingerprint()
+                .wrapping_mul(0x9e37_79b9_7f4a_7c15_u64.wrapping_add(i as u64));
+        }
+        combined
     }
 
     /// Reset all VM statuses to Running and the tick counter to a

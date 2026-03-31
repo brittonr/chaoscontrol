@@ -329,6 +329,18 @@ pub fn format_bug(bug: &BugReport) -> String {
         }
     }
 
+    // Show schedule variant if present
+    if let Some(ref variant) = bug.schedule_variant {
+        output.push_str("\n   Schedule Variant:\n");
+        output.push_str(&format!("     Seed:     {}\n", variant.scheduler_seed));
+        if let Some(ref strategy) = variant.strategy_override {
+            output.push_str(&format!("     Strategy: {:?}\n", strategy));
+        }
+        if let Some(quantum) = variant.quantum_override {
+            output.push_str(&format!("     Quantum:  {}\n", quantum));
+        }
+    }
+
     output
 }
 
@@ -507,6 +519,7 @@ mod tests {
             snapshot: None,
             tick: 1000,
             dedup_key: 0,
+            schedule_variant: None,
         }
     }
 
@@ -630,6 +643,7 @@ mod tests {
             snapshot: None,
             tick: 5000,
             dedup_key: 0,
+            schedule_variant: None,
         };
 
         let formatted = format_bug(&bug);
@@ -949,6 +963,7 @@ mod tests {
             snapshot: None,
             tick: 5000,
             dedup_key: 0,
+            schedule_variant: None,
         };
 
         let formatted = format_bug(&bug);
@@ -976,6 +991,7 @@ mod tests {
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
                     dedup_key: Some(0xAAAA),
+                    schedule_variant: None,
                 },
                 found_by_seeds: vec![42, 44],
                 first_seed: 42,

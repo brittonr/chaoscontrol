@@ -8,6 +8,17 @@ use vm_memory::{Bytes, GuestAddress, GuestMemory};
 /// Coverage bitmap size (64 KB, same as AFL).
 pub const MAP_SIZE: usize = 65536;
 
+/// End of the code-edge region (lower half of bitmap).
+pub const CODE_REGION_END: usize = MAP_SIZE / 2;
+
+/// End of the assertion-state region (third quarter of bitmap).
+pub const ASSERTION_REGION_END: usize = 3 * MAP_SIZE / 4;
+
+// Region layout:
+//   [0, CODE_REGION_END)              = code edges (32 KB)
+//   [CODE_REGION_END, ASSERTION_REGION_END) = assertion-state edges (16 KB)
+//   [ASSERTION_REGION_END, MAP_SIZE)   = schedule fingerprint edges (16 KB)
+
 /// Coverage bitmap — tracks which code paths have been hit.
 /// Uses 64KB bitmap with 8-bit saturating counters.
 #[derive(Clone, Debug)]
@@ -365,5 +376,19 @@ mod tests {
         assert_eq!(bitmap.as_slice()[4], 5);
         assert_eq!(bitmap.as_slice()[5], 0);
         assert_eq!(bitmap.as_slice().len(), MAP_SIZE);
+    }
+
+    // ── Region boundary tests ─────────────────────────────────────
+
+    #[test]
+    fn region_boundaries_dont_overlap() {
+        assert_eq!(CODE_REGION_END, MAP_SIZE / 2);
+        assert_eq!(ASSERTION_REGION_END, 3 * MAP_SIZE / 4);
+        assert_ne!(CODE_REGION_END, ASSERTION_REGION_END); // CODE < ASSERTION
+        assert_ne!(ASSERTION_REGION_END, MAP_SIZE); // ASSERTION < MAP_SIZE
+        // Each region is 16KB except code which is 32KB
+        assert_eq!(CODE_REGION_END, 32768);
+        assert_eq!(ASSERTION_REGION_END - CODE_REGION_END, 16384);
+        assert_eq!(MAP_SIZE - ASSERTION_REGION_END, 16384);
     }
 }

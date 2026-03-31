@@ -399,6 +399,8 @@ mod tests {
                 coverage_gpa: 0xE0000,
                 disk_image_path: None,
                 bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
             },
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {
@@ -408,6 +410,7 @@ mod tests {
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
                 dedup_key: Some(0),
+                schedule_variant: None,
             }],
             rounds_completed: 10,
             total_branches_run: 80,

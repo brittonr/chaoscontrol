@@ -370,6 +370,7 @@ mod tests {
             snapshot: None,
             tick: 1000,
             dedup_key,
+            schedule_variant: None,
         }
     }
 
@@ -495,6 +496,7 @@ mod tests {
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
                     dedup_key: Some(0xAAAA),
+                    schedule_variant: None,
                 },
                 found_by_seeds: vec![42],
                 first_seed: 42,

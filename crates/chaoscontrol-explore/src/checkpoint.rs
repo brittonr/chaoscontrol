@@ -48,6 +48,12 @@ pub struct CheckpointConfig {
     /// Bootstrap tick budget (defaults to 10000 for backward compat).
     #[serde(default = "default_bootstrap_budget")]
     pub bootstrap_budget: u64,
+    /// Schedule diversity enabled.
+    #[serde(default)]
+    pub schedule_diversity: bool,
+    /// Schedule mutation ratio (0.0 = disabled).
+    #[serde(default)]
+    pub schedule_mutation_ratio: f64,
 }
 
 fn default_bootstrap_budget() -> u64 {
@@ -536,6 +542,9 @@ pub struct SerializableBug {
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     #[serde(default)]
     pub dedup_key: Option<u64>,
+    /// Schedule variant used when this bug was found.
+    #[serde(default)]
+    pub schedule_variant: Option<chaoscontrol_vmm::scheduler::ScheduleVariant>,
 }
 
 impl From<&BugReport> for SerializableBug {
@@ -547,6 +556,7 @@ impl From<&BugReport> for SerializableBug {
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
             dedup_key: Some(bug.dedup_key),
+            schedule_variant: bug.schedule_variant.clone(),
         }
     }
 }
@@ -630,6 +640,8 @@ mod tests {
                 coverage_gpa: 0x1000000,
                 disk_image_path: None,
                 bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -671,6 +683,8 @@ mod tests {
                 coverage_gpa: 0x2000000,
                 disk_image_path: None,
                 bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
@@ -734,6 +748,8 @@ mod tests {
                 coverage_gpa: 0xE0000,
                 disk_image_path: None,
                 bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
             },
             global_coverage: vec![],
             bugs: vec![],

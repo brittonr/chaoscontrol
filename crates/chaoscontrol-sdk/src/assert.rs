@@ -580,146 +580,513 @@ macro_rules! __cc_register_catalog {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Comparison detail helper (full vs no-op)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Build comparison details on failure: `{"left": "...", "right": "..."}`, empty `{}` on success.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_cmp_details {
+    ($cond:expr, $left:ident, $right:ident) => {
+        if $cond {
+            $crate::serde_json::json!({})
+        } else {
+            $crate::serde_json::json!({
+                "left": format!("{:?}", $left),
+                "right": format!("{:?}", $right),
+            })
+        }
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_cmp_details {
+    ($cond:expr, $left:ident, $right:ident) => {
+        ()
+    };
+}
+
+/// Build option details on failure: `{"value": "None"}`, empty `{}` on success.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_option_details {
+    ($cond:expr) => {
+        if $cond {
+            $crate::serde_json::json!({})
+        } else {
+            $crate::serde_json::json!({"value": "None"})
+        }
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_option_details {
+    ($cond:expr) => {
+        ()
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Numeric comparison macros
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Assert `left < right` always holds.
+/// Assert `left < right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_lt {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left < __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left < $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left <= right` always holds.
+/// Assert `left <= right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_le {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left <= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left <= $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left > right` always holds.
+/// Assert `left > right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_gt {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left > __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left > $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left >= right` always holds.
+/// Assert `left >= right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_ge {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left >= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left >= $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left == right` always holds.
+/// Assert `left == right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_eq {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left == __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left == $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left != right` always holds.
+/// Assert `left != right` always holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_always_ne {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left != __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($left != $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left < right` sometimes holds.
+/// Assert `left < right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_lt {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left < $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left < __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left < $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left <= right` sometimes holds.
+/// Assert `left <= right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_le {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left <= $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left <= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left <= $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left > right` sometimes holds.
+/// Assert `left > right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_gt {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left > $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left > __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left > $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left >= right` sometimes holds.
+/// Assert `left >= right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ge {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left >= $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left >= __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left >= $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left == right` sometimes holds.
+/// Assert `left == right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_eq {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left == $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left == __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left == $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert `left != right` sometimes holds.
+/// Assert `left != right` sometimes holds. Auto-captures left/right on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_ne {
-    ($left:expr, $right:expr, $msg:expr) => {{
+    ($left:expr, $right:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($left != $right, _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_left = $left;
+        let __cc_right = $right;
+        let __cc_cond = __cc_left != __cc_right;
+        let __cc_det = $crate::__cc_cmp_details!(__cc_cond, __cc_left, __cc_right);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($left:expr, $right:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($left != $right, _ID, $msg, $details);
     }};
 }
 
-/// Assert that an option is `Some` every time.
+/// Assert that an option is `Some` every time. Captures `{"value": "None"}` on failure.
 #[macro_export]
 macro_rules! cc_assert_always_some {
-    ($expr:expr, $msg:expr) => {{
+    ($expr:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
-        $crate::assert::always_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_val = $expr;
+        let __cc_cond = __cc_val.is_some();
+        let __cc_det = $crate::__cc_option_details!(__cc_cond);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($expr:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($expr.is_some(), _ID, $msg, $details);
     }};
 }
 
-/// Assert that an option is `Some` at least once across runs.
+/// Assert that an option is `Some` at least once across runs. Captures `{"value": "None"}` on failure.
 #[macro_export]
 macro_rules! cc_assert_sometimes_some {
-    ($expr:expr, $msg:expr) => {{
+    ($expr:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
         $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
-        $crate::assert::sometimes_with_id($expr.is_some(), _ID, $msg, &$crate::__cc_empty_json!());
+        let __cc_val = $expr;
+        let __cc_cond = __cc_val.is_some();
+        let __cc_det = $crate::__cc_option_details!(__cc_cond);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($expr:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($expr.is_some(), _ID, $msg, $details);
+    }};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Implication macro
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Internal macro: build implication details on failure.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_implies_details {
+    ($cond:expr, $p:ident, $q:ident) => {
+        if $cond {
+            $crate::serde_json::json!({})
+        } else {
+            $crate::serde_json::json!({
+                "precondition": format!("{:?}", $p),
+                "conclusion": format!("{:?}", $q),
+            })
+        }
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_implies_details {
+    ($cond:expr, $p:ident, $q:ident) => {
+        ()
+    };
+}
+
+/// Assert that `precondition → conclusion` always holds.
+///
+/// Equivalent to `cc_assert_always!(!p || q, ...)` but more readable.
+/// Auto-captures `precondition` and `conclusion` values on failure.
+///
+/// ```rust,ignore
+/// cc_assert_implies!(node.is_leader(), node.has_log(), "leaders have logs");
+/// ```
+#[macro_export]
+macro_rules! cc_assert_implies {
+    ($precondition:expr, $conclusion:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_p = $precondition;
+        let __cc_q = $conclusion;
+        let __cc_cond = !__cc_p || __cc_q;
+        let __cc_det = $crate::__cc_implies_details!(__cc_cond, __cc_p, __cc_q);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($precondition:expr, $conclusion:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id(!$precondition || $conclusion, _ID, $msg, $details);
+    }};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Result assertion macros
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Internal macro: build Result-error details on failure.
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_result_err_details {
+    ($cond:expr, $result:ident) => {
+        if $cond {
+            $crate::serde_json::json!({})
+        } else {
+            $crate::serde_json::json!({
+                "error": format!("{:?}", $result),
+            })
+        }
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_result_err_details {
+    ($cond:expr, $result:ident) => {
+        ()
+    };
+}
+
+/// Internal macro: build Result-ok details on failure (for _err macros).
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_result_ok_details {
+    ($cond:expr, $result:ident) => {
+        if $cond {
+            $crate::serde_json::json!({})
+        } else {
+            $crate::serde_json::json!({
+                "ok_value": format!("{:?}", $result),
+            })
+        }
+    };
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_result_ok_details {
+    ($cond:expr, $result:ident) => {
+        ()
+    };
+}
+
+/// Assert a `Result` is `Ok` every time. Captures error on failure.
+///
+/// ```rust,ignore
+/// cc_assert_always_ok!(channel.try_recv(), "receive succeeds");
+/// ```
+#[macro_export]
+macro_rules! cc_assert_always_ok {
+    ($result:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_result = $result;
+        let __cc_cond = __cc_result.is_ok();
+        let __cc_det = $crate::__cc_result_err_details!(__cc_cond, __cc_result);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($result:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($result.is_ok(), _ID, $msg, $details);
+    }};
+}
+
+/// Assert a `Result` is `Ok` at least once across runs. Captures error on failure.
+#[macro_export]
+macro_rules! cc_assert_sometimes_ok {
+    ($result:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_result = $result;
+        let __cc_cond = __cc_result.is_ok();
+        let __cc_det = $crate::__cc_result_err_details!(__cc_cond, __cc_result);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($result:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($result.is_ok(), _ID, $msg, $details);
+    }};
+}
+
+/// Assert a `Result` is `Err` every time. Captures ok value on failure.
+///
+/// ```rust,ignore
+/// cc_assert_always_err!(parse("not a number"), "rejects bad input");
+/// ```
+#[macro_export]
+macro_rules! cc_assert_always_err {
+    ($result:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        let __cc_result = $result;
+        let __cc_cond = __cc_result.is_err();
+        let __cc_det = $crate::__cc_result_ok_details!(__cc_cond, __cc_result);
+        $crate::assert::always_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($result:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_ALWAYS);
+        $crate::assert::always_with_id($result.is_err(), _ID, $msg, $details);
+    }};
+}
+
+/// Assert a `Result` is `Err` at least once across runs. Captures ok value on failure.
+#[macro_export]
+macro_rules! cc_assert_sometimes_err {
+    ($result:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        let __cc_result = $result;
+        let __cc_cond = __cc_result.is_err();
+        let __cc_det = $crate::__cc_result_ok_details!(__cc_cond, __cc_result);
+        $crate::assert::sometimes_with_id(__cc_cond, _ID, $msg, &__cc_det);
+    }};
+    ($result:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(_ID, $msg, $crate::assert::CATALOG_KIND_SOMETIMES);
+        $crate::assert::sometimes_with_id($result.is_err(), _ID, $msg, $details);
     }};
 }
 
@@ -875,7 +1242,170 @@ mod tests {
         );
     }
 
-    // no_std stubs (assert_raw, assert_raw_with_id, cc_assert_raw!) compile
-    // without the `full` feature. Verified by building the crate with
-    // `default-features = false` in CI.
+    #[test]
+    fn comparison_macros_with_explicit_details() {
+        use serde_json::json;
+        cc_assert_always_lt!(1, 2, "lt", &json!({"custom": true}));
+        cc_assert_always_le!(1, 2, "le", &json!({"custom": true}));
+        cc_assert_always_gt!(2, 1, "gt", &json!({"custom": true}));
+        cc_assert_always_ge!(2, 1, "ge", &json!({"custom": true}));
+        cc_assert_always_eq!(1, 1, "eq", &json!({"custom": true}));
+        cc_assert_always_ne!(1, 2, "ne", &json!({"custom": true}));
+        cc_assert_sometimes_lt!(1, 2, "slt", &json!({"custom": true}));
+        cc_assert_sometimes_le!(1, 2, "sle", &json!({"custom": true}));
+        cc_assert_sometimes_gt!(2, 1, "sgt", &json!({"custom": true}));
+        cc_assert_sometimes_ge!(2, 1, "sge", &json!({"custom": true}));
+        cc_assert_sometimes_eq!(1, 1, "seq", &json!({"custom": true}));
+        cc_assert_sometimes_ne!(1, 2, "sne", &json!({"custom": true}));
+    }
+
+    #[test]
+    fn comparison_macros_trailing_comma() {
+        cc_assert_always_lt!(1, 2, "trailing",);
+        cc_assert_always_le!(1, 2, "trailing",);
+    }
+
+    #[test]
+    fn comparison_macros_evaluate_operands_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+        fn inc() -> usize {
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        }
+
+        COUNTER.store(0, Ordering::SeqCst);
+        // inc() returns 0 on first call, so 0 < 10 passes
+        cc_assert_always_lt!(inc(), 10, "operand eval once");
+        // Should have been called exactly once
+        assert_eq!(COUNTER.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn option_macros_with_explicit_details() {
+        use serde_json::json;
+        cc_assert_always_some!(Some(1), "some", &json!({"x": 1}));
+        cc_assert_sometimes_some!(Some(1), "some2", &json!({"x": 2}));
+    }
+
+    // ── Implies macro tests ────────────────────────────────────────
+
+    #[test]
+    fn implies_both_true() {
+        cc_assert_implies!(true, true, "p implies q");
+    }
+
+    #[test]
+    fn implies_precondition_false_vacuous() {
+        // p=false, q=false → !p || q = true (vacuously true)
+        cc_assert_implies!(false, false, "vacuous truth");
+    }
+
+    #[test]
+    fn implies_precondition_false_conclusion_true() {
+        cc_assert_implies!(false, true, "trivially true");
+    }
+
+    #[test]
+    fn implies_with_explicit_details() {
+        use serde_json::json;
+        cc_assert_implies!(true, true, "with details", &json!({"node": 3}));
+    }
+
+    #[test]
+    fn implies_evaluates_operands_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CTR: AtomicUsize = AtomicUsize::new(0);
+
+        fn check() -> bool {
+            CTR.fetch_add(1, Ordering::SeqCst);
+            true
+        }
+
+        CTR.store(0, Ordering::SeqCst);
+        cc_assert_implies!(check(), true, "eval once");
+        assert_eq!(CTR.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn implies_trailing_comma() {
+        cc_assert_implies!(true, true, "trailing",);
+    }
+
+    // ── Result macro tests ─────────────────────────────────────────
+
+    #[test]
+    fn always_ok_passes_on_ok() {
+        cc_assert_always_ok!(Ok::<i32, String>(42), "op ok");
+    }
+
+    #[test]
+    fn always_ok_fails_on_err() {
+        // This fires the assertion with condition=false, which is fine —
+        // we're testing that it compiles and runs, not that VM catches it.
+        cc_assert_always_ok!(Err::<i32, String>("timeout".into()), "op ok err");
+    }
+
+    #[test]
+    fn sometimes_ok_passes_on_ok() {
+        cc_assert_sometimes_ok!(Ok::<i32, &str>(1), "write ok");
+    }
+
+    #[test]
+    fn sometimes_ok_records_err() {
+        cc_assert_sometimes_ok!(Err::<i32, &str>("fail"), "write ok err");
+    }
+
+    #[test]
+    fn always_err_passes_on_err() {
+        cc_assert_always_err!(Err::<i32, &str>("expected"), "rejects");
+    }
+
+    #[test]
+    fn always_err_fails_on_ok() {
+        cc_assert_always_err!(Ok::<i32, &str>(42), "rejects ok");
+    }
+
+    #[test]
+    fn sometimes_err_passes_on_err() {
+        cc_assert_sometimes_err!(Err::<i32, &str>("fail"), "error path");
+    }
+
+    #[test]
+    fn sometimes_err_records_ok() {
+        cc_assert_sometimes_err!(Ok::<i32, &str>(1), "error path ok");
+    }
+
+    #[test]
+    fn result_macros_with_explicit_details() {
+        use serde_json::json;
+        cc_assert_always_ok!(Ok::<i32, &str>(1), "ok det", &json!({"n": 1}));
+        cc_assert_sometimes_ok!(Ok::<i32, &str>(1), "sok det", &json!({"n": 2}));
+        cc_assert_always_err!(Err::<i32, &str>("e"), "err det", &json!({"n": 3}));
+        cc_assert_sometimes_err!(Err::<i32, &str>("e"), "serr det", &json!({"n": 4}));
+    }
+
+    #[test]
+    fn result_macros_evaluate_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CTR: AtomicUsize = AtomicUsize::new(0);
+
+        fn try_op() -> Result<i32, &'static str> {
+            CTR.fetch_add(1, Ordering::SeqCst);
+            Ok(1)
+        }
+
+        CTR.store(0, Ordering::SeqCst);
+        cc_assert_always_ok!(try_op(), "eval once");
+        assert_eq!(CTR.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn result_macros_trailing_comma() {
+        cc_assert_always_ok!(Ok::<i32, &str>(1), "trailing",);
+        cc_assert_always_err!(Err::<i32, &str>("e"), "trailing",);
+    }
+
+    // no_std stubs compile without the `full` feature.
+    // Verified by building with `default-features = false` in CI.
 }

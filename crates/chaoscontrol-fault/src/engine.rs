@@ -12,7 +12,7 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use snafu::Snafu;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Choice recording for input tree exploration
@@ -151,6 +151,9 @@ pub struct FaultEngine {
     /// Monotonic counter of random hypercalls (CMD_RANDOM_CHOICE + CMD_RANDOM_GET).
     /// Resets on restore to align with the snapshot's position.
     choice_count: u64,
+    /// Last-reported guidance distance per assertion ID.
+    /// Written by `CMD_GUIDANCE` hypercalls, read by the explorer.
+    guidance_values: HashMap<u32, f64>,
 }
 
 impl FaultEngine {
@@ -171,6 +174,7 @@ impl FaultEngine {
             choice_history: Vec::new(),
             random_overrides: BTreeMap::new(),
             choice_count: 0,
+            guidance_values: HashMap::new(),
         }
     }
 
@@ -294,6 +298,12 @@ impl FaultEngine {
                     value,
                 });
                 (value, STATUS_OK)
+            }
+            CMD_GUIDANCE => {
+                // Guest writes f64 distance into the result field.
+                let distance = f64::from_le_bytes(page.result.to_le_bytes());
+                self.guidance_values.insert(page.id, distance);
+                (0, STATUS_OK)
             }
             _cmd => {
                 // Unknown command — return error
@@ -427,6 +437,15 @@ impl FaultEngine {
     /// Get the current choice sequence counter.
     pub fn choice_count(&self) -> u64 {
         self.choice_count
+    }
+
+    /// Get the last-reported guidance distances.
+    ///
+    /// Maps assertion IDs to their most recent distance-to-violation
+    /// hint.  The explorer reads this after each execution quantum to
+    /// guide mutation toward property violations.
+    pub fn guidance_values(&self) -> &HashMap<u32, f64> {
+        &self.guidance_values
     }
 
     // ── Internal ────────────────────────────────────────────────
@@ -938,6 +957,68 @@ mod tests {
 
         // History cleared on restore
         assert!(engine.drain_choice_history().is_empty());
+    }
+
+    // ── Guidance tests ──────────────────────────────────────────────
+
+    #[test]
+    fn guidance_stores_value() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
+        page.result = u64::from_le_bytes(3.14f64.to_le_bytes());
+        let (_, status) = engine.handle_hypercall(&page);
+
+        assert_eq!(status, STATUS_OK);
+        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&3.14));
+    }
+
+    #[test]
+    fn guidance_overwrites_value() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
+        page.result = u64::from_le_bytes(3.14f64.to_le_bytes());
+        engine.handle_hypercall(&page);
+
+        page.result = u64::from_le_bytes(1.0f64.to_le_bytes());
+        engine.handle_hypercall(&page);
+
+        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&1.0));
+    }
+
+    #[test]
+    fn guidance_stores_nan() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let mut page = make_page(CMD_GUIDANCE, 0, 42);
+        page.result = u64::from_le_bytes(f64::NAN.to_le_bytes());
+        let (_, status) = engine.handle_hypercall(&page);
+
+        assert_eq!(status, STATUS_OK);
+        let val = engine.guidance_values().get(&42).unwrap();
+        assert!(val.is_nan());
+    }
+
+    #[test]
+    fn guidance_multiple_assertions() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+
+        let mut p1 = make_page(CMD_GUIDANCE, 0, 1);
+        p1.result = u64::from_le_bytes(10.0f64.to_le_bytes());
+        engine.handle_hypercall(&p1);
+
+        let mut p2 = make_page(CMD_GUIDANCE, 0, 2);
+        p2.result = u64::from_le_bytes(0.0f64.to_le_bytes());
+        engine.handle_hypercall(&p2);
+
+        assert_eq!(engine.guidance_values().len(), 2);
+        assert_eq!(engine.guidance_values().get(&1), Some(&10.0));
+        assert_eq!(engine.guidance_values().get(&2), Some(&0.0));
     }
 
     #[test]

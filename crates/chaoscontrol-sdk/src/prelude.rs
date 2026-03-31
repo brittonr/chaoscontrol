@@ -48,7 +48,17 @@ pub use crate::{
     cc_assert_sometimes_ne,
     cc_assert_sometimes_some,
     cc_assert_unreachable,
+    // Implication
+    cc_assert_implies,
+    // Result assertions
+    cc_assert_always_ok,
+    cc_assert_sometimes_ok,
+    cc_assert_always_err,
+    cc_assert_sometimes_err,
 };
+
+// ── Guidance ─────────────────────────────────────────────────────────
+pub use crate::guidance::{guidance, guidance_with_id};
 
 // ── Lifecycle ────────────────────────────────────────────────────────
 pub use crate::lifecycle::{send_event, setup_complete};

@@ -184,6 +184,39 @@ pub(crate) fn hypercall_simple(_command: u8, _id: u32) -> (u64, u8) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Guidance transport (guest writes distance into result field)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Issue a guidance hypercall.
+///
+/// Writes the f64 distance into the `result` field (offset 0x10) of
+/// the hypercall page, sets `CMD_GUIDANCE` and `id`, then triggers.
+/// No payload (message/details) — the assertion ID links to the catalog.
+#[cfg(feature = "full")]
+pub(crate) fn hypercall_guidance(id: u32, distance: f64) {
+    if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        unsafe {
+            let page = &mut *page_ptr;
+            page.command = chaoscontrol_protocol::CMD_GUIDANCE;
+            page.flags = 0;
+            page.id = id;
+            page.payload_len = 0;
+            // Write distance into result field (guest → host direction for guidance)
+            page.result = u64::from_le_bytes(distance.to_le_bytes());
+            page.status = 0;
+
+            crate::internal::vm_trigger();
+        }
+    }
+    // Local/noop: silently discard guidance — no meaningful fallback.
+}
+
+/// No-op guidance — evaluates args but does nothing.
+#[cfg(not(feature = "full"))]
+#[allow(dead_code)]
+pub(crate) fn hypercall_guidance(_id: u32, _distance: f64) {}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Compile-time transport validation
 // ═══════════════════════════════════════════════════════════════════════
 

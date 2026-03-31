@@ -116,6 +116,10 @@ pub struct ExplorerConfig {
     /// - `N > 1`: N worker controllers run branches in parallel.
     /// - `0`: auto-detect based on available cores.
     pub num_workers: usize,
+    /// Stop after this many consecutive rounds with 0 new edges and 0 new bugs.
+    /// 0 = never stop early due to stale rounds (run all max_rounds).
+    /// Default: 10.
+    pub stale_round_limit: u64,
 }
 
 impl Default for ExplorerConfig {
@@ -142,6 +146,7 @@ impl Default for ExplorerConfig {
             dlog_register_interval: 0,
             dlog_memory_hash: false,
             num_workers: 1,
+            stale_round_limit: 10,
         }
     }
 }
@@ -176,6 +181,8 @@ pub struct Explorer {
     seen_dedup_keys: BTreeSet<u64>,
     /// Bugs found in branches with no new coverage (not stored in corpus).
     standalone_bugs: Vec<BugReport>,
+    /// Consecutive rounds with 0 new edges and 0 new bugs.
+    consecutive_stale_rounds: u64,
 }
 
 impl Explorer {
@@ -207,6 +214,7 @@ impl Explorer {
             event_sink: None,
             seen_dedup_keys: BTreeSet::new(),
             standalone_bugs: Vec::new(),
+            consecutive_stale_rounds: 0,
         }
     }
 
@@ -386,10 +394,28 @@ impl Explorer {
                 }
             }
 
+            // Track stale rounds (no new edges, no new bugs).
+            if round_report.new_coverage_edges == 0 && round_report.bugs_found == 0 {
+                self.consecutive_stale_rounds += 1;
+            } else {
+                self.consecutive_stale_rounds = 0;
+            }
+
             // Check for stopping conditions
             if self.frontier.is_empty() {
                 info!("Frontier exhausted, stopping early");
                 self.emit_finished("frontier_exhausted");
+                break;
+            }
+
+            if self.config.stale_round_limit > 0
+                && self.consecutive_stale_rounds >= self.config.stale_round_limit
+            {
+                info!(
+                    "Coverage plateau: {} consecutive rounds with no new edges or bugs, stopping",
+                    self.consecutive_stale_rounds
+                );
+                self.emit_finished("coverage_plateau");
                 break;
             }
 
@@ -469,16 +495,23 @@ impl Explorer {
             branches_run += 1;
             self.total_branches_run += 1;
 
-            let new_edges = result
-                .coverage
-                .has_new_coverage(self.coverage.global_coverage());
+            // Enrich coverage with assertion-state edges so branches
+            // with new assertion patterns are "interesting" even after
+            // code coverage saturates.
+            let mut enriched = result.coverage.clone();
+            Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+
+            let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
 
             if new_edges > 0 {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
+                let mut enriched_result = result.clone();
+                enriched_result.coverage = enriched.clone();
+
                 self.add_to_corpus(
-                    result.clone(),
+                    enriched_result.clone(),
                     schedule.clone(),
                     new_edges,
                     parent_depth + 1,
@@ -487,7 +520,7 @@ impl Explorer {
                 if let Some(snap) = result.snapshot.clone() {
                     self.add_to_frontier(
                         snap,
-                        result.clone(),
+                        enriched_result,
                         schedule.clone(),
                         parent_id,
                         parent_depth + 1,
@@ -503,7 +536,7 @@ impl Explorer {
                 self.standalone_bugs.extend(branch_bugs);
             }
 
-            self.coverage.update_global(&result.coverage);
+            self.coverage.update_global(&enriched);
         }
 
         Ok(RoundReport {
@@ -564,13 +597,15 @@ impl Explorer {
         self.total_branches_run += 1;
 
         // Check if the probe itself found new coverage
-        let probe_new = probe_result
-            .coverage
-            .has_new_coverage(self.coverage.global_coverage());
+        let mut probe_enriched = probe_result.coverage.clone();
+        Self::enrich_with_assertion_state(&mut probe_enriched, &probe_result.oracle_report);
+        let probe_new = probe_enriched.has_new_coverage(self.coverage.global_coverage());
         if probe_new > 0 {
             new_coverage_edges += probe_new;
+            let mut enriched_probe = probe_result.clone();
+            enriched_probe.coverage = probe_enriched.clone();
             self.add_to_corpus(
-                probe_result.clone(),
+                enriched_probe.clone(),
                 base_schedule.clone(),
                 probe_new,
                 parent_depth + 1,
@@ -578,14 +613,14 @@ impl Explorer {
             if let Some(snap) = probe_result.snapshot.clone() {
                 self.add_to_frontier(
                     snap,
-                    probe_result.clone(),
+                    enriched_probe,
                     base_schedule.clone(),
                     parent_id,
                     parent_depth + 1,
                 );
             }
         }
-        self.coverage.update_global(&probe_result.coverage);
+        self.coverage.update_global(&probe_enriched);
 
         // Phase 2: Drain choice histories from all VMs.
         self.ensure_controller()?;
@@ -647,17 +682,21 @@ impl Explorer {
             branches_run += 1;
             self.total_branches_run += 1;
 
-            // Check for new coverage
-            let new_edges = result
-                .coverage
-                .has_new_coverage(self.coverage.global_coverage());
+            // Enrich coverage with assertion-state edges.
+            let mut enriched = result.coverage.clone();
+            Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+
+            let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
 
             if new_edges > 0 {
                 debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
+                let mut enriched_result = result.clone();
+                enriched_result.coverage = enriched.clone();
+
                 self.add_to_corpus(
-                    result.clone(),
+                    enriched_result.clone(),
                     base_schedule.clone(),
                     new_edges,
                     parent_depth + 1,
@@ -666,7 +705,7 @@ impl Explorer {
                 if let Some(snap) = result.snapshot.clone() {
                     self.add_to_frontier(
                         snap,
-                        result.clone(),
+                        enriched_result,
                         base_schedule.clone(),
                         parent_id,
                         parent_depth + 1,
@@ -687,7 +726,7 @@ impl Explorer {
                 self.standalone_bugs.extend(branch_bugs);
             }
 
-            self.coverage.update_global(&result.coverage);
+            self.coverage.update_global(&enriched);
         }
 
         Ok(RoundReport {
@@ -1121,6 +1160,60 @@ impl Explorer {
         bitmap
     }
 
+    /// Enrich a branch's coverage bitmap with assertion-state edges.
+    ///
+    /// Hashes each assertion's verdict + hit-count bucket into the coverage
+    /// bitmap so that branches with new assertion states are considered
+    /// "interesting" even when no new code edges are found. This keeps the
+    /// frontier alive after code coverage saturates.
+    fn enrich_with_assertion_state(coverage: &mut CoverageBitmap, oracle: &OracleReport) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        for (assertion_id, record) in &oracle.assertions {
+            // Bucket the hit count: 0, 1, 2-3, 4-7, 8-15, 16-31, 32+
+            let hit_bucket = match record.hit_count {
+                0 => 0u8,
+                1 => 1,
+                2..=3 => 2,
+                4..=7 => 3,
+                8..=15 => 4,
+                16..=31 => 5,
+                _ => 6,
+            };
+
+            // Verdict encoding: 0=unexercised, 1=passed, 2=failed
+            let verdict_code = match record.verdict() {
+                chaoscontrol_fault::oracle::Verdict::Unexercised => 0u8,
+                chaoscontrol_fault::oracle::Verdict::Passed => 1,
+                chaoscontrol_fault::oracle::Verdict::Failed => 2,
+            };
+
+            // Hash (assertion_id, verdict, hit_bucket) into a coverage edge.
+            // Use high half of MAP_SIZE to avoid collisions with code edges.
+            let mut hasher = DefaultHasher::new();
+            assertion_id.hash(&mut hasher);
+            verdict_code.hash(&mut hasher);
+            hit_bucket.hash(&mut hasher);
+            let index = (hasher.finish() as usize % (crate::coverage::MAP_SIZE / 2))
+                + (crate::coverage::MAP_SIZE / 2);
+            coverage.record_hit(index);
+
+            // Also hash true/false ratio bucket for always/sometimes assertions.
+            // This gives finer-grained signal: "50% true" vs "90% true" are different.
+            if record.hit_count > 0 {
+                let ratio_bucket = (record.true_count * 8 / record.hit_count) as u8; // 0..8
+                let mut hasher2 = DefaultHasher::new();
+                assertion_id.hash(&mut hasher2);
+                0xA55Eu64.hash(&mut hasher2); // domain separator
+                ratio_bucket.hash(&mut hasher2);
+                let index2 = (hasher2.finish() as usize % (crate::coverage::MAP_SIZE / 2))
+                    + (crate::coverage::MAP_SIZE / 2);
+                coverage.record_hit(index2);
+            }
+        }
+    }
+
     /// Generate the final exploration report.
     fn generate_report(&self) -> ExplorationReport {
         let bugs = self.all_bugs();
@@ -1396,6 +1489,7 @@ impl Explorer {
             dlog_register_interval: 0,
             dlog_memory_hash: false,
             num_workers: 1,
+            stale_round_limit: 10,
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -1446,6 +1540,7 @@ impl Explorer {
                     dedup_key: b.dedup_key.unwrap_or(0),
                 })
                 .collect(),
+            consecutive_stale_rounds: 0,
         }
     }
 }

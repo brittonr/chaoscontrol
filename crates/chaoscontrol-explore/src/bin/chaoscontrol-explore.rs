@@ -669,6 +669,7 @@ fn cmd_run(
         dlog_register_interval,
         dlog_memory_hash,
         num_workers: workers,
+        stale_round_limit: 10,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -929,6 +930,7 @@ fn cmd_campaign(
         dlog_register_interval: 0,
         dlog_memory_hash: false,
         num_workers: 1, // forced to 1 in campaign mode
+        stale_round_limit: 10,
     };
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());

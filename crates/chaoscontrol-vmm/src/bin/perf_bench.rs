@@ -103,7 +103,7 @@ fn bench_single_vm(kernel: &str, initrd: &str) {
 }
 
 fn bench_controller(kernel: &str, initrd: &str) {
-    println!("── Controller (2 VMs): full vs incremental snapshot ──");
+    println!("── Controller (2 VMs): per-branch breakdown ──");
     println!();
 
     let sim_config = SimulationConfig {
@@ -122,66 +122,105 @@ fn bench_controller(kernel: &str, initrd: &str) {
     ctrl.run(500).expect("boot run");
 
     // Take base snapshot.
-    let t0 = Instant::now();
     let base_snap = ctrl.snapshot_all().expect("base snap");
-    let full_time = t0.elapsed();
     let bases = SimulationController::extract_memory_bases(&base_snap);
     ctrl.set_memory_bases(bases);
-    println!(
-        "  Base snapshot (2 VMs): {:>8.2} ms",
-        full_time.as_secs_f64() * 1000.0
-    );
 
-    // Benchmark restore + run + snapshot cycles.
     let tick_counts = [100, 500, 1_000];
 
-    println!();
-    println!(
-        "  {:>8} {:>12} {:>12} {:>10} {:>8}",
-        "Ticks", "Full (ms)", "Incr (ms)", "Speedup", "Dirty"
-    );
-    println!("  {}", "-".repeat(58));
-
     for &ticks in &tick_counts {
-        // Full path: restore → run → full snapshot.
+        println!("  --- {} ticks ---", ticks);
+
+        // Measure full restore alone.
+        let t0 = Instant::now();
         ctrl.restore_all(&base_snap).expect("restore");
         ctrl.reset_vm_statuses();
+        let full_restore_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
         // Drain dirty bits.
         for i in 0..ctrl.num_vms() {
             let _ = ctrl.vm_mut(i).get_dirty_bitmap();
         }
-        ctrl.run(ticks).expect("run");
 
+        // Measure run alone.
+        let t0 = Instant::now();
+        ctrl.run(ticks).expect("run");
+        let run_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // Measure full snapshot alone.
         let t0 = Instant::now();
         let _ = ctrl.snapshot_all().expect("full snap");
-        let full_time = t0.elapsed();
+        let full_snap_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
-        // Incremental path: restore → run → incremental snapshot.
+        // Now take a branch snapshot for incremental restore benchmark.
         ctrl.restore_all(&base_snap).expect("restore");
         ctrl.reset_vm_statuses();
         for i in 0..ctrl.num_vms() {
             let _ = ctrl.vm_mut(i).get_dirty_bitmap();
         }
         ctrl.run(ticks).expect("run");
+        let (branch_snap, dirty) = ctrl.snapshot_all_incremental().expect("incr snap");
 
+        // Seed: full restore to put base in guest memory.
+        ctrl.restore_all(&base_snap).expect("seed");
+        ctrl.reset_vm_statuses();
+
+        // Measure incremental restore alone.
         let t0 = Instant::now();
-        let (_, dirty) = ctrl.snapshot_all_incremental().expect("incr snap");
-        let incr_time = t0.elapsed();
+        ctrl.restore_all_incremental(&branch_snap)
+            .expect("incr restore");
+        ctrl.reset_vm_statuses();
+        let incr_restore_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
-        let full_ms = full_time.as_secs_f64() * 1000.0;
-        let incr_ms = incr_time.as_secs_f64() * 1000.0;
-        let speedup = if incr_ms > 0.001 {
-            full_ms / incr_ms
-        } else {
-            f64::INFINITY
-        };
+        for i in 0..ctrl.num_vms() {
+            let _ = ctrl.vm_mut(i).get_dirty_bitmap();
+        }
+
+        // Run again (same ticks, for incr snap measurement).
+        ctrl.run(ticks).expect("run");
+
+        // Measure incremental snapshot alone.
+        let t0 = Instant::now();
+        let _ = ctrl.snapshot_all_incremental();
+        let incr_snap_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        let full_total = full_restore_ms + run_ms + full_snap_ms;
+        let incr_total = incr_restore_ms + run_ms + incr_snap_ms;
 
         println!(
-            "  {:>8} {:>12.2} {:>12.2} {:>9.1}x {:>7}",
-            ticks, full_ms, incr_ms, speedup, dirty
+            "    Restore:   full {:>8.2} ms   incr {:>8.2} ms   ({:.0}x)",
+            full_restore_ms,
+            incr_restore_ms,
+            if incr_restore_ms > 0.001 {
+                full_restore_ms / incr_restore_ms
+            } else {
+                0.0
+            }
         );
+        println!("    Run:                 {:>8.2} ms", run_ms);
+        println!(
+            "    Snapshot:  full {:>8.2} ms   incr {:>8.2} ms   ({:.0}x)",
+            full_snap_ms,
+            incr_snap_ms,
+            if incr_snap_ms > 0.001 {
+                full_snap_ms / incr_snap_ms
+            } else {
+                0.0
+            }
+        );
+        println!(
+            "    Total:     full {:>8.2} ms   incr {:>8.2} ms   ({:.1}x)  [dirty={}]",
+            full_total,
+            incr_total,
+            if incr_total > 0.001 {
+                full_total / incr_total
+            } else {
+                0.0
+            },
+            dirty
+        );
+        println!();
     }
-    println!();
 }
 
 fn measure_memory(kernel: &str, initrd: &str) {

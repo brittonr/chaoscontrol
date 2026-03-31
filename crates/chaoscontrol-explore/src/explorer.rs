@@ -803,7 +803,11 @@ impl Explorer {
 
             // Restore from snapshot if provided (rewinds VM state without reboot)
             if let Some(snap) = snapshot {
-                controller.restore_all(snap)?;
+                if !self.memory_bases.is_empty() {
+                    controller.restore_all_incremental(snap)?;
+                } else {
+                    controller.restore_all(snap)?;
+                }
                 // Reset all VMs to Running — snapshots may have been taken
                 // after idle detection paused a VM.
                 controller.reset_vm_statuses();
@@ -885,7 +889,11 @@ impl Explorer {
             let controller = self.controller.as_mut().unwrap();
 
             if let Some(snap) = snapshot {
-                controller.restore_all(snap)?;
+                if !self.memory_bases.is_empty() {
+                    controller.restore_all_incremental(snap)?;
+                } else {
+                    controller.restore_all(snap)?;
+                }
                 controller.reset_vm_statuses();
             }
 

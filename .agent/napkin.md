@@ -1,4 +1,7 @@
 # Napkin
+| 2026-03-31 | self | Incremental restore saves 5-19x on memory write but run time dominates at high tick counts | For 100-tick branches (typical): 2.1x total cycle speedup. For 1000-tick branches: negligible. Focus perf work on reducing tick counts or parallelizing workers, not snapshot/restore. |
+| 2026-03-31 | self | restore_devices_only needed as separate method on VmSnapshot | Can't call restore() which writes memory + devices; incremental restore handles memory separately then needs just the device/register portion |
+| 2026-03-31 | self | last_dirty_page_indices must be cleared on full restore | Otherwise next incremental restore tries to revert stale page indices from the full restore era |
 | 2026-03-30 | self | Single-vCPU VMs hang indefinitely under CpuBitflip/fault injection | Guest enters tight CPU loop with no VM exits → vcpu.run() never returns. Fix: per-thread POSIX timers (timer_create + SIGEV_THREAD_ID) + 100ms SIGALRM watchdog + stuck detection after 5 consecutive SIGALRMs |
 | 2026-03-30 | self | EINTR path early-returns Ok(false), bypassing panic_detected check | Sets panic_detected=true but never acts on it → 26K+ SIGALRMs over 33 minutes. VcpuExit::Intr path works because it sets Ok(false) in the match result (not return). Fix: return Ok(true) from EINTR when panic_detected |
 | 2026-03-30 | self | leader_no_stepdown violates log matching safety property | Only found after EINTR bug fix let all 7 variants complete 20 rounds in 19 min. Previously hung or timed out |

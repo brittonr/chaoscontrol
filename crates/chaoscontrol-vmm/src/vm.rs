@@ -603,6 +603,11 @@ pub struct DeterministicVm {
     dlog: Option<DlogWriter>,
     dlog_register_interval: u64,
     dlog_memory_hash: bool,
+
+    /// Page indices dirtied by the most recent incremental restore.
+    /// Used by `restore_incremental` to revert only the previous
+    /// branch's dirty pages before applying the new overlay.
+    last_dirty_page_indices: Vec<usize>,
 }
 
 impl DeterministicVm {
@@ -937,6 +942,7 @@ impl DeterministicVm {
             dlog,
             dlog_register_interval: config.dlog_register_interval,
             dlog_memory_hash: config.dlog_memory_hash,
+            last_dirty_page_indices: Vec::new(),
         })
     }
 
@@ -2142,6 +2148,173 @@ impl DeterministicVm {
         }
 
         info!("VM restored from snapshot (BSP RIP={:#x})", snapshot.rip());
+
+        // Full restore overwrites all memory, so no dirty tracking needed.
+        self.last_dirty_page_indices.clear();
+
+        Ok(())
+    }
+
+    /// Incremental restore: only revert pages that changed since the
+    /// last restore, then apply the new overlay's dirty pages.
+    ///
+    /// On a 256 MB VM with ~9 dirty pages per branch, this replaces
+    /// a 256 MB memcpy (~75 ms) with ~18 page writes (~0.07 ms).
+    ///
+    /// **Precondition:** guest memory must contain the base image.
+    /// Call a full `restore()` first, or use this only after a prior
+    /// `restore_incremental` on the same VM.
+    pub fn restore_incremental(
+        &mut self,
+        snapshot: &crate::snapshot::VmSnapshot,
+        base: &[u8],
+    ) -> Result<(), VmError> {
+        use crate::snapshot::SnapshotMemory;
+
+        // Step 1: Revert previously-dirtied pages back to base values.
+        if !self.last_dirty_page_indices.is_empty() {
+            SnapshotMemory::revert_pages_from_base(
+                base,
+                self.last_dirty_page_indices.iter().copied(),
+                self.memory.inner(),
+            )
+            .map_err(|e| {
+                SnapshotSnafu {
+                    message: format!("revert dirty pages: {e}"),
+                }
+                .build()
+            })?;
+        }
+
+        // Step 2: Apply the new snapshot's dirty pages (if overlay)
+        // and record which pages are now dirty.
+        match &snapshot.memory {
+            SnapshotMemory::Overlay { dirty_pages, .. } => {
+                // Write only the dirty pages.
+                snapshot
+                    .memory
+                    .write_to_guest(self.memory.inner())
+                    .map_err(|e| {
+                        SnapshotSnafu {
+                            message: format!("write overlay pages: {e}"),
+                        }
+                        .build()
+                    })?;
+                self.last_dirty_page_indices = dirty_pages.keys().copied().collect();
+            }
+            SnapshotMemory::Full(_) => {
+                // Full snapshot — write everything, no dirty tracking.
+                snapshot
+                    .memory
+                    .write_to_guest(self.memory.inner())
+                    .map_err(|e| {
+                        SnapshotSnafu {
+                            message: format!("write full memory: {e}"),
+                        }
+                        .build()
+                    })?;
+                self.last_dirty_page_indices.clear();
+            }
+        }
+
+        // Step 3: Restore KVM device state (registers, IRQ chips, etc.)
+        // Same as VmSnapshot::restore minus the memory write.
+        snapshot
+            .restore_devices_only(&self.vcpus, &self.vm)
+            .map_err(|e| {
+                SnapshotSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        // Step 4: Restore VMM-side state (same as full restore).
+        self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
+        self.virtual_tsc.set(snapshot.virtual_tsc);
+        self.exit_count = snapshot.exit_count;
+        self.io_exit_count = snapshot.io_exit_count;
+        self.exits_since_last_sdk = 0;
+        self.panic_detected = false;
+        self.panic_match_state = 0;
+        self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
+        self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
+        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.coverage_active = snapshot.coverage_active;
+        self.scheduler.restore(&snapshot.scheduler_snapshot);
+        self.active_vcpu = snapshot.active_vcpu;
+
+        self.singlestep_remaining = snapshot.singlestep_remaining;
+        if self.singlestep_remaining > 0 && self.instruction_counter.is_some() {
+            self.singlestep_active = false;
+            self.enable_singlestep();
+        } else {
+            self.disable_singlestep();
+            if let Some(ref counter) = self.instruction_counter {
+                counter.reset_and_enable();
+                counter.disable();
+            }
+        }
+
+        for (snap, dev) in snapshot
+            .virtio_snapshots
+            .iter()
+            .zip(self.virtio_devices.iter_mut())
+        {
+            if let Some(ref blk_snap) = snap.block_snapshot {
+                if let Some(vb) = dev
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>()
+                {
+                    *vb.disk_mut() = crate::devices::block::DeterministicBlock::restore(blk_snap);
+                }
+            }
+        }
+
+        let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
+        let serial_trigger = SerialTrigger(serial_evt.try_clone()?);
+        self.serial_writer = CapturingWriter::new();
+        self.serial = vm_superio::Serial::from_state(
+            &snapshot.serial_state,
+            serial_trigger,
+            vm_superio::serial::NoEvents,
+            self.serial_writer.clone(),
+        )
+        .map_err(|e| {
+            SnapshotSnafu {
+                message: format!("serial restore: {e}"),
+            }
+            .build()
+        })?;
+        self.vm
+            .register_irqfd(&serial_evt, SERIAL_IRQ)
+            .context(CreateIrqChipSnafu)?;
+
+        self.dlog_emit(
+            self.dlog_record(DlogTag::SnapshotRestored)
+                .with_data_u64(snapshot.exit_count),
+        );
+        self.dlog_flush();
+
+        self.sigalrm_without_exit = 0;
+        self.skip_tsc_sync = false;
+        self.insn_count = 0;
+
+        if self.vcpus.len() > 1 {
+            unsafe {
+                let zero = libc::itimerval {
+                    it_interval: libc::timeval {
+                        tv_sec: 0,
+                        tv_usec: 0,
+                    },
+                    it_value: libc::timeval {
+                        tv_sec: 0,
+                        tv_usec: 0,
+                    },
+                };
+                libc::setitimer(libc::ITIMER_REAL, &zero, std::ptr::null_mut());
+            }
+        }
 
         Ok(())
     }

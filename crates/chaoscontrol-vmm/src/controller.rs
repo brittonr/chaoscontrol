@@ -1598,6 +1598,47 @@ impl SimulationController {
         Ok(())
     }
 
+    /// Incremental restore: only revert/apply dirty pages instead of
+    /// writing the full memory image for each VM.
+    ///
+    /// Requires `set_memory_bases()` to have been called. Falls back
+    /// to full restore for any VM without a base.
+    pub fn restore_all_incremental(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), VmError> {
+        if snapshot.vm_snapshots.len() != self.vms.len() {
+            return SnapshotSnafu {
+                message: "Snapshot VM count mismatch",
+            }
+            .fail();
+        }
+
+        self.tick = snapshot.tick;
+        self.network = snapshot.network_state.clone();
+        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+
+        for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
+            if let Some(base) = &self.vm_memory_bases[i] {
+                self.vms[i].vm.restore_incremental(vm_snap, base)?;
+            } else {
+                self.vms[i].vm.restore(vm_snap)?;
+            }
+            self.vms[i].status = *status;
+            if let Some(stalls) = snapshot.vcpu_stall_until.get(i) {
+                self.vms[i].vcpu_stall_until = stalls.clone();
+            } else {
+                self.vms[i].vcpu_stall_until.clear();
+            }
+            self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
+            self.vms[i].clock_jitter_bound =
+                snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
+        }
+
+        debug!("Incremental restore from snapshot at tick {}", self.tick);
+        Ok(())
+    }
+
     /// Get the oracle report (merged from all VMs).
     pub fn report(&self) -> OracleReport {
         self.merged_oracle_report()

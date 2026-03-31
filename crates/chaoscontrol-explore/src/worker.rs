@@ -245,8 +245,12 @@ fn run_single_branch(
     ticks_per_branch: u64,
     use_incremental: bool,
 ) -> Result<BranchResult, chaoscontrol_vmm::vm::VmError> {
-    // Restore
-    controller.restore_all(snapshot)?;
+    // Restore — use incremental path when bases are available.
+    if use_incremental {
+        controller.restore_all_incremental(snapshot)?;
+    } else {
+        controller.restore_all(snapshot)?;
+    }
     controller.reset_vm_statuses();
 
     // Apply schedule

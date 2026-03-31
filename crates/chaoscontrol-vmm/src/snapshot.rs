@@ -391,6 +391,30 @@ impl VmSnapshot {
         // Restore guest memory (handles both Full and Overlay)
         self.memory.write_to_guest(guest_memory)?;
 
+        // Restore KVM devices and vCPU registers
+        self.restore_devices_only(vcpus, vm)?;
+
+        info!(
+            "Snapshot restored: {} vCPUs, BSP RIP=0x{:x}",
+            self.vcpu_snapshots.len(),
+            self.vcpu_snapshots[0].regs.rip,
+        );
+
+        Ok(())
+    }
+
+    /// Restore in-kernel device state and vCPU registers without
+    /// touching guest memory. Used by incremental restore where
+    /// memory is handled separately.
+    pub fn restore_devices_only(&self, vcpus: &[VcpuFd], vm: &VmFd) -> Result<(), SnapshotError> {
+        if vcpus.len() != self.vcpu_snapshots.len() {
+            return VcpuCountMismatchSnafu {
+                snapshot: self.vcpu_snapshots.len(),
+                current: vcpus.len(),
+            }
+            .fail();
+        }
+
         // Restore in-kernel devices BEFORE vCPU state
         vm.set_pit2(&self.pit).context(SetPitSnafu)?;
         vm.set_clock(&self.clock).context(SetClockSnafu)?;
@@ -402,12 +426,6 @@ impl VmSnapshot {
         for (vcpu_snap, vcpu) in self.vcpu_snapshots.iter().zip(vcpus.iter()) {
             vcpu_snap.restore(vcpu)?;
         }
-
-        info!(
-            "Snapshot restored: {} vCPUs, BSP RIP=0x{:x}",
-            self.vcpu_snapshots.len(),
-            self.vcpu_snapshots[0].regs.rip,
-        );
 
         Ok(())
     }

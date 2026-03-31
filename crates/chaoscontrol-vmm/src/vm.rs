@@ -2977,6 +2977,7 @@ impl DeterministicVm {
                             self.sigalrm_without_exit,
                         );
                         self.panic_detected = true;
+                        return Ok(true); // halt immediately
                     }
                     return Ok(false);
                 }

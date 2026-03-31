@@ -7,7 +7,7 @@
 //! On AMD Zen5: ~41 instruction skid per exit (SVM boundary imprecision).
 //! On Intel: expected to be zero (VMX has precise PMU boundaries).
 //!
-//! Usage: pmu_kvm_test <kernel> <initrd> [boot_exits] [measure_exits] [runs]
+//! Usage: `pmu_kvm_test <kernel> <initrd> [boot_exits] [measure_exits] [runs]`
 
 use chaoscontrol_vmm::perf::InstructionCounter;
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};

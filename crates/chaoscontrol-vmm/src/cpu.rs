@@ -494,7 +494,7 @@ impl VirtualTsc {
     /// Call this once per VM-exit (or per scheduling quantum) to make
     /// time progress deterministically.
     ///
-    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_tick`].
+    /// Delegates arithmetic to `crate::verified::cpu::vtsc_tick`.
     #[inline]
     pub fn tick(&mut self) -> u64 {
         self.counter = crate::verified::cpu::vtsc_tick(self.counter, self.advance_per_tick);
@@ -505,7 +505,7 @@ impl VirtualTsc {
     ///
     /// Equivalent to calling [`tick`](Self::tick) `n` times, but O(1).
     ///
-    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_advance`].
+    /// Delegates arithmetic to `crate::verified::cpu::vtsc_advance`.
     #[inline]
     pub fn advance(&mut self, n: u64) -> u64 {
         self.counter = crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
@@ -526,7 +526,7 @@ impl VirtualTsc {
     /// Used by the HLT handler to fast-forward virtual time to the next
     /// timer event without calling `tick()` in a loop.
     ///
-    /// Delegates arithmetic to [`crate::verified::cpu::vtsc_advance_to`].
+    /// Delegates arithmetic to `crate::verified::cpu::vtsc_advance_to`.
     #[inline]
     pub fn advance_to(&mut self, target: u64) {
         self.counter =
@@ -550,7 +550,7 @@ impl VirtualTsc {
     /// Uses `u128` intermediate arithmetic so that large counter values
     /// (up to ~195 years at 3 GHz) do not overflow.
     ///
-    /// Delegates to [`crate::verified::cpu::elapsed_ns`].
+    /// Delegates to `crate::verified::cpu::elapsed_ns`.
     pub fn elapsed_ns(&self) -> u64 {
         crate::verified::cpu::elapsed_ns(self.counter, self.tsc_khz)
     }
@@ -776,7 +776,7 @@ fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
 ///
 /// The ratio is reduced to lowest terms via GCD so the values stay small.
 ///
-/// Delegates to [`crate::verified::cpu::tsc_crystal_ratio`].
+/// Delegates to `crate::verified::cpu::tsc_crystal_ratio`.
 fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
     crate::verified::cpu::tsc_crystal_ratio(tsc_khz)
 }
@@ -792,7 +792,7 @@ fn tsc_crystal_ratio(tsc_khz: u32) -> (u32, u32) {
 /// the base field is set to 0xF and the excess is placed in the
 /// extended-family field (bits \[27:20\]).
 ///
-/// Delegates to [`crate::verified::cpu::encode_family`].
+/// Delegates to `crate::verified::cpu::encode_family`.
 fn encode_family(eax: &mut u32, family: u8) {
     crate::verified::cpu::encode_family(eax, family);
 }
@@ -802,14 +802,14 @@ fn encode_family(eax: &mut u32, family: u8) {
 /// Low nibble → bits \[7:4\], high nibble → bits \[19:16\] (extended
 /// model).
 ///
-/// Delegates to [`crate::verified::cpu::encode_model`].
+/// Delegates to `crate::verified::cpu::encode_model`.
 fn encode_model(eax: &mut u32, model: u8) {
     crate::verified::cpu::encode_model(eax, model);
 }
 
 /// Encode a stepping value into CPUID 0x1 EAX bits \[3:0\].
 ///
-/// Delegates to [`crate::verified::cpu::encode_stepping`].
+/// Delegates to `crate::verified::cpu::encode_stepping`.
 fn encode_stepping(eax: &mut u32, stepping: u8) {
     crate::verified::cpu::encode_stepping(eax, stepping);
 }

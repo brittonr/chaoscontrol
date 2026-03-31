@@ -2,7 +2,7 @@
 //! every run produces identical results.
 //!
 //! Usage:
-//!   cargo run --release --bin determinism_stress -- <kernel> <initrd> [N]
+//!   
 //!
 //! Tests four configurations:
 //!   1. Single VM, 1 vCPU, 10 runs

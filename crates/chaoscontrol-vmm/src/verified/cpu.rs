@@ -14,15 +14,15 @@
 //!
 //! | Verified function        | Original location in `cpu.rs`          |
 //! |--------------------------|----------------------------------------|
-//! | [`gcd`]                  | `gcd()` (was `const fn`)               |
-//! | [`tsc_crystal_ratio`]    | `tsc_crystal_ratio()`                  |
-//! | [`encode_family`]        | `encode_family()`                      |
-//! | [`encode_model`]         | `encode_model()`                       |
-//! | [`encode_stepping`]      | `encode_stepping()`                    |
-//! | [`elapsed_ns`]           | `VirtualTsc::elapsed_ns()`             |
-//! | [`vtsc_tick`]            | `VirtualTsc::tick()`                   |
-//! | [`vtsc_advance`]         | `VirtualTsc::advance()`                |
-//! | [`vtsc_advance_to`]      | `VirtualTsc::advance_to()`             |
+//! | `gcd`                  | `gcd()` (was `const fn`)               |
+//! | `tsc_crystal_ratio`    | `tsc_crystal_ratio()`                  |
+//! | `encode_family`        | `encode_family()`                      |
+//! | `encode_model`         | `encode_model()`                       |
+//! | `encode_stepping`      | `encode_stepping()`                    |
+//! | `elapsed_ns`           | `VirtualTsc::elapsed_ns()`             |
+//! | `vtsc_tick`            | `VirtualTsc::tick()`                   |
+//! | `vtsc_advance`         | `VirtualTsc::advance()`                |
+//! | `vtsc_advance_to`      | `VirtualTsc::advance_to()`             |
 
 // ─── Constants (duplicated from cpu.rs so this module is self-contained) ─
 
@@ -235,7 +235,7 @@ pub(crate) fn encode_stepping(eax: &mut u32, stepping: u8) {
 /// Decode the display family from CPUID 0x1 EAX.
 ///
 /// If the base family field is 0xF the extended family is added.
-/// This is the inverse of [`encode_family`].
+/// This is the inverse of `encode_family`.
 pub(crate) fn decode_family(eax: u32) -> u8 {
     let base = ((eax & EAX_FAMILY_MASK) >> EAX_FAMILY_SHIFT) as u8;
     if base == 0xF {
@@ -250,7 +250,7 @@ pub(crate) fn decode_family(eax: u32) -> u8 {
 ///
 /// Combines the base model (bits \[7:4\]) and extended model (bits
 /// \[19:16\]) into a single byte.  This is the inverse of
-/// [`encode_model`].
+/// `encode_model`.
 pub(crate) fn decode_model(eax: u32) -> u8 {
     let base = ((eax & EAX_MODEL_MASK) >> EAX_MODEL_SHIFT) as u8;
     let ext = ((eax & EAX_EXT_MODEL_MASK) >> EAX_EXT_MODEL_SHIFT) as u8;
@@ -259,7 +259,7 @@ pub(crate) fn decode_model(eax: u32) -> u8 {
 
 /// Decode the stepping from CPUID 0x1 EAX bits \[3:0\].
 ///
-/// This is the inverse of [`encode_stepping`].
+/// This is the inverse of `encode_stepping`.
 pub(crate) fn decode_stepping(eax: u32) -> u8 {
     (eax & EAX_STEPPING_MASK) as u8
 }
@@ -319,7 +319,7 @@ pub(crate) fn vtsc_tick(counter: u64, advance_per_tick: u64) -> u64 {
 
 /// Advance a TSC counter by `n` ticks (wrapping).
 ///
-/// Equivalent to calling [`vtsc_tick`] `n` times, but O(1).
+/// Equivalent to calling `vtsc_tick` `n` times, but O(1).
 ///
 /// # Properties verified by `verus/cpu_spec.rs`
 ///

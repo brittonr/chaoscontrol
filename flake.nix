@@ -49,7 +49,8 @@
               path: type:
               (craneLib.filterCargoSources path type)
               || (builtins.match ".*\\.bpf\\.c$" path != null)
-              || (builtins.match ".*\\.h$" path != null);
+              || (builtins.match ".*\\.h$" path != null)
+              || (builtins.match ".*\\.html$" path != null);
           };
 
           # Common build arguments shared across all crane invocations
@@ -78,7 +79,15 @@
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
           # Build the full workspace
-          chaoscontrol = craneLib.buildPackage (commonArgs // { inherit cargoArtifacts; });
+          # doCheck = false — tests run via checks.tests instead.
+          # Hegel property tests need uv which isn't in the sandbox.
+          chaoscontrol = craneLib.buildPackage (
+            commonArgs
+            // {
+              inherit cargoArtifacts;
+              doCheck = false;
+            }
+          );
 
           # --- Guest binary builds (musl static) ---
 
@@ -282,6 +291,42 @@
               seed = 42;
               mode = "hybrid";
             };
+
+            # Generated documentation (mdBook + rustdoc)
+            docs =
+              let
+                # Rustdoc for the full workspace
+                rustdoc = craneLib.cargoDoc (
+                  commonArgs
+                  // {
+                    inherit cargoArtifacts;
+                    cargoDocExtraArgs = "--workspace --no-deps";
+                    RUSTDOCFLAGS = "-D warnings";
+                  }
+                );
+              in
+              pkgs.runCommand "chaoscontrol-docs"
+                {
+                  nativeBuildInputs = [ pkgs.mdbook ];
+                }
+                ''
+                  # Make CLI binaries findable for --help capture.
+                  # generate.sh looks in CARGO_TARGET_DIR/{release,debug}/
+                  mkdir -p $TMPDIR/cargo-target/release
+                  for bin in ${chaoscontrol}/bin/*; do
+                    ln -s $bin $TMPDIR/cargo-target/release/$(basename $bin)
+                  done
+                  export CARGO_TARGET_DIR=$TMPDIR/cargo-target
+
+                  # Generate mdBook source from code
+                  bash ${./docs/generate.sh} $TMPDIR/book
+
+                  # Build mdBook
+                  mdbook build $TMPDIR/book --dest-dir $out/book
+
+                  # Copy rustdoc alongside
+                  cp -r ${rustdoc}/share/doc $out/api
+                '';
           };
 
           checks = {
@@ -307,6 +352,16 @@
             # Unit tests (KVM integration tests are #[ignore] —
             # the Nix sandbox has no /dev/kvm)
             tests = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+
+            # Rustdoc — deny warnings
+            rustdoc = craneLib.cargoDoc (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoDocExtraArgs = "--workspace --no-deps";
+                RUSTDOCFLAGS = "-D warnings";
+              }
+            );
 
             # Nix formatting
             nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = [ pkgs.nixfmt-rfc-style ]; } ''

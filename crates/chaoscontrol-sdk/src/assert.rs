@@ -10,8 +10,8 @@
 //! | [`always`]               | Fail if `cond` is ever false       | Fail if ANY run had false          |
 //! | [`sometimes`]            | Record whether `cond` was true     | Fail if NO run ever had true       |
 //! | [`reachable`]            | Record that this point was reached | Fail if NO run reached this point  |
-//! | [`unreachable`]          | Fail immediately                   | Fail if ANY run reached this point |
-//! | [`always_or_unreachable`]| Like `always`, but unreachable on false | Immediate failure + tracked |
+//! | `unreachable`            | Fail immediately                   | Fail if ANY run reached this point |
+//! | `always_or_unreachable`  | Like `always`, but unreachable on false | Immediate failure + tracked |
 //!
 //! # Assertion IDs
 //!
@@ -40,7 +40,7 @@ pub const CATALOG_KIND_UNREACHABLE: u8 = 3;
 /// The kind of assertion being made.
 ///
 /// Maps to the four assertion semantics supported by ChaosControl.
-/// Used with [`assert_raw`] and [`cc_assert_raw!`] to specify which
+/// Used with [`assert_raw()`] and `cc_assert_raw!` to specify which
 /// protocol command to dispatch.
 ///
 /// # Third-party framework integration
@@ -73,7 +73,7 @@ impl AssertionKind {
     /// Map to the corresponding `CATALOG_KIND_*` constant.
     ///
     /// This is `const` so it can be used in static catalog entries
-    /// (e.g. inside [`cc_assert_raw!`] macro expansion).
+    /// (e.g. inside `cc_assert_raw!` macro expansion).
     pub const fn to_catalog_kind(&self) -> u8 {
         match self {
             AssertionKind::Always => CATALOG_KIND_ALWAYS,
@@ -256,7 +256,7 @@ pub fn unreachable(message: &str, details: &serde_json::Value) {
     unreachable_with_id(id, message, details);
 }
 
-/// Like [`unreachable`] but with an explicit assertion ID.
+/// Like `unreachable()` but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn unreachable_with_id(id: u32, message: &str, details: &serde_json::Value) {
     let json_bytes = to_json_bytes(details);
@@ -270,7 +270,7 @@ pub fn always_or_unreachable(cond: bool, message: &str, details: &serde_json::Va
     always_or_unreachable_with_id(cond, id, message, details);
 }
 
-/// Like [`always_or_unreachable`] but with an explicit assertion ID.
+/// Like `always_or_unreachable()` but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn always_or_unreachable_with_id(
     cond: bool,

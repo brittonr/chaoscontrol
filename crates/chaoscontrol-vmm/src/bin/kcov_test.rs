@@ -1,7 +1,7 @@
 //! Quick test to verify KCOV kernel coverage collection works.
 //!
 //! Usage:
-//!   cargo run --release --bin kcov_test -- <kcov-vmlinux> <initrd>
+//!   
 //!
 //! Example:
 //!   cargo run --release --bin kcov_test -- result-kcov/vmlinux guest/initrd-sdk.gz

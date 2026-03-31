@@ -1556,7 +1556,7 @@ impl DeterministicVm {
     /// Read the coverage bitmap from guest memory.
     ///
     /// Returns the raw 64 KB bitmap. Use with
-    /// [`CoverageBitmap::from_slice`](chaoscontrol_explore::coverage::CoverageBitmap::from_slice).
+    /// `CoverageBitmap::from_slice`.
     pub fn read_coverage_bitmap(&self) -> Vec<u8> {
         let mut buf = vec![0u8; COVERAGE_BITMAP_SIZE];
         let _ = self

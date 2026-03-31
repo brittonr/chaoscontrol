@@ -55,7 +55,7 @@ fn parse_num_nodes() -> usize {
     for token in cmdline.split_whitespace() {
         if let Some(val) = token.strip_prefix("raft_nodes=") {
             if let Ok(n) = val.parse::<usize>() {
-                if n >= 3 && n <= 9 && n % 2 == 1 {
+                if (3..=9).contains(&n) && n % 2 == 1 {
                     return n;
                 }
             }
@@ -185,9 +185,15 @@ fn main() {
 
     let bug = parse_bug_mode();
     let num_nodes = parse_num_nodes();
-    println!("raft: starting {}-node cluster (bug={})", num_nodes, bug.name());
+    println!(
+        "raft: starting {}-node cluster (bug={})",
+        num_nodes,
+        bug.name()
+    );
 
-    lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": num_nodes, "bug": bug.name()}));
+    lifecycle::setup_complete(
+        &json!({"program": "raft-guest", "nodes": num_nodes, "bug": bug.name()}),
+    );
     println!("raft: setup_complete (bug={})", bug.name());
 
     // Initialize nodes with the selected bug mode
@@ -209,6 +215,7 @@ fn main() {
 
     loop {
         // ── Fault injection: crashes and restarts ────────────
+        #[allow(clippy::needless_range_loop)]
         for i in 0..num_nodes {
             if faults.crashed[i] {
                 // Restart decision: ~2% per tick
@@ -690,20 +697,22 @@ fn main() {
         // like fig8_commit.
         {
             // Leader count: 0, 1, or 2+ (split-brain)
-            let leader_count = nodes.iter()
+            let leader_count = nodes
+                .iter()
                 .filter(|n| n.role == Role::Leader && !faults.crashed[n.id])
                 .count();
             coverage::record_edge(10000 + leader_count.min(3));
 
             // Term spread: max_term - min_term across alive nodes.
             // High spread means nodes are out of sync.
-            let alive_terms: Vec<u64> = nodes.iter()
+            let alive_terms: Vec<u64> = nodes
+                .iter()
                 .filter(|n| !faults.crashed[n.id])
                 .map(|n| n.current_term)
                 .collect();
             if !alive_terms.is_empty() {
-                let term_spread = alive_terms.iter().max().unwrap()
-                    - alive_terms.iter().min().unwrap();
+                let term_spread =
+                    alive_terms.iter().max().unwrap() - alive_terms.iter().min().unwrap();
                 coverage::record_edge(10100 + term_spread.min(10) as usize);
             }
 
@@ -714,7 +723,9 @@ fn main() {
 
             // Term diversity in each node's log: how many distinct terms.
             for (i, node) in nodes.iter().enumerate() {
-                if node.log.is_empty() { continue; }
+                if node.log.is_empty() {
+                    continue;
+                }
                 let mut seen = [false; 64];
                 let mut distinct = 0usize;
                 for e in &node.log {
@@ -728,19 +739,24 @@ fn main() {
             }
 
             // Old-term entries in leader's log (the fig8 precondition).
-            if let Some(leader) = nodes.iter()
+            if let Some(leader) = nodes
+                .iter()
                 .find(|n| n.role == Role::Leader && !faults.crashed[n.id])
             {
-                let has_old_term_entries = leader.log.iter()
-                    .any(|e| e.term < leader.current_term);
-                let old_term_count = leader.log.iter()
+                let has_old_term_entries = leader.log.iter().any(|e| e.term < leader.current_term);
+                let old_term_count = leader
+                    .log
+                    .iter()
                     .filter(|e| e.term < leader.current_term)
                     .count();
-                coverage::record_edge(10400 + has_old_term_entries as usize * 10
-                    + old_term_count.min(9));
+                coverage::record_edge(
+                    10400 + has_old_term_entries as usize * 10 + old_term_count.min(9),
+                );
 
                 // Uncommitted old-term entries (the exact fig8 trigger).
-                let uncommitted_old = leader.log.iter()
+                let uncommitted_old = leader
+                    .log
+                    .iter()
                     .enumerate()
                     .skip(leader.commit_index)
                     .any(|(_, e)| e.term < leader.current_term);
@@ -757,7 +773,7 @@ fn main() {
             // log matching violations.
             let mut has_disagreement = false;
             for i in 0..num_nodes {
-                for j in (i+1)..num_nodes {
+                for j in (i + 1)..num_nodes {
                     let shared = nodes[i].log.len().min(nodes[j].log.len());
                     for idx in 0..shared {
                         if nodes[i].log[idx].term != nodes[j].log[idx].term {
@@ -765,9 +781,13 @@ fn main() {
                             break;
                         }
                     }
-                    if has_disagreement { break; }
+                    if has_disagreement {
+                        break;
+                    }
                 }
-                if has_disagreement { break; }
+                if has_disagreement {
+                    break;
+                }
             }
             coverage::record_edge(10700 + has_disagreement as usize);
 

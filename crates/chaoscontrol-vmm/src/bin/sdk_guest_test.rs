@@ -11,7 +11,7 @@
 //!   7. Determinism: two identical runs produce the same oracle + coverage
 //!
 //! Usage:
-//!   cargo run --release --bin sdk_guest_test -- <vmlinux> [initrd-sdk.gz]
+//!   
 //!
 //! If initrd is omitted, defaults to `guest/initrd-sdk.gz`.
 

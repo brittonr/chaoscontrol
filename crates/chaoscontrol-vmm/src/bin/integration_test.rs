@@ -4,7 +4,7 @@
 //! fault injection, coverage bitmap, snapshot/restore.
 //!
 //! Usage:
-//!   cargo run --release --bin integration_test -- <kernel> <initrd>
+//!   
 //!
 //! Or with defaults:
 //!   cargo run --release --bin integration_test -- result/bzImage guest/initrd.gz

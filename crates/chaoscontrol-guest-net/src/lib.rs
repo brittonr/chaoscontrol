@@ -283,7 +283,7 @@ impl GuestNetwork {
 
     /// Create a TCP socket and start listening on the given port.
     ///
-    /// Returns a socket handle for use with [`tcp_recv`] and [`tcp_send`].
+    /// Returns a socket handle for use with [`Self::tcp_recv`] and [`Self::tcp_send`].
     pub fn tcp_listen(&mut self, port: u16) -> SocketHandle {
         let rx_buf = tcp::SocketBuffer::new(vec![0u8; TCP_RX_BUF_SIZE]);
         let tx_buf = tcp::SocketBuffer::new(vec![0u8; TCP_TX_BUF_SIZE]);
@@ -296,7 +296,7 @@ impl GuestNetwork {
     /// Create a TCP socket and connect to a remote address.
     ///
     /// Returns a socket handle. The connection is non-blocking — poll
-    /// until [`tcp_is_active`] returns `true`.
+    /// until [`Self::tcp_is_active`] returns `true`.
     pub fn tcp_connect(&mut self, addr: Ipv4Address, port: u16) -> SocketHandle {
         let rx_buf = tcp::SocketBuffer::new(vec![0u8; TCP_RX_BUF_SIZE]);
         let tx_buf = tcp::SocketBuffer::new(vec![0u8; TCP_TX_BUF_SIZE]);

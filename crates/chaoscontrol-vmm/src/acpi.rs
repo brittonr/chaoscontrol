@@ -60,7 +60,7 @@ pub enum AcpiError {
 
 /// Write minimal ACPI tables (RSDP + RSDT + MADT) for `num_cpus` processors.
 ///
-/// The tables are placed at [`ACPI_TABLE_BASE`] in guest memory. Each CPU
+/// The tables are placed at `ACPI_TABLE_BASE` (`0xF_0000`) in guest memory. Each CPU
 /// gets a Local APIC entry with APIC ID = CPU index, all marked as enabled.
 ///
 /// Returns the address of the RSDP, which should be referenced by the

@@ -13,7 +13,7 @@
 //! - Network stats accuracy
 //!
 //! Usage:
-//!   cargo run --release --bin net_test -- <kernel> <initrd-net>
+//!   
 //!
 //! Example:
 //!   cargo run --release --bin net_test -- result-net/vmlinux guest/initrd-net.gz

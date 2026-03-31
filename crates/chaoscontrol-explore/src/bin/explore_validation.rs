@@ -1,7 +1,7 @@
 //! Validation tests for parallel exploration determinism and stress.
 //!
 //! Usage:
-//!   cargo run --release --bin explore_validation -- <kernel> <initrd>
+//!   cargo run --release --bin explore_validation -- KERNEL INITRD
 
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;

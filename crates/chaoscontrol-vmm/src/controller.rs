@@ -1495,7 +1495,7 @@ impl SimulationController {
     /// Take an incremental snapshot of all VMs.
     ///
     /// Each VM's memory is captured as a sparse overlay referencing the
-    /// stored base. Call [`set_memory_bases`] before using this.
+    /// stored base. Call [`Self::set_memory_bases`] before using this.
     /// Returns the snapshot and total dirty pages across all VMs.
     pub fn snapshot_all_incremental(&self) -> Result<(SimulationSnapshot, usize), VmError> {
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());

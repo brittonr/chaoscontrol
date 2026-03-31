@@ -1,7 +1,7 @@
 //! Performance benchmarks for incremental snapshots.
 //!
 //! Usage:
-//!   cargo run --release --bin perf_bench -- <kernel> <initrd>
+//!   
 
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};

@@ -194,7 +194,7 @@ impl DeterministicBlock {
 
     /// Read `buf.len()` bytes starting at `offset`.
     ///
-    /// Returns the I/O delay in nanoseconds (0 unless [`DiskSlow`] is active).
+    /// Returns the I/O delay in nanoseconds (0 unless `DiskSlow` is active).
     pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<u64, BlockError> {
         let len = buf.len() as u64;
         self.check_bounds(offset, len)?;
@@ -235,7 +235,7 @@ impl DeterministicBlock {
 
     /// Write `data` starting at `offset`.
     ///
-    /// Returns the I/O delay in nanoseconds (0 unless [`DiskSlow`] is active).
+    /// Returns the I/O delay in nanoseconds (0 unless `DiskSlow` is active).
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<u64, BlockError> {
         let len = data.len() as u64;
         self.check_bounds(offset, len)?;

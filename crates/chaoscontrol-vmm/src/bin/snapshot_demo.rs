@@ -6,7 +6,7 @@
 //! 5. Restore from snapshot
 //! 6. Continue running again — should see heartbeats starting from N+1 again
 //!
-//! Usage: cargo run --release --bin snapshot_demo -- <kernel> <initrd>
+//! Usage: `cargo run --release --bin snapshot_demo -- <kernel> <initrd>`
 
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;

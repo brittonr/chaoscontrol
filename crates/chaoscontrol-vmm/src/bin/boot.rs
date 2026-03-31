@@ -1,6 +1,6 @@
 //! Boot a Linux kernel in the deterministic VMM.
 //!
-//! Usage: cargo run --bin boot -- <kernel-path> [initrd-path]
+//! Usage: `cargo run --bin boot -- <kernel-path> [initrd-path]`
 
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use std::env;

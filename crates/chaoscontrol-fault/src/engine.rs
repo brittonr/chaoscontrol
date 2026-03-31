@@ -966,12 +966,13 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
+        let val = 2.72f64;
         let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
-        page.result = u64::from_le_bytes(3.14f64.to_le_bytes());
+        page.result = u64::from_le_bytes(val.to_le_bytes());
         let (_, status) = engine.handle_hypercall(&page);
 
         assert_eq!(status, STATUS_OK);
-        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&3.14));
+        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&val));
     }
 
     #[test]
@@ -979,8 +980,9 @@ mod tests {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
+        let val1 = 2.72f64;
         let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
-        page.result = u64::from_le_bytes(3.14f64.to_le_bytes());
+        page.result = u64::from_le_bytes(val1.to_le_bytes());
         engine.handle_hypercall(&page);
 
         page.result = u64::from_le_bytes(1.0f64.to_le_bytes());

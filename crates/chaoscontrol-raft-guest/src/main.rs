@@ -17,9 +17,9 @@
 //! - **Data Integrity**: committed log entries are never overwritten
 
 use chaoscontrol_raft_guest::{
-    check_election_safety, check_leader_completeness, check_log_matching, BugMode, LogEntry,
-    Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER, HEARTBEAT_INTERVAL,
-    NUM_NODES,
+    check_election_safety, check_leader_completeness, check_log_matching, quorum_for, BugMode,
+    LogEntry, Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER,
+    HEARTBEAT_INTERVAL, NUM_NODES,
 };
 use chaoscontrol_sdk::assert::details;
 use chaoscontrol_sdk::prelude::*;
@@ -49,25 +49,42 @@ fn parse_bug_mode() -> BugMode {
     BugMode::None
 }
 
+/// Parse `raft_nodes=N` from /proc/cmdline. Default: NUM_NODES (3).
+fn parse_num_nodes() -> usize {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    for token in cmdline.split_whitespace() {
+        if let Some(val) = token.strip_prefix("raft_nodes=") {
+            if let Ok(n) = val.parse::<usize>() {
+                if n >= 3 && n <= 9 && n % 2 == 1 {
+                    return n;
+                }
+            }
+        }
+    }
+    NUM_NODES
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Fault state
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Per-node crash state and per-link partition matrix.
 struct FaultState {
+    num_nodes: usize,
     /// Whether each node is currently crashed.
-    crashed: [bool; NUM_NODES],
+    crashed: Vec<bool>,
     /// Asymmetric partition matrix: partitioned[a][b] = messages from a→b dropped.
-    partitioned: [[bool; NUM_NODES]; NUM_NODES],
+    partitioned: Vec<Vec<bool>>,
     /// Delayed messages: (from, to, message, deliver_at_tick).
     delay_queue: Vec<(usize, usize, Message, usize)>,
 }
 
 impl FaultState {
-    fn new() -> Self {
+    fn new(num_nodes: usize) -> Self {
         Self {
-            crashed: [false; NUM_NODES],
-            partitioned: [[false; NUM_NODES]; NUM_NODES],
+            num_nodes,
+            crashed: vec![false; num_nodes],
+            partitioned: vec![vec![false; num_nodes]; num_nodes],
             delay_queue: Vec::new(),
         }
     }
@@ -81,10 +98,10 @@ impl FaultState {
             .count()
     }
 
-    /// 3-bit bitmap: bit i set if node i is alive.
+    /// N-bit bitmap: bit i set if node i is alive.
     fn alive_mask(&self) -> usize {
         let mut mask = 0;
-        for i in 0..NUM_NODES {
+        for i in 0..self.num_nodes {
             if !self.crashed[i] {
                 mask |= 1 << i;
             }
@@ -99,13 +116,12 @@ impl FaultState {
 
     /// Whether a majority of nodes can reach each other (no majority-isolating partition).
     fn quorum_reachable(&self) -> bool {
-        // Simple check: at least QUORUM nodes alive and no node in the alive set
-        // is partitioned from all other alive nodes.
-        if self.alive_count() < 2 {
+        let quorum = quorum_for(self.num_nodes);
+        if self.alive_count() < quorum {
             return false;
         }
-        // For 3-node Raft: quorum=2. Check that at least 2 alive nodes can talk.
-        let alive: Vec<usize> = (0..NUM_NODES).filter(|&i| !self.crashed[i]).collect();
+        // Check that at least 2 alive nodes can talk bidirectionally.
+        let alive: Vec<usize> = (0..self.num_nodes).filter(|&i| !self.crashed[i]).collect();
         for &a in &alive {
             for &b in &alive {
                 if a != b && !self.partitioned[a][b] && !self.partitioned[b][a] {
@@ -125,9 +141,9 @@ struct CommittedValues {
 }
 
 impl CommittedValues {
-    fn new() -> Self {
+    fn new(num_nodes: usize) -> Self {
         Self {
-            values: vec![Vec::new(); NUM_NODES],
+            values: vec![Vec::new(); num_nodes],
         }
     }
 
@@ -168,20 +184,23 @@ fn main() {
     guest_init();
 
     let bug = parse_bug_mode();
-    println!("raft: starting 3-node cluster (bug={})", bug.name());
+    let num_nodes = parse_num_nodes();
+    println!("raft: starting {}-node cluster (bug={})", num_nodes, bug.name());
 
-    lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": 3, "bug": bug.name()}));
+    lifecycle::setup_complete(&json!({"program": "raft-guest", "nodes": num_nodes, "bug": bug.name()}));
     println!("raft: setup_complete (bug={})", bug.name());
 
-    // Initialize 3 nodes with the selected bug mode
-    let mut nodes: Vec<Node> = (0..NUM_NODES).map(|i| Node::new_with_bug(i, bug)).collect();
+    // Initialize nodes with the selected bug mode
+    let mut nodes: Vec<Node> = (0..num_nodes)
+        .map(|i| Node::new_with_config(i, num_nodes, bug))
+        .collect();
     // Stagger initial election timers
     for (i, node) in nodes.iter_mut().enumerate() {
         node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;
     }
 
-    let mut faults = FaultState::new();
-    let mut committed_values = CommittedValues::new();
+    let mut faults = FaultState::new(num_nodes);
+    let mut committed_values = CommittedValues::new(num_nodes);
     let mut values_proposed = 0u64;
     let mut values_committed = 0usize;
     let mut tick = 0usize;
@@ -190,7 +209,7 @@ fn main() {
 
     loop {
         // ── Fault injection: crashes and restarts ────────────
-        for i in 0..NUM_NODES {
+        for i in 0..num_nodes {
             if faults.crashed[i] {
                 // Restart decision: ~2% per tick
                 if random::random_choice(50) == 0 {
@@ -199,8 +218,8 @@ fn main() {
                     nodes[i].commit_index = 0;
                     nodes[i].role = Role::Follower;
                     nodes[i].election_timer = ELECTION_TIMEOUT_BASE;
-                    nodes[i].next_index = [1; NUM_NODES];
-                    nodes[i].match_index = [0; NUM_NODES];
+                    nodes[i].next_index = vec![1; num_nodes];
+                    nodes[i].match_index = vec![0; num_nodes];
                     nodes[i].votes_received = 0;
                     nodes[i].heartbeat_timer = 0;
                     nodes[i].inbox.clear();
@@ -229,8 +248,8 @@ fn main() {
         // ── Fault injection: partitions ─────────────────────
         // Create new partitions
         if random::random_choice(300) == 0 {
-            let src = random::random_choice(NUM_NODES);
-            let dst = random::random_choice(NUM_NODES);
+            let src = random::random_choice(num_nodes);
+            let dst = random::random_choice(num_nodes);
             if src != dst && !faults.partitioned[src][dst] {
                 faults.partitioned[src][dst] = true;
                 cc_assert_reachable!(
@@ -241,8 +260,8 @@ fn main() {
         }
 
         // Heal existing partitions
-        for src in 0..NUM_NODES {
-            for dst in 0..NUM_NODES {
+        for src in 0..num_nodes {
+            for dst in 0..num_nodes {
                 if faults.partitioned[src][dst] && random::random_choice(30) == 0 {
                     faults.partitioned[src][dst] = false;
                     cc_assert_reachable!(
@@ -267,7 +286,7 @@ fn main() {
         faults.delay_queue = still_delayed;
 
         // ── Pick which node to activate this tick ────────────
-        let active = random::random_choice(NUM_NODES);
+        let active = random::random_choice(num_nodes);
         coverage::record_edge(6000 + tick * 7 + active * 3);
 
         // Skip crashed nodes
@@ -641,7 +660,7 @@ fn main() {
         }
 
         // ── Fault-aware liveness ────────────────────────────
-        if faults.alive_count() == NUM_NODES && faults.quorum_reachable() {
+        if faults.alive_count() == num_nodes && faults.quorum_reachable() {
             ticks_quorum_healthy += 1;
             if ticks_quorum_healthy == 1 {
                 // Record commit level at start of healthy window
@@ -662,6 +681,101 @@ fn main() {
 
         // ── Per-node state coverage ─────────────────────────
         coverage::record_edge(9000 + faults.alive_mask() * 10 + faults.partition_count());
+
+        // ── Protocol-state coverage ─────────────────────────
+        // These edges capture Raft-specific state dimensions that
+        // structural coverage misses. They guide the explorer toward
+        // scenarios with log divergence, term gaps, and multi-leader
+        // transitions — the conditions needed to trigger subtle bugs
+        // like fig8_commit.
+        {
+            // Leader count: 0, 1, or 2+ (split-brain)
+            let leader_count = nodes.iter()
+                .filter(|n| n.role == Role::Leader && !faults.crashed[n.id])
+                .count();
+            coverage::record_edge(10000 + leader_count.min(3));
+
+            // Term spread: max_term - min_term across alive nodes.
+            // High spread means nodes are out of sync.
+            let alive_terms: Vec<u64> = nodes.iter()
+                .filter(|n| !faults.crashed[n.id])
+                .map(|n| n.current_term)
+                .collect();
+            if !alive_terms.is_empty() {
+                let term_spread = alive_terms.iter().max().unwrap()
+                    - alive_terms.iter().min().unwrap();
+                coverage::record_edge(10100 + term_spread.min(10) as usize);
+            }
+
+            // Log length divergence: max - min across all nodes.
+            let max_log = nodes.iter().map(|n| n.log.len()).max().unwrap_or(0);
+            let min_log = nodes.iter().map(|n| n.log.len()).min().unwrap_or(0);
+            coverage::record_edge(10200 + (max_log - min_log).min(20));
+
+            // Term diversity in each node's log: how many distinct terms.
+            for (i, node) in nodes.iter().enumerate() {
+                if node.log.is_empty() { continue; }
+                let mut seen = [false; 64];
+                let mut distinct = 0usize;
+                for e in &node.log {
+                    let bucket = (e.term as usize) % 64;
+                    if !seen[bucket] {
+                        seen[bucket] = true;
+                        distinct += 1;
+                    }
+                }
+                coverage::record_edge(10300 + i * 20 + distinct.min(15));
+            }
+
+            // Old-term entries in leader's log (the fig8 precondition).
+            if let Some(leader) = nodes.iter()
+                .find(|n| n.role == Role::Leader && !faults.crashed[n.id])
+            {
+                let has_old_term_entries = leader.log.iter()
+                    .any(|e| e.term < leader.current_term);
+                let old_term_count = leader.log.iter()
+                    .filter(|e| e.term < leader.current_term)
+                    .count();
+                coverage::record_edge(10400 + has_old_term_entries as usize * 10
+                    + old_term_count.min(9));
+
+                // Uncommitted old-term entries (the exact fig8 trigger).
+                let uncommitted_old = leader.log.iter()
+                    .enumerate()
+                    .skip(leader.commit_index)
+                    .any(|(_, e)| e.term < leader.current_term);
+                coverage::record_edge(10500 + uncommitted_old as usize);
+            }
+
+            // Commit index divergence across nodes.
+            let max_ci = nodes.iter().map(|n| n.commit_index).max().unwrap_or(0);
+            let min_ci = nodes.iter().map(|n| n.commit_index).min().unwrap_or(0);
+            coverage::record_edge(10600 + (max_ci - min_ci).min(20));
+
+            // Log entry disagreement: do any two nodes have different
+            // terms at the same log index? This is the precursor to
+            // log matching violations.
+            let mut has_disagreement = false;
+            for i in 0..num_nodes {
+                for j in (i+1)..num_nodes {
+                    let shared = nodes[i].log.len().min(nodes[j].log.len());
+                    for idx in 0..shared {
+                        if nodes[i].log[idx].term != nodes[j].log[idx].term {
+                            has_disagreement = true;
+                            break;
+                        }
+                    }
+                    if has_disagreement { break; }
+                }
+                if has_disagreement { break; }
+            }
+            coverage::record_edge(10700 + has_disagreement as usize);
+
+            // Leader transition count (bucketed).
+            // We track this via term of the current leader vs last seen.
+            let current_max_term = nodes.iter().map(|n| n.current_term).max().unwrap_or(0);
+            coverage::record_edge(10800 + (current_max_term as usize % 30));
+        }
 
         // ── Safety invariants + data integrity ──────────────
         check_safety_invariants(
@@ -770,21 +884,19 @@ fn print_status(nodes: &[Node], faults: &FaultState, tick: usize, values_propose
         .iter()
         .find(|n| n.role == Role::Leader && !faults.crashed[n.id])
         .map(|n| n.id);
-    let crashed_str: String = (0..NUM_NODES)
+    let crashed_str: String = (0..nodes.len())
         .filter(|&i| faults.crashed[i])
         .map(|i| i.to_string())
         .collect::<Vec<_>>()
         .join(",");
+    let terms: Vec<String> = nodes.iter().map(|n| n.current_term.to_string()).collect();
+    let commits: Vec<String> = nodes.iter().map(|n| n.commit_index.to_string()).collect();
     println!(
-        "raft: tick={} leader={:?} terms=[{},{},{}] commits=[{},{},{}] proposed={} crashed=[{}] partitions={}",
+        "raft: tick={} leader={:?} terms=[{}] commits=[{}] proposed={} crashed=[{}] partitions={}",
         tick,
         leader_id,
-        nodes[0].current_term,
-        nodes[1].current_term,
-        nodes[2].current_term,
-        nodes[0].commit_index,
-        nodes[1].commit_index,
-        nodes[2].commit_index,
+        terms.join(","),
+        commits.join(","),
         values_proposed,
         crashed_str,
         faults.partition_count(),

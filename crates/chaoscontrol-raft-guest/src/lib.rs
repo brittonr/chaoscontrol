@@ -12,6 +12,11 @@
 
 pub const NUM_NODES: usize = 3;
 pub const QUORUM: usize = 2;
+
+/// Compute majority quorum for `n` nodes.
+pub const fn quorum_for(n: usize) -> usize {
+    n / 2 + 1
+}
 /// Ticks before a follower starts an election (base).
 pub const ELECTION_TIMEOUT_BASE: usize = 8;
 /// Random jitter range added to election timeout.
@@ -143,6 +148,8 @@ pub enum Message {
 #[derive(Debug)]
 pub struct Node {
     pub id: usize,
+    /// Total number of nodes in the cluster.
+    pub num_nodes: usize,
     pub current_term: u64,
     pub voted_for: Option<usize>,
     pub log: Vec<LogEntry>,
@@ -152,9 +159,9 @@ pub struct Node {
     pub heartbeat_timer: usize,
     pub votes_received: usize,
     /// Per-peer next_index (leader only).
-    pub next_index: [usize; NUM_NODES],
+    pub next_index: Vec<usize>,
     /// Per-peer match_index (leader only).
-    pub match_index: [usize; NUM_NODES],
+    pub match_index: Vec<usize>,
     /// Inbox of pending messages from other nodes.
     pub inbox: Vec<(usize, Message)>,
     /// Injected bug mode for validation testing.
@@ -166,10 +173,17 @@ impl Node {
         Self::new_with_bug(id, BugMode::None)
     }
 
+    /// Create a node for the default 3-node cluster.
     pub fn new_with_bug(id: usize, bug: BugMode) -> Self {
-        debug_assert!(id < NUM_NODES, "node id must be < NUM_NODES");
+        Self::new_with_config(id, NUM_NODES, bug)
+    }
+
+    /// Create a node for an `n`-node cluster.
+    pub fn new_with_config(id: usize, num_nodes: usize, bug: BugMode) -> Self {
+        debug_assert!(id < num_nodes, "node id must be < num_nodes");
         Self {
             id,
+            num_nodes,
             current_term: 0,
             voted_for: None,
             log: Vec::new(),
@@ -178,11 +192,16 @@ impl Node {
             election_timer: ELECTION_TIMEOUT_BASE,
             heartbeat_timer: 0,
             votes_received: 0,
-            next_index: [1; NUM_NODES],
-            match_index: [0; NUM_NODES],
+            next_index: vec![1; num_nodes],
+            match_index: vec![0; num_nodes],
             inbox: Vec::new(),
             bug,
         }
+    }
+
+    /// Quorum size for this node's cluster.
+    pub fn quorum(&self) -> usize {
+        quorum_for(self.num_nodes)
     }
 
     pub fn last_log_index(&self) -> usize {
@@ -220,7 +239,7 @@ impl Node {
         self.reset_election_timer_with(jitter);
 
         let mut outbox = Vec::new();
-        for peer in 0..NUM_NODES {
+        for peer in 0..self.num_nodes {
             if peer != self.id {
                 outbox.push((
                     peer,
@@ -241,7 +260,7 @@ impl Node {
         self.role = Role::Leader;
         self.heartbeat_timer = 0;
         // Initialize next_index to leader's log length + 1
-        for i in 0..NUM_NODES {
+        for i in 0..self.num_nodes {
             self.next_index[i] = self.last_log_index() + 1;
             self.match_index[i] = 0;
         }
@@ -254,7 +273,7 @@ impl Node {
     /// Send AppendEntries heartbeats/replication to all peers.
     pub fn send_heartbeats(&mut self) -> Vec<(usize, Message)> {
         let mut outbox = Vec::new();
-        for peer in 0..NUM_NODES {
+        for peer in 0..self.num_nodes {
             if peer == self.id {
                 continue;
             }
@@ -333,7 +352,7 @@ impl Node {
                 }
                 if self.role == Role::Candidate && term == self.current_term && vote_granted {
                     self.votes_received += 1;
-                    if self.votes_received >= QUORUM {
+                    if self.votes_received >= self.quorum() {
                         return self.become_leader();
                     }
                 }
@@ -486,12 +505,12 @@ impl Node {
                 continue; // Only commit entries from current term (§5.4.2)
             }
             let mut match_count = 0;
-            for peer in 0..NUM_NODES {
+            for peer in 0..self.num_nodes {
                 if self.match_index[peer] >= n {
                     match_count += 1;
                 }
             }
-            if match_count >= QUORUM {
+            if match_count >= self.quorum() {
                 self.commit_index = n;
             }
         }
@@ -603,7 +622,14 @@ impl TestCluster {
 
     /// Create a test cluster with the given bug mode injected into all nodes.
     pub fn new_with_bug(seed: u64, bug: BugMode) -> Self {
-        let mut nodes: Vec<Node> = (0..NUM_NODES).map(|i| Node::new_with_bug(i, bug)).collect();
+        Self::new_with_config(seed, NUM_NODES, bug)
+    }
+
+    /// Create a test cluster with configurable node count.
+    pub fn new_with_config(seed: u64, num_nodes: usize, bug: BugMode) -> Self {
+        let mut nodes: Vec<Node> = (0..num_nodes)
+            .map(|i| Node::new_with_config(i, num_nodes, bug))
+            .collect();
         for (i, node) in nodes.iter_mut().enumerate() {
             node.election_timer = ELECTION_TIMEOUT_BASE + i * 3;
         }
@@ -628,7 +654,8 @@ impl TestCluster {
 
     /// Run one tick of the cluster simulation. Returns the active node index.
     pub fn step(&mut self) -> usize {
-        let active = self.rand(NUM_NODES);
+        let num_nodes = self.nodes.len();
+        let active = self.rand(num_nodes);
         let jitter = self.rand(ELECTION_TIMEOUT_JITTER + 1);
 
         let mut outbox: Vec<(usize, usize, Message)> = Vec::new();
@@ -771,8 +798,8 @@ mod tests {
     #[test]
     fn new_node_initializes_peer_indices() {
         let node = Node::new(1);
-        assert_eq!(node.next_index, [1; NUM_NODES]);
-        assert_eq!(node.match_index, [0; NUM_NODES]);
+        assert_eq!(node.next_index, vec![1; NUM_NODES]);
+        assert_eq!(node.match_index, vec![0; NUM_NODES]);
         assert!(node.inbox.is_empty());
     }
 
@@ -879,7 +906,7 @@ mod tests {
         assert_eq!(node.role, Role::Leader);
         assert_eq!(node.heartbeat_timer, 0);
         // next_index should be log.len() + 1 = 3 for all
-        assert_eq!(node.next_index, [3, 3, 3]);
+        assert_eq!(node.next_index, vec![3, 3, 3]);
         // match_index: self = log.len(), others = 0
         assert_eq!(node.match_index[0], 2);
         assert_eq!(node.match_index[1], 0);
@@ -1540,8 +1567,8 @@ mod tests {
         node.current_term = 1;
         node.role = Role::Leader;
         node.log.push(LogEntry { term: 1, value: 1 });
-        node.next_index = [2, 1, 1];
-        node.match_index = [1, 0, 0];
+        node.next_index = vec![2, 1, 1];
+        node.match_index = vec![1, 0, 0];
 
         node.handle_message(
             1,
@@ -1646,7 +1673,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 1, value: 2 });
-        leader.match_index = [2, 0, 0]; // only leader has entries
+        leader.match_index = vec![2, 0, 0]; // only leader has entries
 
         leader.try_advance_commit();
         assert_eq!(leader.commit_index, 0, "no quorum yet");
@@ -1664,7 +1691,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 }); // old term
         leader.log.push(LogEntry { term: 1, value: 2 }); // old term
-        leader.match_index = [2, 2, 2]; // all peers replicated
+        leader.match_index = vec![2, 2, 2]; // all peers replicated
 
         leader.try_advance_commit();
         assert_eq!(
@@ -1680,7 +1707,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 }); // old term
         leader.log.push(LogEntry { term: 2, value: 2 }); // current term
-        leader.match_index = [2, 2, 0]; // quorum at index 2
+        leader.match_index = vec![2, 2, 0]; // quorum at index 2
 
         leader.try_advance_commit();
         // Committing index 2 (current term) also implicitly commits index 1
@@ -1695,7 +1722,7 @@ mod tests {
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 1, value: 2 });
         leader.log.push(LogEntry { term: 1, value: 3 });
-        leader.match_index = [3, 3, 3]; // all replicated
+        leader.match_index = vec![3, 3, 3]; // all replicated
 
         leader.try_advance_commit();
         assert_eq!(leader.commit_index, 3);
@@ -1711,7 +1738,7 @@ mod tests {
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 1, value: 2 });
         // Peer 1 is up to date, peer 2 needs entries
-        leader.next_index = [3, 3, 1];
+        leader.next_index = vec![3, 3, 1];
 
         let msgs = leader.send_heartbeats();
 
@@ -1736,7 +1763,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 2, value: 2 });
-        leader.next_index = [3, 2, 1]; // peer 1 needs entry 2, peer 2 needs both
+        leader.next_index = vec![3, 2, 1]; // peer 1 needs entry 2, peer 2 needs both
 
         let msgs = leader.send_heartbeats();
 
@@ -2275,7 +2302,7 @@ mod tests {
         nodes[0].log.push(LogEntry { term: 1, value: 1 });
         nodes[0].log.push(LogEntry { term: 2, value: 2 });
         nodes[0].match_index[0] = 2;
-        nodes[0].next_index = [3, 3, 3]; // optimistically high
+        nodes[0].next_index = vec![3, 3, 3]; // optimistically high
 
         // Node 1 has a conflicting log (different entry at index 2)
         nodes[1].current_term = 2;
@@ -2471,8 +2498,8 @@ mod tests {
         leader.current_term = 1;
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 });
-        leader.match_index = [1, 0, 0]; // only leader has it
-        leader.next_index = [2, 1, 1];
+        leader.match_index = vec![1, 0, 0]; // only leader has it
+        leader.next_index = vec![2, 1, 1];
 
         assert_eq!(leader.commit_index, 0);
 
@@ -2698,7 +2725,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 2, value: 2 });
-        leader.match_index = [2, 2, 0];
+        leader.match_index = vec![2, 2, 0];
 
         leader.try_advance_commit();
         assert_eq!(leader.commit_index, 2, "fig8 bug allows old-term commit");
@@ -2711,7 +2738,7 @@ mod tests {
         leader.role = Role::Leader;
         leader.log.push(LogEntry { term: 1, value: 1 });
         leader.log.push(LogEntry { term: 2, value: 2 });
-        leader.match_index = [2, 2, 0];
+        leader.match_index = vec![2, 2, 0];
 
         leader.try_advance_commit();
         assert_eq!(

@@ -208,6 +208,7 @@
 
           mkChaosKernel =
             {
+              virtioBlk ? true,
               virtioNet ? false,
               kcov ? false,
               extraConfig ? { },
@@ -215,11 +216,16 @@
             let
               cfg =
                 with pkgs.lib.kernel;
-                (pkgs.lib.optionalAttrs virtioNet {
+                (pkgs.lib.optionalAttrs (virtioBlk || virtioNet) {
                   VIRTIO = yes;
                   VIRTIO_MMIO = yes;
-                  VIRTIO_NET = yes;
+                })
+                // (pkgs.lib.optionalAttrs virtioBlk {
                   VIRTIO_BLK = yes;
+                  EXT4_FS = yes;
+                })
+                // (pkgs.lib.optionalAttrs virtioNet {
+                  VIRTIO_NET = yes;
                   PACKET = yes;
                 })
                 // (pkgs.lib.optionalAttrs kcov {

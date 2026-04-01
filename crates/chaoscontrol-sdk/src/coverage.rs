@@ -35,6 +35,21 @@
 //  Full mode: real coverage collection
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Code-region end — lower half of bitmap. Matches explorer's `CODE_REGION_END`.
+const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / 2;
+
+/// FNV-1a 64-bit hash.
+fn fnv1a(data: &[u8]) -> u64 {
+    const BASIS: u64 = 14695981039346656037;
+    const PRIME: u64 = 1099511628211;
+    let mut hash = BASIS;
+    for &byte in data {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
 #[cfg(feature = "full")]
 mod full {
     use chaoscontrol_protocol::{COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE};
@@ -134,6 +149,35 @@ mod full {
         }
     }
 
+    #[inline(always)]
+    pub fn record_state(pairs: &[(&str, &str)]) {
+        unsafe {
+            if !INITIALIZED {
+                return;
+            }
+            let bitmap = bitmap_ptr();
+            for (key, value) in pairs {
+                // slot1 = fnv1a(key ++ "=" ++ value) % CODE_REGION_END
+                let mut buf1 = Vec::with_capacity(key.len() + 1 + value.len());
+                buf1.extend_from_slice(key.as_bytes());
+                buf1.push(b'=');
+                buf1.extend_from_slice(value.as_bytes());
+                let slot1 = super::fnv1a(&buf1) as usize % super::CODE_REGION_END;
+                let counter1 = bitmap.add(slot1);
+                counter1.write_volatile(counter1.read_volatile().saturating_add(1));
+
+                // slot2 = fnv1a(value ++ ":" ++ key) % CODE_REGION_END (reversed for diversity)
+                let mut buf2 = Vec::with_capacity(value.len() + 1 + key.len());
+                buf2.extend_from_slice(value.as_bytes());
+                buf2.push(b':');
+                buf2.extend_from_slice(key.as_bytes());
+                let slot2 = super::fnv1a(&buf2) as usize % super::CODE_REGION_END;
+                let counter2 = bitmap.add(slot2);
+                counter2.write_volatile(counter2.read_volatile().saturating_add(1));
+            }
+        }
+    }
+
     // ── SanCov hooks ────────────────────────────────────────────────
 
     #[no_mangle]
@@ -174,6 +218,9 @@ mod noop {
 
     #[inline(always)]
     pub fn record_hit(_index: usize) {}
+
+    #[inline(always)]
+    pub fn record_state(_pairs: &[(&str, &str)]) {}
 
     pub fn reset_state() {}
 }
@@ -221,10 +268,115 @@ pub fn record_hit(index: usize) {
     noop::record_hit(index);
 }
 
+/// Record protocol-state coverage from key-value pairs.
+///
+/// Hashes each `(key, value)` pair into 2 bitmap slots in the code
+/// region `[0, CODE_REGION_END)` using FNV-1a. This gives the explorer
+/// distinct coverage when protocol state differs (e.g. different term
+/// numbers or leader counts) even when the same code paths execute.
+///
+/// In no-op mode: does nothing.
+#[inline(always)]
+pub fn record_state(pairs: &[(&str, &str)]) {
+    #[cfg(feature = "full")]
+    full::record_state(pairs);
+    #[cfg(not(feature = "full"))]
+    noop::record_state(pairs);
+}
+
 /// Reset the edge tracking state (prev_location = 0).
 pub fn reset_state() {
     #[cfg(feature = "full")]
     full::reset_state();
     #[cfg(not(feature = "full"))]
     noop::reset_state();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fnv1a_basic() {
+        // Sanity: different inputs → different hashes
+        let h1 = fnv1a(b"term=3");
+        let h2 = fnv1a(b"term=5");
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn different_values_different_slots() {
+        let slot_a1 = fnv1a(b"term=3") as usize % CODE_REGION_END;
+        let slot_a2 = fnv1a(b"3:term") as usize % CODE_REGION_END;
+        let slot_b1 = fnv1a(b"term=5") as usize % CODE_REGION_END;
+        let slot_b2 = fnv1a(b"5:term") as usize % CODE_REGION_END;
+
+        // At least one of the two slots per pair should differ
+        assert!(
+            slot_a1 != slot_b1 || slot_a2 != slot_b2,
+            "different values should map to different slot sets"
+        );
+    }
+
+    #[test]
+    fn key_domain_separation() {
+        // ("term", "3") and ("index", "3") should hash differently
+        let slot_term = fnv1a(b"term=3") as usize % CODE_REGION_END;
+        let slot_index = fnv1a(b"index=3") as usize % CODE_REGION_END;
+        assert_ne!(slot_term, slot_index, "different keys should separate");
+    }
+
+    #[test]
+    fn slots_within_code_region() {
+        // All slots must be in [0, CODE_REGION_END)
+        for (k, v) in &[("term", "3"), ("role", "leader"), ("index", "42")] {
+            let mut buf1 = Vec::new();
+            buf1.extend_from_slice(k.as_bytes());
+            buf1.push(b'=');
+            buf1.extend_from_slice(v.as_bytes());
+            let slot1 = fnv1a(&buf1) as usize % CODE_REGION_END;
+            assert!(slot1 < CODE_REGION_END);
+
+            let mut buf2 = Vec::new();
+            buf2.extend_from_slice(v.as_bytes());
+            buf2.push(b':');
+            buf2.extend_from_slice(k.as_bytes());
+            let slot2 = fnv1a(&buf2) as usize % CODE_REGION_END;
+            assert!(slot2 < CODE_REGION_END);
+        }
+    }
+
+    #[test]
+    fn record_state_without_init_no_crash() {
+        // Should be a no-op, no panic
+        record_state(&[("term", "3"), ("role", "leader")]);
+    }
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn record_state_after_init_no_crash() {
+        init();
+        record_state(&[("term", "3"), ("role", "leader")]);
+    }
+
+    #[test]
+    fn two_pairs_produce_four_slots() {
+        // Two pairs should touch 4 slot indices (2 per pair)
+        let pairs = [("term", "3"), ("role", "leader")];
+        let mut slots = Vec::new();
+        for (key, value) in &pairs {
+            let mut buf1 = Vec::new();
+            buf1.extend_from_slice(key.as_bytes());
+            buf1.push(b'=');
+            buf1.extend_from_slice(value.as_bytes());
+            slots.push(fnv1a(&buf1) as usize % CODE_REGION_END);
+
+            let mut buf2 = Vec::new();
+            buf2.extend_from_slice(value.as_bytes());
+            buf2.push(b':');
+            buf2.extend_from_slice(key.as_bytes());
+            slots.push(fnv1a(&buf2) as usize % CODE_REGION_END);
+        }
+        assert_eq!(slots.len(), 4);
+    }
 }

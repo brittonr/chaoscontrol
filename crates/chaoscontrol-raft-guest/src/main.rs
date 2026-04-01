@@ -559,7 +559,7 @@ fn main() {
                             &json!({"node": active, "new_term": node.current_term + 1}),
                         );
                         let msgs = node.become_candidate(jitter);
-                        coverage::record_edge(1000 + node.id * 100);
+                        coverage::record_state(&[("candidate", &node.id.to_string())]);
                         for (to, msg) in msgs {
                             outbox.push((active, to, msg));
                         }
@@ -598,7 +598,10 @@ fn main() {
                             "commit_index within log bounds",
                             &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
                         );
-                        coverage::record_edge(7000 + values_proposed as usize);
+                        coverage::record_state(&[(
+                            "values_proposed",
+                            &values_proposed.to_string(),
+                        )]);
                     }
                     cc_assert_sometimes!(
                         proposed,
@@ -623,14 +626,20 @@ fn main() {
 
             // Drop if partitioned
             if faults.partitioned[from][to] {
-                coverage::record_edge(8000 + from * 10 + to);
+                coverage::record_state(&[
+                    ("drop_from", &from.to_string()),
+                    ("drop_to", &to.to_string()),
+                ]);
                 continue;
             }
 
             // Random drop (5% base rate)
             if random::random_choice(100) >= 95 {
                 cc_assert_sometimes!(true, "message dropped", &details::network(from, to, false),);
-                coverage::record_edge(8000 + from * 10 + to);
+                coverage::record_state(&[
+                    ("drop_from", &from.to_string()),
+                    ("drop_to", &to.to_string()),
+                ]);
                 continue;
             }
 
@@ -702,7 +711,6 @@ fn main() {
                 .iter()
                 .filter(|n| n.role == Role::Leader && !faults.crashed[n.id])
                 .count();
-            coverage::record_edge(10000 + leader_count.min(3));
 
             // Term spread: max_term - min_term across alive nodes.
             // High spread means nodes are out of sync.
@@ -711,16 +719,21 @@ fn main() {
                 .filter(|n| !faults.crashed[n.id])
                 .map(|n| n.current_term)
                 .collect();
-            if !alive_terms.is_empty() {
-                let term_spread =
-                    alive_terms.iter().max().unwrap() - alive_terms.iter().min().unwrap();
-                coverage::record_edge(10100 + term_spread.min(10) as usize);
-            }
+            let term_spread = if !alive_terms.is_empty() {
+                alive_terms.iter().max().unwrap() - alive_terms.iter().min().unwrap()
+            } else {
+                0
+            };
 
             // Log length divergence: max - min across all nodes.
             let max_log = nodes.iter().map(|n| n.log.len()).max().unwrap_or(0);
             let min_log = nodes.iter().map(|n| n.log.len()).min().unwrap_or(0);
-            coverage::record_edge(10200 + (max_log - min_log).min(20));
+
+            coverage::record_state(&[
+                ("leaders", &leader_count.min(3).to_string()),
+                ("term_spread", &term_spread.min(10).to_string()),
+                ("log_divergence", &(max_log - min_log).min(20).to_string()),
+            ]);
 
             // Term diversity in each node's log: how many distinct terms.
             for (i, node) in nodes.iter().enumerate() {
@@ -736,7 +749,10 @@ fn main() {
                         distinct += 1;
                     }
                 }
-                coverage::record_edge(10300 + i * 20 + distinct.min(15));
+                coverage::record_state(&[
+                    ("node_term_diversity", &i.to_string()),
+                    ("distinct_terms", &distinct.min(15).to_string()),
+                ]);
             }
 
             // Old-term entries in leader's log (the fig8 precondition).
@@ -750,9 +766,6 @@ fn main() {
                     .iter()
                     .filter(|e| e.term < leader.current_term)
                     .count();
-                coverage::record_edge(
-                    10400 + has_old_term_entries as usize * 10 + old_term_count.min(9),
-                );
 
                 // Uncommitted old-term entries (the exact fig8 trigger).
                 let uncommitted_old = leader
@@ -761,13 +774,17 @@ fn main() {
                     .enumerate()
                     .skip(leader.commit_index)
                     .any(|(_, e)| e.term < leader.current_term);
-                coverage::record_edge(10500 + uncommitted_old as usize);
+
+                coverage::record_state(&[
+                    ("old_term_entries", &has_old_term_entries.to_string()),
+                    ("old_term_count", &old_term_count.min(9).to_string()),
+                    ("uncommitted_old", &uncommitted_old.to_string()),
+                ]);
             }
 
             // Commit index divergence across nodes.
             let max_ci = nodes.iter().map(|n| n.commit_index).max().unwrap_or(0);
             let min_ci = nodes.iter().map(|n| n.commit_index).min().unwrap_or(0);
-            coverage::record_edge(10600 + (max_ci - min_ci).min(20));
 
             // Log entry disagreement: do any two nodes have different
             // terms at the same log index? This is the precursor to
@@ -790,12 +807,15 @@ fn main() {
                     break;
                 }
             }
-            coverage::record_edge(10700 + has_disagreement as usize);
 
             // Leader transition count (bucketed).
-            // We track this via term of the current leader vs last seen.
             let current_max_term = nodes.iter().map(|n| n.current_term).max().unwrap_or(0);
-            coverage::record_edge(10800 + (current_max_term as usize % 30));
+
+            coverage::record_state(&[
+                ("commit_divergence", &(max_ci - min_ci).min(20).to_string()),
+                ("log_disagreement", &has_disagreement.to_string()),
+                ("max_term", &(current_max_term % 30).to_string()),
+            ]);
         }
 
         // ── Safety invariants + data integrity ──────────────

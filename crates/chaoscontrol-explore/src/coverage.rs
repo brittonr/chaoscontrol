@@ -386,7 +386,7 @@ mod tests {
         assert_eq!(ASSERTION_REGION_END, 3 * MAP_SIZE / 4);
         assert_ne!(CODE_REGION_END, ASSERTION_REGION_END); // CODE < ASSERTION
         assert_ne!(ASSERTION_REGION_END, MAP_SIZE); // ASSERTION < MAP_SIZE
-        // Each region is 16KB except code which is 32KB
+                                                    // Each region is 16KB except code which is 32KB
         assert_eq!(CODE_REGION_END, 32768);
         assert_eq!(ASSERTION_REGION_END - CODE_REGION_END, 16384);
         assert_eq!(MAP_SIZE - ASSERTION_REGION_END, 16384);

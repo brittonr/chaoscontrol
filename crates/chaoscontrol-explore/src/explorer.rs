@@ -515,6 +515,7 @@ impl Explorer {
             // code coverage saturates.
             let mut enriched = result.coverage.clone();
             Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+            Self::enrich_with_protocol_events(&mut enriched, &result.oracle_report);
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
@@ -615,6 +616,7 @@ impl Explorer {
         // Check if the probe itself found new coverage
         let mut probe_enriched = probe_result.coverage.clone();
         Self::enrich_with_assertion_state(&mut probe_enriched, &probe_result.oracle_report);
+        Self::enrich_with_protocol_events(&mut probe_enriched, &probe_result.oracle_report);
         Self::enrich_with_schedule_fingerprint(
             &mut probe_enriched,
             probe_result.schedule_fingerprint,
@@ -705,6 +707,7 @@ impl Explorer {
             // Enrich coverage with assertion-state edges.
             let mut enriched = result.coverage.clone();
             Self::enrich_with_assertion_state(&mut enriched, &result.oracle_report);
+            Self::enrich_with_protocol_events(&mut enriched, &result.oracle_report);
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
@@ -1244,6 +1247,59 @@ impl Explorer {
                 let index2 = (hasher2.finish() as usize % assertion_region_size)
                     + crate::coverage::CODE_REGION_END;
                 coverage.record_hit(index2);
+            }
+
+            // Hash top-level JSON detail keys from failure details.
+            // This distinguishes "election_safety with term=3" from "term=5".
+            if let Some(details_bytes) = &record.last_failure_details {
+                if let Ok(serde_json::Value::Object(map)) =
+                    serde_json::from_slice::<serde_json::Value>(details_bytes)
+                {
+                    for (key, value) in &map {
+                        let mut hasher3 = DefaultHasher::new();
+                        format!("assert:{}:{}={}", record.message, key, value).hash(&mut hasher3);
+                        let index3 = (hasher3.finish() as usize % assertion_region_size)
+                            + crate::coverage::CODE_REGION_END;
+                        coverage.record_hit(index3);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Enrich a branch's coverage bitmap with protocol event edges.
+    ///
+    /// Hashes each `OracleEvent`'s name and detail key-value pairs into
+    /// the assertion region so branches that produce different event
+    /// sequences (e.g. leader elected in term 3 vs term 5) look distinct.
+    fn enrich_with_protocol_events(coverage: &mut CoverageBitmap, oracle: &OracleReport) {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        if oracle.events.is_empty() {
+            return;
+        }
+
+        let assertion_region_size =
+            crate::coverage::ASSERTION_REGION_END - crate::coverage::CODE_REGION_END;
+
+        for event in &oracle.events {
+            // Hash event name
+            let mut hasher = DefaultHasher::new();
+            format!("event:{}", event.name).hash(&mut hasher);
+            let index = (hasher.finish() as usize % assertion_region_size)
+                + crate::coverage::CODE_REGION_END;
+            coverage.record_hit(index);
+
+            // Hash each top-level detail key-value pair
+            if let serde_json::Value::Object(map) = &event.details {
+                for (key, value) in map {
+                    let mut hasher = DefaultHasher::new();
+                    format!("event:{}:{}={}", event.name, key, value).hash(&mut hasher);
+                    let index = (hasher.finish() as usize % assertion_region_size)
+                        + crate::coverage::CODE_REGION_END;
+                    coverage.record_hit(index);
+                }
             }
         }
     }
@@ -1844,6 +1900,186 @@ mod tests {
 
         let coverage = explorer.assertion_coverage(&oracle);
         assert!(coverage.count_bits() > 0);
+    }
+
+    // ── Protocol event enrichment tests ──────────────────────────
+
+    fn make_oracle_report() -> OracleReport {
+        OracleReport {
+            assertions: std::collections::BTreeMap::new(),
+            total_runs: 1,
+            passed: 0,
+            failed: 0,
+            unexercised: 0,
+            catalog_size: 0,
+            events: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_event_enrichment_different_events_different_coverage() {
+        let mut report_a = make_oracle_report();
+        report_a
+            .events
+            .push(chaoscontrol_fault::oracle::OracleEvent {
+                run_id: 0,
+                name: "commit".to_string(),
+                details: serde_json::json!({"index": 1}),
+            });
+
+        let mut report_b = make_oracle_report();
+        report_b
+            .events
+            .push(chaoscontrol_fault::oracle::OracleEvent {
+                run_id: 0,
+                name: "commit".to_string(),
+                details: serde_json::json!({"index": 5}),
+            });
+
+        let mut cov_a = CoverageBitmap::new();
+        let mut cov_b = CoverageBitmap::new();
+        Explorer::enrich_with_protocol_events(&mut cov_a, &report_a);
+        Explorer::enrich_with_protocol_events(&mut cov_b, &report_b);
+
+        // Both should have hits, but differ
+        assert!(cov_a.count_bits() > 0);
+        assert!(cov_b.count_bits() > 0);
+        assert_ne!(cov_a.as_slice(), cov_b.as_slice());
+    }
+
+    #[test]
+    fn test_event_enrichment_no_events_no_enrichment() {
+        let report = make_oracle_report();
+        let mut coverage = CoverageBitmap::new();
+        Explorer::enrich_with_protocol_events(&mut coverage, &report);
+        assert_eq!(coverage.count_bits(), 0);
+    }
+
+    #[test]
+    fn test_event_enrichment_event_name_hashed() {
+        let mut report_a = make_oracle_report();
+        report_a
+            .events
+            .push(chaoscontrol_fault::oracle::OracleEvent {
+                run_id: 0,
+                name: "leader_elected".to_string(),
+                details: serde_json::json!({}),
+            });
+
+        let mut report_b = make_oracle_report();
+        report_b
+            .events
+            .push(chaoscontrol_fault::oracle::OracleEvent {
+                run_id: 0,
+                name: "follower_timeout".to_string(),
+                details: serde_json::json!({}),
+            });
+
+        let mut cov_a = CoverageBitmap::new();
+        let mut cov_b = CoverageBitmap::new();
+        Explorer::enrich_with_protocol_events(&mut cov_a, &report_a);
+        Explorer::enrich_with_protocol_events(&mut cov_b, &report_b);
+
+        assert!(cov_a.count_bits() > 0);
+        assert!(cov_b.count_bits() > 0);
+        assert_ne!(cov_a.as_slice(), cov_b.as_slice());
+    }
+
+    #[test]
+    fn test_event_enrichment_slots_in_assertion_region() {
+        let mut report = make_oracle_report();
+        report.events.push(chaoscontrol_fault::oracle::OracleEvent {
+            run_id: 0,
+            name: "commit".to_string(),
+            details: serde_json::json!({"index": 42}),
+        });
+
+        let mut coverage = CoverageBitmap::new();
+        Explorer::enrich_with_protocol_events(&mut coverage, &report);
+
+        // All hits should be in assertion region [CODE_REGION_END, ASSERTION_REGION_END)
+        let slice = coverage.as_slice();
+        for (i, &val) in slice[..crate::coverage::CODE_REGION_END].iter().enumerate() {
+            assert_eq!(val, 0, "code region slot {} should be 0", i);
+        }
+        for (i, &val) in slice[crate::coverage::ASSERTION_REGION_END..].iter().enumerate() {
+            assert_eq!(val, 0, "schedule region slot {} should be 0", crate::coverage::ASSERTION_REGION_END + i);
+        }
+        assert!(coverage.count_bits() > 0);
+    }
+
+    // ── Assertion detail enrichment tests ────────────────────────
+
+    #[test]
+    fn test_assertion_detail_different_values_different_coverage() {
+        let mut report_a = make_oracle_report();
+        report_a.assertions.insert(
+            1,
+            chaoscontrol_fault::oracle::AssertionRecord {
+                message: "election safety".to_string(),
+                kind: chaoscontrol_fault::oracle::AssertionKind::Always,
+                hit_count: 1,
+                true_count: 0,
+                false_count: 1,
+                runs_hit: 1,
+                runs_satisfied: 0,
+                first_failure_run: Some(0),
+                last_failure_details: Some(b"{\"term\":3}".to_vec()),
+            },
+        );
+
+        let mut report_b = make_oracle_report();
+        report_b.assertions.insert(
+            1,
+            chaoscontrol_fault::oracle::AssertionRecord {
+                message: "election safety".to_string(),
+                kind: chaoscontrol_fault::oracle::AssertionKind::Always,
+                hit_count: 1,
+                true_count: 0,
+                false_count: 1,
+                runs_hit: 1,
+                runs_satisfied: 0,
+                first_failure_run: Some(0),
+                last_failure_details: Some(b"{\"term\":5}".to_vec()),
+            },
+        );
+
+        let mut cov_a = CoverageBitmap::new();
+        let mut cov_b = CoverageBitmap::new();
+        Explorer::enrich_with_assertion_state(&mut cov_a, &report_a);
+        Explorer::enrich_with_assertion_state(&mut cov_b, &report_b);
+
+        assert!(cov_a.count_bits() > 0);
+        assert!(cov_b.count_bits() > 0);
+        assert_ne!(cov_a.as_slice(), cov_b.as_slice());
+    }
+
+    #[test]
+    fn test_assertion_detail_null_details_no_extra_hashing() {
+        let mut report = make_oracle_report();
+        report.assertions.insert(
+            1,
+            chaoscontrol_fault::oracle::AssertionRecord {
+                message: "test".to_string(),
+                kind: chaoscontrol_fault::oracle::AssertionKind::Always,
+                hit_count: 1,
+                true_count: 1,
+                false_count: 0,
+                runs_hit: 1,
+                runs_satisfied: 1,
+                first_failure_run: None,
+                last_failure_details: None,
+            },
+        );
+
+        let mut cov_with = CoverageBitmap::new();
+        Explorer::enrich_with_assertion_state(&mut cov_with, &report);
+
+        // Should still have enrichment from verdict/hit-count, but no detail hashing
+        // The count should be the same as without any detail hashing
+        let bits = cov_with.count_bits();
+        assert!(bits > 0); // verdict + ratio hashing
+        assert!(bits <= 3); // at most: verdict hash + ratio hash (no detail hashes)
     }
 
     // Integration tests with real VMs would go here, marked #[ignore]

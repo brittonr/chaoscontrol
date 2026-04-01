@@ -1,0 +1,22 @@
+[package]
+name = "chaoscontrol-redb-guest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "redb embedded database guest for ChaosControl crash-consistency testing"
+
+[lib]
+name = "chaoscontrol_redb_guest"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chaoscontrol-redb-guest"
+path = "src/main.rs"
+
+[dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk" }
+redb = "3.1"
+linkme = "0.3"
+libc = "0.2"
+serde_json = "1.0"

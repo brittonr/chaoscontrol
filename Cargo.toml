@@ -12,6 +12,7 @@ members = [
     "crates/chaoscontrol-raft-guest",
     "crates/chaoscontrol-guest-net",
     "crates/chaoscontrol-net-guest",
+    "crates/chaoscontrol-redb-guest",
 ]
 resolver = "2"
 

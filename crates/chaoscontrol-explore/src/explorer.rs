@@ -2002,8 +2002,16 @@ mod tests {
         for (i, &val) in slice[..crate::coverage::CODE_REGION_END].iter().enumerate() {
             assert_eq!(val, 0, "code region slot {} should be 0", i);
         }
-        for (i, &val) in slice[crate::coverage::ASSERTION_REGION_END..].iter().enumerate() {
-            assert_eq!(val, 0, "schedule region slot {} should be 0", crate::coverage::ASSERTION_REGION_END + i);
+        for (i, &val) in slice[crate::coverage::ASSERTION_REGION_END..]
+            .iter()
+            .enumerate()
+        {
+            assert_eq!(
+                val,
+                0,
+                "schedule region slot {} should be 0",
+                crate::coverage::ASSERTION_REGION_END + i
+            );
         }
         assert!(coverage.count_bits() > 0);
     }

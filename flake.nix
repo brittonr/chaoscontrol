@@ -142,6 +142,7 @@
           guest-sdk = mkGuestPackage { pname = "chaoscontrol-guest"; };
           guest-raft = mkGuestPackage { pname = "chaoscontrol-raft-guest"; };
           guest-net = mkGuestPackage { pname = "chaoscontrol-net-guest"; };
+          guest-redb = mkGuestPackage { pname = "chaoscontrol-redb-guest"; };
 
           # --- Initrd builder ---
 
@@ -182,6 +183,26 @@
             init = guest-net;
             name = "chaoscontrol-initrd-net";
           };
+          initrd-redb = mkChaosInitrd {
+            init = guest-redb;
+            name = "chaoscontrol-initrd-redb";
+            extraDirs = [
+              "dev"
+              "proc"
+              "sys"
+              "sys/kernel/debug"
+              "data"
+            ];
+          };
+
+          # --- Disk image builder ---
+
+          redb-disk-image = pkgs.runCommand "redb-disk-image" {
+            nativeBuildInputs = [ pkgs.e2fsprogs ];
+          } ''
+            dd if=/dev/zero of=$out bs=1M count=16
+            mkfs.ext4 -F -q $out
+          '';
 
           # --- Kernel builder ---
 
@@ -270,8 +291,9 @@
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
 
-            inherit guest-sdk guest-raft guest-net;
-            inherit initrd-sdk initrd-raft initrd-net;
+            inherit guest-sdk guest-raft guest-net guest-redb;
+            inherit initrd-sdk initrd-raft initrd-net initrd-redb;
+            inherit redb-disk-image;
 
             net-vmlinux = mkChaosKernel { virtioNet = true; };
             kcov-vmlinux = mkChaosKernel { kcov = true; };
@@ -290,6 +312,19 @@
               ticks = 500;
               seed = 42;
               mode = "hybrid";
+            };
+
+            redb-sim = mkChaosTest {
+              name = "redb-sim";
+              kernel = mkChaosKernel { };
+              initrd = initrd-redb;
+              vms = 1;
+              rounds = 5;
+              branches = 4;
+              ticks = 500;
+              seed = 42;
+              mode = "fault-schedule";
+              diskImage = redb-disk-image;
             };
 
             # Generated documentation (mdBook + rustdoc)
@@ -373,7 +408,9 @@
             # Simulation tests live in packages, not checks — they take
             # 10+ minutes and need /dev/kvm.  Run explicitly:
             #   nix build .#raft-sim
+            #   nix build .#redb-sim
             #   nix run .#explore-raft
+            #   nix run .#explore-redb
           };
 
           apps = {
@@ -411,6 +448,26 @@
               {
                 type = "app";
                 program = "${wrapper}/bin/explore-raft";
+              };
+            explore-redb =
+              let
+                wrapper = pkgs.writeShellApplication {
+                  name = "explore-redb";
+                  runtimeInputs = [ chaoscontrol ];
+                  text = ''
+                    chaoscontrol-explore run \
+                      --kernel ${mkChaosKernel { }}/vmlinux \
+                      --initrd ${initrd-redb} \
+                      --disk-image ${redb-disk-image} \
+                      --vms 1 --rounds 100 --branches 8 --ticks 1000 \
+                      --seed 42 --mode fault-schedule \
+                      "$@"
+                  '';
+                };
+              in
+              {
+                type = "app";
+                program = "${wrapper}/bin/explore-redb";
               };
             explore-sdk =
               let

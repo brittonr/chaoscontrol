@@ -46,6 +46,9 @@ pub enum DashboardEvent {
         corpus_size: usize,
         /// Full assertion stats snapshot.
         assertion_stats: AssertionStats,
+        /// Wall-clock time for this round.
+        #[serde(default)]
+        wall_clock_seconds: f64,
         /// Which seed produced this event (campaign mode only).
         #[serde(skip_serializing_if = "Option::is_none")]
         from_seed: Option<u64>,
@@ -336,6 +339,7 @@ impl DashboardState {
             cumulative_bugs,
             frontier_size,
             corpus_size,
+            wall_clock_seconds: 0.0,
         });
     }
 
@@ -367,6 +371,7 @@ mod tests {
                 failed: 2,
                 unexercised: 3,
             },
+            wall_clock_seconds: 1.5,
             from_seed: None,
         };
 
@@ -480,6 +485,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
+            wall_clock_seconds: 0.0,
             }]),
             seen_dedup_keys: None,
         };
@@ -541,6 +547,7 @@ mod tests {
                 frontier_size: 3,
                 corpus_size: 3,
                 assertion_stats: AssertionStats::default(),
+                wall_clock_seconds: 0.0,
                 from_seed: None,
             },
             DashboardEvent::BugFound {

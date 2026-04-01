@@ -71,6 +71,9 @@ pub struct CampaignReport {
     pub assertion_stats: AssertionStats,
     /// Wall-clock time for the entire campaign.
     pub wall_clock_seconds: f64,
+    /// Seeds that panicked or returned errors.
+    #[serde(default)]
+    pub failed_seeds: Vec<(u64, String)>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -130,6 +133,9 @@ pub struct CampaignProgress {
     pub output_dir: String,
     /// Completed seeds and their summaries.
     pub completed: BTreeMap<u64, SeedSummary>,
+    /// Seeds that failed (panicked or returned error) with error messages.
+    #[serde(default)]
+    pub failed: BTreeMap<u64, String>,
 }
 
 /// Save campaign progress to `{output_dir}/campaign_progress.json`.
@@ -161,10 +167,16 @@ pub struct CampaignRunner {
 }
 
 /// Result from a single seed's exploration thread.
-struct SeedResult {
-    seed: u64,
-    report: ExplorationReport,
-    wall_clock_seconds: f64,
+enum SeedResult {
+    Ok {
+        seed: u64,
+        report: Box<ExplorationReport>,
+        wall_clock_seconds: f64,
+    },
+    Failed {
+        seed: u64,
+        error: String,
+    },
 }
 
 impl CampaignRunner {
@@ -199,35 +211,59 @@ impl CampaignRunner {
         std::fs::create_dir_all(&self.config.output_dir).ok();
 
         // Run seeds in parallel via scoped threads.
-        let seed_results: Vec<Result<SeedResult, crate::explorer::ExploreError>> =
-            std::thread::scope(|s| {
-                let handles: Vec<_> = self
-                    .config
-                    .seeds
-                    .iter()
-                    .map(|&seed| {
-                        let mut explorer_config = self.config.base_explorer_config.clone();
-                        explorer_config.seed = seed;
-                        explorer_config.num_workers = 1; // No within-round parallelism.
-                        let seed_output = format!("{}/seed_{}", self.config.output_dir, seed);
-                        explorer_config.output_dir = Some(seed_output);
+        // Each thread catches panics so one bad seed doesn't kill the campaign.
+        let seed_results: Vec<SeedResult> = std::thread::scope(|s| {
+            let handles: Vec<_> = self
+                .config
+                .seeds
+                .iter()
+                .map(|&seed| {
+                    let mut explorer_config = self.config.base_explorer_config.clone();
+                    explorer_config.seed = seed;
+                    // num_workers comes from ExplorerConfig (set by CLI --workers-per-seed).
+                    let seed_output = format!("{}/seed_{}", self.config.output_dir, seed);
+                    explorer_config.output_dir = Some(seed_output);
 
-                        s.spawn(move || {
+                    s.spawn(move || -> SeedResult {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let thread_start = Instant::now();
                             let mut explorer = Explorer::new(explorer_config);
                             let report = explorer.run()?;
                             let elapsed = thread_start.elapsed().as_secs_f64();
-                            Ok(SeedResult {
-                                seed,
-                                report,
-                                wall_clock_seconds: elapsed,
-                            })
-                        })
-                    })
-                    .collect();
+                            Ok::<_, crate::explorer::ExploreError>((report, elapsed))
+                        }));
 
-                handles.into_iter().map(|h| h.join().unwrap()).collect()
-            });
+                        match result {
+                            Ok(Ok((report, elapsed))) => SeedResult::Ok {
+                                seed,
+                                report: Box::new(report),
+                                wall_clock_seconds: elapsed,
+                            },
+                            Ok(Err(e)) => {
+                                log::error!("Seed {} failed: {}", seed, e);
+                                SeedResult::Failed {
+                                    seed,
+                                    error: format!("{}", e),
+                                }
+                            }
+                            Err(panic_payload) => {
+                                let msg = panic_message(&panic_payload);
+                                log::error!("Seed {} panicked: {}", seed, msg);
+                                SeedResult::Failed {
+                                    seed,
+                                    error: format!("panic: {}", msg),
+                                }
+                            }
+                        }
+                    })
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("seed thread poisoned"))
+                .collect()
+        });
 
         // Collect results, printing per-seed summaries as we go.
         // Update campaign_progress.json after each seed completes.
@@ -238,45 +274,69 @@ impl CampaignRunner {
             ),
             output_dir: self.config.output_dir.clone(),
             completed: BTreeMap::new(),
+            failed: BTreeMap::new(),
         };
 
         let mut reports: Vec<(u64, ExplorationReport, f64)> = Vec::with_capacity(num_seeds);
-        for result in seed_results {
-            let sr = result?;
-            eprintln!(
-                "[seed {}] done: {} rounds, {} branches, {} edges, {} bug{} ({:.1}s)",
-                sr.seed,
-                sr.report.rounds,
-                sr.report.total_branches,
-                sr.report.total_edges,
-                sr.report.bugs.len(),
-                if sr.report.bugs.len() == 1 { "" } else { "s" },
-                sr.wall_clock_seconds,
-            );
+        let mut failed_seeds: Vec<(u64, String)> = Vec::new();
 
-            progress.completed.insert(
-                sr.seed,
-                SeedSummary {
-                    seed: sr.seed,
-                    rounds: sr.report.rounds,
-                    total_branches: sr.report.total_branches,
-                    total_edges: sr.report.total_edges,
-                    bugs_found: sr.report.bugs.len(),
-                    wall_clock_seconds: sr.wall_clock_seconds,
-                },
-            );
+        for sr in seed_results {
+            match sr {
+                SeedResult::Ok {
+                    seed,
+                    report: boxed_report,
+                    wall_clock_seconds,
+                } => {
+                    let report = *boxed_report;
+                    eprintln!(
+                        "[seed {}] done: {} rounds, {} branches, {} edges, {} bug{} ({:.1}s)",
+                        seed,
+                        report.rounds,
+                        report.total_branches,
+                        report.total_edges,
+                        report.bugs.len(),
+                        if report.bugs.len() == 1 { "" } else { "s" },
+                        wall_clock_seconds,
+                    );
+
+                    progress.completed.insert(
+                        seed,
+                        SeedSummary {
+                            seed,
+                            rounds: report.rounds,
+                            total_branches: report.total_branches,
+                            total_edges: report.total_edges,
+                            bugs_found: report.bugs.len(),
+                            wall_clock_seconds,
+                        },
+                    );
+                    reports.push((seed, report, wall_clock_seconds));
+                }
+                SeedResult::Failed { seed, error } => {
+                    eprintln!("[seed {}] FAILED: {}", seed, error);
+                    progress.failed.insert(seed, error.clone());
+                    failed_seeds.push((seed, error));
+                }
+            }
+
             if let Err(e) = save_campaign_progress(&progress, &self.config.output_dir) {
                 log::warn!("Failed to save campaign progress: {}", e);
             }
-
-            reports.push((sr.seed, sr.report, sr.wall_clock_seconds));
         }
 
         let wall_clock = campaign_start.elapsed().as_secs_f64();
-        let campaign_report = aggregate_reports(reports, wall_clock);
+        let interrupted = crate::signal::shutdown_requested();
+        let mut campaign_report = aggregate_reports(reports, wall_clock);
+        campaign_report.failed_seeds = failed_seeds;
 
+        let status_word = if interrupted {
+            "interrupted"
+        } else {
+            "complete"
+        };
         eprintln!(
-            "Campaign complete: {} seeds, {} unique bug{}, {:.1}s wall-clock",
+            "Campaign {}: {} seeds, {} unique bug{}, {:.1}s wall-clock",
+            status_word,
             campaign_report.seeds_run.len(),
             campaign_report.bugs.len(),
             if campaign_report.bugs.len() == 1 {
@@ -437,6 +497,18 @@ pub fn aggregate_reports(
         assertion_details,
         assertion_stats,
         wall_clock_seconds,
+        failed_seeds: Vec::new(),
+    }
+}
+
+/// Extract a human-readable message from a panic payload.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
     }
 }
 
@@ -521,6 +593,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: details,
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         }
     }
 
@@ -654,6 +727,7 @@ mod tests {
             assertion_details: Vec::new(),
             assertion_stats: AssertionStats::default(),
             wall_clock_seconds: 25.0,
+            failed_seeds: Vec::new(),
         };
 
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -757,6 +831,7 @@ mod tests {
                     wall_clock_seconds: 23.0,
                 },
             )]),
+            failed: BTreeMap::new(),
         };
 
         let json = serde_json::to_string_pretty(&progress).unwrap();
@@ -793,6 +868,7 @@ mod tests {
             },
             output_dir: dir.to_string_lossy().into(),
             completed: BTreeMap::new(),
+            failed: BTreeMap::new(),
         };
 
         save_campaign_progress(&progress, &dir.to_string_lossy()).unwrap();

@@ -183,6 +183,18 @@ enum Commands {
         #[arg(long, default_value = "4,16", value_delimiter = ',')]
         havoc_mutations: Vec<u32>,
 
+        /// Stop after N consecutive rounds with no new edges or bugs (0 = never).
+        #[arg(long, default_value = "10")]
+        stale_round_limit: u64,
+
+        /// Refuse to start if estimated VM memory exceeds 80% of available RAM.
+        #[arg(long)]
+        strict_memory: bool,
+
+        /// Run delta-debugging minimizer on each bug after exploration.
+        #[arg(long)]
+        auto_minimize: bool,
+
         /// Enable the live web dashboard.
         #[arg(long)]
         dashboard: bool,
@@ -379,9 +391,13 @@ enum Commands {
         #[arg(long, value_delimiter = ',')]
         seeds: Option<Vec<u64>>,
 
-        /// Parallel workers per seed (ignored in campaign mode, logged as warning).
+        /// Parallel workers per seed (legacy, use --workers-per-seed).
         #[arg(short = 'w', long, default_value = "1")]
         workers: usize,
+
+        /// Workers per seed (0 = auto: cores / (seeds × VMs)).
+        #[arg(long, default_value = "0")]
+        workers_per_seed: usize,
 
         /// Rare-edge threshold: global hit count at or below which an edge is "rare".
         #[arg(long, default_value = "3")]
@@ -398,6 +414,18 @@ enum Commands {
         /// Havoc mutation count range (min,max).
         #[arg(long, default_value = "4,16", value_delimiter = ',')]
         havoc_mutations: Vec<u32>,
+
+        /// Stop after N consecutive rounds with no new edges or bugs (0 = never).
+        #[arg(long, default_value = "10")]
+        stale_round_limit: u64,
+
+        /// Refuse to start if estimated VM memory exceeds 80% of available RAM.
+        #[arg(long)]
+        strict_memory: bool,
+
+        /// Run delta-debugging minimizer on each bug after campaign.
+        #[arg(long)]
+        auto_minimize: bool,
 
         /// Enable the live web dashboard.
         #[arg(long)]
@@ -452,6 +480,7 @@ enum Commands {
 
 fn main() {
     env_logger::init();
+    chaoscontrol_explore::signal::install_signal_handlers();
 
     let cli = Cli::parse();
 
@@ -481,6 +510,9 @@ fn main() {
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            stale_round_limit,
+            strict_memory,
+            auto_minimize,
             dashboard,
             dashboard_port,
         } => cmd_run(
@@ -508,6 +540,9 @@ fn main() {
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            stale_round_limit,
+            strict_memory,
+            auto_minimize,
             dashboard,
             dashboard_port,
         ),
@@ -558,10 +593,14 @@ fn main() {
             campaign_seeds,
             seeds,
             workers,
+            workers_per_seed,
             rare_edge_threshold,
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            stale_round_limit,
+            strict_memory,
+            auto_minimize,
             dashboard,
             dashboard_port,
         } => cmd_campaign(
@@ -584,10 +623,14 @@ fn main() {
             campaign_seeds,
             seeds,
             workers,
+            workers_per_seed,
             rare_edge_threshold,
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            stale_round_limit,
+            strict_memory,
+            auto_minimize,
             dashboard,
             dashboard_port,
         ),
@@ -656,6 +699,9 @@ fn cmd_run(
     rare_edge_weight: f64,
     havoc_after_stale: u64,
     havoc_mutations: Vec<u32>,
+    stale_round_limit: u64,
+    strict_memory: bool,
+    auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
 ) {
@@ -685,6 +731,14 @@ fn cmd_run(
             eprintln!("Error: failed to create output directory: {}", e);
             std::process::exit(1);
         }
+    }
+
+    // Memory check
+    let vm_memory_mb = VmConfig::default().memory_size / (1024 * 1024);
+    let estimated_mb = vms * vm_memory_mb;
+    if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 
     // Parse scheduling strategy
@@ -751,7 +805,7 @@ fn cmd_run(
         dlog_register_interval,
         dlog_memory_hash,
         num_workers: workers,
-        stale_round_limit: 10,
+        stale_round_limit,
         schedule_diversity: smp,
         rare_edge_threshold,
         rare_edge_weight,
@@ -799,6 +853,7 @@ fn cmd_run(
     eprintln!();
 
     // Create explorer and run
+    let config_for_minimize = config.clone();
     let mut explorer = Explorer::new(config);
 
     // Start dashboard if requested
@@ -842,7 +897,7 @@ fn cmd_run(
     println!("{}", formatted);
 
     // Save output if requested
-    if let Some(output_dir) = output {
+    if let Some(ref output_dir) = output {
         // Save formatted report
         let report_path = format!("{}/report.txt", output_dir);
         if let Err(e) = fs::write(&report_path, &formatted) {
@@ -896,6 +951,15 @@ fn cmd_run(
         }
     }
 
+    // Auto-minimize bugs if requested
+    if auto_minimize && !report.bugs.is_empty() {
+        if chaoscontrol_explore::signal::shutdown_requested() {
+            eprintln!("Skipping auto-minimize: interrupted");
+        } else if let Some(ref output_dir) = output {
+            auto_minimize_bugs(&report.bugs, &config_for_minimize, output_dir);
+        }
+    }
+
     // Exit with error code if bugs found
     if !report.bugs.is_empty() {
         std::process::exit(1);
@@ -944,10 +1008,14 @@ fn cmd_campaign(
     campaign_seeds: usize,
     seeds: Option<Vec<u64>>,
     workers: usize,
+    workers_per_seed: usize,
     rare_edge_threshold: u8,
     rare_edge_weight: f64,
     havoc_after_stale: u64,
     havoc_mutations: Vec<u32>,
+    stale_round_limit: u64,
+    strict_memory: bool,
+    auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
 ) {
@@ -984,7 +1052,31 @@ fn cmd_campaign(
     }
 
     if workers > 1 {
-        eprintln!("Warning: --workers ignored in campaign mode (each seed runs sequentially)");
+        eprintln!("Warning: --workers ignored in campaign mode, use --workers-per-seed instead");
+    }
+
+    // Compute effective workers per seed.
+    let seed_list_len = seeds.as_ref().map_or(campaign_seeds, |s| s.len());
+    let effective_workers_per_seed = if workers_per_seed == 0 {
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+        let auto = (cores / (seed_list_len * vms).max(1)).max(1);
+        eprintln!(
+            "Auto workers-per-seed: {} ({} cores / ({} seeds × {} VMs))",
+            auto, cores, seed_list_len, vms
+        );
+        auto
+    } else {
+        workers_per_seed
+    };
+
+    // Memory check
+    let vm_memory_mb = VmConfig::default().memory_size / (1024 * 1024);
+    let estimated_mb = seed_list_len * vms * vm_memory_mb;
+    if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 
     let scheduling_strategy = match scheduling.as_str() {
@@ -1038,8 +1130,8 @@ fn cmd_campaign(
         dlog_dir: None,
         dlog_register_interval: 0,
         dlog_memory_hash: false,
-        num_workers: 1, // forced to 1 in campaign mode
-        stale_round_limit: 10,
+        num_workers: effective_workers_per_seed,
+        stale_round_limit,
         schedule_diversity: smp,
         rare_edge_threshold,
         rare_edge_weight,
@@ -1052,6 +1144,7 @@ fn cmd_campaign(
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
 
+    let base_config_for_minimize = base_config.clone();
     let campaign_config = CampaignConfig {
         seeds: seed_list,
         base_explorer_config: base_config,
@@ -1098,6 +1191,32 @@ fn cmd_campaign(
                     }
                 }
                 Err(e) => eprintln!("Error serializing assertions: {}", e),
+            }
+
+            // Auto-minimize campaign bugs
+            if auto_minimize && !report.bugs.is_empty() {
+                if chaoscontrol_explore::signal::shutdown_requested() {
+                    eprintln!("Skipping auto-minimize: interrupted");
+                } else {
+                    // Convert CampaignBugs to BugReports for the minimizer.
+                    let bugs: Vec<chaoscontrol_explore::corpus::BugReport> = report
+                        .bugs
+                        .iter()
+                        .map(|cb| chaoscontrol_explore::corpus::BugReport {
+                            bug_id: cb.bug.bug_id,
+                            assertion_id: cb.bug.assertion_id,
+                            assertion_location: cb.bug.assertion_location.clone(),
+                            schedule: (&cb.bug.schedule).into(),
+                            snapshot: None,
+                            tick: cb.bug.tick,
+                            dedup_key: cb.dedup_key,
+                            schedule_variant: None,
+                        })
+                        .collect();
+                    let min_dir = format!("{}/minimized", output);
+                    let _ = fs::create_dir_all(&min_dir);
+                    auto_minimize_bugs(&bugs, &base_config_for_minimize, &min_dir);
+                }
             }
 
             // Exit code: 0 = bugs found, 1 = no bugs
@@ -1165,6 +1284,7 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                     assertion_stats: Default::default(),
                     assertion_details: Vec::new(),
                     round_history: cp.round_history.unwrap_or_default(),
+                    wall_clock_seconds: summary.wall_clock_seconds,
                 };
                 reports.push((*seed, report, summary.wall_clock_seconds));
             }
@@ -1850,5 +1970,93 @@ fn cmd_reproduce(
         std::process::exit(0);
     } else {
         std::process::exit(1);
+    }
+}
+
+/// Run delta-debugging minimization on each bug.
+fn auto_minimize_bugs(
+    bugs: &[chaoscontrol_explore::corpus::BugReport],
+    config: &ExplorerConfig,
+    output_dir: &str,
+) {
+    use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
+    use std::time::Instant;
+
+    eprintln!(
+        "\nAuto-minimizing {} bug{}...",
+        bugs.len(),
+        if bugs.len() == 1 { "" } else { "s" }
+    );
+
+    let min_config = MinimizeConfig {
+        num_vms: config.num_vms,
+        vm_config: config.vm_config.clone(),
+        kernel_path: config.kernel_path.clone(),
+        initrd_path: config.initrd_path.clone(),
+        seed: config.seed,
+        quantum: config.quantum,
+        scheduling_strategy: config.scheduling_strategy,
+        ticks_per_branch: config.ticks_per_branch,
+        disk_image_path: config.disk_image_path.clone(),
+        bootstrap_budget: config.bootstrap_budget,
+        coverage_gpa: config.coverage_gpa,
+    };
+
+    for bug in bugs {
+        if chaoscontrol_explore::signal::shutdown_requested() {
+            eprintln!("Skipping remaining minimizations: interrupted");
+            break;
+        }
+
+        let original_faults = bug.schedule.total();
+        if original_faults == 0 {
+            eprintln!("Bug {}: already minimal (0 faults)", bug.bug_id);
+            continue;
+        }
+
+        eprintln!(
+            "Minimizing bug {} ({} faults)...",
+            bug.bug_id, original_faults
+        );
+        let start = Instant::now();
+
+        let mut minimizer = Minimizer::new(min_config.clone(), bug.clone());
+        match minimizer.minimize() {
+            Ok(result) => {
+                let elapsed = start.elapsed().as_secs_f64();
+                eprintln!(
+                    "  Bug {}: {} \u{2192} {} faults ({:.1}s)",
+                    bug.bug_id, result.original_faults, result.minimized_faults, elapsed
+                );
+
+                // Save minimized schedule
+                let min_bug = chaoscontrol_explore::checkpoint::SerializableBug {
+                    bug_id: bug.bug_id,
+                    assertion_id: bug.assertion_id,
+                    assertion_location: bug.assertion_location.clone(),
+                    schedule: (&result.schedule).into(),
+                    tick: bug.tick,
+                    dedup_key: Some(bug.dedup_key),
+                    schedule_variant: None,
+                };
+                let path = format!("{}/bug_{}_min.json", output_dir, bug.bug_id);
+                match serde_json::to_string_pretty(&min_bug) {
+                    Ok(json) => {
+                        if let Err(e) = fs::write(&path, &json) {
+                            eprintln!("  Warning: failed to write {}: {}", path, e);
+                        } else {
+                            eprintln!("  Saved to {}", path);
+                        }
+                    }
+                    Err(e) => eprintln!("  Warning: failed to serialize: {}", e),
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "  Bug {}: minimization failed ({}), keeping original",
+                    bug.bug_id, e
+                );
+            }
+        }
     }
 }

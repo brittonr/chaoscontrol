@@ -66,7 +66,7 @@ impl WorkerPool {
 
         // Build controllers in parallel using scoped threads.
         // Each thread creates + bootstraps its own controller.
-        let controllers: Vec<Result<SimulationController, _>> = std::thread::scope(|s| {
+        let raw_handles: Vec<_> = std::thread::scope(|s| {
             let handles: Vec<_> = (0..num_workers)
                 .map(|worker_id| {
                     let config = config.clone();
@@ -101,16 +101,39 @@ impl WorkerPool {
                 })
                 .collect();
 
-            handles.into_iter().map(|h| h.join().unwrap()).collect()
+            handles
+                .into_iter()
+                .enumerate()
+                .map(|(id, h)| match h.join() {
+                    Ok(result) => Some((id, result)),
+                    Err(panic_payload) => {
+                        let msg = panic_message(&panic_payload);
+                        log::error!("Worker {} bootstrap panicked: {}", id, msg);
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
         });
 
-        // Collect results, propagating the first error.
+        // Collect results. Panicked workers are skipped; errors propagated.
         let mut pool_controllers = Vec::with_capacity(num_workers);
-        for result in controllers {
-            pool_controllers.push(Some(result?));
+        for entry in raw_handles.into_iter().flatten() {
+            let (worker_id, result) = entry;
+            match result {
+                Ok(ctrl) => pool_controllers.push(Some(ctrl)),
+                Err(e) => {
+                    log::warn!("Worker {} bootstrap failed: {}", worker_id, e);
+                }
+            }
         }
 
-        info!("All {} workers ready", num_workers);
+        if pool_controllers.is_empty() {
+            return Err(chaoscontrol_vmm::vm::VmError::Snapshot {
+                message: "all worker bootstraps failed".into(),
+            });
+        }
+
+        info!("{}/{} workers ready", pool_controllers.len(), num_workers);
 
         Ok(Self {
             controllers: pool_controllers,
@@ -196,17 +219,41 @@ impl WorkerPool {
 
                             let mut results = Vec::with_capacity(chunk.len());
 
-                            for item in &chunk {
-                                let result = run_single_branch(
-                                    &mut ctrl,
-                                    snap_ref,
-                                    item.schedule.clone(),
-                                    item.schedule_variant.as_ref(),
-                                    coverage_gpa,
-                                    ticks_per_branch,
-                                    !bases.is_empty(),
-                                )?;
-                                results.push(result);
+                            for (branch_offset, item) in chunk.iter().enumerate() {
+                                // Catch panics per-branch so one bad branch
+                                // doesn't kill the whole worker chunk.
+                                let branch_result = std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| {
+                                        run_single_branch(
+                                            &mut ctrl,
+                                            snap_ref,
+                                            item.schedule.clone(),
+                                            item.schedule_variant.as_ref(),
+                                            coverage_gpa,
+                                            ticks_per_branch,
+                                            !bases.is_empty(),
+                                        )
+                                    }),
+                                );
+
+                                match branch_result {
+                                    Ok(Ok(result)) => results.push(result),
+                                    Ok(Err(e)) => {
+                                        log::error!(
+                                            "Worker {} branch {} failed: {}",
+                                            worker_idx, branch_offset, e
+                                        );
+                                        results.push(empty_branch_result(item));
+                                    }
+                                    Err(panic_payload) => {
+                                        let msg = panic_message(&panic_payload);
+                                        log::error!(
+                                            "Worker {} branch {} panicked: {}",
+                                            worker_idx, branch_offset, msg
+                                        );
+                                        results.push(empty_branch_result(item));
+                                    }
+                                }
                             }
 
                             Ok((ctrl, results))
@@ -214,7 +261,10 @@ impl WorkerPool {
                     })
                     .collect();
 
-                handles.into_iter().map(|h| h.join().unwrap()).collect()
+                handles
+                    .into_iter()
+                    .map(|h| h.join().expect("worker thread poisoned"))
+                    .collect()
             });
 
         // Put controllers back and collect results.
@@ -325,6 +375,41 @@ fn run_single_branch(
         schedule_variant: schedule_variant.cloned(),
         schedule_fingerprint,
     })
+}
+
+/// Create a zero-coverage placeholder result for a panicked/failed branch.
+fn empty_branch_result(work: &BranchWork) -> BranchResult {
+    BranchResult {
+        coverage: CoverageBitmap::new(),
+        oracle_report: chaoscontrol_fault::oracle::OracleReport {
+            assertions: std::collections::BTreeMap::new(),
+            total_runs: 0,
+            passed: 0,
+            failed: 0,
+            unexercised: 0,
+            catalog_size: 0,
+            events: Vec::new(),
+        },
+        schedule: work.schedule.clone(),
+        exit_counts: Vec::new(),
+        halted: false,
+        total_ticks: 0,
+        bugs: Vec::new(),
+        snapshot: None,
+        schedule_variant: work.schedule_variant.clone(),
+        schedule_fingerprint: 0,
+    }
+}
+
+/// Extract a human-readable message from a panic payload.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
 }
 
 #[cfg(test)]

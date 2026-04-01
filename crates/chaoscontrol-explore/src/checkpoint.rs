@@ -741,6 +741,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
+            wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 2,
@@ -751,6 +752,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 5,
                 corpus_size: 5,
+            wall_clock_seconds: 0.0,
             },
         ];
 

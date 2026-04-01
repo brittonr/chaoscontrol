@@ -21,6 +21,12 @@ pub fn format_report(report: &ExplorationReport) -> String {
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
+    if report.wall_clock_seconds > 0.0 {
+        output.push_str(&format!(
+            "Wall-clock time:        {}\n",
+            format_duration(report.wall_clock_seconds)
+        ));
+    }
     output.push('\n');
 
     // Coverage stats
@@ -375,6 +381,19 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
         "Wall-clock time:        {:.1}s\n",
         report.wall_clock_seconds
     ));
+    if !report.failed_seeds.is_empty() {
+        output.push_str(&format!(
+            "Failed seeds:           {}",
+            report.failed_seeds.len()
+        ));
+        let names: Vec<String> = report
+            .failed_seeds
+            .iter()
+            .map(|(s, _)| s.to_string())
+            .collect();
+        output.push_str(&format!(" ({})", names.join(", ")));
+        output.push('\n');
+    }
     output.push('\n');
 
     // Per-seed table
@@ -387,6 +406,14 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
             "  {:>6} │ {:>6} │ {:>8} │ {:>5} │ {:>4} │ {:.1}s\n",
             s.seed, s.rounds, s.total_branches, s.total_edges, s.bugs_found, s.wall_clock_seconds,
         ));
+    }
+
+    // Failed seeds detail
+    if !report.failed_seeds.is_empty() {
+        output.push_str("─── Failed Seeds ─────────────────────────────────────────────────────\n");
+        for (seed, error) in &report.failed_seeds {
+            output.push_str(&format!("  Seed {}: {}\n", seed, error));
+        }
     }
     output.push('\n');
 
@@ -504,6 +531,21 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
     output
 }
 
+/// Format seconds into human-readable duration.
+fn format_duration(seconds: f64) -> String {
+    if seconds < 60.0 {
+        format!("{:.1}s", seconds)
+    } else if seconds < 3600.0 {
+        let mins = (seconds / 60.0).floor() as u64;
+        let secs = seconds - (mins as f64 * 60.0);
+        format!("{}m {:.0}s", mins, secs)
+    } else {
+        let hours = (seconds / 3600.0).floor() as u64;
+        let mins = ((seconds - hours as f64 * 3600.0) / 60.0).floor() as u64;
+        format!("{}h {}m", hours, mins)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,6 +589,7 @@ mod tests {
             },
             assertion_details: Vec::new(),
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -574,6 +617,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -605,6 +649,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -667,6 +712,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
+            wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 2,
@@ -677,6 +723,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 5,
                 corpus_size: 5,
+            wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 3,
@@ -687,6 +734,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 4,
                 corpus_size: 5,
+            wall_clock_seconds: 0.0,
             },
         ];
 
@@ -705,6 +753,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: history,
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -747,6 +796,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: r as usize,
+            wall_clock_seconds: 0.0,
             })
             .collect();
 
@@ -765,6 +815,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: history,
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -794,6 +845,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -869,6 +921,7 @@ mod tests {
             },
             assertion_details: details,
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -935,6 +988,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
         };
 
         let formatted = format_report(&report);
@@ -1052,6 +1106,7 @@ mod tests {
                 unexercised: 0,
             },
             wall_clock_seconds: 26.0,
+            failed_seeds: Vec::new(),
         };
 
         let formatted = format_campaign_report(&report);
@@ -1090,6 +1145,7 @@ mod tests {
             assertion_details: Vec::new(),
             assertion_stats: Default::default(),
             wall_clock_seconds: 5.0,
+            failed_seeds: Vec::new(),
         };
 
         let formatted = format_campaign_report(&report);

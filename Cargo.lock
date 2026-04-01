@@ -269,6 +269,7 @@ dependencies = [
  "clap",
  "env_logger",
  "futures-core",
+ "libc",
  "log",
  "rand",
  "rand_chacha",

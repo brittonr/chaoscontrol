@@ -72,11 +72,13 @@ pub mod dashboard_types;
 pub mod explorer;
 pub mod frontier;
 pub mod input_tree;
+pub mod memory;
 pub mod minimizer;
 pub mod mutator;
 pub mod report;
 #[cfg(feature = "dashboard")]
 pub mod server;
+pub mod signal;
 pub mod worker;
 
 // Re-export main types for convenience

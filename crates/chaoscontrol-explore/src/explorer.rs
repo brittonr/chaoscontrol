@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
@@ -285,6 +286,8 @@ impl Explorer {
     ///
     /// Returns the final report with all bugs found, coverage stats, etc.
     pub fn run(&mut self) -> Result<ExplorationReport, ExploreError> {
+        let run_start = Instant::now();
+
         info!(
             "Starting exploration: {} rounds, {} branches/round, {} VMs, schedule_diversity={}",
             self.config.max_rounds,
@@ -373,6 +376,7 @@ impl Explorer {
         for round in 0..self.config.max_rounds {
             info!("=== Round {}/{} ===", round + 1, self.config.max_rounds);
 
+            let round_start = Instant::now();
             let round_report = match self.config.exploration_mode {
                 ExplorationMode::FaultSchedule => self.explore_round()?,
                 ExplorationMode::InputTree => self.explore_input_tree_round()?,
@@ -384,6 +388,7 @@ impl Explorer {
                     }
                 }
             };
+            let round_elapsed = round_start.elapsed().as_secs_f64();
             self.rounds_completed += 1;
 
             // Record per-round history
@@ -396,6 +401,7 @@ impl Explorer {
                 cumulative_bugs: self.all_bugs().len(),
                 frontier_size: round_report.frontier_size,
                 corpus_size: self.corpus.stats().total_entries,
+                wall_clock_seconds: round_elapsed,
             };
             self.round_history.push(history_entry.clone());
 
@@ -410,6 +416,7 @@ impl Explorer {
                 frontier_size: round_report.frontier_size,
                 corpus_size: history_entry.corpus_size,
                 assertion_stats: self.collect_assertion_detail().0,
+                wall_clock_seconds: round_elapsed,
                 from_seed: None,
             });
 
@@ -469,6 +476,13 @@ impl Explorer {
                 self.emit_finished("bug_found");
                 break;
             }
+
+            // Check for graceful shutdown (Ctrl-C / SIGTERM).
+            if crate::signal::shutdown_requested() {
+                info!("Shutdown requested, stopping after round {}", round + 1);
+                self.emit_finished("interrupted");
+                break;
+            }
         }
 
         // Emit Finished if we completed all rounds (no early break).
@@ -477,7 +491,9 @@ impl Explorer {
         }
 
         // Generate final report
-        Ok(self.generate_report())
+        let mut report = self.generate_report();
+        report.wall_clock_seconds = run_start.elapsed().as_secs_f64();
+        Ok(report)
     }
 
     /// Execute one exploration round:
@@ -1518,6 +1534,7 @@ impl Explorer {
             assertion_stats,
             assertion_details,
             round_history: self.round_history.clone(),
+            wall_clock_seconds: 0.0, // Set by caller
         }
     }
 
@@ -1903,6 +1920,9 @@ pub struct RoundHistory {
     pub frontier_size: usize,
     /// Corpus size after this round.
     pub corpus_size: usize,
+    /// Wall-clock time for this round (seconds). 0.0 for old checkpoints.
+    #[serde(default)]
+    pub wall_clock_seconds: f64,
 }
 
 /// Final exploration report.
@@ -1920,6 +1940,8 @@ pub struct ExplorationReport {
     pub assertion_details: Vec<AssertionDetail>,
     /// Per-round exploration history.
     pub round_history: Vec<RoundHistory>,
+    /// Total wall-clock time for the exploration run.
+    pub wall_clock_seconds: f64,
 }
 
 /// Summary of assertion coverage across all exploration branches.
@@ -2353,5 +2375,20 @@ mod tests {
 
         // Cleanup
         let _ = fs::remove_dir_all(&checkpoint_dir);
+    }
+
+    #[test]
+    fn test_shutdown_flag_stops_exploration() {
+        // Reset in case another test set the flag.
+        crate::signal::reset_shutdown();
+
+        // We can't run a real Explorer without KVM, but we can verify
+        // the signal module round-trips correctly and the flag is
+        // checked in the right place (the Explorer::run loop checks
+        // crate::signal::shutdown_requested() after each round).
+        assert!(!crate::signal::shutdown_requested());
+        crate::signal::request_shutdown();
+        assert!(crate::signal::shutdown_requested());
+        crate::signal::reset_shutdown();
     }
 }

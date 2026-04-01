@@ -153,6 +153,7 @@
 
 pub mod checkpoint;
 pub mod debugger;
+pub mod inspect;
 pub mod recording;
 pub mod replay;
 pub mod serialize;

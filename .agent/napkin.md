@@ -527,7 +527,7 @@ Based on analysis of antithesis.com/blog/deterministic_hypervisor/
 ### Remaining Antithesis SDK gaps
 - ✅ **JSON details**: SDK already uses `&serde_json::Value`. Raft guest passes `&json!({...})`. Gap was already closed.
 - ✅ **Assertion catalog**: `linkme` distributed slice — DONE (2026-03-29). Guests migrated to macros (2026-03-29).
-- **`assert_raw()`**: Low-level function for third-party framework integration
+- ✅ **`assert_raw()`**: Low-level function for third-party framework integration — already implemented (assert_raw, assert_raw_with_id, cc_assert_raw! macro, AssertionKind enum, no-op stubs, prelude exports, tests)
 - ✅ **Assertion density**: Raft guest has 35 assertions with handler reachability, sometimes-pairs, state transitions, data invariants. Guidelines doc gaps addressed (2026-02-20).
 
 ## Assertion Catalog (2026-03-29)

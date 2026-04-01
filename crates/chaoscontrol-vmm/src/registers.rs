@@ -1,6 +1,8 @@
 //! Guest register state — portable representation for debugger and dlog.
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 
 /// VM register state — all general-purpose, segment, and control registers.
 ///
@@ -97,9 +99,50 @@ impl RegisterState {
     }
 }
 
+impl fmt::Display for RegisterState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "rip={:#018x}  rsp={:#018x}  rflags={:#018x}",
+            self.rip, self.rsp, self.rflags
+        )?;
+        writeln!(
+            f,
+            "rax={:#018x}  rbx={:#018x}  rcx={:#018x}  rdx={:#018x}",
+            self.rax, self.rbx, self.rcx, self.rdx
+        )?;
+        writeln!(
+            f,
+            "rsi={:#018x}  rdi={:#018x}  rbp={:#018x}",
+            self.rsi, self.rdi, self.rbp
+        )?;
+        writeln!(
+            f,
+            "r8 ={:#018x}  r9 ={:#018x}  r10={:#018x}  r11={:#018x}",
+            self.r8, self.r9, self.r10, self.r11
+        )?;
+        writeln!(
+            f,
+            "r12={:#018x}  r13={:#018x}  r14={:#018x}  r15={:#018x}",
+            self.r12, self.r13, self.r14, self.r15
+        )?;
+        writeln!(
+            f,
+            "cs={:#06x}  ss={:#06x}  ds={:#06x}  es={:#06x}  fs={:#06x}  gs={:#06x}",
+            self.cs, self.ss, self.ds, self.es, self.fs, self.gs
+        )?;
+        write!(
+            f,
+            "cr0={:#018x}  cr3={:#018x}  cr4={:#018x}",
+            self.cr0, self.cr3, self.cr4
+        )
+    }
+}
+
 /// Named register for individual register modifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Register {
+    // NOTE: Display and FromStr impls are below.
     Rip,
     Rsp,
     Rax,
@@ -166,6 +209,60 @@ impl Register {
             Self::R14 => state.r14 = value,
             Self::R15 => state.r15 = value,
             Self::Rflags => state.rflags = value,
+        }
+    }
+}
+
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Rip => "rip",
+            Self::Rsp => "rsp",
+            Self::Rax => "rax",
+            Self::Rbx => "rbx",
+            Self::Rcx => "rcx",
+            Self::Rdx => "rdx",
+            Self::Rsi => "rsi",
+            Self::Rdi => "rdi",
+            Self::Rbp => "rbp",
+            Self::R8 => "r8",
+            Self::R9 => "r9",
+            Self::R10 => "r10",
+            Self::R11 => "r11",
+            Self::R12 => "r12",
+            Self::R13 => "r13",
+            Self::R14 => "r14",
+            Self::R15 => "r15",
+            Self::Rflags => "rflags",
+        };
+        f.write_str(name)
+    }
+}
+
+impl FromStr for Register {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "rip" => Ok(Self::Rip),
+            "rsp" => Ok(Self::Rsp),
+            "rax" => Ok(Self::Rax),
+            "rbx" => Ok(Self::Rbx),
+            "rcx" => Ok(Self::Rcx),
+            "rdx" => Ok(Self::Rdx),
+            "rsi" => Ok(Self::Rsi),
+            "rdi" => Ok(Self::Rdi),
+            "rbp" => Ok(Self::Rbp),
+            "r8" => Ok(Self::R8),
+            "r9" => Ok(Self::R9),
+            "r10" => Ok(Self::R10),
+            "r11" => Ok(Self::R11),
+            "r12" => Ok(Self::R12),
+            "r13" => Ok(Self::R13),
+            "r14" => Ok(Self::R14),
+            "r15" => Ok(Self::R15),
+            "rflags" => Ok(Self::Rflags),
+            _ => Err(format!("unknown register: {s}")),
         }
     }
 }

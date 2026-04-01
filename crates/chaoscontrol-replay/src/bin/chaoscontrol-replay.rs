@@ -107,6 +107,13 @@ enum Commands {
         tick: u64,
     },
 
+    /// Interactive debugger with memory/register inspection and modification
+    Inspect {
+        /// Path to recording file
+        #[arg(short, long)]
+        recording: PathBuf,
+    },
+
     /// Determinism log tools (dump, diff, stats)
     Dlog {
         #[command(subcommand)]
@@ -186,6 +193,7 @@ fn main() {
             to,
         } => cmd_events(recording, filter, from, to),
         Commands::Debug { recording, tick } => cmd_debug(recording, tick),
+        Commands::Inspect { recording } => cmd_inspect(recording),
         Commands::Dlog { cmd } => match cmd {
             DlogCommands::Dump { file, from, count } => cmd_dlog_dump(file, from, count),
             DlogCommands::Diff {
@@ -567,6 +575,12 @@ fn format_triage_markdown(report: &chaoscontrol_replay::triage::TriageReport) ->
     md.push_str("\n```\n\n");
 
     md
+}
+
+fn cmd_inspect(recording_path: PathBuf) -> Result<(), CliError> {
+    let recording = load_recording(&recording_path)?;
+    chaoscontrol_replay::inspect::run_interactive::<RealSimulationRunner>(recording)?;
+    Ok(())
 }
 
 fn cmd_dlog_diff(a: PathBuf, b: PathBuf, strict: bool) -> Result<(), CliError> {

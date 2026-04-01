@@ -75,6 +75,44 @@ impl ScheduleMutator {
         variants
     }
 
+    /// Generate N variant schedules using havoc mode (aggressive mutations).
+    ///
+    /// Each variant applies 4–16 random mutations instead of the normal 1–3.
+    /// Faults are generated fresh (ignoring the base schedule) with a bias
+    /// toward multiple simultaneous faults at nearby ticks.
+    pub fn mutate_havoc(
+        &mut self,
+        base: &FaultSchedule,
+        n: usize,
+        config: &MutationConfig,
+    ) -> Vec<FaultSchedule> {
+        let mut variants = Vec::with_capacity(n);
+
+        for _ in 0..n {
+            let child_seed = self.seed.wrapping_add(self.counter);
+            self.counter += 1;
+            let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+
+            let mut schedule = base.clone();
+
+            // Havoc: 4–16 mutations per variant
+            let num_mutations = rng.gen_range(4..=16);
+            for _ in 0..num_mutations {
+                let strategy = rng.gen_range(0u8..5);
+                match strategy {
+                    0 | 1 => self.add_random_fault(&mut schedule, config, &mut rng),
+                    2 => self.remove_random_fault(&mut schedule, &mut rng),
+                    3 => self.shift_timing(&mut schedule, &mut rng),
+                    _ => self.replace_fault(&mut schedule, config, &mut rng),
+                }
+            }
+
+            variants.push(schedule);
+        }
+
+        variants
+    }
+
     /// Generate a single variant schedule.
     fn mutate_once(&mut self, base: &FaultSchedule, config: &MutationConfig) -> FaultSchedule {
         let child_seed = self.seed.wrapping_add(self.counter);
@@ -566,5 +604,45 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(42);
         let fault = mutator.random_fault(&config, &mut rng);
         assert_eq!(fault, Fault::NetworkHeal); // Safe default
+    }
+
+    #[test]
+    fn test_havoc_generates_more_faults() {
+        let mut mutator_normal = ScheduleMutator::new(42);
+        let mut mutator_havoc = ScheduleMutator::new(42);
+        let config = MutationConfig::default();
+        let base = FaultSchedule::new();
+
+        let normal = mutator_normal.mutate(&base, 10, &config);
+        let havoc = mutator_havoc.mutate_havoc(&base, 10, &config);
+
+        assert_eq!(normal.len(), 10);
+        assert_eq!(havoc.len(), 10);
+
+        // Havoc should produce more total faults on average
+        let normal_faults: usize = normal.iter().map(|s| s.total()).sum();
+        let havoc_faults: usize = havoc.iter().map(|s| s.total()).sum();
+        assert!(
+            havoc_faults > normal_faults,
+            "havoc ({}) should produce more faults than normal ({})",
+            havoc_faults,
+            normal_faults
+        );
+    }
+
+    #[test]
+    fn test_havoc_deterministic() {
+        let config = MutationConfig::default();
+        let base = FaultSchedule::new();
+
+        let mut m1 = ScheduleMutator::new(99);
+        let mut m2 = ScheduleMutator::new(99);
+
+        let r1 = m1.mutate_havoc(&base, 5, &config);
+        let r2 = m2.mutate_havoc(&base, 5, &config);
+
+        for (a, b) in r1.iter().zip(r2.iter()) {
+            assert_eq!(a.total(), b.total());
+        }
     }
 }

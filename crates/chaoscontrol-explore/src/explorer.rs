@@ -417,9 +417,18 @@ impl Explorer {
 
             // Check for stopping conditions
             if self.frontier.is_empty() {
-                info!("Frontier exhausted, stopping early");
-                self.emit_finished("frontier_exhausted");
-                break;
+                // Try recycling from corpus before giving up.
+                let recycled = self.recycle_frontier_from_corpus();
+                if recycled > 0 {
+                    info!(
+                        "Frontier exhausted — recycled {} entries from corpus",
+                        recycled
+                    );
+                } else {
+                    info!("Frontier exhausted and corpus empty, stopping");
+                    self.emit_finished("frontier_exhausted");
+                    break;
+                }
             }
 
             if self.config.stale_round_limit > 0
@@ -474,11 +483,30 @@ impl Explorer {
         // Generate variant schedules. Pre-compute all variants before
         // dispatch so the RNG state advances identically regardless of
         // whether branches run sequentially or in parallel.
-        let variants = self.mutator.mutate(
-            &base_schedule,
-            self.config.branch_factor,
-            &self.config.mutation,
-        );
+        //
+        // Switch to havoc mutations when stale rounds are accumulating.
+        // Havoc applies 4–16 mutations per variant instead of 1–3, which
+        // can break out of local coverage basins.
+        let havoc_threshold = self.config.stale_round_limit / 2;
+        let use_havoc = havoc_threshold > 0 && self.consecutive_stale_rounds >= havoc_threshold;
+
+        let variants = if use_havoc {
+            debug!(
+                "Using havoc mutations ({} consecutive stale rounds)",
+                self.consecutive_stale_rounds
+            );
+            self.mutator.mutate_havoc(
+                &base_schedule,
+                self.config.branch_factor,
+                &self.config.mutation,
+            )
+        } else {
+            self.mutator.mutate(
+                &base_schedule,
+                self.config.branch_factor,
+                &self.config.mutation,
+            )
+        };
 
         debug!("Generated {} variant schedules", variants.len());
 
@@ -1040,7 +1068,10 @@ impl Explorer {
     }
 
     /// Score a branch result for frontier prioritization.
-    /// Factors: new coverage edges, assertion variety, depth penalty.
+    ///
+    /// Uses rare-edge weighting: branches covering edges that few other
+    /// branches also cover get a large bonus. This prevents the frontier
+    /// from homogenizing around common paths.
     fn score_branch(&self, result: &BranchResult, parent_depth: u32) -> f64 {
         let new_edges = result
             .coverage
@@ -1049,6 +1080,13 @@ impl Explorer {
 
         // Base score: number of new edges
         let mut score = new_edges as f64 * 10.0;
+
+        // Rare-edge bonus: edges hit by very few branches (global count ≤ 3)
+        // are more valuable than common edges.
+        let rare_edges = result
+            .coverage
+            .count_rare_edges(self.coverage.global_coverage(), 3);
+        score += rare_edges as f64 * 5.0;
 
         // Bonus for high total coverage
         score += total_edges as f64 * 0.1;
@@ -1133,6 +1171,99 @@ impl Explorer {
         }
 
         bugs
+    }
+
+    /// Recycle corpus entries into the frontier when it empties.
+    ///
+    /// Selects corpus entries that cover the most rare edges (global
+    /// count ≤ 3) and re-adds them to the frontier with fresh scores.
+    /// This prevents exploration from halting when all frontier entries
+    /// have been exhausted without finding new code edges.
+    ///
+    /// Returns the number of entries recycled.
+    fn recycle_frontier_from_corpus(&mut self) -> usize {
+        let entries = self.corpus.entries();
+        if entries.is_empty() {
+            return 0;
+        }
+
+        // Score each corpus entry by rare-edge count
+        let mut scored: Vec<(usize, usize)> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                let rare = entry
+                    .coverage
+                    .count_rare_edges(self.coverage.global_coverage(), 3);
+                (i, rare)
+            })
+            .filter(|(_, rare)| *rare > 0)
+            .collect();
+
+        // Sort by rare edge count descending
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Take up to max_frontier / 2 entries
+        let recycle_count = scored.len().min(self.config.max_frontier / 2).max(1);
+        let mut recycled = 0;
+
+        for &(idx, rare_count) in scored.iter().take(recycle_count) {
+            let entry = &entries[idx];
+            // We don't have snapshots in corpus entries, so we can only
+            // recycle the schedule. The explorer will re-bootstrap and
+            // use the schedule as a base for mutation.
+            let frontier_entry = FrontierEntry {
+                id: 0,
+                snapshot: self
+                    .controller
+                    .as_ref()
+                    .and_then(|c| c.snapshot_all().ok())
+                    .unwrap_or_else(|| {
+                        // Fallback: empty snapshot (will trigger re-bootstrap)
+                        panic!("recycle_frontier_from_corpus: no controller")
+                    }),
+                coverage: entry.coverage.clone(),
+                score: rare_count as f64 * 5.0 + entry.new_edges as f64,
+                times_selected: 0,
+                depth: entry.depth,
+                schedule: entry.schedule.clone(),
+                parent: None,
+            };
+            self.frontier.push(frontier_entry);
+            recycled += 1;
+        }
+
+        // If no rare-edge entries, just take the top corpus entries by new_edges
+        if recycled == 0 {
+            let mut by_edges: Vec<(usize, usize)> = entries
+                .iter()
+                .enumerate()
+                .map(|(i, e)| (i, e.new_edges))
+                .collect();
+            by_edges.sort_by(|a, b| b.1.cmp(&a.1));
+
+            for &(idx, _) in by_edges.iter().take(recycle_count) {
+                let entry = &entries[idx];
+                if let Some(ref controller) = self.controller {
+                    if let Ok(snap) = controller.snapshot_all() {
+                        let frontier_entry = FrontierEntry {
+                            id: 0,
+                            snapshot: snap,
+                            coverage: entry.coverage.clone(),
+                            score: entry.new_edges as f64 * 2.0,
+                            times_selected: 0,
+                            depth: entry.depth,
+                            schedule: entry.schedule.clone(),
+                            parent: None,
+                        };
+                        self.frontier.push(frontier_entry);
+                        recycled += 1;
+                    }
+                }
+            }
+        }
+
+        recycled
     }
 
     /// Add a result to the frontier.

@@ -89,6 +89,20 @@ impl CoverageBitmap {
         }
     }
 
+    /// Count edges in `self` that are rare in `global` (hit count ≤ threshold).
+    ///
+    /// An edge is "rare" if `global[i] > 0 && global[i] <= threshold`.
+    /// Returns the number of rare edges that `self` also covers.
+    pub fn count_rare_edges(&self, global: &CoverageBitmap, threshold: u8) -> usize {
+        self.map
+            .iter()
+            .zip(global.map.iter())
+            .filter(|(&self_count, &global_count)| {
+                self_count > 0 && global_count > 0 && global_count <= threshold
+            })
+            .count()
+    }
+
     /// Get a reference to the raw map.
     pub fn as_slice(&self) -> &[u8] {
         &self.map
@@ -376,6 +390,57 @@ mod tests {
         assert_eq!(bitmap.as_slice()[4], 5);
         assert_eq!(bitmap.as_slice()[5], 0);
         assert_eq!(bitmap.as_slice().len(), MAP_SIZE);
+    }
+
+    // ── Rare-edge tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_count_rare_edges_all_rare() {
+        let mut global = CoverageBitmap::new();
+        global.record_hit(10); // count=1, rare
+        global.record_hit(20); // count=1, rare
+
+        let mut local = CoverageBitmap::new();
+        local.record_hit(10);
+        local.record_hit(20);
+
+        assert_eq!(local.count_rare_edges(&global, 3), 2);
+    }
+
+    #[test]
+    fn test_count_rare_edges_threshold() {
+        let mut global = CoverageBitmap::new();
+        for _ in 0..5 {
+            global.record_hit(10); // count=5, NOT rare at threshold=3
+        }
+        global.record_hit(20); // count=1, rare
+
+        let mut local = CoverageBitmap::new();
+        local.record_hit(10);
+        local.record_hit(20);
+
+        assert_eq!(local.count_rare_edges(&global, 3), 1); // only edge 20
+    }
+
+    #[test]
+    fn test_count_rare_edges_not_in_local() {
+        let mut global = CoverageBitmap::new();
+        global.record_hit(10); // rare in global
+
+        let local = CoverageBitmap::new(); // doesn't cover edge 10
+
+        assert_eq!(local.count_rare_edges(&global, 3), 0);
+    }
+
+    #[test]
+    fn test_count_rare_edges_not_in_global() {
+        let global = CoverageBitmap::new(); // edge 10 not in global at all
+
+        let mut local = CoverageBitmap::new();
+        local.record_hit(10);
+
+        // global[10] == 0, so not rare (rare means global > 0 && global <= threshold)
+        assert_eq!(local.count_rare_edges(&global, 3), 0);
     }
 
     // ── Region boundary tests ─────────────────────────────────────

@@ -62,6 +62,6 @@
 ## 8. Smoke Test
 
 - [x] 8.1 Build guest + initrd + disk image + kernel via nix
-- [ ] 8.2 Run a short exploration (5 rounds, 4 branches, 500 ticks) and verify it completes
-- [ ] 8.3 Verify assertion catalog shows all registered assertions
-- [ ] 8.4 Verify coverage edges are non-zero
+- [x] 8.2 Run a short exploration (5 rounds, 4 branches, 500 ticks) and verify it completes
+- [x] 8.3 Verify assertion catalog shows all registered assertions
+- [x] 8.4 Verify coverage edges are non-zero

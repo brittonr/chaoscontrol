@@ -16,6 +16,8 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
 const INDEX_HTML: &str = include_str!("../assets/index.html");
+const CHART_JS: &str = include_str!("../assets/chart.umd.min.js");
+const ANNOTATION_JS: &str = include_str!("../assets/chartjs-plugin-annotation.min.js");
 
 /// Shared state between the axum handlers and the event receiver.
 struct AppState {
@@ -115,6 +117,8 @@ pub fn start_standalone(state: DashboardState, port: u16) -> Result<(), String> 
 fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index_handler))
+        .route("/assets/chart.umd.min.js", get(chart_js_handler))
+        .route("/assets/chartjs-plugin-annotation.min.js", get(annotation_js_handler))
         .route("/api/state", get(state_handler))
         .route("/api/events", get(sse_handler))
         .route("/api/bugs", get(bugs_handler))
@@ -124,6 +128,22 @@ fn build_router(state: Arc<AppState>) -> Router {
 
 async fn index_handler() -> Html<&'static str> {
     Html(INDEX_HTML)
+}
+
+async fn chart_js_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/javascript")],
+        CHART_JS,
+    )
+}
+
+async fn annotation_js_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/javascript")],
+        ANNOTATION_JS,
+    )
 }
 
 async fn state_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {

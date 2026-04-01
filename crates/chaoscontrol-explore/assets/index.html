@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ChaosControl Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
 :root {
   --bg: #12121a;
@@ -64,13 +63,33 @@ td { padding: 5px 8px; border-bottom: 1px solid rgba(42,42,64,0.5); }
 .verdict-passed { color: var(--green); }
 .verdict-unexercised { color: var(--text-dim); }
 
-/* Round table */
-.round-table-wrap { max-height: 300px; overflow-y: auto; }
+/* Scrollable table bodies */
+.table-wrap { max-height: 300px; overflow-y: auto; }
 
 /* Network panel */
 .net-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
 .net-stat .ns-value { font-size: 16px; font-weight: 700; }
 .net-stat .ns-label { font-size: 11px; color: var(--text-dim); }
+
+/* Config panel */
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px 16px; }
+.config-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(42,42,64,0.3); }
+.config-key { color: var(--text-dim); font-size: 11px; }
+.config-val { color: var(--text); font-weight: 600; font-size: 12px; }
+
+/* Assertion gauge */
+.gauge { margin-bottom: 10px; }
+.gauge-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.gauge-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+.gauge-fill.full { background: var(--green); }
+.gauge-text { font-size: 11px; color: var(--text-dim); }
+
+/* Bug rows clickable */
+.bug-row { cursor: pointer; }
+.bug-row:hover { background: rgba(79,195,247,0.06); }
+
+/* Empty state */
+.empty { color: var(--text-dim); font-style: italic; font-size: 12px; padding: 12px 0; }
 
 /* Hidden by default */
 .hidden { display: none; }
@@ -95,15 +114,31 @@ td { padding: 5px 8px; border-bottom: 1px solid rgba(42,42,64,0.5); }
 <div class="grid">
 
   <!-- Coverage chart -->
-  <div class="panel full">
+  <div class="panel full" id="chartPanel">
     <h2>Coverage Growth</h2>
     <div class="chart-wrap"><canvas id="coverageChart"></canvas></div>
+  </div>
+
+  <!-- Bugs panel -->
+  <div class="panel">
+    <h2>Bugs</h2>
+    <div class="table-wrap">
+      <table id="bugTable">
+        <thead><tr><th>#</th><th>Assertion</th><th>Round</th><th>Tick</th><th>Faults</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="bugEmpty" class="empty">No bugs found</div>
+    </div>
   </div>
 
   <!-- Assertion table -->
   <div class="panel">
     <h2>Assertions</h2>
-    <div class="round-table-wrap">
+    <div id="assertionGauge" class="gauge hidden">
+      <span class="gauge-text" id="gaugeText"></span>
+      <div class="gauge-bar"><div class="gauge-fill" id="gaugeFill"></div></div>
+    </div>
+    <div class="table-wrap">
       <table id="assertionTable">
         <thead><tr><th></th><th>Message</th><th>Kind</th><th>Hits</th><th>Verdict</th></tr></thead>
         <tbody></tbody>
@@ -111,10 +146,16 @@ td { padding: 5px 8px; border-bottom: 1px solid rgba(42,42,64,0.5); }
     </div>
   </div>
 
+  <!-- Config panel -->
+  <div class="panel">
+    <h2>Configuration</h2>
+    <div class="config-grid" id="configGrid"></div>
+  </div>
+
   <!-- Round history -->
   <div class="panel">
     <h2>Round History</h2>
-    <div class="round-table-wrap">
+    <div class="table-wrap">
       <table id="roundTable">
         <thead><tr><th>Round</th><th>Branches</th><th>New</th><th>Cum.</th><th>Bugs</th><th>Frontier</th><th>Corpus</th></tr></thead>
         <tbody></tbody>
@@ -130,7 +171,19 @@ td { padding: 5px 8px; border-bottom: 1px solid rgba(42,42,64,0.5); }
 
 </div>
 
+<!--
+  Vendored: Chart.js 4.4.7 UMD + chartjs-plugin-annotation 3.1.0 UMD
+  Served from embedded binary — no CDN dependency.
+-->
+<script src="/assets/chart.umd.min.js"></script>
+<script src="/assets/chartjs-plugin-annotation.min.js"></script>
+
 <script>
+// Register the annotation plugin
+if (window['chartjs-plugin-annotation']) {
+  Chart.register(window['chartjs-plugin-annotation']);
+}
+
 // --- State ---
 let state = null;
 let chart = null;
@@ -193,33 +246,122 @@ function updateChart(s) {
   chart.data.labels = rh.map(r => r.round);
   chart.data.datasets[0].data = rh.map(r => r.cumulative_edges);
 
-  // Bug markers as point annotations
+  // Bug markers as vertical line annotations
   const annotations = {};
   (s.bugs || []).forEach((b, i) => {
     if (b.round > 0) {
       annotations['bug' + i] = {
-        type: 'line', xMin: b.round, xMax: b.round,
-        borderColor: '#ef5350', borderWidth: 2, borderDash: [4, 2],
-        label: { display: true, content: '🐛 ' + (b.assertion_message || '').slice(0, 30),
-                 position: 'start', backgroundColor: 'rgba(239,83,80,0.8)',
-                 color: '#fff', font: { size: 10 } }
+        type: 'line',
+        xMin: b.round,
+        xMax: b.round,
+        borderColor: 'rgba(239,83,80,0.7)',
+        borderWidth: 2,
+        borderDash: [4, 2],
+        label: {
+          display: true,
+          content: '\u{1F41B} ' + (b.assertion_message || '').slice(0, 30),
+          position: 'start',
+          backgroundColor: 'rgba(239,83,80,0.85)',
+          color: '#fff',
+          font: { size: 10, family: 'monospace' },
+          padding: { top: 2, bottom: 2, left: 4, right: 4 },
+        }
       };
     }
   });
-  if (chart.options.plugins.annotation) {
-    chart.options.plugins.annotation.annotations = annotations;
-  }
+  chart.options.plugins.annotation.annotations = annotations;
   chart.update('none');
+}
+
+function updateBugs(s) {
+  const bugs = s.bugs || [];
+  const tbody = document.querySelector('#bugTable tbody');
+  const empty = document.getElementById('bugEmpty');
+
+  if (bugs.length === 0) {
+    tbody.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+
+  empty.classList.add('hidden');
+  tbody.innerHTML = bugs.map((b, i) =>
+    `<tr class="bug-row" data-round="${b.round}"><td>${b.bug_id}</td><td>${esc((b.assertion_message || '').slice(0, 60))}</td><td>${b.round}</td><td>${b.tick}</td><td>${b.schedule_length}</td></tr>`
+  ).join('');
+
+  // Click handler: scroll chart into view
+  tbody.querySelectorAll('.bug-row').forEach(row => {
+    row.addEventListener('click', () => {
+      document.getElementById('chartPanel').scrollIntoView({ behavior: 'smooth' });
+    });
+  });
 }
 
 function updateAssertions(s) {
   const tbody = document.querySelector('#assertionTable tbody');
-  const details = s.assertion_details || [];
+  let details = (s.assertion_details || []).slice();
+
+  // Sort: failed first, then unexercised, then passed; alphabetical within group
+  const order = { failed: 0, unexercised: 1, passed: 2 };
+  details.sort((a, b) => {
+    const oa = order[a.verdict] ?? 1;
+    const ob = order[b.verdict] ?? 1;
+    if (oa !== ob) return oa - ob;
+    return (a.message || '').localeCompare(b.message || '');
+  });
+
   tbody.innerHTML = details.map(d => {
-    const icon = d.verdict === 'failed' ? '✗' : d.verdict === 'passed' ? '✓' : '○';
+    const icon = d.verdict === 'failed' ? '\u2717' : d.verdict === 'passed' ? '\u2713' : '\u25CB';
     const cls = 'verdict-' + d.verdict;
     return `<tr class="${cls}"><td>${icon}</td><td>${esc(d.message)}</td><td>${d.kind}</td><td>${d.hit_count}</td><td>${d.verdict}</td></tr>`;
   }).join('');
+}
+
+function updateAssertionGauge(s) {
+  const gauge = document.getElementById('assertionGauge');
+  const stats = s.assertion_stats;
+  if (!stats || stats.catalog_size === 0) {
+    gauge.classList.add('hidden');
+    return;
+  }
+  gauge.classList.remove('hidden');
+
+  const exercised = stats.passed + stats.failed;
+  const total = stats.catalog_size;
+  const pct = total > 0 ? Math.round(exercised / total * 100) : 0;
+
+  document.getElementById('gaugeText').textContent = exercised + ' / ' + total + ' exercised (' + pct + '%)';
+  const fill = document.getElementById('gaugeFill');
+  fill.style.width = pct + '%';
+  if (pct >= 100) {
+    fill.classList.add('full');
+  } else {
+    fill.classList.remove('full');
+  }
+}
+
+function updateConfig(s) {
+  const grid = document.getElementById('configGrid');
+  const c = s.config;
+  if (!c || (!c.num_vms && !c.seed)) {
+    grid.innerHTML = '';
+    return;
+  }
+
+  const kernelBasename = (c.kernel_path || '').split('/').pop() || '—';
+  const items = [
+    ['VMs', c.num_vms],
+    ['Seed', c.seed],
+    ['Mode', c.mode || '—'],
+    ['Rounds', c.max_rounds],
+    ['Branches', c.branch_factor],
+    ['Ticks', c.ticks_per_branch],
+    ['Kernel', kernelBasename],
+  ];
+
+  grid.innerHTML = items.map(([k, v]) =>
+    `<div class="config-item"><span class="config-key">${k}</span><span class="config-val">${v}</span></div>`
+  ).join('');
 }
 
 function updateRounds(s) {
@@ -254,7 +396,10 @@ function updateAll(s) {
   state = s;
   updateHeader(s);
   updateChart(s);
+  updateBugs(s);
   updateAssertions(s);
+  updateAssertionGauge(s);
+  updateConfig(s);
   updateRounds(s);
   updateNetwork(s);
 }
@@ -266,8 +411,6 @@ function connectSSE() {
   const es = new EventSource('/api/events');
 
   es.addEventListener('round', e => {
-    // On each round event, refresh full state for simplicity.
-    // The event contains partial data; a full refresh keeps things consistent.
     fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
   });
   es.addEventListener('bug', e => {
@@ -281,7 +424,6 @@ function connectSSE() {
   });
 
   es.onerror = () => {
-    // EventSource auto-reconnects. On reconnect, re-fetch state.
     setTimeout(() => {
       fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
     }, 1000);
@@ -291,7 +433,6 @@ function connectSSE() {
 // --- Init ---
 window.addEventListener('DOMContentLoaded', () => {
   initChart();
-  // Load initial state
   fetch('/api/state').then(r => r.json()).then(updateAll).catch(() => {});
   connectSSE();
 });

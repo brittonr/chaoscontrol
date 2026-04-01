@@ -165,6 +165,22 @@ enum Commands {
         #[arg(short = 'w', long, default_value = "1")]
         workers: usize,
 
+        /// Rare-edge threshold: global hit count at or below which an edge is "rare".
+        #[arg(long, default_value = "3")]
+        rare_edge_threshold: u8,
+
+        /// Score multiplier per rare edge in frontier prioritization.
+        #[arg(long, default_value = "5.0")]
+        rare_edge_weight: f64,
+
+        /// Stale rounds before havoc mutations activate (0 = auto: stale_round_limit/2).
+        #[arg(long, default_value = "0")]
+        havoc_after_stale: u64,
+
+        /// Havoc mutation count range (min,max).
+        #[arg(long, default_value = "4,16", value_delimiter = ',')]
+        havoc_mutations: Vec<u32>,
+
         /// Enable the live web dashboard.
         #[arg(long)]
         dashboard: bool,
@@ -364,6 +380,22 @@ enum Commands {
         /// Parallel workers per seed (ignored in campaign mode, logged as warning).
         #[arg(short = 'w', long, default_value = "1")]
         workers: usize,
+
+        /// Rare-edge threshold: global hit count at or below which an edge is "rare".
+        #[arg(long, default_value = "3")]
+        rare_edge_threshold: u8,
+
+        /// Score multiplier per rare edge in frontier prioritization.
+        #[arg(long, default_value = "5.0")]
+        rare_edge_weight: f64,
+
+        /// Stale rounds before havoc mutations activate (0 = auto: stale_round_limit/2).
+        #[arg(long, default_value = "0")]
+        havoc_after_stale: u64,
+
+        /// Havoc mutation count range (min,max).
+        #[arg(long, default_value = "4,16", value_delimiter = ',')]
+        havoc_mutations: Vec<u32>,
     },
 
     /// Resume from saved checkpoint.
@@ -421,6 +453,10 @@ fn main() {
             dlog_register_interval,
             dlog_memory_hash,
             workers,
+            rare_edge_threshold,
+            rare_edge_weight,
+            havoc_after_stale,
+            havoc_mutations,
             dashboard,
             dashboard_port,
         } => cmd_run(
@@ -444,6 +480,10 @@ fn main() {
             dlog_register_interval,
             dlog_memory_hash,
             workers,
+            rare_edge_threshold,
+            rare_edge_weight,
+            havoc_after_stale,
+            havoc_mutations,
             dashboard,
             dashboard_port,
         ),
@@ -494,6 +534,10 @@ fn main() {
             campaign_seeds,
             seeds,
             workers,
+            rare_edge_threshold,
+            rare_edge_weight,
+            havoc_after_stale,
+            havoc_mutations,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -514,6 +558,10 @@ fn main() {
             campaign_seeds,
             seeds,
             workers,
+            rare_edge_threshold,
+            rare_edge_weight,
+            havoc_after_stale,
+            havoc_mutations,
         ),
         Commands::Resume {
             corpus,
@@ -575,6 +623,10 @@ fn cmd_run(
     dlog_register_interval: u64,
     dlog_memory_hash: bool,
     workers: usize,
+    rare_edge_threshold: u8,
+    rare_edge_weight: f64,
+    havoc_after_stale: u64,
+    havoc_mutations: Vec<u32>,
     dashboard: bool,
     dashboard_port: u16,
 ) {
@@ -672,6 +724,13 @@ fn cmd_run(
         num_workers: workers,
         stale_round_limit: 10,
         schedule_diversity: smp,
+        rare_edge_threshold,
+        rare_edge_weight,
+        havoc_after_stale,
+        havoc_mutations: [
+            havoc_mutations.first().copied().unwrap_or(4),
+            havoc_mutations.get(1).copied().unwrap_or(16),
+        ],
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -856,6 +915,10 @@ fn cmd_campaign(
     campaign_seeds: usize,
     seeds: Option<Vec<u64>>,
     workers: usize,
+    rare_edge_threshold: u8,
+    rare_edge_weight: f64,
+    havoc_after_stale: u64,
+    havoc_mutations: Vec<u32>,
 ) {
     // Validate inputs
     if !Path::new(&kernel).exists() {
@@ -935,6 +998,13 @@ fn cmd_campaign(
         num_workers: 1, // forced to 1 in campaign mode
         stale_round_limit: 10,
         schedule_diversity: smp,
+        rare_edge_threshold,
+        rare_edge_weight,
+        havoc_after_stale,
+        havoc_mutations: [
+            havoc_mutations.first().copied().unwrap_or(4),
+            havoc_mutations.get(1).copied().unwrap_or(16),
+        ],
     };
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());

@@ -54,6 +54,18 @@ pub struct CheckpointConfig {
     /// Schedule mutation ratio (0.0 = disabled).
     #[serde(default)]
     pub schedule_mutation_ratio: f64,
+    /// Rare-edge threshold for frontier scoring.
+    #[serde(default)]
+    pub rare_edge_threshold: Option<u8>,
+    /// Rare-edge score multiplier.
+    #[serde(default)]
+    pub rare_edge_weight: Option<f64>,
+    /// Stale rounds before havoc activates (0 = auto from stale_round_limit/2).
+    #[serde(default)]
+    pub havoc_after_stale: Option<u64>,
+    /// Havoc mutation count range [min, max].
+    #[serde(default)]
+    pub havoc_mutations: Option<[u32; 2]>,
 }
 
 fn default_bootstrap_budget() -> u64 {
@@ -642,6 +654,10 @@ mod tests {
                 bootstrap_budget: 10_000,
                 schedule_diversity: false,
                 schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -685,6 +701,10 @@ mod tests {
                 bootstrap_budget: 10_000,
                 schedule_diversity: false,
                 schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
@@ -750,6 +770,10 @@ mod tests {
                 bootstrap_budget: 10_000,
                 schedule_diversity: false,
                 schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
             },
             global_coverage: vec![],
             bugs: vec![],

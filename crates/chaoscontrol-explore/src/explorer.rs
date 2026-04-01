@@ -130,6 +130,20 @@ pub struct ExplorerConfig {
     /// Default: `true` when `vm_config.num_vcpus > 1`, `false` otherwise.
     /// No-op when `num_vcpus == 1`.
     pub schedule_diversity: bool,
+    /// Rare-edge threshold: edges with global hit count ≤ this value
+    /// are considered "rare" and get boosted frontier scores.
+    /// Default: 3.
+    pub rare_edge_threshold: u8,
+    /// Score multiplier per rare edge in frontier scoring.
+    /// Default: 5.0.
+    pub rare_edge_weight: f64,
+    /// Consecutive stale rounds before havoc mutations activate.
+    /// Set to 0 to disable havoc. Default: `stale_round_limit / 2`
+    /// (computed at runtime if left at 0).
+    pub havoc_after_stale: u64,
+    /// Range of mutations per variant in havoc mode: `[min, max]`.
+    /// Default: `[4, 16]`.
+    pub havoc_mutations: [u32; 2],
 }
 
 impl Default for ExplorerConfig {
@@ -158,6 +172,10 @@ impl Default for ExplorerConfig {
             num_workers: 1,
             stale_round_limit: 10,
             schedule_diversity: false,
+            rare_edge_threshold: 3,
+            rare_edge_weight: 5.0,
+            havoc_after_stale: 0,
+            havoc_mutations: [4, 16],
         }
     }
 }
@@ -487,7 +505,11 @@ impl Explorer {
         // Switch to havoc mutations when stale rounds are accumulating.
         // Havoc applies 4–16 mutations per variant instead of 1–3, which
         // can break out of local coverage basins.
-        let havoc_threshold = self.config.stale_round_limit / 2;
+        let havoc_threshold = if self.config.havoc_after_stale > 0 {
+            self.config.havoc_after_stale
+        } else {
+            self.config.stale_round_limit / 2
+        };
         let use_havoc = havoc_threshold > 0 && self.consecutive_stale_rounds >= havoc_threshold;
 
         let variants = if use_havoc {
@@ -499,6 +521,7 @@ impl Explorer {
                 &base_schedule,
                 self.config.branch_factor,
                 &self.config.mutation,
+                self.config.havoc_mutations,
             )
         } else {
             self.mutator.mutate(
@@ -1081,12 +1104,13 @@ impl Explorer {
         // Base score: number of new edges
         let mut score = new_edges as f64 * 10.0;
 
-        // Rare-edge bonus: edges hit by very few branches (global count ≤ 3)
-        // are more valuable than common edges.
-        let rare_edges = result
-            .coverage
-            .count_rare_edges(self.coverage.global_coverage(), 3);
-        score += rare_edges as f64 * 5.0;
+        // Rare-edge bonus: edges hit by very few branches are more valuable
+        // than common edges.
+        let rare_edges = result.coverage.count_rare_edges(
+            self.coverage.global_coverage(),
+            self.config.rare_edge_threshold,
+        );
+        score += rare_edges as f64 * self.config.rare_edge_weight;
 
         // Bonus for high total coverage
         score += total_edges as f64 * 0.1;
@@ -1188,13 +1212,14 @@ impl Explorer {
         }
 
         // Score each corpus entry by rare-edge count
+        let threshold = self.config.rare_edge_threshold;
         let mut scored: Vec<(usize, usize)> = entries
             .iter()
             .enumerate()
             .map(|(i, entry)| {
                 let rare = entry
                     .coverage
-                    .count_rare_edges(self.coverage.global_coverage(), 3);
+                    .count_rare_edges(self.coverage.global_coverage(), threshold);
                 (i, rare)
             })
             .filter(|(_, rare)| *rare > 0)
@@ -1223,7 +1248,7 @@ impl Explorer {
                         panic!("recycle_frontier_from_corpus: no controller")
                     }),
                 coverage: entry.coverage.clone(),
-                score: rare_count as f64 * 5.0 + entry.new_edges as f64,
+                score: rare_count as f64 * self.config.rare_edge_weight + entry.new_edges as f64,
                 times_selected: 0,
                 depth: entry.depth,
                 schedule: entry.schedule.clone(),
@@ -1693,6 +1718,10 @@ impl Explorer {
             bootstrap_budget: self.config.bootstrap_budget,
             schedule_diversity: self.config.schedule_diversity,
             schedule_mutation_ratio: self.config.mutation.schedule_mutation_ratio,
+            rare_edge_threshold: Some(self.config.rare_edge_threshold),
+            rare_edge_weight: Some(self.config.rare_edge_weight),
+            havoc_after_stale: Some(self.config.havoc_after_stale),
+            havoc_mutations: Some(self.config.havoc_mutations),
         };
 
         let bugs: Vec<SerializableBug> = self.all_bugs().iter().map(|b| b.into()).collect();
@@ -1741,6 +1770,10 @@ impl Explorer {
             num_workers: 1,
             stale_round_limit: 10,
             schedule_diversity: checkpoint.config.schedule_diversity,
+            rare_edge_threshold: checkpoint.config.rare_edge_threshold.unwrap_or(3),
+            rare_edge_weight: checkpoint.config.rare_edge_weight.unwrap_or(5.0),
+            havoc_after_stale: checkpoint.config.havoc_after_stale.unwrap_or(0),
+            havoc_mutations: checkpoint.config.havoc_mutations.unwrap_or([4, 16]),
         };
 
         let frontier = Frontier::new(config.max_frontier);

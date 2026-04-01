@@ -401,6 +401,10 @@ mod tests {
                 bootstrap_budget: 10_000,
                 schedule_diversity: false,
                 schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
             },
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {

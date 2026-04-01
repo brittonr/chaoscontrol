@@ -77,16 +77,18 @@ impl ScheduleMutator {
 
     /// Generate N variant schedules using havoc mode (aggressive mutations).
     ///
-    /// Each variant applies 4–16 random mutations instead of the normal 1–3.
-    /// Faults are generated fresh (ignoring the base schedule) with a bias
-    /// toward multiple simultaneous faults at nearby ticks.
+    /// Each variant applies `mutations_range[0]..=mutations_range[1]`
+    /// random mutations instead of the normal 1–3.
     pub fn mutate_havoc(
         &mut self,
         base: &FaultSchedule,
         n: usize,
         config: &MutationConfig,
+        mutations_range: [u32; 2],
     ) -> Vec<FaultSchedule> {
         let mut variants = Vec::with_capacity(n);
+        let lo = mutations_range[0].max(1);
+        let hi = mutations_range[1].max(lo);
 
         for _ in 0..n {
             let child_seed = self.seed.wrapping_add(self.counter);
@@ -95,8 +97,7 @@ impl ScheduleMutator {
 
             let mut schedule = base.clone();
 
-            // Havoc: 4–16 mutations per variant
-            let num_mutations = rng.gen_range(4..=16);
+            let num_mutations = rng.gen_range(lo..=hi);
             for _ in 0..num_mutations {
                 let strategy = rng.gen_range(0u8..5);
                 match strategy {
@@ -614,7 +615,7 @@ mod tests {
         let base = FaultSchedule::new();
 
         let normal = mutator_normal.mutate(&base, 10, &config);
-        let havoc = mutator_havoc.mutate_havoc(&base, 10, &config);
+        let havoc = mutator_havoc.mutate_havoc(&base, 10, &config, [4, 16]);
 
         assert_eq!(normal.len(), 10);
         assert_eq!(havoc.len(), 10);
@@ -638,8 +639,8 @@ mod tests {
         let mut m1 = ScheduleMutator::new(99);
         let mut m2 = ScheduleMutator::new(99);
 
-        let r1 = m1.mutate_havoc(&base, 5, &config);
-        let r2 = m2.mutate_havoc(&base, 5, &config);
+        let r1 = m1.mutate_havoc(&base, 5, &config, [4, 16]);
+        let r2 = m2.mutate_havoc(&base, 5, &config, [4, 16]);
 
         for (a, b) in r1.iter().zip(r2.iter()) {
             assert_eq!(a.total(), b.total());

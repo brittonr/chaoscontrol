@@ -277,6 +277,7 @@ impl Explorer {
             total_edges: self.coverage.stats().total_edges,
             total_bugs: self.all_bugs().len(),
             reason: reason.to_string(),
+            from_seed: None,
         });
     }
 
@@ -324,6 +325,7 @@ impl Explorer {
             mode: mode_str.to_string(),
             kernel_path: self.config.kernel_path.clone(),
             catalog_size,
+            from_seed: None,
         });
 
         if let Some(snapshot) = initial_result.snapshot.clone() {
@@ -408,6 +410,7 @@ impl Explorer {
                 frontier_size: round_report.frontier_size,
                 corpus_size: history_entry.corpus_size,
                 assertion_stats: self.collect_assertion_detail().0,
+                from_seed: None,
             });
 
             info!(
@@ -831,6 +834,7 @@ impl Explorer {
             schedule: FaultSchedule::new(),
             disk_image_path: self.config.disk_image_path.clone(),
             base_core: None,
+            bootstrap_budget: Some(self.config.bootstrap_budget),
             dlog_dir: self.config.dlog_dir.clone(),
         };
 
@@ -1188,6 +1192,7 @@ impl Explorer {
                     round: self.rounds_completed,
                     tick: result.total_ticks,
                     schedule_length: schedule.total(),
+                    from_seed: None,
                 });
 
                 bugs.push(bug);
@@ -1678,6 +1683,10 @@ impl Explorer {
             assertion_details,
             round_history: self.round_history.clone(),
             finish_reason: String::new(),
+            mode: "run".to_string(),
+            seeds_total: 0,
+            seeds_completed: 0,
+            seed_summaries: Vec::new(),
         }
     }
 

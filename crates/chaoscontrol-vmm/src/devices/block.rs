@@ -20,6 +20,9 @@ use snafu::Snafu;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 
+/// Dirty + volatile page overlays extracted for restart preservation.
+pub type DirtyOverlay = (BTreeMap<usize, Vec<u8>>, BTreeMap<usize, Vec<u8>>);
+
 /// Page size for copy-on-write tracking (4 KB, matching Linux page size).
 const PAGE_SIZE: usize = 4096;
 
@@ -372,6 +375,23 @@ impl DeterministicBlock {
             slow_delay_ns: snapshot.slow_delay_ns,
             fsync_lie: snapshot.fsync_lie,
         }
+    }
+
+    /// Extract dirty + volatile page overlays for preservation across restart.
+    ///
+    /// Returns the dirty and volatile maps without consuming the block device.
+    /// Used by the controller to preserve disk state across ProcessRestart.
+    pub fn snapshot_dirty(&self) -> DirtyOverlay {
+        (self.dirty.clone(), self.volatile.clone())
+    }
+
+    /// Apply dirty + volatile page overlays (from a prior `snapshot_dirty`).
+    ///
+    /// Merges the provided pages into the device's current state. Pages
+    /// in `dirty` overwrite any existing dirty pages at the same index.
+    pub fn restore_dirty(&mut self, overlay: DirtyOverlay) {
+        self.dirty = overlay.0;
+        self.volatile = overlay.1;
     }
 
     /// Current I/O statistics.
@@ -1073,5 +1093,44 @@ mod tests {
         let mut buf2 = [0u8; 512];
         blk.read(0, &mut buf2).unwrap();
         assert_eq!(buf2, [0xFF; 512]);
+    }
+
+    // ── dirty page preservation across restart ──────────────────
+
+    #[test]
+    fn snapshot_dirty_preserves_writes() {
+        let base = vec![0u8; 8192];
+        let mut blk = DeterministicBlock::from_image(base);
+
+        // Write data to dirty pages
+        blk.write(0, b"persistent").unwrap();
+        blk.write(4096, b"also persistent").unwrap();
+
+        // Snapshot just the dirty overlay
+        let (dirty, volatile) = blk.snapshot_dirty();
+        assert_eq!(dirty.len(), 2); // two dirty pages
+
+        // Create a fresh block device (simulating restart)
+        let mut fresh = DeterministicBlock::from_image(vec![0u8; 8192]);
+
+        // Restore dirty pages
+        fresh.restore_dirty((dirty, volatile));
+
+        // Verify data survived
+        let mut buf = vec![0u8; 10];
+        fresh.read(0, &mut buf).unwrap();
+        assert_eq!(&buf, b"persistent");
+
+        let mut buf2 = vec![0u8; 15];
+        fresh.read(4096, &mut buf2).unwrap();
+        assert_eq!(&buf2, b"also persistent");
+    }
+
+    #[test]
+    fn snapshot_dirty_empty_on_clean_device() {
+        let blk = DeterministicBlock::new(4096);
+        let (dirty, volatile) = blk.snapshot_dirty();
+        assert!(dirty.is_empty());
+        assert!(volatile.is_empty());
     }
 }

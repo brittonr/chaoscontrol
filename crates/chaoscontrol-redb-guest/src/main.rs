@@ -20,9 +20,9 @@ const DB_PATH: &str = "/data/test.redb";
 fn mount_devtmpfs() {
     unsafe {
         libc::mount(
-            b"devtmpfs\0".as_ptr().cast(),
-            b"/dev\0".as_ptr().cast(),
-            b"devtmpfs\0".as_ptr().cast(),
+            c"devtmpfs".as_ptr(),
+            c"/dev".as_ptr(),
+            c"devtmpfs".as_ptr(),
             0,
             std::ptr::null(),
         );
@@ -32,9 +32,9 @@ fn mount_devtmpfs() {
 fn mount_sysfs() {
     unsafe {
         libc::mount(
-            b"sysfs\0".as_ptr().cast(),
-            b"/sys\0".as_ptr().cast(),
-            b"sysfs\0".as_ptr().cast(),
+            c"sysfs".as_ptr(),
+            c"/sys".as_ptr(),
+            c"sysfs".as_ptr(),
             0,
             std::ptr::null(),
         );
@@ -48,9 +48,9 @@ fn mount_disk() {
     for attempt in 0..50 {
         let rc = unsafe {
             libc::mount(
-                b"/dev/vda\0".as_ptr().cast(),
-                b"/data\0".as_ptr().cast(),
-                b"ext4\0".as_ptr().cast(),
+                c"/dev/vda".as_ptr(),
+                c"/data".as_ptr(),
+                c"ext4".as_ptr(),
                 0,
                 std::ptr::null(),
             )
@@ -188,7 +188,7 @@ fn do_batch_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
     cc_assert_reachable!("op: batch insert");
 
     let count = 10 + random::random_choice(11); // 10..20
-    let mut pairs = Vec::with_capacity(count as usize);
+    let mut pairs = Vec::with_capacity(count);
     for _ in 0..count {
         let key = random::get_random() % MAX_KEY;
         let size_choice = random::random_choice(8);
@@ -585,10 +585,10 @@ fn main() {
 
         // Periodic full checks.
         iter += 1;
-        if iter % 10 == 0 {
+        if iter.is_multiple_of(10) {
             check_table_len(&db, &oracle);
         }
-        if iter % 50 == 0 {
+        if iter.is_multiple_of(50) {
             kcov::collect();
         }
     }
@@ -608,9 +608,7 @@ fn rebuild_oracle_from_db(db: &Database, oracle: &mut Oracle) {
         Ok(it) => it,
         Err(_) => return,
     };
-    for entry in iter {
-        if let Ok(pair) = entry {
-            oracle.insert(pair.0.value(), pair.1.value().to_vec());
-        }
+    for pair in iter.flatten() {
+        oracle.insert(pair.0.value(), pair.1.value().to_vec());
     }
 }

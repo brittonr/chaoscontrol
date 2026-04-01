@@ -125,6 +125,7 @@ fn run_controller(
         disk_image_path: None,
         base_core: None,
         dlog_dir: None,
+        bootstrap_budget: None,
     };
 
     let mut ctrl = SimulationController::new(config).expect("create controller");

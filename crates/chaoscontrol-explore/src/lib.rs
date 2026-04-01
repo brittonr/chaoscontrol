@@ -80,7 +80,10 @@ pub mod server;
 pub mod worker;
 
 // Re-export main types for convenience
-pub use campaign::{CampaignConfig, CampaignReport, CampaignRunner};
+pub use campaign::{
+    load_campaign_progress, save_campaign_progress, CampaignConfig, CampaignProgress,
+    CampaignReport, CampaignRunner, SerializableCampaignConfig,
+};
 pub use checkpoint::{
     load_checkpoint, save_checkpoint, CheckpointConfig, CheckpointError, ExplorationCheckpoint,
     SerializableBug, SerializableFault, SerializableSchedule, SerializableScheduledFault,

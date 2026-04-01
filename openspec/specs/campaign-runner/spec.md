@@ -105,3 +105,23 @@ The campaign runner SHALL exit with code 0 if any seed found at least one bug, a
 #### Scenario: No bugs found
 - **WHEN** all 5 seeds complete without finding any bugs
 - **THEN** exit code is 1
+
+## ADDED Requirements
+
+### Requirement: Campaign resume subcommand
+The CLI SHALL support `chaoscontrol-explore campaign resume --corpus <dir>` that reads `campaign_progress.json`, skips completed seeds, and runs only remaining seeds. The final report SHALL merge checkpoint results with newly completed seeds.
+
+#### Scenario: Resume after interruption
+- **WHEN** `campaign resume --corpus results/` is run and 2 of 5 seeds are complete
+- **THEN** only the 3 remaining seeds are launched
+
+#### Scenario: All seeds already complete
+- **WHEN** `campaign resume` is run and all seeds are marked complete in the checkpoint
+- **THEN** the aggregated report is written without launching any new exploration
+
+### Requirement: Dashboard support in campaign mode
+The `campaign` subcommand SHALL accept `--dashboard` and `--dashboard-port` flags, starting a dashboard server that aggregates events across all seeds.
+
+#### Scenario: Campaign with dashboard
+- **WHEN** `chaoscontrol-explore campaign --dashboard --campaign-seeds 3 --output results/`
+- **THEN** a dashboard server starts and receives events from all seed explorations

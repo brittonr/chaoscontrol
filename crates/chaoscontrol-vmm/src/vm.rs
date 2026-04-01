@@ -1633,6 +1633,30 @@ impl DeterministicVm {
         self.with_block_device(|disk| disk.discard_volatile());
     }
 
+    /// Snapshot the block device's dirty + volatile pages for preservation
+    /// across a VM restart (crash-recovery testing).
+    pub fn snapshot_block_dirty(&mut self) -> Option<crate::devices::block::DirtyOverlay> {
+        let mut result = None;
+        for device in &mut self.virtio_devices {
+            if device.backend().device_id() == 2 {
+                if let Some(virtio_block) = device
+                    .backend_mut()
+                    .as_any_mut()
+                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>(
+                ) {
+                    result = Some(virtio_block.disk_mut().snapshot_dirty());
+                    break;
+                }
+            }
+        }
+        result
+    }
+
+    /// Restore dirty + volatile pages into the block device after a restart.
+    pub fn restore_block_dirty(&mut self, overlay: crate::devices::block::DirtyOverlay) {
+        self.with_block_device(|disk| disk.restore_dirty(overlay));
+    }
+
     /// Helper: run a closure on the virtio-blk disk, if present.
     fn with_block_device(
         &mut self,

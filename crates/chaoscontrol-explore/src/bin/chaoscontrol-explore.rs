@@ -38,7 +38,9 @@
 //! On resume, we re-bootstrap the VMs but carry forward the global coverage map,
 //! so we don't re-explore known territory.
 
-use chaoscontrol_explore::campaign::{generate_seeds, CampaignConfig, CampaignRunner};
+use chaoscontrol_explore::campaign::{
+    generate_seeds, load_campaign_progress, CampaignConfig, CampaignRunner,
+};
 use chaoscontrol_explore::checkpoint::load_checkpoint;
 use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
@@ -396,6 +398,28 @@ enum Commands {
         /// Havoc mutation count range (min,max).
         #[arg(long, default_value = "4,16", value_delimiter = ',')]
         havoc_mutations: Vec<u32>,
+
+        /// Enable the live web dashboard.
+        #[arg(long)]
+        dashboard: bool,
+
+        /// Dashboard port (default: 8080).
+        #[arg(long, default_value = "8080")]
+        dashboard_port: u16,
+    },
+
+    /// Resume a multi-seed campaign from checkpoint.
+    ///
+    /// Reads campaign_progress.json, skips completed seeds,
+    /// runs remaining seeds, then aggregates a final report.
+    CampaignResume {
+        /// Path to campaign output directory (containing campaign_progress.json).
+        #[arg(short, long)]
+        corpus: String,
+
+        /// Override max rounds per seed.
+        #[arg(short, long)]
+        rounds: Option<u64>,
     },
 
     /// Resume from saved checkpoint.
@@ -538,6 +562,8 @@ fn main() {
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            dashboard,
+            dashboard_port,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -562,7 +588,10 @@ fn main() {
             rare_edge_weight,
             havoc_after_stale,
             havoc_mutations,
+            dashboard,
+            dashboard_port,
         ),
+        Commands::CampaignResume { corpus, rounds } => cmd_campaign_resume(corpus, rounds),
         Commands::Resume {
             corpus,
             kernel,
@@ -919,7 +948,21 @@ fn cmd_campaign(
     rare_edge_weight: f64,
     havoc_after_stale: u64,
     havoc_mutations: Vec<u32>,
+    dashboard: bool,
+    dashboard_port: u16,
 ) {
+    // Start dashboard if requested.
+    #[cfg(feature = "dashboard")]
+    let _dashboard_tx = if dashboard {
+        chaoscontrol_explore::server::start(dashboard_port)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "dashboard"))]
+    if dashboard {
+        eprintln!("Warning: dashboard feature not enabled, ignoring --dashboard");
+    }
+
     // Validate inputs
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
@@ -1064,6 +1107,137 @@ fn cmd_campaign(
         }
         Err(e) => {
             eprintln!("Campaign failed: {}", e);
+            std::process::exit(2);
+        }
+    }
+}
+
+fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
+    if !Path::new(&corpus).is_dir() {
+        eprintln!("Error: campaign directory not found: {}", corpus);
+        std::process::exit(1);
+    }
+
+    let progress = match load_campaign_progress(&corpus) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!(
+                "Error: failed to load campaign_progress.json from {}: {}",
+                corpus, e
+            );
+            std::process::exit(1);
+        }
+    };
+
+    let remaining: Vec<u64> = progress
+        .seeds
+        .iter()
+        .filter(|s| !progress.completed.contains_key(s))
+        .copied()
+        .collect();
+
+    if remaining.is_empty() {
+        eprintln!("All {} seeds already complete.", progress.seeds.len());
+        // Aggregate existing results and write final report.
+        let mut reports: Vec<(u64, chaoscontrol_explore::explorer::ExplorationReport, f64)> =
+            Vec::new();
+        for (seed, summary) in &progress.completed {
+            // Load per-seed checkpoint to reconstruct a minimal report.
+            let seed_dir = format!("{}/seed_{}", corpus, seed);
+            let cp_path = format!("{}/checkpoint.json", seed_dir);
+            if let Ok(cp) = load_checkpoint(&cp_path) {
+                let report = chaoscontrol_explore::explorer::ExplorationReport {
+                    rounds: cp.rounds_completed,
+                    total_branches: cp.total_branches_run,
+                    total_edges: cp.total_edges,
+                    bugs: Vec::new(), // bugs are in per-seed output
+                    corpus_size: 0,
+                    coverage_stats: chaoscontrol_explore::coverage::CoverageStats {
+                        total_edges: cp.total_edges,
+                        total_runs: cp.total_branches_run,
+                        edges_per_run_avg: if cp.total_branches_run > 0 {
+                            cp.total_edges as f64 / cp.total_branches_run as f64
+                        } else {
+                            0.0
+                        },
+                    },
+                    network_stats: Default::default(),
+                    assertion_stats: Default::default(),
+                    assertion_details: Vec::new(),
+                    round_history: cp.round_history.unwrap_or_default(),
+                };
+                reports.push((*seed, report, summary.wall_clock_seconds));
+            }
+        }
+        let campaign_report = chaoscontrol_explore::campaign::aggregate_reports(reports, 0.0);
+        let formatted = format_campaign_report(&campaign_report);
+        println!("{}", formatted);
+
+        // Write final reports
+        if let Ok(json) = serde_json::to_string_pretty(&campaign_report) {
+            let _ = fs::write(format!("{}/campaign_report.json", corpus), &json);
+        }
+        let _ = fs::write(format!("{}/campaign_report.txt", corpus), &formatted);
+        return;
+    }
+
+    eprintln!(
+        "Resuming campaign: {} of {} seeds remaining ({:?})",
+        remaining.len(),
+        progress.seeds.len(),
+        remaining,
+    );
+
+    // Reconstruct ExplorerConfig from checkpoint.
+    let cfg = &progress.config;
+    let exploration_mode = match cfg.exploration_mode.as_str() {
+        "input-tree" => ExplorationMode::InputTree,
+        "hybrid" => ExplorationMode::Hybrid,
+        _ => ExplorationMode::FaultSchedule,
+    };
+
+    let vm_config = VmConfig {
+        num_vcpus: cfg.num_vcpus,
+        ..VmConfig::default()
+    };
+
+    let base_config = ExplorerConfig {
+        num_vms: cfg.num_vms,
+        vm_config,
+        kernel_path: cfg.kernel_path.clone(),
+        initrd_path: cfg.initrd_path.clone(),
+        seed: cfg.seed,
+        branch_factor: cfg.branch_factor,
+        ticks_per_branch: cfg.ticks_per_branch,
+        max_rounds: rounds_override.unwrap_or(cfg.max_rounds),
+        quantum: cfg.quantum,
+        exploration_mode,
+        disk_image_path: cfg.disk_image_path.clone(),
+        bootstrap_budget: cfg.bootstrap_budget,
+        stale_round_limit: cfg.stale_round_limit,
+        num_workers: 1,
+        output_dir: None,
+        ..ExplorerConfig::default()
+    };
+
+    let campaign_config = CampaignConfig {
+        seeds: remaining,
+        base_explorer_config: base_config,
+        output_dir: corpus.clone(),
+    };
+
+    let runner = CampaignRunner::new(campaign_config);
+    match runner.run() {
+        Ok(report) => {
+            let formatted = format_campaign_report(&report);
+            println!("{}", formatted);
+
+            if report.bugs.is_empty() {
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("Campaign resume failed: {}", e);
             std::process::exit(2);
         }
     }
@@ -1560,6 +1734,7 @@ fn cmd_reproduce(
         quantum,
         schedule: FaultSchedule::new(), // empty during bootstrap
         disk_image_path: disk_image,
+        bootstrap_budget: None,
         base_core: None,
         dlog_dir: None,
     };

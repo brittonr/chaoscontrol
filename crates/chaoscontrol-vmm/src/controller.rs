@@ -44,6 +44,10 @@ pub struct SimulationConfig {
     /// The file is read once per VM; copy-on-write makes snapshots cheap.
     pub disk_image_path: Option<String>,
 
+    /// Max ticks for VM restart bootstrap (kernel boot + setup_complete).
+    /// Default: 10_000.
+    pub bootstrap_budget: Option<u64>,
+
     /// Base core index for CPU affinity pinning.
     ///
     /// When set, VM `i` is pinned to core `base_core + i`. This matches
@@ -73,6 +77,7 @@ impl Default for SimulationConfig {
             quantum: 100,
             schedule: FaultSchedule::default(),
             disk_image_path: None,
+            bootstrap_budget: None,
             base_core: None,
             dlog_dir: None,
         }
@@ -1399,14 +1404,49 @@ impl SimulationController {
             .build()
         })?;
 
+        // Preserve the block device's dirty pages across restart
+        // so the guest can verify crash-persistent data.
+        let block_snapshot = slot.vm.snapshot_block_dirty();
+
         if let Some(snapshot) = &slot.initial_snapshot {
-            info!("Restarting VM{} from initial snapshot", target);
+            info!(
+                "Restarting VM{} from initial snapshot (preserving disk)",
+                target
+            );
             slot.vm.restore(snapshot)?;
+
+            // Restore the dirty pages we preserved — these represent
+            // data written to "disk" before the crash.
+            if let Some(blk) = block_snapshot {
+                slot.vm.restore_block_dirty(blk);
+            }
+
             slot.status = VmStatus::Running;
             slot.inbox.clear();
             slot.disk_faults = DiskFaultFlags::default();
             slot.tsc_skew = 0;
             slot.memory_limit_bytes = None;
+
+            // Run until setup_complete so the guest finishes booting.
+            slot.vm.fault_engine_mut().reset_setup_complete();
+            let budget = self.config.bootstrap_budget.unwrap_or(10_000);
+            let mut ran: u64 = 0;
+            loop {
+                let (exits, idle) = slot.vm.run_bounded(1000)?;
+                ran += exits;
+                if slot.vm.fault_engine().is_setup_complete() {
+                    info!("VM{} restarted successfully ({} exits)", target, ran);
+                    break;
+                }
+                if ran >= budget || idle {
+                    warn!(
+                        "VM{} restart exceeded budget ({} exits), marking crashed",
+                        target, ran
+                    );
+                    slot.status = VmStatus::Crashed;
+                    return Ok(());
+                }
+            }
         } else {
             warn!("VM{} has no initial snapshot, cannot restart", target);
         }

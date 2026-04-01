@@ -200,7 +200,7 @@
           redb-disk-image = pkgs.runCommand "redb-disk-image" {
             nativeBuildInputs = [ pkgs.e2fsprogs ];
           } ''
-            dd if=/dev/zero of=$out bs=1M count=16
+            dd if=/dev/zero of=$out bs=1M count=64
             mkfs.ext4 -F -q $out
           '';
 
@@ -327,9 +327,9 @@
               vms = 1;
               rounds = 5;
               branches = 4;
-              ticks = 500;
+              ticks = 5000;
               seed = 42;
-              mode = "fault-schedule";
+              mode = "hybrid";
               diskImage = redb-disk-image;
             };
 
@@ -465,8 +465,8 @@
                       --kernel ${mkChaosKernel { }}/vmlinux \
                       --initrd ${initrd-redb} \
                       --disk-image ${redb-disk-image} \
-                      --vms 1 --rounds 100 --branches 8 --ticks 1000 \
-                      --seed 42 --mode fault-schedule \
+                      --vms 1 --rounds 100 --branches 8 --ticks 5000 \
+                      --seed 42 --mode hybrid \
                       "$@"
                   '';
                 };

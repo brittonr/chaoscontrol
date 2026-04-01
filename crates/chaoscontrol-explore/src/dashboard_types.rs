@@ -4,6 +4,7 @@
 //! emit events without depending on the dashboard crate. The dashboard
 //! crate depends on `chaoscontrol-explore` and consumes these types.
 
+use crate::campaign::SeedSummary;
 use crate::checkpoint::ExplorationCheckpoint;
 use crate::coverage::CoverageStats;
 use crate::explorer::{AssertionDetail, AssertionStats, RoundHistory};
@@ -28,6 +29,9 @@ pub enum DashboardEvent {
         mode: String,
         kernel_path: String,
         catalog_size: usize,
+        /// Which seed produced this event (campaign mode only).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        from_seed: Option<u64>,
     },
 
     /// Emitted after each exploration round completes.
@@ -42,6 +46,9 @@ pub enum DashboardEvent {
         corpus_size: usize,
         /// Full assertion stats snapshot.
         assertion_stats: AssertionStats,
+        /// Which seed produced this event (campaign mode only).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        from_seed: Option<u64>,
     },
 
     /// Emitted when a new bug is discovered.
@@ -52,6 +59,9 @@ pub enum DashboardEvent {
         round: u64,
         tick: u64,
         schedule_length: usize,
+        /// Which seed produced this event (campaign mode only).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        from_seed: Option<u64>,
     },
 
     /// Emitted when exploration finishes (all rounds, frontier exhausted, or early stop).
@@ -61,6 +71,24 @@ pub enum DashboardEvent {
         total_edges: usize,
         total_bugs: usize,
         reason: String,
+        /// Which seed produced this event (campaign mode only).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        from_seed: Option<u64>,
+    },
+
+    // ── Campaign-level events ────────────────────────────────────────
+    /// Emitted when a campaign starts (before any seeds launch).
+    CampaignStarted { seeds: Vec<u64>, seeds_total: usize },
+
+    /// Emitted when an individual seed finishes within a campaign.
+    SeedComplete { seed: u64, summary: SeedSummary },
+
+    /// Emitted when the entire campaign finishes.
+    CampaignFinished {
+        seeds_total: usize,
+        seeds_completed: usize,
+        unique_bugs: usize,
+        wall_clock_seconds: f64,
     },
 }
 
@@ -96,6 +124,20 @@ pub struct DashboardState {
     pub round_history: Vec<RoundHistory>,
     /// How the exploration ended (empty if still running).
     pub finish_reason: String,
+
+    // ── Campaign-mode fields ──
+    /// "run" or "campaign".
+    #[serde(default)]
+    pub mode: String,
+    /// Total seeds in the campaign (0 = single run).
+    #[serde(default)]
+    pub seeds_total: usize,
+    /// Seeds completed so far.
+    #[serde(default)]
+    pub seeds_completed: usize,
+    /// Per-seed summaries for completed seeds.
+    #[serde(default)]
+    pub seed_summaries: Vec<SeedSummary>,
 }
 
 /// Exploration config summary for dashboard display.
@@ -187,6 +229,10 @@ impl DashboardState {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             finish_reason: String::new(),
+            mode: "run".to_string(),
+            seeds_total: 0,
+            seeds_completed: 0,
+            seed_summaries: Vec::new(),
         }
     }
 
@@ -255,6 +301,10 @@ impl DashboardState {
             assertion_details,
             round_history: checkpoint.round_history.clone().unwrap_or_default(),
             finish_reason: "completed".to_string(),
+            mode: "run".to_string(),
+            seeds_total: 0,
+            seeds_completed: 0,
+            seed_summaries: Vec::new(),
         }
     }
 
@@ -317,6 +367,7 @@ mod tests {
                 failed: 2,
                 unexercised: 3,
             },
+            from_seed: None,
         };
 
         let json = serde_json::to_string(&event).unwrap();
@@ -478,6 +529,7 @@ mod tests {
                 mode: "fault-schedule".to_string(),
                 kernel_path: "/path/to/kernel".to_string(),
                 catalog_size: 35,
+                from_seed: None,
             },
             DashboardEvent::RoundComplete {
                 round: 1,
@@ -489,6 +541,7 @@ mod tests {
                 frontier_size: 3,
                 corpus_size: 3,
                 assertion_stats: AssertionStats::default(),
+                from_seed: None,
             },
             DashboardEvent::BugFound {
                 bug_index: 0,
@@ -497,6 +550,7 @@ mod tests {
                 round: 5,
                 tick: 750,
                 schedule_length: 3,
+                from_seed: None,
             },
             DashboardEvent::Finished {
                 total_rounds: 100,
@@ -504,6 +558,7 @@ mod tests {
                 total_edges: 500,
                 total_bugs: 2,
                 reason: "completed".to_string(),
+                from_seed: None,
             },
         ];
 

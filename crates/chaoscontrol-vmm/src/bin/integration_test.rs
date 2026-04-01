@@ -334,6 +334,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -385,6 +386,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -424,6 +426,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut controller = SimulationController::new(config).expect("create controller");
@@ -560,6 +563,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -641,6 +645,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -709,6 +714,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -806,6 +812,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -908,6 +915,7 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                bootstrap_budget: None,
             }
         };
 
@@ -1034,6 +1042,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1128,6 +1137,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let mut ctrl = SimulationController::new(config).expect("create controller");
@@ -1240,6 +1250,7 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                bootstrap_budget: None,
             };
 
             // Run controller to a point, snapshot, then continue with sends
@@ -1370,6 +1381,7 @@ fn main() {
                 disk_image_path: None,
                 base_core: None,
                 dlog_dir: None,
+                bootstrap_budget: None,
             };
 
             let collect_traffic = |config: SimulationConfig| -> (Vec<u64>, u64) {
@@ -1469,6 +1481,7 @@ fn main() {
             disk_image_path: None,
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         let collect_stats = |config: SimulationConfig| -> NetworkStats {

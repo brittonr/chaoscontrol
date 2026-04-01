@@ -175,6 +175,9 @@ async fn sse_handler(
                             DashboardEvent::RoundComplete { .. } => "round",
                             DashboardEvent::BugFound { .. } => "bug",
                             DashboardEvent::Finished { .. } => "finished",
+                            DashboardEvent::CampaignStarted { .. } => "campaign_started",
+                            DashboardEvent::SeedComplete { .. } => "seed_complete",
+                            DashboardEvent::CampaignFinished { .. } => "campaign_finished",
                         };
                         yield Ok(Event::default().event(event_type).data(json));
                     }
@@ -241,6 +244,7 @@ async fn event_receiver_loop(
                         mode,
                         kernel_path,
                         catalog_size,
+                        ..
                     } => {
                         data.running = true;
                         data.config = crate::dashboard_types::DashboardConfig {
@@ -264,6 +268,7 @@ async fn event_receiver_loop(
                         frontier_size,
                         corpus_size,
                         assertion_stats,
+                        ..
                     } => {
                         data.apply_round_complete(
                             *round,
@@ -285,6 +290,7 @@ async fn event_receiver_loop(
                         round,
                         tick,
                         schedule_length,
+                        ..
                     } => {
                         data.apply_bug_found(crate::dashboard_types::DashboardBug {
                             bug_id: *bug_index as u64,
@@ -295,9 +301,23 @@ async fn event_receiver_loop(
                             schedule_length: *schedule_length,
                         });
                     }
-                    DashboardEvent::Finished { reason, .. } => {
+                    DashboardEvent::Finished { ref reason, .. } => {
                         data.running = false;
                         data.finish_reason = reason.clone();
+                    }
+                    DashboardEvent::CampaignStarted { seeds, seeds_total } => {
+                        data.running = true;
+                        data.mode = "campaign".to_string();
+                        data.seeds_total = *seeds_total;
+                        let _ = seeds; // seeds list available on /api/state
+                    }
+                    DashboardEvent::SeedComplete { summary, .. } => {
+                        data.seeds_completed += 1;
+                        data.seed_summaries.push(summary.clone());
+                    }
+                    DashboardEvent::CampaignFinished { .. } => {
+                        data.running = false;
+                        data.finish_reason = "campaign_complete".to_string();
                     }
                 }
             }

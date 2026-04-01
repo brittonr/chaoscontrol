@@ -86,6 +86,7 @@ impl WorkerPool {
                                 disk_image_path: config.disk_image_path.clone(),
                                 base_core: None,
                                 dlog_dir: None,
+                                bootstrap_budget: None,
                             };
 
                             let mut ctrl = SimulationController::new(sim_config)?;

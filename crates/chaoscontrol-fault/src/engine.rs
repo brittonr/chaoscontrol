@@ -373,6 +373,11 @@ impl FaultEngine {
         self.setup_complete = true;
     }
 
+    /// Reset setup_complete to false (used during VM restart).
+    pub fn reset_setup_complete(&mut self) {
+        self.setup_complete = false;
+    }
+
     /// Replace the fault schedule (for exploration branch mutations).
     pub fn set_schedule(&mut self, schedule: FaultSchedule) {
         self.schedule = schedule;

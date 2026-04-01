@@ -325,6 +325,7 @@ impl Minimizer {
             disk_image_path: self.config.disk_image_path.clone(),
             base_core: None,
             dlog_dir: None,
+            bootstrap_budget: None,
         };
 
         self.controller = Some(SimulationController::new(sim_config)?);

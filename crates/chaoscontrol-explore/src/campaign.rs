@@ -9,6 +9,7 @@ use crate::checkpoint::SerializableBug;
 use crate::explorer::{
     AssertionDetail, AssertionStats, ExplorationReport, Explorer, ExplorerConfig,
 };
+use crate::report::format_campaign_report;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -71,6 +72,88 @@ pub struct CampaignReport {
     /// Wall-clock time for the entire campaign.
     pub wall_clock_seconds: f64,
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Campaign checkpoint / resume
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Serializable subset of ExplorerConfig for campaign checkpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableCampaignConfig {
+    pub kernel_path: String,
+    pub initrd_path: Option<String>,
+    pub num_vms: usize,
+    pub branch_factor: usize,
+    pub ticks_per_branch: u64,
+    pub max_rounds: u64,
+    pub quantum: u64,
+    pub exploration_mode: String,
+    pub seed: u64,
+    pub disk_image_path: Option<String>,
+    pub bootstrap_budget: u64,
+    pub stale_round_limit: u64,
+    pub num_vcpus: usize,
+}
+
+impl SerializableCampaignConfig {
+    pub fn from_explorer_config(cfg: &ExplorerConfig) -> Self {
+        Self {
+            kernel_path: cfg.kernel_path.clone(),
+            initrd_path: cfg.initrd_path.clone(),
+            num_vms: cfg.num_vms,
+            branch_factor: cfg.branch_factor,
+            ticks_per_branch: cfg.ticks_per_branch,
+            max_rounds: cfg.max_rounds,
+            quantum: cfg.quantum,
+            exploration_mode: match cfg.exploration_mode {
+                crate::explorer::ExplorationMode::FaultSchedule => "fault-schedule".to_string(),
+                crate::explorer::ExplorationMode::InputTree => "input-tree".to_string(),
+                crate::explorer::ExplorationMode::Hybrid => "hybrid".to_string(),
+            },
+            seed: cfg.seed,
+            disk_image_path: cfg.disk_image_path.clone(),
+            bootstrap_budget: cfg.bootstrap_budget,
+            stale_round_limit: cfg.stale_round_limit,
+            num_vcpus: cfg.vm_config.num_vcpus,
+        }
+    }
+}
+
+/// Incremental campaign checkpoint — updated after each seed completes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CampaignProgress {
+    /// All seeds in the campaign.
+    pub seeds: Vec<u64>,
+    /// Serializable base config.
+    pub config: SerializableCampaignConfig,
+    /// Output directory.
+    pub output_dir: String,
+    /// Completed seeds and their summaries.
+    pub completed: BTreeMap<u64, SeedSummary>,
+}
+
+/// Save campaign progress to `{output_dir}/campaign_progress.json`.
+pub fn save_campaign_progress(
+    progress: &CampaignProgress,
+    output_dir: &str,
+) -> Result<(), std::io::Error> {
+    let path = format!("{}/campaign_progress.json", output_dir);
+    let json = serde_json::to_string_pretty(progress).map_err(std::io::Error::other)?;
+    std::fs::write(&path, json)?;
+    info!("Saved campaign progress: {}", path);
+    Ok(())
+}
+
+/// Load campaign progress from `{dir}/campaign_progress.json`.
+pub fn load_campaign_progress(dir: &str) -> Result<CampaignProgress, std::io::Error> {
+    let path = format!("{}/campaign_progress.json", dir);
+    let json = std::fs::read_to_string(&path)?;
+    serde_json::from_str(&json).map_err(std::io::Error::other)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Campaign runner
+// ═══════════════════════════════════════════════════════════════════════
 
 /// Orchestrates multi-seed exploration.
 pub struct CampaignRunner {
@@ -147,6 +230,16 @@ impl CampaignRunner {
             });
 
         // Collect results, printing per-seed summaries as we go.
+        // Update campaign_progress.json after each seed completes.
+        let mut progress = CampaignProgress {
+            seeds: self.config.seeds.clone(),
+            config: SerializableCampaignConfig::from_explorer_config(
+                &self.config.base_explorer_config,
+            ),
+            output_dir: self.config.output_dir.clone(),
+            completed: BTreeMap::new(),
+        };
+
         let mut reports: Vec<(u64, ExplorationReport, f64)> = Vec::with_capacity(num_seeds);
         for result in seed_results {
             let sr = result?;
@@ -160,6 +253,22 @@ impl CampaignRunner {
                 if sr.report.bugs.len() == 1 { "" } else { "s" },
                 sr.wall_clock_seconds,
             );
+
+            progress.completed.insert(
+                sr.seed,
+                SeedSummary {
+                    seed: sr.seed,
+                    rounds: sr.report.rounds,
+                    total_branches: sr.report.total_branches,
+                    total_edges: sr.report.total_edges,
+                    bugs_found: sr.report.bugs.len(),
+                    wall_clock_seconds: sr.wall_clock_seconds,
+                },
+            );
+            if let Err(e) = save_campaign_progress(&progress, &self.config.output_dir) {
+                log::warn!("Failed to save campaign progress: {}", e);
+            }
+
             reports.push((sr.seed, sr.report, sr.wall_clock_seconds));
         }
 
@@ -177,6 +286,28 @@ impl CampaignRunner {
             },
             wall_clock,
         );
+
+        // Save campaign report to disk.
+        let json_path = format!("{}/campaign_report.json", self.config.output_dir);
+        let txt_path = format!("{}/campaign_report.txt", self.config.output_dir);
+
+        match serde_json::to_string_pretty(&campaign_report) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(&json_path, &json) {
+                    log::warn!("Failed to write {}: {}", json_path, e);
+                } else {
+                    info!("Saved {}", json_path);
+                }
+            }
+            Err(e) => log::warn!("Failed to serialize campaign report: {}", e),
+        }
+
+        let txt = format_campaign_report(&campaign_report);
+        if let Err(e) = std::fs::write(&txt_path, &txt) {
+            log::warn!("Failed to write {}: {}", txt_path, e);
+        } else {
+            info!("Saved {}", txt_path);
+        }
 
         Ok(campaign_report)
     }
@@ -550,5 +681,126 @@ mod tests {
         let s = format_memory_estimate(1, 1, 256);
         assert!(s.contains("0.3 GB") || s.contains("0.2 GB"));
         assert!(s.contains("1 seeds"));
+    }
+
+    // ── report persistence ──────────────────────────────────────────
+
+    #[test]
+    fn campaign_report_files_written() {
+        let dir = std::env::temp_dir().join(format!("cc-test-report-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let reports = vec![
+            (
+                42,
+                make_report(vec![make_bug(0, 100, "a.rs:1", 0xAA)], Vec::new()),
+                1.0,
+            ),
+            (43, make_report(Vec::new(), Vec::new()), 2.0),
+        ];
+        let campaign_report = aggregate_reports(reports, 3.0);
+
+        // Write JSON
+        let json_path = dir.join("campaign_report.json");
+        let json = serde_json::to_string_pretty(&campaign_report).unwrap();
+        std::fs::write(&json_path, &json).unwrap();
+
+        // Write TXT
+        let txt_path = dir.join("campaign_report.txt");
+        let txt = crate::report::format_campaign_report(&campaign_report);
+        std::fs::write(&txt_path, &txt).unwrap();
+
+        // Verify JSON roundtrip
+        let loaded: CampaignReport =
+            serde_json::from_str(&std::fs::read_to_string(&json_path).unwrap()).unwrap();
+        assert_eq!(loaded.seeds_run, vec![42, 43]);
+        assert_eq!(loaded.bugs.len(), 1);
+
+        // Verify TXT contains key sections
+        let txt_content = std::fs::read_to_string(&txt_path).unwrap();
+        assert!(txt_content.contains("Campaign"));
+        assert!(txt_content.contains("42"));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ── campaign progress checkpoint ────────────────────────────────
+
+    #[test]
+    fn campaign_progress_serde_roundtrip() {
+        let progress = CampaignProgress {
+            seeds: vec![42, 43, 44],
+            config: SerializableCampaignConfig {
+                kernel_path: "vmlinux".into(),
+                initrd_path: Some("initrd.gz".into()),
+                num_vms: 3,
+                branch_factor: 8,
+                ticks_per_branch: 1000,
+                max_rounds: 100,
+                quantum: 100,
+                exploration_mode: "hybrid".into(),
+                seed: 42,
+                disk_image_path: None,
+                bootstrap_budget: 10000,
+                stale_round_limit: 10,
+                num_vcpus: 1,
+            },
+            output_dir: "results/".into(),
+            completed: BTreeMap::from([(
+                42,
+                SeedSummary {
+                    seed: 42,
+                    rounds: 10,
+                    total_branches: 80,
+                    total_edges: 256,
+                    bugs_found: 1,
+                    wall_clock_seconds: 23.0,
+                },
+            )]),
+        };
+
+        let json = serde_json::to_string_pretty(&progress).unwrap();
+        let loaded: CampaignProgress = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(loaded.seeds, vec![42, 43, 44]);
+        assert_eq!(loaded.completed.len(), 1);
+        assert!(loaded.completed.contains_key(&42));
+        assert_eq!(loaded.config.num_vms, 3);
+        assert_eq!(loaded.config.exploration_mode, "hybrid");
+    }
+
+    #[test]
+    fn campaign_progress_save_load() {
+        let dir = std::env::temp_dir().join(format!("cc-test-progress-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let progress = CampaignProgress {
+            seeds: vec![10, 20],
+            config: SerializableCampaignConfig {
+                kernel_path: "k".into(),
+                initrd_path: None,
+                num_vms: 1,
+                branch_factor: 4,
+                ticks_per_branch: 500,
+                max_rounds: 50,
+                quantum: 100,
+                exploration_mode: "fault-schedule".into(),
+                seed: 10,
+                disk_image_path: None,
+                bootstrap_budget: 5000,
+                stale_round_limit: 5,
+                num_vcpus: 1,
+            },
+            output_dir: dir.to_string_lossy().into(),
+            completed: BTreeMap::new(),
+        };
+
+        save_campaign_progress(&progress, &dir.to_string_lossy()).unwrap();
+        let loaded = load_campaign_progress(&dir.to_string_lossy()).unwrap();
+
+        assert_eq!(loaded.seeds, vec![10, 20]);
+        assert!(loaded.completed.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

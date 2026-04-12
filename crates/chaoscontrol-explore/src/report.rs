@@ -29,6 +29,54 @@ pub fn format_report(report: &ExplorationReport) -> String {
     }
     output.push('\n');
 
+    // Scenario metadata (if helical scenario was used)
+    if let Some(ref summary) = report.scenario_summary {
+        output
+            .push_str("─── Helical Scenario ──────────────────────────────────────────────────\n");
+        output.push_str(&format!(
+            "Scenario family:        {}\n",
+            summary.config.family
+        ));
+        output.push_str(&format!(
+            "Phase ticks:            {}\n",
+            summary.config.phase_ticks
+        ));
+        output.push_str(&format!(
+            "Turns:                  {}\n",
+            summary.config.turns
+        ));
+        output.push_str(&format!(
+            "Total duration:         {} ns\n",
+            summary.total_duration_ns
+        ));
+        output.push_str(&format!(
+            "Phases:                 {}\n",
+            summary.phases.len()
+        ));
+        output.push('\n');
+        // Phase table (truncate after 20 rows)
+        let max_phases = 20;
+        for (i, phase) in summary.phases.iter().enumerate() {
+            if i >= max_phases {
+                output.push_str(&format!(
+                    "  ... and {} more phases\n",
+                    summary.phases.len() - max_phases
+                ));
+                break;
+            }
+            output.push_str(&format!(
+                "  turn {} | vm{} | {} | {}ns–{}ns | {}\n",
+                phase.turn,
+                phase.target_vm,
+                phase.kind,
+                phase.start_ns,
+                phase.end_ns,
+                phase.description
+            ));
+        }
+        output.push('\n');
+    }
+
     // Coverage stats
     output.push_str("─── Coverage Statistics ───────────────────────────────────────────────\n");
     output.push_str(&format!(
@@ -396,6 +444,16 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
     }
     output.push('\n');
 
+    // Scenario metadata (if helical scenario was used)
+    if let Some(ref sc) = report.scenario_config {
+        output
+            .push_str("─── Helical Scenario ──────────────────────────────────────────────────\n");
+        output.push_str(&format!("Scenario family:        {}\n", sc.family));
+        output.push_str(&format!("Phase ticks:            {}\n", sc.phase_ticks));
+        output.push_str(&format!("Turns:                  {}\n", sc.turns));
+        output.push('\n');
+    }
+
     // Per-seed table
     output.push_str("─── Per-Seed Results ──────────────────────────────────────────────────\n");
     output.push_str("  Seed   │ Rounds │ Branches │ Edges │ Bugs │ Time\n");
@@ -562,6 +620,8 @@ mod tests {
             tick: 1000,
             dedup_key: 0,
             schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
         }
     }
 
@@ -590,6 +650,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -618,6 +680,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -650,6 +714,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -689,6 +755,8 @@ mod tests {
             tick: 5000,
             dedup_key: 0,
             schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_bug(&bug);
@@ -712,7 +780,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 2,
@@ -723,7 +791,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 5,
                 corpus_size: 5,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 3,
@@ -734,7 +802,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 4,
                 corpus_size: 5,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             },
         ];
 
@@ -754,6 +822,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -796,7 +866,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: r as usize,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             })
             .collect();
 
@@ -816,6 +886,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -846,6 +918,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -922,6 +996,8 @@ mod tests {
             assertion_details: details,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -989,6 +1065,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_report(&report);
@@ -1018,6 +1096,8 @@ mod tests {
             tick: 5000,
             dedup_key: 0,
             schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         let formatted = format_bug(&bug);
@@ -1046,6 +1126,8 @@ mod tests {
                     tick: 500,
                     dedup_key: Some(0xAAAA),
                     schedule_variant: None,
+                    scenario_config: None,
+                    scenario_summary: None,
                 },
                 found_by_seeds: vec![42, 44],
                 first_seed: 42,
@@ -1059,6 +1141,7 @@ mod tests {
                     total_edges: 200,
                     bugs_found: 1,
                     wall_clock_seconds: 25.3,
+                    scenario_summary: None,
                 },
                 SeedSummary {
                     seed: 43,
@@ -1067,6 +1150,7 @@ mod tests {
                     total_edges: 180,
                     bugs_found: 0,
                     wall_clock_seconds: 22.1,
+                    scenario_summary: None,
                 },
                 SeedSummary {
                     seed: 44,
@@ -1075,6 +1159,7 @@ mod tests {
                     total_edges: 190,
                     bugs_found: 1,
                     wall_clock_seconds: 24.0,
+                    scenario_summary: None,
                 },
             ],
             assertion_details: vec![
@@ -1107,6 +1192,7 @@ mod tests {
             },
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
+            scenario_config: None,
         };
 
         let formatted = format_campaign_report(&report);
@@ -1146,6 +1232,7 @@ mod tests {
             assertion_stats: Default::default(),
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),
+            scenario_config: None,
         };
 
         let formatted = format_campaign_report(&report);

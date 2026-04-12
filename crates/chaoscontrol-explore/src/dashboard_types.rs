@@ -461,6 +461,7 @@ mod tests {
                 rare_edge_weight: None,
                 havoc_after_stale: None,
                 havoc_mutations: None,
+                scenario: None,
             },
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {
@@ -471,6 +472,8 @@ mod tests {
                 tick: 500,
                 dedup_key: Some(0),
                 schedule_variant: None,
+                scenario_config: None,
+                scenario_summary: None,
             }],
             rounds_completed: 10,
             total_branches_run: 80,
@@ -485,9 +488,11 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             }]),
             seen_dedup_keys: None,
+            scenario: None,
+            scenario_summary: None,
         };
 
         let details = vec![AssertionDetail {

@@ -24,6 +24,10 @@ pub struct BugReport {
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
     pub schedule_variant: Option<ScheduleVariant>,
+    /// Helical scenario config that generated the schedule (if any).
+    pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Materialized phase summary (if a scenario was used).
+    pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 /// An entry in the corpus — a schedule that found new coverage or bugs.
@@ -171,6 +175,8 @@ mod tests {
                 tick: 1000,
                 dedup_key: 0,
                 schedule_variant: None,
+                scenario_config: None,
+                scenario_summary: None,
             });
         }
 
@@ -288,6 +294,8 @@ mod tests {
             tick: 5000,
             dedup_key: 0,
             schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
         };
 
         assert_eq!(bug.bug_id, 42);

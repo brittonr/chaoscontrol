@@ -202,6 +202,24 @@ enum Commands {
         /// Dashboard port (default: 8080).
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
+
+        /// Named helical scenario family. Generates a rotating multi-phase
+        /// fault schedule instead of random mutations.
+        ///
+        /// Built-in families:
+        ///   network-ring         Rotating partitions and restarts
+        ///   volatile-write-ring  Rotating DiskFsyncLie + kill/restart cycles
+        ///   degraded-io-ring     Rotating DiskSlow/DiskPartialRead + restarts
+        #[arg(long)]
+        scenario: Option<String>,
+
+        /// Phase duration in virtual nanoseconds for helical scenarios.
+        #[arg(long, default_value = "1000")]
+        scenario_phase_ticks: u64,
+
+        /// Number of helical turns (one turn = one target rotation).
+        #[arg(long, default_value = "6")]
+        scenario_turns: usize,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -434,6 +452,18 @@ enum Commands {
         /// Dashboard port (default: 8080).
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
+
+        /// Named helical scenario family.
+        #[arg(long)]
+        scenario: Option<String>,
+
+        /// Phase duration in virtual nanoseconds for helical scenarios.
+        #[arg(long, default_value = "1000")]
+        scenario_phase_ticks: u64,
+
+        /// Number of helical turns.
+        #[arg(long, default_value = "6")]
+        scenario_turns: usize,
     },
 
     /// Resume a multi-seed campaign from checkpoint.
@@ -515,6 +545,9 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            scenario,
+            scenario_phase_ticks,
+            scenario_turns,
         } => cmd_run(
             kernel,
             initrd,
@@ -545,6 +578,9 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            scenario,
+            scenario_phase_ticks,
+            scenario_turns,
         ),
         Commands::Reproduce {
             kernel,
@@ -603,6 +639,9 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            scenario,
+            scenario_phase_ticks,
+            scenario_turns,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -633,6 +672,9 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            scenario,
+            scenario_phase_ticks,
+            scenario_turns,
         ),
         Commands::CampaignResume { corpus, rounds } => cmd_campaign_resume(corpus, rounds),
         Commands::Resume {
@@ -704,7 +746,20 @@ fn cmd_run(
     auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
+    scenario: Option<String>,
+    scenario_phase_ticks: u64,
+    scenario_turns: usize,
 ) {
+    // Parse scenario config
+    let scenario_config = scenario.map(|name| {
+        let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
+            .unwrap_or_else(|| {
+                eprintln!("Error: unknown scenario family '{}'. Available: network-ring, volatile-write-ring, degraded-io-ring", name);
+                std::process::exit(1);
+            });
+        chaoscontrol_fault::scenario::ScenarioConfig::new(family, vms, scenario_phase_ticks, scenario_turns)
+    });
+
     // Validate inputs
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
@@ -814,6 +869,7 @@ fn cmd_run(
             havoc_mutations.first().copied().unwrap_or(4),
             havoc_mutations.get(1).copied().unwrap_or(16),
         ],
+        scenario: scenario_config.clone(),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -847,6 +903,12 @@ fn cmd_run(
     }
     if let Some(ref output_dir) = output {
         eprintln!("  Output:         {}", output_dir);
+    }
+    if let Some(ref sc) = scenario_config {
+        eprintln!(
+            "  Scenario:       {} ({} turns, {} ns/phase)",
+            sc.family, sc.turns, sc.phase_ticks
+        );
     }
     eprintln!();
     eprintln!("Starting exploration...");
@@ -1018,7 +1080,20 @@ fn cmd_campaign(
     auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
+    scenario: Option<String>,
+    scenario_phase_ticks: u64,
+    scenario_turns: usize,
 ) {
+    // Parse scenario config
+    let scenario_config = scenario.map(|name| {
+        let family = chaoscontrol_fault::scenario::ScenarioFamily::from_str_loose(&name)
+            .unwrap_or_else(|| {
+                eprintln!("Error: unknown scenario family '{}'. Available: network-ring, volatile-write-ring, degraded-io-ring", name);
+                std::process::exit(1);
+            });
+        chaoscontrol_fault::scenario::ScenarioConfig::new(family, vms, scenario_phase_ticks, scenario_turns)
+    });
+
     // Start dashboard if requested.
     #[cfg(feature = "dashboard")]
     let _dashboard_tx = if dashboard {
@@ -1140,6 +1215,7 @@ fn cmd_campaign(
             havoc_mutations.first().copied().unwrap_or(4),
             havoc_mutations.get(1).copied().unwrap_or(16),
         ],
+        scenario: scenario_config,
     };
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
@@ -1211,6 +1287,8 @@ fn cmd_campaign(
                             tick: cb.bug.tick,
                             dedup_key: cb.dedup_key,
                             schedule_variant: None,
+                            scenario_config: cb.bug.scenario_config.clone(),
+                            scenario_summary: cb.bug.scenario_summary.clone(),
                         })
                         .collect();
                     let min_dir = format!("{}/minimized", output);
@@ -1285,6 +1363,8 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                     assertion_details: Vec::new(),
                     round_history: cp.round_history.unwrap_or_default(),
                     wall_clock_seconds: summary.wall_clock_seconds,
+                    scenario_config: cp.scenario.clone(),
+                    scenario_summary: cp.scenario_summary.clone(),
                 };
                 reports.push((*seed, report, summary.wall_clock_seconds));
             }
@@ -1618,6 +1698,8 @@ fn cmd_minimize(
         tick: serialized_bug.tick,
         dedup_key: serialized_bug.dedup_key.unwrap_or(0),
         schedule_variant: None,
+        scenario_config: serialized_bug.scenario_config.clone(),
+        scenario_summary: serialized_bug.scenario_summary.clone(),
     };
 
     // Parse scheduling strategy
@@ -1724,6 +1806,8 @@ fn cmd_minimize(
             tick: 0,
             dedup_key: None,
             schedule_variant: None,
+            scenario_config: serialized_bug.scenario_config.clone(),
+            scenario_summary: serialized_bug.scenario_summary.clone(),
         };
 
         match serde_json::to_string_pretty(&minimized_bug) {
@@ -2038,6 +2122,8 @@ fn auto_minimize_bugs(
                     tick: bug.tick,
                     dedup_key: Some(bug.dedup_key),
                     schedule_variant: None,
+                    scenario_config: bug.scenario_config.clone(),
+                    scenario_summary: bug.scenario_summary.clone(),
                 };
                 let path = format!("{}/bug_{}_min.json", output_dir, bug.bug_id);
                 match serde_json::to_string_pretty(&min_bug) {

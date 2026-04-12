@@ -35,6 +35,9 @@ pub struct SeedSummary {
     pub total_edges: usize,
     pub bugs_found: usize,
     pub wall_clock_seconds: f64,
+    /// Materialized phase summary for this seed (if a scenario was used).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 /// A bug deduplicated across seeds.
@@ -74,6 +77,9 @@ pub struct CampaignReport {
     /// Seeds that panicked or returned errors.
     #[serde(default)]
     pub failed_seeds: Vec<(u64, String)>,
+    /// Helical scenario config used across all seeds (if any).
+    #[serde(default)]
+    pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -96,6 +102,9 @@ pub struct SerializableCampaignConfig {
     pub bootstrap_budget: u64,
     pub stale_round_limit: u64,
     pub num_vcpus: usize,
+    /// Helical scenario config (if the campaign used one).
+    #[serde(default)]
+    pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
 }
 
 impl SerializableCampaignConfig {
@@ -118,6 +127,7 @@ impl SerializableCampaignConfig {
             bootstrap_budget: cfg.bootstrap_budget,
             stale_round_limit: cfg.stale_round_limit,
             num_vcpus: cfg.vm_config.num_vcpus,
+            scenario: cfg.scenario.clone(),
         }
     }
 }
@@ -308,6 +318,7 @@ impl CampaignRunner {
                             total_edges: report.total_edges,
                             bugs_found: report.bugs.len(),
                             wall_clock_seconds,
+                            scenario_summary: report.scenario_summary.clone(),
                         },
                     );
                     reports.push((seed, report, wall_clock_seconds));
@@ -415,6 +426,7 @@ pub fn aggregate_reports(
             total_edges: report.total_edges,
             bugs_found: report.bugs.len(),
             wall_clock_seconds: *elapsed,
+            scenario_summary: report.scenario_summary.clone(),
         });
 
         // Merge bugs by dedup_key.
@@ -487,6 +499,11 @@ pub fn aggregate_reports(
 
     let bugs: Vec<CampaignBug> = bug_map.into_values().collect();
 
+    // Take scenario config from first report (shared across all seeds).
+    let scenario_config = seed_reports
+        .first()
+        .and_then(|(_, r, _)| r.scenario_config.clone());
+
     CampaignReport {
         seeds_run,
         seeds_with_bugs,
@@ -498,6 +515,7 @@ pub fn aggregate_reports(
         assertion_stats,
         wall_clock_seconds,
         failed_seeds: Vec::new(),
+        scenario_config,
     }
 }
 
@@ -574,6 +592,8 @@ mod tests {
             tick: 1000,
             dedup_key,
             schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
         }
     }
 
@@ -594,6 +614,8 @@ mod tests {
             assertion_details: details,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
         }
     }
 
@@ -701,6 +723,8 @@ mod tests {
                     tick: 500,
                     dedup_key: Some(0xAAAA),
                     schedule_variant: None,
+                    scenario_config: None,
+                    scenario_summary: None,
                 },
                 found_by_seeds: vec![42],
                 first_seed: 42,
@@ -714,6 +738,7 @@ mod tests {
                     total_edges: 100,
                     bugs_found: 1,
                     wall_clock_seconds: 23.4,
+                    scenario_summary: None,
                 },
                 SeedSummary {
                     seed: 43,
@@ -722,12 +747,14 @@ mod tests {
                     total_edges: 80,
                     bugs_found: 0,
                     wall_clock_seconds: 21.1,
+                    scenario_summary: None,
                 },
             ],
             assertion_details: Vec::new(),
             assertion_stats: AssertionStats::default(),
             wall_clock_seconds: 25.0,
             failed_seeds: Vec::new(),
+            scenario_config: None,
         };
 
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -818,6 +845,7 @@ mod tests {
                 bootstrap_budget: 10000,
                 stale_round_limit: 10,
                 num_vcpus: 1,
+                scenario: None,
             },
             output_dir: "results/".into(),
             completed: BTreeMap::from([(
@@ -829,6 +857,7 @@ mod tests {
                     total_edges: 256,
                     bugs_found: 1,
                     wall_clock_seconds: 23.0,
+                    scenario_summary: None,
                 },
             )]),
             failed: BTreeMap::new(),
@@ -865,6 +894,7 @@ mod tests {
                 bootstrap_budget: 5000,
                 stale_round_limit: 5,
                 num_vcpus: 1,
+                scenario: None,
             },
             output_dir: dir.to_string_lossy().into(),
             completed: BTreeMap::new(),

@@ -66,6 +66,9 @@ pub struct CheckpointConfig {
     /// Havoc mutation count range [min, max].
     #[serde(default)]
     pub havoc_mutations: Option<[u32; 2]>,
+    /// Helical scenario config (if the run used one).
+    #[serde(default)]
+    pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
 }
 
 fn default_bootstrap_budget() -> u64 {
@@ -557,6 +560,12 @@ pub struct SerializableBug {
     /// Schedule variant used when this bug was found.
     #[serde(default)]
     pub schedule_variant: Option<chaoscontrol_vmm::scheduler::ScheduleVariant>,
+    /// Helical scenario config that generated the schedule (if any).
+    #[serde(default)]
+    pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Materialized phase summary (if a scenario was used).
+    #[serde(default)]
+    pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 impl From<&BugReport> for SerializableBug {
@@ -569,6 +578,8 @@ impl From<&BugReport> for SerializableBug {
             tick: bug.tick,
             dedup_key: Some(bug.dedup_key),
             schedule_variant: bug.schedule_variant.clone(),
+            scenario_config: bug.scenario_config.clone(),
+            scenario_summary: bug.scenario_summary.clone(),
         }
     }
 }
@@ -589,6 +600,12 @@ pub struct ExplorationCheckpoint {
     /// Dedup keys for bugs already seen (optional for backward compat).
     #[serde(default)]
     pub seen_dedup_keys: Option<Vec<u64>>,
+    /// Helical scenario config (if the run used one).
+    #[serde(default)]
+    pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Materialized phase summary (if a scenario was used).
+    #[serde(default)]
+    pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 /// Save a checkpoint to a JSON file.
@@ -658,6 +675,7 @@ mod tests {
                 rare_edge_weight: None,
                 havoc_after_stale: None,
                 havoc_mutations: None,
+                scenario: None,
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -667,6 +685,8 @@ mod tests {
             seed: 42,
             round_history: None,
             seen_dedup_keys: None,
+            scenario: None,
+            scenario_summary: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -705,6 +725,7 @@ mod tests {
                 rare_edge_weight: None,
                 havoc_after_stale: None,
                 havoc_mutations: None,
+                scenario: None,
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
@@ -714,6 +735,8 @@ mod tests {
             seed: 123,
             round_history: None,
             seen_dedup_keys: None,
+            scenario: None,
+            scenario_summary: None,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -741,7 +764,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             },
             RoundHistory {
                 round: 2,
@@ -752,7 +775,7 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 5,
                 corpus_size: 5,
-            wall_clock_seconds: 0.0,
+                wall_clock_seconds: 0.0,
             },
         ];
 
@@ -776,6 +799,7 @@ mod tests {
                 rare_edge_weight: None,
                 havoc_after_stale: None,
                 havoc_mutations: None,
+                scenario: None,
             },
             global_coverage: vec![],
             bugs: vec![],
@@ -785,6 +809,8 @@ mod tests {
             seed: 1,
             round_history: Some(history.clone()),
             seen_dedup_keys: None,
+            scenario: None,
+            scenario_summary: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -824,5 +850,106 @@ mod tests {
         let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
         assert_eq!(checkpoint.rounds_completed, 5);
         assert!(checkpoint.round_history.is_none());
+    }
+
+    #[test]
+    fn test_checkpoint_scenario_metadata_roundtrip() {
+        use chaoscontrol_fault::scenario::{materialize, ScenarioConfig, ScenarioFamily};
+
+        let sc_config = ScenarioConfig::new(ScenarioFamily::VolatileWriteRing, 3, 500, 4);
+        let materialized = materialize(&sc_config, 42);
+
+        let checkpoint = ExplorationCheckpoint {
+            config: CheckpointConfig {
+                num_vms: 3,
+                kernel_path: "k".to_string(),
+                initrd_path: None,
+                seed: 42,
+                branch_factor: 8,
+                ticks_per_branch: 1000,
+                max_rounds: 50,
+                max_frontier: 25,
+                quantum: 100,
+                coverage_gpa: 0xE0000,
+                disk_image_path: None,
+                bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
+                scenario: Some(sc_config.clone()),
+            },
+            global_coverage: vec![],
+            bugs: vec![SerializableBug {
+                bug_id: 1,
+                assertion_id: 50,
+                assertion_location: "test.rs:1".into(),
+                schedule: SerializableSchedule { faults: Vec::new() },
+                tick: 1000,
+                dedup_key: Some(0xBB),
+                schedule_variant: None,
+                scenario_config: Some(sc_config.clone()),
+                scenario_summary: Some(materialized.summary.clone()),
+            }],
+            rounds_completed: 5,
+            total_branches_run: 40,
+            total_edges: 100,
+            seed: 42,
+            round_history: None,
+            seen_dedup_keys: None,
+            scenario: Some(sc_config),
+            scenario_summary: Some(materialized.summary),
+        };
+
+        let json = serde_json::to_string_pretty(&checkpoint).unwrap();
+        let loaded: ExplorationCheckpoint = serde_json::from_str(&json).unwrap();
+
+        // Verify checkpoint-level scenario metadata survived
+        let loaded_sc = loaded.scenario.unwrap();
+        assert_eq!(loaded_sc.family, ScenarioFamily::VolatileWriteRing);
+        assert_eq!(loaded_sc.turns, 4);
+        assert_eq!(loaded_sc.phase_ticks, 500);
+        assert_eq!(loaded_sc.num_vms, 3);
+
+        let loaded_summary = loaded.scenario_summary.unwrap();
+        assert!(!loaded_summary.phases.is_empty());
+
+        // Verify bug-level scenario metadata survived
+        let bug = &loaded.bugs[0];
+        let bug_sc = bug.scenario_config.as_ref().unwrap();
+        assert_eq!(bug_sc.family, ScenarioFamily::VolatileWriteRing);
+        assert!(bug.scenario_summary.is_some());
+    }
+
+    #[test]
+    fn test_checkpoint_backward_compat_no_scenario() {
+        // Simulate loading a checkpoint from before scenario fields were added
+        let json = r#"{
+            "config": {
+                "num_vms": 2,
+                "kernel_path": "k",
+                "initrd_path": null,
+                "seed": 1,
+                "branch_factor": 8,
+                "ticks_per_branch": 1000,
+                "max_rounds": 10,
+                "max_frontier": 50,
+                "quantum": 100,
+                "coverage_gpa": 917504
+            },
+            "global_coverage": [],
+            "bugs": [],
+            "rounds_completed": 5,
+            "total_branches_run": 40,
+            "total_edges": 100,
+            "seed": 1
+        }"#;
+
+        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
+        assert!(checkpoint.scenario.is_none());
+        assert!(checkpoint.scenario_summary.is_none());
+        assert!(checkpoint.config.scenario.is_none());
     }
 }

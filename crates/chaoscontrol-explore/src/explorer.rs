@@ -145,6 +145,10 @@ pub struct ExplorerConfig {
     /// Range of mutations per variant in havoc mode: `[min, max]`.
     /// Default: `[4, 16]`.
     pub havoc_mutations: [u32; 2],
+    /// Optional helical scenario config. When set, the initial fault
+    /// schedule for each run is materialized from this scenario instead
+    /// of being generated randomly.
+    pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
 }
 
 impl Default for ExplorerConfig {
@@ -177,6 +181,7 @@ impl Default for ExplorerConfig {
             rare_edge_weight: 5.0,
             havoc_after_stale: 0,
             havoc_mutations: [4, 16],
+            scenario: None,
         }
     }
 }
@@ -213,6 +218,8 @@ pub struct Explorer {
     standalone_bugs: Vec<BugReport>,
     /// Consecutive rounds with 0 new edges and 0 new bugs.
     consecutive_stale_rounds: u64,
+    /// Materialized phase summary (stored at bootstrap time).
+    scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 impl Explorer {
@@ -245,6 +252,7 @@ impl Explorer {
             seen_dedup_keys: BTreeSet::new(),
             standalone_bugs: Vec::new(),
             consecutive_stale_rounds: 0,
+            scenario_summary: None,
         }
     }
 
@@ -331,8 +339,24 @@ impl Explorer {
             from_seed: None,
         });
 
+        // Materialize the helical scenario schedule (if configured).
+        let initial_schedule = if let Some(ref scenario_cfg) = self.config.scenario {
+            let materialized =
+                chaoscontrol_fault::scenario::materialize(scenario_cfg, self.config.seed);
+            info!(
+                "Materialized {} scenario: {} faults, {} phases",
+                scenario_cfg.family,
+                materialized.schedule.total(),
+                materialized.summary.phases.len(),
+            );
+            self.scenario_summary = Some(materialized.summary);
+            materialized.schedule
+        } else {
+            FaultSchedule::new()
+        };
+
         if let Some(snapshot) = initial_result.snapshot.clone() {
-            self.add_to_frontier(snapshot, initial_result, FaultSchedule::new(), None, 0);
+            self.add_to_frontier(snapshot, initial_result, initial_schedule, None, 0);
         }
 
         // Create worker pool for parallel execution if configured.
@@ -1198,6 +1222,8 @@ impl Explorer {
                     tick: result.total_ticks,
                     dedup_key,
                     schedule_variant: result.schedule_variant.clone(),
+                    scenario_config: self.config.scenario.clone(),
+                    scenario_summary: self.scenario_summary.clone(),
                 };
 
                 // Emit BugFound event for dashboard.
@@ -1535,6 +1561,8 @@ impl Explorer {
             assertion_details,
             round_history: self.round_history.clone(),
             wall_clock_seconds: 0.0, // Set by caller
+            scenario_config: self.config.scenario.clone(),
+            scenario_summary: self.scenario_summary.clone(),
         }
     }
 
@@ -1748,6 +1776,7 @@ impl Explorer {
             rare_edge_weight: Some(self.config.rare_edge_weight),
             havoc_after_stale: Some(self.config.havoc_after_stale),
             havoc_mutations: Some(self.config.havoc_mutations),
+            scenario: self.config.scenario.clone(),
         };
 
         let bugs: Vec<SerializableBug> = self.all_bugs().iter().map(|b| b.into()).collect();
@@ -1762,6 +1791,8 @@ impl Explorer {
             seed: self.config.seed,
             round_history: Some(self.round_history.clone()),
             seen_dedup_keys: Some(self.seen_dedup_keys.iter().copied().collect()),
+            scenario: self.config.scenario.clone(),
+            scenario_summary: self.scenario_summary.clone(),
         }
     }
 
@@ -1800,6 +1831,7 @@ impl Explorer {
             rare_edge_weight: checkpoint.config.rare_edge_weight.unwrap_or(5.0),
             havoc_after_stale: checkpoint.config.havoc_after_stale.unwrap_or(0),
             havoc_mutations: checkpoint.config.havoc_mutations.unwrap_or([4, 16]),
+            scenario: checkpoint.config.scenario.clone(),
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -1849,9 +1881,12 @@ impl Explorer {
                     tick: b.tick,
                     dedup_key: b.dedup_key.unwrap_or(0),
                     schedule_variant: None,
+                    scenario_config: b.scenario_config.clone(),
+                    scenario_summary: b.scenario_summary.clone(),
                 })
                 .collect(),
             consecutive_stale_rounds: 0,
+            scenario_summary: checkpoint.scenario_summary.clone(),
         }
     }
 }
@@ -1942,6 +1977,10 @@ pub struct ExplorationReport {
     pub round_history: Vec<RoundHistory>,
     /// Total wall-clock time for the exploration run.
     pub wall_clock_seconds: f64,
+    /// Helical scenario config used (if any).
+    pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Materialized phase summary (if a scenario was used).
+    pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
 /// Summary of assertion coverage across all exploration branches.

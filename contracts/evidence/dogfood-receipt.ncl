@@ -18,6 +18,8 @@ let BugReceipt = {
   path | NonEmptyString,
   assertion_id | Number,
   tick | Number,
+  replay_parent_depth | Number,
+  replay_context | NonEmptyString,
   replay_status | AcceptanceStatus,
   replay_attempt | ReplayAttempt,
 } in

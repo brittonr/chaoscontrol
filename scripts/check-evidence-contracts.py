@@ -94,7 +94,7 @@ def validate_artifact_hash(value: Any) -> None:
 
 def validate_bug_report(value: Any) -> None:
     require(isinstance(value, dict), "bug-report: expected object")
-    for key in ["bug_id", "assertion_id", "tick", "dedup_key"]:
+    for key in ["bug_id", "assertion_id", "tick", "replay_parent_depth", "dedup_key"]:
         require_num(value.get(key), f"bug-report.{key}")
     require_str(value.get("assertion_location"), "bug-report.assertion_location")
     schedule = value.get("schedule")
@@ -144,6 +144,8 @@ def validate_receipt(value: Any, *, check_files: bool = False) -> None:
         require_str(bug.get("path"), f"receipt.bug_reports[{idx}].path")
         require_num(bug.get("assertion_id"), f"receipt.bug_reports[{idx}].assertion_id")
         require_num(bug.get("tick"), f"receipt.bug_reports[{idx}].tick")
+        require_num(bug.get("replay_parent_depth"), f"receipt.bug_reports[{idx}].replay_parent_depth")
+        require_str(bug.get("replay_context"), f"receipt.bug_reports[{idx}].replay_context")
         require_status(bug.get("replay_status"), f"receipt.bug_reports[{idx}].replay_status")
         replay = bug.get("replay_attempt")
         require(isinstance(replay, dict), f"receipt.bug_reports[{idx}].replay_attempt: expected object")
@@ -164,6 +166,7 @@ def validate_markdown_receipt(data: dict[str, Any]) -> None:
     for bug in data["bug_reports"]:
         require(str(bug["assertion_id"]) in md, "receipt.md missing bug assertion id")
         require(bug["replay_attempt"]["message"] in md, "receipt.md missing replay outcome")
+        require(bug["replay_context"] in md, "receipt.md missing replay context")
 
 
 def expect_invalid(path: Path, validator: Callable[[Any], None]) -> None:

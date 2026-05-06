@@ -554,6 +554,13 @@ pub struct SerializableBug {
     pub assertion_location: String,
     pub schedule: SerializableSchedule,
     pub tick: u64,
+    /// Depth of the frontier parent snapshot needed to replay this bug.
+    ///
+    /// Depth 0 can be replayed from the normal bootstrap snapshot. Depth > 0
+    /// means the fault schedule alone is incomplete; replay needs the saved
+    /// branch snapshot context.
+    #[serde(default)]
+    pub replay_parent_depth: u32,
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     #[serde(default)]
     pub dedup_key: Option<u64>,
@@ -576,6 +583,7 @@ impl From<&BugReport> for SerializableBug {
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
+            replay_parent_depth: bug.replay_parent_depth,
             dedup_key: Some(bug.dedup_key),
             schedule_variant: bug.schedule_variant.clone(),
             scenario_config: bug.scenario_config.clone(),
@@ -929,6 +937,7 @@ mod tests {
                 assertion_location: "test.rs:1".into(),
                 schedule: SerializableSchedule { faults: Vec::new() },
                 tick: 1000,
+                replay_parent_depth: 0,
                 dedup_key: Some(0xBB),
                 schedule_variant: None,
                 scenario_config: Some(sc_config.clone()),

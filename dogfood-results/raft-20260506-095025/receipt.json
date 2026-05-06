@@ -18,7 +18,7 @@
     },
     {
       "path": "dogfood-results/raft-20260506-095025/checkpoint.json",
-      "sha256": "sha256:4056efb6e2c1d2299ddfb0e7b7afa59f1bc50d13d52847c9df07f518fbe6032b"
+      "sha256": "sha256:32d27a5dde161a829395f4ccab961d5e4d01b7cc730cad5d938070d9d8bfd100"
     },
     {
       "path": "dogfood-results/raft-20260506-095025/assertions.json",
@@ -26,7 +26,7 @@
     },
     {
       "path": "dogfood-results/raft-20260506-095025/receipt.md",
-      "sha256": "sha256:4948da7471a163f2f0dc90f1bbee2e0e6c98a54a2e4b2c6e19bc0c66428b8b37"
+      "sha256": "sha256:43f222e81bbe71bfab915ad13c8084434d577bc58d7c8e10f357e684c3ed5128"
     },
     {
       "path": "dogfood-results/raft-20260506-095025/run-config.json",
@@ -34,7 +34,7 @@
     },
     {
       "path": "dogfood-results/raft-20260506-095025/bug_0.json",
-      "sha256": "sha256:12a27c14e8017935f4734a6f483b77bf091280623a0f0325e85ad9b66d5b50b9"
+      "sha256": "sha256:d6d4329f9310fb7da56ae7c2a5d790b619b06af74a72e79877153621ddefcf5d"
     }
   ],
   "assertion_coverage": {
@@ -50,6 +50,8 @@
       "path": "dogfood-results/raft-20260506-095025/bug_0.json",
       "assertion_id": 1205943209,
       "tick": 3736,
+      "replay_parent_depth": 0,
+      "replay_context": "schedule-only-replay-insufficient",
       "replay_status": "known-gap",
       "replay_attempt": {
         "command": "nix run .#explore -- reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft --bug dogfood-results/raft-20260506-095025/bug_0.json --vms 3 --ticks 5000",
@@ -60,7 +62,7 @@
   ],
   "checkpoint_reference": {
     "path": "dogfood-results/raft-20260506-095025/checkpoint.json",
-    "digest": "sha256:4056efb6e2c1d2299ddfb0e7b7afa59f1bc50d13d52847c9df07f518fbe6032b",
+    "digest": "sha256:32d27a5dde161a829395f4ccab961d5e4d01b7cc730cad5d938070d9d8bfd100",
     "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
     "initrd_path": "/nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft",
     "seed": 42

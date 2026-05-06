@@ -20,6 +20,12 @@ pub struct BugReport {
     pub snapshot: Option<SimulationSnapshot>,
     /// Tick when the bug was found.
     pub tick: u64,
+    /// Depth of the frontier parent snapshot used to start the failing branch.
+    ///
+    /// Depth 0 means the schedule starts from the normal post-bootstrap
+    /// snapshot. Depth > 0 means a standalone replay needs the saved branch
+    /// snapshot context, not just the fault schedule.
+    pub replay_parent_depth: u32,
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
@@ -173,6 +179,7 @@ mod tests {
                 schedule: FaultSchedule::new(),
                 snapshot: None,
                 tick: 1000,
+                replay_parent_depth: 0,
                 dedup_key: 0,
                 schedule_variant: None,
                 scenario_config: None,
@@ -292,6 +299,7 @@ mod tests {
             schedule: FaultSchedule::new(),
             snapshot: None,
             tick: 5000,
+            replay_parent_depth: 0,
             dedup_key: 0,
             schedule_variant: None,
             scenario_config: None,

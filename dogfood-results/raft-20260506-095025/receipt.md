@@ -82,7 +82,7 @@ Validation command:
 python scripts/check-evidence-contracts.py
 ```
 
-The receipt status is `known-gap`; each reported bug has an explicit replay attempt, and the replay failure remains accepted only as a documented receipt/replayability gap.
+The receipt status is `known-gap`; each reported bug has an explicit replay attempt plus replay context. For this pre-hardening artifact, `replay_context` is `schedule-only-replay-insufficient`: the saved schedule alone is not enough deterministic context to reproduce the assertion.
 
 ## Artifacts
 

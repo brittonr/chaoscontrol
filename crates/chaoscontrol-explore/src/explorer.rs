@@ -705,7 +705,7 @@ impl Explorer {
                 }
             }
 
-            let branch_bugs = self.extract_bugs(&result, &schedule);
+            let branch_bugs = self.extract_bugs(&result, &schedule, parent_depth);
             bugs_found += branch_bugs.len();
 
             if !branch_bugs.is_empty() {
@@ -910,7 +910,7 @@ impl Explorer {
             }
 
             // Check for bugs
-            let branch_bugs = self.extract_bugs(&result, &base_schedule);
+            let branch_bugs = self.extract_bugs(&result, &base_schedule, parent_depth);
             bugs_found += branch_bugs.len();
 
             if !branch_bugs.is_empty() {
@@ -1294,7 +1294,12 @@ impl Explorer {
 
     /// Extract bug reports from a branch result, deduplicating by
     /// (assertion_id, sorted fault type set).
-    fn extract_bugs(&mut self, result: &BranchResult, schedule: &FaultSchedule) -> Vec<BugReport> {
+    fn extract_bugs(
+        &mut self,
+        result: &BranchResult,
+        schedule: &FaultSchedule,
+        replay_parent_depth: u32,
+    ) -> Vec<BugReport> {
         let mut bugs = Vec::new();
 
         // Check oracle for failed assertions
@@ -1322,6 +1327,7 @@ impl Explorer {
                     schedule: schedule.clone(),
                     snapshot: result.snapshot.clone(),
                     tick: result.total_ticks,
+                    replay_parent_depth,
                     dedup_key,
                     schedule_variant: result.schedule_variant.clone(),
                     scenario_config: self.config.scenario.clone(),
@@ -1473,7 +1479,8 @@ impl Explorer {
         new_edges: usize,
         depth: u32,
     ) {
-        let bugs = self.extract_bugs(&result, &schedule);
+        let replay_parent_depth = depth.saturating_sub(1);
+        let bugs = self.extract_bugs(&result, &schedule, replay_parent_depth);
 
         let entry = CorpusEntry {
             id: 0, // Will be assigned by corpus
@@ -1987,6 +1994,7 @@ impl Explorer {
                     schedule: (&b.schedule).into(),
                     snapshot: None,
                     tick: b.tick,
+                    replay_parent_depth: b.replay_parent_depth,
                     dedup_key: b.dedup_key.unwrap_or(0),
                     schedule_variant: None,
                     scenario_config: b.scenario_config.clone(),

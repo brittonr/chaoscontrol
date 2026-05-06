@@ -474,6 +474,7 @@ mod tests {
                 assertion_location: "test assertion".to_string(),
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
+                replay_parent_depth: 0,
                 dedup_key: Some(0),
                 schedule_variant: None,
                 scenario_config: None,

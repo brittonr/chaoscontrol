@@ -66,10 +66,16 @@ def materialize(output: Path, *, git_revision: str, replay_status: str, replay_m
             f"--initrd {config.get('initrd_path') or 'none'} --bug {bug_path} "
             f"--vms {config['num_vms']} --ticks {config['ticks_per_branch'] * 5}"
         )
+        replay_parent_depth = bug.get("replay_parent_depth", 0)
+        replay_context = "parent-snapshot-required" if replay_parent_depth > 0 else "schedule-only-replay"
+        if replay_status == "known-gap":
+            replay_context = f"{replay_context}-insufficient"
         bug_reports.append({
             "path": str(bug_path),
             "assertion_id": bug["assertion_id"],
             "tick": bug["tick"],
+            "replay_parent_depth": replay_parent_depth,
+            "replay_context": replay_context,
             "replay_status": replay_status,
             "replay_attempt": {
                 "command": command,

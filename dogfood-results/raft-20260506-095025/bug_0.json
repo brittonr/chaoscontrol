@@ -38,5 +38,6 @@
   "dedup_key": 5108607881142393342,
   "schedule_variant": null,
   "scenario_config": null,
-  "scenario_summary": null
+  "scenario_summary": null,
+  "replay_parent_depth": 0
 }

@@ -7,6 +7,7 @@ let FaultSchedule = { faults | Array Dyn } in
   assertion_location | NonEmptyString,
   schedule | FaultSchedule,
   tick | Number,
+  replay_parent_depth | Number,
   dedup_key | Number,
   schedule_variant | Dyn,
   scenario_config | Dyn,

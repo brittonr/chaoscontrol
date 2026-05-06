@@ -124,13 +124,14 @@ impl Minimizer {
             original_total, self.bug.assertion_id
         );
 
-        // Bootstrap the controller
+        // Bootstrap the controller, unless the bug report already carries
+        // the parent snapshot that started the failing branch.
         self.ensure_controller()?;
-        let bootstrap_snapshot = self.bootstrap()?;
+        let replay_snapshot = self.replay_start_snapshot()?;
 
         // Verify the full schedule actually triggers the bug
         let all_indices: Vec<usize> = (0..original_total).collect();
-        if !self.triggers_bug(&bootstrap_snapshot, &all_indices)? {
+        if !self.triggers_bug(&replay_snapshot, &all_indices)? {
             info!("Full schedule does not trigger bug — cannot minimize");
             return Ok(MinimizeResult {
                 schedule: self.bug.schedule.clone(),
@@ -147,7 +148,7 @@ impl Minimizer {
         );
 
         // Delta debugging (ddmin)
-        let minimized_indices = self.ddmin(&bootstrap_snapshot, all_indices)?;
+        let minimized_indices = self.ddmin(&replay_snapshot, all_indices)?;
 
         let minimized_schedule = self.bug.schedule.subset(&minimized_indices);
         let minimized_count = minimized_schedule.total();
@@ -344,6 +345,18 @@ impl Minimizer {
 
         Ok(snapshot)
     }
+
+    fn replay_start_snapshot(&mut self) -> Result<SimulationSnapshot, ExploreError> {
+        if let Some(snapshot) = self.bug.snapshot.clone() {
+            info!(
+                "Using saved replay parent snapshot at depth {}",
+                self.bug.replay_parent_depth
+            );
+            return Ok(snapshot);
+        }
+
+        self.bootstrap()
+    }
 }
 
 #[cfg(test)]
@@ -351,10 +364,10 @@ mod tests {
     use super::*;
     use chaoscontrol_fault::faults::Fault;
     use chaoscontrol_fault::schedule::ScheduledFault;
+    use rand::SeedableRng;
 
-    #[test]
-    fn test_minimize_config_defaults() {
-        let config = MinimizeConfig {
+    fn test_config() -> MinimizeConfig {
+        MinimizeConfig {
             num_vms: 3,
             vm_config: VmConfig::default(),
             kernel_path: "vmlinux".into(),
@@ -366,9 +379,70 @@ mod tests {
             disk_image_path: None,
             bootstrap_budget: 10_000,
             coverage_gpa: 0xE0000,
+        }
+    }
+
+    fn dummy_snapshot(tick: u64) -> SimulationSnapshot {
+        let network_state = chaoscontrol_vmm::controller::NetworkFabric {
+            partitions: Vec::new(),
+            latency: vec![0, 0],
+            jitter: vec![0, 0],
+            bandwidth_bps: vec![0, 0],
+            next_free_tick: vec![0, 0],
+            in_flight: Vec::new(),
+            packet_in_flight: Vec::new(),
+            loss_rate_ppm: Vec::new(),
+            corruption_rate_ppm: Vec::new(),
+            reorder_window: Vec::new(),
+            duplicate_rate_ppm: Vec::new(),
+            rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
+            stats: Default::default(),
         };
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
+
+        SimulationSnapshot {
+            tick,
+            vm_snapshots: Vec::new(),
+            network_state,
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: vec![],
+            clock_freeze: vec![],
+            clock_jitter_bound: vec![],
+        }
+    }
+
+    fn bug_with_snapshot(snapshot: Option<SimulationSnapshot>) -> BugReport {
+        BugReport {
+            bug_id: 7,
+            assertion_id: 42,
+            assertion_location: "assertion".into(),
+            schedule: FaultSchedule::new(),
+            snapshot,
+            tick: 123,
+            replay_parent_depth: 2,
+            dedup_key: 0,
+            schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
+        }
+    }
+
+    #[test]
+    fn test_minimize_config_defaults() {
+        let config = test_config();
         assert_eq!(config.num_vms, 3);
         assert_eq!(config.seed, 42);
+    }
+
+    #[test]
+    fn replay_start_snapshot_prefers_saved_parent_snapshot() {
+        let expected = dummy_snapshot(99);
+        let mut minimizer = Minimizer::new(test_config(), bug_with_snapshot(Some(expected)));
+
+        let replay_snapshot = minimizer.replay_start_snapshot().unwrap();
+
+        assert_eq!(replay_snapshot.tick, 99);
+        assert!(minimizer.controller.is_none());
     }
 
     #[test]

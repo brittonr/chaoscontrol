@@ -691,6 +691,7 @@ impl Explorer {
                     enriched_result.clone(),
                     schedule.clone(),
                     new_edges,
+                    snapshot.as_ref(),
                     parent_depth + 1,
                 );
 
@@ -705,7 +706,8 @@ impl Explorer {
                 }
             }
 
-            let branch_bugs = self.extract_bugs(&result, &schedule, parent_depth);
+            let branch_bugs =
+                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth);
             bugs_found += branch_bugs.len();
 
             if !branch_bugs.is_empty() {
@@ -796,6 +798,7 @@ impl Explorer {
                 enriched_probe.clone(),
                 base_schedule.clone(),
                 probe_new,
+                snapshot.as_ref(),
                 parent_depth + 1,
             );
             if let Some(snap) = probe_result.snapshot.clone() {
@@ -895,6 +898,7 @@ impl Explorer {
                     enriched_result.clone(),
                     base_schedule.clone(),
                     new_edges,
+                    snapshot.as_ref(),
                     parent_depth + 1,
                 );
 
@@ -910,7 +914,8 @@ impl Explorer {
             }
 
             // Check for bugs
-            let branch_bugs = self.extract_bugs(&result, &base_schedule, parent_depth);
+            let branch_bugs =
+                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth);
             bugs_found += branch_bugs.len();
 
             if !branch_bugs.is_empty() {
@@ -1298,6 +1303,7 @@ impl Explorer {
         &mut self,
         result: &BranchResult,
         schedule: &FaultSchedule,
+        replay_snapshot: Option<&SimulationSnapshot>,
         replay_parent_depth: u32,
     ) -> Vec<BugReport> {
         let mut bugs = Vec::new();
@@ -1325,7 +1331,7 @@ impl Explorer {
                     assertion_id: *assertion_id as u64,
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
-                    snapshot: result.snapshot.clone(),
+                    snapshot: replay_snapshot.cloned(),
                     tick: result.total_ticks,
                     replay_parent_depth,
                     dedup_key,
@@ -1477,10 +1483,11 @@ impl Explorer {
         result: BranchResult,
         schedule: FaultSchedule,
         new_edges: usize,
+        replay_snapshot: Option<&SimulationSnapshot>,
         depth: u32,
     ) {
         let replay_parent_depth = depth.saturating_sub(1);
-        let bugs = self.extract_bugs(&result, &schedule, replay_parent_depth);
+        let bugs = self.extract_bugs(&result, &schedule, replay_snapshot, replay_parent_depth);
 
         let entry = CorpusEntry {
             id: 0, // Will be assigned by corpus

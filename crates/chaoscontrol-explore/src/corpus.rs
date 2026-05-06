@@ -16,7 +16,7 @@ pub struct BugReport {
     pub assertion_location: String,
     /// The fault schedule that triggered it.
     pub schedule: FaultSchedule,
-    /// Snapshot at the time of failure (for reproduction).
+    /// Parent snapshot used to start the failing branch (for reproduction).
     pub snapshot: Option<SimulationSnapshot>,
     /// Tick when the bug was found.
     pub tick: u64,

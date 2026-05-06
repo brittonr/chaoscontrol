@@ -98,7 +98,8 @@ pub use campaign::{
     CampaignReport, CampaignRunner, SerializableCampaignConfig,
 };
 pub use checkpoint::{
-    load_checkpoint, save_checkpoint, CheckpointConfig, CheckpointError, ExplorationCheckpoint,
+    export_checkpoint_bugs, load_checkpoint, save_checkpoint, CheckpointBugExportError,
+    CheckpointBugExportSummary, CheckpointConfig, CheckpointError, ExplorationCheckpoint,
     SerializableBug, SerializableFault, SerializableSchedule, SerializableScheduledFault,
 };
 pub use corpus::{BugReport, Corpus, CorpusEntry, CorpusStats};

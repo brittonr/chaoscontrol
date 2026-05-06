@@ -1869,7 +1869,7 @@ impl Explorer {
         fs::create_dir_all(dir)?;
 
         let checkpoint_path = format!("{}/checkpoint.json", dir);
-        let checkpoint = self.create_checkpoint();
+        let checkpoint = self.create_checkpoint(dir)?;
         save_checkpoint(&checkpoint_path, &checkpoint)?;
 
         info!("Checkpoint saved to {}", checkpoint_path);
@@ -1877,7 +1877,10 @@ impl Explorer {
     }
 
     /// Create a checkpoint from the current state.
-    fn create_checkpoint(&self) -> ExplorationCheckpoint {
+    fn create_checkpoint(
+        &self,
+        output_dir: &str,
+    ) -> Result<ExplorationCheckpoint, CheckpointError> {
         let config = CheckpointConfig {
             num_vms: self.config.num_vms,
             kernel_path: self.config.kernel_path.clone(),
@@ -1900,9 +1903,29 @@ impl Explorer {
             scenario: self.config.scenario.clone(),
         };
 
-        let bugs: Vec<SerializableBug> = self.all_bugs().iter().map(|b| b.into()).collect();
+        let snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
+        let mut bugs = Vec::new();
+        for bug in self.all_bugs() {
+            let mut serialized: SerializableBug = (&bug).into();
+            if serialized.replay_parent_snapshot_ref.is_none() {
+                if let Some(snapshot) = bug.snapshot.as_ref() {
+                    let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
+                        &snapshot_store,
+                        snapshot,
+                        bug.replay_parent_depth,
+                    )?;
+                    serialized.replay_parent_snapshot_ref = Some(reference);
+                } else if bug.replay_parent_depth > 0 {
+                    return Err(CheckpointError::MissingRequiredReplayParentSnapshot {
+                        bug_id: bug.bug_id,
+                        replay_parent_depth: bug.replay_parent_depth,
+                    });
+                }
+            }
+            bugs.push(serialized);
+        }
 
-        ExplorationCheckpoint {
+        Ok(ExplorationCheckpoint {
             config,
             global_coverage: self.coverage.global_coverage().as_slice().to_vec(),
             bugs,
@@ -1914,7 +1937,7 @@ impl Explorer {
             seen_dedup_keys: Some(self.seen_dedup_keys.iter().copied().collect()),
             scenario: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
-        }
+        })
     }
 
     /// Create an Explorer from a checkpoint, optionally overriding config fields.

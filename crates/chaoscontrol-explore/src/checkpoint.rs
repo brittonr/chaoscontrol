@@ -12,13 +12,13 @@
 //! re-explore known territory.
 
 use crate::corpus::BugReport;
-use crate::snapshot_store::ReplayParentSnapshotRef;
+use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Errors from checkpoint operations.
 #[derive(Debug, Snafu)]
@@ -28,6 +28,19 @@ pub enum CheckpointError {
 
     #[snafu(display("JSON error"), context(false))]
     Json { source: serde_json::Error },
+
+    #[snafu(display("snapshot store error"), context(false))]
+    SnapshotStore {
+        source: crate::snapshot_store::SnapshotStoreError,
+    },
+
+    #[snafu(display(
+        "bug {bug_id} requires replay parent snapshot depth {replay_parent_depth}, but no parent snapshot is available"
+    ))]
+    MissingRequiredReplayParentSnapshot {
+        bug_id: u64,
+        replay_parent_depth: u32,
+    },
 }
 
 /// Configuration subset needed to resume exploration.
@@ -638,6 +651,82 @@ pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<ExplorationCheckpoint,
     Ok(checkpoint)
 }
 
+#[derive(Debug, Snafu)]
+pub enum CheckpointBugExportError {
+    #[snafu(display("checkpoint error"), context(false))]
+    Checkpoint { source: CheckpointError },
+
+    #[snafu(display("I/O error"), context(false))]
+    Io { source: std::io::Error },
+
+    #[snafu(display("JSON error"), context(false))]
+    Json { source: serde_json::Error },
+
+    #[snafu(display("snapshot store error"), context(false))]
+    SnapshotStore {
+        source: crate::snapshot_store::SnapshotStoreError,
+    },
+
+    #[snafu(display(
+        "checkpoint bug {bug_id} requires replay parent snapshot depth {replay_parent_depth}, but has no replay_parent_snapshot_ref"
+    ))]
+    MissingRequiredSnapshotRef {
+        bug_id: u64,
+        replay_parent_depth: u32,
+    },
+
+    #[snafu(display("bug artifact already exists: {}", path.display()))]
+    AlreadyExists { path: PathBuf },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CheckpointBugExportSummary {
+    pub bugs_written: usize,
+    pub snapshot_refs_validated: usize,
+}
+
+/// Export checkpoint-held bug reports as `bug_N.json` artifacts.
+///
+/// This is a finalization path for interrupted/resumed campaigns where bugs
+/// reached `checkpoint.json` before the normal end-of-run artifact writer ran.
+/// Existing replay parent snapshot refs are validated against the output store;
+/// bugs with `replay_parent_depth > 0` must already carry a durable ref.
+pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
+    checkpoint_path: P,
+    output_dir: Q,
+    overwrite: bool,
+) -> Result<CheckpointBugExportSummary, CheckpointBugExportError> {
+    let checkpoint = load_checkpoint(checkpoint_path)?;
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir)?;
+    let snapshot_store = FileSnapshotStore::new(output_dir);
+
+    let mut snapshot_refs_validated = 0;
+    for (index, bug) in checkpoint.bugs.iter().enumerate() {
+        if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
+            snapshot_store.get_snapshot_artifact(reference)?;
+            snapshot_refs_validated += 1;
+        } else if bug.replay_parent_depth > 0 {
+            return Err(CheckpointBugExportError::MissingRequiredSnapshotRef {
+                bug_id: bug.bug_id,
+                replay_parent_depth: bug.replay_parent_depth,
+            });
+        }
+
+        let path = output_dir.join(format!("bug_{index}.json"));
+        if path.exists() && !overwrite {
+            return Err(CheckpointBugExportError::AlreadyExists { path });
+        }
+        let json = serde_json::to_string_pretty(bug)?;
+        fs::write(path, json)?;
+    }
+
+    Ok(CheckpointBugExportSummary {
+        bugs_written: checkpoint.bugs.len(),
+        snapshot_refs_validated,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1007,5 +1096,96 @@ mod tests {
         assert!(checkpoint.scenario.is_none());
         assert!(checkpoint.scenario_summary.is_none());
         assert!(checkpoint.config.scenario.is_none());
+    }
+
+    fn minimal_checkpoint_with_bugs(bugs: Vec<SerializableBug>) -> ExplorationCheckpoint {
+        ExplorationCheckpoint {
+            config: CheckpointConfig {
+                num_vms: 2,
+                kernel_path: "k".to_string(),
+                initrd_path: None,
+                seed: 1,
+                branch_factor: 8,
+                ticks_per_branch: 1000,
+                max_rounds: 10,
+                max_frontier: 50,
+                quantum: 100,
+                coverage_gpa: 0xE0000,
+                disk_image_path: None,
+                bootstrap_budget: 10_000,
+                schedule_diversity: false,
+                schedule_mutation_ratio: 0.0,
+                rare_edge_threshold: None,
+                rare_edge_weight: None,
+                havoc_after_stale: None,
+                havoc_mutations: None,
+                scenario: None,
+            },
+            global_coverage: vec![],
+            bugs,
+            rounds_completed: 1,
+            total_branches_run: 8,
+            total_edges: 10,
+            seed: 1,
+            round_history: None,
+            seen_dedup_keys: None,
+            scenario: None,
+            scenario_summary: None,
+        }
+    }
+
+    fn minimal_bug(bug_id: u64) -> SerializableBug {
+        SerializableBug {
+            bug_id,
+            assertion_id: bug_id + 100,
+            assertion_location: "test.rs:1".into(),
+            schedule: SerializableSchedule { faults: Vec::new() },
+            tick: 1000,
+            replay_parent_depth: 0,
+            replay_parent_snapshot_ref: None,
+            dedup_key: Some(bug_id),
+            schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
+        }
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_writes_indexed_bug_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(41), minimal_bug(99)]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs(&checkpoint_path, &out, true).unwrap();
+
+        assert_eq!(summary.bugs_written, 2);
+        assert_eq!(summary.snapshot_refs_validated, 0);
+        let bug0: SerializableBug =
+            serde_json::from_str(&fs::read_to_string(out.join("bug_0.json")).unwrap()).unwrap();
+        let bug1: SerializableBug =
+            serde_json::from_str(&fs::read_to_string(out.join("bug_1.json")).unwrap()).unwrap();
+        assert_eq!(bug0.bug_id, 41);
+        assert_eq!(bug1.bug_id, 99);
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_rejects_required_missing_snapshot_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let mut bug = minimal_bug(7);
+        bug.replay_parent_depth = 2;
+        let checkpoint = minimal_checkpoint_with_bugs(vec![bug]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let err = export_checkpoint_bugs(&checkpoint_path, dir.path(), true).unwrap_err();
+        assert!(matches!(
+            err,
+            CheckpointBugExportError::MissingRequiredSnapshotRef {
+                bug_id: 7,
+                replay_parent_depth: 2,
+            }
+        ));
     }
 }

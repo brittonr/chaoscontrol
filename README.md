@@ -183,10 +183,14 @@ cargo run --release --bin chaoscontrol-explore -- run \
 # Resume from checkpoint
 cargo run --release --bin chaoscontrol-explore -- resume \
   --corpus results/ --rounds 500
+
+# Finalize an interrupted checkpoint that already contains bugs but no bug_N.json files
+cargo run --release --bin chaoscontrol-explore -- export-bugs \
+  --checkpoint results/checkpoint.json --output results/
 ```
 
 Output directory contains:
-- `checkpoint.json` — resumable exploration state
+- `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — per-assertion verdicts and hit counts
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)

@@ -41,7 +41,7 @@
 use chaoscontrol_explore::campaign::{
     generate_seeds, load_campaign_progress, CampaignConfig, CampaignRunner,
 };
-use chaoscontrol_explore::checkpoint::load_checkpoint;
+use chaoscontrol_explore::checkpoint::{export_checkpoint_bugs, load_checkpoint};
 use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
@@ -526,6 +526,24 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
     },
+
+    /// Export checkpoint-held bugs as standalone bug_N.json artifacts.
+    ///
+    /// This finalizes interrupted runs whose `checkpoint.json` contains bugs
+    /// before the normal end-of-run artifact writer emitted bug files.
+    ExportBugs {
+        /// Path to checkpoint.json.
+        #[arg(short, long)]
+        checkpoint: String,
+
+        /// Output directory for bug_N.json artifacts (defaults to checkpoint parent).
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Refuse to overwrite existing bug_N.json files.
+        #[arg(long)]
+        no_overwrite: bool,
+    },
 }
 
 fn main() {
@@ -705,6 +723,11 @@ fn main() {
             min_assertion_exercise,
         ),
         Commands::CampaignResume { corpus, rounds } => cmd_campaign_resume(corpus, rounds),
+        Commands::ExportBugs {
+            checkpoint,
+            output,
+            no_overwrite,
+        } => cmd_export_bugs(checkpoint, output, !no_overwrite),
         Commands::Resume {
             corpus,
             kernel,
@@ -740,6 +763,41 @@ fn main() {
             bootstrap_budget,
             output,
         ),
+    }
+}
+
+fn cmd_export_bugs(checkpoint: String, output: Option<String>, overwrite: bool) {
+    let checkpoint_path = Path::new(&checkpoint);
+    if !checkpoint_path.exists() {
+        eprintln!("Error: checkpoint file not found: {}", checkpoint);
+        std::process::exit(1);
+    }
+
+    let output_dir = output.unwrap_or_else(|| {
+        checkpoint_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_string_lossy()
+            .into_owned()
+    });
+
+    match export_checkpoint_bugs(&checkpoint, &output_dir, overwrite) {
+        Ok(summary) => {
+            eprintln!(
+                "Exported {} checkpoint bug artifact(s) to {}",
+                summary.bugs_written, output_dir
+            );
+            if summary.snapshot_refs_validated > 0 {
+                eprintln!(
+                    "Validated {} replay parent snapshot reference(s)",
+                    summary.snapshot_refs_validated
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("Error: failed to export checkpoint bugs: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 

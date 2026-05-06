@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "command": "cargo run -p chaoscontrol-explore --bin chaoscontrol-explore -- export-bugs --checkpoint dogfood-results/raft-20260506-095025/checkpoint.json --output <tempdir>",
+  "source_checkpoint": "dogfood-results/raft-20260506-095025/checkpoint.json",
+  "command_success": true,
+  "exported_bug_count": 1,
+  "exported_bug_ids": [
+    0
+  ],
+  "exported_assertion_ids": [
+    1205943209
+  ],
+  "exported_replay_parent_depths": [
+    0
+  ],
+  "exported_snapshot_refs": 0,
+  "matches_existing_committed_bug_0_json": true,
+  "stdout": "",
+  "stderr_summary": "Exported 1 checkpoint bug artifact(s) to <tempdir>",
+  "note": "Live smoke of first-class export-bugs against a real committed checkpoint. The temp exported artifact was not committed because its parsed JSON matches the existing committed bug_0.json. Raw build output and temp artifact were discarded."
+}

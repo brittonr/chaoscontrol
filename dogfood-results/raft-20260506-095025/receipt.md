@@ -84,6 +84,18 @@ python scripts/check-evidence-contracts.py
 
 The receipt status is `known-gap`; each reported bug has an explicit replay attempt plus replay context. For this pre-hardening artifact, `replay_context` is `schedule-only-replay-insufficient`: the saved schedule alone is not enough deterministic context to reproduce the assertion.
 
+## Export-bugs smoke
+
+After `chaoscontrol-explore export-bugs` landed, the first-class checkpoint bug export path was smoke-tested against this committed checkpoint:
+
+```bash
+cargo run -p chaoscontrol-explore --bin chaoscontrol-explore -- export-bugs \
+  --checkpoint dogfood-results/raft-20260506-095025/checkpoint.json \
+  --output <tempdir>
+```
+
+The command exported 1 bug artifact. The parsed temp `bug_0.json` matched the existing committed `bug_0.json`; the temp artifact and raw build output were discarded. See `export-bugs-smoke.json`.
+
 ## Artifacts
 
 - `receipt.json` — contract-backed machine receipt with config digest, artifact hashes, replay attempt, assertion coverage, checkpoint reference, and raw-log policy
@@ -92,4 +104,5 @@ The receipt status is `known-gap`; each reported bug has an explicit replay atte
 - `checkpoint.json` — exploration checkpoint with saved global state and bug list
 - `assertions.json` — per-assertion verdict/hit counts
 - `bug_0.json` — saved bug schedule
+- `export-bugs-smoke.json` — live first-class export smoke against the committed checkpoint
 - `run.log` and `reproduce.log` — local raw logs, intentionally excluded from git because they are noisy serial output

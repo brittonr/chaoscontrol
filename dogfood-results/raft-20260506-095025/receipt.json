@@ -26,7 +26,7 @@
     },
     {
       "path": "dogfood-results/raft-20260506-095025/receipt.md",
-      "sha256": "sha256:43f222e81bbe71bfab915ad13c8084434d577bc58d7c8e10f357e684c3ed5128"
+      "sha256": "sha256:57fdfdea3828a47c348cb8c4be67e9c3423130d11ef42f799ab97c9d374c0298"
     },
     {
       "path": "dogfood-results/raft-20260506-095025/run-config.json",
@@ -35,6 +35,10 @@
     {
       "path": "dogfood-results/raft-20260506-095025/bug_0.json",
       "sha256": "sha256:d6d4329f9310fb7da56ae7c2a5d790b619b06af74a72e79877153621ddefcf5d"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/export-bugs-smoke.json",
+      "sha256": "sha256:4f1053a7d6a8cad34094da14b5ef706709cc0d989bfd62ee37415932064a89f9"
     }
   ],
   "assertion_coverage": {

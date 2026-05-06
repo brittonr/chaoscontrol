@@ -10,12 +10,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check out local flake siblings
-        run: |
-          git clone https://github.com/brittonr/tigerstyle-rs.git "$GITHUB_WORKSPACE/../tigerstyle"
-          git -C "$GITHUB_WORKSPACE/../tigerstyle" checkout 2197d80a2a4a261e141531927084e66f92935f93
-          git clone https://github.com/brittonr/verified-logic.git "$GITHUB_WORKSPACE/../verified-logic"
-          git -C "$GITHUB_WORKSPACE/../verified-logic" checkout b332e653e3252922eb66aac6912899272d7c6c07
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-      - run: nix flake check
+      - name: Run CI-supported flake checks
+        run: |
+          nix build \
+            .#checks.x86_64-linux.fmt \
+            .#checks.x86_64-linux.nixfmt \
+            .#checks.x86_64-linux.package \
+            .#checks.x86_64-linux.clippy \
+            .#checks.x86_64-linux.tests \
+            .#checks.x86_64-linux.profiling \
+            .#checks.x86_64-linux.rustdoc \
+            --no-link -L

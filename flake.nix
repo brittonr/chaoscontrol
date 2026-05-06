@@ -57,6 +57,14 @@
               || (builtins.match ".*\\.html$" path != null);
           };
 
+          tigerstyleSrc = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type:
+              (craneLib.filterCargoSources path type)
+              || builtins.baseNameOf path == "dylint.toml";
+          };
+
           # Common build arguments shared across all crane invocations
           commonArgs = {
             inherit src;
@@ -421,6 +429,14 @@
 
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
+            tigerstyle-chaoscontrol-fault = tigerstyle.lib.mkConsumerCheck {
+              inherit system;
+              src = tigerstyleSrc;
+              cargoLock = ./Cargo.lock;
+              nativeBuildInputs = [ pkgs.stdenv.cc ];
+              packages = [ "chaoscontrol-fault" ];
+              cargoExtraArgs = "--lib";
+            };
             verified-logic-verus-proofs = verified-logic.checks.${system}.verus-proofs;
 
             # Simulation tests live in packages, not checks — they take

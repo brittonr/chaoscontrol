@@ -21,3 +21,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["ChaosControl Contributors"]
 license = "Apache-2.0"
+
+[workspace.metadata.tigerstyle]
+default_scope = ["-p", "chaoscontrol-fault"]
+cargo_check_args = ["--lib"]

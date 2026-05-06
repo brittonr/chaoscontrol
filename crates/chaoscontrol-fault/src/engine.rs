@@ -254,7 +254,7 @@ impl FaultEngine {
             CMD_LIFECYCLE_SEND_EVENT => {
                 let (name, json_details) = self.decode_event(page);
                 let details = serde_json::from_slice::<serde_json::Value>(&json_details)
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
                 self.oracle.record_event(&name, details);
                 (0, STATUS_OK)
             }

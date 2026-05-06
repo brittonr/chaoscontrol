@@ -1,0 +1,45 @@
+[tigerstyle]
+# Focused first-pass gate for ChaosControl-owned production code.
+# Keep noisy legacy families disabled until each crate is intentionally drained.
+disabled_lints = [
+  "function_length",
+  "acronym_style",
+  "numeric_units",
+  "unbounded_loop",
+  "compound_condition",
+  "verified_purity",
+  "unjustified_allow",
+  "nested_conditionals",
+  "assertion_density",
+  "multi_lock_ordering",
+  "unbounded_collection_growth",
+  "sentinel_fallback",
+  "too_many_parameters",
+  "bool_naming",
+  "ignored_result",
+  "unchecked_narrowing",
+  "unchecked_division",
+  "catch_all_on_enum",
+  "platform_dependent_cast",
+  "borrowed_argument_types",
+  "deref_polymorphism",
+  "float_for_currency",
+  "ambiguous_params",
+  "raw_arithmetic_overflow",
+  "no_unwrap",
+  "no_panic",
+  "no_todo",
+  "unjustified_no_todo_allow",
+  "no_recursion",
+  "public_unsafe_api",
+  "usize_in_public_api",
+]
+
+[tigerstyle.lint_levels]
+ambient_clock = "deny"
+clone_then_borrow = "deny"
+compound_assertion = "deny"
+contradictory_time = "deny"
+explicit_defaults = "deny"
+negated_predicate = "deny"
+unbounded_channel = "deny"

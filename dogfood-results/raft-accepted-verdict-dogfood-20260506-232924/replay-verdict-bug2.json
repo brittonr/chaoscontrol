@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778111106311",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "target/debug/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/qivwcxa35pmx138c39q23c9vh07i81ss-chaoscontrol-initrd-raft --bug dogfood-results/raft-accepted-verdict-dogfood-20260506-232924/bug_2.json --vms 3 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25 --verdict-output dogfood-results/raft-accepted-verdict-dogfood-20260506-232924/replay-verdict-bug2.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED — assertion 1806003755 failed",
+  "bug_path": "dogfood-results/raft-accepted-verdict-dogfood-20260506-232924/bug_2.json",
+  "bug_id": 2,
+  "assertion_id": 1806003755,
+  "replay_parent_depth": 2,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:134da60ecff8251d3ff2db6aaf573d083fbb7b84e9e66c8660e5da57283b8bc2",
+      "codec": "simulation-snapshot-bincode-zstd-v1",
+      "schema_version": 1,
+      "path": "snapshots/134da60ecff8251d3ff2db6aaf573d083fbb7b84e9e66c8660e5da57283b8bc2.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260506-232924/bug_2.json",
+      "sha256": "sha256:a87fcc468287838c8b1b20920c0e5a6612b7b92fa571af8cbd6122c74c9910c7"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260506-232924/snapshots/134da60ecff8251d3ff2db6aaf573d083fbb7b84e9e66c8660e5da57283b8bc2.snapshot.bin",
+      "sha256": "sha256:134da60ecff8251d3ff2db6aaf573d083fbb7b84e9e66c8660e5da57283b8bc2"
+    }
+  ]
+}

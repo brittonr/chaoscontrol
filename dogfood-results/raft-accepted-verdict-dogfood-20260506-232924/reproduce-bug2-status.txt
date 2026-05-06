@@ -1,0 +1,2 @@
+0
+BUG REPRODUCED — assertion 1806003755 failed

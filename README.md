@@ -228,6 +228,16 @@ nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 
 It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
 
+For a durable dogfood bundle outside the Nix smoke wrapper, use the bounded retry helper and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
+
+```bash
+python scripts/accepted-snapshot-verdict-dogfood.py \
+  --explore target/debug/chaoscontrol-explore \
+  --kernel /nix/store/...-chaoscontrol-vmlinux/vmlinux \
+  --initrd /nix/store/...-chaoscontrol-initrd-raft \
+  --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
+```
+
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
 Validate the committed evidence bundle with:

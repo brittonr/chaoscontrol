@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "source": "checkpoint.json",
+  "run_id": "raft-accepted-verdict-dogfood-20260506-232924",
+  "config": {
+    "seed": 42,
+    "num_vms": 3,
+    "max_rounds": 3,
+    "branch_factor": 2,
+    "ticks_per_branch": 80
+  },
+  "bug_count": 4,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 1806003755,
+      "tick": 1244,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_1.json",
+      "assertion_id": 1806003755,
+      "tick": 1244,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_2.json",
+      "assertion_id": 1806003755,
+      "tick": 1404,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_3.json",
+      "assertion_id": 1806003755,
+      "tick": 1404,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    }
+  ],
+  "checkpoint_digest": "sha256:8d9f5a11e8d979f6d3e349ab879cf76babd31bbe4cfdabadae813711e1d987be"
+}

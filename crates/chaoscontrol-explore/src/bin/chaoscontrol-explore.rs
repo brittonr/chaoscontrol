@@ -46,7 +46,9 @@ use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
 use chaoscontrol_explore::mutator::MutationConfig;
-use chaoscontrol_explore::report::{format_campaign_report, format_report};
+use chaoscontrol_explore::report::{
+    format_campaign_report, format_report, min_assertion_exercise_failures,
+};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_protocol::COVERAGE_BITMAP_ADDR;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
@@ -220,6 +222,19 @@ enum Commands {
         /// Number of helical turns (one turn = one target rotation).
         #[arg(long, default_value = "6")]
         scenario_turns: usize,
+
+        /// Minimum exercised assertions required per guest/category group.
+        /// Exits with status 3 after writing artifacts when any group is below the floor.
+        #[arg(long, default_value = "0")]
+        min_assertion_exercise: usize,
+
+        /// Emit one JSON metrics line after each completed round.
+        #[arg(long)]
+        emit_metrics: bool,
+
+        /// Write JSON metrics lines to this file instead of stderr.
+        #[arg(long)]
+        metrics_file: Option<String>,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -464,6 +479,11 @@ enum Commands {
         /// Number of helical turns.
         #[arg(long, default_value = "6")]
         scenario_turns: usize,
+
+        /// Minimum exercised assertions required per guest/category group.
+        /// Exits with status 3 after writing artifacts when any group is below the floor.
+        #[arg(long, default_value = "0")]
+        min_assertion_exercise: usize,
     },
 
     /// Resume a multi-seed campaign from checkpoint.
@@ -548,6 +568,9 @@ fn main() {
             scenario,
             scenario_phase_ticks,
             scenario_turns,
+            min_assertion_exercise,
+            emit_metrics,
+            metrics_file,
         } => cmd_run(
             kernel,
             initrd,
@@ -581,6 +604,9 @@ fn main() {
             scenario,
             scenario_phase_ticks,
             scenario_turns,
+            min_assertion_exercise,
+            emit_metrics,
+            metrics_file,
         ),
         Commands::Reproduce {
             kernel,
@@ -642,6 +668,7 @@ fn main() {
             scenario,
             scenario_phase_ticks,
             scenario_turns,
+            min_assertion_exercise,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -675,6 +702,7 @@ fn main() {
             scenario,
             scenario_phase_ticks,
             scenario_turns,
+            min_assertion_exercise,
         ),
         Commands::CampaignResume { corpus, rounds } => cmd_campaign_resume(corpus, rounds),
         Commands::Resume {
@@ -749,6 +777,9 @@ fn cmd_run(
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
+    min_assertion_exercise: usize,
+    emit_metrics: bool,
+    metrics_file: Option<String>,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -870,6 +901,8 @@ fn cmd_run(
             havoc_mutations.get(1).copied().unwrap_or(16),
         ],
         scenario: scenario_config.clone(),
+        emit_metrics,
+        metrics_file: metrics_file.clone().map(std::path::PathBuf::from),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -903,6 +936,12 @@ fn cmd_run(
     }
     if let Some(ref output_dir) = output {
         eprintln!("  Output:         {}", output_dir);
+    }
+    if emit_metrics {
+        eprintln!(
+            "  Metrics:        {}",
+            metrics_file.as_deref().unwrap_or("stderr")
+        );
     }
     if let Some(ref sc) = scenario_config {
         eprintln!(
@@ -1022,6 +1061,16 @@ fn cmd_run(
         }
     }
 
+    let floor_failures =
+        min_assertion_exercise_failures(&report.assertion_details, min_assertion_exercise);
+    if floor_failures > 0 {
+        eprintln!(
+            "Assertion exercise floor failed: {} guest/category group(s) below {} exercised assertions",
+            floor_failures, min_assertion_exercise
+        );
+        std::process::exit(3);
+    }
+
     // Exit with error code if bugs found
     if !report.bugs.is_empty() {
         std::process::exit(1);
@@ -1079,10 +1128,11 @@ fn cmd_campaign(
     strict_memory: bool,
     auto_minimize: bool,
     dashboard: bool,
-    dashboard_port: u16,
+    _dashboard_port: u16,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
+    min_assertion_exercise: usize,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -1216,6 +1266,8 @@ fn cmd_campaign(
             havoc_mutations.get(1).copied().unwrap_or(16),
         ],
         scenario: scenario_config,
+        emit_metrics: false,
+        metrics_file: None,
     };
 
     let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
@@ -1297,6 +1349,16 @@ fn cmd_campaign(
                 }
             }
 
+            let floor_failures =
+                min_assertion_exercise_failures(&report.assertion_details, min_assertion_exercise);
+            if floor_failures > 0 {
+                eprintln!(
+                    "Assertion exercise floor failed: {} guest/category group(s) below {} exercised assertions",
+                    floor_failures, min_assertion_exercise
+                );
+                std::process::exit(3);
+            }
+
             // Exit code: 0 = bugs found, 1 = no bugs
             if report.bugs.is_empty() {
                 std::process::exit(1);
@@ -1363,6 +1425,16 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                     assertion_details: Vec::new(),
                     round_history: cp.round_history.unwrap_or_default(),
                     wall_clock_seconds: summary.wall_clock_seconds,
+                    branches_per_second: if summary.wall_clock_seconds > 0.0 {
+                        cp.total_branches_run as f64 / summary.wall_clock_seconds
+                    } else {
+                        0.0
+                    },
+                    edges_per_second: if summary.wall_clock_seconds > 0.0 {
+                        cp.total_edges as f64 / summary.wall_clock_seconds
+                    } else {
+                        0.0
+                    },
                     scenario_config: cp.scenario.clone(),
                     scenario_summary: cp.scenario_summary.clone(),
                 };

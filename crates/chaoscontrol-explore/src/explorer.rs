@@ -149,6 +149,10 @@ pub struct ExplorerConfig {
     /// schedule for each run is materialized from this scenario instead
     /// of being generated randomly.
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Emit one JSONL metrics record per exploration round.
+    pub emit_metrics: bool,
+    /// Optional JSONL metrics output path. Stdout is used when omitted.
+    pub metrics_file: Option<std::path::PathBuf>,
 }
 
 impl Default for ExplorerConfig {
@@ -182,6 +186,8 @@ impl Default for ExplorerConfig {
             havoc_after_stale: 0,
             havoc_mutations: [4, 16],
             scenario: None,
+            emit_metrics: false,
+            metrics_file: None,
         }
     }
 }
@@ -220,6 +226,7 @@ pub struct Explorer {
     consecutive_stale_rounds: u64,
     /// Materialized phase summary (stored at bootstrap time).
     scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
 }
 
 impl Explorer {
@@ -253,6 +260,7 @@ impl Explorer {
             standalone_bugs: Vec::new(),
             consecutive_stale_rounds: 0,
             scenario_summary: None,
+            metrics_sink: None,
         }
     }
 
@@ -288,6 +296,54 @@ impl Explorer {
             reason: reason.to_string(),
             from_seed: None,
         });
+    }
+
+    fn phase_totals_for(results: &[(BranchResult, FaultSchedule)]) -> BranchTimings {
+        results
+            .iter()
+            .fold(BranchTimings::default(), |mut total, (result, _)| {
+                total.restore_ms += result.timings.restore_ms;
+                total.run_ms += result.timings.run_ms;
+                total.snapshot_ms += result.timings.snapshot_ms;
+                total.coverage_ms += result.timings.coverage_ms;
+                total
+            })
+    }
+
+    fn emit_metrics_line(&mut self, line: &MetricsLine) {
+        if !self.config.emit_metrics {
+            return;
+        }
+
+        let Ok(json) = serde_json::to_string(line) else {
+            warn!("failed to serialize metrics line");
+            return;
+        };
+
+        if self.metrics_sink.is_none() {
+            if let Some(path) = &self.config.metrics_file {
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                {
+                    Ok(file) => self.metrics_sink = Some(std::io::BufWriter::new(file)),
+                    Err(e) => {
+                        warn!("failed to open metrics file {}: {}", path.display(), e);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if let Some(sink) = self.metrics_sink.as_mut() {
+            use std::io::Write;
+            if let Err(e) = writeln!(sink, "{}", json).and_then(|_| sink.flush()) {
+                warn!("failed to write metrics line: {}", e);
+            }
+        } else {
+            eprintln!("{}", json);
+        }
     }
 
     /// Run the full exploration loop.
@@ -425,9 +481,14 @@ impl Explorer {
                 cumulative_bugs: self.all_bugs().len(),
                 frontier_size: round_report.frontier_size,
                 corpus_size: self.corpus.stats().total_entries,
+                restore_ms: round_report.timings.restore_ms,
+                run_ms: round_report.timings.run_ms,
+                snapshot_ms: round_report.timings.snapshot_ms,
+                coverage_ms: round_report.timings.coverage_ms,
                 wall_clock_seconds: round_elapsed,
             };
             self.round_history.push(history_entry.clone());
+            self.emit_metrics_line(&MetricsLine::from_history(&history_entry));
 
             // Emit RoundComplete event for dashboard.
             self.emit_event(crate::dashboard_types::DashboardEvent::RoundComplete {
@@ -517,6 +578,10 @@ impl Explorer {
         // Generate final report
         let mut report = self.generate_report();
         report.wall_clock_seconds = run_start.elapsed().as_secs_f64();
+        if report.wall_clock_seconds > 0.0 {
+            report.branches_per_second = report.total_branches as f64 / report.wall_clock_seconds;
+            report.edges_per_second = report.total_edges as f64 / report.wall_clock_seconds;
+        }
         Ok(report)
     }
 
@@ -596,6 +661,7 @@ impl Explorer {
         };
 
         // Process results in deterministic order (by branch index).
+        let timings = Self::phase_totals_for(&results);
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found = 0;
@@ -655,6 +721,7 @@ impl Explorer {
             new_coverage_edges,
             bugs_found,
             frontier_size: self.frontier.len(),
+            timings,
         })
     }
 
@@ -686,6 +753,7 @@ impl Explorer {
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found = 0;
+        let mut timings = BranchTimings::default();
 
         // Select entry from frontier
         let (snapshot, base_schedule, parent_id, parent_depth) =
@@ -704,6 +772,10 @@ impl Explorer {
         // This uses the base schedule (no overrides) — same as the
         // parent run, but we record the choice history.
         let probe_result = self.run_branch(&snapshot, base_schedule.clone())?;
+        timings.restore_ms += probe_result.timings.restore_ms;
+        timings.run_ms += probe_result.timings.run_ms;
+        timings.snapshot_ms += probe_result.timings.snapshot_ms;
+        timings.coverage_ms += probe_result.timings.coverage_ms;
         branches_run += 1;
         self.total_branches_run += 1;
 
@@ -749,6 +821,7 @@ impl Explorer {
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: self.frontier.len(),
+                timings,
             });
         }
 
@@ -771,6 +844,7 @@ impl Explorer {
                 new_coverage_edges,
                 bugs_found,
                 frontier_size: self.frontier.len(),
+                timings,
             });
         }
 
@@ -795,6 +869,10 @@ impl Explorer {
 
             let result =
                 self.run_branch_with_overrides(&snapshot, base_schedule.clone(), per_vm_overrides)?;
+            timings.restore_ms += result.timings.restore_ms;
+            timings.run_ms += result.timings.run_ms;
+            timings.snapshot_ms += result.timings.snapshot_ms;
+            timings.coverage_ms += result.timings.coverage_ms;
             branches_run += 1;
             self.total_branches_run += 1;
 
@@ -852,6 +930,7 @@ impl Explorer {
             new_coverage_edges,
             bugs_found,
             frontier_size: self.frontier.len(),
+            timings,
         })
     }
 
@@ -907,6 +986,7 @@ impl Explorer {
             .collect();
         let total_ticks = controller.tick();
 
+        let _started = Instant::now();
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
                 self.coverage
@@ -954,6 +1034,7 @@ impl Explorer {
             snapshot: snap,
             schedule_variant: None,
             schedule_fingerprint: 0,
+            timings: BranchTimings::default(),
         })
     }
 
@@ -962,12 +1043,14 @@ impl Explorer {
     ///
     /// Reuses the cached controller to avoid re-booting the kernel per
     /// branch (5s saved per branch).
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     fn run_branch(
         &mut self,
         snapshot: &Option<SimulationSnapshot>,
         schedule: FaultSchedule,
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
+        let mut timings = BranchTimings::default();
 
         // Phase 1: restore + run (needs &mut controller)
         {
@@ -975,11 +1058,13 @@ impl Explorer {
 
             // Restore from snapshot if provided (rewinds VM state without reboot)
             if let Some(snap) = snapshot {
+                let started = Instant::now();
                 if !self.memory_bases.is_empty() {
                     controller.restore_all_incremental(snap)?;
                 } else {
                     controller.restore_all(snap)?;
                 }
+                timings.restore_ms += started.elapsed().as_secs_f64() * 1000.0;
                 // Reset all VMs to Running — snapshots may have been taken
                 // after idle detection paused a VM.
                 controller.reset_vm_statuses();
@@ -992,7 +1077,9 @@ impl Explorer {
             controller.clear_all_coverage();
 
             // Run for configured ticks
+            let started = Instant::now();
             controller.run(self.config.ticks_per_branch)?;
+            timings.run_ms += started.elapsed().as_secs_f64() * 1000.0;
         }
 
         // Phase 2: collect results (reborrow controller as immutable,
@@ -1006,6 +1093,7 @@ impl Explorer {
         let total_ticks = controller.tick();
 
         // Collect coverage from first VM
+        let started = Instant::now();
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
                 self.coverage
@@ -1016,10 +1104,12 @@ impl Explorer {
         } else {
             self.assertion_coverage(&result_info)
         };
+        timings.coverage_ms += started.elapsed().as_secs_f64() * 1000.0;
 
         // Use incremental snapshots when base memory is available.
         // This captures only the dirty pages (~1-5% of memory) instead
         // of copying all 256 MB per VM.
+        let started = Instant::now();
         let snap = if !self.memory_bases.is_empty() {
             controller
                 .snapshot_all_incremental()
@@ -1031,6 +1121,7 @@ impl Explorer {
         } else {
             controller.snapshot_all().ok()
         };
+        timings.snapshot_ms += started.elapsed().as_secs_f64() * 1000.0;
 
         let schedule_fingerprint = controller.schedule_fingerprint();
 
@@ -1045,6 +1136,7 @@ impl Explorer {
             snapshot: snap,
             schedule_variant: None,
             schedule_fingerprint,
+            timings,
         })
     }
 
@@ -1059,17 +1151,20 @@ impl Explorer {
         per_vm_overrides: &[BTreeMap<u64, u64>],
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
+        let mut timings = BranchTimings::default();
 
         // Phase 1: restore + set overrides + run
         {
             let controller = self.controller.as_mut().unwrap();
 
             if let Some(snap) = snapshot {
+                let started = Instant::now();
                 if !self.memory_bases.is_empty() {
                     controller.restore_all_incremental(snap)?;
                 } else {
                     controller.restore_all(snap)?;
                 }
+                timings.restore_ms += started.elapsed().as_secs_f64() * 1000.0;
                 controller.reset_vm_statuses();
             }
 
@@ -1083,7 +1178,9 @@ impl Explorer {
             }
 
             controller.clear_all_coverage();
+            let started = Instant::now();
             controller.run(self.config.ticks_per_branch)?;
+            timings.run_ms += started.elapsed().as_secs_f64() * 1000.0;
         }
 
         // Clear overrides to prevent leaking into subsequent branches
@@ -1101,6 +1198,7 @@ impl Explorer {
             .collect();
         let total_ticks = controller.tick();
 
+        let started = Instant::now();
         let coverage = if self.config.coverage_gpa != 0 && controller.num_vms() > 0 {
             if let Some(vm_slot) = controller.vm_slot(0) {
                 self.coverage
@@ -1111,12 +1209,15 @@ impl Explorer {
         } else {
             self.assertion_coverage(&result_info)
         };
+        timings.coverage_ms += started.elapsed().as_secs_f64() * 1000.0;
 
+        let started = Instant::now();
         let snap = if !self.memory_bases.is_empty() {
             controller.snapshot_all_incremental().ok().map(|(s, _)| s)
         } else {
             controller.snapshot_all().ok()
         };
+        timings.snapshot_ms += started.elapsed().as_secs_f64() * 1000.0;
 
         let schedule_fingerprint = controller.schedule_fingerprint();
 
@@ -1131,6 +1232,7 @@ impl Explorer {
             snapshot: snap,
             schedule_variant: None,
             schedule_fingerprint,
+            timings,
         })
     }
 
@@ -1561,6 +1663,8 @@ impl Explorer {
             assertion_details,
             round_history: self.round_history.clone(),
             wall_clock_seconds: 0.0, // Set by caller
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
         }
@@ -1630,6 +1734,8 @@ impl Explorer {
                 id: *id,
                 message: record.message.clone(),
                 kind: format!("{:?}", record.kind).to_lowercase(),
+                guest: record.guest.clone(),
+                category: record.category.clone(),
                 verdict: format!("{:?}", verdict).to_lowercase(),
                 hit_count: record.hit_count,
                 true_count: record.true_count,
@@ -1832,6 +1938,8 @@ impl Explorer {
             havoc_after_stale: checkpoint.config.havoc_after_stale.unwrap_or(0),
             havoc_mutations: checkpoint.config.havoc_mutations.unwrap_or([4, 16]),
             scenario: checkpoint.config.scenario.clone(),
+            emit_metrics: false,
+            metrics_file: None,
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -1887,6 +1995,51 @@ impl Explorer {
                 .collect(),
             consecutive_stale_rounds: 0,
             scenario_summary: checkpoint.scenario_summary.clone(),
+            metrics_sink: None,
+        }
+    }
+}
+
+/// Per-branch wall-clock phase timings.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct BranchTimings {
+    #[serde(default)]
+    pub restore_ms: f64,
+    #[serde(default)]
+    pub run_ms: f64,
+    #[serde(default)]
+    pub snapshot_ms: f64,
+    #[serde(default)]
+    pub coverage_ms: f64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MetricsLine {
+    pub round: u64,
+    pub branches: usize,
+    pub new_edges: usize,
+    pub cumulative_edges: usize,
+    pub bugs_found: usize,
+    pub restore_ms: f64,
+    pub run_ms: f64,
+    pub snapshot_ms: f64,
+    pub coverage_ms: f64,
+    pub wall_ms: f64,
+}
+
+impl MetricsLine {
+    pub fn from_history(history: &RoundHistory) -> Self {
+        Self {
+            round: history.round,
+            branches: history.branches_run,
+            new_edges: history.new_edges,
+            cumulative_edges: history.cumulative_edges,
+            bugs_found: history.bugs_found,
+            restore_ms: history.restore_ms,
+            run_ms: history.run_ms,
+            snapshot_ms: history.snapshot_ms,
+            coverage_ms: history.coverage_ms,
+            wall_ms: history.wall_clock_seconds * 1000.0,
         }
     }
 }
@@ -1905,6 +2058,8 @@ pub struct BranchResult {
     pub schedule_variant: Option<ScheduleVariant>,
     /// Combined schedule fingerprint from all VMs.
     pub schedule_fingerprint: u64,
+    /// Per-branch wall-clock phase timings.
+    pub timings: BranchTimings,
 }
 
 impl Clone for BranchResult {
@@ -1920,6 +2075,7 @@ impl Clone for BranchResult {
             snapshot: self.snapshot.clone(),
             schedule_variant: self.schedule_variant.clone(),
             schedule_fingerprint: self.schedule_fingerprint,
+            timings: self.timings,
         }
     }
 }
@@ -1931,6 +2087,7 @@ pub struct RoundReport {
     pub new_coverage_edges: usize,
     pub bugs_found: usize,
     pub frontier_size: usize,
+    pub timings: BranchTimings,
 }
 
 /// Per-round snapshot of exploration progress.
@@ -1955,6 +2112,18 @@ pub struct RoundHistory {
     pub frontier_size: usize,
     /// Corpus size after this round.
     pub corpus_size: usize,
+    /// Time spent restoring snapshots during this round.
+    #[serde(default)]
+    pub restore_ms: f64,
+    /// Time spent running VMs during this round.
+    #[serde(default)]
+    pub run_ms: f64,
+    /// Time spent taking snapshots during this round.
+    #[serde(default)]
+    pub snapshot_ms: f64,
+    /// Time spent collecting coverage during this round.
+    #[serde(default)]
+    pub coverage_ms: f64,
     /// Wall-clock time for this round (seconds). 0.0 for old checkpoints.
     #[serde(default)]
     pub wall_clock_seconds: f64,
@@ -1977,6 +2146,10 @@ pub struct ExplorationReport {
     pub round_history: Vec<RoundHistory>,
     /// Total wall-clock time for the exploration run.
     pub wall_clock_seconds: f64,
+    /// Branch throughput over wall-clock runtime.
+    pub branches_per_second: f64,
+    /// Coverage throughput over wall-clock runtime.
+    pub edges_per_second: f64,
     /// Helical scenario config used (if any).
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
     /// Materialized phase summary (if a scenario was used).
@@ -2005,6 +2178,12 @@ pub struct AssertionDetail {
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
     pub kind: String,
+    /// Guest name for assertion-density reporting.
+    #[serde(default = "default_uncategorized_string")]
+    pub guest: String,
+    /// Density category for grouped exercise reporting.
+    #[serde(default = "default_uncategorized_string")]
+    pub category: String,
     /// Final verdict: "passed", "failed", "unexercised".
     pub verdict: String,
     /// Total evaluation count across all runs.
@@ -2016,6 +2195,10 @@ pub struct AssertionDetail {
     /// JSON details from the most recent failure (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_failure_details: Option<String>,
+}
+
+fn default_uncategorized_string() -> String {
+    "uncategorized".to_string()
 }
 
 /// Current exploration statistics.
@@ -2091,6 +2274,7 @@ mod tests {
             snapshot: None,
             schedule_variant: None,
             schedule_fingerprint: 0,
+            timings: BranchTimings::default(),
         };
 
         // Add some coverage
@@ -2129,6 +2313,8 @@ mod tests {
                 runs_satisfied: 1,
                 first_failure_run: None,
                 last_failure_details: None,
+                guest: "uncategorized".to_string(),
+                category: "uncategorized".to_string(),
             },
         );
 
@@ -2267,6 +2453,8 @@ mod tests {
                 runs_satisfied: 0,
                 first_failure_run: Some(0),
                 last_failure_details: Some(b"{\"term\":3}".to_vec()),
+                guest: "uncategorized".to_string(),
+                category: "uncategorized".to_string(),
             },
         );
 
@@ -2283,6 +2471,8 @@ mod tests {
                 runs_satisfied: 0,
                 first_failure_run: Some(0),
                 last_failure_details: Some(b"{\"term\":5}".to_vec()),
+                guest: "uncategorized".to_string(),
+                category: "uncategorized".to_string(),
             },
         );
 
@@ -2311,6 +2501,8 @@ mod tests {
                 runs_satisfied: 1,
                 first_failure_run: None,
                 last_failure_details: None,
+                guest: "uncategorized".to_string(),
+                category: "uncategorized".to_string(),
             },
         );
 

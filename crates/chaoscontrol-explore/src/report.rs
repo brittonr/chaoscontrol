@@ -2,7 +2,64 @@
 
 use crate::campaign::CampaignReport;
 use crate::corpus::BugReport;
-use crate::explorer::ExplorationReport;
+use crate::explorer::{AssertionDetail, ExplorationReport};
+use std::collections::BTreeMap;
+
+#[derive(Default)]
+struct AssertionExerciseGroup {
+    cataloged: usize,
+    exercised: usize,
+    failed: usize,
+}
+
+fn assertion_exercise_groups(
+    details: &[AssertionDetail],
+) -> BTreeMap<(String, String), AssertionExerciseGroup> {
+    let mut groups: BTreeMap<(String, String), AssertionExerciseGroup> = BTreeMap::new();
+    for detail in details {
+        let key = (detail.guest.clone(), detail.category.clone());
+        let group = groups.entry(key).or_default();
+        group.cataloged += 1;
+        if detail.hit_count > 0 {
+            group.exercised += 1;
+        }
+        if detail.verdict == "failed" {
+            group.failed += 1;
+        }
+    }
+    groups
+}
+
+pub fn min_assertion_exercise_failures(details: &[AssertionDetail], floor: usize) -> usize {
+    if floor == 0 {
+        return 0;
+    }
+    assertion_exercise_groups(details)
+        .values()
+        .filter(|group| group.exercised < floor)
+        .count()
+}
+
+fn append_assertion_exercise_summary(output: &mut String, details: &[AssertionDetail]) {
+    let groups = assertion_exercise_groups(details);
+    if groups.is_empty() {
+        return;
+    }
+    output.push_str("─── Assertion Exercise by Guest/Category ─────────────────────────────\n");
+    output.push_str("  Guest          Category      Cataloged  Exercised  Failed\n");
+    output.push_str("  ────────────── ───────────── ─────────  ─────────  ──────\n");
+    for ((guest, category), group) in groups {
+        output.push_str(&format!(
+            "  {guest:<14} {category:<13} {cataloged:>9}  {exercised:>9}  {failed:>6}\n",
+            guest = guest,
+            category = category,
+            cataloged = group.cataloged,
+            exercised = group.exercised,
+            failed = group.failed
+        ));
+    }
+    output.push('\n');
+}
 
 /// Format an exploration report for human consumption.
 pub fn format_report(report: &ExplorationReport) -> String {
@@ -28,6 +85,38 @@ pub fn format_report(report: &ExplorationReport) -> String {
         ));
     }
     output.push('\n');
+
+    let total_restore_ms: f64 = report.round_history.iter().map(|h| h.restore_ms).sum();
+    let total_run_ms: f64 = report.round_history.iter().map(|h| h.run_ms).sum();
+    let total_snapshot_ms: f64 = report.round_history.iter().map(|h| h.snapshot_ms).sum();
+    let total_coverage_ms: f64 = report.round_history.iter().map(|h| h.coverage_ms).sum();
+    let total_phase_ms = total_restore_ms + total_run_ms + total_snapshot_ms + total_coverage_ms;
+    if report.wall_clock_seconds > 0.0 || total_phase_ms > 0.0 {
+        output.push_str("─── Performance ──────────────────────────────────────────────────────\n");
+        output.push_str(&format!(
+            "Wall time:              {}\n",
+            format_duration(report.wall_clock_seconds)
+        ));
+        output.push_str(&format!(
+            "Throughput:             {:.2} branches/sec, {:.2} edges/sec\n",
+            report.branches_per_second, report.edges_per_second
+        ));
+        if total_phase_ms > 0.0 {
+            let pct = |ms: f64| ms / total_phase_ms * 100.0;
+            output.push_str(&format!(
+                "Phase breakdown:        Run: {} ({:.0}%) | Snapshot: {} ({:.0}%) | Restore: {} ({:.0}%) | Coverage: {} ({:.0}%)\n",
+                format_duration(total_run_ms / 1000.0),
+                pct(total_run_ms),
+                format_duration(total_snapshot_ms / 1000.0),
+                pct(total_snapshot_ms),
+                format_duration(total_restore_ms / 1000.0),
+                pct(total_restore_ms),
+                format_duration(total_coverage_ms / 1000.0),
+                pct(total_coverage_ms)
+            ));
+        }
+        output.push('\n');
+    }
 
     // Scenario metadata (if helical scenario was used)
     if let Some(ref summary) = report.scenario_summary {
@@ -170,6 +259,8 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push('\n');
     }
 
+    append_assertion_exercise_summary(&mut output, &report.assertion_details);
+
     // Per-assertion detail
     if !report.assertion_details.is_empty() {
         // Group by verdict for readability
@@ -244,10 +335,21 @@ pub fn format_report(report: &ExplorationReport) -> String {
         output.push_str(
             "─── Exploration Progress ────���─────────────────────────────────────────\n",
         );
-        output.push_str("  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus\n");
-        output.push_str("  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼───────\n");
-
         let history = &report.round_history;
+        let show_timings = history.iter().any(|h| {
+            h.restore_ms > 0.0 || h.run_ms > 0.0 || h.snapshot_ms > 0.0 || h.coverage_ms > 0.0
+        });
+        if show_timings {
+            output.push_str("  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage\n");
+            output.push_str("  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────\n");
+        } else {
+            output.push_str(
+                "  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus\n",
+            );
+            output.push_str(
+                "  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼───────\n",
+            );
+        }
 
         // Show all rounds if ≤ 20, otherwise show first 5 + last 5 with a gap
         let show_all = history.len() <= 20;
@@ -263,21 +365,44 @@ pub fn format_report(report: &ExplorationReport) -> String {
 
         for (i, entry) in &rows {
             if *i == usize::MAX {
-                output.push_str(
-                    "     ⋮  │    ⋮     │     ⋮     │      ⋮     │  ⋮   │    ⋮     │   ⋮\n",
-                );
+                if show_timings {
+                    output.push_str(
+                        "     ⋮  │    ⋮     │     ⋮     │      ⋮     │  ⋮   │    ⋮     │   ⋮    │    ⋮    │  ⋮  │    ⋮     │    ⋮\n",
+                    );
+                } else {
+                    output.push_str(
+                        "     ⋮  │    ⋮     │     ⋮     │      ⋮     │  ⋮   │    ⋮     │   ⋮\n",
+                    );
+                }
                 continue;
             }
-            output.push_str(&format!(
-                "  {:>5} │ {:>8} │ {:>9} │ {:>10} │ {:>4} │ {:>8} │ {:>6}\n",
-                entry.round,
-                entry.branches_run,
-                entry.new_edges,
-                entry.cumulative_edges,
-                entry.cumulative_bugs,
-                entry.frontier_size,
-                entry.corpus_size,
-            ));
+            if show_timings {
+                output.push_str(&format!(
+                    "  {:>5} │ {:>8} │ {:>9} │ {:>10} │ {:>4} │ {:>8} │ {:>6} │ {:>7} │ {:>3} │ {:>8} │ {:>7}\n",
+                    entry.round,
+                    entry.branches_run,
+                    entry.new_edges,
+                    entry.cumulative_edges,
+                    entry.cumulative_bugs,
+                    entry.frontier_size,
+                    entry.corpus_size,
+                    format_ms_or_dash(entry.restore_ms),
+                    format_ms_or_dash(entry.run_ms),
+                    format_ms_or_dash(entry.snapshot_ms),
+                    format_ms_or_dash(entry.coverage_ms),
+                ));
+            } else {
+                output.push_str(&format!(
+                    "  {:>5} │ {:>8} │ {:>9} │ {:>10} │ {:>4} │ {:>8} │ {:>6}\n",
+                    entry.round,
+                    entry.branches_run,
+                    entry.new_edges,
+                    entry.cumulative_edges,
+                    entry.cumulative_bugs,
+                    entry.frontier_size,
+                    entry.corpus_size,
+                ));
+            }
         }
 
         // Coverage growth summary
@@ -495,6 +620,8 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
         output.push('\n');
     }
 
+    append_assertion_exercise_summary(&mut output, &report.assertion_details);
+
     // Per-assertion detail
     if !report.assertion_details.is_empty() {
         let failed: Vec<_> = report
@@ -590,6 +717,16 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
 }
 
 /// Format seconds into human-readable duration.
+fn format_ms_or_dash(ms: f64) -> String {
+    if ms <= 0.0 {
+        "—".to_string()
+    } else if ms >= 1000.0 {
+        format_duration(ms / 1000.0)
+    } else {
+        format!("{ms:.1}ms")
+    }
+}
+
 fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {
         format!("{:.1}s", seconds)
@@ -650,6 +787,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -680,6 +819,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -714,6 +855,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -780,6 +923,10 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
+                restore_ms: 0.0,
+                run_ms: 0.0,
+                snapshot_ms: 0.0,
+                coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
             },
             RoundHistory {
@@ -791,6 +938,10 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 5,
                 corpus_size: 5,
+                restore_ms: 0.0,
+                run_ms: 0.0,
+                snapshot_ms: 0.0,
+                coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
             },
             RoundHistory {
@@ -802,6 +953,10 @@ mod tests {
                 cumulative_bugs: 1,
                 frontier_size: 4,
                 corpus_size: 5,
+                restore_ms: 0.0,
+                run_ms: 0.0,
+                snapshot_ms: 0.0,
+                coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
             },
         ];
@@ -822,6 +977,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -866,6 +1023,10 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: r as usize,
+                restore_ms: 0.0,
+                run_ms: 0.0,
+                snapshot_ms: 0.0,
+                coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
             })
             .collect();
@@ -886,6 +1047,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -918,6 +1081,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -937,6 +1102,8 @@ mod tests {
                 id: 100,
                 message: "election safety".into(),
                 kind: "always".into(),
+                guest: "raft".into(),
+                category: "invariant".into(),
                 verdict: "passed".into(),
                 hit_count: 500,
                 true_count: 500,
@@ -947,6 +1114,8 @@ mod tests {
                 id: 200,
                 message: "log matching".into(),
                 kind: "always".into(),
+                guest: "raft".into(),
+                category: "invariant".into(),
                 verdict: "failed".into(),
                 hit_count: 300,
                 true_count: 290,
@@ -957,6 +1126,8 @@ mod tests {
                 id: 300,
                 message: "value committed".into(),
                 kind: "sometimes".into(),
+                guest: "redb".into(),
+                category: "operation".into(),
                 verdict: "unexercised".into(),
                 hit_count: 0,
                 true_count: 0,
@@ -967,6 +1138,8 @@ mod tests {
                 id: 400,
                 message: "split brain".into(),
                 kind: "unreachable".into(),
+                guest: "raft".into(),
+                category: "branch".into(),
                 verdict: "passed".into(),
                 hit_count: 0,
                 true_count: 0,
@@ -996,6 +1169,8 @@ mod tests {
             assertion_details: details,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -1031,6 +1206,8 @@ mod tests {
             id: 42,
             message: "safety property".into(),
             kind: "always".into(),
+            guest: "raft".into(),
+            category: "invariant".into(),
             verdict: "passed".into(),
             hit_count: 1000,
             true_count: 1000,
@@ -1065,6 +1242,8 @@ mod tests {
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         };
@@ -1167,6 +1346,8 @@ mod tests {
                     id: 100,
                     message: "leader completeness".into(),
                     kind: "always".into(),
+                    guest: "raft".into(),
+                    category: "invariant".into(),
                     verdict: "failed".into(),
                     hit_count: 300,
                     true_count: 290,
@@ -1177,6 +1358,8 @@ mod tests {
                     id: 200,
                     message: "election safety".into(),
                     kind: "always".into(),
+                    guest: "raft".into(),
+                    category: "invariant".into(),
                     verdict: "passed".into(),
                     hit_count: 500,
                     true_count: 500,

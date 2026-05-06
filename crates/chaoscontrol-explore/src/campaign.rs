@@ -614,6 +614,8 @@ mod tests {
             assertion_details: details,
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
         }
@@ -656,6 +658,8 @@ mod tests {
             id,
             message: format!("assertion_{}", id),
             kind: "always".to_string(),
+            guest: "uncategorized".to_string(),
+            category: "uncategorized".to_string(),
             verdict: verdict.to_string(),
             hit_count: hits,
             true_count: t,

@@ -1372,6 +1372,7 @@ impl DeterministicVm {
     /// Run for a bounded number of vCPU exits.
     ///
     /// Returns `(exits_executed, halted)`.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn run_bounded(&mut self, max_exits: u64) -> Result<(u64, bool), VmError> {
         if self.exit_count == 0 {
             self.reset_time_state()?;
@@ -1832,6 +1833,7 @@ impl DeterministicVm {
     // ─── Public API: snapshot / restore ──────────────────────────────
 
     /// Take a snapshot of the current VM state.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
         use crate::snapshot::{CaptureParams, VirtioDeviceSnapshot};
 
@@ -1897,6 +1899,7 @@ impl DeterministicVm {
     /// only the dirty pages.
     ///
     /// Returns the snapshot and the number of dirty pages captured.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_incremental(
         &self,
         base: &std::sync::Arc<Vec<u8>>,
@@ -2044,6 +2047,7 @@ impl DeterministicVm {
     }
 
     /// Restore VM state from a snapshot.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
@@ -2188,6 +2192,7 @@ impl DeterministicVm {
     /// **Precondition:** guest memory must contain the base image.
     /// Call a full `restore()` first, or use this only after a prior
     /// `restore_incremental` on the same VM.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_incremental(
         &mut self,
         snapshot: &crate::snapshot::VmSnapshot,
@@ -3521,6 +3526,7 @@ impl DeterministicVm {
     /// Reads the [`HypercallPage`] from guest memory at
     /// [`HYPERCALL_PAGE_ADDR`], dispatches to the fault engine,
     /// and writes the result back.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     fn handle_sdk_hypercall(&mut self) {
         use vm_memory::Bytes;
 

@@ -5,7 +5,7 @@
 //! `setup_complete`), then reused across rounds via snapshot restore.
 
 use crate::coverage::{CoverageBitmap, CoverageCollector};
-use crate::explorer::{BranchResult, ExplorerConfig};
+use crate::explorer::{BranchResult, BranchTimings, ExplorerConfig};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
@@ -374,6 +374,7 @@ fn run_single_branch(
         snapshot: snap,
         schedule_variant: schedule_variant.cloned(),
         schedule_fingerprint,
+        timings: BranchTimings::default(),
     })
 }
 
@@ -398,6 +399,7 @@ fn empty_branch_result(work: &BranchWork) -> BranchResult {
         snapshot: None,
         schedule_variant: work.schedule_variant.clone(),
         schedule_fingerprint: 0,
+        timings: BranchTimings::default(),
     }
 }
 

@@ -414,6 +414,15 @@
             # the Nix sandbox has no /dev/kvm)
             tests = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
 
+            # Keep optional profiling instrumentation compiling.
+            profiling = craneLib.cargoClippy (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoClippyExtraArgs = "-p chaoscontrol-vmm -p chaoscontrol-explore --features profiling -- --deny warnings";
+              }
+            );
+
             # Rustdoc — deny warnings
             rustdoc = craneLib.cargoDoc (
               commonArgs

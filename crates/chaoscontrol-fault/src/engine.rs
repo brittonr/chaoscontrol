@@ -208,8 +208,23 @@ impl FaultEngine {
                     3 => AssertionKind::Unreachable,
                     _ => AssertionKind::Always,
                 };
-                self.oracle
-                    .register_catalog_entry(page.id, oracle_kind, &message);
+                let details: serde_json::Value =
+                    serde_json::from_slice(&page.payload).unwrap_or_default();
+                let guest = details
+                    .get("guest")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("uncategorized");
+                let category = details
+                    .get("category")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("uncategorized");
+                self.oracle.register_catalog_entry_with_metadata(
+                    page.id,
+                    oracle_kind,
+                    &message,
+                    guest,
+                    category,
+                );
                 (0, STATUS_OK)
             }
             CMD_ASSERT_ALWAYS => {

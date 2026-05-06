@@ -1,3 +1,4 @@
+#![allow(unknown_lints)]
 #![allow(
     explicit_defaults,
     reason = "VMM shell code initializes Linux/KVM ABI structs with kernel-provided zero defaults"

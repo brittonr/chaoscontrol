@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = []
+profiling = ["dep:tracing"]
+
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
@@ -23,6 +27,7 @@ env_logger = "0.11"
 libc = "0.2"
 crc32fast = "1"
 serde = { version = "1", features = ["derive"] }
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 hegeltest = "0.3.7"

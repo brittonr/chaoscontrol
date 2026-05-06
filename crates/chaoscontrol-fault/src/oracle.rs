@@ -37,6 +37,10 @@ pub struct AssertionRecord {
     pub first_failure_run: Option<u32>,
     /// JSON bytes from the most recent failure (None if never failed).
     pub last_failure_details: Option<Vec<u8>>,
+    /// Guest that owns this assertion.
+    pub guest: String,
+    /// Density category for assertion exercise reporting.
+    pub category: String,
 }
 
 /// The kind of assertion.
@@ -60,6 +64,8 @@ impl AssertionRecord {
             runs_satisfied: 0,
             first_failure_run: None,
             last_failure_details: None,
+            guest: "uncategorized".to_string(),
+            category: "uncategorized".to_string(),
         }
     }
 
@@ -260,9 +266,40 @@ impl PropertyOracle {
     /// If the assertion was already recorded (via a runtime hit before
     /// catalog registration), the existing record is kept unchanged.
     pub fn register_catalog_entry(&mut self, id: u32, kind: AssertionKind, message: &str) {
-        self.assertions
+        self.register_catalog_entry_with_metadata(
+            id,
+            kind,
+            message,
+            "uncategorized",
+            "uncategorized",
+        );
+    }
+
+    /// Register an assertion site with optional density metadata.
+    pub fn register_catalog_entry_with_metadata(
+        &mut self,
+        id: u32,
+        kind: AssertionKind,
+        message: &str,
+        guest: &str,
+        category: &str,
+    ) {
+        let record = self
+            .assertions
             .entry(id)
             .or_insert_with(|| AssertionRecord::new(message.to_string(), kind));
+        record.guest = if guest.is_empty() {
+            "uncategorized"
+        } else {
+            guest
+        }
+        .to_string();
+        record.category = if category.is_empty() {
+            "uncategorized"
+        } else {
+            category
+        }
+        .to_string();
     }
 
     /// Number of registered assertion sites (from catalog + runtime).

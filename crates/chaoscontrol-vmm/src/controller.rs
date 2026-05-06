@@ -863,6 +863,7 @@ impl SimulationController {
     }
 
     /// Run the simulation for up to `num_ticks` scheduling rounds.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, VmError> {
         let stop_at = self.tick + num_ticks;
         info!(
@@ -1506,6 +1507,7 @@ impl SimulationController {
     }
 
     /// Snapshot all VMs and simulation state.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
 
@@ -1538,6 +1540,7 @@ impl SimulationController {
     /// Each VM's memory is captured as a sparse overlay referencing the
     /// stored base. Call [`Self::set_memory_bases`] before using this.
     /// Returns the snapshot and total dirty pages across all VMs.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all_incremental(&self) -> Result<(SimulationSnapshot, usize), VmError> {
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
         let mut total_dirty = 0usize;
@@ -1607,6 +1610,7 @@ impl SimulationController {
     }
 
     /// Restore all VMs from a snapshot.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
         if snapshot.vm_snapshots.len() != self.vms.len() {
             return SnapshotSnafu {
@@ -1644,6 +1648,7 @@ impl SimulationController {
     ///
     /// Requires `set_memory_bases()` to have been called. Falls back
     /// to full restore for any VM without a base.
+    #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all_incremental(
         &mut self,
         snapshot: &SimulationSnapshot,

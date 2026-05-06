@@ -111,6 +111,10 @@ pub struct CatalogEntry {
     pub file: &'static str,
     /// Source line where the assertion macro was invoked.
     pub line: u32,
+    /// Guest name for density reporting. Empty means legacy/unspecified.
+    pub guest: &'static str,
+    /// Density category (`invariant`, `branch`, `operation`, `recovery`).
+    pub category: &'static str,
 }
 
 // Safety: CatalogEntry only contains &'static references and Copy types.
@@ -138,6 +142,8 @@ pub(crate) fn emit_catalog() {
         let details = serde_json::json!({
             "file": entry.file,
             "line": entry.line,
+            "guest": if entry.guest.is_empty() { "uncategorized" } else { entry.guest },
+            "category": if entry.category.is_empty() { "uncategorized" } else { entry.category },
         });
         let json_bytes = serde_json::to_vec(&details).unwrap_or_else(|_| b"{}".to_vec());
         transport::hypercall(
@@ -558,6 +564,20 @@ macro_rules! cc_assert_raw {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __cc_register_catalog {
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {
+        const _: () = {
+            #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
+                id: $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg)),
+                message: $msg,
+                kind: $kind,
+                file: file!(),
+                line: line!(),
+                guest: $guest,
+                category: $category,
+            };
+        };
+    };
     ($id:expr, $msg:expr, $kind:expr) => {
         const _: () = {
             #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
@@ -567,6 +587,8 @@ macro_rules! __cc_register_catalog {
                 kind: $kind,
                 file: file!(),
                 line: line!(),
+                guest: "uncategorized",
+                category: "uncategorized",
             };
         };
     };
@@ -577,6 +599,91 @@ macro_rules! __cc_register_catalog {
 #[macro_export]
 macro_rules! __cc_register_catalog {
     ($id:expr, $msg:expr, $kind:expr) => {};
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {};
+}
+
+/// Categorized assert-always with automatic source location ID.
+#[macro_export]
+macro_rules! cc_assert_always_category {
+    ($guest:expr, $category:expr, $cond:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        let __cc_details = $crate::__cc_empty_json!();
+        $crate::assert::always_with_id($cond, _ID, $msg, &__cc_details);
+    }};
+    ($guest:expr, $category:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        $crate::assert::always_with_id($cond, _ID, $msg, $details);
+    }};
+}
+
+/// Categorized assert-sometimes with automatic source location ID.
+#[macro_export]
+macro_rules! cc_assert_sometimes_category {
+    ($guest:expr, $category:expr, $cond:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_SOMETIMES,
+            $guest,
+            $category
+        );
+        let __cc_details = $crate::__cc_empty_json!();
+        $crate::assert::sometimes_with_id($cond, _ID, $msg, &__cc_details);
+    }};
+    ($guest:expr, $category:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_SOMETIMES,
+            $guest,
+            $category
+        );
+        $crate::assert::sometimes_with_id($cond, _ID, $msg, $details);
+    }};
+}
+
+/// Categorized assert-reachable with automatic source location ID.
+#[macro_export]
+macro_rules! cc_assert_reachable_category {
+    ($guest:expr, $category:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_REACHABLE,
+            $guest,
+            $category
+        );
+        let __cc_details = $crate::__cc_empty_json!();
+        $crate::assert::reachable_with_id(_ID, $msg, &__cc_details);
+    }};
+    ($guest:expr, $category:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg));
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_REACHABLE,
+            $guest,
+            $category
+        );
+        $crate::assert::reachable_with_id(_ID, $msg, $details);
+    }};
 }
 
 // ═══════════════════════════════════════════════════════════════════════

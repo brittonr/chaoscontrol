@@ -138,3 +138,29 @@ For the raft guest, the gaps are:
 4. No inline data invariants at mutation sites
 5. Safety invariants only checked in the post-tick sweep, not at the point
    of state change
+
+## Density categories
+
+Use the category-aware macros when adding guest assertions so reports can show
+exercise by guest and behavior family:
+
+```rust
+cc_assert_always_category!("raft", "invariant", commit_index <= log.len(), "commit index bounded");
+cc_assert_sometimes_category!("raft", "branch", vote_granted, "vote granted branch");
+cc_assert_reachable_category!("redb", "operation", "op: insert");
+cc_assert_reachable_category!("redb", "recovery", "database reopened after crash");
+```
+
+Supported categories are:
+
+- `invariant`: safety properties at mutation sites or consistency checks.
+- `branch`: paired true/false observations for meaningful protocol branches.
+- `operation`: workload family and API boundary reachability.
+- `recovery`: crash, restart, repair, reopen, and heal paths.
+
+Assertions without guest/category metadata remain valid and are reported as
+`uncategorized`; use that fallback only for legacy call sites.
+
+Run exploration with `--min-assertion-exercise N` to fail after artifacts are
+written if any `(guest, category)` group exercised fewer than `N` assertion
+sites. This is an exploration-quality gate, not a guest correctness invariant.

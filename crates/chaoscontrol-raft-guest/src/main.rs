@@ -232,7 +232,9 @@ fn main() {
                     nodes[i].inbox.clear();
                     faults.crashed[i] = false;
 
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "node restarted",
                         &json!({"node": i, "tick": tick, "term": nodes[i].current_term,
                                 "log_len": nodes[i].log.len()}),
@@ -244,7 +246,9 @@ fn main() {
                     faults.crashed[i] = true;
                     nodes[i].inbox.clear();
 
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "node crashed",
                         &json!({"node": i, "tick": tick, "term": nodes[i].current_term}),
                     );
@@ -259,7 +263,9 @@ fn main() {
             let dst = random::random_choice(num_nodes);
             if src != dst && !faults.partitioned[src][dst] {
                 faults.partitioned[src][dst] = true;
-                cc_assert_reachable!(
+                cc_assert_reachable_category!(
+                    "raft",
+                    "branch",
                     "link partitioned",
                     &json!({"src": src, "dst": dst, "tick": tick}),
                 );
@@ -271,7 +277,9 @@ fn main() {
             for dst in 0..num_nodes {
                 if faults.partitioned[src][dst] && random::random_choice(30) == 0 {
                     faults.partitioned[src][dst] = false;
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "partition healed",
                         &json!({"src": src, "dst": dst, "tick": tick}),
                     );
@@ -334,19 +342,25 @@ fn main() {
                     Message::RequestVote {
                         term, candidate_id, ..
                     } => {
-                        cc_assert_reachable!(
+                        cc_assert_reachable_category!(
+                            "raft",
+                            "branch",
                             "request_vote handler",
                             &json!({"node": active, "from": from, "term": *term, "candidate_id": *candidate_id}),
                         );
                     }
                     Message::RequestVoteResponse { term, vote_granted } => {
-                        cc_assert_reachable!(
+                        cc_assert_reachable_category!(
+                            "raft",
+                            "branch",
                             "request_vote_response handler",
                             &json!({"node": active, "from": from, "term": *term, "vote_granted": *vote_granted}),
                         );
                     }
                     Message::AppendEntries { term, entries, .. } => {
-                        cc_assert_reachable!(
+                        cc_assert_reachable_category!(
+                            "raft",
+                            "branch",
                             "append_entries handler",
                             &json!({"node": active, "from": from, "term": *term, "entry_count": entries.len()}),
                         );
@@ -356,7 +370,9 @@ fn main() {
                         success,
                         match_index,
                     } => {
-                        cc_assert_reachable!(
+                        cc_assert_reachable_category!(
+                            "raft",
+                            "branch",
                             "append_entries_response handler",
                             &json!({"node": active, "from": from, "term": *term, "success": *success, "match_index": *match_index}),
                         );
@@ -408,19 +424,25 @@ fn main() {
 
                 // ── State transitions ───────────────────────
                 if node.current_term > old_term && node.role == Role::Follower {
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "stepped down to follower",
                         &json!({"node": active, "old_term": old_term, "new_term": node.current_term}),
                     );
                 }
                 if old_role == Role::Candidate && node.role == Role::Follower && is_ae {
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "candidate stepped down on append_entries",
                         &json!({"node": active, "term": node.current_term}),
                     );
                 }
                 if old_role == Role::Candidate && node.role == Role::Leader {
-                    cc_assert_reachable!(
+                    cc_assert_reachable_category!(
+                        "raft",
+                        "branch",
                         "candidate won election",
                         &json!({"node": active, "term": node.current_term}),
                     );
@@ -428,7 +450,9 @@ fn main() {
 
                 // ── Data invariant: commit_index bounded ────
                 if node.commit_index != old_commit {
-                    cc_assert_always!(
+                    cc_assert_always_category!(
+                        "raft",
+                        "invariant",
                         node.commit_index <= node.log.len(),
                         "commit_index within log bounds",
                         &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
@@ -437,7 +461,9 @@ fn main() {
 
                 // ── Liveness: commit advances after replication ──
                 if is_aer && node.role == Role::Leader {
-                    cc_assert_sometimes!(
+                    cc_assert_sometimes_category!(
+                        "raft",
+                        "branch",
                         node.commit_index > old_commit,
                         "leader commit advanced after replication",
                         &json!({"node": active, "old": old_commit, "new": node.commit_index}),
@@ -448,18 +474,24 @@ fn main() {
                 for (to, reply) in &replies {
                     match reply {
                         Message::RequestVoteResponse { vote_granted, .. } => {
-                            cc_assert_sometimes!(
+                            cc_assert_sometimes_category!(
+                                "raft",
+                                "branch",
                                 *vote_granted,
                                 "vote granted",
                                 &json!({"voter": active, "candidate": *to}),
                             );
-                            cc_assert_sometimes!(
+                            cc_assert_sometimes_category!(
+                                "raft",
+                                "branch",
                                 !*vote_granted,
                                 "vote denied",
                                 &json!({"voter": active, "candidate": *to}),
                             );
                             if let (true, Some(cid)) = (*vote_granted, rv_candidate) {
-                                cc_assert_always!(
+                                cc_assert_always_category!(
+                                    "raft",
+                                    "invariant",
                                     node.voted_for == Some(cid),
                                     "voted_for matches granted candidate",
                                     &json!({"node": active, "candidate_id": cid}),
@@ -467,12 +499,16 @@ fn main() {
                             }
                         }
                         Message::AppendEntriesResponse { success, .. } => {
-                            cc_assert_sometimes!(
+                            cc_assert_sometimes_category!(
+                                "raft",
+                                "branch",
                                 *success,
                                 "append accepted",
                                 &json!({"node": active, "from": from}),
                             );
-                            cc_assert_sometimes!(
+                            cc_assert_sometimes_category!(
+                                "raft",
+                                "branch",
                                 !*success,
                                 "append rejected",
                                 &json!({"node": active, "from": from}),
@@ -484,12 +520,16 @@ fn main() {
 
                 // ── Data invariants for leader processing AER ──
                 if node.role == Role::Leader && is_aer {
-                    cc_assert_always!(
+                    cc_assert_always_category!(
+                        "raft",
+                        "invariant",
                         node.match_index[from] <= node.log.len(),
                         "match_index within bounds",
                         &json!({"leader": active, "peer": from, "match_index": node.match_index[from], "log_len": node.log.len()}),
                     );
-                    cc_assert_always!(
+                    cc_assert_always_category!(
+                        "raft",
+                        "invariant",
                         node.next_index[from] >= 1,
                         "next_index stays positive",
                         &json!({"leader": active, "peer": from, "next_index": node.next_index[from]}),
@@ -513,19 +553,25 @@ fn main() {
                             }
                         }
                         if had_conflict {
-                            cc_assert_reachable!(
+                            cc_assert_reachable_category!(
+                                "raft",
+                                "branch",
                                 "log conflict: truncated",
                                 &json!({"node": active, "prev_log_index": prev_idx}),
                             );
                         }
                         if had_consistent {
-                            cc_assert_reachable!(
+                            cc_assert_reachable_category!(
+                                "raft",
+                                "branch",
                                 "log entries consistent",
                                 &json!({"node": active}),
                             );
                         }
                         if had_new {
-                            cc_assert_reachable!(
+                            cc_assert_reachable_category!(
+                                "raft",
+                                "branch",
                                 "new entries appended",
                                 &json!({"node": active, "count": old_terms.iter().filter(|t| t.is_none()).count()}),
                             );
@@ -542,19 +588,25 @@ fn main() {
             match node.role {
                 Role::Follower | Role::Candidate => {
                     let timer_expired = node.election_timer == 0;
-                    cc_assert_sometimes!(
+                    cc_assert_sometimes_category!(
+                        "raft",
+                        "branch",
                         timer_expired,
                         "election timeout fired",
                         &json!({"node": active}),
                     );
-                    cc_assert_sometimes!(
+                    cc_assert_sometimes_category!(
+                        "raft",
+                        "branch",
                         !timer_expired,
                         "election timer decremented",
                         &json!({"node": active}),
                     );
 
                     if timer_expired {
-                        cc_assert_reachable!(
+                        cc_assert_reachable_category!(
+                            "raft",
+                            "branch",
                             "follower started election",
                             &json!({"node": active, "new_term": node.current_term + 1}),
                         );
@@ -588,12 +640,16 @@ fn main() {
                         };
                         node.log.push(entry);
                         node.match_index[node.id] = node.log.len();
-                        cc_assert_always!(
+                        cc_assert_always_category!(
+                            "raft",
+                            "invariant",
                             node.match_index[node.id] == node.log.len(),
                             "leader self match_index tracks log",
                             &json!({"node": active, "match_index": node.match_index[node.id], "log_len": node.log.len()}),
                         );
-                        cc_assert_always!(
+                        cc_assert_always_category!(
+                            "raft",
+                            "invariant",
                             node.commit_index <= node.log.len(),
                             "commit_index within log bounds",
                             &json!({"node": active, "commit_index": node.commit_index, "log_len": node.log.len()}),
@@ -603,12 +659,16 @@ fn main() {
                             &values_proposed.to_string(),
                         )]);
                     }
-                    cc_assert_sometimes!(
+                    cc_assert_sometimes_category!(
+                        "raft",
+                        "branch",
                         proposed,
                         "leader proposed value",
                         &json!({"node": active}),
                     );
-                    cc_assert_sometimes!(
+                    cc_assert_sometimes_category!(
+                        "raft",
+                        "branch",
                         !proposed,
                         "leader skipped proposal",
                         &json!({"node": active}),
@@ -635,7 +695,13 @@ fn main() {
 
             // Random drop (5% base rate)
             if random::random_choice(100) >= 95 {
-                cc_assert_sometimes!(true, "message dropped", &details::network(from, to, false),);
+                cc_assert_sometimes_category!(
+                    "raft",
+                    "branch",
+                    true,
+                    "message dropped",
+                    &details::network(from, to, false),
+                );
                 coverage::record_state(&[
                     ("drop_from", &from.to_string()),
                     ("drop_to", &to.to_string()),
@@ -649,7 +715,9 @@ fn main() {
                 faults
                     .delay_queue
                     .push((from, to, msg.clone(), tick + delay));
-                cc_assert_reachable!(
+                cc_assert_reachable_category!(
+                    "raft",
+                    "branch",
                     "message reordered",
                     &json!({"from": from, "to": to, "delay": delay}),
                 );
@@ -661,12 +729,23 @@ fn main() {
             if random::random_choice(50) == 0 {
                 nodes[to].inbox.push((from, msg.clone()));
                 nodes[to].inbox.push((from, msg));
-                cc_assert_reachable!("message duplicated", &json!({"from": from, "to": to}),);
+                cc_assert_reachable_category!(
+                    "raft",
+                    "branch",
+                    "message duplicated",
+                    &json!({"from": from, "to": to}),
+                );
                 continue;
             }
 
             // Normal delivery
-            cc_assert_sometimes!(true, "message delivered", &details::network(from, to, true),);
+            cc_assert_sometimes_category!(
+                "raft",
+                "branch",
+                true,
+                "message delivered",
+                &details::network(from, to, true),
+            );
             nodes[to].inbox.push((from, msg));
         }
 
@@ -684,7 +763,9 @@ fn main() {
                 commit_at_healthy_start = max_commit;
             }
             if ticks_quorum_healthy > 200 {
-                cc_assert_sometimes!(
+                cc_assert_sometimes_category!(
+                    "raft",
+                    "branch",
                     max_commit > commit_at_healthy_start,
                     "commits advance when quorum healthy",
                     &json!({"ticks_healthy": ticks_quorum_healthy,
@@ -831,17 +912,23 @@ fn main() {
         let leader_node = nodes
             .iter()
             .find(|n| n.role == Role::Leader && !faults.crashed[n.id]);
-        cc_assert_sometimes!(
+        cc_assert_sometimes_category!(
+            "raft",
+            "branch",
             leader_node.is_some(),
             "leader elected",
             &json!({"tick": tick}),
         );
-        cc_assert_sometimes!(
+        cc_assert_sometimes_category!(
+            "raft",
+            "branch",
             values_committed > 0,
             "value committed",
             &json!({"tick": tick, "committed": values_committed}),
         );
-        cc_assert_sometimes!(
+        cc_assert_sometimes_category!(
+            "raft",
+            "branch",
             values_committed >= 3,
             "3+ values committed",
             &json!({"tick": tick, "committed": values_committed}),
@@ -878,7 +965,9 @@ fn check_safety_invariants(
 
     // Data integrity: no committed entry overwritten
     let integrity_violations = committed_values.check_and_record(nodes);
-    cc_assert_always!(
+    cc_assert_always_category!(
+        "raft",
+        "invariant",
         integrity_violations.is_empty(),
         "data integrity: committed entry never overwritten",
         &json!({"tick": tick, "violations": integrity_violations.len(),
@@ -889,7 +978,9 @@ fn check_safety_invariants(
 
     // Election safety
     let election_violations = check_election_safety(nodes);
-    cc_assert_always!(
+    cc_assert_always_category!(
+        "raft",
+        "invariant",
         election_violations.is_empty(),
         "election safety: at most one leader per term",
         &leader_detail,
@@ -897,7 +988,9 @@ fn check_safety_invariants(
 
     // Log matching
     let log_violations = check_log_matching(nodes);
-    cc_assert_always!(
+    cc_assert_always_category!(
+        "raft",
+        "invariant",
         log_violations.is_empty(),
         "log matching: divergence before agreement",
         &details::merge(
@@ -912,7 +1005,9 @@ fn check_safety_invariants(
 
     // Leader completeness
     let completeness_violations = check_leader_completeness(nodes);
-    cc_assert_always!(
+    cc_assert_always_category!(
+        "raft",
+        "invariant",
         completeness_violations.is_empty(),
         "leader completeness: committed entry preserved",
         &details::merge(&leader_detail, &json!({"max_commit": max_commit})),

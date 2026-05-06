@@ -31,6 +31,7 @@ pub use crate::assert::{
 pub use crate::{
     // Core
     cc_assert_always,
+    cc_assert_always_category,
     // Always comparisons
     cc_assert_always_eq,
     cc_assert_always_err,
@@ -47,7 +48,9 @@ pub use crate::{
     cc_assert_implies,
     cc_assert_raw,
     cc_assert_reachable,
+    cc_assert_reachable_category,
     cc_assert_sometimes,
+    cc_assert_sometimes_category,
     // Sometimes comparisons
     cc_assert_sometimes_eq,
     cc_assert_sometimes_err,

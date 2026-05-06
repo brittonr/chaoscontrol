@@ -1,3 +1,4 @@
+#![allow(unknown_lints)]
 #![allow(
     explicit_defaults,
     reason = "exploration shell preserves serde backward-compat defaults and external VMM config defaults"

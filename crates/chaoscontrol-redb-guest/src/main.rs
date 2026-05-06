@@ -78,7 +78,7 @@ fn mount_disk() {
 fn open_database() -> Option<Database> {
     match Database::create(DB_PATH) {
         Ok(db) => {
-            cc_assert_always!(true, "database opens successfully");
+            cc_assert_always_category!("redb", "invariant", true, "database opens successfully");
             Some(db)
         }
         Err(e) => {
@@ -88,12 +88,22 @@ fn open_database() -> Option<Database> {
             match redb::Builder::new().create(DB_PATH) {
                 Ok(db) => {
                     println!("redb-guest: database recovered after repair");
-                    cc_assert_always!(true, "database opens after repair");
+                    cc_assert_always_category!(
+                        "redb",
+                        "invariant",
+                        true,
+                        "database opens after repair"
+                    );
                     Some(db)
                 }
                 Err(e3) => {
                     println!("redb-guest: open after repair failed: {e3}");
-                    cc_assert_always!(false, "database opens after repair");
+                    cc_assert_always_category!(
+                        "redb",
+                        "invariant",
+                        false,
+                        "database opens after repair"
+                    );
                     None
                 }
             }
@@ -124,13 +134,20 @@ fn verify_all(db: &Database, oracle: &Oracle) {
         match table.get(key) {
             Ok(Some(guard)) => {
                 let got: &[u8] = guard.value();
-                cc_assert_always!(
+                cc_assert_always_category!(
+                    "redb",
+                    "invariant",
                     got == expected.as_slice(),
                     "committed data survives restart",
                 );
             }
             Ok(None) => {
-                cc_assert_always!(false, "committed key missing after recovery");
+                cc_assert_always_category!(
+                    "redb",
+                    "invariant",
+                    false,
+                    "committed key missing after recovery"
+                );
             }
             Err(e) => {
                 println!("redb-guest: verify get({key}) error: {e}");
@@ -144,7 +161,7 @@ fn verify_all(db: &Database, oracle: &Oracle) {
 // ═══════════════════════════════════════════════════════════════════════
 
 fn do_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
-    cc_assert_reachable!("op: insert");
+    cc_assert_reachable_category!("redb", "operation", "op: insert");
 
     let key = random::get_random() % MAX_KEY;
     let size_choice = random::random_choice(8);
@@ -174,7 +191,7 @@ fn do_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
     match write_txn.commit() {
         Ok(()) => {
             oracle.insert(key, value);
-            cc_assert_sometimes!(true, "commit succeeds");
+            cc_assert_sometimes_category!("redb", "operation", true, "commit succeeds");
             coverage::record_edge(0x1000);
         }
         Err(e) => {
@@ -185,7 +202,7 @@ fn do_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
 }
 
 fn do_batch_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
-    cc_assert_reachable!("op: batch insert");
+    cc_assert_reachable_category!("redb", "operation", "op: batch insert");
 
     let count = 10 + random::random_choice(11); // 10..20
     let mut pairs = Vec::with_capacity(count);
@@ -224,7 +241,7 @@ fn do_batch_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
             for (k, v) in pairs {
                 oracle.insert(k, v);
             }
-            cc_assert_sometimes!(true, "large batch committed");
+            cc_assert_sometimes_category!("redb", "operation", true, "large batch committed");
             coverage::record_edge(0x1010);
         }
         Err(e) => {
@@ -235,7 +252,7 @@ fn do_batch_insert(db: &Database, oracle: &mut Oracle, seq: &mut u64) {
 }
 
 fn do_read(db: &Database, oracle: &Oracle) {
-    cc_assert_reachable!("op: read");
+    cc_assert_reachable_category!("redb", "operation", "op: read");
 
     let key = random::get_random() % MAX_KEY;
     let read_txn = match db.begin_read() {
@@ -249,7 +266,12 @@ fn do_read(db: &Database, oracle: &Oracle) {
         Ok(t) => t,
         Err(redb::TableError::TableDoesNotExist(_)) => {
             // Empty database — oracle should also be empty for this key.
-            cc_assert_always!(oracle.get(key).is_none(), "read matches oracle (no table)",);
+            cc_assert_always_category!(
+                "redb",
+                "invariant",
+                oracle.get(key).is_none(),
+                "read matches oracle (no table)",
+            );
             coverage::record_edge(0x2000);
             return;
         }
@@ -264,17 +286,32 @@ fn do_read(db: &Database, oracle: &Oracle) {
             let got: &[u8] = guard.value();
             match oracle.get(key) {
                 Some(expected) => {
-                    cc_assert_always!(got == expected.as_slice(), "read matches oracle",);
+                    cc_assert_always_category!(
+                        "redb",
+                        "invariant",
+                        got == expected.as_slice(),
+                        "read matches oracle",
+                    );
                 }
                 None => {
                     // redb has key but oracle doesn't — uncommitted data visible?
-                    cc_assert_always!(false, "uncommitted data not visible");
+                    cc_assert_always_category!(
+                        "redb",
+                        "invariant",
+                        false,
+                        "uncommitted data not visible"
+                    );
                 }
             }
             coverage::record_edge(0x2001);
         }
         Ok(None) => {
-            cc_assert_always!(oracle.get(key).is_none(), "read matches oracle (none)",);
+            cc_assert_always_category!(
+                "redb",
+                "invariant",
+                oracle.get(key).is_none(),
+                "read matches oracle (none)",
+            );
             coverage::record_edge(0x2002);
         }
         Err(e) => {
@@ -285,7 +322,7 @@ fn do_read(db: &Database, oracle: &Oracle) {
 }
 
 fn do_delete(db: &Database, oracle: &mut Oracle) {
-    cc_assert_reachable!("op: delete");
+    cc_assert_reachable_category!("redb", "operation", "op: delete");
 
     let raw = random::get_random();
     let key = match oracle.pick_existing_key(raw) {
@@ -324,7 +361,12 @@ fn do_delete(db: &Database, oracle: &mut Oracle) {
                 if let Ok(t) = rtx.open_table(TABLE) {
                     let t: redb::ReadOnlyTable<u64, &[u8]> = t;
                     if let Ok(val) = t.get(key) {
-                        cc_assert_always!(val.is_none(), "delete removes key");
+                        cc_assert_always_category!(
+                            "redb",
+                            "invariant",
+                            val.is_none(),
+                            "delete removes key"
+                        );
                     }
                 }
             }
@@ -338,7 +380,7 @@ fn do_delete(db: &Database, oracle: &mut Oracle) {
 }
 
 fn do_range_scan(db: &Database, oracle: &Oracle) {
-    cc_assert_reachable!("op: range scan");
+    cc_assert_reachable_category!("redb", "operation", "op: range scan");
 
     let a = random::get_random() % MAX_KEY;
     let b = random::get_random() % MAX_KEY;
@@ -356,7 +398,12 @@ fn do_range_scan(db: &Database, oracle: &Oracle) {
     let table: redb::ReadOnlyTable<u64, &[u8]> = match read_txn.open_table(TABLE) {
         Ok(t) => t,
         Err(redb::TableError::TableDoesNotExist(_)) => {
-            cc_assert_always!(expected.is_empty(), "range scan empty table matches oracle");
+            cc_assert_always_category!(
+                "redb",
+                "invariant",
+                expected.is_empty(),
+                "range scan empty table matches oracle"
+            );
             coverage::record_edge(0x4000);
             return;
         }
@@ -387,12 +434,19 @@ fn do_range_scan(db: &Database, oracle: &Oracle) {
         }
     }
 
-    cc_assert_always!(
+    cc_assert_always_category!(
+        "redb",
+        "invariant",
         actual.len() == expected.len(),
         "range scan length matches oracle",
     );
     for (i, ((ak, av), (ek, ev))) in actual.iter().zip(expected.iter()).enumerate() {
-        cc_assert_always!(ak == ek && av == ev, "range scan entry matches oracle",);
+        cc_assert_always_category!(
+            "redb",
+            "invariant",
+            ak == ek && av == ev,
+            "range scan entry matches oracle",
+        );
         if ak != ek || av != ev {
             println!(
                 "redb-guest: range mismatch at {i}: redb=({ak},{:?}) oracle=({ek},{ev:?})",
@@ -404,7 +458,7 @@ fn do_range_scan(db: &Database, oracle: &Oracle) {
 }
 
 fn do_compact(db: &mut Database, oracle: &Oracle) {
-    cc_assert_reachable!("op: compact");
+    cc_assert_reachable_category!("redb", "operation", "op: compact");
 
     if let Err(e) = db.compact() {
         println!("redb-guest: compact: {e}");
@@ -420,7 +474,12 @@ fn do_compact(db: &mut Database, oracle: &Oracle) {
                 if let Ok(Some(guard)) = t.get(first_key) {
                     let expected = oracle.get(first_key).unwrap();
                     let got: &[u8] = guard.value();
-                    cc_assert_always!(got == expected.as_slice(), "data survives compaction",);
+                    cc_assert_always_category!(
+                        "redb",
+                        "invariant",
+                        got == expected.as_slice(),
+                        "data survives compaction",
+                    );
                 }
             }
         }
@@ -436,14 +495,24 @@ fn check_table_len(db: &Database, oracle: &Oracle) {
     let table: redb::ReadOnlyTable<u64, &[u8]> = match read_txn.open_table(TABLE) {
         Ok(t) => t,
         Err(redb::TableError::TableDoesNotExist(_)) => {
-            cc_assert_always!(oracle.is_empty(), "table len matches oracle (no table)");
+            cc_assert_always_category!(
+                "redb",
+                "invariant",
+                oracle.is_empty(),
+                "table len matches oracle (no table)"
+            );
             return;
         }
         Err(_) => return,
     };
     match table.len() {
         Ok(len) => {
-            cc_assert_always!(len as usize == oracle.len(), "table len matches oracle",);
+            cc_assert_always_category!(
+                "redb",
+                "invariant",
+                len as usize == oracle.len(),
+                "table len matches oracle",
+            );
         }
         Err(e) => {
             println!("redb-guest: table.len(): {e}");
@@ -524,7 +593,7 @@ fn main() {
             Op::Delete => do_delete(&db, &mut oracle),
             Op::RangeScan => do_range_scan(&db, &oracle),
             Op::Savepoint => {
-                cc_assert_reachable!("op: savepoint");
+                cc_assert_reachable_category!("redb", "operation", "op: savepoint");
                 match db.begin_write() {
                     Ok(txn) => match txn.persistent_savepoint() {
                         Ok(sp) => {
@@ -550,7 +619,7 @@ fn main() {
                 }
             }
             Op::Rollback => {
-                cc_assert_reachable!("op: rollback");
+                cc_assert_reachable_category!("redb", "operation", "op: rollback");
                 if let Some(id) = savepoint_id.take() {
                     match db.begin_write() {
                         Ok(mut txn) => match txn.get_persistent_savepoint(id) {

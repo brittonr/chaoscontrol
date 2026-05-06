@@ -1,7 +1,7 @@
 ## 1. Contract foundation
 
 - [x] 1.1 Write the OpenSpec proposal, design, delta spec, and repo guidance for Nickel-backed evidence contracts
-- [ ] 1.2 Add a typed contract registry that classifies each artifact family as `nickel-authored`, `rust-derived`, or excluded
+- [x] 1.2 Add a typed contract registry that classifies each artifact family as `nickel-authored`, `rust-derived`, or excluded
 - [ ] 1.3 Add initial Nickel contracts for run config, dogfood receipt, bug report evidence shape, assertion summary, checkpoint reference, artifact hash, and replay attempt
 - [ ] 1.4 Add positive and negative fixtures for the contracts, including the existing Raft dogfood evidence corpus
 

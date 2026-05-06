@@ -1,0 +1,213 @@
+# Contract/evidence artifact ownership registry.
+#
+# This is intentionally the first Nickel artifact in the evidence-contract work:
+# it records source-of-truth ownership before adding detailed schemas.
+
+let Ownership = std.contract.from_predicate (fun value =>
+  value == "nickel-authored"
+  || value == "rust-derived"
+  || value == "excluded"
+) in
+
+let NonEmptyString = std.contract.from_predicate (fun value =>
+  std.is_string value && std.string.length value > 0
+) in
+
+let RegistryEntry = {
+  id | NonEmptyString,
+  ownership | Ownership,
+  owner | NonEmptyString,
+  source_paths | Array NonEmptyString,
+  artifact_paths | Array NonEmptyString | default = [],
+  validation_commands | Array NonEmptyString,
+  fixture_coverage | Array NonEmptyString,
+  freshness | NonEmptyString,
+  rationale | NonEmptyString,
+} in
+
+let Registry = {
+  schema_version | NonEmptyString,
+  policy | NonEmptyString,
+  families | Array RegistryEntry,
+} in
+
+{
+  schema_version = "1",
+
+  policy = "Nickel owns human-authored run configuration and receipt/review boundaries; Rust owns runtime-emitted records. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
+
+  families = [
+    {
+      id = "run-config",
+      ownership = "nickel-authored",
+      owner = "contracts/evidence/run-config.ncl",
+      source_paths = [
+        "contracts/evidence/registry.ncl",
+        "future:contracts/evidence/run-config.ncl",
+      ],
+      artifact_paths = [
+        "future:dogfood-results/*/run-config.json",
+      ],
+      validation_commands = [
+        "nickel export contracts/evidence/registry.ncl",
+        "future:nickel export contracts/evidence/run-config.ncl",
+      ],
+      fixture_coverage = [
+        "future:valid run config fixture",
+        "future:invalid VM count fixture",
+        "future:missing guest artifact fixture",
+      ],
+      freshness = "Nickel-authored source is authoritative; exported JSON is derived and must be regenerated or validated before execution.",
+      rationale = "Humans author run inputs and benefit from Nickel defaults, merging, docs, and early validation before long-running VM work starts.",
+    },
+    {
+      id = "dogfood-receipt",
+      ownership = "nickel-authored",
+      owner = "contracts/evidence/dogfood-receipt.ncl",
+      source_paths = [
+        "contracts/evidence/registry.ncl",
+        "future:contracts/evidence/dogfood-receipt.ncl",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/receipt.md",
+        "future:dogfood-results/*/receipt.json",
+      ],
+      validation_commands = [
+        "nickel export contracts/evidence/registry.ncl",
+        "future:nickel export contracts/evidence/dogfood-receipt.ncl",
+      ],
+      fixture_coverage = [
+        "future:valid known-gap Raft dogfood receipt fixture",
+        "future:missing artifact hash fixture",
+        "future:reported bug without replay attempt fixture",
+      ],
+      freshness = "Receipt data is the acceptance boundary; generated Markdown must be checked against or produced from validated receipt data.",
+      rationale = "Receipts bind commands, git revision, artifacts, hashes, assertion coverage, replay attempts, and known gaps for review.",
+    },
+    {
+      id = "bug-report",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore",
+      source_paths = [
+        "crates/chaoscontrol-explore/src",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/bug_*.json",
+      ],
+      validation_commands = [
+        "future:cargo test -p chaoscontrol-explore bug_report_roundtrip",
+        "future:nickel export contracts/evidence/bug-report-shape.ncl",
+      ],
+      fixture_coverage = [
+        "dogfood-results/raft-20260506-095025/bug_0.json",
+        "future:missing deterministic replay context fixture",
+      ],
+      freshness = "Rust serde shape is authoritative; Nickel validates the public evidence shape or generated schema freshness.",
+      rationale = "Bug reports are emitted runtime facts, not human-authored config, but receipts must prove whether each report is replayable, known-gap, or invalid.",
+    },
+    {
+      id = "assertion-summary",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore",
+      source_paths = [
+        "crates/chaoscontrol-explore/src",
+        "crates/chaoscontrol-sdk/src",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/assertions.json",
+        "dogfood-results/*/report.txt",
+      ],
+      validation_commands = [
+        "future:cargo test -p chaoscontrol-explore assertion_summary_roundtrip",
+        "future:nickel export contracts/evidence/assertion-summary-shape.ncl",
+      ],
+      fixture_coverage = [
+        "dogfood-results/raft-20260506-095025/assertions.json",
+        "future:malformed coverage totals fixture",
+      ],
+      freshness = "Rust assertion catalog/reporting types are authoritative; contract validation checks receipt-facing totals and coverage consistency.",
+      rationale = "Assertion coverage determines whether dogfood evidence exercised the intended property surface.",
+    },
+    {
+      id = "checkpoint-reference",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore",
+      source_paths = [
+        "crates/chaoscontrol-explore/src/checkpoint.rs",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/checkpoint.json",
+        "future:campaign_progress.json",
+      ],
+      validation_commands = [
+        "future:cargo test -p chaoscontrol-explore checkpoint_roundtrip",
+        "future:nickel export contracts/evidence/checkpoint-reference-shape.ncl",
+      ],
+      fixture_coverage = [
+        "dogfood-results/raft-20260506-095025/checkpoint.json",
+        "future:stale checkpoint reference fixture",
+      ],
+      freshness = "Full checkpoint schema remains Rust-owned; Nickel receipts validate only references, digests, and replay-relevant metadata.",
+      rationale = "Checkpoints can be large runtime state snapshots; receipts should bind them by reference and hash instead of hand-authoring them in Nickel.",
+    },
+    {
+      id = "campaign-progress",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore",
+      source_paths = [
+        "crates/chaoscontrol-explore/src",
+        "openspec/specs/campaign-persistence/spec.md",
+      ],
+      artifact_paths = [
+        "future:campaign_progress.json",
+        "future:campaign_report.json",
+      ],
+      validation_commands = [
+        "future:cargo test -p chaoscontrol-explore campaign_progress_roundtrip",
+        "future:nickel export contracts/evidence/campaign-progress-shape.ncl",
+      ],
+      fixture_coverage = [
+        "future:completed seed progress fixture",
+        "future:resume config preservation fixture",
+      ],
+      freshness = "Rust campaign persistence types are authoritative; Nickel validates review-facing references and summaries.",
+      rationale = "Campaign state is runtime progress data, while validated receipts summarize whether it is complete and reviewable.",
+    },
+    {
+      id = "raw-runtime-logs",
+      ownership = "excluded",
+      owner = "operator/debug tooling",
+      source_paths = [
+        ".git/info/exclude",
+        "dogfood-results/*/run.log",
+        "dogfood-results/*/reproduce.log",
+      ],
+      artifact_paths = [],
+      validation_commands = [
+        "future:receipt validation may reference raw log paths but must not require committed raw logs",
+      ],
+      fixture_coverage = [
+        "future:receipt with optional raw log reference",
+      ],
+      freshness = "Raw logs are local debug aids; concise receipts and structured artifacts are durable review evidence.",
+      rationale = "Raw logs are voluminous and operational, so they should not become Nickel-owned acceptance records.",
+    },
+    {
+      id = "secrets-and-crypto-internals",
+      ownership = "excluded",
+      owner = "runtime/security implementation",
+      source_paths = [
+        "future:any credential, key, token, cryptographic internal, or low-level wire discriminant surface",
+      ],
+      artifact_paths = [],
+      validation_commands = [
+        "future:receipt validation rejects secret-like committed fields when concrete receipt schemas exist",
+      ],
+      fixture_coverage = [
+        "future:secret-like receipt field negative fixture",
+      ],
+      freshness = "Excluded from Nickel ownership; only redacted metadata may appear in receipts when needed.",
+      rationale = "Nickel contracts should not own secrets, cryptographic implementation internals, wire discriminants, distributed behavior semantics, or hot-path runtime constants.",
+    },
+  ],
+} | Registry

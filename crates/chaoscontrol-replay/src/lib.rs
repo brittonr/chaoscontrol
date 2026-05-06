@@ -1,3 +1,5 @@
+#![allow(unknown_lints)]
+
 //! Time-travel debugging and replay for ChaosControl.
 //!
 //! This crate implements execution recording, replay, and time-travel debugging

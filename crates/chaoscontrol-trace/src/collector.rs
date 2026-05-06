@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 #[allow(
+    unknown_lints,
     explicit_defaults,
     reason = "libbpf-cargo generated skeleton compares libbpf object-builder defaults"
 )]

@@ -1128,7 +1128,7 @@ fn cmd_campaign(
     strict_memory: bool,
     auto_minimize: bool,
     dashboard: bool,
-    _dashboard_port: u16,
+    dashboard_port: u16,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,

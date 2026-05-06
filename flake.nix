@@ -54,7 +54,8 @@
               (craneLib.filterCargoSources path type)
               || (builtins.match ".*\\.bpf\\.c$" path != null)
               || (builtins.match ".*\\.h$" path != null)
-              || (builtins.match ".*\\.html$" path != null);
+              || (builtins.match ".*\\.html$" path != null)
+              || (builtins.match ".*\\.js$" path != null);
           };
 
           tigerstyleSrc = pkgs.lib.cleanSourceWith {

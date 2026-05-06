@@ -196,6 +196,7 @@ Output directory contains:
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)
 - `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed bincode `SimulationSnapshot` payloads for bugs that need parent context
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
+- `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 
 ### Contract-backed evidence
 
@@ -225,7 +226,9 @@ The repeatable KVM smoke gate for this rail is:
 nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 ```
 
-It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to report `BUG REPRODUCED`. Raw logs remain in the temporary build directory.
+It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
+
+Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
 Validate the committed evidence bundle with:
 
@@ -251,7 +254,8 @@ cargo run --release --bin chaoscontrol-explore -- minimize \
 # 3. Reproduce — verify the bug
 cargo run --release --bin chaoscontrol-explore -- reproduce \
   --kernel vmlinux --initrd initrd.gz \
-  --bug minimized.json --serial
+  --bug minimized.json --serial \
+  --verdict-output replay-verdict.json
 ```
 
 ### Replay & Debugging

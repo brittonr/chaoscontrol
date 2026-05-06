@@ -180,6 +180,31 @@ let Registry = {
       rationale = "Replay parent snapshots are runtime-derived evidence artifacts that must be hash-addressed and path-confined without making redb or raw logs a public boundary.",
     },
     {
+      id = "replay-verdict",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore replay_verdict",
+      source_paths = [
+        "crates/chaoscontrol-explore/src/replay_verdict.rs",
+        "contracts/evidence/replay-verdict.ncl",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/replay-verdict.json",
+        "future:snapshot smoke output replay-verdict.json",
+      ],
+      validation_commands = [
+        "cargo test -p chaoscontrol-explore replay_verdict",
+        "python scripts/check-evidence-contracts.py",
+      ],
+      fixture_coverage = [
+        "contracts/evidence/fixtures/valid/replay-verdict.snapshot-backed.valid.json",
+        "contracts/evidence/fixtures/invalid/replay-verdict.schedule-only-not-proof.invalid.json",
+        "contracts/evidence/fixtures/invalid/replay-verdict.missing-snapshot-ref.invalid.json",
+        "contracts/evidence/fixtures/invalid/replay-verdict.snapshot-not-reproduced.invalid.json",
+      ],
+      freshness = "Rust replay verdict code is the semantic source of truth; Nickel/checkers validate public verdict shape and accepted-proof gates.",
+      rationale = "Verdicts classify replay attempts without scraping raw logs, separating accepted snapshot-backed proof from schedule-only gaps and invalid evidence.",
+    },
+    {
       id = "campaign-progress",
       ownership = "rust-derived",
       owner = "chaoscontrol-explore",

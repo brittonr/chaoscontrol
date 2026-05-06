@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-verdict.schedule-only-not-proof.invalid",
+  "replay_class": "schedule_only_replay_gap",
+  "reproduced": true,
+  "command": {
+    "command": "chaoscontrol-explore reproduce --bug bug.json --verdict-output replay-verdict.json",
+    "exit_status": 0
+  },
+  "diagnostic": "schedule_only_replay_gap",
+  "bug_path": "dogfood-results/raft-snapshot-probe/bug_2.json",
+  "bug_id": 2,
+  "assertion_id": 1806003755,
+  "replay_parent_depth": 0,
+  "snapshot": {
+    "status": "not_required",
+    "present": false,
+    "digest_verified": false
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-snapshot-probe/bug_2.json",
+      "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe/snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.bin",
+      "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

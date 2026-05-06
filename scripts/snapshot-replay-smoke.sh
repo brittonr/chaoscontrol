@@ -15,6 +15,7 @@ run_log="$workdir/run.log"
 export_log="$workdir/export.log"
 reproduce_log="$workdir/reproduce.log"
 selected_bug="$workdir/selected-bug-path.txt"
+verdict_path="$run_dir/replay-verdict.json"
 
 rm -rf "$run_dir"
 mkdir -p "$run_dir"
@@ -110,13 +111,41 @@ timeout "$REPRO_TIMEOUT" "$CHAOSCONTROL_EXPLORE" reproduce \
   --bootstrap-budget 10000 \
   --memory-mb 128 \
   --extra-cmdline "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25" \
+  --verdict-output "$verdict_path" \
   >"$reproduce_log" 2>&1
 
-if ! grep -q "BUG REPRODUCED" "$reproduce_log"; then
-  echo "snapshot replay smoke: reproduce did not report BUG REPRODUCED" >&2
-  tail -100 "$reproduce_log" >&2 || true
-  exit 1
-fi
+python3 - "$verdict_path" "$bug_path" <<'PY'
+import json
+import pathlib
+import sys
+
+verdict_path = pathlib.Path(sys.argv[1])
+bug_path = pathlib.Path(sys.argv[2]).resolve()
+if not verdict_path.is_file():
+    raise SystemExit(f"missing replay verdict artifact: {verdict_path}")
+verdict = json.loads(verdict_path.read_text())
+if verdict.get("schema_version") != 1:
+    raise SystemExit(f"unexpected replay verdict schema_version: {verdict.get('schema_version')}")
+if verdict.get("replay_class") != "snapshot_backed_reproduced":
+    raise SystemExit(f"replay verdict is not accepted snapshot proof: {verdict.get('replay_class')} diagnostic={verdict.get('diagnostic')}")
+if verdict.get("reproduced") is not True:
+    raise SystemExit("replay verdict did not record reproduced=true")
+if verdict.get("assertion_id") != 1806003755:
+    raise SystemExit(f"unexpected replay verdict assertion_id: {verdict.get('assertion_id')}")
+if verdict.get("replay_parent_depth", 0) <= 0:
+    raise SystemExit(f"replay verdict lacks replay parent depth: {verdict.get('replay_parent_depth')}")
+snapshot = verdict.get("snapshot") or {}
+if snapshot.get("status") != "valid" or snapshot.get("digest_verified") is not True:
+    raise SystemExit(f"replay verdict snapshot was not digest-valid: {snapshot}")
+if pathlib.Path(verdict.get("bug_path", "")).resolve() != bug_path:
+    raise SystemExit(f"replay verdict bug_path mismatch: {verdict.get('bug_path')} != {bug_path}")
+if (verdict.get("command") or {}).get("exit_status") != 0:
+    raise SystemExit(f"replay verdict command exit_status is not 0: {verdict.get('command')}")
+hashes = verdict.get("artifact_hashes") or []
+if not any(pathlib.Path(item.get("path", "")).resolve() == bug_path for item in hashes):
+    raise SystemExit("replay verdict artifact_hashes does not bind selected bug")
+print(f"accepted replay verdict {verdict_path.name}: {verdict['replay_class']}")
+PY
 
 summary="snapshot replay smoke ok: $(basename "$bug_path")"
 echo "$summary"
@@ -127,5 +156,6 @@ if [[ -n "$OUT" ]]; then
     echo "$summary"
     echo "run_rc=$run_rc"
     echo "bug=$bug_path"
+    echo "verdict=$verdict_path"
   } >"$OUT/snapshot-replay-smoke.txt"
 fi

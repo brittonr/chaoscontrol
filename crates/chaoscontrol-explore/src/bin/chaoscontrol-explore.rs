@@ -364,6 +364,10 @@ enum Commands {
         /// Show serial output from each VM.
         #[arg(long)]
         serial: bool,
+
+        /// Write machine-readable replay verdict JSON to this path.
+        #[arg(long)]
+        verdict_output: Option<String>,
     },
 
     /// Run a multi-seed campaign.
@@ -663,6 +667,7 @@ fn main() {
             bootstrap_budget,
             memory_mb,
             serial,
+            verdict_output,
         } => cmd_reproduce(
             kernel,
             initrd,
@@ -678,6 +683,7 @@ fn main() {
             bootstrap_budget,
             memory_mb,
             serial,
+            verdict_output,
         ),
         Commands::Campaign {
             kernel,
@@ -1871,6 +1877,27 @@ fn load_replay_parent_snapshot(
     bug_path: &str,
     serialized_bug: &chaoscontrol_explore::checkpoint::SerializableBug,
 ) -> Option<chaoscontrol_vmm::controller::SimulationSnapshot> {
+    let (snapshot, validation) = load_replay_parent_snapshot_for_verdict(bug_path, serialized_bug);
+    if validation.status != chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::Valid
+        && validation.status
+            != chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::NotRequired
+    {
+        if let Some(diagnostic) = validation.diagnostic {
+            eprintln!("Error: {diagnostic}");
+        }
+        std::process::exit(1);
+    }
+    snapshot
+}
+
+fn load_replay_parent_snapshot_for_verdict(
+    bug_path: &str,
+    serialized_bug: &chaoscontrol_explore::checkpoint::SerializableBug,
+) -> (
+    Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
+    chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation,
+) {
+    use chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation;
     use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
 
     match serialized_bug.replay_parent_snapshot_ref.as_ref() {
@@ -1879,27 +1906,31 @@ fn load_replay_parent_snapshot(
                 .parent()
                 .unwrap_or_else(|| Path::new("."));
             let store = FileSnapshotStore::new(root);
-            let snapshot = match store.get_snapshot(reference) {
-                Ok(snapshot) => snapshot,
-                Err(e) => {
-                    eprintln!("Error: invalid replay parent snapshot reference: {}", e);
-                    std::process::exit(1);
+            match store.get_snapshot_artifact(reference) {
+                Ok(artifact) => {
+                    eprintln!(
+                        "Loaded replay parent snapshot artifact: {} ({})",
+                        reference.path, reference.digest
+                    );
+                    (
+                        Some(artifact.snapshot),
+                        ReplaySnapshotValidation::valid(reference.clone()),
+                    )
                 }
-            };
-            eprintln!(
-                "Loaded replay parent snapshot artifact: {} ({})",
-                reference.path, reference.digest
-            );
-            Some(snapshot)
+                Err(e) => (
+                    None,
+                    ReplaySnapshotValidation::from_error(reference.clone(), &e),
+                ),
+            }
         }
-        None if serialized_bug.replay_parent_depth > 0 => {
-            eprintln!(
-                "Error: bug requires replay parent snapshot context (depth {}) but has no replay_parent_snapshot_ref",
+        None if serialized_bug.replay_parent_depth > 0 => (
+            None,
+            ReplaySnapshotValidation::missing_ref(format!(
+                "bug requires replay parent snapshot context (depth {}) but has no replay_parent_snapshot_ref",
                 serialized_bug.replay_parent_depth
-            );
-            std::process::exit(1);
-        }
-        None => None,
+            )),
+        ),
+        None => (None, ReplaySnapshotValidation::not_required()),
     }
 }
 
@@ -2112,6 +2143,7 @@ fn cmd_reproduce(
     bootstrap_budget: u64,
     memory_mb: usize,
     show_serial: bool,
+    verdict_output: Option<String>,
 ) {
     use chaoscontrol_fault::oracle::Verdict;
     use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
@@ -2144,7 +2176,39 @@ fn cmd_reproduce(
             }
         };
 
-    let replay_parent_snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
+    let command_context = std::env::args().collect::<Vec<_>>().join(" ");
+    let (replay_parent_snapshot, snapshot_validation) =
+        load_replay_parent_snapshot_for_verdict(&bug_path, &serialized_bug);
+    if matches!(
+        snapshot_validation.status,
+        chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::MissingRef
+            | chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::MissingArtifact
+            | chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::InvalidDigest
+            | chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::InvalidRef
+    ) {
+        let diagnostic = snapshot_validation
+            .diagnostic
+            .clone()
+            .unwrap_or_else(|| "invalid replay parent snapshot evidence".to_string());
+        let verdict = chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
+            command_context,
+            1,
+            bug_path.clone(),
+            &serialized_bug,
+            snapshot_validation,
+            false,
+            diagnostic.clone(),
+        );
+        if let Some(path) = verdict_output.as_ref() {
+            if let Err(e) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict) {
+                eprintln!("Warning: failed to write replay verdict {}: {}", path, e);
+            } else {
+                eprintln!("Replay verdict: {}", path);
+            }
+        }
+        eprintln!("Error: {diagnostic}");
+        std::process::exit(1);
+    }
 
     let schedule: FaultSchedule = (&serialized_bug.schedule).into();
     let target_assertion = serialized_bug.assertion_id;
@@ -2297,14 +2361,18 @@ fn cmd_reproduce(
         }
     }
 
-    if target_failed {
-        eprintln!("  ✗ BUG REPRODUCED — assertion {} failed", target_assertion);
+    let diagnostic = if target_failed {
+        let message = format!("BUG REPRODUCED — assertion {} failed", target_assertion);
+        eprintln!("  ✗ {}", message);
+        message
     } else {
-        eprintln!(
-            "  ○ Bug NOT reproduced — assertion {} did not fail",
+        let message = format!(
+            "Bug NOT reproduced — assertion {} did not fail",
             target_assertion
         );
-    }
+        eprintln!("  ○ {}", message);
+        message
+    };
     eprintln!();
 
     // Show all assertion verdicts
@@ -2337,11 +2405,25 @@ fn cmd_reproduce(
     }
 
     // Exit code: 0 if bug reproduced, 1 if not
-    if target_failed {
-        std::process::exit(0);
-    } else {
-        std::process::exit(1);
+    let exit_status = if target_failed { 0 } else { 1 };
+    if let Some(path) = verdict_output.as_ref() {
+        let verdict = chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
+            command_context,
+            exit_status,
+            bug_path.clone(),
+            &serialized_bug,
+            snapshot_validation,
+            target_failed,
+            diagnostic,
+        );
+        if let Err(e) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict) {
+            eprintln!("Warning: failed to write replay verdict {}: {}", path, e);
+        } else {
+            eprintln!("Replay verdict: {}", path);
+        }
     }
+
+    std::process::exit(exit_status);
 }
 
 /// Run delta-debugging minimization on each bug.

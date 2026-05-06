@@ -85,6 +85,7 @@ pub mod input_tree;
 pub mod memory;
 pub mod minimizer;
 pub mod mutator;
+pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]
 pub mod server;

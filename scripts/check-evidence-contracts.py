@@ -69,6 +69,7 @@ def run_nickel_examples() -> None:
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
         "examples/raft-assertion-summary.ncl",
+        "examples/raft-replay-verdict.ncl",
     ]
     for rel in examples:
         subprocess.run(command + [str(CONTRACTS / rel)], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
@@ -143,6 +144,66 @@ def validate_checkpoint_reference(value: Any) -> None:
     for key in ["path", "digest", "kernel_path", "initrd_path"]:
         require_str(value.get(key), f"checkpoint-reference.{key}")
     require_num(value.get("seed"), "checkpoint-reference.seed")
+
+
+REPLAY_CLASSES = {
+    "snapshot_backed_reproduced",
+    "snapshot_backed_not_reproduced",
+    "schedule_only_replay_gap",
+    "missing_snapshot_ref",
+    "missing_snapshot_artifact",
+    "invalid_snapshot_digest",
+    "no_bug_found",
+    "replay_error",
+}
+SNAPSHOT_STATUSES = {"not_required", "missing_ref", "valid", "missing_artifact", "invalid_digest", "invalid_ref"}
+
+
+def validate_replay_verdict(value: Any, *, accepted_snapshot_proof: bool = False, check_files: bool = False) -> None:
+    require(isinstance(value, dict), "replay-verdict: expected object")
+    require(value.get("schema_version") == 1, "replay-verdict.schema_version: expected 1")
+    require_str(value.get("run_id"), "replay-verdict.run_id")
+    replay_class = value.get("replay_class")
+    require(replay_class in REPLAY_CLASSES, f"replay-verdict.replay_class: expected one of {sorted(REPLAY_CLASSES)}")
+    require(isinstance(value.get("reproduced"), bool), "replay-verdict.reproduced: expected bool")
+    command = value.get("command")
+    require(isinstance(command, dict), "replay-verdict.command: expected object")
+    require_str(command.get("command"), "replay-verdict.command.command")
+    require_num(command.get("exit_status"), "replay-verdict.command.exit_status")
+    require_str(value.get("diagnostic"), "replay-verdict.diagnostic")
+    snapshot = value.get("snapshot")
+    require(isinstance(snapshot, dict), "replay-verdict.snapshot: expected object")
+    require(snapshot.get("status") in SNAPSHOT_STATUSES, "replay-verdict.snapshot.status: invalid")
+    require(isinstance(snapshot.get("present"), bool), "replay-verdict.snapshot.present: expected bool")
+    require(isinstance(snapshot.get("digest_verified"), bool), "replay-verdict.snapshot.digest_verified: expected bool")
+    if snapshot.get("reference") is not None:
+        validate_snapshot_ref(snapshot["reference"])
+    hashes = value.get("artifact_hashes")
+    require(isinstance(hashes, list), "replay-verdict.artifact_hashes: expected list")
+    for item in hashes:
+        validate_artifact_hash(item)
+        if check_files:
+            path = ROOT / item["path"]
+            require(path.exists(), f"replay-verdict artifact missing: {item['path']}")
+            require(sha256(path) == item["sha256"], f"replay-verdict artifact hash mismatch: {item['path']}")
+
+    if value.get("bug_path") is not None:
+        require_str(value.get("bug_path"), "replay-verdict.bug_path")
+        require_num(value.get("bug_id"), "replay-verdict.bug_id")
+        require_num(value.get("assertion_id"), "replay-verdict.assertion_id")
+        require_num(value.get("replay_parent_depth"), "replay-verdict.replay_parent_depth")
+
+    if accepted_snapshot_proof:
+        require(replay_class == "snapshot_backed_reproduced", f"accepted replay proof requires snapshot_backed_reproduced, got {replay_class}")
+        require(value.get("reproduced") is True, "accepted replay proof requires reproduced=true")
+        require(command.get("exit_status") == 0, "accepted replay proof requires command.exit_status=0")
+        require_num(value.get("assertion_id"), "accepted replay proof assertion_id")
+        require_num(value.get("replay_parent_depth"), "accepted replay proof replay_parent_depth")
+        require(value["replay_parent_depth"] > 0, "accepted replay proof requires replay_parent_depth > 0")
+        require(snapshot.get("status") == "valid", "accepted replay proof requires valid snapshot")
+        require(snapshot.get("digest_verified") is True, "accepted replay proof requires snapshot digest verification")
+        require(snapshot.get("reference") is not None, "accepted replay proof requires snapshot reference")
+        require(isinstance(hashes, list) and hashes, "accepted replay proof requires artifact hashes")
 
 
 def validate_receipt(value: Any, *, check_files: bool = False) -> None:
@@ -221,6 +282,7 @@ def main() -> int:
     validate_receipt(load_json(valid / "receipt.known-gap.valid.json"))
     validate_bug_report(load_json(valid / "bug-report.valid.json"))
     validate_snapshot_ref(load_json(valid / "snapshot-ref.valid.json"))
+    validate_replay_verdict(load_json(valid / "replay-verdict.snapshot-backed.valid.json"), accepted_snapshot_proof=True)
     validate_assertion_summary(load_json(valid / "assertions.valid.json"))
 
     invalid = CONTRACTS / "fixtures" / "invalid"
@@ -239,6 +301,9 @@ def main() -> int:
     expect_invalid(invalid / "snapshot-ref.missing.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
     expect_invalid(invalid / "snapshot-ref.corrupt.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
     expect_invalid(invalid / "receipt.stale-artifact.invalid.json", lambda value: validate_receipt(value, check_files=True))
+    expect_invalid(invalid / "replay-verdict.schedule-only-not-proof.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
+    expect_invalid(invalid / "replay-verdict.missing-snapshot-ref.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
+    expect_invalid(invalid / "replay-verdict.snapshot-not-reproduced.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
 
     print("evidence contracts ok: nickel examples, dogfood receipt, positive fixtures, negative fixtures")
     return 0

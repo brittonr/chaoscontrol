@@ -23,6 +23,7 @@ REQUIRED_IDS = {
     "assertion-summary",
     "checkpoint-reference",
     "snapshot-reference",
+    "replay-verdict",
     "raw-runtime-logs",
     "secrets-and-crypto-internals",
 }

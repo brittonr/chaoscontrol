@@ -1,0 +1,107 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     19
+Total branches explored: 110
+Corpus entries:         14
+Unique edges found:     24285
+Bugs discovered:        0
+Wall-clock time:        7m 60s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              7m 60s
+Throughput:             0.23 branches/sec, 50.63 edges/sec
+Phase breakdown:        Run: 7m 43s (99%) | Snapshot: 0.1s (0%) | Restore: 2.5s (1%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             111
+Unique edges:           24285
+Avg edges/run:          218.78
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       42
+Passed:                 42
+Failed:                 0
+Unexercised:            0
+Exercised:              42/42 (100.0%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized        42         42       0
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [sometimes] election timer decremented (110330692) — 13996 hits
+  ✓ [sometimes] message dropped (113253650) — 266 hits
+  ✓ [reachable] append_entries_response handler (208902240) — 2132 hits
+  ✓ [always] next_index stays positive (232012611) — 2121 hits
+  ✓ [reachable] request_vote handler (671045764) — 420 hits
+  ✓ [reachable] candidate stepped down on append_entries (671547250) — 9 hits
+  ✓ [sometimes] vote granted (837347133) — 420 hits
+  ✓ [always] log matching: divergence before agreement (1205943209) — 24462 hits
+  ✓ [sometimes] leader commit advanced after replication (1227285578) — 2121 hits
+  ✓ [always] leader self match_index tracks log (1228457570) — 1418 hits
+  ✓ [sometimes] vote denied (1288705923) — 420 hits
+  ✓ [sometimes] leader elected (1341223176) — 19410 hits
+  ✓ [reachable] node restarted (1366177452) — 308 hits
+  ✓ [sometimes] append rejected (1670058066) — 2290 hits
+  ✓ [sometimes] election timeout fired (1813441339) — 13995 hits
+  ✓ [reachable] stepped down to follower (1869335321) — 406 hits
+  ✓ [sometimes] commits advance when quorum healthy (1997194577) — 496 hits
+  ✓ [sometimes] message delivered (2049797752) — 4847 hits
+  ✓ [sometimes] leader proposed value (2141123182) — 5415 hits
+  ✓ [sometimes] 3+ values committed (2375026300) — 19409 hits
+  ✓ [reachable] partition healed (2486527647) — 37 hits
+  ✓ [reachable] link partitioned (2571373221) — 37 hits
+  ✓ [always] election safety: at most one leader per term (2785451127) — 24462 hits
+  ✓ [reachable] append_entries handler (2815777775) — 2290 hits
+  ✓ [always] commit_index within log bounds (3038262680) — 1143 hits
+  ✓ [sometimes] value committed (3039225728) — 19410 hits
+  ✓ [always] match_index within bounds (3059863150) — 2121 hits
+  ✓ [reachable] node crashed (3103362961) — 310 hits
+  ✓ [reachable] message reordered (3108452373) — 265 hits
+  ✓ [reachable] log conflict: truncated (3119526272) — 39 hits
+  ✓ [always] leader completeness: committed entry preserved (3281779286) — 24462 hits
+  ✓ [reachable] log entries consistent (3364796757) — 109 hits
+  ✓ [reachable] request_vote_response handler (3365089057) — 394 hits
+  ✓ [always] data integrity: committed entry never overwritten (3406364899) — 24462 hits
+  ✓ [reachable] candidate won election (3552384355) — 130 hits
+  ✓ [always] voted_for matches granted candidate (3562745580) — 177 hits
+  ✓ [reachable] new entries appended (3566586645) — 661 hits
+  ✓ [reachable] message duplicated (3614095374) — 101 hits
+  ✓ [sometimes] append accepted (3654311592) — 2290 hits
+  ✓ [always] commit_index within log bounds (3992555841) — 1418 hits
+  ✓ [sometimes] leader skipped proposal (4111320766) — 5415 hits
+  ✓ [reachable] follower started election (4207666129) — 331 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        8 │     10113 │      10113 │    0 │        8 │      7 │ 660.3ms │ 2m 44s │   92.9ms │   0.3ms
+      2 │        8 │     14163 │      24276 │    0 │       14 │     13 │ 911.3ms │ 4m 16s │    5.5ms │   0.1ms
+      3 │        8 │         0 │      24276 │    0 │       14 │     13 │  31.7ms │ 6.4s │    2.2ms │   0.1ms
+      4 │        1 │         0 │      24276 │    0 │       14 │     13 │   0.7ms │ 804.4ms │    0.3ms │   0.0ms
+      5 │        8 │         0 │      24276 │    0 │       14 │     13 │   5.8ms │ 24.0ms │    1.4ms │   0.1ms
+      6 │        1 │         0 │      24276 │    0 │       14 │     13 │   0.4ms │ 44.6ms │    0.1ms │   0.0ms
+      7 │        8 │         0 │      24276 │    0 │       14 │     13 │   1.8ms │ 366.4ms │    1.3ms │   0.1ms
+      8 │        1 │         0 │      24276 │    0 │       14 │     13 │   0.2ms │ 45.9ms │    0.1ms │   0.0ms
+      9 │        8 │         9 │      24285 │    0 │       15 │     14 │   2.0ms │ 257.7ms │    4.3ms │   0.0ms
+     10 │        1 │         0 │      24285 │    0 │       15 │     14 │   0.8ms │ 510.9ms │    0.3ms │   0.0ms
+     11 │        8 │         0 │      24285 │    0 │       15 │     14 │   6.5ms │ 4.1s │    1.6ms │   0.1ms
+     12 │        8 │         0 │      24285 │    0 │       15 │     14 │  13.9ms │ 11.2s │    2.7ms │   0.1ms
+     13 │        8 │         0 │      24285 │    0 │       15 │     14 │   7.2ms │ 4.2s │    1.7ms │   0.1ms
+     14 │        8 │         0 │      24285 │    0 │       15 │     14 │ 490.6ms │ 5.5s │    2.8ms │   0.1ms
+     15 │        8 │         0 │      24285 │    0 │       15 │     14 │  28.3ms │ 3.6s │    2.0ms │   0.1ms
+     16 │        1 │         0 │      24285 │    0 │       15 │     14 │   0.6ms │ 518.4ms │    0.2ms │   0.0ms
+     17 │        8 │         0 │      24285 │    0 │       15 │     14 │ 331.5ms │ 108.9ms │    1.7ms │   0.1ms
+     18 │        1 │         0 │      24285 │    0 │       15 │     14 │  21.8ms │ 520.8ms │    0.3ms │   0.0ms
+     19 │        8 │         0 │      24285 │    0 │       15 │     14 │   5.2ms │ 3.8s │    1.9ms │   0.1ms
+
+  Coverage growth: 10113 → 24285 → 24285 edges (round 1 → 10 → 19)
+  Plateau rounds:  16/19 (84% produced no new coverage)
+
+─── No Bugs Found ──────────────────────────────────────────────────────
+No assertion failures detected during exploration.
+
+═══════════════════════════════════════════════════════════════════════

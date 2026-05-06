@@ -1,0 +1,62 @@
+{
+  "schema_version": "1",
+  "status": "accepted",
+  "acceptance_status": "accepted",
+  "git_revision": "79e3d2d",
+  "run_id": "raft-20260506-131815",
+  "command": "nix run .#explore-raft -- --output dogfood-results/raft-20260506-131815",
+  "config": {
+    "path": "dogfood-results/raft-20260506-131815/run-config.json",
+    "digest": "sha256:396619f26f2ef4ab44fee743113cef348ef21b6e30c94d6536978d97ed54446f"
+  },
+  "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/iqwq3lcmgs6xlk41hdx1n4j5pkdab6l2-chaoscontrol-initrd-raft",
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-20260506-131815/report.txt",
+      "sha256": "sha256:d201603e9fc7a45dff96bf5da7de5653eff06cf0074e1b7b2cc44e184d8b6990"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-131815/checkpoint.json",
+      "sha256": "sha256:ed303549cb1f02d5785790f0f2c887b5997b87132f5eb4ff5103bca5f68c1470"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-131815/assertions.json",
+      "sha256": "sha256:b1901cb0ffe2b907af6ebb1c36e6f0cdc563c5de4159cba996775c3b7988db51"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-131815/receipt.md",
+      "sha256": "sha256:564752b0c9d7d7cd843ae9dbfb850861dd3c577af1e67786ea11e04736010b62"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-131815/run-config.json",
+      "sha256": "sha256:396619f26f2ef4ab44fee743113cef348ef21b6e30c94d6536978d97ed54446f"
+    }
+  ],
+  "assertion_coverage": {
+    "registered": 42,
+    "exercised": 42,
+    "passed": 42,
+    "failed": 0,
+    "unexercised": 0,
+    "summary_path": "dogfood-results/raft-20260506-131815/assertions.json"
+  },
+  "bug_reports": [],
+  "checkpoint_reference": {
+    "path": "dogfood-results/raft-20260506-131815/checkpoint.json",
+    "digest": "sha256:ed303549cb1f02d5785790f0f2c887b5997b87132f5eb4ff5103bca5f68c1470",
+    "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+    "initrd_path": "/nix/store/iqwq3lcmgs6xlk41hdx1n4j5pkdab6l2-chaoscontrol-initrd-raft",
+    "seed": 42
+  },
+  "raw_logs": [
+    {
+      "path": "dogfood-results/raft-20260506-131815/run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-131815/reproduce.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ]
+}

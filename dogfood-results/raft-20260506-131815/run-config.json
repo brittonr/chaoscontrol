@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "profile": "raft-20260506-131815",
+  "mode": "hybrid",
+  "num_vms": 3,
+  "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/iqwq3lcmgs6xlk41hdx1n4j5pkdab6l2-chaoscontrol-initrd-raft",
+  "seed": 42,
+  "branch_factor": 8,
+  "ticks_per_branch": 1000,
+  "max_rounds": 100,
+  "max_frontier": 50,
+  "quantum": 100,
+  "coverage_gpa": 917504,
+  "bootstrap_budget": 10000,
+  "raw_log_policy": "debug-only-excluded-from-git"
+}

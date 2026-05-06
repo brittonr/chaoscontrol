@@ -1,0 +1,11 @@
+{
+  "bug_id": 0,
+  "assertion_id": 3039225728,
+  "assertion_location": "value committed",
+  "schedule": {
+    "faults": []
+  },
+  "tick": 1168,
+  "replay_parent_depth": 0,
+  "replay_parent_snapshot_ref": null
+}

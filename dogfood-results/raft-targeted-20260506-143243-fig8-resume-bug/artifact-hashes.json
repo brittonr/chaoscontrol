@@ -1,0 +1,16 @@
+{
+  "bug_0.json": "46c67344f90cfcd5b0ccb7dcb18fc05897964c886e3180e0ff7f9f11fd565a5e",
+  "bug_1.json": "1b6056146e096b139191a2740cf4f491cc1466d62538c2915ba6fdaceb92c26f",
+  "bug_2.json": "2330a1d409b869dfc909f5100fb8b9eff3616bc69a6e05721d15c34e2c194e10",
+  "bug_3.json": "e34d9f857137d6f81fb732ccbf4736b34ba67ba907db733c3c0258d22588bef9",
+  "checkpoint-summary.json": "643d20fd5ebf0002ae89d49c637dacbaa72656e53dc01bfd597335e1e26a43d0",
+  "minimize-bug0-exit-status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+  "minimize-bug0-summary.txt": "4fedfffe3346f052b34c365de2de5063d9974cfd36f5b826c22542e140ead89b",
+  "minimized-bug0.json": "fc3b9cc8d0ab50f1592b1f01aec593369f87ae5391b2f41b15a84d3bd77a7e8b",
+  "receipt.json": "b08ecb4da5fcc8f3f9643f08a3b6d85aab429a2994b97d0db53873f2c4ca5ad4",
+  "receipt.md": "2f4089a6671e3feaf4f153216f1edac985e24b97788a264f092334898442a77d",
+  "reproduce-bug0-exit-status.txt": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+  "reproduce-bug1-exit-status.txt": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+  "reproduce-bug2-exit-status.txt": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+  "reproduce-bug3-exit-status.txt": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+}

@@ -1,0 +1,14 @@
+{
+  "bug_id": 3039225728,
+  "assertion_id": 3039225728,
+  "assertion_location": "",
+  "schedule": {
+    "faults": []
+  },
+  "tick": 0,
+  "replay_parent_depth": 0,
+  "dedup_key": null,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

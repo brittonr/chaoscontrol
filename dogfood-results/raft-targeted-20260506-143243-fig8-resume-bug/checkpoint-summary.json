@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "rounds_completed": 14,
+  "total_branches_run": 124,
+  "total_edges": 26371,
+  "seed": 42,
+  "bugs_recorded": 24,
+  "bug_depths": [
+    0
+  ],
+  "note": "Summary replaces full checkpoint to keep committed evidence concise; raw checkpoint was local/intermediate evidence."
+}

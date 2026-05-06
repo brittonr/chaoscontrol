@@ -1,0 +1,22 @@
+{
+  "bug_id": 1,
+  "assertion_id": 1813441339,
+  "assertion_location": "election timeout fired",
+  "schedule": {
+    "faults": [
+      {
+        "time_ns": 730199459,
+        "fault": {
+          "InjectInterrupt": {
+            "target": 1,
+            "irq": 13
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "tick": 1168,
+  "replay_parent_depth": 0,
+  "replay_parent_snapshot_ref": null
+}

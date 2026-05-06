@@ -1,0 +1,22 @@
+{
+  "bug_id": 2,
+  "assertion_id": 2375026300,
+  "assertion_location": "3+ values committed",
+  "schedule": {
+    "faults": [
+      {
+        "time_ns": 730199459,
+        "fault": {
+          "InjectInterrupt": {
+            "target": 1,
+            "irq": 13
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "tick": 1168,
+  "replay_parent_depth": 0,
+  "replay_parent_snapshot_ref": null
+}

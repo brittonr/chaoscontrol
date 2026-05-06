@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "kind": "targeted-raft-replay-attempt",
+  "git_revision": "de99573",
+  "date": "2026-05-06",
+  "campaign": "fig8_commit targeted resume from checkpoint",
+  "source_checkpoint": {
+    "rounds_completed": 14,
+    "total_branches_run": 124,
+    "bugs_recorded": 24
+  },
+  "bug_reports": [
+    {
+      "bug_id": 0,
+      "assertion_id": 3039225728,
+      "assertion_location": "value committed",
+      "tick": 1168,
+      "replay_parent_depth": 0,
+      "replay_parent_snapshot_ref": null
+    },
+    {
+      "bug_id": 1,
+      "assertion_id": 1813441339,
+      "assertion_location": "election timeout fired",
+      "tick": 1168,
+      "replay_parent_depth": 0,
+      "replay_parent_snapshot_ref": null
+    },
+    {
+      "bug_id": 2,
+      "assertion_id": 2375026300,
+      "assertion_location": "3+ values committed",
+      "tick": 1168,
+      "replay_parent_depth": 0,
+      "replay_parent_snapshot_ref": null
+    },
+    {
+      "bug_id": 3,
+      "assertion_id": 3039225728,
+      "assertion_location": "value committed",
+      "tick": 1168,
+      "replay_parent_depth": 0,
+      "replay_parent_snapshot_ref": null
+    }
+  ],
+  "reproduce_results": {
+    "bug_0": {
+      "exit_status": 1,
+      "result": "\u25cb Bug NOT reproduced \u2014 assertion 3039225728 did not fail"
+    },
+    "bug_1": {
+      "exit_status": 1,
+      "result": "\u25cb Bug NOT reproduced \u2014 assertion 1813441339 did not fail"
+    },
+    "bug_2": {
+      "exit_status": 1,
+      "result": "\u25cb Bug NOT reproduced \u2014 assertion 2375026300 did not fail"
+    },
+    "bug_3": {
+      "exit_status": 1,
+      "result": "\u25cb Bug NOT reproduced \u2014 assertion 3039225728 did not fail"
+    }
+  },
+  "snapshot_replay_result": "not exercised: exported bugs all had replay_parent_depth=0 and replay_parent_snapshot_ref=null",
+  "known_gap": "normal final bug saving was not reached before the long targeted campaign was interrupted; bug JSON files were exported from checkpoint bugs to probe replayability",
+  "minimize_result": {
+    "bug_0": {
+      "exit_status": 0,
+      "summary": "Minimization Result"
+    }
+  }
+}

@@ -194,7 +194,7 @@ Output directory contains:
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — per-assertion verdicts and hit counts
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)
-- `snapshots/<sha256>.snapshot.json` — hash-addressed replay parent snapshot artifacts containing restorable `SimulationSnapshot` JSON for bugs that need parent context
+- `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed bincode `SimulationSnapshot` payloads for bugs that need parent context
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 
 ### Contract-backed evidence
@@ -210,6 +210,10 @@ store/index is host-side only and is not a public evidence format.
 
 Acceptance statuses are:
 - `accepted` — the receipt and replay evidence are complete and the reported bug reproduces.
+- `snapshot-backed-proof` — a retained bug has `replay_parent_depth > 0`, a valid `replay_parent_snapshot_ref`, and reproduce/minimize evidence loaded the persisted parent snapshot.
+- `schedule-only-gap` — exported bugs have `replay_parent_depth = 0`; useful as replay-gap evidence but not proof of snapshot-backed replay.
+- `no-bug-coverage-gap` — the workload ran without bugs; useful only when paired with bounded run configuration and assertion coverage.
+- `missing-artifact-skip` — reproduce/minimize was skipped or failed early because a required snapshot artifact was absent or invalid.
 - `partial` — the run is useful but does not satisfy every acceptance condition.
 - `known-gap` — the run exposed a documented product/evidence gap; the Raft dogfood receipt uses this for the non-replaying `bug_0.json`.
 - `invalid` — the receipt or artifacts fail contract validation.

@@ -159,7 +159,7 @@ let Registry = {
         "contracts/evidence/snapshot-ref.ncl",
       ],
       artifact_paths = [
-        "dogfood-results/*/snapshots/*.snapshot.json",
+        "dogfood-results/*/snapshots/*.snapshot.bin",
         "dogfood-results/*/bug_*.json",
         "dogfood-results/*/receipt.json",
       ],

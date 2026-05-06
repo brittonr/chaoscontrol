@@ -1,0 +1,32 @@
+{
+  "bug_id": 1806003755,
+  "assertion_id": 1806003755,
+  "assertion_location": "",
+  "schedule": {
+    "faults": [
+      {
+        "time_ns": 967316862,
+        "fault": {
+          "InjectNmi": {
+            "target": 1,
+            "vcpu": 0
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "tick": 0,
+  "replay_parent_depth": 2,
+  "replay_parent_snapshot_ref": {
+    "store": "file-content-addressed",
+    "digest": "sha256:f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0",
+    "codec": "simulation-snapshot-bincode-zstd-v1",
+    "schema_version": 1,
+    "path": "snapshots/f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0.snapshot.bin"
+  },
+  "dedup_key": null,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

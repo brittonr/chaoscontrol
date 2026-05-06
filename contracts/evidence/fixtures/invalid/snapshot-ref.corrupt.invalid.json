@@ -1,7 +1,7 @@
 {
   "store": "file-content-addressed",
-  "digest": "sha256:3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831",
-  "codec": "simulation-snapshot-json-v1",
+  "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "codec": "simulation-snapshot-bincode-zstd-v1",
   "schema_version": 1,
-  "path": "snapshots/3c48773b404d850071dff4006d4ef0d7302d1343aefc58fbc84d730753de8831.snapshot.json"
+  "path": "snapshots/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.snapshot.bin"
 }

@@ -64,6 +64,19 @@ fn parse_num_nodes() -> usize {
     NUM_NODES
 }
 
+/// Parse `raft_snapshot_probe_fail_after=N` from /proc/cmdline.
+fn parse_snapshot_probe_fail_after() -> usize {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    for token in cmdline.split_whitespace() {
+        if let Some(val) = token.strip_prefix("raft_snapshot_probe_fail_after=") {
+            if let Ok(n) = val.parse::<usize>() {
+                return n;
+            }
+        }
+    }
+    25
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Fault state
 // ═══════════════════════════════════════════════════════════════════════
@@ -185,6 +198,7 @@ fn main() {
 
     let bug = parse_bug_mode();
     let num_nodes = parse_num_nodes();
+    let snapshot_probe_fail_after = parse_snapshot_probe_fail_after();
     println!(
         "raft: starting {}-node cluster (bug={})",
         num_nodes,
@@ -907,6 +921,16 @@ fn main() {
             active,
             tick,
         );
+
+        if bug == BugMode::SnapshotReplayProbe {
+            cc_assert_always_category!(
+                "raft",
+                "invariant",
+                tick < snapshot_probe_fail_after,
+                "snapshot replay probe trips only after restored parent context",
+                &json!({"tick": tick, "fail_after": snapshot_probe_fail_after}),
+            );
+        }
 
         // ── Liveness checks ─────────────────────────────────
         let leader_node = nodes

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source": "/tmp/cc-snapshot-probe/checkpoint.json",
+  "checkpoint_bytes": 465232,
+  "exported_bug_count": 4,
+  "selected_bug": "bug_2.json",
+  "selected_replay_parent_depth": 2,
+  "selected_snapshot_ref": {
+    "store": "file-content-addressed",
+    "digest": "sha256:f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0",
+    "codec": "simulation-snapshot-bincode-zstd-v1",
+    "schema_version": 1,
+    "path": "snapshots/f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0.snapshot.bin"
+  }
+}

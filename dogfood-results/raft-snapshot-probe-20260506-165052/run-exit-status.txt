@@ -1,0 +1,2 @@
+exit_status=124
+classification=timeout-after-successful-report-and-checkpoint; checkpoint finalized with export-bugs

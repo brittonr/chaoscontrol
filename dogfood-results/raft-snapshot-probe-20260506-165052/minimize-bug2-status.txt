@@ -1,0 +1,5 @@
+exit_status=0
+original_faults=3
+minimized_faults=1
+reduction=66.7%
+candidates_tested=2

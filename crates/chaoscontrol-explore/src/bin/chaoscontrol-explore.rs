@@ -193,6 +193,10 @@ enum Commands {
         #[arg(long)]
         strict_memory: bool,
 
+        /// Guest memory size per VM in MiB.
+        #[arg(long, default_value = "256")]
+        memory_mb: usize,
+
         /// Run delta-debugging minimizer on each bug after exploration.
         #[arg(long)]
         auto_minimize: bool,
@@ -282,9 +286,17 @@ enum Commands {
         #[arg(long)]
         disk_image: Option<String>,
 
+        /// Extra kernel command line parameters.
+        #[arg(long)]
+        extra_cmdline: Option<String>,
+
         /// Bootstrap tick budget.
         #[arg(long, default_value = "10000")]
         bootstrap_budget: u64,
+
+        /// Guest memory size per VM in MiB.
+        #[arg(long, default_value = "256")]
+        memory_mb: usize,
 
         /// Output file for minimized schedule.
         #[arg(short, long)]
@@ -337,9 +349,17 @@ enum Commands {
         #[arg(long)]
         disk_image: Option<String>,
 
+        /// Extra kernel command line parameters.
+        #[arg(long)]
+        extra_cmdline: Option<String>,
+
         /// Bootstrap tick budget.
         #[arg(long, default_value = "10000")]
         bootstrap_budget: u64,
+
+        /// Guest memory size per VM in MiB.
+        #[arg(long, default_value = "256")]
+        memory_mb: usize,
 
         /// Show serial output from each VM.
         #[arg(long)]
@@ -580,6 +600,7 @@ fn main() {
             havoc_mutations,
             stale_round_limit,
             strict_memory,
+            memory_mb,
             auto_minimize,
             dashboard,
             dashboard_port,
@@ -616,6 +637,7 @@ fn main() {
             havoc_mutations,
             stale_round_limit,
             strict_memory,
+            memory_mb,
             auto_minimize,
             dashboard,
             dashboard_port,
@@ -637,7 +659,9 @@ fn main() {
             vcpus,
             scheduling,
             disk_image,
+            extra_cmdline,
             bootstrap_budget,
+            memory_mb,
             serial,
         } => cmd_reproduce(
             kernel,
@@ -650,7 +674,9 @@ fn main() {
             vcpus,
             scheduling,
             disk_image,
+            extra_cmdline,
             bootstrap_budget,
+            memory_mb,
             serial,
         ),
         Commands::Campaign {
@@ -747,7 +773,9 @@ fn main() {
             vcpus,
             scheduling,
             disk_image,
+            extra_cmdline,
             bootstrap_budget,
+            memory_mb,
             output,
         } => cmd_minimize(
             kernel,
@@ -760,7 +788,9 @@ fn main() {
             vcpus,
             scheduling,
             disk_image,
+            extra_cmdline,
             bootstrap_budget,
+            memory_mb,
             output,
         ),
     }
@@ -829,6 +859,7 @@ fn cmd_run(
     havoc_mutations: Vec<u32>,
     stale_round_limit: u64,
     strict_memory: bool,
+    memory_mb: usize,
     auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
@@ -878,7 +909,7 @@ fn cmd_run(
     }
 
     // Memory check
-    let vm_memory_mb = VmConfig::default().memory_size / (1024 * 1024);
+    let vm_memory_mb = memory_mb;
     let estimated_mb = vms * vm_memory_mb;
     if let Err(e) = chaoscontrol_explore::memory::check_memory(estimated_mb, strict_memory) {
         eprintln!("Error: {}", e);
@@ -917,6 +948,7 @@ fn cmd_run(
 
     // Build VM config with SMP settings
     let vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
         num_vcpus: vcpus,
         scheduling_strategy,
         extra_cmdline: extra_cmdline.clone(),
@@ -1883,7 +1915,9 @@ fn cmd_minimize(
     vcpus: usize,
     scheduling: String,
     disk_image: Option<String>,
+    extra_cmdline: Option<String>,
     bootstrap_budget: u64,
+    memory_mb: usize,
     output: Option<String>,
 ) {
     // Validate inputs
@@ -1949,8 +1983,10 @@ fn cmd_minimize(
     };
 
     let vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
         num_vcpus: vcpus,
         scheduling_strategy,
+        extra_cmdline: extra_cmdline.clone(),
         ..Default::default()
     };
 
@@ -2072,7 +2108,9 @@ fn cmd_reproduce(
     vcpus: usize,
     scheduling: String,
     disk_image: Option<String>,
+    extra_cmdline: Option<String>,
     bootstrap_budget: u64,
+    memory_mb: usize,
     show_serial: bool,
 ) {
     use chaoscontrol_fault::oracle::Verdict;
@@ -2125,8 +2163,10 @@ fn cmd_reproduce(
     };
 
     let vm_config = VmConfig {
+        memory_size: memory_mb * 1024 * 1024,
         num_vcpus: vcpus,
         scheduling_strategy,
+        extra_cmdline,
         ..Default::default()
     };
 

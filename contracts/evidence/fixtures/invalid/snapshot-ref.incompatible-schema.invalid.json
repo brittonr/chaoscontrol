@@ -1,7 +1,7 @@
 {
   "store": "file-content-addressed",
   "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "codec": "simulation-snapshot-json-v1",
+  "codec": "simulation-snapshot-bincode-zstd-v1",
   "schema_version": 99,
-  "path": "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.json"
+  "path": "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.bin"
 }

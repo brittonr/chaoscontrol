@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
-pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-json-v1";
+pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-bincode-zstd-v1";
 pub const FILE_STORE_KIND: &str = "file-content-addressed";
 pub const SNAPSHOT_DIR: &str = "snapshots";
 
@@ -59,6 +59,8 @@ pub enum SnapshotStoreError {
     Io { source: std::io::Error },
     #[snafu(display("snapshot artifact JSON error: {source}"))]
     Json { source: serde_json::Error },
+    #[snafu(display("snapshot artifact binary codec error: {source}"))]
+    Binary { source: Box<bincode::ErrorKind> },
 }
 
 pub trait SnapshotStore {
@@ -140,13 +142,15 @@ impl SnapshotStore for FileSnapshotStore {
             vm_count: snapshot.vm_snapshots.len(),
             snapshot: snapshot.clone(),
         };
-        let bytes = serde_json::to_vec_pretty(&envelope)
-            .map_err(|source| SnapshotStoreError::Json { source })?;
+        let uncompressed = bincode::serialize(&envelope)
+            .map_err(|source| SnapshotStoreError::Binary { source })?;
+        let bytes = zstd::stream::encode_all(std::io::Cursor::new(uncompressed), 3)
+            .map_err(|source| SnapshotStoreError::Io { source })?;
         let digest = digest_bytes(&bytes);
         let hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
-        let rel = format!("{SNAPSHOT_DIR}/{hex}.snapshot.json");
+        let rel = format!("{SNAPSHOT_DIR}/{hex}.snapshot.bin");
         let final_path = self.root.join(&rel);
-        let tmp = final_path.with_extension("snapshot.json.tmp");
+        let tmp = final_path.with_extension("snapshot.bin.tmp");
         fs::write(&tmp, &bytes).map_err(|source| SnapshotStoreError::Io { source })?;
         fs::rename(&tmp, &final_path).map_err(|source| SnapshotStoreError::Io { source })?;
         Ok(ReplayParentSnapshotRef {
@@ -177,8 +181,10 @@ impl SnapshotStore for FileSnapshotStore {
                 actual,
             });
         }
-        let artifact: SnapshotArtifactEnvelope =
-            serde_json::from_slice(&bytes).map_err(|source| SnapshotStoreError::Json { source })?;
+        let decompressed = zstd::stream::decode_all(std::io::Cursor::new(bytes))
+            .map_err(|source| SnapshotStoreError::Io { source })?;
+        let artifact: SnapshotArtifactEnvelope = bincode::deserialize(&decompressed)
+            .map_err(|source| SnapshotStoreError::Binary { source })?;
         if artifact.codec != reference.codec {
             return Err(SnapshotStoreError::UnsupportedCodec {
                 codec: reference.codec.clone(),
@@ -287,10 +293,14 @@ mod tests {
     }
 
     fn write_artifact(dir: &Path, artifact: &SnapshotArtifactEnvelope) -> ReplayParentSnapshotRef {
-        let bytes = serde_json::to_vec_pretty(artifact).unwrap();
+        let bytes = zstd::stream::encode_all(
+            std::io::Cursor::new(bincode::serialize(artifact).unwrap()),
+            3,
+        )
+        .unwrap();
         let digest = digest_bytes(&bytes);
         let hex = digest.strip_prefix("sha256:").unwrap();
-        let rel = format!("snapshots/{hex}.snapshot.json");
+        let rel = format!("snapshots/{hex}.snapshot.bin");
         fs::create_dir_all(dir.join("snapshots")).unwrap();
         fs::write(dir.join(&rel), bytes).unwrap();
         ReplayParentSnapshotRef {
@@ -373,7 +383,7 @@ mod tests {
             digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
             codec: SNAPSHOT_CODEC.to_string(),
             schema_version: SNAPSHOT_SCHEMA_VERSION,
-            path: "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.json".to_string(),
+            path: "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.bin".to_string(),
         };
         assert!(matches!(
             store.get_snapshot_artifact(&reference),
@@ -408,13 +418,13 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_json_is_rejected() {
+    fn corrupt_binary_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("snapshots")).unwrap();
-        let bytes = b"not json";
+        let bytes = b"not zstd-compressed bincode";
         let digest = digest_bytes(bytes);
         let hex = digest.strip_prefix("sha256:").unwrap();
-        let rel = format!("snapshots/{hex}.snapshot.json");
+        let rel = format!("snapshots/{hex}.snapshot.bin");
         fs::write(dir.path().join(&rel), bytes).unwrap();
         let store = FileSnapshotStore::new(dir.path());
         let reference = ReplayParentSnapshotRef {
@@ -426,7 +436,7 @@ mod tests {
         };
         assert!(matches!(
             store.get_snapshot_artifact(&reference),
-            Err(SnapshotStoreError::Json { .. })
+            Err(SnapshotStoreError::Io { .. })
         ));
     }
 

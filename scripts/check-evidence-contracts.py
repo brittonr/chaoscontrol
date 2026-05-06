@@ -98,7 +98,7 @@ def validate_snapshot_ref(value: Any, *, check_files: bool = False, root: Path =
     digest = value.get("digest")
     require(isinstance(digest, str) and digest.startswith("sha256:") and len(digest) == 71, "snapshot-ref.digest: expected sha256:<64 hex>")
     int(digest.removeprefix("sha256:"), 16)
-    require(value.get("codec") == "simulation-snapshot-json-v1", "snapshot-ref.codec: unsupported")
+    require(value.get("codec") == "simulation-snapshot-bincode-zstd-v1", "snapshot-ref.codec: unsupported")
     require(value.get("schema_version") == 1, "snapshot-ref.schema_version: unsupported")
     path_value = value.get("path")
     require_str(path_value, "snapshot-ref.path")
@@ -108,15 +108,8 @@ def validate_snapshot_ref(value: Any, *, check_files: bool = False, root: Path =
         full = root / path
         require(full.exists(), f"snapshot artifact missing: {path_value}")
         require(sha256(full) == digest, f"snapshot artifact hash mismatch: {path_value}")
-        try:
-            artifact = json.loads(full.read_text())
-        except Exception as exc:
-            raise ContractError(f"snapshot artifact JSON invalid: {path_value}: {exc}") from exc
-        require(artifact.get("codec") == value.get("codec"), "snapshot artifact codec mismatch")
-        require(artifact.get("schema_version") == value.get("schema_version"), "snapshot artifact schema mismatch")
-        require(isinstance(artifact.get("snapshot"), dict), "snapshot artifact missing restorable snapshot payload")
-        require_num(artifact["snapshot"].get("tick"), "snapshot artifact snapshot.tick")
-        require(isinstance(artifact["snapshot"].get("vm_snapshots"), list), "snapshot artifact snapshot.vm_snapshots: expected list")
+        require(path_value.endswith(".snapshot.bin"), "snapshot-ref.path: expected .snapshot.bin artifact for binary codec")
+        require(full.stat().st_size > 0, f"snapshot artifact empty: {path_value}")
 
 
 def validate_bug_report(value: Any) -> None:

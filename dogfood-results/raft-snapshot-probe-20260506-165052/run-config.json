@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "kind": "snapshot-replay-probe-run",
+  "git_revision": "6bc502b",
+  "date": "2026-05-06",
+  "kernel": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd": "/nix/store/g940b7b37s09c3acha6mfsfy1w6c085q-chaoscontrol-initrd-raft",
+  "command": "cargo run -q -p chaoscontrol-explore --bin chaoscontrol-explore -- run --kernel <kernel> --initrd <initrd> --output /tmp/cc-snapshot-probe --vms 3 --rounds 3 --branches 2 --ticks 80 --seed 42 --mode hybrid --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline \"raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25\"",
+  "vms": 3,
+  "rounds": 3,
+  "branches": 2,
+  "ticks": 80,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 128,
+  "extra_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25",
+  "run_exit_status": 124,
+  "run_classification": "timeout after report/checkpoint save; export-bugs finalized checkpoint-held bugs"
+}

@@ -1,0 +1,107 @@
+{
+  "schema_version": "1",
+  "status": "accepted",
+  "acceptance_status": "accepted",
+  "git_revision": "6bc502b",
+  "run_id": "raft-snapshot-probe-20260506-165052",
+  "command": "cargo run -q -p chaoscontrol-explore --bin chaoscontrol-explore -- run --kernel <kernel> --initrd <initrd> --output /tmp/cc-snapshot-probe --vms 3 --rounds 3 --branches 2 --ticks 80 --seed 42 --mode hybrid --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline \"raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25\"",
+  "config": {
+    "path": "dogfood-results/raft-snapshot-probe-20260506-165052/run-config.json",
+    "digest": "sha256:c9f2ace3128bc72209a7ff856707b931756df51ced2ec77372a3a5d90b9551d4"
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/bug_2.json",
+      "sha256": "sha256:5552e55dee844dbefaf785d2b14740b3db1784160a68c07f975a86977129681d"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/checkpoint-summary.json",
+      "sha256": "sha256:af2681e0f420ffee7e60153e2cbe637e610aa33de7689278517ab56afcfd5386"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/export-bugs-status.txt",
+      "sha256": "sha256:83e2209886492b60297fcc86ac3aa5873d703151f650ec8799023ff532ae13cc"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/minimize-bug2-status.txt",
+      "sha256": "sha256:ddc77b418b4a6d62b7e41556acc25b89faf55274fb1e0d6de009296da68bcce6"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/minimized-bug2.json",
+      "sha256": "sha256:9ea9986121c199f9e561049fd3446b0ac57747aac54fbad2a701eee6856690d0"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/receipt.md",
+      "sha256": "sha256:7eabdaf3754a92ca470a83e71e59c4e330fa6b79a09d4c7b25f9689f1d04ad33"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/report.txt",
+      "sha256": "sha256:174c643c50377de50d88a05653a79c9da23153a36b1229e94fdc5f90ce47604e"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/reproduce-bug2-status.txt",
+      "sha256": "sha256:bc87dd7ca7341b5146d3765946ec3c80b5ad68c2c75a8703016b3f442018a06b"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/run-config.json",
+      "sha256": "sha256:c9f2ace3128bc72209a7ff856707b931756df51ced2ec77372a3a5d90b9551d4"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/run-exit-status.txt",
+      "sha256": "sha256:4eb2c984f1c552595b92406c6ffec7b2c06e75a6f1bced868e606476d72c3a2f"
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/snapshots/f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0.snapshot.bin",
+      "sha256": "sha256:f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0"
+    }
+  ],
+  "bug_reports": [
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/bug_2.json",
+      "bug_id": 2,
+      "assertion_id": 1806003755,
+      "assertion_location": "snapshot replay probe trips only after restored parent context",
+      "tick": 1406,
+      "replay_parent_depth": 2,
+      "replay_parent_snapshot_ref": {
+        "store": "file-content-addressed",
+        "digest": "sha256:f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0",
+        "codec": "simulation-snapshot-bincode-zstd-v1",
+        "schema_version": 1,
+        "path": "snapshots/f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0.snapshot.bin"
+      },
+      "replay_context": "parent-snapshot-required: persisted snapshot ref loaded",
+      "replay_status": "reproduced"
+    }
+  ],
+  "reproduce_results": {
+    "bug_2": {
+      "exit_status": 0,
+      "result": "BUG REPRODUCED \u2014 assertion 1806003755 failed"
+    }
+  },
+  "minimize_result": {
+    "bug_2": {
+      "exit_status": 0,
+      "original_faults": 3,
+      "minimized_faults": 1,
+      "replay_parent_depth": 2,
+      "replay_parent_snapshot_ref_present": true
+    }
+  },
+  "snapshot_replay_result": "exercised: selected bug has replay_parent_depth=2 and durable replay_parent_snapshot_ref; reproduce loaded persisted parent snapshot and reproduced assertion",
+  "raw_logs": [
+    {
+      "path": "/tmp/cc-snapshot-probe-run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "/tmp/cc-snapshot-probe-reproduce-bug2.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "/tmp/cc-snapshot-probe-minimize-bug2.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ]
+}

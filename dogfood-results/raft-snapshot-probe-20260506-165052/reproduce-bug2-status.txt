@@ -1,0 +1,3 @@
+exit_status=0
+result=BUG REPRODUCED
+assertion_id=1806003755

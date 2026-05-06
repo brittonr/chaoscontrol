@@ -1,0 +1,141 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     3
+Total branches explored: 6
+Corpus entries:         5
+Unique edges found:     2221
+Bugs discovered:        4
+Wall-clock time:        3m 26s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              3m 26s
+Throughput:             0.03 branches/sec, 10.78 edges/sec
+Phase breakdown:        Run: 4.8s (83%) | Snapshot: 0.4s (7%) | Restore: 0.6s (10%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             7
+Unique edges:           2221
+Avg edges/run:          317.29
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       43
+Passed:                 41
+Failed:                 1
+Unexercised:            1
+Exercised:              42/43 (97.7%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized        43         42       1
+
+─── Failed Assertions ────────────────────────────────────────────────
+  ✗ [always] snapshot replay probe trips only after restored parent context (1806003755): 2670 hits, 72/2670 true
+      {
+        "fail_after": 25,
+        "tick": 1346
+      }
+
+─── Unexercised Assertions ───────────────────────────────────────────
+  ○ [sometimes] commits advance when quorum healthy (944661337)
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [sometimes] append accepted (65528365) — 395 hits
+  ✓ [always] match_index within bounds (68286523) — 358 hits
+  ✓ [reachable] message reordered (156643521) — 39 hits
+  ✓ [reachable] new entries appended (276556120) — 201 hits
+  ✓ [always] data integrity: committed entry never overwritten (342980970) — 3054 hits
+  ✓ [reachable] message duplicated (802830755) — 15 hits
+  ✓ [sometimes] message delivered (867668989) — 785 hits
+  ✓ [reachable] node crashed (904648909) — 34 hits
+  ✓ [reachable] log conflict: truncated (1063794720) — 5 hits
+  ✓ [reachable] append_entries_response handler (1219853687) — 360 hits
+  ✓ [sometimes] vote denied (1331286234) — 48 hits
+  ✓ [reachable] candidate won election (1455298880) — 21 hits
+  ✓ [always] voted_for matches granted candidate (1773595950) — 33 hits
+  ✓ [sometimes] vote granted (1778443077) — 48 hits
+  ✓ [always] leader self match_index tracks log (1873587997) — 189 hits
+  ✓ [sometimes] message dropped (2001101619) — 36 hits
+  ✓ [reachable] log entries consistent (2057105858) — 32 hits
+  ✓ [reachable] request_vote_response handler (2201706266) — 41 hits
+  ✓ [sometimes] election timeout fired (2352341295) — 1882 hits
+  ✓ [sometimes] leader elected (2383544598) — 2670 hits
+  ✓ [sometimes] leader commit advanced after replication (2403137233) — 358 hits
+  ✓ [always] commit_index within log bounds (2481091404) — 189 hits
+  ✓ [reachable] stepped down to follower (2548703933) — 49 hits
+  ✓ [reachable] request_vote handler (2649825551) — 48 hits
+  ✓ [always] log matching: divergence before agreement (2823385763) — 3054 hits
+  ✓ [reachable] append_entries handler (3011011256) — 395 hits
+  ✓ [always] leader completeness: committed entry preserved (3046151389) — 3054 hits
+  ✓ [reachable] partition healed (3084985632) — 6 hits
+  ✓ [sometimes] value committed (3229039290) — 2670 hits
+  ✓ [reachable] link partitioned (3365937161) — 6 hits
+  ✓ [always] commit_index within log bounds (3378856689) — 300 hits
+  ✓ [sometimes] append rejected (3463742306) — 395 hits
+  ✓ [sometimes] leader skipped proposal (3530304246) — 789 hits
+  ✓ [sometimes] 3+ values committed (3558170505) — 2670 hits
+  ✓ [always] next_index stays positive (3652792792) — 357 hits
+  ✓ [reachable] node restarted (3746380997) — 33 hits
+  ✓ [sometimes] election timer decremented (3781563953) — 1882 hits
+  ✓ [reachable] follower started election (4002898233) — 32 hits
+  ✓ [sometimes] leader proposed value (4023794995) — 789 hits
+  ✓ [always] election safety: at most one leader per term (4049295697) — 3054 hits
+  ✓ [reachable] candidate stepped down on append_entries (4223220603) — 1 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        2 │      1010 │       1010 │    2 │        3 │      2 │ 476.9ms │ 2.6s │  380.0ms │   0.1ms
+      2 │        2 │       864 │       1874 │    2 │        5 │      4 │ 102.1ms │ 856.6ms │    1.9ms │   0.0ms
+      3 │        2 │       347 │       2221 │    4 │        6 │      5 │  29.5ms │ 1.4s │    1.8ms │   0.0ms
+
+  Coverage growth: 1010 → 1874 → 2221 edges (round 1 → 2 → 3)
+  Bugs found in:   round 3
+
+─── Bugs Found ─────────────────────────────────────────────────────────
+
+1. Bug #0
+   Assertion ID: 1806003755
+   Location:     snapshot replay probe trips only after restored parent context
+   Tick:         1246
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 772313330ns: DiskFull { target: 1 }
+
+
+2. Bug #1
+   Assertion ID: 1806003755
+   Location:     snapshot replay probe trips only after restored parent context
+   Tick:         1246
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 807529233ns: NetworkLatency { target: 1, latency_ns: 375675665 }
+
+
+3. Bug #2
+   Assertion ID: 1806003755
+   Location:     snapshot replay probe trips only after restored parent context
+   Tick:         1406
+   Schedule:     3 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 159798947ns: InjectInterrupt { target: 1, irq: 13 }
+     [2] @ 695081997ns: DiskFull { target: 1 }
+     [3] @ 967316862ns: InjectNmi { target: 1, vcpu: 0 }
+
+
+4. Bug #0
+   Assertion ID: 1806003755
+   Location:     snapshot replay probe trips only after restored parent context
+   Tick:         1406
+   Schedule:     0 faults
+   Snapshot:     Available for replay
+
+═══════════════════════════════════════════════════════════════════════

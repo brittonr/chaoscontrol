@@ -70,6 +70,12 @@ pub enum BugMode {
     /// Advances commit_index BEFORE verifying log consistency, committing
     /// entries the follower hasn't actually validated.
     PrematureCommit,
+    /// **Snapshot replay probe**.
+    ///
+    /// Synthetic bounded evidence mode for the explorer: the guest stays
+    /// healthy during the first branch and then fails after a configurable
+    /// tick threshold so the bug is emitted from a restored parent snapshot.
+    SnapshotReplayProbe,
 }
 
 impl BugMode {
@@ -82,6 +88,7 @@ impl BugMode {
             "leader_no_stepdown" | "no_stepdown" => Self::LeaderNoStepdown,
             "double_vote" => Self::DoubleVote,
             "premature_commit" => Self::PrematureCommit,
+            "snapshot_replay_probe" | "snapshot_probe" => Self::SnapshotReplayProbe,
             "none" | "" => Self::None,
             _ => Self::None,
         }
@@ -97,6 +104,7 @@ impl BugMode {
             Self::LeaderNoStepdown => "leader_no_stepdown",
             Self::DoubleVote => "double_vote",
             Self::PrematureCommit => "premature_commit",
+            Self::SnapshotReplayProbe => "snapshot_replay_probe",
         }
     }
 }
@@ -2680,6 +2688,14 @@ mod tests {
         );
         assert_eq!(BugMode::parse("double_vote"), BugMode::DoubleVote);
         assert_eq!(BugMode::parse("premature_commit"), BugMode::PrematureCommit);
+        assert_eq!(
+            BugMode::parse("snapshot_replay_probe"),
+            BugMode::SnapshotReplayProbe
+        );
+        assert_eq!(
+            BugMode::parse("snapshot_probe"),
+            BugMode::SnapshotReplayProbe
+        );
         assert_eq!(BugMode::parse("none"), BugMode::None);
         assert_eq!(BugMode::parse("unknown"), BugMode::None);
     }
@@ -2694,6 +2710,7 @@ mod tests {
             BugMode::LeaderNoStepdown,
             BugMode::DoubleVote,
             BugMode::PrematureCommit,
+            BugMode::SnapshotReplayProbe,
         ] {
             assert_eq!(BugMode::parse(bug.name()), bug);
         }

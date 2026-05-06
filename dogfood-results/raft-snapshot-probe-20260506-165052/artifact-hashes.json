@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/bug_2.json",
+      "sha256": "sha256:5552e55dee844dbefaf785d2b14740b3db1784160a68c07f975a86977129681d",
+      "bytes": 1219
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/checkpoint-summary.json",
+      "sha256": "sha256:af2681e0f420ffee7e60153e2cbe637e610aa33de7689278517ab56afcfd5386",
+      "bytes": 547
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/export-bugs-status.txt",
+      "sha256": "sha256:83e2209886492b60297fcc86ac3aa5873d703151f650ec8799023ff532ae13cc",
+      "bytes": 99
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/minimize-bug2-status.txt",
+      "sha256": "sha256:ddc77b418b4a6d62b7e41556acc25b89faf55274fb1e0d6de009296da68bcce6",
+      "bytes": 87
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/minimized-bug2.json",
+      "sha256": "sha256:9ea9986121c199f9e561049fd3446b0ac57747aac54fbad2a701eee6856690d0",
+      "bytes": 800
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/receipt.json",
+      "sha256": "sha256:338fa099fb24d06689a430a2ffdc866dacb8dbf39e364066a6543960b2784696",
+      "bytes": 4615
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/receipt.md",
+      "sha256": "sha256:7eabdaf3754a92ca470a83e71e59c4e330fa6b79a09d4c7b25f9689f1d04ad33",
+      "bytes": 529
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/report.txt",
+      "sha256": "sha256:174c643c50377de50d88a05653a79c9da23153a36b1229e94fdc5f90ce47604e",
+      "bytes": 8247
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/reproduce-bug2-status.txt",
+      "sha256": "sha256:bc87dd7ca7341b5146d3765946ec3c80b5ad68c2c75a8703016b3f442018a06b",
+      "bytes": 60
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/run-config.json",
+      "sha256": "sha256:c9f2ace3128bc72209a7ff856707b931756df51ced2ec77372a3a5d90b9551d4",
+      "bytes": 1001
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/run-exit-status.txt",
+      "sha256": "sha256:4eb2c984f1c552595b92406c6ffec7b2c06e75a6f1bced868e606476d72c3a2f",
+      "bytes": 117
+    },
+    {
+      "path": "dogfood-results/raft-snapshot-probe-20260506-165052/snapshots/f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0.snapshot.bin",
+      "sha256": "sha256:f59cb5761405698981eec1e68f4053a9767b21caa45d9bf49ca36879971001a0",
+      "bytes": 52333875
+    }
+  ]
+}

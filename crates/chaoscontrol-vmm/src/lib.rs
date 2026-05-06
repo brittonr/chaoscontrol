@@ -1,3 +1,8 @@
+#![allow(
+    explicit_defaults,
+    reason = "VMM shell code initializes Linux/KVM ABI structs with kernel-provided zero defaults"
+)]
+
 //! ChaosControl VMM — a deterministic virtual machine monitor for simulation testing.
 //!
 //! This crate provides a KVM-backed VMM with all sources of non-determinism

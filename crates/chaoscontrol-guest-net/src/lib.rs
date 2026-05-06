@@ -1,3 +1,5 @@
+#![allow(unknown_lints)]
+
 //! TCP/IP networking for ChaosControl guest programs.
 //!
 //! Provides a [`GuestNetwork`] type that sets up a smoltcp TCP/IP stack
@@ -401,7 +403,11 @@ impl GuestNetwork {
 //  Helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Get current time as a smoltcp Instant.
+/// Get current time as a smoltcp Instant at the guest network shell boundary.
+#[allow(
+    ambient_clock,
+    reason = "guest network shell boundary feeds smoltcp time"
+)]
 fn smoltcp_now() -> Instant {
     Instant::from_millis(
         std::time::SystemTime::now()

@@ -78,6 +78,10 @@ pub struct RealSimulationRunner {
 }
 
 impl SimulationRunner for RealSimulationRunner {
+    #[allow(
+        explicit_defaults,
+        reason = "replay shell derives VMM config from recorded partial metadata"
+    )]
     fn create(
         config: &RecordingConfig,
         schedule: FaultSchedule,

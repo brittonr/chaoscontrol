@@ -50,8 +50,12 @@ pub struct RecordingConfig {
     /// Take a checkpoint every N ticks.
     pub checkpoint_interval: u64,
     /// Optional disk image path for virtio-blk devices.
-    #[serde(default)]
+    #[serde(default = "default_disk_image_path")]
     pub disk_image_path: Option<String>,
+}
+
+fn default_disk_image_path() -> Option<String> {
+    None
 }
 
 /// An event recorded during execution.
@@ -102,10 +106,7 @@ impl Recorder {
     /// Create a new recorder.
     pub fn new(config: RecordingConfig, schedule: FaultSchedule, seed: u64) -> Self {
         let session_id = format!("rec_{}", uuid_like_id());
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = unix_timestamp_secs();
 
         let next_checkpoint_tick = config.checkpoint_interval;
 
@@ -199,7 +200,23 @@ fn event_tick(event: &RecordedEvent) -> u64 {
     }
 }
 
+/// Read host wall-clock seconds at the recording shell boundary.
+#[allow(
+    ambient_clock,
+    reason = "recording metadata needs host wall-clock timestamp"
+)]
+fn unix_timestamp_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
 /// Generate a unique ID (simple timestamp-based).
+#[allow(
+    ambient_clock,
+    reason = "recording shell ID uses host wall-clock entropy"
+)]
 fn uuid_like_id() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

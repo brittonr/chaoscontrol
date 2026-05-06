@@ -62,7 +62,11 @@
             filter =
               path: type:
               (craneLib.filterCargoSources path type)
-              || builtins.baseNameOf path == "dylint.toml";
+              || builtins.baseNameOf path == "dylint.toml"
+              || (builtins.match ".*\\.bpf\\.c$" path != null)
+              || (builtins.match ".*\\.h$" path != null)
+              || (builtins.match ".*\\.html$" path != null)
+              || (builtins.match ".*\\.js$" path != null);
           };
 
           # Common build arguments shared across all crane invocations
@@ -433,11 +437,31 @@
               inherit system;
               src = tigerstyleSrc;
               cargoLock = ./Cargo.lock;
-              nativeBuildInputs = [ pkgs.stdenv.cc ];
+              nativeBuildInputs = [
+                pkgs.llvmPackages.clang-unwrapped
+                pkgs.bpftools
+                pkgs.pkg-config
+                pkgs.stdenv.cc
+              ];
+              buildInputs = [
+                pkgs.elfutils
+                pkgs.zlib
+                pkgs.libbpf
+              ];
               packages = [
-                "chaoscontrol-fault"
                 "chaoscontrol-protocol"
                 "chaoscontrol-sdk"
+                "chaoscontrol-fault"
+                "chaoscontrol-vmm"
+                "chaoscontrol-trace"
+                "chaoscontrol-explore"
+                "chaoscontrol-dashboard"
+                "chaoscontrol-replay"
+                "chaoscontrol-guest"
+                "chaoscontrol-raft-guest"
+                "chaoscontrol-guest-net"
+                "chaoscontrol-net-guest"
+                "chaoscontrol-redb-guest"
               ];
               cargoExtraArgs = "--lib";
             };

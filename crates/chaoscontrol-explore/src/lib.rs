@@ -1,3 +1,12 @@
+#![allow(
+    explicit_defaults,
+    reason = "exploration shell preserves serde backward-compat defaults and external VMM config defaults"
+)]
+#![allow(
+    ambient_clock,
+    reason = "exploration shell measures host-side run and round durations"
+)]
+
 //! Coverage-guided exploration engine for ChaosControl.
 //!
 //! This crate implements the core "multiverse" exploration loop that makes

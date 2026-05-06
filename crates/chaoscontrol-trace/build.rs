@@ -213,5 +213,10 @@ fn main() {
              On NixOS, set CLANG to unwrapped clang path.",
     );
 
+    // The generated skeleton compares libbpf's internal object-builder default
+    // to decide whether it must pass open options. The public libbpf API only
+    // exposes `Default` for that internal state, so keep the generated code
+    // intact and allow the lint at the generated-module boundary.
+
     println!("cargo:rerun-if-changed=src/bpf/kvm_trace.bpf.c");
 }

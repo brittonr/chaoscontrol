@@ -15,7 +15,10 @@ use std::mem::MaybeUninit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// Generated skeleton from libbpf-cargo build step
+#[allow(
+    explicit_defaults,
+    reason = "libbpf-cargo generated skeleton compares libbpf object-builder defaults"
+)]
 mod kvm_trace_skel {
     include!(concat!(env!("OUT_DIR"), "/kvm_trace.skel.rs"));
 }

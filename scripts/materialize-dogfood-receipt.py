@@ -46,6 +46,7 @@ def materialize(output: Path, *, git_revision: str, replay_status: str, replay_m
     (output / "run-config.json").write_text(json.dumps(run_config, indent=2) + "\n")
 
     artifacts = ["report.txt", "checkpoint.json", "assertions.json", "receipt.md", "run-config.json"]
+    artifacts.extend(path.name for path in sorted(output.glob("replay-verdict*.json")))
     bugs = sorted(output.glob("bug_*.json"))
     artifacts.extend(path.name for path in bugs)
     assertion_details = load(output / "assertions.json")

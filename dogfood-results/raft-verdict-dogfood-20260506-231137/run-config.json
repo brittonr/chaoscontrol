@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "profile": "raft-verdict-dogfood-20260506-231137",
+  "mode": "hybrid",
+  "num_vms": 3,
+  "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/cvvjni65qf5g6liksa6k2781pvxfkv2x-chaoscontrol-initrd-raft",
+  "seed": 43,
+  "branch_factor": 3,
+  "ticks_per_branch": 100,
+  "max_rounds": 4,
+  "max_frontier": 50,
+  "quantum": 100,
+  "coverage_gpa": 917504,
+  "bootstrap_budget": 10000,
+  "raw_log_policy": "debug-only-excluded-from-git"
+}

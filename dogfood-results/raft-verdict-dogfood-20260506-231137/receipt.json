@@ -1,0 +1,123 @@
+{
+  "schema_version": "1",
+  "status": "known-gap",
+  "acceptance_status": "known-gap",
+  "git_revision": "e853fd872898719fac7e6984c041924ab9d3e98e",
+  "run_id": "raft-verdict-dogfood-20260506-231137",
+  "command": "direct chaoscontrol-explore run with snapshot_replay_probe; see run-config.json",
+  "config": {
+    "path": "dogfood-results/raft-verdict-dogfood-20260506-231137/run-config.json",
+    "digest": "sha256:d606f4e79e82ef2763c9f7b6bc4f180e17a2575108fa88241b87d5276e3ca767"
+  },
+  "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/cvvjni65qf5g6liksa6k2781pvxfkv2x-chaoscontrol-initrd-raft",
+  "artifact_hashes": [
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/assertions.json",
+      "sha256": "sha256:a3374892e8b009f57b72118bdb972329285824a554ff2a2fe903de638a872b2a"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/bug_0.json",
+      "sha256": "sha256:43a47a8da45aa04f5c9ae38e2555fb8f942315b45c9df06bd59d40c62f64864c"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/bug_1.json",
+      "sha256": "sha256:72f09d6b83acabe25446de5f91da5e4360b1edbf7e8bc37c6720ac2a5321046e"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/checkpoint-summary.json",
+      "sha256": "sha256:12ab3f400be7667800613b662e4a6ad1626cf9ef8acddfc4f7c247ace00ad39d"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/receipt.md",
+      "sha256": "sha256:0f7ec46c724d133e287dc24c67665b4e032ffcf5fb400906c6798f8274a25d6c"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/replay-verdict-bug0.json",
+      "sha256": "sha256:cef1f741b342da574af19f830087ccc77d9b87428d0c61a0a43804f1c301bef4"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/report.txt",
+      "sha256": "sha256:8b30c8d4be2d73e183e3644b7c6e701c11cc38e31b304aa4cfcea2c49b5eaed1"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/reproduce-bug0-exit-status.txt",
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/run-config.json",
+      "sha256": "sha256:d606f4e79e82ef2763c9f7b6bc4f180e17a2575108fa88241b87d5276e3ca767"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/run-exit-code.txt",
+      "sha256": "sha256:4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    }
+  ],
+  "assertion_coverage": {
+    "registered": 43,
+    "exercised": 42,
+    "passed": 41,
+    "failed": 1,
+    "unexercised": 1,
+    "summary_path": "dogfood-results/raft-verdict-dogfood-20260506-231137/assertions.json"
+  },
+  "bug_reports": [
+    {
+      "path": "dogfood-results/raft-verdict-dogfood-20260506-231137/bug_0.json",
+      "assertion_id": 1806003755,
+      "tick": 1265,
+      "replay_parent_depth": 0,
+      "replay_context": "schedule-only-replay-insufficient",
+      "replay_status": "known-gap",
+      "replay_attempt": {
+        "command": "target/debug/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/cvvjni65qf5g6liksa6k2781pvxfkv2x-chaoscontrol-initrd-raft --bug dogfood-results/raft-verdict-dogfood-20260506-231137/bug_0.json --vms 3 --memory-mb 128 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=30 --verdict-output dogfood-results/raft-verdict-dogfood-20260506-231137/replay-verdict-bug0.json",
+        "exit_status": 1,
+        "message": "Bug NOT reproduced \u2014 assertion 1806003755 did not fail"
+      },
+      "replay_parent_snapshot_ref": {
+        "store": "file-content-addressed",
+        "digest": "sha256:270a8737a6e806c37168a26c63190a373c2924ed112db230a0f7880e9b73e69d",
+        "codec": "simulation-snapshot-bincode-zstd-v1",
+        "schema_version": 1,
+        "path": "snapshots/270a8737a6e806c37168a26c63190a373c2924ed112db230a0f7880e9b73e69d.snapshot.bin"
+      }
+    },
+    {
+      "path": "dogfood-results/raft-verdict-dogfood-20260506-231137/bug_1.json",
+      "assertion_id": 1806003755,
+      "tick": 1265,
+      "replay_parent_depth": 0,
+      "replay_context": "schedule-only-replay-insufficient",
+      "replay_status": "known-gap",
+      "replay_attempt": {
+        "command": "target/debug/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/cvvjni65qf5g6liksa6k2781pvxfkv2x-chaoscontrol-initrd-raft --bug dogfood-results/raft-verdict-dogfood-20260506-231137/bug_0.json --vms 3 --memory-mb 128 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=30 --verdict-output dogfood-results/raft-verdict-dogfood-20260506-231137/replay-verdict-bug0.json",
+        "exit_status": 1,
+        "message": "Bug NOT reproduced \u2014 assertion 1806003755 did not fail"
+      },
+      "replay_parent_snapshot_ref": {
+        "store": "file-content-addressed",
+        "digest": "sha256:270a8737a6e806c37168a26c63190a373c2924ed112db230a0f7880e9b73e69d",
+        "codec": "simulation-snapshot-bincode-zstd-v1",
+        "schema_version": 1,
+        "path": "snapshots/270a8737a6e806c37168a26c63190a373c2924ed112db230a0f7880e9b73e69d.snapshot.bin"
+      }
+    }
+  ],
+  "checkpoint_reference": {
+    "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/checkpoint-summary.json",
+    "digest": "sha256:12ab3f400be7667800613b662e4a6ad1626cf9ef8acddfc4f7c247ace00ad39d",
+    "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+    "initrd_path": "/nix/store/cvvjni65qf5g6liksa6k2781pvxfkv2x-chaoscontrol-initrd-raft",
+    "seed": 43
+  },
+  "raw_logs": [
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-verdict-dogfood-20260506-231137/reproduce-bug0.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ]
+}

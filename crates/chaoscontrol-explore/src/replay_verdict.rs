@@ -213,17 +213,12 @@ pub fn classify_reproduce(
         SnapshotValidationStatus::InvalidDigest | SnapshotValidationStatus::InvalidRef => {
             ReplayClass::InvalidSnapshotDigest
         }
-        SnapshotValidationStatus::Valid if bug.replay_parent_depth > 0 && target_failed => {
-            ReplayClass::SnapshotBackedReproduced
-        }
-        SnapshotValidationStatus::Valid if bug.replay_parent_depth > 0 => {
-            ReplayClass::SnapshotBackedNotReproduced
-        }
-        SnapshotValidationStatus::NotRequired if target_failed => {
+        SnapshotValidationStatus::Valid if bug.replay_parent_depth == 0 => {
             ReplayClass::ScheduleOnlyReplayGap
         }
+        SnapshotValidationStatus::Valid if target_failed => ReplayClass::SnapshotBackedReproduced,
+        SnapshotValidationStatus::Valid => ReplayClass::SnapshotBackedNotReproduced,
         SnapshotValidationStatus::NotRequired => ReplayClass::ScheduleOnlyReplayGap,
-        SnapshotValidationStatus::Valid => ReplayClass::ReplayError,
     }
 }
 
@@ -310,6 +305,20 @@ mod tests {
         let bug = bug(0, false);
         assert_eq!(
             classify_reproduce(&bug, &ReplaySnapshotValidation::not_required(), true),
+            ReplayClass::ScheduleOnlyReplayGap
+        );
+    }
+
+    #[test]
+    fn classifies_zero_depth_snapshot_ref_as_schedule_only_gap() {
+        let bug = bug(0, true);
+        let snapshot = ReplaySnapshotValidation::valid(
+            bug.replay_parent_snapshot_ref
+                .clone()
+                .expect("snapshot ref"),
+        );
+        assert_eq!(
+            classify_reproduce(&bug, &snapshot, false),
             ReplayClass::ScheduleOnlyReplayGap
         );
     }

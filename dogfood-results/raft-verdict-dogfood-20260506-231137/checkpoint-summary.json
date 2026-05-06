@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "run_id": "raft-verdict-dogfood-20260506-231137",
+  "git_revision": "e853fd872898719fac7e6984c041924ab9d3e98e",
+  "run_exit_status": 1,
+  "rounds_completed": 1,
+  "bugs_exported": 2,
+  "selected_bug": "bug_0.json",
+  "selected_verdict": "replay-verdict-bug0.json",
+  "replay_class": "schedule_only_replay_gap",
+  "reproduced": false,
+  "replay_parent_depth": 0,
+  "snapshot_status": "valid",
+  "snapshot_digest_verified": true,
+  "assertion_coverage": {
+    "registered": 43,
+    "exercised": 42,
+    "passed": 41,
+    "failed": 1
+  },
+  "conclusion": "Fresh non-smoke run exercised replay verdict emission and classified the selected replay as schedule_only_replay_gap; it is not accepted snapshot-backed replay proof because replay_parent_depth is 0."
+}

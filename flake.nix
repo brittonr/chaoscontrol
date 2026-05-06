@@ -213,12 +213,15 @@
 
           # --- Disk image builder ---
 
-          redb-disk-image = pkgs.runCommand "redb-disk-image" {
-            nativeBuildInputs = [ pkgs.e2fsprogs ];
-          } ''
-            dd if=/dev/zero of=$out bs=1M count=64
-            mkfs.ext4 -F -q $out
-          '';
+          redb-disk-image =
+            pkgs.runCommand "redb-disk-image"
+              {
+                nativeBuildInputs = [ pkgs.e2fsprogs ];
+              }
+              ''
+                dd if=/dev/zero of=$out bs=1M count=64
+                mkfs.ext4 -F -q $out
+              '';
 
           # --- Kernel builder ---
 
@@ -313,8 +316,18 @@
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
 
-            inherit guest-sdk guest-raft guest-net guest-redb;
-            inherit initrd-sdk initrd-raft initrd-net initrd-redb;
+            inherit
+              guest-sdk
+              guest-raft
+              guest-net
+              guest-redb
+              ;
+            inherit
+              initrd-sdk
+              initrd-raft
+              initrd-net
+              initrd-redb
+              ;
             inherit redb-disk-image;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;

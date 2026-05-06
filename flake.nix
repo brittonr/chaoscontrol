@@ -429,12 +429,15 @@
 
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
-            tigerstyle-chaoscontrol-fault = tigerstyle.lib.mkConsumerCheck {
+            tigerstyle-chaoscontrol-focused = tigerstyle.lib.mkConsumerCheck {
               inherit system;
               src = tigerstyleSrc;
               cargoLock = ./Cargo.lock;
               nativeBuildInputs = [ pkgs.stdenv.cc ];
-              packages = [ "chaoscontrol-fault" ];
+              packages = [
+                "chaoscontrol-fault"
+                "chaoscontrol-protocol"
+              ];
               cargoExtraArgs = "--lib";
             };
             verified-logic-verus-proofs = verified-logic.checks.${system}.verus-proofs;

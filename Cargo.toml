@@ -23,5 +23,5 @@ authors = ["ChaosControl Contributors"]
 license = "Apache-2.0"
 
 [workspace.metadata.tigerstyle]
-default_scope = ["-p", "chaoscontrol-fault"]
+default_scope = ["-p", "chaoscontrol-fault", "-p", "chaoscontrol-protocol"]
 cargo_check_args = ["--lib"]

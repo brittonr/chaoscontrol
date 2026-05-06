@@ -459,6 +459,14 @@
               touch $out
             '';
 
+            # Nickel-backed evidence contracts and committed dogfood receipt data.
+            evidence-contracts = pkgs.runCommand "evidence-contracts-check" { nativeBuildInputs = [ pkgs.nickel pkgs.python3 ]; } ''
+              cd ${self}
+              python scripts/check-contract-registry.py
+              python scripts/check-evidence-contracts.py
+              touch $out
+            '';
+
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
             tigerstyle-chaoscontrol-focused = tigerstyle.lib.mkConsumerCheck {

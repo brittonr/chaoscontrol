@@ -43,19 +43,19 @@ let Registry = {
       owner = "contracts/evidence/run-config.ncl",
       source_paths = [
         "contracts/evidence/registry.ncl",
-        "future:contracts/evidence/run-config.ncl",
+        "contracts/evidence/run-config.ncl",
       ],
       artifact_paths = [
-        "future:dogfood-results/*/run-config.json",
+        "dogfood-results/*/run-config.json",
       ],
       validation_commands = [
         "nickel export contracts/evidence/registry.ncl",
-        "future:nickel export contracts/evidence/run-config.ncl",
+        "nickel export contracts/evidence/examples/raft-run-config.ncl",
       ],
       fixture_coverage = [
-        "future:valid run config fixture",
-        "future:invalid VM count fixture",
-        "future:missing guest artifact fixture",
+        "contracts/evidence/fixtures/valid/run-config.valid.json",
+        "contracts/evidence/fixtures/invalid/run-config.zero-vms.invalid.json",
+        "contracts/evidence/fixtures/invalid/receipt.stale-artifact.invalid.json",
       ],
       freshness = "Nickel-authored source is authoritative; exported JSON is derived and must be regenerated or validated before execution.",
       rationale = "Humans author run inputs and benefit from Nickel defaults, merging, docs, and early validation before long-running VM work starts.",
@@ -66,20 +66,20 @@ let Registry = {
       owner = "contracts/evidence/dogfood-receipt.ncl",
       source_paths = [
         "contracts/evidence/registry.ncl",
-        "future:contracts/evidence/dogfood-receipt.ncl",
+        "contracts/evidence/dogfood-receipt.ncl",
       ],
       artifact_paths = [
         "dogfood-results/*/receipt.md",
-        "future:dogfood-results/*/receipt.json",
+        "dogfood-results/*/receipt.json",
       ],
       validation_commands = [
         "nickel export contracts/evidence/registry.ncl",
-        "future:nickel export contracts/evidence/dogfood-receipt.ncl",
+        "nickel export contracts/evidence/examples/raft-dogfood-receipt.ncl",
       ],
       fixture_coverage = [
-        "future:valid known-gap Raft dogfood receipt fixture",
-        "future:missing artifact hash fixture",
-        "future:reported bug without replay attempt fixture",
+        "contracts/evidence/fixtures/valid/receipt.known-gap.valid.json",
+        "contracts/evidence/fixtures/invalid/receipt.missing-hash.invalid.json",
+        "contracts/evidence/fixtures/invalid/receipt.missing-replay-attempt.invalid.json",
       ],
       freshness = "Receipt data is the acceptance boundary; generated Markdown must be checked against or produced from validated receipt data.",
       rationale = "Receipts bind commands, git revision, artifacts, hashes, assertion coverage, replay attempts, and known gaps for review.",
@@ -95,12 +95,12 @@ let Registry = {
         "dogfood-results/*/bug_*.json",
       ],
       validation_commands = [
-        "future:cargo test -p chaoscontrol-explore bug_report_roundtrip",
-        "future:nickel export contracts/evidence/bug-report-shape.ncl",
+        "python scripts/check-evidence-contracts.py",
+        "nickel export contracts/evidence/examples/raft-bug-report.ncl",
       ],
       fixture_coverage = [
         "dogfood-results/raft-20260506-095025/bug_0.json",
-        "future:missing deterministic replay context fixture",
+        "contracts/evidence/fixtures/invalid/receipt.missing-deterministic-context.invalid.json",
       ],
       freshness = "Rust serde shape is authoritative; Nickel validates the public evidence shape or generated schema freshness.",
       rationale = "Bug reports are emitted runtime facts, not human-authored config, but receipts must prove whether each report is replayable, known-gap, or invalid.",

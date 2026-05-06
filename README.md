@@ -188,6 +188,30 @@ Output directory contains:
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — per-assertion verdicts and hit counts
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)
+- `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
+
+### Contract-backed evidence
+
+Nickel contracts live under `contracts/evidence/`. Human-authored run configs
+and dogfood receipts are the review boundary; runtime-emitted bug reports,
+assertion summaries, and checkpoint references remain Rust-owned JSON that is
+validated at the boundary. Raw `run.log` / `reproduce.log` files are debug-only
+and are intentionally excluded from the acceptance record.
+
+Acceptance statuses are:
+- `accepted` — the receipt and replay evidence are complete and the reported bug reproduces.
+- `partial` — the run is useful but does not satisfy every acceptance condition.
+- `known-gap` — the run exposed a documented product/evidence gap; the Raft dogfood receipt uses this for the non-replaying `bug_0.json`.
+- `invalid` — the receipt or artifacts fail contract validation.
+- `raw-log-only` — only debug logs exist; this is not acceptance evidence.
+
+Validate the committed evidence bundle with:
+
+```bash
+python scripts/check-contract-registry.py
+python scripts/check-evidence-contracts.py
+nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
+```
 
 ### Bug Workflow
 

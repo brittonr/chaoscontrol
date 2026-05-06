@@ -630,6 +630,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nickel_bug_fixture_round_trips_through_rust_type() {
+        let json = include_str!("../../../contracts/evidence/fixtures/valid/bug-report.valid.json");
+        let bug: SerializableBug = serde_json::from_str(json).unwrap();
+        assert_eq!(bug.bug_id, 0);
+        assert_eq!(bug.assertion_id, 1_205_943_209);
+        assert!(!bug.assertion_location.is_empty());
+        assert!(!bug.schedule.faults.is_empty());
+
+        let roundtrip = serde_json::to_string(&bug).unwrap();
+        let reparsed: SerializableBug = serde_json::from_str(&roundtrip).unwrap();
+        assert_eq!(bug.assertion_id, reparsed.assertion_id);
+        assert_eq!(bug.tick, reparsed.tick);
+    }
+
+    #[test]
+    fn nickel_checkpoint_fixture_round_trips_through_rust_type() {
+        let json = include_str!("../../../dogfood-results/raft-20260506-095025/checkpoint.json");
+        let checkpoint: ExplorationCheckpoint = serde_json::from_str(json).unwrap();
+        assert_eq!(checkpoint.config.num_vms, 3);
+        assert_eq!(checkpoint.rounds_completed, 19);
+        assert_eq!(checkpoint.bugs.len(), 1);
+
+        let roundtrip = serde_json::to_string(&checkpoint).unwrap();
+        let reparsed: ExplorationCheckpoint = serde_json::from_str(&roundtrip).unwrap();
+        assert_eq!(checkpoint.seed, reparsed.seed);
+        assert_eq!(checkpoint.total_branches_run, reparsed.total_branches_run);
+        assert_eq!(
+            checkpoint.bugs[0].assertion_id,
+            reparsed.bugs[0].assertion_id
+        );
+    }
+
+    #[test]
     fn test_serialize_fault() {
         let fault = Fault::NetworkPartition {
             side_a: vec![0, 1],

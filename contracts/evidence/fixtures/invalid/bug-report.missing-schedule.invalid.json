@@ -1,0 +1,11 @@
+{
+  "bug_id": 0,
+  "assertion_id": 1205943209,
+  "assertion_location": "log matching: divergence before agreement",
+  "schedule": {},
+  "tick": 3736,
+  "dedup_key": 5108607881142393342,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

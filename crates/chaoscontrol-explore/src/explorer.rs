@@ -2217,6 +2217,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nickel_assertion_fixture_round_trips_through_rust_type() {
+        let json = include_str!("../../../contracts/evidence/fixtures/valid/assertions.valid.json");
+        let details: Vec<AssertionDetail> = serde_json::from_str(json).unwrap();
+        assert_eq!(details.len(), 42);
+        assert!(details
+            .iter()
+            .all(|detail| matches!(detail.verdict.as_str(), "passed" | "failed" | "unexercised")));
+
+        let roundtrip = serde_json::to_string(&details).unwrap();
+        let reparsed: Vec<AssertionDetail> = serde_json::from_str(&roundtrip).unwrap();
+        assert_eq!(details.len(), reparsed.len());
+        assert_eq!(details[0].id, reparsed[0].id);
+    }
+
+    #[test]
     fn test_explorer_config_default() {
         let config = ExplorerConfig::default();
         assert_eq!(config.num_vms, 2);

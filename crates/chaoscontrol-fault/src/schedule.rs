@@ -133,7 +133,7 @@ impl Default for FaultSchedule {
 }
 
 /// Snapshot of a [`FaultSchedule`]'s progress.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FaultScheduleSnapshot {
     cursor: usize,
 }

@@ -55,7 +55,7 @@ The repository also contains `chaoscontrol-redb-guest`, a guest workload that us
 
 ### 4. Replay fails early on missing or invalid parent context
 
-**Choice:** Standalone replay detects `replay_context = schedule-only-replay-insufficient` or nonzero `replay_parent_depth` and requires a valid parent snapshot ref before running VMs.
+**Choice:** Standalone replay detects nonzero `replay_parent_depth` in bug JSON and requires a valid parent snapshot ref before running VMs. Receipt-level `replay_context` remains review evidence; the standalone bug file boundary is `replay_parent_depth` plus `replay_parent_snapshot_ref`.
 
 **Rationale:** A late “assertion did not fail” is ambiguous; a missing deterministic parent context should be reported as a missing artifact, not as a failed bug reproduction.
 

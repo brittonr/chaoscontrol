@@ -475,6 +475,7 @@ mod tests {
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
                 replay_parent_depth: 0,
+                replay_parent_snapshot_ref: None,
                 dedup_key: Some(0),
                 schedule_variant: None,
                 scenario_config: None,

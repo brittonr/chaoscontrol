@@ -1,0 +1,80 @@
+{
+  "schema_version": "1",
+  "status": "known-gap",
+  "acceptance_status": "known-gap",
+  "git_revision": "bd8fb21",
+  "run_id": "raft-20260506-095025",
+  "command": "nix run .#explore-raft -- --output dogfood-results/raft-20260506-095025",
+  "config": {
+    "path": "dogfood-results/raft-20260506-095025/run-config.json",
+    "digest": "sha256:606207a6e8f18131c99409e17b9aeeefa830db04af7dce74e3cc6407548437d3"
+  },
+  "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft",
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-20260506-095025/report.txt",
+      "sha256": "sha256:ff582263b5b087b25d8bca91a3af9ac4d01080f4bcdb40d430f45697501feb92"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/checkpoint.json",
+      "sha256": "sha256:32d27a5dde161a829395f4ccab961d5e4d01b7cc730cad5d938070d9d8bfd100"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/assertions.json",
+      "sha256": "sha256:28e642f4b2f653e55a2a187ffad135522b83601a347562dca57e1eeda5b8cb51"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/receipt.md",
+      "sha256": "sha256:43f222e81bbe71bfab915ad13c8084434d577bc58d7c8e10f357e684c3ed5128"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/run-config.json",
+      "sha256": "sha256:606207a6e8f18131c99409e17b9aeeefa830db04af7dce74e3cc6407548437d3"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/bug_0.json",
+      "sha256": "sha256:d6d4329f9310fb7da56ae7c2a5d790b619b06af74a72e79877153621ddefcf5d"
+    }
+  ],
+  "assertion_coverage": {
+    "registered": 42,
+    "exercised": 42,
+    "passed": 42,
+    "failed": 0,
+    "unexercised": 0,
+    "summary_path": "dogfood-results/raft-20260506-095025/assertions.json"
+  },
+  "bug_reports": [
+    {
+      "path": "dogfood-results/raft-20260506-095025/bug_0.json",
+      "assertion_id": 1205943209,
+      "tick": 3736,
+      "replay_parent_depth": 1,
+      "replay_context": "parent-snapshot-required-insufficient",
+      "replay_status": "known-gap",
+      "replay_attempt": {
+        "command": "nix run .#explore -- reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft --bug dogfood-results/raft-20260506-095025/bug_0.json --vms 3 --ticks 5000",
+        "exit_status": 1,
+        "message": "Bug NOT reproduced \u2014 assertion 1205943209 did not fail"
+      }
+    }
+  ],
+  "checkpoint_reference": {
+    "path": "dogfood-results/raft-20260506-095025/checkpoint.json",
+    "digest": "sha256:32d27a5dde161a829395f4ccab961d5e4d01b7cc730cad5d938070d9d8bfd100",
+    "kernel_path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+    "initrd_path": "/nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft",
+    "seed": 42
+  },
+  "raw_logs": [
+    {
+      "path": "dogfood-results/raft-20260506-095025/run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "dogfood-results/raft-20260506-095025/reproduce.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ]
+}

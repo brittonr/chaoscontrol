@@ -1,5 +1,8 @@
-## ADDED Requirements
+# replay-parent-snapshots Specification
 
+## Purpose
+TBD - created by archiving change persist-replay-parent-snapshots. Update Purpose after archive.
+## Requirements
 ### Requirement: Replay parent snapshot references [r[replay-parent-snapshots.references]]
 The system SHALL persist public bug and receipt evidence for parent-context replay using a stable `replay_parent_snapshot_ref` envelope rather than embedding large snapshot payloads directly in bug JSON.
 
@@ -37,10 +40,10 @@ The system SHALL provide a Rust-owned `SnapshotStore` boundary for persisted rep
 - **AND** Nickel validates only the reference envelope, digest, codec, schema version, and receipt linkage
 
 ### Requirement: Replay loads required parent snapshots [r[replay-parent-snapshots.replay-load]]
-The standalone replay and minimization paths SHALL load a required parent snapshot from the snapshot store before executing a saved schedule whose replay context says schedule-only replay is insufficient.
+The standalone replay and minimization paths SHALL load a required parent snapshot from the snapshot store before executing a saved schedule whose bug record has nonzero `replay_parent_depth`.
 
 #### Scenario: Parent snapshot replay succeeds [r[replay-parent-snapshots.replay-load.success]]
-- **GIVEN** a bug record with `replay_context` indicating parent context is required and a valid `replay_parent_snapshot_ref`
+- **GIVEN** a bug record with nonzero `replay_parent_depth` and a valid `replay_parent_snapshot_ref`
 - **WHEN** standalone replay runs against the bug record and output directory
 - **THEN** replay restores the referenced parent snapshot before applying the saved schedule
 - **AND** the reproduction verdict is based on that restored context rather than a fresh bootstrap schedule-only attempt

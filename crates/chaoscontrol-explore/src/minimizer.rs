@@ -420,6 +420,7 @@ mod tests {
             snapshot,
             tick: 123,
             replay_parent_depth: 2,
+            replay_parent_snapshot_ref: None,
             dedup_key: 0,
             schedule_variant: None,
             scenario_config: None,

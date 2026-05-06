@@ -1,6 +1,7 @@
 //! Corpus — stores interesting inputs (fault schedules) that produced new coverage or bugs.
 
 use crate::coverage::CoverageBitmap;
+use crate::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
@@ -26,6 +27,8 @@ pub struct BugReport {
     /// snapshot. Depth > 0 means a standalone replay needs the saved branch
     /// snapshot context, not just the fault schedule.
     pub replay_parent_depth: u32,
+    /// Durable replay parent snapshot artifact reference, when persisted.
+    pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
@@ -180,6 +183,7 @@ mod tests {
                 snapshot: None,
                 tick: 1000,
                 replay_parent_depth: 0,
+                replay_parent_snapshot_ref: None,
                 dedup_key: 0,
                 schedule_variant: None,
                 scenario_config: None,
@@ -300,6 +304,7 @@ mod tests {
             snapshot: None,
             tick: 5000,
             replay_parent_depth: 0,
+            replay_parent_snapshot_ref: None,
             dedup_key: 0,
             schedule_variant: None,
             scenario_config: None,

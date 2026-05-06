@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 
 /// Per-direction packet and byte counters.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NetStats {
     /// Packets received by the guest (injected by the harness).
     pub rx_packets: u64,
@@ -21,7 +21,7 @@ pub struct NetStats {
 }
 
 /// Snapshot of a [`DeterministicNet`], capturing queues, MAC, and stats.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct NetSnapshot {
     mac: [u8; 6],
     rx_queue: VecDeque<Vec<u8>>,

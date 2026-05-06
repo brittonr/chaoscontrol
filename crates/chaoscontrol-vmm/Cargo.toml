@@ -14,19 +14,19 @@ chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] 
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 regex = "1"
 kvm-ioctls = "0.19"
-kvm-bindings = { version = "0.10", features = ["fam-wrappers"] }
+kvm-bindings = { version = "0.10", features = ["fam-wrappers", "serde"] }
 vm-memory = { version = "0.17", features = ["backend-mmap"] }
 linux-loader = { version = "0.13", features = ["elf", "bzimage"] }
 vmm-sys-util = "0.12"
 vm-superio = "0.8"
 rand = "0.8"
-rand_chacha = "0.3"
+rand_chacha = { version = "0.3", features = ["serde1"] }
 snafu = "0.8"
 log = "0.4"
 env_logger = "0.11"
 libc = "0.2"
 crc32fast = "1"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]

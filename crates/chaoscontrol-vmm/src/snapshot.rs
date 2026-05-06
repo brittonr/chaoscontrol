@@ -12,6 +12,7 @@ use kvm_bindings::{
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
+use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -50,6 +51,78 @@ impl Clone for SnapshotMemory {
                 dirty_pages: dirty_pages.clone(),
             },
         }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+enum SnapshotMemorySerde {
+    Full(Vec<u8>),
+    Overlay {
+        base: Vec<u8>,
+        dirty_pages: BTreeMap<usize, Vec<u8>>,
+    },
+}
+
+impl From<&SnapshotMemory> for SnapshotMemorySerde {
+    fn from(memory: &SnapshotMemory) -> Self {
+        match memory {
+            SnapshotMemory::Full(data) => Self::Full(data.clone()),
+            SnapshotMemory::Overlay { base, dirty_pages } => Self::Overlay {
+                base: (**base).clone(),
+                dirty_pages: dirty_pages
+                    .iter()
+                    .map(|(page, data)| (*page, data.to_vec()))
+                    .collect(),
+            },
+        }
+    }
+}
+
+impl TryFrom<SnapshotMemorySerde> for SnapshotMemory {
+    type Error = String;
+
+    fn try_from(value: SnapshotMemorySerde) -> Result<Self, Self::Error> {
+        match value {
+            SnapshotMemorySerde::Full(data) => Ok(Self::Full(data)),
+            SnapshotMemorySerde::Overlay { base, dirty_pages } => {
+                let mut pages = BTreeMap::new();
+                for (page, data) in dirty_pages {
+                    if data.len() != PAGE_SIZE {
+                        return Err(format!(
+                            "dirty page {page} byte length mismatch: expected {PAGE_SIZE}, got {}",
+                            data.len()
+                        ));
+                    }
+                    let mut page_data = [0u8; PAGE_SIZE];
+                    page_data.copy_from_slice(&data);
+                    pages.insert(page, Box::new(page_data));
+                }
+                Ok(Self::Overlay {
+                    base: Arc::new(base),
+                    dirty_pages: pages,
+                })
+            }
+        }
+    }
+}
+
+impl Serialize for SnapshotMemory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        SnapshotMemorySerde::from(self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SnapshotMemory {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        SnapshotMemorySerde::deserialize(deserializer)?
+            .try_into()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -172,7 +245,7 @@ impl SnapshotMemory {
 }
 
 /// Snapshot of a single virtio device's host-side state.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VirtioDeviceSnapshot {
     /// Device type ID (2 = block, 1 = net, 4 = rng).
     pub device_id: u32,
@@ -212,6 +285,242 @@ pub struct VcpuSnapshot {
     /// Critical for SMP: without this, KVM doesn't know whether an AP
     /// should be running or waiting for SIPI after restore.
     pub mp_state: kvm_mp_state,
+}
+
+fn pod_to_bytes<T>(value: &T) -> Vec<u8> {
+    let len = std::mem::size_of::<T>();
+    let ptr = value as *const T as *const u8;
+    // SAFETY: we only copy bytes out of a plain KVM bindings value.
+    unsafe { std::slice::from_raw_parts(ptr, len).to_vec() }
+}
+
+fn pod_from_bytes<T>(bytes: &[u8], field: &'static str) -> Result<T, String> {
+    let len = std::mem::size_of::<T>();
+    if bytes.len() != len {
+        return Err(format!(
+            "{field} byte length mismatch: expected {len}, got {}",
+            bytes.len()
+        ));
+    }
+    let mut value = std::mem::MaybeUninit::<T>::uninit();
+    // SAFETY: the bytes were emitted from the same concrete KVM bindings type
+    // by `pod_to_bytes`; version/schema validation lives at the artifact layer.
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), value.as_mut_ptr() as *mut u8, len);
+        Ok(value.assume_init())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct VcpuSnapshotSerde {
+    regs: Vec<u8>,
+    sregs: Vec<u8>,
+    fpu: Vec<u8>,
+    debug_regs: Vec<u8>,
+    lapic: Vec<u8>,
+    xcrs: Vec<u8>,
+    mp_state: Vec<u8>,
+}
+
+impl From<&VcpuSnapshot> for VcpuSnapshotSerde {
+    fn from(snapshot: &VcpuSnapshot) -> Self {
+        Self {
+            regs: pod_to_bytes(&snapshot.regs),
+            sregs: pod_to_bytes(&snapshot.sregs),
+            fpu: pod_to_bytes(&snapshot.fpu),
+            debug_regs: pod_to_bytes(&snapshot.debug_regs),
+            lapic: pod_to_bytes(&snapshot.lapic),
+            xcrs: pod_to_bytes(&snapshot.xcrs),
+            mp_state: pod_to_bytes(&snapshot.mp_state),
+        }
+    }
+}
+
+impl TryFrom<VcpuSnapshotSerde> for VcpuSnapshot {
+    type Error = String;
+
+    fn try_from(value: VcpuSnapshotSerde) -> Result<Self, Self::Error> {
+        Ok(Self {
+            regs: pod_from_bytes(&value.regs, "regs")?,
+            sregs: pod_from_bytes(&value.sregs, "sregs")?,
+            fpu: pod_from_bytes(&value.fpu, "fpu")?,
+            debug_regs: pod_from_bytes(&value.debug_regs, "debug_regs")?,
+            lapic: pod_from_bytes(&value.lapic, "lapic")?,
+            xcrs: pod_from_bytes(&value.xcrs, "xcrs")?,
+            mp_state: pod_from_bytes(&value.mp_state, "mp_state")?,
+        })
+    }
+}
+
+impl Serialize for VcpuSnapshot {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        VcpuSnapshotSerde::from(self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for VcpuSnapshot {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        VcpuSnapshotSerde::deserialize(deserializer)?
+            .try_into()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SerialStateSerde {
+    baud_divisor_low: u8,
+    baud_divisor_high: u8,
+    interrupt_enable: u8,
+    interrupt_identification: u8,
+    line_control: u8,
+    line_status: u8,
+    modem_control: u8,
+    modem_status: u8,
+    scratch: u8,
+    in_buffer: Vec<u8>,
+}
+
+impl From<&vm_superio::SerialState> for SerialStateSerde {
+    fn from(state: &vm_superio::SerialState) -> Self {
+        Self {
+            baud_divisor_low: state.baud_divisor_low,
+            baud_divisor_high: state.baud_divisor_high,
+            interrupt_enable: state.interrupt_enable,
+            interrupt_identification: state.interrupt_identification,
+            line_control: state.line_control,
+            line_status: state.line_status,
+            modem_control: state.modem_control,
+            modem_status: state.modem_status,
+            scratch: state.scratch,
+            in_buffer: state.in_buffer.clone(),
+        }
+    }
+}
+
+impl From<SerialStateSerde> for vm_superio::SerialState {
+    fn from(state: SerialStateSerde) -> Self {
+        Self {
+            baud_divisor_low: state.baud_divisor_low,
+            baud_divisor_high: state.baud_divisor_high,
+            interrupt_enable: state.interrupt_enable,
+            interrupt_identification: state.interrupt_identification,
+            line_control: state.line_control,
+            line_status: state.line_status,
+            modem_control: state.modem_control,
+            modem_status: state.modem_status,
+            scratch: state.scratch,
+            in_buffer: state.in_buffer,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct VmSnapshotSerde {
+    vcpu_snapshots: Vec<VcpuSnapshot>,
+    pic_master: Vec<u8>,
+    pic_slave: Vec<u8>,
+    ioapic: Vec<u8>,
+    pit: Vec<u8>,
+    clock: Vec<u8>,
+    memory: SnapshotMemory,
+    serial_state: SerialStateSerde,
+    entropy: EntropySnapshot,
+    virtual_tsc: u64,
+    exit_count: u64,
+    io_exit_count: u64,
+    exits_since_last_sdk: u64,
+    pit_snapshot: PitSnapshot,
+    last_kvm_pit_mode: u8,
+    fault_engine_snapshot: EngineSnapshot,
+    virtio_snapshots: Vec<VirtioDeviceSnapshot>,
+    coverage_active: bool,
+    active_vcpu: usize,
+    scheduler_snapshot: SchedulerSnapshot,
+    singlestep_remaining: u64,
+}
+
+impl From<&VmSnapshot> for VmSnapshotSerde {
+    fn from(snapshot: &VmSnapshot) -> Self {
+        Self {
+            vcpu_snapshots: snapshot.vcpu_snapshots.clone(),
+            pic_master: pod_to_bytes(&snapshot.pic_master),
+            pic_slave: pod_to_bytes(&snapshot.pic_slave),
+            ioapic: pod_to_bytes(&snapshot.ioapic),
+            pit: pod_to_bytes(&snapshot.pit),
+            clock: pod_to_bytes(&snapshot.clock),
+            memory: snapshot.memory.clone(),
+            serial_state: SerialStateSerde::from(&snapshot.serial_state),
+            entropy: snapshot.entropy.clone(),
+            virtual_tsc: snapshot.virtual_tsc,
+            exit_count: snapshot.exit_count,
+            io_exit_count: snapshot.io_exit_count,
+            exits_since_last_sdk: snapshot.exits_since_last_sdk,
+            pit_snapshot: snapshot.pit_snapshot.clone(),
+            last_kvm_pit_mode: snapshot.last_kvm_pit_mode,
+            fault_engine_snapshot: snapshot.fault_engine_snapshot.clone(),
+            virtio_snapshots: snapshot.virtio_snapshots.clone(),
+            coverage_active: snapshot.coverage_active,
+            active_vcpu: snapshot.active_vcpu,
+            scheduler_snapshot: snapshot.scheduler_snapshot.clone(),
+            singlestep_remaining: snapshot.singlestep_remaining,
+        }
+    }
+}
+
+impl TryFrom<VmSnapshotSerde> for VmSnapshot {
+    type Error = String;
+
+    fn try_from(value: VmSnapshotSerde) -> Result<Self, Self::Error> {
+        Ok(Self {
+            vcpu_snapshots: value.vcpu_snapshots,
+            pic_master: pod_from_bytes(&value.pic_master, "pic_master")?,
+            pic_slave: pod_from_bytes(&value.pic_slave, "pic_slave")?,
+            ioapic: pod_from_bytes(&value.ioapic, "ioapic")?,
+            pit: pod_from_bytes(&value.pit, "pit")?,
+            clock: pod_from_bytes(&value.clock, "clock")?,
+            memory: value.memory,
+            serial_state: value.serial_state.into(),
+            entropy: value.entropy,
+            virtual_tsc: value.virtual_tsc,
+            exit_count: value.exit_count,
+            io_exit_count: value.io_exit_count,
+            exits_since_last_sdk: value.exits_since_last_sdk,
+            pit_snapshot: value.pit_snapshot,
+            last_kvm_pit_mode: value.last_kvm_pit_mode,
+            fault_engine_snapshot: value.fault_engine_snapshot,
+            virtio_snapshots: value.virtio_snapshots,
+            coverage_active: value.coverage_active,
+            active_vcpu: value.active_vcpu,
+            scheduler_snapshot: value.scheduler_snapshot,
+            singlestep_remaining: value.singlestep_remaining,
+        })
+    }
+}
+
+impl Serialize for VmSnapshot {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        VmSnapshotSerde::from(self).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for VmSnapshot {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        VmSnapshotSerde::deserialize(deserializer)?
+            .try_into()
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl VcpuSnapshot {

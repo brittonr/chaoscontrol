@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 
 /// Records for a single assertion site across all runs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AssertionRecord {
     /// Human-readable assertion message.
     pub message: String,
@@ -44,7 +44,7 @@ pub struct AssertionRecord {
 }
 
 /// The kind of assertion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AssertionKind {
     Always,
     Sometimes,
@@ -109,7 +109,7 @@ impl AssertionRecord {
 }
 
 /// Final verdict for an assertion after all runs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Verdict {
     /// Assertion passed across all runs.
     Passed,
@@ -170,7 +170,7 @@ pub struct PropertyOracle {
 }
 
 /// An event recorded by the oracle.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OracleEvent {
     /// Run in which this event occurred.
     pub run_id: u32,
@@ -181,7 +181,7 @@ pub struct OracleEvent {
 }
 
 /// Report produced by the oracle after all runs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OracleReport {
     /// Per-assertion records.
     pub assertions: BTreeMap<u32, AssertionRecord>,
@@ -542,7 +542,7 @@ impl Default for PropertyOracle {
 }
 
 /// Snapshot of a [`PropertyOracle`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OracleSnapshot {
     assertions: BTreeMap<u32, AssertionRecord>,
     total_runs: u32,

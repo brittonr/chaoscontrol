@@ -92,10 +92,41 @@ def validate_artifact_hash(value: Any) -> None:
     int(digest.removeprefix("sha256:"), 16)
 
 
+def validate_snapshot_ref(value: Any, *, check_files: bool = False, root: Path = ROOT) -> None:
+    require(isinstance(value, dict), "snapshot-ref: expected object")
+    require(value.get("store") == "file-content-addressed", "snapshot-ref.store: expected file-content-addressed")
+    digest = value.get("digest")
+    require(isinstance(digest, str) and digest.startswith("sha256:") and len(digest) == 71, "snapshot-ref.digest: expected sha256:<64 hex>")
+    int(digest.removeprefix("sha256:"), 16)
+    require(value.get("codec") == "simulation-snapshot-json-v1", "snapshot-ref.codec: unsupported")
+    require(value.get("schema_version") == 1, "snapshot-ref.schema_version: unsupported")
+    path_value = value.get("path")
+    require_str(path_value, "snapshot-ref.path")
+    path = Path(path_value)
+    require(not path.is_absolute() and ".." not in path.parts and path.parts and path.parts[0] == "snapshots", "snapshot-ref.path: must stay under snapshots/")
+    if check_files:
+        full = root / path
+        require(full.exists(), f"snapshot artifact missing: {path_value}")
+        require(sha256(full) == digest, f"snapshot artifact hash mismatch: {path_value}")
+        try:
+            artifact = json.loads(full.read_text())
+        except Exception as exc:
+            raise ContractError(f"snapshot artifact JSON invalid: {path_value}: {exc}") from exc
+        require(artifact.get("codec") == value.get("codec"), "snapshot artifact codec mismatch")
+        require(artifact.get("schema_version") == value.get("schema_version"), "snapshot artifact schema mismatch")
+        require(isinstance(artifact.get("snapshot"), dict), "snapshot artifact missing restorable snapshot payload")
+        require_num(artifact["snapshot"].get("tick"), "snapshot artifact snapshot.tick")
+        require(isinstance(artifact["snapshot"].get("vm_snapshots"), list), "snapshot artifact snapshot.vm_snapshots: expected list")
+
+
 def validate_bug_report(value: Any) -> None:
     require(isinstance(value, dict), "bug-report: expected object")
     for key in ["bug_id", "assertion_id", "tick", "replay_parent_depth", "dedup_key"]:
         require_num(value.get(key), f"bug-report.{key}")
+    if value.get("replay_parent_depth", 0) > 0:
+        require(value.get("replay_parent_snapshot_ref") is not None, "bug-report.replay_parent_snapshot_ref: required when replay_parent_depth > 0")
+    if value.get("replay_parent_snapshot_ref") is not None:
+        validate_snapshot_ref(value["replay_parent_snapshot_ref"])
     require_str(value.get("assertion_location"), "bug-report.assertion_location")
     schedule = value.get("schedule")
     require(isinstance(schedule, dict), "bug-report.schedule: expected object")
@@ -145,6 +176,11 @@ def validate_receipt(value: Any, *, check_files: bool = False) -> None:
         require_num(bug.get("assertion_id"), f"receipt.bug_reports[{idx}].assertion_id")
         require_num(bug.get("tick"), f"receipt.bug_reports[{idx}].tick")
         require_num(bug.get("replay_parent_depth"), f"receipt.bug_reports[{idx}].replay_parent_depth")
+        if bug.get("replay_parent_depth", 0) > 0 or str(bug.get("replay_context", "")).startswith("parent-snapshot-required"):
+            require(bug.get("replay_parent_snapshot_ref") is not None, f"receipt.bug_reports[{idx}].replay_parent_snapshot_ref: required for parent snapshot replay")
+        if bug.get("replay_parent_snapshot_ref") is not None:
+            snapshot_root = Path(bug.get("path", ".")).parent if check_files else ROOT
+            validate_snapshot_ref(bug["replay_parent_snapshot_ref"], check_files=check_files, root=snapshot_root)
         require_str(bug.get("replay_context"), f"receipt.bug_reports[{idx}].replay_context")
         require_status(bug.get("replay_status"), f"receipt.bug_reports[{idx}].replay_status")
         replay = bug.get("replay_attempt")
@@ -191,6 +227,7 @@ def main() -> int:
     validate_run_config(load_json(valid / "run-config.valid.json"))
     validate_receipt(load_json(valid / "receipt.known-gap.valid.json"))
     validate_bug_report(load_json(valid / "bug-report.valid.json"))
+    validate_snapshot_ref(load_json(valid / "snapshot-ref.valid.json"))
     validate_assertion_summary(load_json(valid / "assertions.valid.json"))
 
     invalid = CONTRACTS / "fixtures" / "invalid"
@@ -199,7 +236,15 @@ def main() -> int:
     expect_invalid(invalid / "receipt.missing-replay-attempt.invalid.json", validate_receipt)
     expect_invalid(invalid / "assertions.bad-verdict.invalid.json", validate_assertion_summary)
     expect_invalid(invalid / "bug-report.missing-schedule.invalid.json", validate_bug_report)
+    expect_invalid(invalid / "bug-report.missing-snapshot-ref.invalid.json", validate_bug_report)
     expect_invalid(invalid / "receipt.missing-deterministic-context.invalid.json", validate_receipt)
+    expect_invalid(invalid / "receipt.missing-snapshot-ref.invalid.json", validate_receipt)
+    expect_invalid(invalid / "snapshot-ref.path-escape.invalid.json", validate_snapshot_ref)
+    expect_invalid(invalid / "snapshot-ref.unsupported-codec.invalid.json", validate_snapshot_ref)
+    expect_invalid(invalid / "snapshot-ref.incompatible-schema.invalid.json", validate_snapshot_ref)
+    expect_invalid(invalid / "snapshot-ref.wrong-hash.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
+    expect_invalid(invalid / "snapshot-ref.missing.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
+    expect_invalid(invalid / "snapshot-ref.corrupt.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
     expect_invalid(invalid / "receipt.stale-artifact.invalid.json", lambda value: validate_receipt(value, check_files=True))
 
     print("evidence contracts ok: nickel examples, dogfood receipt, positive fixtures, negative fixtures")

@@ -8,6 +8,7 @@ let FaultSchedule = { faults | Array Dyn } in
   schedule | FaultSchedule,
   tick | Number,
   replay_parent_depth | Number,
+  replay_parent_snapshot_ref | Dyn | default = null,
   dedup_key | Number,
   schedule_variant | Dyn,
   scenario_config | Dyn,

@@ -22,6 +22,7 @@ REQUIRED_IDS = {
     "bug-report",
     "assertion-summary",
     "checkpoint-reference",
+    "snapshot-reference",
     "raw-runtime-logs",
     "secrets-and-crypto-internals",
 }

@@ -1,0 +1,7 @@
+{
+  "store": "file-content-addressed",
+  "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "codec": "simulation-snapshot-json-v1",
+  "schema_version": 1,
+  "path": "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.json"
+}

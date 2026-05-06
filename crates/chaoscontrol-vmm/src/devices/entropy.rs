@@ -9,7 +9,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 /// Snapshot of the PRNG state, suitable for serialisation or in-memory cloning.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct EntropySnapshot {
     /// Opaque seed material that can reconstruct the ChaCha20 state.
     ///

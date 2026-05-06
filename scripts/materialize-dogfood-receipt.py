@@ -70,7 +70,7 @@ def materialize(output: Path, *, git_revision: str, replay_status: str, replay_m
         replay_context = "parent-snapshot-required" if replay_parent_depth > 0 else "schedule-only-replay"
         if replay_status == "known-gap":
             replay_context = f"{replay_context}-insufficient"
-        bug_reports.append({
+        item = {
             "path": str(bug_path),
             "assertion_id": bug["assertion_id"],
             "tick": bug["tick"],
@@ -82,7 +82,10 @@ def materialize(output: Path, *, git_revision: str, replay_status: str, replay_m
                 "exit_status": replay_exit_status,
                 "message": replay_message,
             },
-        })
+        }
+        if bug.get("replay_parent_snapshot_ref") is not None:
+            item["replay_parent_snapshot_ref"] = bug["replay_parent_snapshot_ref"]
+        bug_reports.append(item)
 
     receipt = {
         "schema_version": "1",

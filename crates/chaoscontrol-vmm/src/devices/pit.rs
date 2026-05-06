@@ -27,7 +27,7 @@ pub const PIT_PORT_COMMAND: u16 = 0x43;
 pub const PORT_SYSTEM_CONTROL_B: u16 = 0x61;
 
 /// PIT channel operating mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ChannelMode {
     /// Mode 0: Interrupt on terminal count
     Mode0,
@@ -44,7 +44,7 @@ pub enum ChannelMode {
 }
 
 /// PIT channel access mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AccessMode {
     /// Latch count command
     Latch,
@@ -57,7 +57,7 @@ pub enum AccessMode {
 }
 
 /// Write state for LoHiByte access mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum WriteState {
     /// Next write is low byte
     Lo,
@@ -66,7 +66,7 @@ pub enum WriteState {
 }
 
 /// Read state for LoHiByte access mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ReadState {
     /// Next read is low byte
     Lo,
@@ -131,7 +131,7 @@ impl PitChannel {
 }
 
 /// Snapshot of a PIT channel for save/restore
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChannelSnapshot {
     /// Reload/initial count value
     pub reload: u16,
@@ -568,7 +568,7 @@ impl DeterministicPit {
 }
 
 /// Snapshot of PIT state for save/restore
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PitSnapshot {
     /// Channel snapshots
     pub channels: [ChannelSnapshot; 3],

@@ -1,0 +1,43 @@
+{
+  "bug_id": 0,
+  "assertion_id": 1205943209,
+  "assertion_location": "log matching: divergence before agreement",
+  "schedule": {
+    "faults": [
+      {
+        "time_ns": 564343828,
+        "fault": {
+          "DiskFull": {
+            "target": 0
+          }
+        },
+        "label": null
+      },
+      {
+        "time_ns": 619821961,
+        "fault": {
+          "DiskWriteError": {
+            "target": 1,
+            "offset": 6523194
+          }
+        },
+        "label": null
+      },
+      {
+        "time_ns": 772313330,
+        "fault": {
+          "DiskFull": {
+            "target": 1
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "tick": 3736,
+  "dedup_key": 5108607881142393342,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null,
+  "replay_parent_depth": 1
+}

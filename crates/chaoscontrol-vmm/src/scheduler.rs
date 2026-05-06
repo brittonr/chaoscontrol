@@ -253,7 +253,7 @@ impl VcpuScheduler {
 }
 
 /// Serialisable scheduler state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SchedulerSnapshot {
     /// Active vCPU index.
     pub active: usize,

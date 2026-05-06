@@ -188,6 +188,7 @@ Output directory contains:
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — per-assertion verdicts and hit counts
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)
+- `snapshots/<sha256>.snapshot.json` — hash-addressed replay parent snapshot artifacts containing restorable `SimulationSnapshot` JSON for bugs that need parent context
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 
 ### Contract-backed evidence
@@ -196,7 +197,10 @@ Nickel contracts live under `contracts/evidence/`. Human-authored run configs
 and dogfood receipts are the review boundary; runtime-emitted bug reports,
 assertion summaries, and checkpoint references remain Rust-owned JSON that is
 validated at the boundary. Raw `run.log` / `reproduce.log` files are debug-only
-and are intentionally excluded from the acceptance record.
+and are intentionally excluded from the acceptance record. Replay parent snapshot
+references are Rust-derived, JSON/Nickel-contractable refs (`store`, `digest`,
+`codec`, `schema_version`, and confined `snapshots/...` path); the optional redb
+store/index is host-side only and is not a public evidence format.
 
 Acceptance statuses are:
 - `accepted` — the receipt and replay evidence are complete and the reported bug reproduces.

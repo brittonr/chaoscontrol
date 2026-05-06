@@ -1,0 +1,7 @@
+{
+  "store": "file-content-addressed",
+  "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "codec": "unsupported-codec",
+  "schema_version": 1,
+  "path": "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.json"
+}

@@ -151,6 +151,35 @@ let Registry = {
       rationale = "Checkpoints can be large runtime state snapshots; receipts should bind them by reference and hash instead of hand-authoring them in Nickel.",
     },
     {
+      id = "snapshot-reference",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-explore snapshot_store",
+      source_paths = [
+        "crates/chaoscontrol-explore/src/snapshot_store.rs",
+        "contracts/evidence/snapshot-ref.ncl",
+      ],
+      artifact_paths = [
+        "dogfood-results/*/snapshots/*.snapshot.json",
+        "dogfood-results/*/bug_*.json",
+        "dogfood-results/*/receipt.json",
+      ],
+      validation_commands = [
+        "cargo test -p chaoscontrol-explore snapshot_store",
+        "python scripts/check-evidence-contracts.py",
+      ],
+      fixture_coverage = [
+        "contracts/evidence/fixtures/valid/snapshot-ref.valid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.path-escape.invalid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.missing.invalid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.corrupt.invalid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.wrong-hash.invalid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.unsupported-codec.invalid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-ref.incompatible-schema.invalid.json",
+      ],
+      freshness = "Rust snapshot-store code emits the artifact metadata and public refs; Nickel validates the receipt-facing reference shape and safety envelope.",
+      rationale = "Replay parent snapshots are runtime-derived evidence artifacts that must be hash-addressed and path-confined without making redb or raw logs a public boundary.",
+    },
+    {
       id = "campaign-progress",
       ownership = "rust-derived",
       owner = "chaoscontrol-explore",

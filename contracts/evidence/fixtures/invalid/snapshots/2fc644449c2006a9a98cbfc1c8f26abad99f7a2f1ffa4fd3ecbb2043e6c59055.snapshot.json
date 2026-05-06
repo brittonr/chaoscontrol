@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "codec": "simulation-snapshot-json-v1",
+  "replay_parent_depth": 1,
+  "tick": 1,
+  "vm_count": 1,
+  "note": "wrong hash fixture"
+}

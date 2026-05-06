@@ -1008,9 +1008,41 @@ fn cmd_run(
         }
 
         // Save bugs as JSON (consumable by `minimize` subcommand) + Debug text
+        let snapshot_store =
+            chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output_dir);
         for bug in &report.bugs {
             // JSON format (for minimize subcommand)
-            let serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+            let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+            if let Some(snapshot) = bug.snapshot.as_ref() {
+                match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
+                    &snapshot_store,
+                    snapshot,
+                    bug.replay_parent_depth,
+                ) {
+                    Ok(reference) => {
+                        serialized.replay_parent_snapshot_ref = Some(reference);
+                    }
+                    Err(e) if bug.replay_parent_depth > 0 => {
+                        eprintln!(
+                            "Error: failed to persist required replay parent snapshot for bug {}: {}",
+                            bug.bug_id, e
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: failed to persist schedule-only replay parent metadata for bug {}: {}",
+                            bug.bug_id, e
+                        );
+                    }
+                }
+            } else if bug.replay_parent_depth > 0 {
+                eprintln!(
+                    "Error: bug {} requires replay parent snapshot depth {} but no parent snapshot is available to persist",
+                    bug.bug_id, bug.replay_parent_depth
+                );
+                std::process::exit(1);
+            }
             let json_path = format!("{}/bug_{}.json", output_dir, bug.bug_id);
             match serde_json::to_string_pretty(&serialized) {
                 Ok(json) => {
@@ -1338,6 +1370,7 @@ fn cmd_campaign(
                             snapshot: None,
                             tick: cb.bug.tick,
                             replay_parent_depth: cb.bug.replay_parent_depth,
+                            replay_parent_snapshot_ref: cb.bug.replay_parent_snapshot_ref.clone(),
                             dedup_key: cb.dedup_key,
                             schedule_variant: None,
                             scenario_config: cb.bug.scenario_config.clone(),
@@ -1671,8 +1704,37 @@ fn cmd_resume(
     }
 
     // Save bugs as JSON (for minimize/reproduce subcommands)
+    let snapshot_store = chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(&corpus);
     for bug in &report.bugs {
-        let serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+        let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+        if serialized.replay_parent_snapshot_ref.is_none() {
+            if let Some(snapshot) = bug.snapshot.as_ref() {
+                match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
+                    &snapshot_store,
+                    snapshot,
+                    bug.replay_parent_depth,
+                ) {
+                    Ok(reference) => serialized.replay_parent_snapshot_ref = Some(reference),
+                    Err(e) if bug.replay_parent_depth > 0 => {
+                        eprintln!(
+                            "Error: failed to persist required replay parent snapshot for bug {}: {}",
+                            bug.bug_id, e
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => eprintln!(
+                        "Warning: failed to persist optional replay parent snapshot for bug {}: {}",
+                        bug.bug_id, e
+                    ),
+                }
+            } else if bug.replay_parent_depth > 0 {
+                eprintln!(
+                    "Error: bug {} requires replay parent snapshot context (depth {}) but no snapshot is available to persist",
+                    bug.bug_id, bug.replay_parent_depth
+                );
+                std::process::exit(1);
+            }
+        }
         let json_path = format!("{}/bug_{}.json", corpus, bug.bug_id);
         match serde_json::to_string_pretty(&serialized) {
             Ok(json) => {
@@ -1712,6 +1774,42 @@ fn cmd_resume(
     // Exit with error code if bugs found
     if !report.bugs.is_empty() {
         std::process::exit(1);
+    }
+}
+
+fn load_replay_parent_snapshot(
+    bug_path: &str,
+    serialized_bug: &chaoscontrol_explore::checkpoint::SerializableBug,
+) -> Option<chaoscontrol_vmm::controller::SimulationSnapshot> {
+    use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
+
+    match serialized_bug.replay_parent_snapshot_ref.as_ref() {
+        Some(reference) => {
+            let root = Path::new(bug_path)
+                .parent()
+                .unwrap_or_else(|| Path::new("."));
+            let store = FileSnapshotStore::new(root);
+            let snapshot = match store.get_snapshot(reference) {
+                Ok(snapshot) => snapshot,
+                Err(e) => {
+                    eprintln!("Error: invalid replay parent snapshot reference: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            eprintln!(
+                "Loaded replay parent snapshot artifact: {} ({})",
+                reference.path, reference.digest
+            );
+            Some(snapshot)
+        }
+        None if serialized_bug.replay_parent_depth > 0 => {
+            eprintln!(
+                "Error: bug requires replay parent snapshot context (depth {}) but has no replay_parent_snapshot_ref",
+                serialized_bug.replay_parent_depth
+            );
+            std::process::exit(1);
+        }
+        None => None,
     }
 }
 
@@ -1759,6 +1857,8 @@ fn cmd_minimize(
             }
         };
 
+    let replay_parent_snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
+
     // Convert serialized schedule back to FaultSchedule
     let schedule: FaultSchedule = (&serialized_bug.schedule).into();
 
@@ -1767,9 +1867,10 @@ fn cmd_minimize(
         assertion_id: serialized_bug.assertion_id,
         assertion_location: serialized_bug.assertion_location.clone(),
         schedule,
-        snapshot: None,
+        snapshot: replay_parent_snapshot,
         tick: serialized_bug.tick,
         replay_parent_depth: serialized_bug.replay_parent_depth,
+        replay_parent_snapshot_ref: serialized_bug.replay_parent_snapshot_ref.clone(),
         dedup_key: serialized_bug.dedup_key.unwrap_or(0),
         schedule_variant: None,
         scenario_config: serialized_bug.scenario_config.clone(),
@@ -1879,6 +1980,7 @@ fn cmd_minimize(
             schedule: (&result.schedule).into(),
             tick: 0,
             replay_parent_depth: serialized_bug.replay_parent_depth,
+            replay_parent_snapshot_ref: serialized_bug.replay_parent_snapshot_ref.clone(),
             dedup_key: None,
             schedule_variant: None,
             scenario_config: serialized_bug.scenario_config.clone(),
@@ -1946,6 +2048,8 @@ fn cmd_reproduce(
             }
         };
 
+    let replay_parent_snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
+
     let schedule: FaultSchedule = (&serialized_bug.schedule).into();
     let target_assertion = serialized_bug.assertion_id;
 
@@ -2001,7 +2105,11 @@ fn cmd_reproduce(
         eprintln!();
     }
 
-    eprintln!("Bootstrapping...");
+    if replay_parent_snapshot.is_some() {
+        eprintln!("Loading persisted replay parent snapshot...");
+    } else {
+        eprintln!("Bootstrapping...");
+    }
 
     // Create simulation controller
     let sim_config = SimulationConfig {
@@ -2026,22 +2134,28 @@ fn cmd_reproduce(
         }
     };
 
-    // Bootstrap
-    if let Err(e) = controller.run_until_setup_complete(bootstrap_budget) {
-        eprintln!("Error: bootstrap failed: {}", e);
-        std::process::exit(1);
-    }
-
-    let bootstrap_tick = controller.tick();
-    eprintln!("Bootstrap complete at tick {}", bootstrap_tick);
-    eprintln!();
-
-    // Snapshot, then restore with fault schedule
-    let snapshot = match controller.snapshot_all() {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: snapshot failed: {}", e);
+    let snapshot = if let Some(snapshot) = replay_parent_snapshot {
+        eprintln!("Replay parent snapshot loaded at tick {}", snapshot.tick);
+        eprintln!();
+        snapshot
+    } else {
+        // Bootstrap
+        if let Err(e) = controller.run_until_setup_complete(bootstrap_budget) {
+            eprintln!("Error: bootstrap failed: {}", e);
             std::process::exit(1);
+        }
+
+        let bootstrap_tick = controller.tick();
+        eprintln!("Bootstrap complete at tick {}", bootstrap_tick);
+        eprintln!();
+
+        // Snapshot, then restore with fault schedule
+        match controller.snapshot_all() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error: snapshot failed: {}", e);
+                std::process::exit(1);
+            }
         }
     };
 
@@ -2196,6 +2310,7 @@ fn auto_minimize_bugs(
                     schedule: (&result.schedule).into(),
                     tick: bug.tick,
                     replay_parent_depth: bug.replay_parent_depth,
+                    replay_parent_snapshot_ref: bug.replay_parent_snapshot_ref.clone(),
                     dedup_key: Some(bug.dedup_key),
                     schedule_variant: None,
                     scenario_config: bug.scenario_config.clone(),

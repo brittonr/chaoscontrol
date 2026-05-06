@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashMap};
 ///
 /// The explorer uses these records to identify decision points in the
 /// guest's execution and generate alternative branches.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChoiceRecord {
     /// Monotonic sequence number within this engine instance.
     /// Resets when the engine is restored from a snapshot.
@@ -75,7 +75,7 @@ impl Default for EngineConfig {
 }
 
 /// Snapshot of the engine state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EngineSnapshot {
     rng_seed: [u8; 32],
     rng_stream: u64,

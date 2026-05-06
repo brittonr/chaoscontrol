@@ -12,6 +12,7 @@
 //! re-explore known territory.
 
 use crate::corpus::BugReport;
+use crate::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use serde::{Deserialize, Serialize};
@@ -561,6 +562,9 @@ pub struct SerializableBug {
     /// branch snapshot context.
     #[serde(default)]
     pub replay_parent_depth: u32,
+    /// Durable replay parent snapshot artifact reference for parent-context replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
     /// Dedup key: hash of (assertion_id, sorted fault type names).
     #[serde(default)]
     pub dedup_key: Option<u64>,
@@ -584,6 +588,7 @@ impl From<&BugReport> for SerializableBug {
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
             replay_parent_depth: bug.replay_parent_depth,
+            replay_parent_snapshot_ref: bug.replay_parent_snapshot_ref.clone(),
             dedup_key: Some(bug.dedup_key),
             schedule_variant: bug.schedule_variant.clone(),
             scenario_config: bug.scenario_config.clone(),
@@ -938,6 +943,7 @@ mod tests {
                 schedule: SerializableSchedule { faults: Vec::new() },
                 tick: 1000,
                 replay_parent_depth: 0,
+                replay_parent_snapshot_ref: None,
                 dedup_key: Some(0xBB),
                 schedule_variant: None,
                 scenario_config: Some(sc_config.clone()),

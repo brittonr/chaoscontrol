@@ -89,6 +89,7 @@ pub mod report;
 #[cfg(feature = "dashboard")]
 pub mod server;
 pub mod signal;
+pub mod snapshot_store;
 pub mod worker;
 
 // Re-export main types for convenience

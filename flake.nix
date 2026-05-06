@@ -460,12 +460,39 @@
             '';
 
             # Nickel-backed evidence contracts and committed dogfood receipt data.
-            evidence-contracts = pkgs.runCommand "evidence-contracts-check" { nativeBuildInputs = [ pkgs.nickel pkgs.python3 ]; } ''
-              cd ${self}
-              python scripts/check-contract-registry.py
-              python scripts/check-evidence-contracts.py
-              touch $out
-            '';
+            evidence-contracts =
+              pkgs.runCommand "evidence-contracts-check"
+                {
+                  nativeBuildInputs = [
+                    pkgs.nickel
+                    pkgs.python3
+                  ];
+                }
+                ''
+                  cd ${self}
+                  python scripts/check-contract-registry.py
+                  python scripts/check-evidence-contracts.py
+                  touch $out
+                '';
+
+            # KVM-required smoke gate for the snapshot-backed Raft replay rail.
+            snapshot-replay-smoke =
+              pkgs.runCommand "snapshot-replay-smoke-check"
+                {
+                  nativeBuildInputs = [
+                    chaoscontrol
+                    pkgs.coreutils
+                    pkgs.gnugrep
+                    pkgs.python3
+                  ];
+                  requiredSystemFeatures = [ "kvm" ];
+                }
+                ''
+                  KERNEL=${mkChaosKernel { virtioNet = true; }}/vmlinux \
+                    INITRD=${initrd-raft} \
+                    OUT=$out \
+                    ${pkgs.bash}/bin/bash ${./scripts/snapshot-replay-smoke.sh}
+                '';
 
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;

@@ -219,6 +219,14 @@ Acceptance statuses are:
 - `invalid` — the receipt or artifacts fail contract validation.
 - `raw-log-only` — only debug logs exist; this is not acceptance evidence.
 
+The repeatable KVM smoke gate for this rail is:
+
+```bash
+nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
+```
+
+It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to report `BUG REPRODUCED`. Raw logs remain in the temporary build directory.
+
 Validate the committed evidence bundle with:
 
 ```bash

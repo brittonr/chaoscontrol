@@ -1,0 +1,72 @@
+# Raft dogfood receipt — 2026-05-06
+
+## Command
+
+```bash
+nix build .#initrd-raft -o result-initrd-raft -L
+nix run .#explore-raft -- --output dogfood-results/raft-20260506-095025
+```
+
+The first attempted command tried to override `--rounds`/`--branches` on the `explore-raft` wrapper and failed because the wrapper already supplies those flags. The successful run used the wrapper defaults.
+
+## Configuration
+
+- Kernel: `/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux`
+- Initrd: `/nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft`
+- VMs: 3
+- Seed: 42
+- Mode: hybrid
+- Rounds requested: 100
+- Branches per full round: 8
+- Ticks per branch: 1000
+
+## Result
+
+- Exit status: `1` because exploration reported a bug.
+- Rounds completed: 19
+- Branches explored: 96
+- Unique edges: 32,616
+- Wall-clock exploration time: 9m 29s
+- Assertion sites exercised: 42/42 (100%)
+- `assertions.json` verdicts: 42 passed, 0 failed
+- Reported bugs: 1
+
+## Reported bug
+
+- File: `bug_0.json`
+- Assertion ID: `1205943209`
+- Location: `log matching: divergence before agreement`
+- Tick: 3736
+- Schedule:
+  1. `@ 564343828ns: DiskFull { target: 0 }`
+  2. `@ 619821961ns: DiskWriteError { target: 1, offset: 6523194 }`
+  3. `@ 772313330ns: DiskFull { target: 1 }`
+
+## Reproduction check
+
+```bash
+nix run .#explore -- reproduce \
+  --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux \
+  --initrd /nix/store/w7gzjynjam8glqyjvhdy1n0kr8hhf6gv-chaoscontrol-initrd-raft \
+  --bug dogfood-results/raft-20260506-095025/bug_0.json \
+  --vms 3 \
+  --ticks 5000
+```
+
+Reproduction exit status was `1`; the reproducer reported:
+
+```text
+Bug NOT reproduced — assertion 1205943209 did not fail
+```
+
+## Dogfood finding
+
+The run produced valuable acceptance evidence, but it exposed a sharper product gap than the Raft schedule itself: exploration can persist a `bug_0.json` while the standalone reproducer cannot replay it from only the saved fault schedule. The report also says `Bugs discovered: 1` while assertion coverage says `Failed: 0`, so the receipt should be treated as a replayability/receipt-integrity failure until the saved bug includes enough deterministic branch context to reproduce.
+
+## Artifacts
+
+- `report.txt` — human-readable exploration report
+- `checkpoint.json` — exploration checkpoint with saved global state and bug list
+- `assertions.json` — per-assertion verdict/hit counts
+- `bug_0.json` — saved bug schedule
+- `run.log` and `reproduce.log` — local raw logs, intentionally excluded from git because they are noisy serial output

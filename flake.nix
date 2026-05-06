@@ -437,6 +437,7 @@
               packages = [
                 "chaoscontrol-fault"
                 "chaoscontrol-protocol"
+                "chaoscontrol-sdk"
               ];
               cargoExtraArgs = "--lib";
             };

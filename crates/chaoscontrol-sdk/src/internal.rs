@@ -292,23 +292,12 @@ fn escape_json(s: &str) -> String {
 
 /// Provide fallback random when outside a VM.
 ///
-/// Uses `std::collections::hash_map::RandomState` for entropy,
-/// seeded by thread RNG.  NOT deterministic — that's the point:
-/// outside Antithesis/ChaosControl, random should be truly random.
+/// Uses the host entropy-backed `rand` runtime.  NOT deterministic — that's
+/// the point: outside Antithesis/ChaosControl, random should be truly random.
 pub(crate) fn local_random_u64() -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use std::time::SystemTime;
-
-    // Simple entropy: hash of timestamp + address of stack variable
-    let mut hasher = DefaultHasher::new();
-    SystemTime::now().hash(&mut hasher);
-    let stack_var = 0u8;
-    (core::ptr::addr_of!(stack_var) as u64).hash(&mut hasher);
-    RANDOM_COUNTER
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        .hash(&mut hasher);
-    hasher.finish()
+    let entropy = rand::random::<u64>();
+    let sequence = RANDOM_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    entropy ^ sequence
 }
 
 static RANDOM_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

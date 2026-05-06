@@ -8,6 +8,8 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    tigerstyle.url = "git+file:../tigerstyle?ref=refs/heads/main&rev=2197d80a2a4a261e141531927084e66f92935f93";
+    verified-logic.url = "git+file:../verified-logic?ref=refs/heads/main&rev=b332e653e3252922eb66aac6912899272d7c6c07";
   };
 
   outputs =
@@ -16,6 +18,8 @@
       nixpkgs,
       crane,
       rust-overlay,
+      tigerstyle,
+      verified-logic,
     }:
     let
       supportedSystems = [ "x86_64-linux" ]; # KVM is Linux-only
@@ -301,6 +305,10 @@
             inherit initrd-sdk initrd-raft initrd-net initrd-redb;
             inherit redb-disk-image;
 
+            cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
+            tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
+            verified-logic = verified-logic.packages.${system}.verified-logic;
+
             net-vmlinux = mkChaosKernel { virtioNet = true; };
             kcov-vmlinux = mkChaosKernel { kcov = true; };
             kcov-net-vmlinux = mkChaosKernel {
@@ -410,6 +418,10 @@
               nixfmt --check .
               touch $out
             '';
+
+            # Track the local sibling proof/style repos used by this workspace.
+            tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
+            verified-logic-verus-proofs = verified-logic.checks.${system}.verus-proofs;
 
             # Simulation tests live in packages, not checks — they take
             # 10+ minutes and need /dev/kvm.  Run explicitly:
@@ -521,6 +533,11 @@
 
               # OpenSpec
               pkgs.nodejs_22
+
+              # Local sibling proof/style tools
+              tigerstyle.packages.${system}.cargo-tigerstyle
+              tigerstyle.packages.${system}.tigerstyle-standards
+              verified-logic.packages.${system}.verified-logic
 
               # Nix formatting (matches CI check)
               pkgs.nixfmt-rfc-style

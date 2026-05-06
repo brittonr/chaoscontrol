@@ -97,7 +97,6 @@
 
           # Build the full workspace
           # doCheck = false — tests run via checks.tests instead.
-          # Hegel property tests need uv which isn't in the sandbox.
           chaoscontrol = craneLib.buildPackage (
             commonArgs
             // {
@@ -426,7 +425,13 @@
 
             # Unit tests (KVM integration tests are #[ignore] —
             # the Nix sandbox has no /dev/kvm)
-            tests = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+            tests = craneLib.cargoTest (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoExtraArgs = "--lib";
+              }
+            );
 
             # Keep optional profiling instrumentation compiling.
             profiling = craneLib.cargoClippy (

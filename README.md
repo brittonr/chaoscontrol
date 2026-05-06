@@ -155,8 +155,10 @@ cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 # Run Raft exploration with one command (builds kernel + guest + initrd)
 nix run .#explore-raft
 
-# Run with custom args (appended after defaults)
-nix run .#explore-raft -- --output results/ --rounds 200
+# Run with non-duplicate custom args (the wrapper already sets rounds/branches/ticks)
+nix run .#explore-raft -- --output results/ --extra-cmdline 'raft_bug=fig8_commit'
+
+# To override wrapper defaults, call the explorer directly with explicit kernel/initrd paths.
 ```
 
 ### Exploration

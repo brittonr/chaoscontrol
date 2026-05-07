@@ -31,6 +31,50 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def snapshot_artifact_sha256(snapshot_path: Path) -> tuple[str, str]:
+    """Return logical snapshot SHA-256 and storage mode.
+
+    Accepted evidence may either commit the raw `.snapshot.bin` or a sidecar
+    `<snapshot>.chunks.json` plus ordered chunk files. The logical snapshot path
+    remains the one embedded in Rust-owned bug/verdict refs.
+    """
+    if snapshot_path.exists():
+        return sha256(snapshot_path), "raw"
+
+    manifest_path = snapshot_path.with_name(snapshot_path.name + ".chunks.json")
+    manifest = load_json(manifest_path)
+    require(manifest.get("schema_version") == 1, f"chunk manifest schema_version invalid: {rel(manifest_path)}")
+    require(manifest.get("original_path") == snapshot_path.name, f"chunk manifest original_path mismatch: {rel(manifest_path)}")
+    expected_size = manifest.get("original_size")
+    require(isinstance(expected_size, int) and expected_size > 0, f"chunk manifest original_size invalid: {rel(manifest_path)}")
+    expected_sha = manifest.get("original_sha256")
+    require(isinstance(expected_sha, str) and len(expected_sha) == 64, f"chunk manifest original_sha256 invalid: {rel(manifest_path)}")
+    chunks = manifest.get("chunks")
+    require(isinstance(chunks, list) and chunks, f"chunk manifest has no chunks: {rel(manifest_path)}")
+
+    aggregate = hashlib.sha256()
+    total_size = 0
+    for idx, chunk in enumerate(chunks):
+        require(isinstance(chunk, dict), f"chunk entry {idx} invalid: {rel(manifest_path)}")
+        chunk_path_value = chunk.get("path")
+        require(isinstance(chunk_path_value, str) and chunk_path_value.startswith("snapshots/"), f"chunk {idx} path invalid: {rel(manifest_path)}")
+        chunk_path = snapshot_path.parent.parent / chunk_path_value
+        require(chunk_path.exists(), f"snapshot chunk missing: {rel(chunk_path)}")
+        chunk_size = chunk_path.stat().st_size
+        require(chunk.get("size") == chunk_size, f"snapshot chunk size mismatch: {rel(chunk_path)}")
+        chunk_sha = sha256(chunk_path)
+        require(chunk.get("sha256") == chunk_sha, f"snapshot chunk hash mismatch: {rel(chunk_path)}")
+        with chunk_path.open("rb") as f:
+            for data in iter(lambda: f.read(1024 * 1024), b""):
+                aggregate.update(data)
+        total_size += chunk_size
+
+    actual = aggregate.hexdigest()
+    require(total_size == expected_size, f"chunk manifest aggregate size mismatch: {rel(manifest_path)}")
+    require(actual == expected_sha, f"chunk manifest aggregate hash mismatch: {rel(manifest_path)}")
+    return actual, "chunks"
+
+
 def rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
@@ -74,14 +118,13 @@ def validate_proof(proof: dict[str, Any]) -> str:
     require(snapshot.get("digest_verified") is True, f"{workload}: snapshot digest not verified")
     require(reference.get("codec") == "simulation-snapshot-bincode-zstd-v1", f"{workload}: unexpected snapshot codec")
     require(reference.get("path") == proof["snapshot"], f"{workload}: manifest snapshot path disagrees with verdict ref")
-    require(snapshot_path.exists(), f"{workload}: snapshot artifact missing: {rel(snapshot_path)}")
 
     digest = reference.get("digest", "")
     require(digest.startswith("sha256:"), f"{workload}: snapshot digest is not sha256")
-    actual = sha256(snapshot_path)
+    actual, storage = snapshot_artifact_sha256(snapshot_path)
     require(digest == f"sha256:{actual}", f"{workload}: snapshot digest mismatch")
 
-    return f"{workload}: {REQUIRED_CLASS}, assertion={assertion_id}, depth={verdict['replay_parent_depth']}, snapshot=sha256:{actual}"
+    return f"{workload}: {REQUIRED_CLASS}, assertion={assertion_id}, depth={verdict['replay_parent_depth']}, snapshot=sha256:{actual} ({storage})"
 
 
 def main() -> int:

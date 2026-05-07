@@ -1,53 +1,82 @@
-{
-  "schema_version": 1,
-  "artifacts": [
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/accepted-snapshot-verdict-summary.json",
-      "sha256": "sha256:3af933f5042666b7eb9476ffab81512cc40bd947cc4e79ba43179cecd5823fda"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/assertions.json",
-      "sha256": "sha256:73699a1bb763a24b917ab1541a0ed7d6fcbded4eda35e2446a3af2b689e06d3b"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/bug_0.json",
-      "sha256": "sha256:607224e609a1f0bfa0c25836a47509537539a8521241aa097892bc4c3c89fce3"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/checkpoint-summary.json",
-      "sha256": "sha256:3229a4703f444cddf3c2c1a69fd8a07d4493f3808ffa2830e8da05ea453bf5ef"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/export-bugs-status.txt",
-      "sha256": "sha256:724ac0974beaae0b1dbc4a78f4ec4255b2a0299a9c385dc5a5432ad35947cb45"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/replay-verdict-bug0.json",
-      "sha256": "sha256:e3967fad64c37354e363229d5b41a6ae7a8395bbd0c4ba52117951216086b3c4"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/report.txt",
-      "sha256": "sha256:ce96629cac62662fd3cbf4ac04b0406650bbeff04ceeaf0f2052c5c6f1f9b162"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/reproduce-bug_0-status.txt",
-      "sha256": "sha256:89a132bf8d0b4383307119ea89dcdbbfb4d2c83278c3daf1205022c0598e3d9e"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/run-config.json",
-      "sha256": "sha256:3b4dc573424608bef22ee381a5bce44551d72f3cfbe518d323ab1092b39329e4"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/run-exit-status.txt",
-      "sha256": "sha256:0de87fbd9c33b6c9602be68258d9bd9b9eb0d57b0e1092e53864a17efa8973db"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
-      "sha256": "sha256:062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720"
-    },
-    {
-      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/receipt.md",
-      "sha256": "sha256:acfee2d56ac8d5c338bcb1d320b27a273c9ffb242ed89cb97fc16c7dc1903ec3"
-    }
-  ]
-}
+[
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/accepted-snapshot-verdict-summary.json",
+    "sha256": "3af933f5042666b7eb9476ffab81512cc40bd947cc4e79ba43179cecd5823fda",
+    "size": 883
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/assertions.json",
+    "sha256": "73699a1bb763a24b917ab1541a0ed7d6fcbded4eda35e2446a3af2b689e06d3b",
+    "size": 1494
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/bug_0.json",
+    "sha256": "607224e609a1f0bfa0c25836a47509537539a8521241aa097892bc4c3c89fce3",
+    "size": 688
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/checkpoint-summary.json",
+    "sha256": "3229a4703f444cddf3c2c1a69fd8a07d4493f3808ffa2830e8da05ea453bf5ef",
+    "size": 261
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/export-bugs-status.txt",
+    "sha256": "724ac0974beaae0b1dbc4a78f4ec4255b2a0299a9c385dc5a5432ad35947cb45",
+    "size": 106
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/receipt.json",
+    "sha256": "a82a8a4ab5323b46777dfa160a467205fd0c066dc360dd1fdb793d86166feda1",
+    "size": 4002
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/receipt.md",
+    "sha256": "acfee2d56ac8d5c338bcb1d320b27a273c9ffb242ed89cb97fc16c7dc1903ec3",
+    "size": 973
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/replay-verdict-bug0.json",
+    "sha256": "e3967fad64c37354e363229d5b41a6ae7a8395bbd0c4ba52117951216086b3c4",
+    "size": 2017
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/report.txt",
+    "sha256": "ce96629cac62662fd3cbf4ac04b0406650bbeff04ceeaf0f2052c5c6f1f9b162",
+    "size": 5468
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/reproduce-bug_0-status.txt",
+    "sha256": "89a132bf8d0b4383307119ea89dcdbbfb4d2c83278c3daf1205022c0598e3d9e",
+    "size": 80
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/run-config.json",
+    "sha256": "3b4dc573424608bef22ee381a5bce44551d72f3cfbe518d323ab1092b39329e4",
+    "size": 699
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/run-exit-status.txt",
+    "sha256": "0de87fbd9c33b6c9602be68258d9bd9b9eb0d57b0e1092e53864a17efa8973db",
+    "size": 18
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.chunks.json",
+    "sha256": "a6ad842947909a3dc39039e63c1647e145856fee452365388d0cdc531d61e2dd",
+    "size": 1037
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part00",
+    "sha256": "3dc50fddfdc533d11edf9a7c3c8e6265bc22a4ab60c7f829b47ef7dd5ee76836",
+    "size": 45000000
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part01",
+    "sha256": "23ed24638c71b5237ffb3f0c544bc23c4a53cf9fc7082ab4bbb8bf4f61d936f0",
+    "size": 45000000
+  },
+  {
+    "path": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part02",
+    "sha256": "36a5eee6181d68d95108b70701a49fb70afcd5a2e303f862f240a34f05f4aa21",
+    "size": 8097700
+  }
+]

@@ -276,7 +276,7 @@ python scripts/accepted-snapshot-verdict-dogfood.py \
 
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
-The current accepted workload-proof coverage is tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. New breadth/readiness claims must add a committed manifest entry plus evidence and pass the aggregate coverage and generated-readiness checks.
+The current accepted workload-proof coverage is tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. New breadth/readiness claims must add a committed manifest entry plus evidence and pass the aggregate coverage and generated-readiness checks. Oversized snapshot evidence can be stored as `<snapshot>.chunks.json` plus ordered `.partNN` files; `scripts/check-replay-proof-coverage.py` verifies the chunk stream against the logical snapshot digest, and `scripts/materialize-snapshot-chunks.py <snapshot>.chunks.json` reconstructs the raw `.snapshot.bin` when manual replay needs it.
 
 Validate the committed evidence bundle with:
 

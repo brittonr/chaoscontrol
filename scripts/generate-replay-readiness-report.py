@@ -17,7 +17,7 @@ EXPERIMENTAL = [
     {
         "surface": "Fresh workload authoring",
         "status": "experimental",
-        "reason": "New workloads need their own bounded probe, accepted verdict, manifest entry, and committed snapshot artifact before promotion.",
+        "reason": "New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion.",
     },
     {
         "surface": "Schedule-only replay",
@@ -88,7 +88,7 @@ def render() -> str:
     lines.extend(proof_row(p) for p in proofs)
     lines.extend([
         "",
-        "Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and a present digest-matching `.snapshot.bin` artifact validated by `scripts/check-replay-proof-coverage.py`.",
+        "Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by `scripts/check-replay-proof-coverage.py`.",
         "",
         "## Experimental or unproven surfaces",
         "",

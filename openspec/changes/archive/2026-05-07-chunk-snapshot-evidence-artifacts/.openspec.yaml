@@ -1,0 +1,3 @@
+schema: spec-driven
+created: "2026-05-07"
+description: "Store large replay snapshot evidence as checked chunks instead of oversized Git blobs."

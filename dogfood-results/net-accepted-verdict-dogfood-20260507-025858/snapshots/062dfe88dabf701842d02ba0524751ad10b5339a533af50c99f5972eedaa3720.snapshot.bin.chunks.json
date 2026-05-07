@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "original_path": "062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
+  "original_size": 98097700,
+  "original_sha256": "062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720",
+  "chunk_size": 45000000,
+  "chunks": [
+    {
+      "index": 0,
+      "path": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part00",
+      "size": 45000000,
+      "sha256": "3dc50fddfdc533d11edf9a7c3c8e6265bc22a4ab60c7f829b47ef7dd5ee76836"
+    },
+    {
+      "index": 1,
+      "path": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part01",
+      "size": 45000000,
+      "sha256": "23ed24638c71b5237ffb3f0c544bc23c4a53cf9fc7082ab4bbb8bf4f61d936f0"
+    },
+    {
+      "index": 2,
+      "path": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin.part02",
+      "size": 8097700,
+      "sha256": "36a5eee6181d68d95108b70701a49fb70afcd5a2e303f862f240a34f05f4aa21"
+    }
+  ]
+}

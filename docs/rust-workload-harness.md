@@ -36,7 +36,9 @@ CHAOSCONTROL_SDK_LOCAL_OUTPUT=/tmp/my-service.sdk.jsonl \
 Parse the output with `LocalDryRunReport::from_path` to inspect:
 
 - whether `setup_complete` was emitted;
-- cataloged vs exercised assertions;
+- registered/cataloged vs observed/exercised assertions;
+- deterministic `assertion_coverage` entries with ID, message, type, category,
+  observed hit count, success/failure counts, and observed/unobserved status;
 - uncategorized assertions;
 - `sometimes` assertions that did not observe success;
 - reachable assertions that were not hit;
@@ -46,7 +48,8 @@ This dry-run is only an instrumentation check. It does not prove deterministic r
 
 ## In-tree sample
 
-`crates/chaoscontrol-sdk/examples/rust_workload_harness.rs` is a downstream-style example that uses only the public prelude surface.
+- `crates/chaoscontrol-sdk/examples/rust_workload_harness.rs` is a downstream-style example that uses only the public prelude surface.
+- `docs/templates/rust-workload/` is the copyable golden path for a downstream service. Start there when evaluating ChaosControl as an Antithesis-style Rust workload harness: run the local smoke first, fix instrumentation gaps from the report, then promote to VM/replay rails only when the assertion surface is useful.
 
 ## Nix packaging and one-command rails
 

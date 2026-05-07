@@ -72,6 +72,19 @@ impl WorkloadHarness {
     }
 }
 
+/// Per-assertion local dry-run coverage detail.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AssertionCoverage {
+    pub id: String,
+    pub message: String,
+    pub assert_type: String,
+    pub category: String,
+    pub observed: bool,
+    pub observed_hits: usize,
+    pub success_count: usize,
+    pub failure_count: usize,
+}
+
 /// Parsed local dry-run report from `CHAOSCONTROL_SDK_LOCAL_OUTPUT` JSONL.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LocalDryRunReport {
@@ -84,6 +97,8 @@ pub struct LocalDryRunReport {
     pub reachable_without_hit: Vec<String>,
     pub uncategorized_assertions: usize,
     pub random_choice_calls: usize,
+    pub assertion_coverage: Vec<AssertionCoverage>,
+    pub unobserved_assertions: Vec<String>,
 }
 
 impl LocalDryRunReport {
@@ -143,17 +158,25 @@ impl LocalDryRunReport {
                     .unwrap_or("uncategorized")
                     .to_string();
 
+                let site = catalog.entry(id.clone()).or_insert(CatalogSite {
+                    message: message.clone(),
+                    assert_type: assert_type.clone(),
+                    category: category.clone(),
+                    observed_hits: 0,
+                    success_count: 0,
+                    failure_count: 0,
+                });
+
                 if !hit {
-                    catalog.entry(id.clone()).or_insert(CatalogSite {
-                        message: message.clone(),
-                        assert_type: assert_type.clone(),
-                        category: category.clone(),
-                    });
                     continue;
                 }
 
                 exercised.insert(id.clone());
-                if !condition {
+                site.observed_hits += 1;
+                if condition {
+                    site.success_count += 1;
+                } else {
+                    site.failure_count += 1;
                     report.failed_assertions += 1;
                 }
                 match assert_type.as_str() {
@@ -187,12 +210,26 @@ impl LocalDryRunReport {
             .count();
 
         for (id, site) in catalog {
+            let observed = site.observed_hits > 0;
+            if !observed {
+                report.unobserved_assertions.push(site.message.clone());
+            }
             if site.assert_type == "sometimes" && !sometimes_success.contains(&id) {
                 report.sometimes_without_success.push(site.message.clone());
             }
             if site.assert_type == "reachability" && !reachable_hit.contains(&id) {
-                report.reachable_without_hit.push(site.message);
+                report.reachable_without_hit.push(site.message.clone());
             }
+            report.assertion_coverage.push(AssertionCoverage {
+                id,
+                message: site.message,
+                assert_type: site.assert_type,
+                category: site.category,
+                observed,
+                observed_hits: site.observed_hits,
+                success_count: site.success_count,
+                failure_count: site.failure_count,
+            });
         }
 
         Ok(report)
@@ -231,6 +268,9 @@ struct CatalogSite {
     message: String,
     assert_type: String,
     category: String,
+    observed_hits: usize,
+    success_count: usize,
+    failure_count: usize,
 }
 
 #[cfg(test)]
@@ -251,6 +291,12 @@ mod tests {
         assert_eq!(report.exercised_assertions, 0);
         assert_eq!(report.random_choice_calls, 1);
         assert_eq!(report.uncategorized_assertions, 1);
+        assert_eq!(report.unobserved_assertions.len(), 3);
+        assert_eq!(report.assertion_coverage.len(), 3);
+        assert!(report
+            .assertion_coverage
+            .iter()
+            .all(|coverage| !coverage.observed && coverage.observed_hits == 0));
         assert_eq!(report.sometimes_without_success, vec!["write succeeds"]);
         assert_eq!(report.reachable_without_hit, vec!["leader elected"]);
         assert!(report
@@ -271,5 +317,8 @@ mod tests {
         assert_eq!(report.cataloged_assertions, 1);
         assert_eq!(report.exercised_assertions, 1);
         assert!(report.sometimes_without_success.is_empty());
+        assert!(report.unobserved_assertions.is_empty());
+        assert_eq!(report.assertion_coverage[0].observed_hits, 1);
+        assert_eq!(report.assertion_coverage[0].success_count, 1);
     }
 }

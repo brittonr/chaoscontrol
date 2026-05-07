@@ -31,16 +31,28 @@ def summarize(input_path: Path, evidence_class: str) -> dict:
         assertion = value.get("antithesis_assert")
         if assertion is not None:
             assertion_id = str(assertion.get("id", "unknown"))
-            site = {
-                "message": assertion.get("message", "<unnamed>"),
-                "assert_type": assertion.get("assert_type", "unknown"),
-                "category": assertion.get("details", {}).get("category", "uncategorized"),
-            }
+            site = catalog.setdefault(
+                assertion_id,
+                {
+                    "id": assertion_id,
+                    "message": assertion.get("message", "<unnamed>"),
+                    "assert_type": assertion.get("assert_type", "unknown"),
+                    "category": assertion.get("details", {}).get("category", "uncategorized"),
+                    "observed": False,
+                    "observed_hits": 0,
+                    "success_count": 0,
+                    "failure_count": 0,
+                },
+            )
             if not assertion.get("hit", False):
-                catalog.setdefault(assertion_id, site)
                 continue
             exercised.add(assertion_id)
-            if not assertion.get("condition", False):
+            site["observed"] = True
+            site["observed_hits"] += 1
+            if assertion.get("condition", False):
+                site["success_count"] += 1
+            else:
+                site["failure_count"] += 1
                 failed += 1
             if site["assert_type"] == "sometimes" and assertion.get("condition", False):
                 sometimes_success.add(assertion_id)
@@ -78,6 +90,13 @@ def summarize(input_path: Path, evidence_class: str) -> dict:
     if reachable_without_hit:
         gaps.append(f"{len(reachable_without_hit)} reachable assertion(s) without observed hit")
 
+    unobserved_assertions = [
+        site["message"] for site in catalog.values() if not site["observed"]
+    ]
+    assertion_coverage = [
+        catalog[assertion_id] for assertion_id in sorted(catalog.keys())
+    ]
+
     return {
         "schema": "chaoscontrol.sdk.local_report.v1",
         "evidence_class": evidence_class,
@@ -86,12 +105,17 @@ def summarize(input_path: Path, evidence_class: str) -> dict:
         "setup_complete": setup_complete,
         "lifecycle_events": dict(sorted(lifecycle.items())),
         "cataloged_assertions": len(catalog),
+        "registered_assertions": len(catalog),
         "exercised_assertions": len(exercised),
+        "observed_assertions": len(exercised),
+        "unobserved_assertions": unobserved_assertions,
+        "unobserved_assertion_count": len(unobserved_assertions),
         "failed_assertions": failed,
         "sometimes_without_success": sometimes_without_success,
         "reachable_without_hit": reachable_without_hit,
         "uncategorized_assertions": uncategorized,
         "random_choice_calls": random_choice_calls,
+        "assertion_coverage": assertion_coverage,
         "gaps": gaps,
     }
 

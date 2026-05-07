@@ -158,7 +158,8 @@ cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 nix run .#explore-raft
 
 # Run the Rust workload harness as a local instrumentation dry-run.
-# This writes sdk.jsonl plus report.json and does not claim replay proof.
+# This writes sdk.jsonl plus report.json with registered-vs-observed
+# per-assertion coverage and does not claim replay proof.
 nix run .#rust-workload-local-report -- /tmp/cc-rust-workload-local
 
 # Run the Rust workload harness in a bounded VM campaign.

@@ -859,6 +859,24 @@
                   touch $out
                 '';
 
+            # CI/dashboard-facing replay readiness receipt plus stable summary line.
+            replay-readiness =
+              pkgs.runCommand "replay-readiness-check"
+                {
+                  nativeBuildInputs = [
+                    replayReadiness
+                    replayReadinessSummary
+                  ];
+                }
+                ''
+                  mkdir -p "$out"
+                  receipt="$out/replay-readiness-receipt.json"
+                  replay-readiness --receipt "$receipt"
+                  replay-readiness-summary "$receipt" | tee "$out/replay-readiness-summary.txt"
+                  test -s "$receipt"
+                  test -s "$out/replay-readiness-summary.txt"
+                '';
+
             # KVM-required smoke gate for the snapshot-backed Raft replay rail.
             snapshot-replay-smoke =
               pkgs.runCommand "snapshot-replay-smoke-check"

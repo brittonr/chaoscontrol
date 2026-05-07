@@ -264,7 +264,13 @@ The receipt records final status, static gate outcomes, optional selected dogfoo
 nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
 ```
 
-It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=5/5 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts.
+It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=5/5 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. The CI/check surface packages both artifacts with:
+
+```bash
+nix build .#checks.x86_64-linux.replay-readiness --no-link -L
+```
+
+GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json` plus `replay-readiness-summary.txt` as the `replay-readiness-receipt` artifact.
 
 To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
 

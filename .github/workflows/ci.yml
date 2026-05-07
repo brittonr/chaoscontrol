@@ -23,3 +23,16 @@ jobs:
             .#checks.x86_64-linux.profiling \
             .#checks.x86_64-linux.rustdoc \
             --no-link -L
+      - name: Emit replay readiness receipt
+        run: |
+          mkdir -p target
+          nix build .#checks.x86_64-linux.replay-readiness \
+            --out-link target/replay-readiness-check -L
+          cat target/replay-readiness-check/replay-readiness-summary.txt
+      - name: Upload replay readiness receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: replay-readiness-receipt
+          path: |
+            target/replay-readiness-check/replay-readiness-receipt.json
+            target/replay-readiness-check/replay-readiness-summary.txt

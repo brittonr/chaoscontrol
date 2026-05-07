@@ -183,7 +183,7 @@ Committed snapshot evidence MUST avoid individual tracked files larger than 50 M
 - THEN the raw oversized file SHOULD be replaced by verified chunks that each remain under the budget.
 
 ### Requirement: Replay readiness operator command [r[replay-parent-snapshots.readiness-operator]]
-The system MUST expose one operator-facing command that runs the committed replay readiness gates before any optional selected dogfood proof rail.
+The system MUST expose one operator-facing command and check surface that runs the committed replay readiness gates before any optional selected dogfood proof rail.
 
 #### Scenario: Checks-only readiness [r[replay-parent-snapshots.readiness-operator.checks-only]]
 - **GIVEN** an operator wants to know whether the committed replay/evidence slice is ready
@@ -214,3 +214,9 @@ The system MUST expose one operator-facing command that runs the committed repla
 - **WHEN** CI or a dashboard invokes the summary consumer on that receipt
 - **THEN** the consumer MUST print one concise operator summary line containing final status, static gate pass count, dogfood status, and failed phase when present
 - **AND** malformed or incomplete receipts MUST fail closed instead of producing a successful summary
+
+#### Scenario: CI/check receipt artifact [r[replay-parent-snapshots.readiness-operator.ci-receipt-artifact]]
+- **GIVEN** CI or a local operator builds the replay readiness check surface
+- **WHEN** the checks-only readiness rail completes
+- **THEN** the check MUST retain a JSON replay readiness receipt artifact and a text file containing the stable one-line summary
+- **AND** CI MUST print the summary line and upload both artifacts without launching an implicit slow KVM dogfood workload

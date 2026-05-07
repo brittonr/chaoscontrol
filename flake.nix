@@ -473,6 +473,7 @@
                   python scripts/check-contract-registry.py
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
+                  python scripts/generate-replay-readiness-report.py --check
                   touch $out
                 '';
 

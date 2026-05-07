@@ -285,6 +285,7 @@ python scripts/check-contract-registry.py
 python scripts/check-evidence-contracts.py
 python scripts/check-replay-proof-coverage.py
 python scripts/generate-replay-readiness-report.py --check
+python scripts/check-dogfood-artifact-sizes.py
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```
 

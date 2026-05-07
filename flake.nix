@@ -474,6 +474,7 @@
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
                   python scripts/generate-replay-readiness-report.py --check
+                  python scripts/check-dogfood-artifact-sizes.py
                   touch $out
                 '';
 

@@ -284,6 +284,27 @@ python scripts/accepted-snapshot-verdict-dogfood.py \
   --output dogfood-results/net-accepted-verdict-dogfood-<timestamp>
 ```
 
+The Rust workload proof uses the packaged downstream-shaped initrd, a KCOV-enabled kernel, one VM, and the explicit harness assertion ID. This is a slow VM/replay rail and may build a Linux kernel if the KCOV kernel is not already cached:
+
+```bash
+nix run .#rust-workload-accepted-verdict-dogfood -- \
+  --output dogfood-results/rust-workload-accepted-verdict-dogfood-<timestamp>
+```
+
+Equivalent direct invocation:
+
+```bash
+python scripts/accepted-snapshot-verdict-dogfood.py \
+  --workload rust-workload \
+  --explore target/debug/chaoscontrol-explore \
+  --kernel /nix/store/...-chaoscontrol-kcov-vmlinux/vmlinux \
+  --initrd /nix/store/...-chaoscontrol-initrd-rust-workload \
+  --assertion-id 1414213562 \
+  --cmdline-template 'rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}' \
+  --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 128 \
+  --output dogfood-results/rust-workload-accepted-verdict-dogfood-<timestamp>
+```
+
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
 The current accepted workload-proof coverage is tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. New breadth/readiness claims must add a committed manifest entry plus evidence and pass the aggregate coverage and generated-readiness checks. Oversized snapshot evidence can be stored as `<snapshot>.chunks.json` plus ordered `.partNN` files; `scripts/check-replay-proof-coverage.py` verifies the chunk stream against the logical snapshot digest, and `scripts/materialize-snapshot-chunks.py <snapshot>.chunks.json` reconstructs the raw `.snapshot.bin` when manual replay needs it.

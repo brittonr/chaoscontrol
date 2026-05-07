@@ -80,3 +80,19 @@ nix run .#explore-rust-workload -- /tmp/cc-rust-workload-vm
 That writes the explorer output directory plus `evidence-classification.json`.
 The campaign output is VM execution evidence; standalone replay proof remains a
 separate classification that must be backed by replay/minimization artifacts.
+
+For the accepted snapshot-backed replay proof rail, run the dedicated dogfood
+wrapper:
+
+```bash
+nix run .#rust-workload-accepted-verdict-dogfood -- \
+  --output dogfood-results/rust-workload-accepted-verdict-dogfood-<timestamp>
+```
+
+This reuses `scripts/accepted-snapshot-verdict-dogfood.py` with the
+KCOV-enabled kernel, `.#initrd-rust-workload`, assertion ID `1414213562`, and
+`rust_workload_bug=snapshot_replay_probe`. It is intentionally a slower VM and
+replay rail: if the KCOV kernel is not cached, Nix may build Linux before the
+run starts. Acceptance still requires filtered `export-bugs`, a valid persisted
+parent snapshot artifact, and a replay verdict with
+`replay_class = snapshot_backed_reproduced`.

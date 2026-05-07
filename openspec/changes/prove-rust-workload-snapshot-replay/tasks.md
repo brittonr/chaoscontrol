@@ -5,7 +5,7 @@
 ## Phase 2: Probe implementation
 
 - [x] [serial] Add opt-in Rust workload snapshot probe cmdline parsing, explicit assertion ID, and tests.
-- [ ] [depends:probe] Add a Rust workload accepted-verdict dogfood command or documented invocation using the existing wrapper.
+- [x] [depends:probe] Add a Rust workload accepted-verdict dogfood command or documented invocation using the existing wrapper.
 
 ## Phase 3: Evidence
 

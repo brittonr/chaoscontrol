@@ -708,6 +708,32 @@
                 type = "app";
                 program = "${wrapper}/bin/explore-rust-workload";
               };
+            rust-workload-accepted-verdict-dogfood =
+              let
+                wrapper = pkgs.writeShellApplication {
+                  name = "rust-workload-accepted-verdict-dogfood";
+                  runtimeInputs = [
+                    chaoscontrol
+                    pkgs.coreutils
+                    pkgs.python3
+                  ];
+                  text = ''
+                    python ${./scripts/accepted-snapshot-verdict-dogfood.py} \
+                      --workload rust-workload \
+                      --explore ${chaoscontrol}/bin/chaoscontrol-explore \
+                      --kernel ${mkChaosKernel { kcov = true; }}/vmlinux \
+                      --initrd ${initrd-rust-workload} \
+                      --assertion-id 1414213562 \
+                      --cmdline-template 'rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}' \
+                      --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 128 \
+                      "$@"
+                  '';
+                };
+              in
+              {
+                type = "app";
+                program = "${wrapper}/bin/rust-workload-accepted-verdict-dogfood";
+              };
           };
 
           devShell = pkgs.mkShell {

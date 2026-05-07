@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "workload": "redb",
+  "purpose": "second non-Raft accepted snapshot-backed replay verdict dogfood proof",
+  "git_rev": "b0ee3c7bd4e614fdeaa77da073fd4f7906cb7b3a",
+  "explore": "target/debug/chaoscontrol-explore",
+  "kernel": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd": "/nix/store/k5sv4j7qr5vm5jzw3qcjlcz8pgcq59fk-chaoscontrol-initrd-redb",
+  "disk_image": "/nix/store/8i68yqrfslag4nxlkn331sq1n93bh8x5-redb-disk-image",
+  "vms": 1,
+  "rounds": 3,
+  "branches": 2,
+  "ticks": 80,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 256,
+  "extra_cmdline": "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after=25",
+  "assertion_id": 2718281828,
+  "export_filter": {
+    "assertion_id": 2718281828,
+    "min_replay_parent_depth": 1,
+    "max_bugs": 1
+  }
+}

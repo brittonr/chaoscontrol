@@ -1,0 +1,115 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     3
+Total branches explored: 5
+Corpus entries:         3
+Unique edges found:     135
+Bugs discovered:        3
+Wall-clock time:        2m 1s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              2m 1s
+Throughput:             0.04 branches/sec, 1.12 edges/sec
+Phase breakdown:        Run: 49.9s (100%) | Snapshot: 0.0s (0%) | Restore: 0.1s (0%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             6
+Unique edges:           135
+Avg edges/run:          22.50
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       27
+Passed:                 17
+Failed:                 1
+Unexercised:            9
+Exercised:              18/27 (66.7%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized        27         18       1
+
+─── Failed Assertions ────────────────────────────────────────────────
+  ✗ [always] redb snapshot replay probe trips only after restored parent context (2718281828): 218 hits, 24/218 true
+      {
+        "fail_after": 25,
+        "iter": 218
+      }
+
+─── Unexercised Assertions ───────────────────────────────────────────
+  ○ [always] uncommitted data not visible (431494179)
+  ○ [always] range scan empty table matches oracle (1226710147)
+  ○ [always] committed data survives restart (1358590131)
+  ○ [always] data survives compaction (3075375162)
+  ○ [always] database opens after repair (3437709884)
+  ○ [always] table len matches oracle (no table) (3562563515)
+  ○ [always] committed key missing after recovery (3926666994)
+  ○ [always] read matches oracle (no table) (4052181737)
+  ○ [always] database opens after repair (4078592511)
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [reachable] op: read (60597641) — 35 hits
+  ✓ [always] range scan length matches oracle (241286153) — 21 hits
+  ✓ [sometimes] large batch committed (402898043) — 30 hits
+  ✓ [reachable] op: savepoint (418710529) — 23 hits
+  ✓ [always] read matches oracle (none) (681253681) — 29 hits
+  ✓ [reachable] op: batch insert (1264621351) — 30 hits
+  ✓ [always] table len matches oracle (1751934230) — 21 hits
+  ✓ [reachable] op: rollback (2205320065) — 31 hits
+  ✓ [always] read matches oracle (2457025702) — 6 hits
+  ✓ [always] delete removes key (2660283192) — 30 hits
+  ✓ [sometimes] commit succeeds (2785533743) — 23 hits
+  ✓ [reachable] op: range scan (2831092442) — 21 hits
+  ✓ [reachable] op: compact (2898032783) — 25 hits
+  ✓ [always] range scan entry matches oracle (3030714915) — 1064 hits
+  ✓ [reachable] op: delete (3117792478) — 31 hits
+  ✓ [reachable] op: insert (3260104411) — 23 hits
+  ✓ [always] database opens successfully (3970646611) — 1 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        2 │       134 │        134 │    1 │        3 │      2 │  80.0ms │ 21.6s │   31.9ms │   0.1ms
+      2 │        1 │         0 │        134 │    1 │        3 │      2 │  12.3ms │ 9.0s │    0.7ms │   0.0ms
+      3 │        2 │         1 │        135 │    3 │        4 │      3 │  43.3ms │ 19.2s │    1.8ms │   0.1ms
+
+  Coverage growth: 134 → 134 → 135 edges (round 1 → 2 → 3)
+  Plateau rounds:  1/3 (33% produced no new coverage)
+  Bugs found in:   round 3
+
+─── Bugs Found ─────────────────────────────────────────────────────────
+
+1. Bug #0
+   Assertion ID: 2718281828
+   Location:     redb snapshot replay probe trips only after restored parent context
+   Tick:         1248
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 772313330ns: DiskFull { target: 1 }
+
+
+2. Bug #1
+   Assertion ID: 2718281828
+   Location:     redb snapshot replay probe trips only after restored parent context
+   Tick:         1328
+   Schedule:     0 faults
+   Snapshot:     Available for replay
+
+
+3. Bug #0
+   Assertion ID: 2718281828
+   Location:     redb snapshot replay probe trips only after restored parent context
+   Tick:         1328
+   Schedule:     3 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 159798947ns: InjectInterrupt { target: 1, irq: 13 }
+     [2] @ 695081997ns: DiskFull { target: 1 }
+     [3] @ 967316862ns: InjectNmi { target: 1, vcpu: 0 }
+
+═══════════════════════════════════════════════════════════════════════

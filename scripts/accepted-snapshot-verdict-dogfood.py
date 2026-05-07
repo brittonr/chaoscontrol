@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Run bounded Raft snapshot-probe dogfood until an accepted replay verdict exists.
+"""Run bounded snapshot-probe dogfood until an accepted replay verdict exists.
 
-The script intentionally keeps raw runtime logs and checkpoints in the output
-for local debugging; callers should curate/ignore those before committing.
+Defaults target the Raft probe, but workload/cmdline/assertion/disk parameters
+allow the same filtered-export/verdict rail to exercise non-Raft guests. The
+script intentionally keeps raw runtime logs and checkpoints in the output for
+local debugging; callers should curate/ignore those before committing.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-ASSERTION_ID = 1806003755
+DEFAULT_ASSERTION_ID = 1806003755
 DEFAULT_FAIL_AFTER = [25, 30, 35, 20, 40]
 
 
@@ -51,11 +53,11 @@ def safe_snapshot_path(run_dir: Path, ref: dict[str, Any]) -> Path:
     return path
 
 
-def select_snapshot_bug(run_dir: Path) -> Path | None:
+def select_snapshot_bug(run_dir: Path, assertion_id: int) -> Path | None:
     for bug_path in sorted(run_dir.glob("bug_*.json")):
         bug = load_json(bug_path)
         ref = bug.get("replay_parent_snapshot_ref")
-        if bug.get("assertion_id") != ASSERTION_ID:
+        if bug.get("assertion_id") != assertion_id:
             continue
         if not (bug.get("replay_parent_depth", 0) > 0 and ref):
             continue
@@ -74,7 +76,7 @@ def select_snapshot_bug(run_dir: Path) -> Path | None:
     return None
 
 
-def verdict_is_accepted(verdict_path: Path, bug_path: Path) -> bool:
+def verdict_is_accepted(verdict_path: Path, bug_path: Path, assertion_id: int) -> bool:
     verdict = load_json(verdict_path)
     snapshot = verdict.get("snapshot") or {}
     command = verdict.get("command") or {}
@@ -83,7 +85,7 @@ def verdict_is_accepted(verdict_path: Path, bug_path: Path) -> bool:
         verdict.get("schema_version") == 1
         and verdict.get("replay_class") == "snapshot_backed_reproduced"
         and verdict.get("reproduced") is True
-        and verdict.get("assertion_id") == ASSERTION_ID
+        and verdict.get("assertion_id") == assertion_id
         and verdict.get("replay_parent_depth", 0) > 0
         and snapshot.get("status") == "valid"
         and snapshot.get("digest_verified") is True
@@ -107,7 +109,17 @@ def copy_tree_contents(src: Path, dst: Path) -> None:
             shutil.copy2(child, target)
 
 
-def summarize_attempt(run_dir: Path, verdict_path: Path | None, *, seed: int, fail_after: int, run_rc: int, export_rc: int | None, reproduce_rc: int | None) -> dict[str, Any]:
+def summarize_attempt(
+    run_dir: Path,
+    verdict_path: Path | None,
+    *,
+    workload: str,
+    seed: int,
+    fail_after: int,
+    run_rc: int,
+    export_rc: int | None,
+    reproduce_rc: int | None,
+) -> dict[str, Any]:
     bugs = []
     for bug_path in sorted(run_dir.glob("bug_*.json")):
         bug = load_json(bug_path)
@@ -121,8 +133,9 @@ def summarize_attempt(run_dir: Path, verdict_path: Path | None, *, seed: int, fa
         )
     verdict = load_json(verdict_path) if verdict_path and verdict_path.is_file() else None
     return {
+        "workload": workload,
         "seed": seed,
-        "raft_snapshot_probe_fail_after": fail_after,
+        "snapshot_probe_fail_after": fail_after,
         "run_exit_status": run_rc,
         "export_exit_status": export_rc,
         "reproduce_exit_status": reproduce_rc,
@@ -155,13 +168,21 @@ def main() -> int:
     parser.add_argument("--branches", type=int, default=2)
     parser.add_argument("--ticks", type=int, default=80)
     parser.add_argument("--memory-mb", type=int, default=128)
+    parser.add_argument("--disk-image", type=Path)
+    parser.add_argument("--workload", default="raft")
+    parser.add_argument("--assertion-id", type=int, default=DEFAULT_ASSERTION_ID)
+    parser.add_argument("--cmdline-template", default="raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}")
+    parser.add_argument("--fail-after-values", default=",".join(str(v) for v in DEFAULT_FAIL_AFTER))
     args = parser.parse_args()
 
     if args.kernel is None or args.initrd is None:
         parser.error("--kernel/--initrd or KERNEL/INITRD are required")
 
-    output = args.output or Path("dogfood-results") / f"raft-accepted-verdict-dogfood-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    output = args.output or Path("dogfood-results") / f"{args.workload}-accepted-verdict-dogfood-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     output = output.resolve()
+    fail_after_values = [int(value) for value in args.fail_after_values.split(",") if value]
+    if not fail_after_values:
+        parser.error("--fail-after-values must contain at least one integer")
     scratch = output / "attempts"
     if output.exists() and any(output.iterdir()):
         raise SystemExit(f"output directory is not empty: {output}")
@@ -170,10 +191,10 @@ def main() -> int:
     attempts: list[dict[str, Any]] = []
     for attempt_idx in range(args.max_attempts):
         seed = args.start_seed + attempt_idx
-        fail_after = DEFAULT_FAIL_AFTER[attempt_idx % len(DEFAULT_FAIL_AFTER)]
+        fail_after = fail_after_values[attempt_idx % len(fail_after_values)]
         run_dir = scratch / f"attempt-{attempt_idx + 1:02d}"
         run_dir.mkdir(parents=True, exist_ok=True)
-        extra_cmdline = f"raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}"
+        extra_cmdline = args.cmdline_template.format(fail_after=fail_after, seed=seed, attempt=attempt_idx + 1)
         run_log = run_dir / "run.log"
         export_log = run_dir / "export-bugs.log"
         reproduce_log = run_dir / "reproduce.log"
@@ -207,6 +228,8 @@ def main() -> int:
             "--extra-cmdline",
             extra_cmdline,
         ]
+        if args.disk_image is not None:
+            run_cmd.extend(["--disk-image", str(args.disk_image)])
         run_rc = run_command(run_cmd, log=run_log, timeout=args.run_timeout)
         export_rc: int | None = None
         reproduce_rc: int | None = None
@@ -220,7 +243,7 @@ def main() -> int:
                 "--output",
                 str(run_dir),
                 "--assertion-id",
-                str(ASSERTION_ID),
+                str(args.assertion_id),
                 "--min-replay-parent-depth",
                 "1",
                 "--max-bugs",
@@ -228,7 +251,7 @@ def main() -> int:
             ]
             export_rc = run_command(export_cmd, log=export_log, timeout=args.export_timeout)
             if export_rc == 0 and any(run_dir.glob("bug_*.json")):
-                bug_path = select_snapshot_bug(run_dir)
+                bug_path = select_snapshot_bug(run_dir, args.assertion_id)
                 if bug_path is not None:
                     suffix = bug_path.stem.removeprefix("bug_")
                     verdict_path = run_dir / f"replay-verdict-bug{suffix}.json"
@@ -252,9 +275,20 @@ def main() -> int:
                         "--verdict-output",
                         str(verdict_path),
                     ]
+                    if args.disk_image is not None:
+                        repro_cmd.extend(["--disk-image", str(args.disk_image)])
                     reproduce_rc = run_command(repro_cmd, log=reproduce_log, timeout=args.repro_timeout)
-                    if reproduce_rc == 0 and verdict_is_accepted(verdict_path, bug_path):
-                        summary = summarize_attempt(run_dir, verdict_path, seed=seed, fail_after=fail_after, run_rc=run_rc, export_rc=export_rc, reproduce_rc=reproduce_rc)
+                    if reproduce_rc == 0 and verdict_is_accepted(verdict_path, bug_path, args.assertion_id):
+                        summary = summarize_attempt(
+                            run_dir,
+                            verdict_path,
+                            workload=args.workload,
+                            seed=seed,
+                            fail_after=fail_after,
+                            run_rc=run_rc,
+                            export_rc=export_rc,
+                            reproduce_rc=reproduce_rc,
+                        )
                         summary["accepted"] = True
                         summary["accepted_bug"] = str(bug_path)
                         summary["accepted_verdict"] = str(verdict_path)
@@ -263,7 +297,18 @@ def main() -> int:
                         print(f"accepted snapshot-backed verdict: {output / verdict_path.name}")
                         return 0
 
-        attempts.append(summarize_attempt(run_dir, verdict_path, seed=seed, fail_after=fail_after, run_rc=run_rc, export_rc=export_rc, reproduce_rc=reproduce_rc))
+        attempts.append(
+            summarize_attempt(
+                run_dir,
+                verdict_path,
+                workload=args.workload,
+                seed=seed,
+                fail_after=fail_after,
+                run_rc=run_rc,
+                export_rc=export_rc,
+                reproduce_rc=reproduce_rc,
+            )
+        )
         (output / "attempts-summary.json").write_text(json.dumps({"accepted": False, "attempts": attempts}, indent=2) + "\n")
         print(f"attempt {attempt_idx + 1}/{args.max_attempts}: no accepted snapshot-backed verdict", file=sys.stderr)
 

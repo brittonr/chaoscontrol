@@ -12,6 +12,28 @@ use serde_json::json;
 
 const TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("kv");
 const DB_PATH: &str = "/data/test.redb";
+const REDB_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID: u32 = 2_718_281_828;
+
+fn cmdline_value(name: &str) -> Option<String> {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    let prefix = format!("{name}=");
+    cmdline
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix(&prefix).map(str::to_owned))
+}
+
+fn snapshot_probe_enabled() -> bool {
+    matches!(
+        cmdline_value("redb_bug").as_deref(),
+        Some("snapshot_replay_probe") | Some("snapshot_probe")
+    )
+}
+
+fn snapshot_probe_fail_after() -> u64 {
+    cmdline_value("redb_snapshot_probe_fail_after")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(25)
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Mount helpers
@@ -570,6 +592,13 @@ fn main() {
     let mut seq: u64 = oracle.len() as u64; // resume counter after crash
     let mut iter: u64 = 0;
     let mut savepoint_id: Option<u64> = None;
+    let snapshot_probe = snapshot_probe_enabled();
+    let snapshot_probe_fail_after = snapshot_probe_fail_after();
+    if snapshot_probe {
+        println!(
+            "redb-guest: snapshot replay probe enabled (fail_after={snapshot_probe_fail_after})"
+        );
+    }
 
     loop {
         let op_idx = random::random_choice(Op::COUNT + 1); // +1 for batch insert
@@ -654,6 +683,14 @@ fn main() {
 
         // Periodic full checks.
         iter += 1;
+        if snapshot_probe {
+            always_with_id(
+                iter < snapshot_probe_fail_after,
+                REDB_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
+                "redb snapshot replay probe trips only after restored parent context",
+                &json!({"iter": iter, "fail_after": snapshot_probe_fail_after}),
+            );
+        }
         if iter.is_multiple_of(10) {
             check_table_len(&db, &oracle);
         }

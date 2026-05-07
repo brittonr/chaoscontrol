@@ -100,6 +100,12 @@ The system MUST provide a repeatable workload evidence rail that exercises persi
 - **THEN** the operator uses `chaoscontrol-explore export-bugs --checkpoint <checkpoint.json> --output <run-dir>` or an equivalent checked wrapper
 - **AND** export fails early when any parent-context bug lacks a durable replay parent snapshot reference
 
+#### Scenario: Second workload replay proof [r[replay-parent-snapshots.workload-evidence.second-workload-proof]]
+- **GIVEN** the Raft snapshot replay rail already has accepted machine-readable verdict evidence
+- **WHEN** the project broadens replay evidence toward an Antithesis-like internal rail
+- **THEN** at least one retained non-Raft workload evidence directory includes a selected bug with `replay_parent_depth > 0`, a valid digest-checked `replay_parent_snapshot_ref`, and a `snapshot_backed_reproduced` replay verdict
+- **AND** the evidence identifies the workload, assertion ID, cmdline probe parameters, export filter, reproduce command class, and artifact hashes without committing raw logs or checkpoints
+
 ### Requirement: Snapshot replay smoke check [r[replay-parent-snapshots.smoke-check]]
 The system SHALL expose an explicit KVM-required smoke gate that exercises snapshot-backed replay through the real Raft workload, checkpoint export, snapshot artifact validation, and standalone reproduce path.
 

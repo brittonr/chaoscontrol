@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "path": "accepted-snapshot-verdict-summary.json",
+      "sha256": "sha256:4e410655c5a2132026c8de7bd51ba0b02a8d141aaf5f2fc93ed3498e2a992bb6",
+      "bytes": 1104
+    },
+    {
+      "path": "assertions.json",
+      "sha256": "sha256:de5d8a935930ba2a31cd74f8e4d5ae9a1074f92412339a4fb7b2efdd72da6d43",
+      "bytes": 6816
+    },
+    {
+      "path": "bug_0.json",
+      "sha256": "sha256:1262fb7862f1f7bc876163525e33c28bed1419cf3aaf55773f5a2a1e9e35c209",
+      "bytes": 1225
+    },
+    {
+      "path": "checkpoint-summary.json",
+      "sha256": "sha256:b816f50424d15d5ed0a41065cb6096660b69078794c06ad4cd866a1a6c640707",
+      "bytes": 1242
+    },
+    {
+      "path": "receipt.md",
+      "sha256": "sha256:66d54b011441aa88563b7e24269b50ed63bd8426f298bcffc858366ca0ca1fc9",
+      "bytes": 789
+    },
+    {
+      "path": "replay-verdict-bug0.json",
+      "sha256": "sha256:7cd6d968a83b11e56d1b298474e7eefdf7ec5440612ca9aec752aecf95038cb8",
+      "bytes": 1936
+    },
+    {
+      "path": "report.txt",
+      "sha256": "sha256:4bd6c40524b10027f9002b00c74b8b8723b153b48c7b9566a62e5adc8aee94df",
+      "bytes": 6717
+    },
+    {
+      "path": "run-config.json",
+      "sha256": "sha256:08de3e276bd374bf37f1cfe6b7f92389088f425b20397726187f92c5042a1271",
+      "bytes": 861
+    },
+    {
+      "path": "snapshots/62ae374e419365b420eaaa6dafcce990dbf61c3a92d635074533b09b0fcf8f71.snapshot.bin",
+      "sha256": "sha256:62ae374e419365b420eaaa6dafcce990dbf61c3a92d635074533b09b0fcf8f71",
+      "bytes": 33931312
+    }
+  ]
+}

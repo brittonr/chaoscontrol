@@ -245,6 +245,21 @@ python scripts/accepted-snapshot-verdict-dogfood.py \
   --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
 ```
 
+The helper can also exercise a non-Raft workload by parameterizing the assertion ID, cmdline template, and optional disk image. The redb second-workload proof uses:
+
+```bash
+python scripts/accepted-snapshot-verdict-dogfood.py \
+  --workload redb \
+  --explore target/debug/chaoscontrol-explore \
+  --kernel /nix/store/...-chaoscontrol-vmlinux/vmlinux \
+  --initrd /nix/store/...-chaoscontrol-initrd-redb \
+  --disk-image /nix/store/...-redb-disk-image \
+  --assertion-id 2718281828 \
+  --cmdline-template 'redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}' \
+  --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 \
+  --output dogfood-results/redb-accepted-verdict-dogfood-<timestamp>
+```
+
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
 Validate the committed evidence bundle with:

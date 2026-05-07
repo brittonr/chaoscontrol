@@ -1,0 +1,38 @@
+{
+  "workload": "redb",
+  "seed": 42,
+  "snapshot_probe_fail_after": 25,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 2718281828,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true
+    }
+  ],
+  "verdict": {
+    "path": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 1,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/bug_0.json",
+  "accepted_verdict": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/replay-verdict-bug0.json",
+  "curation": {
+    "raw_logs_ignored": [
+      "run.log",
+      "reproduce.log",
+      "export-bugs.log",
+      "checkpoint.json"
+    ],
+    "attempts_removed": true,
+    "retained_snapshot_artifacts": [
+      "snapshots/62ae374e419365b420eaaa6dafcce990dbf61c3a92d635074533b09b0fcf8f71.snapshot.bin"
+    ]
+  }
+}

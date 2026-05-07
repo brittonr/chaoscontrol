@@ -1,0 +1,3 @@
+exit_status=0
+Exported 1 checkpoint bug artifact(s) to /home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01 (matched 1/4 bug(s))
+Validated 1 replay parent snapshot reference(s)

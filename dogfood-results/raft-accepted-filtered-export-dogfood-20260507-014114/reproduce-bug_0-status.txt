@@ -1,0 +1,4 @@
+exit_status=0
+replay_class=snapshot_backed_reproduced
+reproduced=true
+message=BUG REPRODUCED — assertion 1806003755 failed

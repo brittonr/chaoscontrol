@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "source": "checkpoint.json",
+  "run_id": "raft-accepted-filtered-export-dogfood-20260507-014114",
+  "config": {
+    "seed": 1000,
+    "num_vms": 3,
+    "max_rounds": 3,
+    "branch_factor": 2,
+    "ticks_per_branch": 80
+  },
+  "bug_count": 4,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 1806003755,
+      "tick": 1245,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_1.json",
+      "assertion_id": 1806003755,
+      "tick": 1245,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_2.json",
+      "assertion_id": 1806003755,
+      "tick": 1405,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_3.json",
+      "assertion_id": 1806003755,
+      "tick": 1331,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    }
+  ],
+  "checkpoint_digest": "sha256:b7a186bd7c1a86958d258e888ba951e57d11c4345bc929e150590d332b8409b3"
+}

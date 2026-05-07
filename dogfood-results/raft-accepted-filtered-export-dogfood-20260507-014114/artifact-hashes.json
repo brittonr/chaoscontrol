@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "run_id": "raft-accepted-filtered-export-dogfood-20260507-014114",
+  "artifacts": [
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/accepted-snapshot-verdict-summary.json",
+      "sha256": "sha256:3da3bc5f8cbd66fe5e866205d6260cfb03a575e9e9ab3409004c721a7dee28b9"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/assertions.json",
+      "sha256": "sha256:9bab1249f1d56b7fc60ef164e5bee18ad6dc4b4d0c5e58c6c1de99bdc206fe59"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/bug_0.json",
+      "sha256": "sha256:461aa0076abfe5938aec9a581b7c34ecb88187f1398f4fd26ff91daab7905f85"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/checkpoint-summary.json",
+      "sha256": "sha256:893bcd8d81d675ecf5860ea3fca2dbc6ef29590bc6ce25409a5968489fb16468"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/export-bugs-status.txt",
+      "sha256": "sha256:1666b8195c2224968d6f77ce3cc225f3611bcdbb4a21c8907f615a536cd25d55"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/receipt.md",
+      "sha256": "sha256:c7149dd0f8fc2d67db69f2e67cbe7aa4200d2ecc5ac4f27e49eb8370c5743ccf"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/replay-verdict-bug0.json",
+      "sha256": "sha256:fd47eacfcb3d8bd37a752df754a13d787b383e36da3d19849cf8e423d59bac35"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/report.txt",
+      "sha256": "sha256:e006ddda2a5fc63897fb35a8f40cc8dd6b65edc284c6d8d0e7a1232dd07f6ed2"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/reproduce-bug_0-status.txt",
+      "sha256": "sha256:4799acad4a3a06a556481cf386346d6fea3e684b3d5f589dfc25c2f518998770"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/run-config.json",
+      "sha256": "sha256:0cee596157378478b53f337353a8a232b811495f7e1991197b3405999d8fb078"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/run-exit-status.txt",
+      "sha256": "sha256:e93176b9cdf866ef0c78d24b2eae43327a3a79c44849a0a5e00140124cbfe5a6"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/snapshots/4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11.snapshot.bin",
+      "sha256": "sha256:4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/receipt.json",
+      "sha256": "sha256:c2edf8ec562cb5cf5ca7302aafd0ef97188b2b0350b7f6aa8c722616786773de"
+    }
+  ]
+}

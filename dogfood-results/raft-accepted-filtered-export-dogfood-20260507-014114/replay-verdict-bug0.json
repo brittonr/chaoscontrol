@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778118336816",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "/home/brittonr/git/chaoscontrol/target/debug/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/wgwilz4f1gdsyrx4xv3idn4caj48242i-chaoscontrol-initrd-raft --bug /home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01/bug_0.json --vms 3 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25 --verdict-output /home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01/replay-verdict-bug0.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED — assertion 1806003755 failed",
+  "bug_path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01/bug_0.json",
+  "bug_id": 0,
+  "assertion_id": 1806003755,
+  "replay_parent_depth": 2,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11",
+      "codec": "simulation-snapshot-bincode-zstd-v1",
+      "schema_version": 1,
+      "path": "snapshots/4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01/bug_0.json",
+      "sha256": "sha256:461aa0076abfe5938aec9a581b7c34ecb88187f1398f4fd26ff91daab7905f85"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/attempts/attempt-01/snapshots/4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11.snapshot.bin",
+      "sha256": "sha256:4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11"
+    }
+  ]
+}

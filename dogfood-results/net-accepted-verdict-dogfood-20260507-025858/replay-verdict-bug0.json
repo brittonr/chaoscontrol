@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778123082208",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "target/debug/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/l2hwwlpl75cjvsq3d6z96vxqnggmxqsb-chaoscontrol-initrd-net --bug /home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/bug_0.json --vms 3 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline net_bug=snapshot_replay_probe net_snapshot_probe_fail_after=8 --verdict-output /home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/replay-verdict-bug0.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED \u2014 assertion 3141592653 failed",
+  "bug_path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/bug_0.json",
+  "bug_id": 0,
+  "assertion_id": 3141592653,
+  "replay_parent_depth": 1,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720",
+      "codec": "simulation-snapshot-bincode-zstd-v1",
+      "schema_version": 1,
+      "path": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/bug_0.json",
+      "sha256": "sha256:607224e609a1f0bfa0c25836a47509537539a8521241aa097892bc4c3c89fce3"
+    },
+    {
+      "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260507-025858/snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
+      "sha256": "sha256:062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720"
+    }
+  ]
+}

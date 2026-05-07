@@ -1,0 +1,4 @@
+export_exit_status=0
+exported_bug_count=1
+validated_replay_parent_snapshot_refs=1
+selected_bug=bug_0.json

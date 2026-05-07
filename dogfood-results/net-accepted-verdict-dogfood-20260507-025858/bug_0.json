@@ -1,0 +1,21 @@
+{
+  "bug_id": 0,
+  "assertion_id": 3141592653,
+  "assertion_location": "net snapshot replay probe trips only after restored parent context",
+  "schedule": {
+    "faults": []
+  },
+  "tick": 1404,
+  "replay_parent_depth": 1,
+  "replay_parent_snapshot_ref": {
+    "store": "file-content-addressed",
+    "digest": "sha256:062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720",
+    "codec": "simulation-snapshot-bincode-zstd-v1",
+    "schema_version": 1,
+    "path": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin"
+  },
+  "dedup_key": 1281418144787156875,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

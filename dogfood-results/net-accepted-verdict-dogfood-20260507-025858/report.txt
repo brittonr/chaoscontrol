@@ -1,0 +1,95 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     3
+Total branches explored: 5
+Corpus entries:         1
+Unique edges found:     26
+Bugs discovered:        3
+Wall-clock time:        3m 44s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              3m 44s
+Throughput:             0.02 branches/sec, 0.12 edges/sec
+Phase breakdown:        Run: 1m 43s (99%) | Snapshot: 0.1s (0%) | Restore: 0.4s (0%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             6
+Unique edges:           26
+Avg edges/run:          4.33
+
+─── Network Fabric Statistics ─────────────────────────────────────────
+Packets sent:           380
+Packets delivered:      380
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       5
+Passed:                 4
+Failed:                 1
+Unexercised:            0
+Exercised:              5/5 (100.0%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized         5          5       1
+
+─── Failed Assertions ────────────────────────────────────────────────
+  ✗ [always] net snapshot replay probe trips only after restored parent context (3141592653): 12 hits, 7/12 true
+      {
+        "fail_after": 8,
+        "pong_count": 12
+      }
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [always] server responds to ping (1750899635) — 12 hits
+  ✓ [always] client receives correct pong (1829667084) — 11 hits
+  ✓ [sometimes] server handles multiple pings (2786804910) — 12 hits
+  ✓ [sometimes] client gets 3+ pongs (3217718048) — 11 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        2 │        26 │         26 │    1 │        2 │      1 │  96.6ms │ 32.8s │   83.6ms │   0.1ms
+      2 │        1 │         0 │         26 │    1 │        2 │      1 │  35.3ms │ 25.7s │    0.8ms │   0.0ms
+      3 │        2 │         0 │         26 │    3 │        2 │      1 │ 316.6ms │ 44.8s │    3.8ms │   0.1ms
+
+  Coverage growth: 26 → 26 → 26 edges (round 1 → 2 → 3)
+  Plateau rounds:  2/3 (67% produced no new coverage)
+  Bugs found in:   round 3
+
+─── Bugs Found ─────────────────────────────────────────────────────────
+
+1. Bug #0
+   Assertion ID: 3141592653
+   Location:     net snapshot replay probe trips only after restored parent context
+   Tick:         1284
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 772313330ns: DiskFull { target: 1 }
+
+
+2. Bug #0
+   Assertion ID: 3141592653
+   Location:     net snapshot replay probe trips only after restored parent context
+   Tick:         1404
+   Schedule:     3 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 159798947ns: InjectInterrupt { target: 1, irq: 13 }
+     [2] @ 695081997ns: DiskFull { target: 1 }
+     [3] @ 967316862ns: InjectNmi { target: 1, vcpu: 0 }
+
+
+3. Bug #0
+   Assertion ID: 3141592653
+   Location:     net snapshot replay probe trips only after restored parent context
+   Tick:         1404
+   Schedule:     0 faults
+   Snapshot:     Available for replay
+
+═══════════════════════════════════════════════════════════════════════

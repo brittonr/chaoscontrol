@@ -28,6 +28,34 @@ use serde_json::json;
 
 const SERVER_PORT: u16 = 8080;
 const NUM_VMS: usize = 3;
+const NET_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID: u32 = 3_141_592_653;
+
+fn cmdline_value(name: &str) -> Option<String> {
+    cmdline_value_from(
+        &std::fs::read_to_string("/proc/cmdline").unwrap_or_default(),
+        name,
+    )
+}
+
+fn cmdline_value_from(cmdline: &str, name: &str) -> Option<String> {
+    let prefix = format!("{name}=");
+    cmdline
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix(&prefix).map(str::to_owned))
+}
+
+fn snapshot_probe_enabled() -> bool {
+    matches!(
+        cmdline_value("net_bug").as_deref(),
+        Some("snapshot_replay_probe") | Some("snapshot_probe")
+    )
+}
+
+fn snapshot_probe_fail_after() -> usize {
+    cmdline_value("net_snapshot_probe_fail_after")
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(25)
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Server (VM 0)
@@ -38,14 +66,18 @@ struct Server {
     listen_handle: TcpHandle,
     /// Number of pings received and responded to.
     pong_count: usize,
+    snapshot_probe: bool,
+    snapshot_probe_fail_after: usize,
 }
 
 impl Server {
-    fn new(net: &mut GuestNetwork) -> Self {
+    fn new(net: &mut GuestNetwork, snapshot_probe: bool, snapshot_probe_fail_after: usize) -> Self {
         let handle = net.tcp_listen(SERVER_PORT);
         Self {
             listen_handle: handle,
             pong_count: 0,
+            snapshot_probe,
+            snapshot_probe_fail_after,
         }
     }
 
@@ -89,6 +121,17 @@ impl Server {
                                 "server handles multiple pings",
                                 &json!({"pong_count": self.pong_count}),
                             );
+                            if self.snapshot_probe {
+                                assert::always_with_id(
+                                    self.pong_count < self.snapshot_probe_fail_after,
+                                    NET_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
+                                    "net snapshot replay probe trips only after restored parent context",
+                                    &json!({
+                                        "pong_count": self.pong_count,
+                                        "fail_after": self.snapshot_probe_fail_after,
+                                    }),
+                                );
+                            }
                         }
                     }
                 }
@@ -249,16 +292,27 @@ fn main() {
 
     let mut net = GuestNetwork::init(my_id, num_vms);
 
+    let snapshot_probe = snapshot_probe_enabled();
+    let snapshot_probe_fail_after = snapshot_probe_fail_after();
+    if snapshot_probe {
+        println!(
+            "VM{}: net snapshot replay probe enabled (fail_after={})",
+            my_id, snapshot_probe_fail_after
+        );
+    }
+
     lifecycle::setup_complete(&json!({
         "role": if my_id == 0 { "server" } else { "client" },
         "vm_id": my_id,
         "num_vms": num_vms,
+        "snapshot_probe": snapshot_probe,
+        "snapshot_probe_fail_after": snapshot_probe_fail_after,
     }));
 
     println!("VM{}: setup complete, entering main loop", my_id);
 
     if my_id == 0 {
-        let mut server = Server::new(&mut net);
+        let mut server = Server::new(&mut net, snapshot_probe, snapshot_probe_fail_after);
         loop {
             net.poll();
             server.tick(&mut net);
@@ -269,5 +323,24 @@ fn main() {
             net.poll();
             client.tick(&mut net);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_cmdline_value() {
+        let cmdline = "console=ttyS0 net_bug=snapshot_replay_probe net_snapshot_probe_fail_after=17 num_vms=3";
+        assert_eq!(
+            cmdline_value_from(cmdline, "net_bug"),
+            Some("snapshot_replay_probe".to_string())
+        );
+        assert_eq!(
+            cmdline_value_from(cmdline, "net_snapshot_probe_fail_after"),
+            Some("17".to_string())
+        );
+        assert_eq!(cmdline_value_from(cmdline, "missing"), None);
     }
 }

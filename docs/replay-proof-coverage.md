@@ -6,6 +6,7 @@ ChaosControl currently has accepted snapshot-backed replay proof coverage for th
 | --- | ---: | --- | --- |
 | Raft | `1806003755` | `dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/` | `snapshot_backed_reproduced` |
 | redb | `2718281828` | `dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/` | `snapshot_backed_reproduced` |
+| net | `3141592653` | `dogfood-results/net-accepted-verdict-dogfood-20260507-025858/` | `snapshot_backed_reproduced` |
 
 The manifest/check are intentionally conservative: every listed proof must have an accepted summary, exported bug artifact, replay verdict with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `command.exit_status = 0`, `replay_parent_depth > 0`, and a present digest-matching `.snapshot.bin` artifact.
 

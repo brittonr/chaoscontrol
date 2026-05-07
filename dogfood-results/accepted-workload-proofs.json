@@ -26,6 +26,16 @@
       "verdict": "replay-verdict-bug0.json",
       "snapshot": "snapshots/62ae374e419365b420eaaa6dafcce990dbf61c3a92d635074533b09b0fcf8f71.snapshot.bin",
       "notes": "redb bounded snapshot_replay_probe with disk-image replay proof."
+    },
+    {
+      "workload": "net",
+      "assertion_id": 3141592653,
+      "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858",
+      "summary": "accepted-snapshot-verdict-summary.json",
+      "bug": "bug_0.json",
+      "verdict": "replay-verdict-bug0.json",
+      "snapshot": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
+      "notes": "net bounded snapshot_replay_probe with virtio-net multi-VM replay proof."
     }
   ]
 }

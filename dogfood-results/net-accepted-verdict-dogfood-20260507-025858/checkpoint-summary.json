@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "source": "checkpoint.json (raw, excluded from committed evidence)",
+  "bugs_discovered": 3,
+  "selected_bug": "bug_0.json",
+  "selected_assertion_id": 3141592653,
+  "selected_replay_parent_depth": 1,
+  "snapshot_refs_committed": 1
+}

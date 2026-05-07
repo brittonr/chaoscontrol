@@ -47,3 +47,36 @@ This dry-run is only an instrumentation check. It does not prove deterministic r
 ## In-tree sample
 
 `crates/chaoscontrol-sdk/examples/rust_workload_harness.rs` is a downstream-style example that uses only the public prelude surface.
+
+## Nix packaging and one-command rails
+
+The repository also includes a downstream-shaped guest crate at
+`crates/chaoscontrol-rust-workload-guest/`. It uses the same public harness
+surface, then Nix packages it as a static guest binary and initrd:
+
+```bash
+nix build .#guest-rust-workload
+nix build .#initrd-rust-workload
+```
+
+For a local instrumentation check, run:
+
+```bash
+nix run .#rust-workload-local-report -- /tmp/cc-rust-workload-local
+```
+
+That writes:
+
+- `sdk.jsonl` — raw local SDK fallback events;
+- `report.json` — summarized setup/assertion/randomness coverage with
+  `evidence_class = instrumentation-dry-run` and `replay_evidence = false`.
+
+For a bounded VM campaign against the packaged initrd, run:
+
+```bash
+nix run .#explore-rust-workload -- /tmp/cc-rust-workload-vm
+```
+
+That writes the explorer output directory plus `evidence-classification.json`.
+The campaign output is VM execution evidence; standalone replay proof remains a
+separate classification that must be backed by replay/minimization artifacts.

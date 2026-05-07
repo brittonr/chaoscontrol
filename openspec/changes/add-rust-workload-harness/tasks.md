@@ -17,12 +17,12 @@
 
 ## Phase 4: Packaging and bounded run rail
 
-- [ ] [depends:sample-workload] Add Nix and/or CLI helper that packages the downstream-style Rust workload as a ChaosControl guest.
-- [ ] [depends:packaging-rail] Add a one-command bounded workload run that writes a report path and preserves replay evidence classification boundaries.
+- [x] [depends:sample-workload] Add Nix and/or CLI helper that packages the downstream-style Rust workload as a ChaosControl guest.
+- [x] [depends:packaging-rail] Add a one-command bounded workload run that writes a report path and preserves replay evidence classification boundaries.
 
 ## Phase 5: Verification and landing
 
-- [ ] [depends:run-rail] Run local dry-run verification against the sample workload and capture report evidence.
+- [x] [depends:run-rail] Run local dry-run verification against the sample workload and capture report evidence.
 - [ ] [depends:run-rail] Run a bounded VM campaign against the sample workload and capture report/replay evidence paths.
-- [ ] [depends:verification] Run strict OpenSpec validation, relevant Rust/Nix checks, and `git diff --check`.
+- [x] [depends:verification] Run strict OpenSpec validation, relevant Rust/Nix checks, and `git diff --check`.
 - [ ] [depends:verification] Archive the completed OpenSpec change after all implementation/evidence tasks are done.

@@ -136,6 +136,7 @@
                 "-p chaoscontrol-guest"
                 "-p chaoscontrol-raft-guest"
                 "-p chaoscontrol-net-guest"
+                "-p chaoscontrol-rust-workload-guest"
               ];
             }
           );
@@ -159,6 +160,7 @@
           guest-raft = mkGuestPackage { pname = "chaoscontrol-raft-guest"; };
           guest-net = mkGuestPackage { pname = "chaoscontrol-net-guest"; };
           guest-redb = mkGuestPackage { pname = "chaoscontrol-redb-guest"; };
+          guest-rust-workload = mkGuestPackage { pname = "chaoscontrol-rust-workload-guest"; };
 
           # --- Initrd builder ---
 
@@ -209,6 +211,10 @@
               "sys/kernel/debug"
               "data"
             ];
+          };
+          initrd-rust-workload = mkChaosInitrd {
+            init = guest-rust-workload;
+            name = "chaoscontrol-initrd-rust-workload";
           };
 
           # --- Disk image builder ---
@@ -321,12 +327,14 @@
               guest-raft
               guest-net
               guest-redb
+              guest-rust-workload
               ;
             inherit
               initrd-sdk
               initrd-raft
               initrd-net
               initrd-redb
+              initrd-rust-workload
               ;
             inherit redb-disk-image;
 
@@ -365,6 +373,33 @@
               mode = "hybrid";
               diskImage = redb-disk-image;
             };
+
+            rust-workload-sim = mkChaosTest {
+              name = "rust-workload-sim";
+              kernel = mkChaosKernel { };
+              initrd = initrd-rust-workload;
+              vms = 1;
+              rounds = 5;
+              branches = 4;
+              ticks = 500;
+              seed = 42;
+              mode = "fault-schedule";
+            };
+
+            rust-workload-local-report =
+              pkgs.runCommand "rust-workload-local-report"
+                {
+                  nativeBuildInputs = [ pkgs.python3 ];
+                }
+                ''
+                  mkdir -p $out
+                  export CHAOSCONTROL_SDK_LOCAL_OUTPUT=$out/sdk.jsonl
+                  ${guest-rust-workload}/bin/chaoscontrol-rust-workload-guest
+                  python ${./scripts/summarize-sdk-local-output.py} \
+                    --input $out/sdk.jsonl \
+                    --output $out/report.json \
+                    --evidence-class instrumentation-dry-run
+                '';
 
             # Generated documentation (mdBook + rustdoc)
             docs =
@@ -528,6 +563,7 @@
                 "chaoscontrol-guest-net"
                 "chaoscontrol-net-guest"
                 "chaoscontrol-redb-guest"
+                "chaoscontrol-rust-workload-guest"
               ];
               cargoExtraArgs = "--lib";
             };
@@ -615,6 +651,62 @@
               {
                 type = "app";
                 program = "${wrapper}/bin/explore-sdk";
+              };
+            rust-workload-local-report =
+              let
+                wrapper = pkgs.writeShellApplication {
+                  name = "rust-workload-local-report";
+                  runtimeInputs = [
+                    guest-rust-workload
+                    pkgs.coreutils
+                    pkgs.python3
+                  ];
+                  text = ''
+                    out="''${1:-./chaoscontrol-rust-workload-local-report}"
+                    mkdir -p "$out"
+                    export CHAOSCONTROL_SDK_LOCAL_OUTPUT="$out/sdk.jsonl"
+                    rm -f "$CHAOSCONTROL_SDK_LOCAL_OUTPUT"
+                    chaoscontrol-rust-workload-guest
+                    python ${./scripts/summarize-sdk-local-output.py} \
+                      --input "$CHAOSCONTROL_SDK_LOCAL_OUTPUT" \
+                      --output "$out/report.json" \
+                      --evidence-class instrumentation-dry-run
+                    printf 'local report: %s\n' "$out/report.json"
+                  '';
+                };
+              in
+              {
+                type = "app";
+                program = "${wrapper}/bin/rust-workload-local-report";
+              };
+            explore-rust-workload =
+              let
+                wrapper = pkgs.writeShellApplication {
+                  name = "explore-rust-workload";
+                  runtimeInputs = [
+                    chaoscontrol
+                    pkgs.coreutils
+                  ];
+                  text = ''
+                    out="''${1:-./chaoscontrol-rust-workload-vm-report}"
+                    shift || true
+                    mkdir -p "$out"
+                    printf '{"schema":"chaoscontrol.vm_campaign.classification.v1","evidence_class":"bounded-vm-campaign","initrd":"%s","replay_boundary":"campaign output may contain VM execution evidence; standalone replay proof still requires replay/minimization artifacts"}\n' \
+                      "${initrd-rust-workload}" > "$out/evidence-classification.json"
+                    chaoscontrol-explore run \
+                      --kernel ${mkChaosKernel { }}/vmlinux \
+                      --initrd ${initrd-rust-workload} \
+                      --vms 1 --rounds 5 --branches 4 --ticks 500 \
+                      --seed 42 --mode fault-schedule \
+                      --output "$out" \
+                      "$@"
+                    printf 'vm campaign output: %s\n' "$out"
+                  '';
+                };
+              in
+              {
+                type = "app";
+                program = "${wrapper}/bin/explore-rust-workload";
               };
           };
 

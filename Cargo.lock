@@ -392,6 +392,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-rust-workload-guest"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-sdk",
+ "libc",
+ "linkme",
+ "serde_json",
+]
+
+[[package]]
 name = "chaoscontrol-sdk"
 version = "0.1.0"
 dependencies = [

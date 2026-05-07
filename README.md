@@ -126,14 +126,16 @@ cargo build
 cargo test
 
 # Build guest binaries (statically linked, musl)
-nix build .#guest-sdk    # → result/bin/chaoscontrol-guest
-nix build .#guest-raft   # → result/bin/chaoscontrol-raft-guest
-nix build .#guest-net    # → result/bin/chaoscontrol-net-guest
+nix build .#guest-sdk            # → result/bin/chaoscontrol-guest
+nix build .#guest-raft           # → result/bin/chaoscontrol-raft-guest
+nix build .#guest-net            # → result/bin/chaoscontrol-net-guest
+nix build .#guest-rust-workload  # → result/bin/chaoscontrol-rust-workload-guest
 
 # Build initrd images (from guest binaries)
 nix build .#initrd-sdk   # → result (gzipped cpio)
 nix build .#initrd-raft
 nix build .#initrd-net
+nix build .#initrd-rust-workload
 
 # Build custom kernels
 nix build .#net-vmlinux       # virtio-net enabled
@@ -154,6 +156,14 @@ cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 ```bash
 # Run Raft exploration with one command (builds kernel + guest + initrd)
 nix run .#explore-raft
+
+# Run the Rust workload harness as a local instrumentation dry-run.
+# This writes sdk.jsonl plus report.json and does not claim replay proof.
+nix run .#rust-workload-local-report -- /tmp/cc-rust-workload-local
+
+# Run the Rust workload harness in a bounded VM campaign.
+# This writes campaign output plus evidence-classification.json.
+nix run .#explore-rust-workload -- /tmp/cc-rust-workload-vm
 
 # Run with non-duplicate custom args (the wrapper already sets rounds/branches/ticks)
 nix run .#explore-raft -- --output results/ --extra-cmdline 'raft_bug=fig8_commit'
@@ -452,7 +462,11 @@ For Rust projects that need a repeatable setup/scenario shape, see
 [`docs/rust-workload-harness.md`](docs/rust-workload-harness.md). The harness
 keeps the existing SDK APIs intact while adding local dry-run reports for
 setup-complete, assertion exercise, sometimes/reachable progress, and guided
-random-choice observations.
+random-choice observations. The in-tree Nix rail packages that harness shape as
+`.#guest-rust-workload` / `.#initrd-rust-workload`; `nix run
+.#rust-workload-local-report` produces instrumentation-only JSON, and `nix run
+.#explore-rust-workload` runs a bounded VM campaign with a separate evidence
+classification file.
 
 ### Fault Injection Engine
 

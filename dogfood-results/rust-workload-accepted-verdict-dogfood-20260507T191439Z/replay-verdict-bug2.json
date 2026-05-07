@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778181356501",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "/nix/store/wq5j86jcfglp9wnmggiv6gl5jgmycb6m-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/4xl654qkb72rb7jhlm0hnpkpd0h4p4zl-chaoscontrol-initrd-rust-workload --bug /home/brittonr/git/chaoscontrol/dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/attempts/attempt-01/bug_2.json --vms 1 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25 --verdict-output /home/brittonr/git/chaoscontrol/dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/attempts/attempt-01/replay-verdict-bug2.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED \u2014 assertion 1414213562 failed",
+  "bug_path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/bug_2.json",
+  "bug_id": 2,
+  "assertion_id": 1414213562,
+  "replay_parent_depth": 2,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60",
+      "codec": "simulation-snapshot-bincode-zstd-v1",
+      "schema_version": 1,
+      "path": "snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/bug_2.json",
+      "sha256": "sha256:58d8971765680dd58c586213b5e39ec050083879cd7d867edce6ffa4b03103bc"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin",
+      "sha256": "sha256:3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60"
+    }
+  ]
+}

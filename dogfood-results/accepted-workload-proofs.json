@@ -36,6 +36,16 @@
       "verdict": "replay-verdict-bug0.json",
       "snapshot": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
       "notes": "net bounded snapshot_replay_probe with virtio-net multi-VM replay proof."
+    },
+    {
+      "workload": "rust-workload",
+      "assertion_id": 1414213562,
+      "evidence_dir": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z",
+      "summary": "accepted-snapshot-verdict-summary.json",
+      "bug": "bug_2.json",
+      "verdict": "replay-verdict-bug2.json",
+      "snapshot": "snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin",
+      "notes": "Rust workload harness bounded snapshot_replay_probe accepted replay proof."
     }
   ]
 }

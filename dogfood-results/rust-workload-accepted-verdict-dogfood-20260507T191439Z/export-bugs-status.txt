@@ -1,0 +1,2 @@
+Exported 1 checkpoint bug artifact(s) to /home/brittonr/git/chaoscontrol/dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/attempts/attempt-01 (matched 1/4 bug(s))
+Validated 1 replay parent snapshot reference(s)

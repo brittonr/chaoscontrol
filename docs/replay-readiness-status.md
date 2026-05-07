@@ -4,7 +4,7 @@ Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit
 
 ## Summary
 
-ChaosControl currently supports bounded snapshot-backed replay proof claims for: `raft`, `redb`, `net`.
+ChaosControl currently supports bounded snapshot-backed replay proof claims for: `raft`, `redb`, `net`, `rust-workload`.
 
 This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.
 
@@ -15,6 +15,7 @@ This status is evidence-backed but narrow: it is not a mathematical determinism 
 | `raft` | `supported-bounded` | `1806003755` | `snapshot_backed_reproduced` | `2` | `0` / `0` | `dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/` |
 | `redb` | `supported-bounded` | `2718281828` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/` |
 | `net` | `supported-bounded` | `3141592653` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-accepted-verdict-dogfood-20260507-025858/` |
+| `rust-workload` | `supported-bounded` | `1414213562` | `snapshot_backed_reproduced` | `2` | `0` / `0` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/` |
 
 Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by `scripts/check-replay-proof-coverage.py`.
 

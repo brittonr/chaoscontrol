@@ -310,6 +310,7 @@ dependencies = [
 name = "chaoscontrol-fault"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "chaoscontrol-protocol",
  "hegeltest",
  "rand",

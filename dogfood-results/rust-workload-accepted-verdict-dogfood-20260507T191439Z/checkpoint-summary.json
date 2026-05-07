@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "source": "checkpoint.json",
+  "bugs_total": 4,
+  "selected_bug": "bug_2.json",
+  "selected_assertion_id": 1414213562,
+  "selected_replay_parent_depth": 2,
+  "snapshot_refs": [
+    "sha256:3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60",
+    "sha256:cf60aa2f753345086dd7bec6e7e39685a111486f81a97eb2241e7d1373446a78"
+  ]
+}

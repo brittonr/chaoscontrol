@@ -1,0 +1,103 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     3
+Total branches explored: 6
+Corpus entries:         6
+Unique edges found:     2532
+Bugs discovered:        4
+Wall-clock time:        11.1s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              11.1s
+Throughput:             0.54 branches/sec, 227.34 edges/sec
+Phase breakdown:        Run: 0.5s (82%) | Snapshot: 0.0s (5%) | Restore: 0.1s (14%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             7
+Unique edges:           2532
+Avg edges/run:          361.71
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       6
+Passed:                 5
+Failed:                 1
+Unexercised:            0
+Exercised:              6/6 (100.0%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized         6          6       1
+
+─── Failed Assertions ────────────────────────────────────────────────
+  ✗ [always] rust workload snapshot replay probe trips only after restored parent context (1414213562): 10622 hits, 12/10622 true
+      {
+        "fail_after": 25,
+        "iteration": 10634,
+        "jitter": 1,
+        "workload": "sample-rust-service"
+      }
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [always] choice remains in range (1625328273) — 12 hits
+  ✓ [sometimes] at least one write succeeds (1800977159) — 1 hits
+  ✓ [reachable] read branch exercised (3471405723) — 3 hits
+  ✓ [sometimes] write succeeds (3574955167) — 4 hits
+  ✓ [always] operation counters stay bounded (3780648081) — 12 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        2 │       906 │        906 │    2 │        3 │      2 │  29.3ms │ 151.8ms │   24.2ms │   0.1ms
+      2 │        2 │       842 │       1748 │    2 │        5 │      4 │  37.5ms │ 141.9ms │    0.4ms │   0.0ms
+      3 │        2 │       784 │       2532 │    4 │        7 │      6 │  11.8ms │ 168.7ms │    1.3ms │   0.1ms
+
+  Coverage growth: 906 → 1748 → 2532 edges (round 1 → 2 → 3)
+
+─── Bugs Found ─────────────────────────────────────────────────────────
+
+1. Bug #0
+   Assertion ID: 1414213562
+   Location:     rust workload snapshot replay probe trips only after restored parent context
+   Tick:         1248
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 772313330ns: DiskFull { target: 1 }
+
+
+2. Bug #1
+   Assertion ID: 1414213562
+   Location:     rust workload snapshot replay probe trips only after restored parent context
+   Tick:         1248
+   Schedule:     1 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 807529233ns: NetworkLatency { target: 1, latency_ns: 375675665 }
+
+
+3. Bug #2
+   Assertion ID: 1414213562
+   Location:     rust workload snapshot replay probe trips only after restored parent context
+   Tick:         1408
+   Schedule:     3 faults
+   Snapshot:     Available for replay
+
+   Fault Schedule:
+     [1] @ 159798947ns: InjectInterrupt { target: 1, irq: 13 }
+     [2] @ 695081997ns: DiskFull { target: 1 }
+     [3] @ 967316862ns: InjectNmi { target: 1, vcpu: 0 }
+
+
+4. Bug #3
+   Assertion ID: 1414213562
+   Location:     rust workload snapshot replay probe trips only after restored parent context
+   Tick:         1408
+   Schedule:     0 faults
+   Snapshot:     Available for replay
+
+═══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,115 @@
+{
+  "schema_version": "1",
+  "status": "accepted",
+  "acceptance_status": "accepted",
+  "git_revision": "7888f40 plus oracle JSON binary snapshot codec fix in this change",
+  "run_id": "rust-workload-accepted-verdict-dogfood-20260507T191439Z",
+  "command": "nix run .#rust-workload-accepted-verdict-dogfood -- --output dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z",
+  "config": {
+    "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/run-config.json",
+    "digest": "sha256:e60c5984df43ba88bb759bab98feb9382d693091498b5f6def2fa0d21f305187"
+  },
+  "kernel_path": "/nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/4xl654qkb72rb7jhlm0hnpkpd0h4p4zl-chaoscontrol-initrd-rust-workload",
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/accepted-snapshot-verdict-summary.json",
+      "sha256": "sha256:b6ed8ba957a728234abf652d7fc2656efd671771b729065f79988f8c290e0ac8"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/assertions.json",
+      "sha256": "sha256:d6f6ec4e8da35c7d365a40e9a1073857fe911c00561098b59901b1394b0492f9"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/bug_2.json",
+      "sha256": "sha256:58d8971765680dd58c586213b5e39ec050083879cd7d867edce6ffa4b03103bc"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/checkpoint-summary.json",
+      "sha256": "sha256:9023fd9d253b85ca25181ea2227b3bf50d8d15bd4580bb17fe6ca691b60a3b5b"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/export-bugs-status.txt",
+      "sha256": "sha256:c069f42bbef09551e610f425159343868f65827603878cf7806c42a4c8e6213f"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/receipt.md",
+      "sha256": "sha256:7fc4b58931e9747df9c13d64217ed7e3f1299e59a829b88f457aa2e064e411a7"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/replay-verdict-bug2.json",
+      "sha256": "sha256:24c21903121b28634a3f665e0899cb410cc7fcbdf22e8eeb03f1922c5564d192"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/report.txt",
+      "sha256": "sha256:201282b92c1d1deed5a273ca4b8eb5dc054e5e627da5d6f5bc00a461420431ff"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/reproduce-bug_2-status.txt",
+      "sha256": "sha256:13b370ef6f7911188939d3725c31f407cd284306f7f3ebea266d0b8b87ea141a"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/run-config.json",
+      "sha256": "sha256:e60c5984df43ba88bb759bab98feb9382d693091498b5f6def2fa0d21f305187"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/run-exit-status.txt",
+      "sha256": "sha256:e93176b9cdf866ef0c78d24b2eae43327a3a79c44849a0a5e00140124cbfe5a6"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin",
+      "sha256": "sha256:3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/artifact-hashes.json",
+      "sha256": "sha256:ca3b2631bb0068212f0522d9621f5ba9d6410516f324a0e8e818e06fe838c25a"
+    }
+  ],
+  "assertion_coverage": {
+    "registered": 6,
+    "exercised": 6,
+    "passed": 5,
+    "failed": 1,
+    "unexercised": 0,
+    "summary_path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/assertions.json"
+  },
+  "bug_reports": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/bug_2.json",
+      "assertion_id": 1414213562,
+      "tick": 1408,
+      "replay_parent_depth": 2,
+      "replay_context": "parent-snapshot-required",
+      "replay_status": "accepted",
+      "replay_attempt": {
+        "command": "/nix/store/wq5j86jcfglp9wnmggiv6gl5jgmycb6m-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/4xl654qkb72rb7jhlm0hnpkpd0h4p4zl-chaoscontrol-initrd-rust-workload --bug /home/brittonr/git/chaoscontrol/dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/attempts/attempt-01/bug_2.json --vms 1 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25 --verdict-output /home/brittonr/git/chaoscontrol/dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/attempts/attempt-01/replay-verdict-bug2.json",
+        "exit_status": 0,
+        "message": "BUG REPRODUCED \u2014 assertion 1414213562 failed"
+      },
+      "replay_parent_snapshot_ref": {
+        "store": "file-content-addressed",
+        "digest": "sha256:3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60",
+        "codec": "simulation-snapshot-bincode-zstd-v1",
+        "schema_version": 1,
+        "path": "snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin"
+      }
+    }
+  ],
+  "checkpoint_reference": {
+    "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/checkpoint-summary.json",
+    "digest": "sha256:9023fd9d253b85ca25181ea2227b3bf50d8d15bd4580bb17fe6ca691b60a3b5b",
+    "kernel_path": "/nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux",
+    "initrd_path": "/nix/store/4xl654qkb72rb7jhlm0hnpkpd0h4p4zl-chaoscontrol-initrd-rust-workload",
+    "seed": 42
+  },
+  "raw_logs": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/run.log",
+      "policy": "debug-only-excluded-from-git"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/reproduce.log",
+      "policy": "debug-only-excluded-from-git"
+    }
+  ]
+}

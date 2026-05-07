@@ -1,0 +1,44 @@
+{
+  "workload": "rust-workload",
+  "seed": 42,
+  "snapshot_probe_fail_after": 25,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 1414213562,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_1.json",
+      "assertion_id": 1414213562,
+      "replay_parent_depth": 0,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_2.json",
+      "assertion_id": 1414213562,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    },
+    {
+      "file": "bug_3.json",
+      "assertion_id": 1414213562,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    }
+  ],
+  "verdict": {
+    "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/replay-verdict-bug2.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 2,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/bug_2.json",
+  "accepted_verdict": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/replay-verdict-bug2.json"
+}

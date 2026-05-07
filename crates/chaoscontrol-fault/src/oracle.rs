@@ -14,7 +14,33 @@
 //! | `reachable`  | Point was reached at least once, in any run   |
 //! | `unreachable`| Point was never reached in any run             |
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
+
+fn serialize_json_value<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if serializer.is_human_readable() {
+        value.serialize(serializer)
+    } else {
+        serde_json::to_vec(value)
+            .map_err(serde::ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+fn deserialize_json_value<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if deserializer.is_human_readable() {
+        serde_json::Value::deserialize(deserializer)
+    } else {
+        let bytes = Vec::<u8>::deserialize(deserializer)?;
+        serde_json::from_slice(&bytes).map_err(serde::de::Error::custom)
+    }
+}
 
 /// Records for a single assertion site across all runs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -177,6 +203,10 @@ pub struct OracleEvent {
     /// Event name.
     pub name: String,
     /// Structured JSON details.
+    #[serde(
+        serialize_with = "serialize_json_value",
+        deserialize_with = "deserialize_json_value"
+    )]
     pub details: serde_json::Value,
 }
 
@@ -552,6 +582,39 @@ pub struct OracleSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn oracle_event_details_round_trip_through_binary_codec() {
+        let event = OracleEvent {
+            run_id: 7,
+            name: "setup_complete".to_string(),
+            details: json!({"workload": "rust-workload", "attempt": 2}),
+        };
+
+        let encoded = bincode::serialize(&event).expect("serialize oracle event");
+        let decoded: OracleEvent =
+            bincode::deserialize(&encoded).expect("deserialize oracle event");
+
+        assert_eq!(decoded.run_id, event.run_id);
+        assert_eq!(decoded.name, event.name);
+        assert_eq!(decoded.details, event.details);
+    }
+
+    #[test]
+    fn oracle_event_details_stay_structured_in_json() {
+        let event = OracleEvent {
+            run_id: 7,
+            name: "setup_complete".to_string(),
+            details: json!({"workload": "rust-workload"}),
+        };
+
+        let encoded = serde_json::to_value(&event).expect("serialize oracle event");
+        assert_eq!(encoded["details"]["workload"], "rust-workload");
+        let decoded: OracleEvent =
+            serde_json::from_value(encoded).expect("deserialize oracle event");
+        assert_eq!(decoded.details, event.details);
+    }
 
     #[test]
     fn always_all_true_passes() {

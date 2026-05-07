@@ -246,6 +246,21 @@ nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 
 It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
 
+For a single operator-facing readiness button, run:
+
+```bash
+nix run .#replay-readiness
+```
+
+This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness report, and dogfood artifact size budget. To run exactly one slow KVM accepted-verdict proof rail after those static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
+
+```bash
+nix run .#replay-readiness -- --dogfood raft -- \
+  --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
+```
+
+Selected dogfood may build kernel/initrd/runtime artifacts if they are not cached; checks-only is the default.
+
 For durable dogfood bundles outside the Nix smoke wrapper, use the packaged bounded retry apps and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
 
 ```bash

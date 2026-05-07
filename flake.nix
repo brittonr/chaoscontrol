@@ -385,6 +385,87 @@
             };
           };
 
+          replayReadiness = pkgs.writeShellApplication {
+            name = "replay-readiness";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.nickel
+              pkgs.python3
+            ];
+            text = ''
+              usage() {
+                cat <<'EOF'
+              usage: replay-readiness [--dogfood raft|redb|net|rust-workload] [-- DOGFOOD_ARGS...]
+
+              Runs committed replay readiness checks. With --dogfood, runs one selected
+              accepted-verdict dogfood rail after checks pass. Selected dogfood is the
+              slow KVM path and may build kernel/initrd/runtime artifacts if uncached.
+              EOF
+              }
+
+              dogfood=""
+              dogfood_args=()
+              while [ "$#" -gt 0 ]; do
+                case "$1" in
+                  -h|--help)
+                    usage
+                    exit 0
+                    ;;
+                  --dogfood)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--dogfood requires raft, redb, net, or rust-workload" >&2
+                      exit 2
+                    fi
+                    dogfood="$2"
+                    shift 2
+                    ;;
+                  --)
+                    shift
+                    dogfood_args=("$@")
+                    break
+                    ;;
+                  *)
+                    echo "unknown argument: $1" >&2
+                    usage >&2
+                    exit 2
+                    ;;
+                esac
+              done
+
+              echo "== replay readiness: static checks =="
+              cd ${self}
+              python scripts/check-contract-registry.py
+              python scripts/check-evidence-contracts.py
+              python scripts/check-replay-proof-coverage.py
+              python scripts/generate-replay-readiness-report.py --check
+              python scripts/check-dogfood-artifact-sizes.py
+              echo "replay readiness checks passed"
+
+              case "$dogfood" in
+                "")
+                  echo "no dogfood selected; pass --dogfood <workload> -- <args> for one slow KVM proof rail"
+                  ;;
+                raft)
+                  exec ${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  ;;
+                redb)
+                  exec ${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  ;;
+                net)
+                  exec ${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  ;;
+                rust-workload)
+                  exec ${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  ;;
+                *)
+                  echo "unsupported dogfood workload: $dogfood" >&2
+                  usage >&2
+                  exit 2
+                  ;;
+              esac
+            '';
+          };
+
           # --- Simulation test runner ---
 
           mkChaosTest =
@@ -459,6 +540,7 @@
             redb-accepted-verdict-dogfood = acceptedVerdictDogfood.redb;
             net-accepted-verdict-dogfood = acceptedVerdictDogfood.net;
             rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
+            replay-readiness = replayReadiness;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
@@ -845,6 +927,10 @@
             rust-workload-accepted-verdict-dogfood = {
               type = "app";
               program = "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
+            };
+            replay-readiness = {
+              type = "app";
+              program = "${replayReadiness}/bin/replay-readiness";
             };
           };
 

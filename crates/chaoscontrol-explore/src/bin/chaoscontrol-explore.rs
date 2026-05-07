@@ -41,7 +41,9 @@
 use chaoscontrol_explore::campaign::{
     generate_seeds, load_campaign_progress, CampaignConfig, CampaignRunner,
 };
-use chaoscontrol_explore::checkpoint::{export_checkpoint_bugs, load_checkpoint};
+use chaoscontrol_explore::checkpoint::{
+    export_checkpoint_bugs_with_filter, load_checkpoint, CheckpointBugExportFilter,
+};
 use chaoscontrol_explore::corpus::BugReport;
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
@@ -567,6 +569,18 @@ enum Commands {
         /// Refuse to overwrite existing bug_N.json files.
         #[arg(long)]
         no_overwrite: bool,
+
+        /// Export only bugs with this assertion id.
+        #[arg(long)]
+        assertion_id: Option<u64>,
+
+        /// Export only bugs whose replay parent depth is at least this value.
+        #[arg(long)]
+        min_replay_parent_depth: Option<u32>,
+
+        /// Stop after writing this many matching bug artifacts.
+        #[arg(long)]
+        max_bugs: Option<usize>,
     },
 }
 
@@ -759,7 +773,19 @@ fn main() {
             checkpoint,
             output,
             no_overwrite,
-        } => cmd_export_bugs(checkpoint, output, !no_overwrite),
+            assertion_id,
+            min_replay_parent_depth,
+            max_bugs,
+        } => cmd_export_bugs(
+            checkpoint,
+            output,
+            !no_overwrite,
+            CheckpointBugExportFilter {
+                assertion_id,
+                min_replay_parent_depth,
+                max_bugs,
+            },
+        ),
         Commands::Resume {
             corpus,
             kernel,
@@ -802,7 +828,12 @@ fn main() {
     }
 }
 
-fn cmd_export_bugs(checkpoint: String, output: Option<String>, overwrite: bool) {
+fn cmd_export_bugs(
+    checkpoint: String,
+    output: Option<String>,
+    overwrite: bool,
+    filter: CheckpointBugExportFilter,
+) {
     let checkpoint_path = Path::new(&checkpoint);
     if !checkpoint_path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
@@ -817,11 +848,11 @@ fn cmd_export_bugs(checkpoint: String, output: Option<String>, overwrite: bool) 
             .into_owned()
     });
 
-    match export_checkpoint_bugs(&checkpoint, &output_dir, overwrite) {
+    match export_checkpoint_bugs_with_filter(&checkpoint, &output_dir, overwrite, filter) {
         Ok(summary) => {
             eprintln!(
-                "Exported {} checkpoint bug artifact(s) to {}",
-                summary.bugs_written, output_dir
+                "Exported {} checkpoint bug artifact(s) to {} (matched {}/{} bug(s))",
+                summary.bugs_written, output_dir, summary.bugs_matched, summary.bugs_scanned
             );
             if summary.snapshot_refs_validated > 0 {
                 eprintln!(

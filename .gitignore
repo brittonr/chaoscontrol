@@ -19,3 +19,5 @@ docs/generated/
 result-redb-guest
 
 target/
+__pycache__/
+*/__pycache__/

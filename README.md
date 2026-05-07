@@ -187,6 +187,13 @@ cargo run --release --bin chaoscontrol-explore -- resume \
 # Finalize an interrupted checkpoint that already contains bugs but no bug_N.json files
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/
+
+# Finalize only targeted snapshot-backed replay candidates; filenames preserve
+# their checkpoint index (for example bug_2.json), and unrelated snapshot refs
+# are not validated.
+cargo run --release --bin chaoscontrol-explore -- export-bugs \
+  --checkpoint results/checkpoint.json --output results/ \
+  --assertion-id 1806003755 --min-replay-parent-depth 1 --max-bugs 1
 ```
 
 Output directory contains:

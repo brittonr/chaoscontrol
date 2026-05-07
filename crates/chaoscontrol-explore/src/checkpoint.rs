@@ -679,8 +679,33 @@ pub enum CheckpointBugExportError {
     AlreadyExists { path: PathBuf },
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CheckpointBugExportFilter {
+    pub assertion_id: Option<u64>,
+    pub min_replay_parent_depth: Option<u32>,
+    pub max_bugs: Option<usize>,
+}
+
+impl CheckpointBugExportFilter {
+    fn matches(&self, bug: &SerializableBug) -> bool {
+        if let Some(assertion_id) = self.assertion_id {
+            if bug.assertion_id != assertion_id {
+                return false;
+            }
+        }
+        if let Some(min_depth) = self.min_replay_parent_depth {
+            if bug.replay_parent_depth < min_depth {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckpointBugExportSummary {
+    pub bugs_scanned: usize,
+    pub bugs_matched: usize,
     pub bugs_written: usize,
     pub snapshot_refs_validated: usize,
 }
@@ -696,13 +721,44 @@ pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
     output_dir: Q,
     overwrite: bool,
 ) -> Result<CheckpointBugExportSummary, CheckpointBugExportError> {
+    export_checkpoint_bugs_with_filter(
+        checkpoint_path,
+        output_dir,
+        overwrite,
+        CheckpointBugExportFilter::default(),
+    )
+}
+
+/// Export only checkpoint-held bugs matching the provided filter.
+///
+/// Filtered exports preserve the checkpoint bug index in `bug_N.json` filenames
+/// and validate snapshot refs only for matched bugs. This lets automation finish
+/// a targeted artifact export without spending time validating unrelated bugs.
+pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
+    checkpoint_path: P,
+    output_dir: Q,
+    overwrite: bool,
+    filter: CheckpointBugExportFilter,
+) -> Result<CheckpointBugExportSummary, CheckpointBugExportError> {
     let checkpoint = load_checkpoint(checkpoint_path)?;
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir)?;
     let snapshot_store = FileSnapshotStore::new(output_dir);
 
+    let mut bugs_matched = 0;
+    let mut bugs_written = 0;
     let mut snapshot_refs_validated = 0;
     for (index, bug) in checkpoint.bugs.iter().enumerate() {
+        if let Some(max_bugs) = filter.max_bugs {
+            if bugs_written >= max_bugs {
+                break;
+            }
+        }
+        if !filter.matches(bug) {
+            continue;
+        }
+        bugs_matched += 1;
+
         if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
             snapshot_store.get_snapshot_artifact(reference)?;
             snapshot_refs_validated += 1;
@@ -719,10 +775,13 @@ pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
         }
         let json = serde_json::to_string_pretty(bug)?;
         fs::write(path, json)?;
+        bugs_written += 1;
     }
 
     Ok(CheckpointBugExportSummary {
-        bugs_written: checkpoint.bugs.len(),
+        bugs_scanned: checkpoint.bugs.len(),
+        bugs_matched,
+        bugs_written,
         snapshot_refs_validated,
     })
 }
@@ -1160,6 +1219,8 @@ mod tests {
 
         let summary = export_checkpoint_bugs(&checkpoint_path, &out, true).unwrap();
 
+        assert_eq!(summary.bugs_scanned, 2);
+        assert_eq!(summary.bugs_matched, 2);
         assert_eq!(summary.bugs_written, 2);
         assert_eq!(summary.snapshot_refs_validated, 0);
         let bug0: SerializableBug =
@@ -1168,6 +1229,108 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(out.join("bug_1.json")).unwrap()).unwrap();
         assert_eq!(bug0.bug_id, 41);
         assert_eq!(bug1.bug_id, 99);
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_filters_targeted_snapshot_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let skipped_assertion = minimal_bug(1);
+        let mut selected = minimal_bug(2);
+        selected.assertion_id = 1806003755;
+        selected.replay_parent_depth = 2;
+        let skipped_depth = minimal_bug(3);
+        let checkpoint =
+            minimal_checkpoint_with_bugs(vec![skipped_assertion, selected, skipped_depth]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: Some(1806003755),
+                min_replay_parent_depth: Some(1),
+                max_bugs: None,
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            summary,
+            CheckpointBugExportError::MissingRequiredSnapshotRef {
+                bug_id: 2,
+                replay_parent_depth: 2,
+            }
+        ));
+        assert!(!out.join("bug_0.json").exists());
+        assert!(!out.join("bug_2.json").exists());
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_filter_skips_unmatched_missing_snapshot_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let mut skipped = minimal_bug(7);
+        skipped.assertion_id = 1;
+        skipped.replay_parent_depth = 2;
+        let mut selected = minimal_bug(8);
+        selected.assertion_id = 1806003755;
+        selected.replay_parent_depth = 0;
+        let checkpoint = minimal_checkpoint_with_bugs(vec![skipped, selected]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: Some(1806003755),
+                min_replay_parent_depth: None,
+                max_bugs: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.bugs_scanned, 2);
+        assert_eq!(summary.bugs_matched, 1);
+        assert_eq!(summary.bugs_written, 1);
+        assert_eq!(summary.snapshot_refs_validated, 0);
+        assert!(!out.join("bug_0.json").exists());
+        assert!(out.join("bug_1.json").exists());
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_filter_stops_after_max_bugs() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let mut first = minimal_bug(1);
+        first.assertion_id = 1806003755;
+        let mut second = minimal_bug(2);
+        second.assertion_id = 1806003755;
+        let checkpoint = minimal_checkpoint_with_bugs(vec![first, second]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let summary = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: Some(1806003755),
+                min_replay_parent_depth: None,
+                max_bugs: Some(1),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(summary.bugs_scanned, 2);
+        assert_eq!(summary.bugs_matched, 1);
+        assert_eq!(summary.bugs_written, 1);
+        assert!(out.join("bug_0.json").exists());
+        assert!(!out.join("bug_1.json").exists());
     }
 
     #[test]

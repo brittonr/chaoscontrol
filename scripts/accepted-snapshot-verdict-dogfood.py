@@ -212,9 +212,22 @@ def main() -> int:
         reproduce_rc: int | None = None
 
         if run_rc in (0, 1, 124) and (run_dir / "checkpoint.json").is_file():
-            export_cmd = [args.explore, "export-bugs", "--checkpoint", str(run_dir / "checkpoint.json"), "--output", str(run_dir)]
+            export_cmd = [
+                args.explore,
+                "export-bugs",
+                "--checkpoint",
+                str(run_dir / "checkpoint.json"),
+                "--output",
+                str(run_dir),
+                "--assertion-id",
+                str(ASSERTION_ID),
+                "--min-replay-parent-depth",
+                "1",
+                "--max-bugs",
+                "1",
+            ]
             export_rc = run_command(export_cmd, log=export_log, timeout=args.export_timeout)
-            if export_rc in (0, 124) and any(run_dir.glob("bug_*.json")):
+            if export_rc == 0 and any(run_dir.glob("bug_*.json")):
                 bug_path = select_snapshot_bug(run_dir)
                 if bug_path is not None:
                     suffix = bug_path.stem.removeprefix("bug_")

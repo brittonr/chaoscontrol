@@ -1,0 +1,56 @@
+═══════════════════════════════════════════════════════════════════════
+  ChaosControl Exploration Report
+═══════════════════════════════════════════════════════════════════════
+
+Exploration rounds:     5
+Total branches explored: 20
+Corpus entries:         1
+Unique edges found:     25
+Bugs discovered:        0
+Wall-clock time:        50m 43s
+
+─── Performance ──────────────────────────────────────────────────────
+Wall time:              50m 43s
+Throughput:             0.01 branches/sec, 0.01 edges/sec
+Phase breakdown:        Run: 50m 37s (100%) | Snapshot: 0.0s (0%) | Restore: 0.4s (0%) | Coverage: 0.0s (0%)
+
+─── Coverage Statistics ───────────────────────────────────────────────
+Total runs:             21
+Unique edges:           25
+Avg edges/run:          1.19
+
+─── Assertion Coverage ────────────────────────────────────────────────
+Registered sites:       5
+Passed:                 5
+Failed:                 0
+Unexercised:            0
+Exercised:              5/5 (100.0%)
+
+─── Assertion Exercise by Guest/Category ─────────────────────────────
+  Guest          Category      Cataloged  Exercised  Failed
+  ────────────── ───────────── ─────────  ─────────  ──────
+  uncategorized  uncategorized         5          5       0
+
+─── Passed Assertions ────────────────────────────────────────────────
+  ✓ [always] operation counters stay bounded (298714546) — 12 hits
+  ✓ [always] choice remains in range (1289720137) — 12 hits
+  ✓ [sometimes] write succeeds (1879683747) — 4 hits
+  ✓ [sometimes] at least one write succeeds (2166294662) — 1 hits
+  ✓ [reachable] read branch exercised (2631388487) — 3 hits
+
+─── Exploration Progress ────���─────────────────────────────────────────
+  Round │ Branches │ New Edges │ Cum. Edges │ Bugs │ Frontier │ Corpus │ Restore │ Run │ Snapshot │ Coverage
+  ──────┼──────────┼───────────┼────────────┼──────┼──────────┼────────┼─────────┼─────┼──────────┼─────────
+      1 │        4 │        25 │         25 │    0 │        2 │      1 │ 120.1ms │ 2m 29s │   22.1ms │   0.1ms
+      2 │        4 │         0 │         25 │    0 │        2 │      1 │  56.6ms │ 11m 2s │    0.6ms │   0.0ms
+      3 │        4 │         0 │         25 │    0 │        2 │      1 │  66.6ms │ 10m 57s │    0.9ms │   0.1ms
+      4 │        4 │         0 │         25 │    0 │        2 │      1 │  65.8ms │ 10m 55s │    0.6ms │   0.0ms
+      5 │        4 │         0 │         25 │    0 │        2 │      1 │  63.9ms │ 15m 13s │    0.6ms │   0.0ms
+
+  Coverage growth: 25 → 25 → 25 edges (round 1 → 3 → 5)
+  Plateau rounds:  4/5 (80% produced no new coverage)
+
+─── No Bugs Found ──────────────────────────────────────────────────────
+No assertion failures detected during exploration.
+
+═══════════════════════════════════════════════════════════════════════

@@ -3,7 +3,6 @@
 ## Purpose
 
 This specification defines ChaosControl's Rust-only workload harness adoption surface: local instrumentation feedback, downstream guest packaging, bounded workload run commands, and evidence classification boundaries for cross-project Rust use.
-
 ## Requirements
 ### Requirement: Rust workload harness surface [r[rust-workload-harness.surface]]
 
@@ -69,6 +68,12 @@ ChaosControl MUST provide a single documented command or flake app that runs a b
 - GIVEN a bounded workload run that finds a bug
 - WHEN the run writes report output
 - THEN the report distinguishes a local/dry-run finding, a schedule-only reproduction gap, and an accepted snapshot-backed replay verdict rather than promoting all findings equally
+
+#### Scenario: VM validation command completes [r[rust-workload-harness.run-command.vm-validation]]
+
+- GIVEN the Rust workload harness VM rail and a machine capable of running the campaign
+- WHEN `.#explore-rust-workload` is run with a writable output directory and sufficient build/runtime budget
+- THEN the command completes and writes inspectable VM campaign output and an evidence classification receipt
 
 ### Requirement: Cross-project instrumentation quality report [r[rust-workload-harness.instrumentation-quality]]
 

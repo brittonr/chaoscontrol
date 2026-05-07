@@ -376,7 +376,7 @@
 
             rust-workload-sim = mkChaosTest {
               name = "rust-workload-sim";
-              kernel = mkChaosKernel { };
+              kernel = mkChaosKernel { kcov = true; };
               initrd = initrd-rust-workload;
               vms = 1;
               rounds = 5;
@@ -694,7 +694,7 @@
                     printf '{"schema":"chaoscontrol.vm_campaign.classification.v1","evidence_class":"bounded-vm-campaign","initrd":"%s","replay_boundary":"campaign output may contain VM execution evidence; standalone replay proof still requires replay/minimization artifacts"}\n' \
                       "${initrd-rust-workload}" > "$out/evidence-classification.json"
                     chaoscontrol-explore run \
-                      --kernel ${mkChaosKernel { }}/vmlinux \
+                      --kernel ${mkChaosKernel { kcov = true; }}/vmlinux \
                       --initrd ${initrd-rust-workload} \
                       --vms 1 --rounds 5 --branches 4 --ticks 500 \
                       --seed 42 --mode fault-schedule \

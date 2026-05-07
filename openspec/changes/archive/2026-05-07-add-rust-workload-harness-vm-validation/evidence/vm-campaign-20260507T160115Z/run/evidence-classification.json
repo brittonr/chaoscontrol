@@ -1,0 +1,1 @@
+{"schema":"chaoscontrol.vm_campaign.classification.v1","evidence_class":"bounded-vm-campaign","initrd":"/nix/store/spm01fblmipq9bgjkyh8ssv7azj9i6k8-chaoscontrol-initrd-rust-workload","replay_boundary":"campaign output may contain VM execution evidence; standalone replay proof still requires replay/minimization artifacts"}

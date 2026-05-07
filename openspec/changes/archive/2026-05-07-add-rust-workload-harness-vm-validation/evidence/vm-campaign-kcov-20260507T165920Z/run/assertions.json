@@ -1,0 +1,57 @@
+[
+  {
+    "id": 298714546,
+    "message": "operation counters stay bounded",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 12,
+    "true_count": 12,
+    "false_count": 0
+  },
+  {
+    "id": 1289720137,
+    "message": "choice remains in range",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 12,
+    "true_count": 12,
+    "false_count": 0
+  },
+  {
+    "id": 1879683747,
+    "message": "write succeeds",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 4,
+    "true_count": 4,
+    "false_count": 0
+  },
+  {
+    "id": 2166294662,
+    "message": "at least one write succeeds",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 1,
+    "true_count": 1,
+    "false_count": 0
+  },
+  {
+    "id": 2631388487,
+    "message": "read branch exercised",
+    "kind": "reachable",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 3,
+    "true_count": 3,
+    "false_count": 0
+  }
+]

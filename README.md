@@ -252,14 +252,22 @@ For a single operator-facing readiness button, run:
 nix run .#replay-readiness
 ```
 
-This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness report, and dogfood artifact size budget. To run exactly one slow KVM accepted-verdict proof rail after those static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
+This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness report, and dogfood artifact size budget. CI and dashboards can request a machine-readable operator receipt:
 
 ```bash
-nix run .#replay-readiness -- --dogfood raft -- \
+nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-receipt.json"
+```
+
+The receipt records final status, static gate outcomes, optional selected dogfood workload, failure phase when applicable, and the scoped anti-claim that this is bounded committed replay/evidence readiness rather than universal determinism or hosted-product parity.
+
+To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
+
+```bash
+nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-raft.json" --dogfood raft -- \
   --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
 ```
 
-Selected dogfood may build kernel/initrd/runtime artifacts if they are not cached; checks-only is the default.
+Selected dogfood may build kernel/initrd/runtime artifacts if they are not cached; checks-only is the default, and receipt emission does not curate or promote dogfood evidence.
 
 For durable dogfood bundles outside the Nix smoke wrapper, use the packaged bounded retry apps and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
 

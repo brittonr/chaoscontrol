@@ -202,3 +202,9 @@ The system MUST expose one operator-facing command that runs the committed repla
 - **WHEN** an operator reads or invokes the readiness command surface
 - **THEN** the default behavior MUST avoid launching slow VM proof runs
 - **AND** documentation MUST identify selected dogfood as the slow optional path
+
+#### Scenario: Machine-readable receipt [r[replay-parent-snapshots.readiness-operator.receipt]]
+- **GIVEN** CI or a dashboard requests a receipt path for a replay readiness invocation
+- **WHEN** the readiness command completes or fails after argument parsing
+- **THEN** it MUST write a JSON receipt containing the final status, static gate outcomes, selected dogfood workload when any, and the failed phase when applicable
+- **AND** it MUST keep receipt emission separate from dogfood evidence curation or manifest promotion

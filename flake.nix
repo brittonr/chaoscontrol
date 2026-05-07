@@ -395,21 +395,32 @@
             text = ''
               usage() {
                 cat <<'EOF'
-              usage: replay-readiness [--dogfood raft|redb|net|rust-workload] [-- DOGFOOD_ARGS...]
+              usage: replay-readiness [--receipt PATH] [--dogfood raft|redb|net|rust-workload] [-- DOGFOOD_ARGS...]
 
-              Runs committed replay readiness checks. With --dogfood, runs one selected
-              accepted-verdict dogfood rail after checks pass. Selected dogfood is the
-              slow KVM path and may build kernel/initrd/runtime artifacts if uncached.
+              Runs committed replay readiness checks. With --receipt, writes a JSON
+              operator receipt for CI/dashboard ingestion. With --dogfood, runs one
+              selected accepted-verdict dogfood rail after checks pass. Selected dogfood
+              is the slow KVM path and may build kernel/initrd/runtime artifacts if
+              uncached.
               EOF
               }
 
               dogfood=""
+              receipt=""
               dogfood_args=()
               while [ "$#" -gt 0 ]; do
                 case "$1" in
                   -h|--help)
                     usage
                     exit 0
+                    ;;
+                  --receipt)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--receipt requires a path" >&2
+                      exit 2
+                    fi
+                    receipt="$2"
+                    shift 2
                     ;;
                   --dogfood)
                     if [ "$#" -lt 2 ]; then
@@ -432,34 +443,156 @@
                 esac
               done
 
+              started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+              contract_registry_status="pending"
+              evidence_contracts_status="pending"
+              replay_proof_coverage_status="pending"
+              readiness_report_status="pending"
+              artifact_sizes_status="pending"
+              dogfood_status="skipped"
+
+              write_receipt() {
+                local status="$1"
+                local failed_phase="$2"
+                local exit_code="$3"
+                if [ -z "$receipt" ]; then
+                  return 0
+                fi
+                mkdir -p "$(dirname "$receipt")"
+                STATUS="$status" \
+                FAILED_PHASE="$failed_phase" \
+                EXIT_CODE="$exit_code" \
+                STARTED_AT="$started_at" \
+                FINISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+                DOGFOOD="$dogfood" \
+                DOGFOOD_STATUS="$dogfood_status" \
+                CONTRACT_REGISTRY_STATUS="$contract_registry_status" \
+                EVIDENCE_CONTRACTS_STATUS="$evidence_contracts_status" \
+                REPLAY_PROOF_COVERAGE_STATUS="$replay_proof_coverage_status" \
+                READINESS_REPORT_STATUS="$readiness_report_status" \
+                ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
+                python - "$receipt" <<'PY'
+              import json
+              import os
+              import sys
+              from pathlib import Path
+
+              out = Path(sys.argv[1])
+              dogfood = os.environ["DOGFOOD"] or None
+              gates = [
+                  ("contract-registry", "python scripts/check-contract-registry.py", os.environ["CONTRACT_REGISTRY_STATUS"]),
+                  ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
+                  ("replay-proof-coverage", "python scripts/check-replay-proof-coverage.py", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
+                  ("readiness-report", "python scripts/generate-replay-readiness-report.py --check", os.environ["READINESS_REPORT_STATUS"]),
+                  ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
+              ]
+              receipt = {
+                  "schema_version": 1,
+                  "command": "replay-readiness",
+                  "status": os.environ["STATUS"],
+                  "exit_code": int(os.environ["EXIT_CODE"]),
+                  "failed_phase": os.environ["FAILED_PHASE"] or None,
+                  "started_at": os.environ["STARTED_AT"],
+                  "finished_at": os.environ["FINISHED_AT"],
+                  "static_gates": [
+                      {"name": name, "command": command, "status": status}
+                      for name, command, status in gates
+                  ],
+                  "dogfood": {
+                      "selected_workload": dogfood,
+                      "status": os.environ["DOGFOOD_STATUS"],
+                      "evidence_curation": "explicit-follow-up",
+                  },
+                  "scope": "bounded committed replay/evidence readiness; not universal determinism or hosted-product parity",
+              }
+              tmp = out.with_suffix(out.suffix + ".tmp")
+              tmp.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+              tmp.replace(out)
+              PY
+              }
+
+              run_gate() {
+                local name="$1"
+                local status_var="$2"
+                shift 2
+                printf -v "$status_var" '%s' running
+                if "$@"; then
+                  printf -v "$status_var" '%s' pass
+                else
+                  rc=$?
+                  printf -v "$status_var" '%s' fail
+                  write_receipt failed "$name" "$rc"
+                  exit "$rc"
+                fi
+              }
+
               echo "== replay readiness: static checks =="
               cd ${self}
-              python scripts/check-contract-registry.py
-              python scripts/check-evidence-contracts.py
-              python scripts/check-replay-proof-coverage.py
-              python scripts/generate-replay-readiness-report.py --check
-              python scripts/check-dogfood-artifact-sizes.py
+              run_gate contract-registry contract_registry_status python scripts/check-contract-registry.py
+              run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
+              run_gate replay-proof-coverage replay_proof_coverage_status python scripts/check-replay-proof-coverage.py
+              run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
+              run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
               echo "replay readiness checks passed"
 
               case "$dogfood" in
                 "")
                   echo "no dogfood selected; pass --dogfood <workload> -- <args> for one slow KVM proof rail"
+                  write_receipt passed "" 0
                   ;;
                 raft)
-                  exec ${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  dogfood_status="running"
+                  if ${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
+                    dogfood_status="pass"
+                    write_receipt passed "" 0
+                  else
+                    rc=$?
+                    dogfood_status="fail"
+                    write_receipt failed dogfood "$rc"
+                    exit "$rc"
+                  fi
                   ;;
                 redb)
-                  exec ${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  dogfood_status="running"
+                  if ${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
+                    dogfood_status="pass"
+                    write_receipt passed "" 0
+                  else
+                    rc=$?
+                    dogfood_status="fail"
+                    write_receipt failed dogfood "$rc"
+                    exit "$rc"
+                  fi
                   ;;
                 net)
-                  exec ${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  dogfood_status="running"
+                  if ${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
+                    dogfood_status="pass"
+                    write_receipt passed "" 0
+                  else
+                    rc=$?
+                    dogfood_status="fail"
+                    write_receipt failed dogfood "$rc"
+                    exit "$rc"
+                  fi
                   ;;
                 rust-workload)
-                  exec ${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood "''${dogfood_args[@]}"
+                  dogfood_status="running"
+                  if ${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
+                    dogfood_status="pass"
+                    write_receipt passed "" 0
+                  else
+                    rc=$?
+                    dogfood_status="fail"
+                    write_receipt failed dogfood "$rc"
+                    exit "$rc"
+                  fi
                   ;;
                 *)
                   echo "unsupported dogfood workload: $dogfood" >&2
                   usage >&2
+                  dogfood_status="fail"
+                  write_receipt failed dogfood-selection 2
                   exit 2
                   ;;
               esac

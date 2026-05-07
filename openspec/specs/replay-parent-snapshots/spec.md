@@ -208,3 +208,9 @@ The system MUST expose one operator-facing command that runs the committed repla
 - **WHEN** the readiness command completes or fails after argument parsing
 - **THEN** it MUST write a JSON receipt containing the final status, static gate outcomes, selected dogfood workload when any, and the failed phase when applicable
 - **AND** it MUST keep receipt emission separate from dogfood evidence curation or manifest promotion
+
+#### Scenario: Receipt summary consumer [r[replay-parent-snapshots.readiness-operator.summary]]
+- **GIVEN** a replay readiness receipt JSON artifact exists
+- **WHEN** CI or a dashboard invokes the summary consumer on that receipt
+- **THEN** the consumer MUST print one concise operator summary line containing final status, static gate pass count, dogfood status, and failed phase when present
+- **AND** malformed or incomplete receipts MUST fail closed instead of producing a successful summary

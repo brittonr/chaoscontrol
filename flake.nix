@@ -599,6 +599,14 @@
             '';
           };
 
+          replayReadinessSummary = pkgs.writeShellApplication {
+            name = "replay-readiness-summary";
+            runtimeInputs = [ pkgs.python3 ];
+            text = ''
+              exec python ${self}/scripts/summarize-replay-readiness-receipt.py "$@"
+            '';
+          };
+
           # --- Simulation test runner ---
 
           mkChaosTest =
@@ -674,6 +682,7 @@
             net-accepted-verdict-dogfood = acceptedVerdictDogfood.net;
             rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
             replay-readiness = replayReadiness;
+            replay-readiness-summary = replayReadinessSummary;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
@@ -1064,6 +1073,10 @@
             replay-readiness = {
               type = "app";
               program = "${replayReadiness}/bin/replay-readiness";
+            };
+            replay-readiness-summary = {
+              type = "app";
+              program = "${replayReadinessSummary}/bin/replay-readiness-summary";
             };
           };
 

@@ -258,7 +258,13 @@ This checks the committed contract registry, evidence contracts, accepted proof 
 nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-receipt.json"
 ```
 
-The receipt records final status, static gate outcomes, optional selected dogfood workload, failure phase when applicable, and the scoped anti-claim that this is bounded committed replay/evidence readiness rather than universal determinism or hosted-product parity.
+The receipt records final status, static gate outcomes, optional selected dogfood workload, failure phase when applicable, and the scoped anti-claim that this is bounded committed replay/evidence readiness rather than universal determinism or hosted-product parity. To emit a one-line CI/dashboard summary from a saved receipt, run:
+
+```bash
+nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
+```
+
+It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=5/5 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts.
 
 To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
 

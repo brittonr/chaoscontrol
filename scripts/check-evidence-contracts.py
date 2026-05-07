@@ -301,9 +301,22 @@ def main() -> int:
     expect_invalid(invalid / "snapshot-ref.missing.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
     expect_invalid(invalid / "snapshot-ref.corrupt.invalid.json", lambda value: validate_snapshot_ref(value, check_files=True, root=invalid))
     expect_invalid(invalid / "receipt.stale-artifact.invalid.json", lambda value: validate_receipt(value, check_files=True))
-    expect_invalid(invalid / "replay-verdict.schedule-only-not-proof.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
-    expect_invalid(invalid / "replay-verdict.missing-snapshot-ref.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
-    expect_invalid(invalid / "replay-verdict.snapshot-not-reproduced.invalid.json", lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True))
+    negative_replay_proof_classes = [
+        "replay-verdict.schedule-only-not-proof.invalid.json",
+        "replay-verdict.missing-snapshot-ref.invalid.json",
+        "replay-verdict.missing-snapshot-artifact.invalid.json",
+        "replay-verdict.invalid-snapshot-digest.invalid.json",
+        "replay-verdict.snapshot-not-reproduced.invalid.json",
+        "replay-verdict.no-bug-found.invalid.json",
+        "replay-verdict.replay-error.invalid.json",
+    ]
+    for fixture in negative_replay_proof_classes:
+        path = invalid / fixture
+        validate_replay_verdict(load_json(path))
+        expect_invalid(
+            path,
+            lambda value: validate_replay_verdict(value, accepted_snapshot_proof=True),
+        )
 
     print("evidence contracts ok: nickel examples, dogfood receipt, positive fixtures, negative fixtures")
     return 0

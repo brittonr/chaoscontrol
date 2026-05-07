@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-verdict.no-bug-found.invalid",
+  "replay_class": "no_bug_found",
+  "reproduced": false,
+  "command": {
+    "command": "chaoscontrol-explore reproduce --bug missing.json --verdict-output replay-verdict.json",
+    "exit_status": 1
+  },
+  "diagnostic": "bug file not found",
+  "snapshot": {
+    "status": "not_required",
+    "present": false,
+    "digest_verified": false
+  },
+  "artifact_hashes": []
+}

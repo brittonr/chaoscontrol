@@ -256,6 +256,18 @@ mod tests {
     use super::*;
     use crate::checkpoint::SerializableSchedule;
 
+    fn snapshot_ref() -> ReplayParentSnapshotRef {
+        ReplayParentSnapshotRef {
+            store: "file-content-addressed".to_string(),
+            digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_string(),
+            codec: "simulation-snapshot-bincode-zstd-v1".to_string(),
+            schema_version: 1,
+            path: "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.bin"
+                .to_string(),
+        }
+    }
+
     fn bug(depth: u32, has_ref: bool) -> SerializableBug {
         SerializableBug {
             bug_id: 7,
@@ -264,17 +276,7 @@ mod tests {
             schedule: SerializableSchedule { faults: Vec::new() },
             tick: 123,
             replay_parent_depth: depth,
-            replay_parent_snapshot_ref: if has_ref {
-                Some(ReplayParentSnapshotRef {
-                    store: "file-content-addressed".to_string(),
-                    digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
-                    codec: "simulation-snapshot-bincode-zstd-v1".to_string(),
-                    schema_version: 1,
-                    path: "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.bin".to_string(),
-                })
-            } else {
-                None
-            },
+            replay_parent_snapshot_ref: if has_ref { Some(snapshot_ref()) } else { None },
             dedup_key: Some(99),
             schedule_variant: None,
             scenario_config: None,
@@ -321,6 +323,80 @@ mod tests {
             classify_reproduce(&bug, &snapshot, false),
             ReplayClass::ScheduleOnlyReplayGap
         );
+    }
+
+    #[test]
+    fn classifies_snapshot_validation_failures_as_distinct_negative_classes() {
+        let bug = bug(2, true);
+        let reference = snapshot_ref();
+
+        assert_eq!(
+            classify_reproduce(
+                &bug,
+                &ReplaySnapshotValidation::missing_ref("missing replay_parent_snapshot_ref"),
+                true,
+            ),
+            ReplayClass::MissingSnapshotRef
+        );
+        assert_eq!(
+            classify_reproduce(
+                &bug,
+                &ReplaySnapshotValidation::from_error(
+                    reference.clone(),
+                    &SnapshotStoreError::Missing {
+                        path: reference.path.clone(),
+                    },
+                ),
+                true,
+            ),
+            ReplayClass::MissingSnapshotArtifact
+        );
+        assert_eq!(
+            classify_reproduce(
+                &bug,
+                &ReplaySnapshotValidation::from_error(
+                    reference.clone(),
+                    &SnapshotStoreError::DigestMismatch {
+                        path: reference.path.clone(),
+                        expected: reference.digest.clone(),
+                        actual: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                            .to_string(),
+                    },
+                ),
+                true,
+            ),
+            ReplayClass::InvalidSnapshotDigest
+        );
+        assert_eq!(
+            classify_reproduce(
+                &bug,
+                &ReplaySnapshotValidation::from_error(
+                    reference,
+                    &SnapshotStoreError::UnsupportedCodec {
+                        codec: "other-codec".to_string(),
+                    },
+                ),
+                true,
+            ),
+            ReplayClass::InvalidSnapshotDigest
+        );
+    }
+
+    #[test]
+    fn no_bug_found_verdict_is_not_reproduced_and_has_no_bug_context() {
+        let verdict = ReplayVerdict::no_bug_found(
+            "chaoscontrol-explore reproduce --bug missing.json".to_string(),
+            "bug file not found",
+        );
+        assert_eq!(verdict.replay_class, ReplayClass::NoBugFound);
+        assert!(!verdict.reproduced);
+        assert_eq!(verdict.command.exit_status, 1);
+        assert!(verdict.bug_path.is_none());
+        assert_eq!(
+            verdict.snapshot.status,
+            SnapshotValidationStatus::NotRequired
+        );
+        assert!(verdict.artifact_hashes.is_empty());
     }
 
     #[test]

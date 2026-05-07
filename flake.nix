@@ -268,6 +268,123 @@
               mkdir -p $out
               ln -s ${kernel.dev}/vmlinux $out/vmlinux
             '';
+          # --- Accepted snapshot-backed replay dogfood wrappers ---
+
+          mkAcceptedSnapshotVerdictDogfood =
+            {
+              name,
+              workload,
+              kernel,
+              initrd,
+              assertionId,
+              cmdlineTemplate,
+              vms,
+              rounds,
+              branches,
+              ticks,
+              memoryMb,
+              diskImage ? null,
+            }:
+            let
+              args = [
+                "--workload"
+                workload
+                "--explore"
+                "${chaoscontrol}/bin/chaoscontrol-explore"
+                "--kernel"
+                "${kernel}/vmlinux"
+                "--initrd"
+                "${initrd}"
+              ]
+              ++ pkgs.lib.optionals (diskImage != null) [
+                "--disk-image"
+                "${diskImage}"
+              ]
+              ++ [
+                "--assertion-id"
+                (toString assertionId)
+                "--cmdline-template"
+                cmdlineTemplate
+                "--vms"
+                (toString vms)
+                "--rounds"
+                (toString rounds)
+                "--branches"
+                (toString branches)
+                "--ticks"
+                (toString ticks)
+                "--memory-mb"
+                (toString memoryMb)
+              ];
+            in
+            pkgs.writeShellApplication {
+              inherit name;
+              runtimeInputs = [
+                chaoscontrol
+                pkgs.coreutils
+                pkgs.python3
+              ];
+              text = ''
+                python ${./scripts/accepted-snapshot-verdict-dogfood.py} ${pkgs.lib.escapeShellArgs args} "$@"
+              '';
+            };
+
+          acceptedVerdictDogfood = {
+            raft = mkAcceptedSnapshotVerdictDogfood {
+              name = "raft-accepted-verdict-dogfood";
+              workload = "raft";
+              kernel = mkChaosKernel { virtioNet = true; };
+              initrd = initrd-raft;
+              assertionId = 1806003755;
+              cmdlineTemplate = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}";
+              vms = 3;
+              rounds = 3;
+              branches = 2;
+              ticks = 80;
+              memoryMb = 256;
+            };
+            redb = mkAcceptedSnapshotVerdictDogfood {
+              name = "redb-accepted-verdict-dogfood";
+              workload = "redb";
+              kernel = mkChaosKernel { };
+              initrd = initrd-redb;
+              diskImage = redb-disk-image;
+              assertionId = 2718281828;
+              cmdlineTemplate = "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}";
+              vms = 1;
+              rounds = 3;
+              branches = 2;
+              ticks = 80;
+              memoryMb = 256;
+            };
+            net = mkAcceptedSnapshotVerdictDogfood {
+              name = "net-accepted-verdict-dogfood";
+              workload = "net";
+              kernel = mkChaosKernel { virtioNet = true; };
+              initrd = initrd-net;
+              assertionId = 3141592653;
+              cmdlineTemplate = "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}";
+              vms = 3;
+              rounds = 4;
+              branches = 3;
+              ticks = 120;
+              memoryMb = 256;
+            };
+            rust-workload = mkAcceptedSnapshotVerdictDogfood {
+              name = "rust-workload-accepted-verdict-dogfood";
+              workload = "rust-workload";
+              kernel = mkChaosKernel { kcov = true; };
+              initrd = initrd-rust-workload;
+              assertionId = 1414213562;
+              cmdlineTemplate = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}";
+              vms = 1;
+              rounds = 3;
+              branches = 2;
+              ticks = 80;
+              memoryMb = 128;
+            };
+          };
+
           # --- Simulation test runner ---
 
           mkChaosTest =
@@ -337,6 +454,11 @@
               initrd-rust-workload
               ;
             inherit redb-disk-image;
+
+            raft-accepted-verdict-dogfood = acceptedVerdictDogfood.raft;
+            redb-accepted-verdict-dogfood = acceptedVerdictDogfood.redb;
+            net-accepted-verdict-dogfood = acceptedVerdictDogfood.net;
+            rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
@@ -708,32 +830,22 @@
                 type = "app";
                 program = "${wrapper}/bin/explore-rust-workload";
               };
-            rust-workload-accepted-verdict-dogfood =
-              let
-                wrapper = pkgs.writeShellApplication {
-                  name = "rust-workload-accepted-verdict-dogfood";
-                  runtimeInputs = [
-                    chaoscontrol
-                    pkgs.coreutils
-                    pkgs.python3
-                  ];
-                  text = ''
-                    python ${./scripts/accepted-snapshot-verdict-dogfood.py} \
-                      --workload rust-workload \
-                      --explore ${chaoscontrol}/bin/chaoscontrol-explore \
-                      --kernel ${mkChaosKernel { kcov = true; }}/vmlinux \
-                      --initrd ${initrd-rust-workload} \
-                      --assertion-id 1414213562 \
-                      --cmdline-template 'rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}' \
-                      --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 128 \
-                      "$@"
-                  '';
-                };
-              in
-              {
-                type = "app";
-                program = "${wrapper}/bin/rust-workload-accepted-verdict-dogfood";
-              };
+            raft-accepted-verdict-dogfood = {
+              type = "app";
+              program = "${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood";
+            };
+            redb-accepted-verdict-dogfood = {
+              type = "app";
+              program = "${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood";
+            };
+            net-accepted-verdict-dogfood = {
+              type = "app";
+              program = "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
+            };
+            rust-workload-accepted-verdict-dogfood = {
+              type = "app";
+              program = "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
+            };
           };
 
           devShell = pkgs.mkShell {

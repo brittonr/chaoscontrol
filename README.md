@@ -246,42 +246,24 @@ nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 
 It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
 
-For a durable dogfood bundle outside the Nix smoke wrapper, use the bounded retry helper and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
+For durable dogfood bundles outside the Nix smoke wrapper, use the packaged bounded retry apps and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
 
 ```bash
-python scripts/accepted-snapshot-verdict-dogfood.py \
-  --explore target/debug/chaoscontrol-explore \
-  --kernel /nix/store/...-chaoscontrol-vmlinux/vmlinux \
-  --initrd /nix/store/...-chaoscontrol-initrd-raft \
+nix run .#raft-accepted-verdict-dogfood -- \
   --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
 ```
 
 The helper can also exercise non-Raft workloads by parameterizing the assertion ID, cmdline template, and optional disk image. The redb proof uses:
 
 ```bash
-python scripts/accepted-snapshot-verdict-dogfood.py \
-  --workload redb \
-  --explore target/debug/chaoscontrol-explore \
-  --kernel /nix/store/...-chaoscontrol-vmlinux/vmlinux \
-  --initrd /nix/store/...-chaoscontrol-initrd-redb \
-  --disk-image /nix/store/...-redb-disk-image \
-  --assertion-id 2718281828 \
-  --cmdline-template 'redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}' \
-  --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 256 \
+nix run .#redb-accepted-verdict-dogfood -- \
   --output dogfood-results/redb-accepted-verdict-dogfood-<timestamp>
 ```
 
 The net proof uses the virtio-net kernel/initrd and no disk image:
 
 ```bash
-python scripts/accepted-snapshot-verdict-dogfood.py \
-  --workload net \
-  --explore target/debug/chaoscontrol-explore \
-  --kernel /nix/store/...-chaoscontrol-vmlinux/vmlinux \
-  --initrd /nix/store/...-chaoscontrol-initrd-net \
-  --assertion-id 3141592653 \
-  --cmdline-template 'net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}' \
-  --vms 3 --rounds 4 --branches 3 --ticks 120 --memory-mb 256 \
+nix run .#net-accepted-verdict-dogfood -- \
   --output dogfood-results/net-accepted-verdict-dogfood-<timestamp>
 ```
 
@@ -289,20 +271,6 @@ The Rust workload proof uses the packaged downstream-shaped initrd, a KCOV-enabl
 
 ```bash
 nix run .#rust-workload-accepted-verdict-dogfood -- \
-  --output dogfood-results/rust-workload-accepted-verdict-dogfood-<timestamp>
-```
-
-Equivalent direct invocation:
-
-```bash
-python scripts/accepted-snapshot-verdict-dogfood.py \
-  --workload rust-workload \
-  --explore target/debug/chaoscontrol-explore \
-  --kernel /nix/store/...-chaoscontrol-kcov-vmlinux/vmlinux \
-  --initrd /nix/store/...-chaoscontrol-initrd-rust-workload \
-  --assertion-id 1414213562 \
-  --cmdline-template 'rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}' \
-  --vms 1 --rounds 3 --branches 2 --ticks 80 --memory-mb 128 \
   --output dogfood-results/rust-workload-accepted-verdict-dogfood-<timestamp>
 ```
 

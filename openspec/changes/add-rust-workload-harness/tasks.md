@@ -6,14 +6,14 @@
 
 ## Phase 2: Harness API and template
 
-- [ ] [serial] Implement the minimal Rust workload harness/template around existing `chaoscontrol-sdk` APIs.
-- [ ] [depends:harness-api] Add a sample downstream-style Rust workload that uses setup/scenario conventions and existing SDK assertions/randomness.
-- [ ] [depends:harness-api] Document the Rust-only adoption path for the user's own projects.
+- [x] [serial] Implement the minimal Rust workload harness/template around existing `chaoscontrol-sdk` APIs.
+- [x] [depends:harness-api] Add a sample downstream-style Rust workload that uses setup/scenario conventions and existing SDK assertions/randomness.
+- [x] [depends:harness-api] Document the Rust-only adoption path for the user's own projects.
 
 ## Phase 3: Local dry-run report
 
-- [ ] [depends:harness-api] Implement local dry-run execution/reporting for assertion catalog, lifecycle events, sometimes/reachable progress, and random-choice observations.
-- [ ] [depends:local-report] Add tests or fixtures for missing setup-complete and unexercised assertions.
+- [x] [depends:harness-api] Implement local dry-run execution/reporting for assertion catalog, lifecycle events, sometimes/reachable progress, and random-choice observations.
+- [x] [depends:local-report] Add tests or fixtures for missing setup-complete and unexercised assertions.
 
 ## Phase 4: Packaging and bounded run rail
 

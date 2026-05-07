@@ -76,6 +76,10 @@ pub use crate::random::{fill_bytes, get_random, random_choice};
 #[cfg(feature = "full")]
 pub use crate::random::{random_choice_from, ChaosControlRng};
 
+// ── Workload harness ─────────────────────────────────────────────────
+#[cfg(feature = "full")]
+pub use crate::workload::{LocalDryRunReport, WorkloadHarness};
+
 // ── Re-export serde_json for json!() macro convenience ───────────────
 #[cfg(feature = "full")]
 pub use serde_json;

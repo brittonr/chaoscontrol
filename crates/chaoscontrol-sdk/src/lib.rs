@@ -61,6 +61,8 @@ pub mod lifecycle;
 pub mod prelude;
 pub mod random;
 mod transport;
+#[cfg(feature = "full")]
+pub mod workload;
 
 /// Re-export serde_json for use by macros via `$crate::serde_json`.
 #[cfg(feature = "full")]

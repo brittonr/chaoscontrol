@@ -84,11 +84,13 @@ pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
             CMD_RANDOM_GET => (crate::internal::local_random_u64(), 0),
             CMD_RANDOM_CHOICE => {
                 let n = id as u64;
-                if n <= 1 {
-                    (0, 0)
+                let choice = if n <= 1 {
+                    0
                 } else {
-                    (crate::internal::local_random_u64() % n, 0)
-                }
+                    crate::internal::local_random_u64() % n
+                };
+                crate::internal::local_emit_random_choice(id, choice);
+                (choice, 0)
             }
             _ => (0, 0),
         }
@@ -105,8 +107,15 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
 
     match command {
         CMD_ASSERT_CATALOG => {
+            let assert_type = match flags {
+                crate::assert::CATALOG_KIND_SOMETIMES => "sometimes",
+                crate::assert::CATALOG_KIND_REACHABLE | crate::assert::CATALOG_KIND_UNREACHABLE => {
+                    "reachability"
+                }
+                _ => "always",
+            };
             crate::internal::local_emit_assert(&LocalAssert {
-                assert_type: "always",
+                assert_type,
                 hit: false,
                 condition,
                 message,

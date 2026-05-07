@@ -277,6 +277,24 @@ pub(crate) fn local_emit_lifecycle(event_name: &str, json_details: &[u8]) {
     }
 }
 
+/// Write a local random-choice observation to the output file.
+pub(crate) fn local_emit_random_choice(n: u32, choice: u64) {
+    let mode = get_mode();
+    let TransportMode::LocalOutput { writer } = mode else {
+        return;
+    };
+
+    let record = format!(
+        "{{\"chaoscontrol_random_choice\": {{\"n\": {}, \"choice\": {}}}}}\n",
+        n, choice
+    );
+
+    if let Ok(mut guard) = writer.lock() {
+        let _ = guard.write_all(record.as_bytes());
+        let _ = guard.flush();
+    }
+}
+
 /// Minimal JSON string escaping (quotes and backslashes).
 fn escape_json(s: &str) -> String {
     s.replace('\\', "\\\\")

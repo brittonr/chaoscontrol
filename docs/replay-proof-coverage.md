@@ -1,0 +1,16 @@
+# Replay Proof Coverage
+
+ChaosControl currently has accepted snapshot-backed replay proof coverage for the workloads listed in `dogfood-results/accepted-workload-proofs.json`.
+
+| Workload | Assertion ID | Evidence | Verdict |
+| --- | ---: | --- | --- |
+| Raft | `1806003755` | `dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/` | `snapshot_backed_reproduced` |
+| redb | `2718281828` | `dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/` | `snapshot_backed_reproduced` |
+
+The manifest/check are intentionally conservative: every listed proof must have an accepted summary, exported bug artifact, replay verdict with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `command.exit_status = 0`, `replay_parent_depth > 0`, and a present digest-matching `.snapshot.bin` artifact.
+
+This is workload coverage evidence, not a mathematical or universal determinism proof. It only supports claims about the named bounded workload rails and their committed verdict/snapshot artifacts. New breadth claims should add a manifest entry plus committed evidence and pass:
+
+```bash
+python scripts/check-replay-proof-coverage.py
+```

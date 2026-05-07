@@ -472,6 +472,7 @@
                   cd ${self}
                   python scripts/check-contract-registry.py
                   python scripts/check-evidence-contracts.py
+                  python scripts/check-replay-proof-coverage.py
                   touch $out
                 '';
 

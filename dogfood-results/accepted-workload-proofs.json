@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scope": "bounded accepted snapshot-backed replay workload proofs",
+  "anti_claims": [
+    "This manifest does not prove global deterministic hypervisor correctness.",
+    "Each entry proves only the named workload, assertion, guest cmdline, and committed snapshot-backed replay verdict artifact."
+  ],
+  "required_replay_class": "snapshot_backed_reproduced",
+  "proofs": [
+    {
+      "workload": "raft",
+      "assertion_id": 1806003755,
+      "evidence_dir": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114",
+      "summary": "accepted-snapshot-verdict-summary.json",
+      "bug": "bug_0.json",
+      "verdict": "replay-verdict-bug0.json",
+      "snapshot": "snapshots/4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11.snapshot.bin",
+      "notes": "Raft bounded snapshot_replay_probe with filtered export proof."
+    },
+    {
+      "workload": "redb",
+      "assertion_id": 2718281828,
+      "evidence_dir": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314",
+      "summary": "accepted-snapshot-verdict-summary.json",
+      "bug": "bug_0.json",
+      "verdict": "replay-verdict-bug0.json",
+      "snapshot": "snapshots/62ae374e419365b420eaaa6dafcce990dbf61c3a92d635074533b09b0fcf8f71.snapshot.bin",
+      "notes": "redb bounded snapshot_replay_probe with disk-image replay proof."
+    }
+  ]
+}

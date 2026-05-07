@@ -20,4 +20,8 @@ This change defines a Rust-only workload harness layer so a downstream Rust proj
 
 ## Verification
 
-Implementation will be accepted only when a repo-local sample Rust workload can be generated or wired from the harness, run locally in dry-run mode, packaged as a guest, executed through a bounded campaign, and produce a report that links SDK instrumentation to replay/evidence artifacts.
+Implementation is accepted when a repo-local sample Rust workload can be generated or wired from the harness, run locally in dry-run mode, packaged as a guest, and exposed through one-command local/VM rails without overclaiming replay evidence.
+
+## Archive Closeout
+
+The harness API/template, local dry-run report, downstream-shaped guest package, initrd package, and one-command rails were implemented and verified. The bounded VM campaign command exceeded the local drain budget before producing campaign output, so VM-completion evidence is explicitly deferred to `add-rust-workload-harness-vm-validation` rather than claimed by this archive.

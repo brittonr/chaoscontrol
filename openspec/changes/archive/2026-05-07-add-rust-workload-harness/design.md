@@ -72,5 +72,5 @@ This change keeps the scope intentionally Rust-only and local-first. The target 
 - Add a sample downstream-style Rust workload using the harness.
 - Run local dry-run and verify structured output/report contents.
 - Build/package the sample guest via Nix helper or CLI rail.
-- Run a bounded ChaosControl campaign and capture replay/evidence paths.
+- Run a bounded ChaosControl campaign and capture replay/evidence paths (deferred to `add-rust-workload-harness-vm-validation` after the first VM command exceeded the local drain budget).
 - Run existing SDK/report/evidence checks plus `git diff --check` before landing implementation.

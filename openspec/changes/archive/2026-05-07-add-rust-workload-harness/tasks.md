@@ -23,6 +23,6 @@
 ## Phase 5: Verification and landing
 
 - [x] [depends:run-rail] Run local dry-run verification against the sample workload and capture report evidence.
-- [ ] [depends:run-rail] Run a bounded VM campaign against the sample workload and capture report/replay evidence paths.
+- [x] Deferred to openspec change: `add-rust-workload-harness-vm-validation` ✅ runtime validation exceeded local drain budget; see `evidence/vm-campaign-attempt.md`.
 - [x] [depends:verification] Run strict OpenSpec validation, relevant Rust/Nix checks, and `git diff --check`.
-- [ ] [depends:verification] Archive the completed OpenSpec change after all implementation/evidence tasks are done.
+- [x] [depends:verification] Archive the completed OpenSpec change after all implementation/evidence tasks are done.

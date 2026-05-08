@@ -499,8 +499,11 @@
               contract_registry_status="pending"
               evidence_contracts_status="pending"
               replay_proof_coverage_status="pending"
+              readiness_promotion_status="pending"
+              readiness_surface_drift_status="pending"
               readiness_report_status="pending"
               assertion_report_status="pending"
+              sdk_local_report_tracks_status="pending"
               artifact_sizes_status="pending"
               accepted_dogfood_config_status="pending"
               dogfood_status="skipped"
@@ -528,8 +531,11 @@
                 CONTRACT_REGISTRY_STATUS="$contract_registry_status" \
                 EVIDENCE_CONTRACTS_STATUS="$evidence_contracts_status" \
                 REPLAY_PROOF_COVERAGE_STATUS="$replay_proof_coverage_status" \
+                READINESS_PROMOTION_STATUS="$readiness_promotion_status" \
+                READINESS_SURFACE_DRIFT_STATUS="$readiness_surface_drift_status" \
                 READINESS_REPORT_STATUS="$readiness_report_status" \
                 ASSERTION_REPORT_STATUS="$assertion_report_status" \
+                SDK_LOCAL_REPORT_TRACKS_STATUS="$sdk_local_report_tracks_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
                 DOGFOOD_EXPECTATIONS="${./dogfood-results/accepted-dogfood-expectations.json}" \
@@ -593,8 +599,11 @@
                   ("contract-registry", "python scripts/check-contract-registry.py", os.environ["CONTRACT_REGISTRY_STATUS"]),
                   ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
                   ("replay-proof-coverage", "python scripts/check-replay-proof-coverage.py", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
+                  ("readiness-promotion", "python scripts/check-readiness-promotion-gate.py", os.environ["READINESS_PROMOTION_STATUS"]),
+                  ("readiness-surface-drift", "python scripts/check-readiness-surface-drift.py", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "python scripts/generate-replay-readiness-report.py --check", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "python scripts/generate-assertion-readiness-report.py --check", os.environ["ASSERTION_REPORT_STATUS"]),
+                  ("sdk-local-report-tracks", "python scripts/check-sdk-local-report-tracks.py", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
                   ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
                   ("accepted-dogfood-config", "python scripts/check-accepted-dogfood-config.py --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
               ]
@@ -720,6 +729,7 @@
               run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
               run_gate replay-proof-coverage replay_proof_coverage_status python scripts/check-replay-proof-coverage.py
               run_gate readiness-promotion readiness_promotion_status python scripts/check-readiness-promotion-gate.py
+              run_gate readiness-surface-drift readiness_surface_drift_status python scripts/check-readiness-surface-drift.py
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
               run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
@@ -1030,6 +1040,7 @@
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
                   python scripts/check-readiness-promotion-gate.py
+                  python scripts/check-readiness-surface-drift.py
                   python scripts/generate-replay-readiness-report.py --check
                   python scripts/generate-assertion-readiness-report.py --check
                   python scripts/check-dogfood-artifact-sizes.py

@@ -264,13 +264,20 @@ The receipt records final status, static gate outcomes, optional selected dogfoo
 nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
 ```
 
-It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=7/7 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. When a dogfood run emitted wrapper summaries, the `dogfood=` token expands with accepted/seed/fail-after/replay-class/depth fields so operators can triage the KVM proof without opening raw attempt dirs. The CI/check surface packages both artifacts with:
+It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=7/7 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. When a dogfood run emitted wrapper summaries, the `dogfood=` token expands with accepted/seed/fail-after/replay-class/depth fields so operators can triage the KVM proof without opening raw attempt dirs. To render the same receipt as a static operator dashboard, run:
+
+```bash
+nix run .#replay-readiness-dashboard -- "$PWD/target/replay-readiness-receipt.json" \
+  --output "$PWD/target/replay-readiness-dashboard.html"
+```
+
+The dashboard is a self-contained HTML artifact that shows final status, static gates, selected dogfood expectation/replay-class details, raw receipt JSON, and the bounded-readiness scope string. The CI/check surface packages all three artifacts with:
 
 ```bash
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L
 ```
 
-GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json` plus `replay-readiness-summary.txt` as the `replay-readiness-receipt` artifact.
+GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, and `replay-readiness-dashboard.html` as the `replay-readiness-receipt` artifact.
 
 To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
 

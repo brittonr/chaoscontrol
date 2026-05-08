@@ -29,10 +29,11 @@ jobs:
           nix build .#checks.x86_64-linux.replay-readiness \
             --out-link target/replay-readiness-check -L
           cat target/replay-readiness-check/replay-readiness-summary.txt
-      - name: Upload replay readiness receipt
+      - name: Upload replay readiness receipt and dashboard
         uses: actions/upload-artifact@v4
         with:
           name: replay-readiness-receipt
           path: |
             target/replay-readiness-check/replay-readiness-receipt.json
             target/replay-readiness-check/replay-readiness-summary.txt
+            target/replay-readiness-check/replay-readiness-dashboard.html

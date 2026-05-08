@@ -413,7 +413,8 @@
               branches = 2;
               ticks = 80;
               memoryMb = 128;
-              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.fail_after_values;
+              failAfterValues =
+                acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.fail_after_values;
               maxAttempts = acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.max_attempts;
               expectation = acceptedVerdictDogfoodExpectationWorkloads."rust-workload";
             };
@@ -761,6 +762,14 @@
             '';
           };
 
+          replayReadinessDashboard = pkgs.writeShellApplication {
+            name = "replay-readiness-dashboard";
+            runtimeInputs = [ pkgs.python3 ];
+            text = ''
+              exec python ${self}/scripts/render-replay-readiness-dashboard.py "$@"
+            '';
+          };
+
           # --- Simulation test runner ---
 
           mkChaosTest =
@@ -838,6 +847,7 @@
             accepted-verdict-dogfood-config = acceptedVerdictDogfoodConfig;
             replay-readiness = replayReadiness;
             replay-readiness-summary = replayReadinessSummary;
+            replay-readiness-dashboard = replayReadinessDashboard;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
@@ -1023,6 +1033,7 @@
                   nativeBuildInputs = [
                     replayReadiness
                     replayReadinessSummary
+                    replayReadinessDashboard
                   ];
                 }
                 ''
@@ -1030,8 +1041,10 @@
                   receipt="$out/replay-readiness-receipt.json"
                   replay-readiness --receipt "$receipt"
                   replay-readiness-summary "$receipt" | tee "$out/replay-readiness-summary.txt"
+                  replay-readiness-dashboard "$receipt" --output "$out/replay-readiness-dashboard.html"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
+                  test -s "$out/replay-readiness-dashboard.html"
                 '';
 
             # KVM-required smoke gate for the snapshot-backed Raft replay rail.
@@ -1252,6 +1265,10 @@
             replay-readiness-summary = {
               type = "app";
               program = "${replayReadinessSummary}/bin/replay-readiness-summary";
+            };
+            replay-readiness-dashboard = {
+              type = "app";
+              program = "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
             };
           };
 

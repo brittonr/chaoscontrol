@@ -568,7 +568,7 @@ macro_rules! __cc_register_catalog {
         const _: () = {
             #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
-                id: $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg)),
+                id: $id,
                 message: $msg,
                 kind: $kind,
                 file: file!(),
@@ -582,7 +582,7 @@ macro_rules! __cc_register_catalog {
         const _: () = {
             #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
-                id: $crate::assert::location_id(concat!(file!(), ":", line!(), ":", $msg)),
+                id: $id,
                 message: $msg,
                 kind: $kind,
                 file: file!(),
@@ -600,6 +600,34 @@ macro_rules! __cc_register_catalog {
 macro_rules! __cc_register_catalog {
     ($id:expr, $msg:expr, $kind:expr) => {};
     ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {};
+}
+
+/// Categorized assert-always with an explicit stable assertion ID.
+#[macro_export]
+macro_rules! cc_assert_always_category_with_id {
+    ($guest:expr, $category:expr, $id:expr, $cond:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $id;
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        let __cc_details = $crate::__cc_empty_json!();
+        $crate::assert::always_with_id($cond, _ID, $msg, &__cc_details);
+    }};
+    ($guest:expr, $category:expr, $id:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $id;
+        $crate::__cc_register_catalog!(
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        $crate::assert::always_with_id($cond, _ID, $msg, $details);
+    }};
 }
 
 /// Categorized assert-always with automatic source location ID.
@@ -1248,6 +1276,19 @@ mod tests {
         cc_assert_always!(true, "msg", &json!({"key": 42}));
         cc_assert_sometimes!(true, "msg2", &json!({"x": "y"}));
         cc_assert_reachable!("msg3", &json!({}));
+    }
+
+    #[test]
+    fn categorized_explicit_id_macro_compiles() {
+        use serde_json::json;
+        cc_assert_always_category_with_id!(
+            "net",
+            "recovery",
+            3_141_592_653,
+            true,
+            "explicit id category",
+            &json!({"probe": true}),
+        );
     }
 
     #[test]

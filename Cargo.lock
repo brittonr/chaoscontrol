@@ -346,6 +346,7 @@ dependencies = [
  "chaoscontrol-guest-net",
  "chaoscontrol-sdk",
  "libc",
+ "linkme",
  "serde_json",
 ]
 

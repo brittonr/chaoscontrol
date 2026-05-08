@@ -19,7 +19,7 @@
 
 use chaoscontrol_guest_net::{vm_id, GuestNetwork, TcpHandle, TcpState};
 use chaoscontrol_sdk::assert::details;
-use chaoscontrol_sdk::{assert, coverage, lifecycle, random};
+use chaoscontrol_sdk::{coverage, lifecycle, random};
 use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -108,7 +108,9 @@ impl Server {
                             );
                             coverage::record_edge(self.pong_count);
 
-                            assert::always(
+                            chaoscontrol_sdk::cc_assert_always_category!(
+                                "net",
+                                "operation",
                                 true,
                                 "server responds to ping",
                                 &details::merge(
@@ -116,15 +118,19 @@ impl Server {
                                     &json!({"pong_count": self.pong_count}),
                                 ),
                             );
-                            assert::sometimes(
+                            chaoscontrol_sdk::cc_assert_sometimes_category!(
+                                "net",
+                                "operation",
                                 self.pong_count >= 2,
                                 "server handles multiple pings",
                                 &json!({"pong_count": self.pong_count}),
                             );
                             if self.snapshot_probe {
-                                assert::always_with_id(
-                                    self.pong_count < self.snapshot_probe_fail_after,
+                                chaoscontrol_sdk::cc_assert_always_category_with_id!(
+                                    "net",
+                                    "recovery",
                                     NET_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
+                                    self.pong_count < self.snapshot_probe_fail_after,
                                     "net snapshot replay probe trips only after restored parent context",
                                     &json!({
                                         "pong_count": self.pong_count,
@@ -219,7 +225,9 @@ impl Client {
                             self.my_id, self.pongs_received
                         );
 
-                        assert::always(
+                        chaoscontrol_sdk::cc_assert_always_category!(
+                            "net",
+                            "operation",
                             true,
                             "client receives correct pong",
                             &details::merge(
@@ -227,7 +235,9 @@ impl Client {
                                 &json!({"pongs": self.pongs_received}),
                             ),
                         );
-                        assert::sometimes(
+                        chaoscontrol_sdk::cc_assert_sometimes_category!(
+                            "net",
+                            "operation",
                             self.pongs_received >= 3,
                             "client gets 3+ pongs",
                             &details::merge(

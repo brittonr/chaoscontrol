@@ -32,6 +32,7 @@ pub use crate::{
     // Core
     cc_assert_always,
     cc_assert_always_category,
+    cc_assert_always_category_with_id,
     // Always comparisons
     cc_assert_always_eq,
     cc_assert_always_err,

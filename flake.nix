@@ -292,6 +292,8 @@
               ticks,
               memoryMb,
               failAfterValues ? defaultSnapshotProbeFailAfterValues,
+              maxAttempts ? null,
+              expectation ? null,
               diskImage ? null,
             }:
             let
@@ -326,6 +328,10 @@
                 (toString memoryMb)
                 "--fail-after-values"
                 (pkgs.lib.concatMapStringsSep "," toString failAfterValues)
+              ]
+              ++ pkgs.lib.optionals (maxAttempts != null) [
+                "--max-attempts"
+                (toString maxAttempts)
               ];
             in
             pkgs.writeShellApplication {
@@ -340,6 +346,11 @@
               '';
             };
 
+          acceptedVerdictDogfoodExpectations = builtins.fromJSON (
+            builtins.readFile ./dogfood-results/accepted-dogfood-expectations.json
+          );
+          acceptedVerdictDogfoodExpectationWorkloads = acceptedVerdictDogfoodExpectations.workloads;
+
           acceptedVerdictDogfoodWorkloads = {
             raft = {
               name = "raft-accepted-verdict-dogfood";
@@ -353,6 +364,9 @@
               branches = 2;
               ticks = 80;
               memoryMb = 256;
+              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.raft.runner.fail_after_values;
+              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.raft.runner.max_attempts;
+              expectation = acceptedVerdictDogfoodExpectationWorkloads.raft;
             };
             redb = {
               name = "redb-accepted-verdict-dogfood";
@@ -367,6 +381,9 @@
               branches = 2;
               ticks = 80;
               memoryMb = 256;
+              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.redb.runner.fail_after_values;
+              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.redb.runner.max_attempts;
+              expectation = acceptedVerdictDogfoodExpectationWorkloads.redb;
             };
             net = {
               name = "net-accepted-verdict-dogfood";
@@ -380,14 +397,9 @@
               branches = 3;
               ticks = 120;
               memoryMb = 256;
-              failAfterValues = [
-                8
-                12
-                16
-                20
-                25
-                30
-              ];
+              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.net.runner.fail_after_values;
+              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.net.runner.max_attempts;
+              expectation = acceptedVerdictDogfoodExpectationWorkloads.net;
             };
             rust-workload = {
               name = "rust-workload-accepted-verdict-dogfood";
@@ -401,6 +413,9 @@
               branches = 2;
               ticks = 80;
               memoryMb = 128;
+              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.fail_after_values;
+              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.max_attempts;
+              expectation = acceptedVerdictDogfoodExpectationWorkloads."rust-workload";
             };
           };
 
@@ -415,6 +430,8 @@
                 assertion_id = cfg.assertionId;
                 cmdline_template = cfg.cmdlineTemplate;
                 fail_after_values = cfg.failAfterValues or defaultSnapshotProbeFailAfterValues;
+                max_attempts = cfg.maxAttempts or null;
+                expectation = cfg.expectation or null;
               }) acceptedVerdictDogfoodWorkloads
             )
           );
@@ -514,6 +531,7 @@
                 ASSERTION_REPORT_STATUS="$assertion_report_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
+                DOGFOOD_EXPECTATIONS="${./dogfood-results/accepted-dogfood-expectations.json}" \
                 python - "$receipt" <<'PY'
               import json
               import os
@@ -530,6 +548,46 @@
                   raise SystemExit(f"invalid DOGFOOD_SUMMARY_JSON: {exc}")
               if dogfood_summary is not None and not isinstance(dogfood_summary, dict):
                   raise SystemExit("DOGFOOD_SUMMARY_JSON must be an object or null")
+
+              def load_expectation(workload):
+                  if not workload:
+                      return None
+                  with Path(os.environ["DOGFOOD_EXPECTATIONS"]).open() as handle:
+                      root = json.load(handle)
+                  value = (root.get("workloads") or {}).get(workload)
+                  if value is None:
+                      raise SystemExit(f"missing dogfood expectation for {workload}")
+                  return value
+
+              def expectation_status(expectation, summary):
+                  if expectation is None or summary is None:
+                      return "not-applicable" if expectation is None else "not-observed"
+                  expected = expectation.get("expected") or {}
+                  mismatches = []
+                  if summary.get("accepted") is not expected.get("accepted"):
+                      mismatches.append("accepted")
+                  verdict = summary.get("verdict") if isinstance(summary.get("verdict"), dict) else {}
+                  if verdict.get("replay_class") != expected.get("replay_class"):
+                      mismatches.append("replay_class")
+                  depth = verdict.get("replay_parent_depth")
+                  min_depth = expected.get("min_replay_parent_depth")
+                  if isinstance(min_depth, int) and (not isinstance(depth, int) or depth < min_depth):
+                      mismatches.append("replay_parent_depth")
+                  seed = summary.get("seed")
+                  allowed_seeds = expected.get("allowed_seeds")
+                  if isinstance(allowed_seeds, list) and seed not in allowed_seeds:
+                      mismatches.append("seed")
+                  fail_after = summary.get("snapshot_probe_fail_after")
+                  fail_after_values = expected.get("fail_after_values")
+                  if isinstance(fail_after_values, list) and fail_after not in fail_after_values:
+                      mismatches.append("fail_after")
+                  if mismatches:
+                      return "mismatched:" + ",".join(mismatches)
+                  return "matched"
+
+              dogfood_expectation = load_expectation(dogfood)
+              dogfood_expectation_status = expectation_status(dogfood_expectation, dogfood_summary)
+
               gates = [
                   ("contract-registry", "python scripts/check-contract-registry.py", os.environ["CONTRACT_REGISTRY_STATUS"]),
                   ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
@@ -556,6 +614,8 @@
                       "status": os.environ["DOGFOOD_STATUS"],
                       "output": dogfood_output,
                       "summary": dogfood_summary,
+                      "expectation": dogfood_expectation,
+                      "expectation_status": dogfood_expectation_status,
                       "evidence_curation": "explicit-follow-up",
                   },
                   "scope": "bounded committed replay/evidence readiness; not universal determinism or hosted-product parity",
@@ -661,7 +721,7 @@
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
               run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
               run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
-              run_gate accepted-dogfood-config accepted_dogfood_config_status python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig}
+              run_gate accepted-dogfood-config accepted_dogfood_config_status python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
               echo "replay readiness checks passed"
 
               case "$dogfood" in
@@ -951,7 +1011,7 @@
                   python scripts/generate-replay-readiness-report.py --check
                   python scripts/generate-assertion-readiness-report.py --check
                   python scripts/check-dogfood-artifact-sizes.py
-                  python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig}
+                  python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
                   touch $out
                 '';
 

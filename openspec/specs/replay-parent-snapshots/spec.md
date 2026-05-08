@@ -226,3 +226,15 @@ The system MUST expose one operator-facing command and check surface that runs t
 - **WHEN** the checks-only readiness rail completes
 - **THEN** the check MUST retain a JSON replay readiness receipt artifact and a text file containing the stable one-line summary
 - **AND** CI MUST print the summary line and upload both artifacts without launching an implicit slow KVM dogfood workload
+
+#### Scenario: Dogfood expectation drift fails before slow proof [r[replay-parent-snapshots.readiness-operator.dogfood-expectation-drift]]
+- **GIVEN** a committed accepted dogfood expectation lockfile exists
+- **WHEN** replay readiness validates the generated accepted-verdict wrapper configuration
+- **THEN** it MUST fail before selected KVM dogfood execution if wrapper probe defaults, assertion IDs, expected replay class, or workload probe keys differ from the lockfile
+- **AND** the diagnostic MUST name the workload and mismatched field
+
+#### Scenario: Dogfood receipts bind expected and observed verdicts [r[replay-parent-snapshots.readiness-operator.dogfood-expectation-receipt]]
+- **GIVEN** an operator runs replay readiness with a selected dogfood workload and receipt path
+- **WHEN** the dogfood rail emits a compact accepted or failed summary
+- **THEN** the receipt MUST include the selected workload's expected verdict and default probe parameters from the lockfile
+- **AND** it MUST classify whether the observed accepted status, replay class, seed, and fail-after value match the expectation when those observed fields are available

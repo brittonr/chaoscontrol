@@ -252,13 +252,13 @@ For a single operator-facing readiness button, run:
 nix run .#replay-readiness
 ```
 
-This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness reports, dogfood artifact size budget, and the Nix-generated accepted-verdict wrapper smoke config. CI and dashboards can request a machine-readable operator receipt:
+This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness reports, dogfood artifact size budget, and the Nix-generated accepted-verdict wrapper smoke config against `dogfood-results/accepted-dogfood-expectations.json`. CI and dashboards can request a machine-readable operator receipt:
 
 ```bash
 nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-receipt.json"
 ```
 
-The receipt records final status, static gate outcomes, optional selected dogfood workload, dogfood output path plus compact post-run summary when available, failure phase when applicable, and the scoped anti-claim that this is bounded committed replay/evidence readiness rather than universal determinism or hosted-product parity. To emit a one-line CI/dashboard summary from a saved receipt, run:
+The receipt records final status, static gate outcomes, optional selected dogfood workload, dogfood output path plus compact post-run summary when available, the selected workload expectation and expectation match status, failure phase when applicable, and the scoped anti-claim that this is bounded committed replay/evidence readiness rather than universal determinism or hosted-product parity. To emit a one-line CI/dashboard summary from a saved receipt, run:
 
 ```bash
 nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
@@ -279,7 +279,7 @@ nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-raft.json"
   --output dogfood-results/raft-accepted-verdict-dogfood-<timestamp>
 ```
 
-Selected dogfood may build kernel/initrd/runtime artifacts if they are not cached; checks-only is the default, and receipt emission does not curate or promote dogfood evidence. If `--output` is omitted, `replay-readiness` supplies a timestamped `dogfood-results/replay-readiness-<workload>-<timestamp>` output under the caller's working directory before invoking the selected dogfood wrapper.
+Selected dogfood may build kernel/initrd/runtime artifacts if they are not cached; checks-only is the default, and receipt emission does not curate or promote dogfood evidence. If `--output` is omitted, `replay-readiness` supplies a timestamped `dogfood-results/replay-readiness-<workload>-<timestamp>` output under the caller's working directory before invoking the selected dogfood wrapper. Wrapper defaults such as `--fail-after-values` and `--max-attempts` derive from `dogfood-results/accepted-dogfood-expectations.json`, so changing the live proof probe requires updating the lockfile and passing the static drift gate first.
 
 For durable dogfood bundles outside the Nix smoke wrapper, use the packaged bounded retry apps and then curate/commit only the concise evidence boundary plus the referenced snapshot artifact:
 
@@ -322,7 +322,9 @@ python scripts/check-replay-proof-coverage.py
 python scripts/generate-replay-readiness-report.py --check
 python scripts/generate-assertion-readiness-report.py --check
 python scripts/check-dogfood-artifact-sizes.py
-python scripts/check-accepted-dogfood-config.py --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link)
+python scripts/check-accepted-dogfood-config.py \
+  --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \
+  --expectations dogfood-results/accepted-dogfood-expectations.json
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```
 

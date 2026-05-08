@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "scope": "accepted snapshot-backed dogfood expectation lockfile",
+  "anti_claims": [
+    "These expectations bind bounded dogfood wrapper defaults and operator receipts; they are not universal determinism claims.",
+    "Historical curated evidence may use different probe parameters, but live wrapper defaults must derive from this file."
+  ],
+  "workloads": {
+    "raft": {
+      "assertion_id": 1806003755,
+      "probe_key": "raft_bug",
+      "fail_after_key": "raft_snapshot_probe_fail_after",
+      "expected": {
+        "accepted": true,
+        "replay_class": "snapshot_backed_reproduced",
+        "min_replay_parent_depth": 1,
+        "allowed_seeds": [42, 43, 44, 45, 46, 47],
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "runner": {
+        "max_attempts": 6,
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "curated_evidence": {
+        "manifest": "dogfood-results/accepted-workload-proofs.json",
+        "evidence_dir": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114",
+        "summary": "accepted-snapshot-verdict-summary.json"
+      }
+    },
+    "redb": {
+      "assertion_id": 2718281828,
+      "probe_key": "redb_bug",
+      "fail_after_key": "redb_snapshot_probe_fail_after",
+      "expected": {
+        "accepted": true,
+        "replay_class": "snapshot_backed_reproduced",
+        "min_replay_parent_depth": 1,
+        "allowed_seeds": [42, 43, 44, 45, 46, 47],
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "runner": {
+        "max_attempts": 6,
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "curated_evidence": {
+        "manifest": "dogfood-results/accepted-workload-proofs.json",
+        "evidence_dir": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314",
+        "summary": "accepted-snapshot-verdict-summary.json"
+      }
+    },
+    "net": {
+      "assertion_id": 3141592653,
+      "probe_key": "net_bug",
+      "fail_after_key": "net_snapshot_probe_fail_after",
+      "expected": {
+        "accepted": true,
+        "replay_class": "snapshot_backed_reproduced",
+        "min_replay_parent_depth": 1,
+        "allowed_seeds": [42],
+        "fail_after_values": [3]
+      },
+      "runner": {
+        "max_attempts": 1,
+        "fail_after_values": [3]
+      },
+      "curated_evidence": {
+        "manifest": "dogfood-results/accepted-workload-proofs.json",
+        "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858",
+        "summary": "accepted-snapshot-verdict-summary.json",
+        "observed_historical_fail_after": 8,
+        "drift_note": "The 2026-05-07 curated proof used fail_after=8; the live 2026-05-08 replay-readiness net wrapper expectation is fail_after=3/max_attempts=1."
+      }
+    },
+    "rust-workload": {
+      "assertion_id": 1414213562,
+      "probe_key": "rust_workload_bug",
+      "fail_after_key": "rust_workload_snapshot_probe_fail_after",
+      "expected": {
+        "accepted": true,
+        "replay_class": "snapshot_backed_reproduced",
+        "min_replay_parent_depth": 1,
+        "allowed_seeds": [42, 43, 44, 45, 46, 47],
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "runner": {
+        "max_attempts": 6,
+        "fail_after_values": [25, 30, 35, 20, 40]
+      },
+      "curated_evidence": {
+        "manifest": "dogfood-results/accepted-workload-proofs.json",
+        "evidence_dir": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z",
+        "summary": "accepted-snapshot-verdict-summary.json"
+      }
+    }
+  }
+}

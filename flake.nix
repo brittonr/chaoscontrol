@@ -770,6 +770,14 @@
             '';
           };
 
+          replayReadinessReadmeStatus = pkgs.writeShellApplication {
+            name = "replay-readiness-readme-status";
+            runtimeInputs = [ pkgs.python3 ];
+            text = ''
+              exec python ${self}/scripts/update-replay-readiness-readme-status.py "$@"
+            '';
+          };
+
           # --- Simulation test runner ---
 
           mkChaosTest =
@@ -848,6 +856,7 @@
             replay-readiness = replayReadiness;
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
+            replay-readiness-readme-status = replayReadinessReadmeStatus;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
@@ -1269,6 +1278,10 @@
             replay-readiness-dashboard = {
               type = "app";
               program = "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
+            };
+            replay-readiness-readme-status = {
+              type = "app";
+              program = "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
             };
           };
 

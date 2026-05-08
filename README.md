@@ -252,7 +252,7 @@ For a single operator-facing readiness button, run:
 nix run .#replay-readiness
 ```
 
-This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness report, and dogfood artifact size budget. CI and dashboards can request a machine-readable operator receipt:
+This checks the committed contract registry, evidence contracts, accepted proof manifest, generated readiness reports, dogfood artifact size budget, and the Nix-generated accepted-verdict wrapper smoke config. CI and dashboards can request a machine-readable operator receipt:
 
 ```bash
 nix run .#replay-readiness -- --receipt "$PWD/target/replay-readiness-receipt.json"
@@ -264,7 +264,7 @@ The receipt records final status, static gate outcomes, optional selected dogfoo
 nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
 ```
 
-It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=5/5 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. The CI/check surface packages both artifacts with:
+It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=7/7 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. The CI/check surface packages both artifacts with:
 
 ```bash
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L
@@ -320,7 +320,9 @@ python scripts/check-contract-registry.py
 python scripts/check-evidence-contracts.py
 python scripts/check-replay-proof-coverage.py
 python scripts/generate-replay-readiness-report.py --check
+python scripts/generate-assertion-readiness-report.py --check
 python scripts/check-dogfood-artifact-sizes.py
+python scripts/check-accepted-dogfood-config.py --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link)
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```
 

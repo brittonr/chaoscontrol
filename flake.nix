@@ -270,6 +270,14 @@
             '';
           # --- Accepted snapshot-backed replay dogfood wrappers ---
 
+          defaultSnapshotProbeFailAfterValues = [
+            25
+            30
+            35
+            20
+            40
+          ];
+
           mkAcceptedSnapshotVerdictDogfood =
             {
               name,
@@ -283,18 +291,10 @@
               branches,
               ticks,
               memoryMb,
-              failAfterValues ? null,
+              failAfterValues ? defaultSnapshotProbeFailAfterValues,
               diskImage ? null,
             }:
             let
-              failAfterArg =
-                if failAfterValues == null then
-                  [ ]
-                else
-                  [
-                    "--fail-after-values"
-                    (pkgs.lib.concatMapStringsSep "," toString failAfterValues)
-                  ];
               args = [
                 "--workload"
                 workload
@@ -324,8 +324,9 @@
                 (toString ticks)
                 "--memory-mb"
                 (toString memoryMb)
-              ]
-              ++ failAfterArg;
+                "--fail-after-values"
+                (pkgs.lib.concatMapStringsSep "," toString failAfterValues)
+              ];
             in
             pkgs.writeShellApplication {
               inherit name;
@@ -339,8 +340,8 @@
               '';
             };
 
-          acceptedVerdictDogfood = {
-            raft = mkAcceptedSnapshotVerdictDogfood {
+          acceptedVerdictDogfoodWorkloads = {
+            raft = {
               name = "raft-accepted-verdict-dogfood";
               workload = "raft";
               kernel = mkChaosKernel { virtioNet = true; };
@@ -353,7 +354,7 @@
               ticks = 80;
               memoryMb = 256;
             };
-            redb = mkAcceptedSnapshotVerdictDogfood {
+            redb = {
               name = "redb-accepted-verdict-dogfood";
               workload = "redb";
               kernel = mkChaosKernel { };
@@ -367,7 +368,7 @@
               ticks = 80;
               memoryMb = 256;
             };
-            net = mkAcceptedSnapshotVerdictDogfood {
+            net = {
               name = "net-accepted-verdict-dogfood";
               workload = "net";
               kernel = mkChaosKernel { virtioNet = true; };
@@ -388,7 +389,7 @@
                 30
               ];
             };
-            rust-workload = mkAcceptedSnapshotVerdictDogfood {
+            rust-workload = {
               name = "rust-workload-accepted-verdict-dogfood";
               workload = "rust-workload";
               kernel = mkChaosKernel { kcov = true; };
@@ -402,6 +403,21 @@
               memoryMb = 128;
             };
           };
+
+          acceptedVerdictDogfood = pkgs.lib.mapAttrs (
+            _: cfg: mkAcceptedSnapshotVerdictDogfood cfg
+          ) acceptedVerdictDogfoodWorkloads;
+
+          acceptedVerdictDogfoodConfig = pkgs.writeText "accepted-verdict-dogfood-config.json" (
+            builtins.toJSON (
+              pkgs.lib.mapAttrs (_: cfg: {
+                workload = cfg.workload;
+                assertion_id = cfg.assertionId;
+                cmdline_template = cfg.cmdlineTemplate;
+                fail_after_values = cfg.failAfterValues or defaultSnapshotProbeFailAfterValues;
+              }) acceptedVerdictDogfoodWorkloads
+            )
+          );
 
           replayReadiness = pkgs.writeShellApplication {
             name = "replay-readiness";
@@ -468,6 +484,7 @@
               readiness_report_status="pending"
               assertion_report_status="pending"
               artifact_sizes_status="pending"
+              accepted_dogfood_config_status="pending"
               dogfood_status="skipped"
 
               write_receipt() {
@@ -491,6 +508,7 @@
                 READINESS_REPORT_STATUS="$readiness_report_status" \
                 ASSERTION_REPORT_STATUS="$assertion_report_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
+                ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
                 python - "$receipt" <<'PY'
               import json
               import os
@@ -506,6 +524,7 @@
                   ("readiness-report", "python scripts/generate-replay-readiness-report.py --check", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "python scripts/generate-assertion-readiness-report.py --check", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
+                  ("accepted-dogfood-config", "python scripts/check-accepted-dogfood-config.py --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
               ]
               receipt = {
                   "schema_version": 1,
@@ -555,6 +574,7 @@
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
               run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
               run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
+              run_gate accepted-dogfood-config accepted_dogfood_config_status python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig}
               echo "replay readiness checks passed"
 
               case "$dogfood" in
@@ -703,6 +723,7 @@
             redb-accepted-verdict-dogfood = acceptedVerdictDogfood.redb;
             net-accepted-verdict-dogfood = acceptedVerdictDogfood.net;
             rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
+            accepted-verdict-dogfood-config = acceptedVerdictDogfoodConfig;
             replay-readiness = replayReadiness;
             replay-readiness-summary = replayReadinessSummary;
 
@@ -879,6 +900,7 @@
                   python scripts/generate-replay-readiness-report.py --check
                   python scripts/generate-assertion-readiness-report.py --check
                   python scripts/check-dogfood-artifact-sizes.py
+                  python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig}
                   touch $out
                 '';
 

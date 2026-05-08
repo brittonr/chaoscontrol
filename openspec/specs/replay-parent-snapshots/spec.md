@@ -143,6 +143,12 @@ ChaosControl MUST publish an operator-facing replay readiness status report gene
 - **WHEN** an operator reads the generated status
 - **THEN** it MUST state that the evidence is not a mathematical proof and not a universal deterministic hypervisor claim
 
+#### Scenario: Assertion readiness status is generated [r[replay-parent-snapshots.readiness-status.assertion-coverage]]
+- **GIVEN** the accepted workload proof manifest names committed evidence directories with `assertions.json` summaries
+- **WHEN** the assertion readiness report is generated or checked
+- **THEN** it MUST list each accepted workload's cataloged assertion count, exercised assertion count, assertion-kind split, uncategorized count, non-passing count, and evidence path
+- **AND** it MUST preserve the anti-claim that assertion density is instrumentation readiness rather than replay proof or hosted-product parity
+
 ### Requirement: Network workload accepted replay proof [r[replay-parent-snapshots.workload-evidence.net-workload-proof]]
 The system MUST retain a bounded networking workload proof before listing the net replay rail as supported-bounded.
 
@@ -188,7 +194,7 @@ The system MUST expose one operator-facing command and check surface that runs t
 #### Scenario: Checks-only readiness [r[replay-parent-snapshots.readiness-operator.checks-only]]
 - **GIVEN** an operator wants to know whether the committed replay/evidence slice is ready
 - **WHEN** the readiness command runs without a selected dogfood workload
-- **THEN** it MUST run the contract registry check, evidence contract check, aggregate replay proof coverage check, generated readiness report check, and dogfood artifact size check
+- **THEN** it MUST run the contract registry check, evidence contract check, aggregate replay proof coverage check, generated replay readiness report check, generated assertion readiness report check, and dogfood artifact size check
 - **AND** it MUST report success only if every static readiness gate succeeds
 
 #### Scenario: Optional selected dogfood [r[replay-parent-snapshots.readiness-operator.selected-dogfood]]

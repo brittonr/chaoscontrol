@@ -448,6 +448,7 @@
               evidence_contracts_status="pending"
               replay_proof_coverage_status="pending"
               readiness_report_status="pending"
+              assertion_report_status="pending"
               artifact_sizes_status="pending"
               dogfood_status="skipped"
 
@@ -470,6 +471,7 @@
                 EVIDENCE_CONTRACTS_STATUS="$evidence_contracts_status" \
                 REPLAY_PROOF_COVERAGE_STATUS="$replay_proof_coverage_status" \
                 READINESS_REPORT_STATUS="$readiness_report_status" \
+                ASSERTION_REPORT_STATUS="$assertion_report_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 python - "$receipt" <<'PY'
               import json
@@ -484,6 +486,7 @@
                   ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
                   ("replay-proof-coverage", "python scripts/check-replay-proof-coverage.py", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
                   ("readiness-report", "python scripts/generate-replay-readiness-report.py --check", os.environ["READINESS_REPORT_STATUS"]),
+                  ("assertion-readiness-report", "python scripts/generate-assertion-readiness-report.py --check", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
               ]
               receipt = {
@@ -532,6 +535,7 @@
               run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
               run_gate replay-proof-coverage replay_proof_coverage_status python scripts/check-replay-proof-coverage.py
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
+              run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
               run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
               echo "replay readiness checks passed"
 
@@ -855,6 +859,7 @@
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
                   python scripts/generate-replay-readiness-report.py --check
+                  python scripts/generate-assertion-readiness-report.py --check
                   python scripts/check-dogfood-artifact-sizes.py
                   touch $out
                 '';

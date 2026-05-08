@@ -22,7 +22,7 @@ fn main() {
 }
 ```
 
-The harness does not replace `chaoscontrol_sdk::assert`, `lifecycle`, `guidance`, or `random`; it gives those primitives a repeatable workload/scenario shape.
+The harness does not replace `chaoscontrol_sdk::assert`, `lifecycle`, `guidance`, or `random`; it gives those primitives a repeatable workload/scenario shape. This is the default non-invasive path: drive the service externally, tag local observations as `external-harness`, and inspect coverage before touching service internals.
 
 ## Local dry-run
 
@@ -42,14 +42,22 @@ Parse the output with `LocalDryRunReport::from_path` to inspect:
 - uncategorized assertions;
 - `sometimes` assertions that did not observe success;
 - reachable assertions that were not hit;
-- local `random_choice` observations.
+- local `random_choice` observations;
+- `adoption_tracks` / `instrumentation_sources`, so external harness observations and opt-in in-process service assertions are not conflated.
 
 This dry-run is only an instrumentation check. It does not prove deterministic replay or snapshot-backed reproduction; VM campaign reports must keep those evidence classes separate.
+
+## Two-track adoption
+
+1. **Default external harness** — keep service code unchanged, drive public APIs from a workload crate, and tag local observations as `external-harness`. This is the first-hour path.
+2. **Advanced in-process instrumentation** — when important invariants are invisible from public APIs, place selected SDK assertions or lifecycle hooks inside service code behind explicit feature/config gates and tag those observations as `in-process-service`.
+
+In-process local evidence means the assertion is closer to the invariant source; it still is not replay proof. Accepted replay remains gated by VM campaign artifacts plus a `snapshot_backed_reproduced` replay verdict.
 
 ## In-tree sample
 
 - `crates/chaoscontrol-sdk/examples/rust_workload_harness.rs` is a downstream-style example that uses only the public prelude surface.
-- `docs/templates/rust-workload/` is the copyable golden path for a downstream service. Start there when evaluating ChaosControl as an Antithesis-style Rust workload harness: run the local smoke first, fix instrumentation gaps from the report, then promote to VM/replay rails only when the assertion surface is useful.
+- `docs/templates/rust-workload/` is the copyable golden path for a downstream service. Start there when evaluating ChaosControl as an Antithesis-style Rust workload harness: run the local smoke first, optionally enable `--features chaoscontrol-in-process` when driver coverage is too shallow, fix instrumentation gaps from the report, then promote to VM/replay rails only when the assertion surface is useful.
 
 ## Nix packaging and one-command rails
 

@@ -83,6 +83,7 @@ pub struct AssertionCoverage {
     pub observed_hits: usize,
     pub success_count: usize,
     pub failure_count: usize,
+    pub adoption_tracks: Vec<String>,
 }
 
 /// Parsed local dry-run report from `CHAOSCONTROL_SDK_LOCAL_OUTPUT` JSONL.
@@ -99,6 +100,7 @@ pub struct LocalDryRunReport {
     pub random_choice_calls: usize,
     pub assertion_coverage: Vec<AssertionCoverage>,
     pub unobserved_assertions: Vec<String>,
+    pub adoption_tracks: BTreeMap<String, usize>,
 }
 
 impl LocalDryRunReport {
@@ -114,6 +116,20 @@ impl LocalDryRunReport {
         let mut exercised = BTreeSet::<String>::new();
         let mut sometimes_success = BTreeSet::<String>::new();
         let mut reachable_hit = BTreeSet::<String>::new();
+
+        fn details_track(details: &Value) -> Option<String> {
+            details
+                .get("adoption_track")
+                .or_else(|| details.get("instrumentation_source"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }
+
+        fn note_track(report: &mut LocalDryRunReport, track: Option<String>) -> Option<String> {
+            let selected = track?;
+            *report.adoption_tracks.entry(selected.clone()).or_default() += 1;
+            Some(selected)
+        }
 
         for (line_no, line) in content.lines().enumerate() {
             let trimmed = line.trim();
@@ -151,12 +167,13 @@ impl LocalDryRunReport {
                     .get("condition")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                let category = assertion
-                    .get("details")
-                    .and_then(|details| details.get("category"))
+                let details = assertion.get("details").unwrap_or(&Value::Null);
+                let category = details
+                    .get("category")
                     .and_then(Value::as_str)
                     .unwrap_or("uncategorized")
                     .to_string();
+                let track = note_track(&mut report, details_track(details));
 
                 let site = catalog.entry(id.clone()).or_insert(CatalogSite {
                     message: message.clone(),
@@ -165,7 +182,13 @@ impl LocalDryRunReport {
                     observed_hits: 0,
                     success_count: 0,
                     failure_count: 0,
+                    adoption_tracks: Vec::new(),
                 });
+                if let Some(track) = track {
+                    if !site.adoption_tracks.contains(&track) {
+                        site.adoption_tracks.push(track);
+                    }
+                }
 
                 if !hit {
                     continue;
@@ -188,17 +211,18 @@ impl LocalDryRunReport {
                     }
                     _ => {}
                 }
-            } else if value.get("antithesis_setup").is_some() {
+            } else if let Some(setup) = value.get("antithesis_setup") {
                 report.setup_complete = true;
                 *report
                     .lifecycle_events
                     .entry("setup_complete".to_string())
                     .or_default() += 1;
+                note_track(&mut report, setup.get("details").and_then(details_track));
             } else if value.get("chaoscontrol_random_choice").is_some() {
                 report.random_choice_calls += 1;
-            } else if let Some((event, _payload)) = value.as_object().and_then(|o| o.iter().next())
-            {
+            } else if let Some((event, payload)) = value.as_object().and_then(|o| o.iter().next()) {
                 *report.lifecycle_events.entry(event.clone()).or_default() += 1;
+                note_track(&mut report, details_track(payload));
             }
         }
 
@@ -229,6 +253,7 @@ impl LocalDryRunReport {
                 observed_hits: site.observed_hits,
                 success_count: site.success_count,
                 failure_count: site.failure_count,
+                adoption_tracks: site.adoption_tracks,
             });
         }
 
@@ -271,6 +296,7 @@ struct CatalogSite {
     observed_hits: usize,
     success_count: usize,
     failure_count: usize,
+    adoption_tracks: Vec<String>,
 }
 
 #[cfg(test)]
@@ -320,5 +346,26 @@ mod tests {
         assert!(report.unobserved_assertions.is_empty());
         assert_eq!(report.assertion_coverage[0].observed_hits, 1);
         assert_eq!(report.assertion_coverage[0].success_count, 1);
+    }
+
+    #[test]
+    fn report_records_adoption_tracks() {
+        let content = r#"
+{"antithesis_setup":{"status":"complete","details":{"workload":"sample","adoption_track":"external-harness"}}}
+{"scenario_start":{"workload":"sample","scenario":"drive","adoption_track":"external-harness"}}
+{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"must_hit":false,"id":"00000001","message":"driver invariant","display_type":"always","details":{"category":"operation","adoption_track":"external-harness"}}}
+{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"must_hit":false,"id":"00000002","message":"internal invariant","display_type":"always","details":{"category":"service-invariant","instrumentation_source":"in-process-service"}}}
+"#;
+        let report = LocalDryRunReport::from_jsonl(content).unwrap();
+        assert_eq!(report.adoption_tracks.get("external-harness"), Some(&3));
+        assert_eq!(report.adoption_tracks.get("in-process-service"), Some(&1));
+        assert_eq!(
+            report.assertion_coverage[0].adoption_tracks,
+            vec!["external-harness"]
+        );
+        assert_eq!(
+            report.assertion_coverage[1].adoption_tracks,
+            vec!["in-process-service"]
+        );
     }
 }

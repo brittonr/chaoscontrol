@@ -7,6 +7,10 @@ publish = false
 # Keep this copyable template out of ChaosControl's own workspace when checked in.
 [workspace]
 
+[features]
+default = []
+chaoscontrol-in-process = []
+
 [dependencies]
 chaoscontrol-sdk = { path = "../../../crates/chaoscontrol-sdk" }
 linkme = "0.3"

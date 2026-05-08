@@ -720,6 +720,7 @@
               run_gate replay-proof-coverage replay_proof_coverage_status python scripts/check-replay-proof-coverage.py
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
               run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
+              run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
               run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
               run_gate accepted-dogfood-config accepted_dogfood_config_status python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
               echo "replay readiness checks passed"

@@ -283,9 +283,18 @@
               branches,
               ticks,
               memoryMb,
+              failAfterValues ? null,
               diskImage ? null,
             }:
             let
+              failAfterArg =
+                if failAfterValues == null then
+                  [ ]
+                else
+                  [
+                    "--fail-after-values"
+                    (pkgs.lib.concatMapStringsSep "," toString failAfterValues)
+                  ];
               args = [
                 "--workload"
                 workload
@@ -315,7 +324,8 @@
                 (toString ticks)
                 "--memory-mb"
                 (toString memoryMb)
-              ];
+              ]
+              ++ failAfterArg;
             in
             pkgs.writeShellApplication {
               inherit name;
@@ -369,6 +379,14 @@
               branches = 3;
               ticks = 120;
               memoryMb = 256;
+              failAfterValues = [
+                8
+                12
+                16
+                20
+                25
+                30
+              ];
             };
             rust-workload = mkAcceptedSnapshotVerdictDogfood {
               name = "rust-workload-accepted-verdict-dogfood";

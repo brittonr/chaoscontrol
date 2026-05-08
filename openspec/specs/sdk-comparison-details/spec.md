@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Sdk Comparison Details Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for sdk comparison details.
+
+## Requirements
 ### Requirement: Comparison macros auto-capture values on failure
 Each comparison assertion macro (`cc_assert_always_lt!`, `cc_assert_always_le!`, `cc_assert_always_gt!`, `cc_assert_always_ge!`, `cc_assert_always_eq!`, `cc_assert_always_ne!`, and the `sometimes` equivalents) SHALL auto-capture the evaluated left and right values in the assertion details when the condition is false. The details object SHALL contain `{"left": <value>, "right": <value>}` where values are formatted via `Debug`.
 

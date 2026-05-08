@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Schedule Diversity Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for schedule diversity.
+
+## Requirements
 ### Requirement: Schedule fingerprinting
 The `VcpuScheduler` SHALL accumulate a rolling hash fingerprint of all vCPU transitions (active vCPU index + quantum length) during execution. The fingerprint SHALL be deterministic for a given scheduler seed and execution sequence. The fingerprint SHALL be zero when `num_vcpus == 1`.
 

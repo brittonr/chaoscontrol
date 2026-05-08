@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Determinism Log Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for determinism log.
+
+## Requirements
 ### Requirement: Event logging coverage
 The system SHALL log all significant events that affect guest execution including VM exits, RNG draws, fault dispatches, SDK hypercalls, and scheduler decisions. Each event MUST include a monotonic sequence number, virtual TSC, and exit count.
 

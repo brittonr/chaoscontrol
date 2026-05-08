@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Incremental Snapshots Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for incremental snapshots.
+
+## Requirements
 ### Requirement: Dirty page tracking via KVM
 The VMM SHALL enable KVM dirty page logging on the guest memory slot
 when incremental snapshots are active. The dirty bitmap SHALL be

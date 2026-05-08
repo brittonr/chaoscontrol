@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Dashboard Server Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for dashboard server.
+
+## Requirements
 ### Requirement: HTTP server with embedded static assets
 The dashboard server SHALL serve a single-page HTML application from embedded assets (compiled into the binary via `include_str!` or `rust-embed`). No external file dependencies SHALL be required at runtime.
 
@@ -83,8 +88,6 @@ A standalone binary `chaoscontrol-dashboard` SHALL support `serve --corpus <dir>
 #### Scenario: Missing corpus files
 - **WHEN** the corpus directory does not contain `checkpoint.json`
 - **THEN** the server exits with an error message indicating the missing file
-
-## ADDED Requirements
 
 ### Requirement: Campaign-mode SSE event types
 The dashboard server SHALL support additional SSE event types for campaign mode: `campaign_started`, `seed_started`, `seed_complete`, and `campaign_finished`. These events SHALL coexist with existing per-round/bug events.

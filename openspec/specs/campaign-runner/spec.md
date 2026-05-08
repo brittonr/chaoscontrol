@@ -1,3 +1,9 @@
+# Campaign Runner Specification
+
+## Purpose
+
+Defines the canonical ChaosControl requirements for campaign runner.
+
 ## Purpose
 
 Define campaign and single-run exploration behavior for named scenario execution, campaign aggregation, and report/floor handling.

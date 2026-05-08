@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Clock Advanced Faults Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for clock advanced faults.
+
+## Requirements
 ### Requirement: ClockFreeze fault holds TSC at a fixed value
 The fault engine SHALL support a `ClockFreeze` fault variant that freezes
 a target VM's virtual TSC at its current value for `duration_ticks` ticks.

@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Sdk Guidance Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for sdk guidance.
+
+## Requirements
 ### Requirement: SDK guidance function
 The SDK SHALL provide a `guidance(message: &str, distance: f64)` function in a `chaoscontrol_sdk::guidance` module that sends a numeric distance-to-violation hint to the VMM via `CMD_GUIDANCE` hypercall. The `distance` parameter SHALL represent how far the current state is from violating the associated property, where 0.0 means violated and larger values mean farther from violation.
 

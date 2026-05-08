@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Panic Isolation Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for panic isolation.
+
+## Requirements
 ### Requirement: Campaign seed panic isolation
 Each seed thread in `CampaignRunner::run()` SHALL wrap its `Explorer::new().run()` call in `std::panic::catch_unwind`. If a seed panics, the campaign runner SHALL log the seed number and panic message, mark the seed as failed in `CampaignProgress`, and continue running remaining seeds.
 

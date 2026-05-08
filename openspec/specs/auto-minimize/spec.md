@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Auto Minimize Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for auto minimize.
+
+## Requirements
 ### Requirement: Auto-minimize flag
 The `run` and `campaign` subcommands SHALL accept an `--auto-minimize` flag. When set, the explorer SHALL run the delta-debugging minimizer on each discovered bug after exploration completes.
 

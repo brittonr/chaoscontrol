@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Protocol State Coverage Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for protocol state coverage.
+
+## Requirements
 ### Requirement: SDK record_state function
 The SDK SHALL provide `coverage::record_state(pairs: &[(&str, &str)])` that hashes each key-value pair into 2 bitmap slots in the code region `[0, CODE_REGION_END)`. The hash function SHALL be FNV-1a. Each pair SHALL produce 2 slots using different hash orderings for collision resistance. The function SHALL be a no-op when coverage is not initialized.
 

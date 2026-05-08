@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Destructive Analysis Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for destructive analysis.
+
+## Requirements
 ### Requirement: Memory reading from snapshots
 The debugger SHALL implement `read_memory()` to extract guest memory content from the snapshot at the current debugger position. It MUST support both guest physical addresses (GPA) and guest virtual addresses (GVA), with GVA translated to GPA via CR3 page table walks.
 

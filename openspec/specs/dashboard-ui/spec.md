@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Dashboard Ui Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for dashboard ui.
+
+## Requirements
 ### Requirement: Coverage growth chart
 The UI SHALL display a line chart showing cumulative unique edges over rounds. The X axis is round number, Y axis is edge count. The chart SHALL update live as new rounds complete.
 

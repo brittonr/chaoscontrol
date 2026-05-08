@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Assert Raw Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for assert raw.
+
+## Requirements
 ### Requirement: AssertionKind enum
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The SDK SHALL expose a public `AssertionKind` enum with variants `Always`,
 `Sometimes`, `Reachable`, and `Unreachable`. The enum SHALL be `Copy`, `Clone`,
 `Debug`, `PartialEq`, `Eq`, and usable in `no_std` contexts. It SHALL provide a
@@ -18,6 +25,8 @@ The SDK SHALL expose a public `AssertionKind` enum with variants `Always`,
 - **THEN** it SHALL return `CATALOG_KIND_ALWAYS` (0)
 
 ### Requirement: assert_raw function
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The SDK SHALL expose `assert_raw(kind, cond, message, details)` that dispatches an
 assertion of the given kind through the hypercall transport. The assertion ID SHALL
 be computed from the message via `location_id()`, matching the behavior of the typed
@@ -40,6 +49,8 @@ assertion functions.
 - **THEN** the oracle SHALL record the point as reached (immediate failure)
 
 ### Requirement: assert_raw_with_id function
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The SDK SHALL expose `assert_raw_with_id(kind, cond, id, message, details)` that
 accepts an explicit assertion ID instead of computing it from the message. This
 enables frameworks that maintain their own ID schemes.
@@ -49,6 +60,8 @@ enables frameworks that maintain their own ID schemes.
 - **THEN** the hypercall SHALL use assertion ID 42 (not `location_id("custom")`)
 
 ### Requirement: cc_assert_raw macro
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The SDK SHALL expose a `cc_assert_raw!` macro that:
 1. Registers the assertion site in the linkme catalog at compile time
 2. Dispatches through `assert_raw_with_id` at runtime
@@ -64,6 +77,8 @@ The macro SHALL accept the same trailing-comma tolerance as other `cc_assert_*!`
 - **THEN** the details JSON SHALL be forwarded to the oracle
 
 ### Requirement: no_std compatibility
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 When the `full` feature is disabled, `assert_raw()`, `assert_raw_with_id()`, and
 `cc_assert_raw!` SHALL compile as no-ops that accept the same arguments but discard
 them, matching the behavior of the existing typed assertion stubs.

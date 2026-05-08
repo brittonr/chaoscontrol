@@ -1,3 +1,9 @@
+# Raft Assertions V2 Specification
+
+## Purpose
+
+Defines the canonical ChaosControl requirements for raft assertions v2.
+
 ## Purpose
 
 Define Raft guest assertion coverage for integrity, liveness, fault reachability, and per-node state exploration.

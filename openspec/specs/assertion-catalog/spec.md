@@ -4,8 +4,7 @@
 
 Defines compile-time assertion registry and runtime catalog transmission to enable coverage analysis of unexercised property assertions in ChaosControl guests.
 
-## ADDED Requirements
-
+## Requirements
 ### Requirement: Compile-time Assertion Registry
 
 The SDK MUST maintain a compile-time catalog of all assertion declarations using distributed slice collection.

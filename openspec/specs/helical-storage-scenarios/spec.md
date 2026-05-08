@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Helical Storage Scenarios Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for helical storage scenarios.
+
+## Requirements
 ### Requirement: Volatile-write-ring scenario stresses unflushed durability loss
 The built-in helical scenario set SHALL include a `volatile-write-ring` family that rotates unflushed-write loss conditions across VMs. For each turn, the scenario SHALL enable `DiskFsyncLie` on the current target, allow a write window, force a crash or isolation before durability is restored, then restart or heal the target before rotating to the next VM.
 

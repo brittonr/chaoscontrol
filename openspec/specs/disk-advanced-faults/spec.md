@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Disk Advanced Faults Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for disk advanced faults.
+
+## Requirements
 ### Requirement: DiskSlow fault adds latency to block I/O
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The fault engine SHALL support a `DiskSlow` fault variant that injects a
 per-operation delay into a target VM's block device reads and writes. The
 delay is specified in nanoseconds of virtual time and persists until cleared
@@ -24,6 +31,8 @@ by a new `DiskSlow` with `delay_ns: 0` or by removing the fault state.
 - **THEN** the slow I/O delay SHALL still be in effect after restore
 
 ### Requirement: DiskFsyncLie fault silently drops unflushed writes
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The fault engine SHALL support a `DiskFsyncLie` fault variant that models
 power-loss data loss on filesystems with writeback caching. When active,
 writes go to a volatile buffer instead of the durable CoW store. A subsequent
@@ -58,6 +67,8 @@ active, all volatile writes since the last flush SHALL be discarded.
 - **AND** restore SHALL reproduce the exact same volatile/durable split
 
 ### Requirement: DiskPartialRead returns fewer bytes than requested
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The fault engine SHALL support a `DiskPartialRead` fault variant that
 causes a target VM's next read at a specific offset to return fewer bytes
 than the buffer size. This models degraded storage returning short reads.
@@ -73,6 +84,8 @@ than the buffer size. This models degraded storage returning short reads.
 - **THEN** subsequent reads at the same offset SHALL return full data (fault consumed)
 
 ### Requirement: Random generation includes new disk faults
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The FaultEngine's `generate_random_fault()` and the ScheduleMutator's
 `random_fault()` SHALL include `DiskSlow`, `DiskFsyncLie`, and
 `DiskPartialRead` in their random selection pool with reasonable parameter
@@ -83,6 +96,8 @@ ranges.
 - **THEN** at least one `DiskSlow`, one `DiskFsyncLie`, and one `DiskPartialRead` SHALL appear
 
 ### Requirement: Serialization backward compatibility
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 New fault variants SHALL serialize/deserialize via serde without breaking
 existing checkpoint or bug report JSON files. Unknown variants in old files
 SHALL be skipped or cause a clear error, not a silent data loss.

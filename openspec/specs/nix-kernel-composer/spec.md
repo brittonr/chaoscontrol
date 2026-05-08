@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Nix Kernel Composer Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for nix kernel composer.
+
+## Requirements
 ### Requirement: mkChaosKernel function
 
 The flake SHALL export a `mkChaosKernel` function that takes boolean feature

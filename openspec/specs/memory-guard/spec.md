@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Memory Guard Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for memory guard.
+
+## Requirements
 ### Requirement: Pre-flight memory estimate
 At startup, both `run` and `campaign` subcommands SHALL compute an estimated peak memory usage based on: `num_seeds × num_vms × vm_memory_mb` for VM memory, plus `num_seeds × max_frontier × num_vms × vm_memory_mb` as a worst-case frontier snapshot estimate.
 

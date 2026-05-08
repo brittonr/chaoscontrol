@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Bug Deduplication Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for bug deduplication.
+
+## Requirements
 ### Requirement: Deduplicate bugs by assertion and fault signature
 
 The explorer SHALL deduplicate bugs so that the same assertion failing

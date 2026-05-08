@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Massive Dlog Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for massive dlog.
+
+## Requirements
 ### Requirement: Register state in dlog records
 The dlog writer SHALL store the guest RIP in every DlogRecord (already present)
 and SHALL add RSP, RAX, and RFLAGS to the `extra` field for IoIn, IoOut,

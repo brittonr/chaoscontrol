@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Dashboard Config Panel Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for dashboard config panel.
+
+## Requirements
 ### Requirement: Configuration info panel
 The UI SHALL display a panel showing the exploration configuration parameters: number of VMs, seed, exploration mode, max rounds, branches per round, ticks per branch, and kernel path (basename only).
 

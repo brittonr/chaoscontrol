@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Helical Fault Campaigns Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for helical fault campaigns.
+
+## Requirements
 ### Requirement: Named helical scenarios materialize deterministically
 The explorer SHALL support named helical scenario families that deterministically materialize a concrete `FaultSchedule` and phase summary from scenario configuration plus seed. Re-running the same scenario family with the same configuration and seed SHALL produce the same schedule.
 

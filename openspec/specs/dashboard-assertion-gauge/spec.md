@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Dashboard Assertion Gauge Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for dashboard assertion gauge.
+
+## Requirements
 ### Requirement: Assertion exercise gauge
 The UI SHALL display a compact progress indicator above the assertion table showing the fraction of registered assertions that have been exercised (hit at least once). The gauge SHALL show both a progress bar and a text label.
 

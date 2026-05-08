@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Process Restart Reboot Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for process restart reboot.
+
+## Requirements
 ### Requirement: ProcessRestart reboots the VM
 When a `ProcessRestart` fault is dispatched, the controller SHALL reload the kernel and initrd into the target VM's memory, reset CPU state to boot entry, and run the VM until `setup_complete` is signaled by the guest. The VM SHALL retain its virtio-blk disk state (CoW dirty pages) across the reboot so that crash-recovery testing observes persistent data from before the kill.
 

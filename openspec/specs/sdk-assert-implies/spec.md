@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Sdk Assert Implies Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for sdk assert implies.
+
+## Requirements
 ### Requirement: cc_assert_implies macro
 The SDK SHALL provide a `cc_assert_implies!` macro that asserts `precondition → conclusion` as an always-true property. It SHALL desugar to an `always` assertion with condition `!precondition || conclusion`.
 

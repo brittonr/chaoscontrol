@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Dashboard Bugs Panel Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for dashboard bugs panel.
+
+## Requirements
 ### Requirement: Bugs list panel
 The UI SHALL display a panel listing all discovered bugs in a table with columns: bug ID, assertion message, round, tick, and fault schedule length. The panel SHALL be visible whenever at least one bug exists.
 

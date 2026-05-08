@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Nix Guest Packages Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for nix guest packages.
+
+## Requirements
 ### Requirement: Guest binaries are Nix derivations
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 Each guest crate in the workspace (`chaoscontrol-guest`, `chaoscontrol-raft-guest`,
 `chaoscontrol-net-guest`) SHALL be buildable as an independent Nix package via
@@ -21,6 +28,8 @@ musl binary at `$out/bin/<crate-name>`.
 
 ### Requirement: Guest builds use musl cross-compilation
 
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
+
 Guest derivations SHALL target `x86_64-unknown-linux-musl` and produce fully
 static binaries with no dynamic library dependencies.
 
@@ -29,6 +38,8 @@ static binaries with no dynamic library dependencies.
 - **THEN** it reports "not a dynamic executable" or "statically linked"
 
 ### Requirement: Guest builds are independent of VMM build
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 Building a guest binary SHALL NOT require building the VMM, trace crate, explore
 crate, or replay crate. Only protocol and SDK crate sources are needed.
@@ -39,6 +50,8 @@ crate, or replay crate. Only protocol and SDK crate sources are needed.
 
 ### Requirement: Shell scripts removed
 
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
+
 The files `scripts/build-guest.sh`, `scripts/build-raft-guest.sh`, and
 `scripts/build-net-guest.sh` SHALL be deleted from the repository.
 
@@ -47,6 +60,8 @@ The files `scripts/build-guest.sh`, `scripts/build-raft-guest.sh`, and
 - **THEN** no `scripts/build-*-guest.sh` files exist in the repo
 
 ### Requirement: Pre-built initrd blobs removed from git
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 The files `guest/initrd.gz`, `guest/initrd-sdk.gz`, `guest/initrd-raft.gz`, and
 `guest/initrd-net.gz` SHALL be removed from version control. `.gitignore` SHALL

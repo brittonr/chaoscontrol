@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Guest Runtime Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for guest runtime.
+
+## Requirements
 ### Requirement: guest_init function
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 The SDK SHALL export a `guest_init()` function in the `full` feature gate
 that performs all VM guest environment setup required before a guest
@@ -29,6 +36,8 @@ The function SHALL perform the following steps in order:
 
 ### Requirement: guest_init in prelude
 
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
+
 `guest_init` SHALL be re-exported from `chaoscontrol_sdk::prelude` so
 downstream guests can call it with `use chaoscontrol_sdk::prelude::*`.
 
@@ -37,6 +46,8 @@ downstream guests can call it with `use chaoscontrol_sdk::prelude::*`.
 - **THEN** `guest_init` is available without additional imports
 
 ### Requirement: Feature gating
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 `guest_init()` SHALL only be available when the `full` feature is enabled.
 Building with `default-features = false` SHALL NOT include the runtime
@@ -47,6 +58,8 @@ module.
 - **THEN** the `runtime` module and `guest_init` function do not exist
 
 ### Requirement: Existing guests use guest_init
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 All existing guest binaries (chaoscontrol-guest, chaoscontrol-raft-guest,
 chaoscontrol-net-guest) SHALL be refactored to call `guest_init()` instead

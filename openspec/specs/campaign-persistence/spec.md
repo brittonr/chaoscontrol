@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Campaign Persistence Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for campaign persistence.
+
+## Requirements
 ### Requirement: Campaign report saved to disk
 The campaign runner SHALL save the aggregated `CampaignReport` to `{output}/campaign_report.json` (machine-readable) and `{output}/campaign_report.txt` (human-readable) upon completion of all seeds.
 

@@ -1,3 +1,9 @@
+# Exploration Timing Specification
+
+## Purpose
+
+Defines the canonical ChaosControl requirements for exploration timing.
+
 ## Purpose
 
 Track wall-clock timing for exploration runs, rounds, and user-facing reports while preserving compatibility with older checkpoints.

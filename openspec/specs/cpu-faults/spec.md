@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Cpu Faults Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for cpu faults.
+
+## Requirements
 ### Requirement: CpuBitflip fault corrupts a general-purpose register
 The fault engine SHALL support a `CpuBitflip` fault variant that flips a
 single bit in one of the target VM's general-purpose registers (RAX–R15)

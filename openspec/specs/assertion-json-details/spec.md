@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Assertion Json Details Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for assertion json details.
+
+## Requirements
 ### Requirement: Detail helper functions
 The SDK SHALL provide helper functions in a `chaoscontrol_sdk::assert::details` module to build standardized JSON details for common assertion patterns. Helpers MUST cover node state, log operations, network events, and fault conditions.
 

@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Campaign Dashboard Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for campaign dashboard.
+
+## Requirements
 ### Requirement: Dashboard available in campaign mode
 The `campaign` subcommand SHALL accept `--dashboard` and `--dashboard-port` flags. When `--dashboard` is set, a single dashboard server SHALL start before any seeds launch and remain running until all seeds complete.
 

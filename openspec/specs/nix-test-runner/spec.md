@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Nix Test Runner Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for nix test runner.
+
+## Requirements
 ### Requirement: mkChaosTest function
 
 The flake SHALL export a `mkChaosTest` function that takes a kernel, initrd,
@@ -52,8 +57,6 @@ the built-in guests (raft, sdk) against appropriate kernels.
 #### Scenario: Raft safety check
 - **WHEN** `nix flake check` runs on a KVM-capable machine
 - **THEN** a raft simulation test runs with the net kernel and raft initrd
-
-## ADDED Requirements
 
 ### Requirement: Tuned explore-redb wrapper
 The `explore-redb` nix app SHALL use defaults appropriate for single-node storage testing: `--vms 1`, `--ticks 5000` (long enough for multiple crash/recovery cycles), `--rounds 100`, `--branches 8`, and `--mode hybrid`. The wrapper SHALL pass the `redb-disk-image` via `--disk-image`.

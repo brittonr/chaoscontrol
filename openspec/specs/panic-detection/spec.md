@@ -1,4 +1,14 @@
+# Panic Detection Specification
+
+## Purpose
+
+Defines the canonical ChaosControl requirements for panic detection.
+
+## Requirements
+
 ### Requirement: Kernel halts on panic
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The default kernel command line SHALL use `panic=0` so the kernel
 executes HLT after a panic instead of attempting to reboot. This
 produces a clean `VcpuExit::Hlt` that the VMM already handles.
@@ -14,6 +24,8 @@ produces a clean `VcpuExit::Hlt` that the VMM already handles.
 - **THEN** all previously-passing tests still pass
 
 ### Requirement: Serial panic detection
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The VMM SHALL monitor serial output for the string `Kernel panic`.
 When detected, the VM SHALL be marked as crashed and `step()` SHALL
 return the halted signal on the next iteration.
@@ -29,6 +41,8 @@ return the halted signal on the next iteration.
 - **THEN** the panic detector does not trigger
 
 ### Requirement: Panic state reset on restore
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 The panic detector state SHALL be cleared when a snapshot is restored
 so that a panic from a previous branch does not carry into a new
 branch.
@@ -39,6 +53,8 @@ branch.
 - **THEN** the panic flag is clear and branch B runs normally
 
 ### Requirement: VcpuExit::Shutdown marks VM crashed
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 When the VMM receives `VcpuExit::Shutdown` (triple fault), the VM
 SHALL be treated as crashed. The controller SHALL skip further
 scheduling of that VM for the remainder of the branch.

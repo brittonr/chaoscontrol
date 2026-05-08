@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Parallel Exploration Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for parallel exploration.
+
+## Requirements
 ### Requirement: Parallel branch execution
 The explorer SHALL execute branches within a single round concurrently
 across multiple OS threads. Each thread SHALL own its own

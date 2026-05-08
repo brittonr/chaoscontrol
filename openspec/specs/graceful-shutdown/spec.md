@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Graceful Shutdown Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for graceful shutdown.
+
+## Requirements
 ### Requirement: Signal handler installation
 The exploration binary SHALL install a signal handler for SIGINT and SIGTERM at process startup (before any KVM VMs are created). The handler SHALL set a global `AtomicBool` flag and return without blocking. The handler SHALL NOT call async-signal-unsafe functions.
 

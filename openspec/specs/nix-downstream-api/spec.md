@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Nix Downstream Api Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for nix downstream api.
+
+## Requirements
 ### Requirement: Flake lib output
 
 The flake SHALL export a `lib` output containing `mkChaosInitrd`,

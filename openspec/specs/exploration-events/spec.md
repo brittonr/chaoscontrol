@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Exploration Events Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for exploration events.
+
+## Requirements
 ### Requirement: DashboardEvent enum
 The explorer SHALL define a `DashboardEvent` enum representing all event types emittable to the dashboard. Each variant SHALL be serializable to JSON via serde.
 

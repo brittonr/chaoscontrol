@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Sdk Assert Result Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for sdk assert result.
+
+## Requirements
 ### Requirement: cc_assert_always_ok macro
 The SDK SHALL provide a `cc_assert_always_ok!` macro that asserts a `Result` is `Ok` every time the assertion is reached. On `Err`, the macro SHALL auto-capture the error's `Debug` representation in assertion details as `{"error": "<debug_string>"}`.
 

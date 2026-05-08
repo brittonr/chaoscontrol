@@ -1,5 +1,10 @@
-## ADDED Requirements
+# Nix Initrd Builder Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for nix initrd builder.
+
+## Requirements
 ### Requirement: mkChaosInitrd function
 
 The flake SHALL export a `mkChaosInitrd` function that takes a guest binary

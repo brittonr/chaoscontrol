@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Guest Fault Injection Specification
 
+## Purpose
+
+Defines the canonical ChaosControl requirements for guest fault injection.
+
+## Requirements
 ### Requirement: Per-node crash injection
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 The Raft guest SHALL support crashing individual nodes via
 `random_choice()`. A crashed node drops all incoming messages, does not
@@ -19,6 +26,8 @@ participate in elections, and does not process AppendEntries.
 - **THEN** nodes 0 and 2 continue processing messages and elections normally
 
 ### Requirement: Node restart with persistent state
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 The guest SHALL support restarting crashed nodes. On restart, the node
 retains persistent Raft state (log, currentTerm, votedFor) and resets
@@ -40,6 +49,8 @@ volatile state (commitIndex, role, electionTimer, nextIndex, matchIndex).
   control exactly when the node comes back
 
 ### Requirement: Per-link network partitions
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 The guest SHALL support asymmetric per-link network partitions. A partition
 between node A and node B drops messages from A to B without affecting other
@@ -65,6 +76,8 @@ links. Partitions are created and healed via `random_choice()`.
 
 ### Requirement: Message reordering
 
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
+
 The guest SHALL support message reordering by delivering some messages to a
 delay queue instead of the destination inbox.
 
@@ -76,6 +89,8 @@ delay queue instead of the destination inbox.
 
 ### Requirement: Message duplication
 
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
+
 The guest SHALL support message duplication by delivering a message twice.
 
 #### Scenario: Duplicate delivery
@@ -84,6 +99,8 @@ The guest SHALL support message duplication by delivering a message twice.
 - **THEN** the message is delivered to the destination node's inbox twice
 
 ### Requirement: All fault decisions use random_choice
+
+This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
 
 Every fault injection decision (crash, restart, partition create, partition
 heal, reorder, duplicate) SHALL use `random_choice()` from the SDK. No

@@ -43,7 +43,7 @@ The PropertyOracle MUST pre-populate assertion records from the received catalog
 
 ### Requirement: Coverage Tracking
 
-The PropertyOracle MUST distinguish between exercised and unexercised assertions in coverage reports.
+The PropertyOracle MUST distinguish between exercised and unexercised assertions in coverage reports, and the generated assertion-readiness surface MUST preserve gap evidence before any workload is promoted beyond bounded replay proof.
 
 #### Scenario: Exercised assertion tracking
 
@@ -56,6 +56,35 @@ The PropertyOracle MUST distinguish between exercised and unexercised assertions
 - GIVEN an assertion is registered in the catalog but never fires
 - WHEN a coverage report is generated  
 - THEN the assertion MUST be reported as unexercised with catalog metadata
+
+#### Scenario: Assertion readiness gaps remain promotion blockers
+
+- GIVEN an accepted workload proof has unhit, uncategorized, or non-passing assertion gaps
+- WHEN assertion-readiness status or promotion checks are generated
+- THEN the system MUST report those gaps as promotion blockers unless explicit workload-specific rationale is present
+- AND the workload MUST NOT be described as richer-than-bounded replay support solely because its accepted proof exercised cataloged assertions
+
+### Requirement: Assertion-readiness promotion gate
+
+The static readiness surface MUST fail closed when assertion-readiness evidence is weakened, hidden, or promoted beyond the accepted workload's documented instrumentation state.
+
+#### Scenario: Generated report preserves anti-claims
+
+- GIVEN accepted workload proofs and their committed assertion artifacts
+- WHEN the assertion-readiness report is generated or checked
+- THEN it MUST preserve anti-claim text stating that assertion density is not replay proof or product parity by itself
+
+#### Scenario: Gap removal fails closed
+
+- GIVEN a workload has nonzero unhit, uncategorized, or non-passing assertion gaps
+- WHEN a generated or checked assertion-readiness surface omits those gaps without explicit rationale
+- THEN the promotion gate MUST exit nonzero and identify the workload and hidden gap class
+
+#### Scenario: Promotion rationale is explicit
+
+- GIVEN a workload is proposed for an instrumentation-readiness claim stronger than bounded replay proof
+- WHEN assertion-readiness promotion is evaluated
+- THEN the gate MUST require either zero relevant gaps or a checked workload-specific rationale for each remaining gap class
 
 ### Requirement: Backward Compatibility
 

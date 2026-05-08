@@ -340,6 +340,7 @@ python scripts/check-evidence-contracts.py
 python scripts/check-replay-proof-coverage.py
 python scripts/generate-replay-readiness-report.py --check
 python scripts/generate-assertion-readiness-report.py --check
+python scripts/check-assertion-readiness-promotion-gate.py
 python scripts/check-dogfood-artifact-sizes.py
 python scripts/check-accepted-dogfood-config.py \
   --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \

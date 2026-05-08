@@ -58,18 +58,36 @@ impl WorkloadHarness {
                 "scenario": name,
             }),
         );
-        let started = Instant::now();
+        let started = scenario_clock_now();
         let result = run();
         crate::lifecycle::send_event(
             "scenario_finish",
             &json!({
                 "workload": self.name,
                 "scenario": name,
-                "elapsed_ms": started.elapsed().as_millis(),
+                "elapsed_ms": scenario_elapsed_ms(started),
             }),
         );
         result
     }
+}
+
+#[allow(unknown_lints)]
+#[allow(
+    ambient_clock,
+    reason = "workload harness shell measures host-side scenario lifecycle duration"
+)]
+fn scenario_clock_now() -> Instant {
+    Instant::now()
+}
+
+#[allow(unknown_lints)]
+#[allow(
+    ambient_clock,
+    reason = "workload harness shell measures host-side scenario lifecycle duration"
+)]
+fn scenario_elapsed_ms(started: Instant) -> u128 {
+    started.elapsed().as_millis()
 }
 
 /// Per-assertion local dry-run coverage detail.

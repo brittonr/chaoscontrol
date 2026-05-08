@@ -45,29 +45,33 @@
           muslCraneLib = (crane.mkLib pkgs).overrideToolchain muslRustToolchain;
           muslCC = pkgs.pkgsCross.musl64.stdenv.cc;
 
-          # Filter source to include Rust-relevant files + BPF sources
-          # (cleanCargoSource strips .c/.h files needed by chaoscontrol-trace)
+          # Filter source to include Rust-relevant files, BPF sources, and
+          # contract-backed test fixtures used by compile-time include_str!()
+          # tests. Crane's cleanCargoSource strips non-Cargo JSON evidence by
+          # default, which can make Nix checks fail while local Cargo passes.
+          sourceFilter =
+            path: type:
+            let
+              relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
+              isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
+            in
+            (craneLib.filterCargoSources path type)
+            || isEvidenceFixture
+            || isDogfoodCheckpointFixture
+            || (builtins.match ".*\\.bpf\\.c$" path != null)
+            || (builtins.match ".*\\.h$" path != null)
+            || (builtins.match ".*\\.html$" path != null)
+            || (builtins.match ".*\\.js$" path != null);
+
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
-            filter =
-              path: type:
-              (craneLib.filterCargoSources path type)
-              || (builtins.match ".*\\.bpf\\.c$" path != null)
-              || (builtins.match ".*\\.h$" path != null)
-              || (builtins.match ".*\\.html$" path != null)
-              || (builtins.match ".*\\.js$" path != null);
+            filter = sourceFilter;
           };
 
           tigerstyleSrc = pkgs.lib.cleanSourceWith {
             src = ./.;
-            filter =
-              path: type:
-              (craneLib.filterCargoSources path type)
-              || builtins.baseNameOf path == "dylint.toml"
-              || (builtins.match ".*\\.bpf\\.c$" path != null)
-              || (builtins.match ".*\\.h$" path != null)
-              || (builtins.match ".*\\.html$" path != null)
-              || (builtins.match ".*\\.js$" path != null);
+            filter = path: type: (sourceFilter path type) || builtins.baseNameOf path == "dylint.toml";
           };
 
           # Common build arguments shared across all crane invocations

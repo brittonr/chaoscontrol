@@ -486,6 +486,9 @@
               artifact_sizes_status="pending"
               accepted_dogfood_config_status="pending"
               dogfood_status="skipped"
+              dogfood_output=""
+              dogfood_summary_json="null"
+              invocation_cwd="$PWD"
 
               write_receipt() {
                 local status="$1"
@@ -502,6 +505,8 @@
                 FINISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
                 DOGFOOD="$dogfood" \
                 DOGFOOD_STATUS="$dogfood_status" \
+                DOGFOOD_OUTPUT="$dogfood_output" \
+                DOGFOOD_SUMMARY_JSON="$dogfood_summary_json" \
                 CONTRACT_REGISTRY_STATUS="$contract_registry_status" \
                 EVIDENCE_CONTRACTS_STATUS="$evidence_contracts_status" \
                 REPLAY_PROOF_COVERAGE_STATUS="$replay_proof_coverage_status" \
@@ -517,6 +522,14 @@
 
               out = Path(sys.argv[1])
               dogfood = os.environ["DOGFOOD"] or None
+              dogfood_output = os.environ["DOGFOOD_OUTPUT"] or None
+              dogfood_summary_raw = os.environ["DOGFOOD_SUMMARY_JSON"] or "null"
+              try:
+                  dogfood_summary = json.loads(dogfood_summary_raw)
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f"invalid DOGFOOD_SUMMARY_JSON: {exc}")
+              if dogfood_summary is not None and not isinstance(dogfood_summary, dict):
+                  raise SystemExit("DOGFOOD_SUMMARY_JSON must be an object or null")
               gates = [
                   ("contract-registry", "python scripts/check-contract-registry.py", os.environ["CONTRACT_REGISTRY_STATUS"]),
                   ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
@@ -541,6 +554,8 @@
                   "dogfood": {
                       "selected_workload": dogfood,
                       "status": os.environ["DOGFOOD_STATUS"],
+                      "output": dogfood_output,
+                      "summary": dogfood_summary,
                       "evidence_curation": "explicit-follow-up",
                   },
                   "scope": "bounded committed replay/evidence readiness; not universal determinism or hosted-product parity",
@@ -566,6 +581,78 @@
                 fi
               }
 
+              prepare_dogfood_output() {
+                if [ -z "$dogfood" ]; then
+                  return 0
+                fi
+                local idx=0
+                while [ "$idx" -lt "''${#dogfood_args[@]}" ]; do
+                  case "''${dogfood_args[idx]}" in
+                    --output)
+                      next=$((idx + 1))
+                      if [ "$next" -ge "''${#dogfood_args[@]}" ]; then
+                        echo "--output requires a path" >&2
+                        dogfood_status="fail"
+                        write_receipt failed dogfood-selection 2
+                        exit 2
+                      fi
+                      dogfood_output="''${dogfood_args[next]}"
+                      case "$dogfood_output" in
+                        /*) ;;
+                        *)
+                          dogfood_output="$invocation_cwd/$dogfood_output"
+                          dogfood_args[next]="$dogfood_output"
+                          ;;
+                      esac
+                      return 0
+                      ;;
+                    --output=*)
+                      dogfood_output="''${dogfood_args[idx]#--output=}"
+                      case "$dogfood_output" in
+                        /*) ;;
+                        *) dogfood_output="$invocation_cwd/$dogfood_output" ;;
+                      esac
+                      dogfood_args[idx]="--output=$dogfood_output"
+                      return 0
+                      ;;
+                  esac
+                  idx=$((idx + 1))
+                done
+                dogfood_output="$invocation_cwd/dogfood-results/replay-readiness-$dogfood-$(date -u +"%Y%m%d-%H%M%S")"
+                dogfood_args=(--output "$dogfood_output" "''${dogfood_args[@]}")
+              }
+
+              capture_dogfood_summary() {
+                if [ -z "$dogfood_output" ]; then
+                  return 0
+                fi
+                if dogfood_summary_json="$(python ${./scripts/summarize-accepted-dogfood-output.py} --json "$dogfood_output")"; then
+                  python ${./scripts/summarize-accepted-dogfood-output.py} "$dogfood_output"
+                else
+                  rc=$?
+                  dogfood_summary_json="null"
+                  return "$rc"
+                fi
+              }
+
+              run_dogfood() {
+                local runner="$1"
+                dogfood_status="running"
+                prepare_dogfood_output
+                echo "dogfood output: $dogfood_output"
+                if "$runner" "''${dogfood_args[@]}"; then
+                  dogfood_status="pass"
+                  capture_dogfood_summary || true
+                  write_receipt passed "" 0
+                else
+                  rc=$?
+                  dogfood_status="fail"
+                  capture_dogfood_summary || true
+                  write_receipt failed dogfood "$rc"
+                  exit "$rc"
+                fi
+              }
+
               echo "== replay readiness: static checks =="
               cd ${self}
               run_gate contract-registry contract_registry_status python scripts/check-contract-registry.py
@@ -583,52 +670,16 @@
                   write_receipt passed "" 0
                   ;;
                 raft)
-                  dogfood_status="running"
-                  if ${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
-                    dogfood_status="pass"
-                    write_receipt passed "" 0
-                  else
-                    rc=$?
-                    dogfood_status="fail"
-                    write_receipt failed dogfood "$rc"
-                    exit "$rc"
-                  fi
+                  run_dogfood ${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood
                   ;;
                 redb)
-                  dogfood_status="running"
-                  if ${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
-                    dogfood_status="pass"
-                    write_receipt passed "" 0
-                  else
-                    rc=$?
-                    dogfood_status="fail"
-                    write_receipt failed dogfood "$rc"
-                    exit "$rc"
-                  fi
+                  run_dogfood ${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood
                   ;;
                 net)
-                  dogfood_status="running"
-                  if ${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
-                    dogfood_status="pass"
-                    write_receipt passed "" 0
-                  else
-                    rc=$?
-                    dogfood_status="fail"
-                    write_receipt failed dogfood "$rc"
-                    exit "$rc"
-                  fi
+                  run_dogfood ${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood
                   ;;
                 rust-workload)
-                  dogfood_status="running"
-                  if ${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood "''${dogfood_args[@]}"; then
-                    dogfood_status="pass"
-                    write_receipt passed "" 0
-                  else
-                    rc=$?
-                    dogfood_status="fail"
-                    write_receipt failed dogfood "$rc"
-                    exit "$rc"
-                  fi
+                  run_dogfood ${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood
                   ;;
                 *)
                   echo "unsupported dogfood workload: $dogfood" >&2

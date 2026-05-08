@@ -719,6 +719,7 @@
               run_gate contract-registry contract_registry_status python scripts/check-contract-registry.py
               run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
               run_gate replay-proof-coverage replay_proof_coverage_status python scripts/check-replay-proof-coverage.py
+              run_gate readiness-promotion readiness_promotion_status python scripts/check-readiness-promotion-gate.py
               run_gate readiness-report readiness_report_status python scripts/generate-replay-readiness-report.py --check
               run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
@@ -1028,6 +1029,7 @@
                   python scripts/check-contract-registry.py
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
+                  python scripts/check-readiness-promotion-gate.py
                   python scripts/generate-replay-readiness-report.py --check
                   python scripts/generate-assertion-readiness-report.py --check
                   python scripts/check-dogfood-artifact-sizes.py

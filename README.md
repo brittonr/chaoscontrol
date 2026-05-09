@@ -345,6 +345,7 @@ python scripts/check-dogfood-artifact-sizes.py
 python scripts/check-accepted-dogfood-config.py \
   --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \
   --expectations dogfood-results/accepted-dogfood-expectations.json
+nix build .#checks.x86_64-linux.dependency-audit --no-link -L
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```
 

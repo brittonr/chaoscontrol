@@ -10,6 +10,10 @@
     };
     tigerstyle.url = "git+file:../tigerstyle?ref=refs/heads/main&rev=2197d80a2a4a261e141531927084e66f92935f93";
     verified-logic.url = "git+file:../verified-logic?ref=refs/heads/main&rev=b332e653e3252922eb66aac6912899272d7c6c07";
+    advisory-db = {
+      url = "github:RustSec/advisory-db";
+      flake = false;
+    };
   };
 
   outputs =
@@ -20,6 +24,7 @@
       rust-overlay,
       tigerstyle,
       verified-logic,
+      advisory-db,
     }:
     let
       supportedSystems = [ "x86_64-linux" ]; # KVM is Linux-only
@@ -1032,6 +1037,46 @@
               nixfmt --check .
               touch $out
             '';
+
+            # RustSec dependency vulnerability audit over the locked workspace.
+            dependency-audit =
+              pkgs.runCommand "dependency-audit-check"
+                {
+                  nativeBuildInputs = [
+                    pkgs.cargo-audit
+                    pkgs.python3
+                  ];
+                }
+                ''
+                  cargo-audit audit --no-fetch --stale --db ${advisory-db} --file ${self}/Cargo.lock --json > "$TMPDIR/audit.json"
+                  python - <<'PY'
+                  import json
+                  from pathlib import Path
+
+                  report = json.loads(Path(__import__('os').environ['TMPDIR'], "audit.json").read_text())
+                  vulnerabilities = report.get("vulnerabilities", {}).get("list", [])
+                  warnings = report.get("warnings", {})
+                  warning_counts = {
+                      name: len(items)
+                      for name, items in warnings.items()
+                      if isinstance(items, list) and items
+                  }
+                  if vulnerabilities:
+                      for advisory in vulnerabilities:
+                          package = advisory.get("package") or {}
+                          advisory_info = advisory.get("advisory") or {}
+                          print(
+                              "vulnerability:"
+                              f" {advisory_info.get('id', 'unknown')}"
+                              f" {package.get('name', 'unknown')}"
+                              f" {package.get('version', 'unknown')}"
+                          )
+                      raise SystemExit(f"dependency audit found {len(vulnerabilities)} vulnerability finding(s)")
+                  print("dependency audit ok: vulnerabilities=0 warnings=" + json.dumps(warning_counts, sort_keys=True))
+                  PY
+                  mkdir -p "$out"
+                  cp "$TMPDIR/audit.json" "$out/cargo-audit.json"
+                '';
 
             # Nickel-backed evidence contracts and committed dogfood receipt data.
             evidence-contracts =

@@ -3,6 +3,7 @@ name = "chaoscontrol-replay"
 version = "0.1.0"
 edition = "2021"
 description = "Time-travel debugging and replay for ChaosControl"
+license.workspace = true
 
 [dependencies]
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }

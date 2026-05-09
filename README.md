@@ -346,10 +346,11 @@ python scripts/check-accepted-dogfood-config.py \
   --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \
   --expectations dogfood-results/accepted-dogfood-expectations.json
 nix build .#checks.x86_64-linux.dependency-audit --no-link -L
+nix build .#checks.x86_64-linux.dependency-policy --no-link -L
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```
 
-The dependency audit fails on vulnerabilities and on any untriaged cargo-audit warning. Current warning dispositions live in `audits/cargo-audit-warning-allowlist.json`, and the Nix check copies both the raw audit JSON and the allowlist into its output for review.
+The dependency audit fails on vulnerabilities and on any untriaged cargo-audit warning. Current warning dispositions live in `audits/cargo-audit-warning-allowlist.json`, and the Nix check copies both the raw audit JSON and the allowlist into its output for review. The dependency policy check runs `cargo-deny` offline over license, ban, and source provenance rules from `deny.toml`.
 
 ### Bug Workflow
 

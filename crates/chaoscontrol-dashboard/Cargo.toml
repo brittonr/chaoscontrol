@@ -3,6 +3,7 @@ name = "chaoscontrol-dashboard"
 version = "0.1.0"
 edition = "2021"
 description = "Live web dashboard for ChaosControl exploration campaigns"
+license.workspace = true
 
 [[bin]]
 name = "chaoscontrol-dashboard"

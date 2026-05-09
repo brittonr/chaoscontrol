@@ -1057,6 +1057,15 @@
                   cp ${self}/audits/cargo-audit-warning-allowlist.json "$out/cargo-audit-warning-allowlist.json"
                 '';
 
+            # Cargo-deny dependency policy over license, ban, and source hygiene.
+            dependency-policy = craneLib.cargoDeny (
+              commonArgs
+              // {
+                cargoDenyExtraArgs = "--locked";
+                cargoDenyChecks = "bans licenses sources";
+              }
+            );
+
             # Nickel-backed evidence contracts and committed dogfood receipt data.
             evidence-contracts =
               pkgs.runCommand "evidence-contracts-check"

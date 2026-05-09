@@ -1071,6 +1071,7 @@
                   python scripts/check-contract-registry.py
                   python scripts/check-evidence-contracts.py
                   python scripts/check-replay-proof-coverage.py
+                  python scripts/materialize-snapshot-chunks.py --selftest
                   python scripts/check-readiness-promotion-gate.py
                   python scripts/check-readiness-surface-drift.py
                   python scripts/generate-replay-readiness-report.py --check

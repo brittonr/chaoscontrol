@@ -87,7 +87,7 @@ def render() -> str:
     lines: list[str] = [
         "# Assertion Readiness Status",
         "",
-        "Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `python scripts/generate-assertion-readiness-report.py --write`.",
+        "Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .`.",
         "",
         "## Summary",
         "",
@@ -135,7 +135,7 @@ def main() -> int:
                 print(f"assertion readiness report missing: {rel(REPORT)}", file=sys.stderr)
                 return 1
             if current != content:
-                print("assertion readiness report stale: run python scripts/generate-assertion-readiness-report.py --write", file=sys.stderr)
+                print("assertion readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .", file=sys.stderr)
                 return 1
             print(f"assertion readiness report ok: {rel(REPORT)}")
             return 0

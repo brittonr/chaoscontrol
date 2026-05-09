@@ -22,3 +22,7 @@ path = "src/bin/materialize-snapshot-chunks.rs"
 [[bin]]
 name = "generate-replay-readiness-report"
 path = "src/bin/generate-replay-readiness-report.rs"
+
+[[bin]]
+name = "generate-assertion-readiness-report"
+path = "src/bin/generate-assertion-readiness-report.rs"

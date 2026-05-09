@@ -1,6 +1,6 @@
 # Assertion Readiness Status
 
-Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `python scripts/generate-assertion-readiness-report.py --write`.
+Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .`.
 
 ## Summary
 

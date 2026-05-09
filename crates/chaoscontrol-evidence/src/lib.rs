@@ -4,7 +4,7 @@
 //! a small pure core. Filesystem and process orchestration belong in thin CLI or
 //! Nix wrapper shells.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -27,6 +27,7 @@ pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
 pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
+pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
 pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -620,6 +621,177 @@ pub fn write_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssertionReadinessRow {
+    pub workload: String,
+    pub total: usize,
+    pub exercised: usize,
+    pub always: usize,
+    pub sometimes: usize,
+    pub reachability: usize,
+    pub unreachable: usize,
+    pub uncategorized: usize,
+    pub nonpassing: usize,
+    pub evidence_path: String,
+    pub gaps: Vec<String>,
+}
+
+impl AssertionReadinessRow {
+    fn render(&self) -> String {
+        format!(
+            "| `{}` | `{}` | `{}` | `{}` / `{}` / `{}` / `{}` | `{}` | `{}` | `{}` |",
+            self.workload,
+            self.total,
+            self.exercised,
+            self.always,
+            self.sometimes,
+            self.reachability,
+            self.unreachable,
+            self.uncategorized,
+            self.nonpassing,
+            self.evidence_path
+        )
+    }
+}
+
+pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<String> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    ensure(
+        !manifest.proofs.is_empty(),
+        "accepted workload proof manifest has no proofs",
+    )?;
+
+    let rows = manifest
+        .proofs
+        .iter()
+        .map(|proof| assertion_readiness_row(root, proof))
+        .collect::<EvidenceResult<Vec<_>>>()?;
+
+    let mut output = String::new();
+    output.push_str("# Assertion Readiness Status\n\n");
+    output.push_str("Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .`.\n\n");
+    output.push_str("## Summary\n\n");
+    output.push_str("This report is an assertion-density and uncovered-catalog view over accepted replay evidence. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
+    output.push_str("## Accepted proof assertion coverage\n\n");
+    output.push_str("| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |\n");
+    output.push_str("| --- | ---: | ---: | --- | ---: | ---: | --- |\n");
+    for row in &rows {
+        output.push_str(&row.render());
+        output.push('\n');
+    }
+    output.push_str("\n## Promotion guidance\n\n");
+    output.push_str("Before promoting a workload beyond a bounded replay proof, review these gaps and either add meaningful assertion categories/coverage or explicitly document why the remaining gaps are acceptable for that workload:\n\n");
+    for row in &rows {
+        for gap in &row.gaps {
+            output.push_str("- ");
+            output.push_str(gap);
+            output.push('\n');
+        }
+    }
+    output.push_str("\n## Anti-claim\n\n");
+    output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
+    Ok(output)
+}
+
+pub fn check_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let expected = render_assertion_readiness_status(root)?;
+    let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
+    let actual = std::fs::read_to_string(&report_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, &report_path)
+        ))
+    })?;
+    ensure(
+        actual == expected,
+        "assertion readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .",
+    )
+}
+
+pub fn write_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let rendered = render_assertion_readiness_status(root)?;
+    let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
+    std::fs::write(&report_path, rendered).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to write {}: {err}",
+            rel_display(root, &report_path)
+        ))
+    })
+}
+
+fn assertion_readiness_row(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<AssertionReadinessRow> {
+    let evidence_path = format!("{}/assertions.json", proof.evidence_dir);
+    let assertions_path = root.join(&evidence_path);
+    let assertions: Vec<AssertionSummaryEntry> = load_json(root, &assertions_path)?;
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut uncategorized = 0_usize;
+    let mut unhit = Vec::new();
+    let mut nonpassing = Vec::new();
+
+    for item in assertions {
+        let kind = item.kind_string();
+        let kind = assertion_kind_label(kind.as_deref());
+        *counts.entry(kind.to_string()).or_default() += 1;
+        if item.category_string().as_deref().unwrap_or("uncategorized") == "uncategorized" {
+            uncategorized += 1;
+        }
+        let label = item.message_or_id();
+        if item.hit_count_i64().unwrap_or(0) == 0 {
+            unhit.push(label.clone());
+        }
+        if item.verdict_string().as_deref() != Some("passed") {
+            nonpassing.push(label);
+        }
+    }
+
+    let total = counts.values().sum();
+    let exercised = total - unhit.len();
+    Ok(AssertionReadinessRow {
+        workload: proof.workload.clone(),
+        total,
+        exercised,
+        always: *counts.get("always").unwrap_or(&0),
+        sometimes: *counts.get("sometimes").unwrap_or(&0),
+        reachability: *counts.get("reachability").unwrap_or(&0),
+        unreachable: *counts.get("unreachable").unwrap_or(&0),
+        uncategorized,
+        nonpassing: nonpassing.len(),
+        evidence_path,
+        gaps: vec![
+            format!("{}: {} unhit assertion(s)", proof.workload, unhit.len()),
+            format!(
+                "{}: {} uncategorized assertion(s)",
+                proof.workload, uncategorized
+            ),
+            format!(
+                "{}: {} non-passing assertion(s)",
+                proof.workload,
+                nonpassing.len()
+            ),
+        ],
+    })
+}
+
+fn assertion_kind_label(kind: Option<&str>) -> &str {
+    match kind.unwrap_or("unknown") {
+        "always" => "always",
+        "sometimes" => "sometimes",
+        "reachable" | "reachability" => "reachability",
+        "unreachable" => "unreachable",
+        other => other,
+    }
+}
+
 fn coverage_workload_label(workload: &str) -> String {
     match workload {
         "raft" => "Raft".to_string(),
@@ -1091,6 +1263,56 @@ impl SnapshotRef {
 pub struct ArtifactHash {
     pub path: String,
     pub sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct AssertionSummaryEntry {
+    pub id: Option<serde_json::Value>,
+    pub message: Option<serde_json::Value>,
+    pub kind: Option<serde_json::Value>,
+    pub category: Option<serde_json::Value>,
+    pub hit_count: Option<serde_json::Value>,
+    pub verdict: Option<serde_json::Value>,
+}
+
+impl AssertionSummaryEntry {
+    fn value_string(value: &serde_json::Value) -> String {
+        match value {
+            serde_json::Value::String(text) => text.clone(),
+            serde_json::Value::Null => "null".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    fn message_or_id(&self) -> String {
+        self.message
+            .as_ref()
+            .or(self.id.as_ref())
+            .map(Self::value_string)
+            .unwrap_or_else(|| "<unnamed>".to_string())
+    }
+
+    fn kind_string(&self) -> Option<String> {
+        self.kind.as_ref().map(Self::value_string)
+    }
+
+    fn category_string(&self) -> Option<String> {
+        self.category.as_ref().map(Self::value_string)
+    }
+
+    fn verdict_string(&self) -> Option<String> {
+        self.verdict.as_ref().map(Self::value_string)
+    }
+
+    fn hit_count_i64(&self) -> Option<i64> {
+        match self.hit_count.as_ref()? {
+            serde_json::Value::Number(number) => number.as_i64(),
+            serde_json::Value::String(text) => text.parse().ok(),
+            serde_json::Value::Bool(value) => Some(i64::from(*value)),
+            serde_json::Value::Null => None,
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

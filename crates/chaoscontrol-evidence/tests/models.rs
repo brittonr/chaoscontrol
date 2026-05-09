@@ -1,5 +1,6 @@
 use chaoscontrol_evidence::{
-    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
+    check_assertion_readiness_status, check_replay_proof_coverage_doc,
+    check_replay_readiness_status, materialize_snapshot_chunks, render_assertion_readiness_status,
     render_replay_proof_coverage, render_replay_proof_coverage_doc, render_replay_readiness_status,
     run_materialize_snapshot_chunks_selftest, validate_replay_proof_coverage,
     write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
@@ -109,6 +110,43 @@ fn rejects_empty_replay_readiness_manifest() {
     assert!(err
         .message()
         .contains("manifest must contain at least two independent workload proofs"));
+}
+
+#[test]
+fn renders_committed_assertion_readiness_status() {
+    let rendered = render_assertion_readiness_status("../..").expect("assertion readiness renders");
+    assert_eq!(
+        rendered,
+        include_str!("../../../docs/assertion-readiness-status.md")
+    );
+    assert!(rendered.contains("## Promotion guidance"));
+    assert!(rendered.contains("rust-workload: 1 non-passing assertion(s)"));
+    check_assertion_readiness_status("../..")
+        .expect("committed assertion readiness report is fresh");
+}
+
+#[test]
+fn rejects_stale_assertion_readiness_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("docs")).expect("create docs");
+    std::fs::write(root.join("docs/assertion-readiness-status.md"), "stale\n")
+        .expect("write stale doc");
+    write_valid_minimal_coverage_fixture(root);
+    write_assertions(&root.join("dogfood-results/fake-proof/assertions.json"));
+
+    let err = check_assertion_readiness_status(root).expect_err("stale doc rejected");
+    assert!(err.message().contains("assertion readiness report stale"));
+}
+
+#[test]
+fn rejects_missing_assertions_for_assertion_readiness_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    write_valid_minimal_coverage_fixture(root);
+
+    let err = render_assertion_readiness_status(root).expect_err("missing assertions rejected");
+    assert!(err.message().contains("assertions.json"));
 }
 
 #[test]
@@ -330,6 +368,18 @@ fn write_valid_minimal_coverage_fixture(root: &std::path::Path) {
     let digest = "sha256:181b5fc5c39e672546f5611977eabee17a4ef4dc262fd1d74d7d07d250e2fd81";
     write_verdict(&evidence_dir.join("verdict.json"), 1, digest);
     write_verdict(&evidence_dir.join("verdict-redb.json"), 2, digest);
+}
+
+fn write_assertions(path: &std::path::Path) {
+    std::fs::write(
+        path,
+        r#"[
+          {"id":"a","message":"always hit","kind":"always","category":"uncategorized","hit_count":1,"verdict":"passed"},
+          {"id":"b","message":"sometimes unhit","kind":"sometimes","category":"uncategorized","hit_count":0,"verdict":"failed"},
+          {"id":"c","message":"reachable hit","kind":"reachable","category":"checked","hit_count":"2","verdict":"passed"}
+        ]"#,
+    )
+    .expect("write assertions");
 }
 
 fn write_summary(path: &std::path::Path, workload: &str, assertion_id: u64) {

@@ -615,7 +615,7 @@
                   ("readiness-promotion", "python scripts/check-readiness-promotion-gate.py", os.environ["READINESS_PROMOTION_STATUS"]),
                   ("readiness-surface-drift", "python scripts/check-readiness-surface-drift.py", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
-                  ("assertion-readiness-report", "python scripts/generate-assertion-readiness-report.py --check", os.environ["ASSERTION_REPORT_STATUS"]),
+                  ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "python scripts/check-assertion-readiness-promotion-gate.py", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "python scripts/check-sdk-local-report-tracks.py", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
                   ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
@@ -745,7 +745,7 @@
               run_gate readiness-promotion readiness_promotion_status python scripts/check-readiness-promotion-gate.py
               run_gate readiness-surface-drift readiness_surface_drift_status python scripts/check-readiness-surface-drift.py
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
-              run_gate assertion-readiness-report assertion_report_status python scripts/generate-assertion-readiness-report.py --check
+              run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status python scripts/check-assertion-readiness-promotion-gate.py
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
               run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
@@ -1088,7 +1088,7 @@
                   python scripts/check-readiness-promotion-gate.py
                   python scripts/check-readiness-surface-drift.py
                   generate-replay-readiness-report --check .
-                  python scripts/generate-assertion-readiness-report.py --check
+                  generate-assertion-readiness-report --check .
                   python scripts/check-assertion-readiness-promotion-gate.py
                   python scripts/check-dogfood-artifact-sizes.py
                   python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}

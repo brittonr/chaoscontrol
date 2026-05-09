@@ -1049,33 +1049,12 @@
                 }
                 ''
                   cargo-audit audit --no-fetch --stale --db ${advisory-db} --file ${self}/Cargo.lock --json > "$TMPDIR/audit.json"
-                  python - <<'PY'
-                  import json
-                  from pathlib import Path
-
-                  report = json.loads(Path(__import__('os').environ['TMPDIR'], "audit.json").read_text())
-                  vulnerabilities = report.get("vulnerabilities", {}).get("list", [])
-                  warnings = report.get("warnings", {})
-                  warning_counts = {
-                      name: len(items)
-                      for name, items in warnings.items()
-                      if isinstance(items, list) and items
-                  }
-                  if vulnerabilities:
-                      for advisory in vulnerabilities:
-                          package = advisory.get("package") or {}
-                          advisory_info = advisory.get("advisory") or {}
-                          print(
-                              "vulnerability:"
-                              f" {advisory_info.get('id', 'unknown')}"
-                              f" {package.get('name', 'unknown')}"
-                              f" {package.get('version', 'unknown')}"
-                          )
-                      raise SystemExit(f"dependency audit found {len(vulnerabilities)} vulnerability finding(s)")
-                  print("dependency audit ok: vulnerabilities=0 warnings=" + json.dumps(warning_counts, sort_keys=True))
-                  PY
+                  python ${self}/scripts/check-cargo-audit-report.py \
+                    --report "$TMPDIR/audit.json" \
+                    --allowlist ${self}/audits/cargo-audit-warning-allowlist.json
                   mkdir -p "$out"
                   cp "$TMPDIR/audit.json" "$out/cargo-audit.json"
+                  cp ${self}/audits/cargo-audit-warning-allowlist.json "$out/cargo-audit-warning-allowlist.json"
                 '';
 
             # Nickel-backed evidence contracts and committed dogfood receipt data.

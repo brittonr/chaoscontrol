@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "warnings": [
+    {
+      "id": "RUSTSEC-2025-0141",
+      "category": "unmaintained",
+      "package": "bincode",
+      "version": "1.3.3",
+      "disposition": "accepted-risk",
+      "rationale": "bincode 1.x is used directly by chaoscontrol-explore and test fixtures; migrating the serialized evidence/checkpoint format to bincode 2.x is a compatibility-bearing follow-up rather than a safe lockfile-only patch.",
+      "follow_up": "Plan and test a bincode 2.x serialization migration, including backward compatibility for committed dogfood/evidence artifacts before removing this allowlist entry."
+    },
+    {
+      "id": "RUSTSEC-2024-0436",
+      "category": "unmaintained",
+      "package": "paste",
+      "version": "1.0.15",
+      "disposition": "accepted-dev-transitive-risk",
+      "rationale": "paste is pulled only through the hegeltest dev-dependency path used by test scaffolding, not by ChaosControl runtime crates.",
+      "follow_up": "Recheck when hegeltest removes paste or when replacing the hegeltest-based fixtures; remove this allowlist entry once the transitive warning disappears."
+    }
+  ]
+}

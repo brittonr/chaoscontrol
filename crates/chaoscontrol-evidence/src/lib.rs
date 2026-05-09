@@ -28,6 +28,20 @@ pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
+pub const REQUIRED_ASSERTION_SUMMARY_FRAGMENTS: [&str; 2] = [
+    "assertion-density and uncovered-catalog view over accepted replay evidence",
+    "not replay proof by itself",
+];
+pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
+    "A high exercised count only says the committed run observed cataloged SDK assertions",
+    "Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces",
+];
+pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 4] = [
+    "product parity is established",
+    "full antithesis-style product replacement",
+    "assertion density proves replay",
+    "assertion coverage proves replay",
+];
 pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -724,6 +738,417 @@ pub fn write_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResul
             rel_display(root, &report_path)
         ))
     })
+}
+
+pub fn check_assertion_readiness_promotion(root: impl AsRef<Path>) -> EvidenceResult<Vec<String>> {
+    let root = root.as_ref();
+    check_assertion_readiness_promotion_paths(
+        root,
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        root.join(ASSERTION_READINESS_STATUS_DOC),
+    )
+}
+
+pub fn check_assertion_readiness_promotion_paths(
+    root: impl AsRef<Path>,
+    manifest_path: impl AsRef<Path>,
+    report_path: impl AsRef<Path>,
+) -> EvidenceResult<Vec<String>> {
+    let root = root.as_ref();
+    let manifest_path = manifest_path.as_ref();
+    let report_path = report_path.as_ref();
+    let manifest = AcceptedWorkloadProofs::from_path(manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    let report = std::fs::read_to_string(report_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, report_path)
+        ))
+    })?;
+    validate_assertion_readiness_promotion(root, &manifest, &report)
+}
+
+pub fn validate_assertion_readiness_promotion(
+    root: &Path,
+    manifest: &AcceptedWorkloadProofs,
+    report: &str,
+) -> EvidenceResult<Vec<String>> {
+    for fragment in REQUIRED_ASSERTION_SUMMARY_FRAGMENTS
+        .iter()
+        .chain(REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS.iter())
+    {
+        ensure(
+            report.contains(fragment),
+            format!("assertion-readiness report missing anti-claim fragment: {fragment}"),
+        )?;
+    }
+    let lowered_report = report.to_lowercase();
+    for fragment in FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS {
+        ensure(
+            !lowered_report.contains(fragment),
+            format!("assertion-readiness report contains overclaim fragment: {fragment}"),
+        )?;
+    }
+
+    let expected = manifest
+        .proofs
+        .iter()
+        .map(|proof| assertion_readiness_row(root, proof))
+        .collect::<EvidenceResult<Vec<_>>>()?;
+    let rows = parse_assertion_readiness_rows(report)?;
+    let gaps = parse_assertion_readiness_gaps(report)?;
+
+    let expected_workloads = expected
+        .iter()
+        .map(|row| row.workload.as_str())
+        .collect::<BTreeSet<_>>();
+    let report_workloads = rows.keys().map(String::as_str).collect::<BTreeSet<_>>();
+    let missing = expected_workloads
+        .difference(&report_workloads)
+        .copied()
+        .collect::<Vec<_>>();
+    let extra = report_workloads
+        .difference(&expected_workloads)
+        .copied()
+        .collect::<Vec<_>>();
+    ensure(
+        missing.is_empty(),
+        format!(
+            "accepted manifest proofs missing from assertion-readiness report: {}",
+            missing.join(", ")
+        ),
+    )?;
+    ensure(
+        extra.is_empty(),
+        format!(
+            "assertion-readiness report lists workloads missing from manifest: {}",
+            extra.join(", ")
+        ),
+    )?;
+
+    for summary in &expected {
+        let row = rows
+            .get(&summary.workload)
+            .ok_or_else(|| EvidenceError::new(format!("missing row for {}", summary.workload)))?;
+        compare_assertion_field(&summary.workload, "cataloged", row.cataloged, summary.total)?;
+        compare_assertion_field(
+            &summary.workload,
+            "exercised",
+            row.exercised,
+            summary.exercised,
+        )?;
+        compare_assertion_field(&summary.workload, "always", row.always, summary.always)?;
+        compare_assertion_field(
+            &summary.workload,
+            "sometimes",
+            row.sometimes,
+            summary.sometimes,
+        )?;
+        compare_assertion_field(
+            &summary.workload,
+            "reachability",
+            row.reachability,
+            summary.reachability,
+        )?;
+        compare_assertion_field(
+            &summary.workload,
+            "unreachable",
+            row.unreachable,
+            summary.unreachable,
+        )?;
+        compare_assertion_field(
+            &summary.workload,
+            "uncategorized",
+            row.uncategorized,
+            summary.uncategorized,
+        )?;
+        compare_assertion_field(
+            &summary.workload,
+            "nonpassing",
+            row.nonpassing,
+            summary.nonpassing,
+        )?;
+        ensure(
+            row.evidence_path == summary.evidence_path,
+            format!(
+                "{}: report evidence {} does not match {}",
+                summary.workload, row.evidence_path, summary.evidence_path
+            ),
+        )?;
+        let expected_gaps = [
+            ("unhit", summary.total - summary.exercised),
+            ("uncategorized", summary.uncategorized),
+            ("non-passing", summary.nonpassing),
+        ];
+        for (gap_class, count) in expected_gaps {
+            let actual = gaps.get(&(summary.workload.clone(), gap_class.to_string()));
+            ensure(
+                actual == Some(&count),
+                format!(
+                    "{}: promotion guidance {} gap {:?}, expected {}",
+                    summary.workload, gap_class, actual, count
+                ),
+            )?;
+        }
+    }
+
+    let mut lines = expected
+        .iter()
+        .map(|summary| {
+            format!(
+                "{}: cataloged={} exercised={} unhit={} uncategorized={} nonpassing={}",
+                summary.workload,
+                summary.total,
+                summary.exercised,
+                summary.total - summary.exercised,
+                summary.uncategorized,
+                summary.nonpassing
+            )
+        })
+        .collect::<Vec<_>>();
+    lines.sort();
+    Ok(lines)
+}
+
+pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
+    let report = std::fs::read_to_string(&report_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, &report_path)
+        ))
+    })?;
+    validate_assertion_readiness_promotion(root, &manifest, &report)?;
+
+    expect_assertion_promotion_failure(
+        "missing anti-claim",
+        root,
+        &manifest,
+        report.replacen(
+            "but it is not replay proof by itself",
+            "and is promotion-ready",
+            1,
+        ),
+        "missing anti-claim",
+    )?;
+    expect_assertion_promotion_failure(
+        "hidden uncategorized gap",
+        root,
+        &manifest,
+        report.replacen("- raft: 43 uncategorized assertion(s)\n", "", 1),
+        "raft: promotion guidance uncategorized",
+    )?;
+    expect_assertion_promotion_failure(
+        "weakened report count",
+        root,
+        &manifest,
+        report.replacen(
+            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `27` | `10` |",
+            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `10` |",
+            1,
+        ),
+        "redb: report uncategorized=0",
+    )?;
+    expect_assertion_promotion_failure(
+        "report-only workload",
+        root,
+        &manifest,
+        report.replacen("| `raft` | `43` |", "| `new-service` | `43` |", 1),
+        "missing from assertion-readiness report",
+    )?;
+    expect_assertion_promotion_failure(
+        "explicit overclaim",
+        root,
+        &manifest,
+        format!("{report}\nFull Antithesis-style product replacement is now ready.\n"),
+        "overclaim fragment",
+    )
+}
+
+fn compare_assertion_field(
+    workload: &str,
+    field: &str,
+    actual: usize,
+    expected: usize,
+) -> EvidenceResult<()> {
+    ensure(
+        actual == expected,
+        format!(
+            "{workload}: report {field}={actual} does not match assertion artifacts {expected}"
+        ),
+    )
+}
+
+fn expect_assertion_promotion_failure(
+    name: &str,
+    root: &Path,
+    manifest: &AcceptedWorkloadProofs,
+    report: String,
+    needle: &str,
+) -> EvidenceResult<()> {
+    match validate_assertion_readiness_promotion(root, manifest, &report) {
+        Ok(_) => Err(EvidenceError::new(format!("{name}: unexpectedly passed"))),
+        Err(err) if err.message().contains(needle) => Ok(()),
+        Err(err) => Err(EvidenceError::new(format!(
+            "{name}: expected {needle:?}, got {}",
+            err.message()
+        ))),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AssertionReadinessParsedRow {
+    workload: String,
+    cataloged: usize,
+    exercised: usize,
+    always: usize,
+    sometimes: usize,
+    reachability: usize,
+    unreachable: usize,
+    uncategorized: usize,
+    nonpassing: usize,
+    evidence_path: String,
+}
+
+fn parse_assertion_readiness_rows(
+    report: &str,
+) -> EvidenceResult<BTreeMap<String, AssertionReadinessParsedRow>> {
+    let mut rows = BTreeMap::new();
+    for line in report.lines() {
+        if !line.starts_with("| `") {
+            continue;
+        }
+        let cells = markdown_table_cells(line);
+        if cells.len() != 7 {
+            continue;
+        }
+        let workload = unbacktick(cells[0]).ok_or_else(|| {
+            EvidenceError::new(format!("malformed assertion-readiness row: {line}"))
+        })?;
+        let cataloged = parse_backtick_usize(cells[1], line)?;
+        let exercised = parse_backtick_usize(cells[2], line)?;
+        let kinds = cells[3]
+            .split(" / ")
+            .map(|part| parse_backtick_usize(part, line))
+            .collect::<EvidenceResult<Vec<_>>>()?;
+        if kinds.len() != 4 {
+            continue;
+        }
+        let uncategorized = parse_backtick_usize(cells[4], line)?;
+        let nonpassing = parse_backtick_usize(cells[5], line)?;
+        let evidence_path = unbacktick(cells[6]).ok_or_else(|| {
+            EvidenceError::new(format!(
+                "malformed assertion-readiness evidence cell: {line}"
+            ))
+        })?;
+        ensure(
+            rows.insert(
+                workload.clone(),
+                AssertionReadinessParsedRow {
+                    workload: workload.clone(),
+                    cataloged,
+                    exercised,
+                    always: kinds[0],
+                    sometimes: kinds[1],
+                    reachability: kinds[2],
+                    unreachable: kinds[3],
+                    uncategorized,
+                    nonpassing,
+                    evidence_path,
+                },
+            )
+            .is_none(),
+            format!("duplicate assertion-readiness row: {workload}"),
+        )?;
+    }
+    ensure(
+        !rows.is_empty(),
+        "assertion-readiness report has no accepted proof coverage rows",
+    )?;
+    Ok(rows)
+}
+
+fn parse_assertion_readiness_gaps(
+    report: &str,
+) -> EvidenceResult<BTreeMap<(String, String), usize>> {
+    let mut gaps = BTreeMap::new();
+    for line in report.lines() {
+        let Some(rest) = line.strip_prefix("- ") else {
+            continue;
+        };
+        let Some((workload, rest)) = rest.split_once(": ") else {
+            continue;
+        };
+        let mut parts = rest.split_whitespace();
+        let Some(count_text) = parts.next() else {
+            continue;
+        };
+        let Some(class) = parts.next() else {
+            continue;
+        };
+        let Some(assertion_text) = parts.next() else {
+            continue;
+        };
+        if parts.next().is_some()
+            || !matches!(class, "unhit" | "uncategorized" | "non-passing")
+            || assertion_text != "assertion(s)"
+        {
+            continue;
+        }
+        let count = count_text.parse::<usize>().map_err(|err| {
+            EvidenceError::new(format!(
+                "invalid assertion-readiness gap count in {line:?}: {err}"
+            ))
+        })?;
+        let key = (workload.to_string(), class.to_string());
+        ensure(
+            gaps.insert(key.clone(), count).is_none(),
+            format!(
+                "duplicate assertion-readiness gap line: {} {}",
+                key.0, key.1
+            ),
+        )?;
+    }
+    ensure(
+        !gaps.is_empty(),
+        "assertion-readiness report has no promotion guidance gap lines",
+    )?;
+    Ok(gaps)
+}
+
+fn markdown_table_cells(line: &str) -> Vec<&str> {
+    line.trim()
+        .trim_matches('|')
+        .split('|')
+        .map(str::trim)
+        .collect()
+}
+
+fn parse_backtick_usize(cell: &str, line: &str) -> EvidenceResult<usize> {
+    let text = unbacktick(cell).ok_or_else(|| {
+        EvidenceError::new(format!(
+            "malformed assertion-readiness numeric cell in {line:?}"
+        ))
+    })?;
+    text.parse::<usize>().map_err(|err| {
+        EvidenceError::new(format!(
+            "invalid assertion-readiness numeric cell {text:?} in {line:?}: {err}"
+        ))
+    })
+}
+
+fn unbacktick(cell: &str) -> Option<String> {
+    cell.strip_prefix('`')
+        .and_then(|text| text.strip_suffix('`'))
+        .map(str::to_string)
 }
 
 fn assertion_readiness_row(

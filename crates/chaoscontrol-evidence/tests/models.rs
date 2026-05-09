@@ -1,8 +1,10 @@
 use chaoscontrol_evidence::{
-    check_assertion_readiness_status, check_replay_proof_coverage_doc,
-    check_replay_readiness_status, materialize_snapshot_chunks, render_assertion_readiness_status,
-    render_replay_proof_coverage, render_replay_proof_coverage_doc, render_replay_readiness_status,
-    run_materialize_snapshot_chunks_selftest, validate_replay_proof_coverage,
+    check_assertion_readiness_promotion, check_assertion_readiness_status,
+    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
+    render_assertion_readiness_status, render_replay_proof_coverage,
+    render_replay_proof_coverage_doc, render_replay_readiness_status,
+    run_assertion_readiness_promotion_selftest, run_materialize_snapshot_chunks_selftest,
+    validate_assertion_readiness_promotion, validate_replay_proof_coverage,
     write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
     SnapshotStorage, REQUIRED_REPLAY_CLASS,
 };
@@ -147,6 +149,37 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 
     let err = render_assertion_readiness_status(root).expect_err("missing assertions rejected");
     assert!(err.message().contains("assertions.json"));
+}
+
+#[test]
+fn validates_committed_assertion_readiness_promotion_gate() {
+    let lines = check_assertion_readiness_promotion("../..").expect("promotion gate passes");
+
+    assert!(lines
+        .iter()
+        .any(|line| line.contains("raft: cataloged=43 exercised=42")));
+    assert!(lines
+        .iter()
+        .any(|line| line.contains("redb: cataloged=27 exercised=18")));
+    run_assertion_readiness_promotion_selftest("../..").expect("selftest passes");
+}
+
+#[test]
+fn rejects_assertion_readiness_overclaim() {
+    let root = std::path::Path::new("../..");
+    let manifest =
+        AcceptedWorkloadProofs::from_path("../../dogfood-results/accepted-workload-proofs.json")
+            .expect("manifest parses");
+    let report = format!(
+        "{}
+assertion coverage proves replay.
+",
+        include_str!("../../../docs/assertion-readiness-status.md")
+    );
+
+    let err = validate_assertion_readiness_promotion(root, &manifest, &report)
+        .expect_err("overclaim is rejected");
+    assert!(err.message().contains("overclaim fragment"));
 }
 
 #[test]

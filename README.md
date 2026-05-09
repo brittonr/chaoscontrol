@@ -344,7 +344,7 @@ cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-
 cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- --selftest
 cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .
 cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --check .
-python scripts/check-assertion-readiness-promotion-gate.py
+cargo run -p chaoscontrol-evidence --bin check-assertion-readiness-promotion-gate -- .
 python scripts/check-dogfood-artifact-sizes.py
 python scripts/check-accepted-dogfood-config.py \
   --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \

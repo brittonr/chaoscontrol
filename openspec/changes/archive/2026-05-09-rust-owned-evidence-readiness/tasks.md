@@ -17,10 +17,10 @@
 
 ## Phase 4: Operator/Nix Integration
 
-- [ ] [depends:replay-proof-rust] Wire the replay proof coverage Rust CLI and generated coverage doc check into Nix evidence/readiness checks before removing the Python gate from those checks.
-- [ ] [depends:readiness-rust] Wire migrated Rust readiness/report CLIs into `nix run .#replay-readiness`, CI artifacts, README documentation, and the full flake check.
-- [ ] [depends:nix-wiring] Remove migrated Python/Bash proof-policy scripts only after Rust parity, negative tests, and Nix checks pass.
+- [x] [depends:replay-proof-rust] Wire the replay proof coverage Rust CLI and generated coverage doc check into Nix evidence/readiness checks before removing the Python gate from those checks.
+- [x] [depends:readiness-rust] Wire migrated Rust readiness/report CLIs into `nix run .#replay-readiness`, CI artifacts, README documentation, and the full flake check.
+- [x] [depends:nix-wiring] Remove migrated Python/Bash proof-policy scripts only after Rust parity, negative tests, and Nix checks pass.
 
 ## Phase 5: Verification
 
-- [ ] [depends:nix-wiring] Run focused Rust tests, focused Nix evidence/readiness checks, OpenSpec strict validation, cargo-audit/cargo-deny gates, and final `nix flake check -L` before archive.
+- [x] [depends:nix-wiring] Run focused Rust tests, focused Nix evidence/readiness checks, OpenSpec strict validation, cargo-audit/cargo-deny gates, and final `nix flake check -L` before archive.

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/accepted-snapshot-verdict-summary.json",
+      "sha256": "sha256:1ba9d6232b9682cc0cfb979af2159625917acc9ec4bc7cf7548a45d2a9db966a",
+      "bytes": 606
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json",
+      "sha256": "sha256:f1b4f0b952e8a4c96ac79d1383e235bc66fd6adfb45e39d704aa1ea95f6385d1",
+      "bytes": 11601
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/bug_0.json",
+      "sha256": "sha256:fea2b056993d40f895275b10638d51e04b5cf63bc38cfa82786e17b0c8950105",
+      "bytes": 681
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/checkpoint-summary.json",
+      "sha256": "sha256:de7928909b2e59921bd049e2a55c6dbb7bc2e772319a376b91aada49efae4ea2",
+      "bytes": 1235
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/receipt.md",
+      "sha256": "sha256:b9f9628ec3b4eda42fe3670e94d71b2256fc8458f175aea1cb184e529b0bd864",
+      "bytes": 1103
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json",
+      "sha256": "sha256:c2a0dee1a00d09883f0c09b35ea68c077d190836f06eef5e9bfa2f36e034a892",
+      "bytes": 1922
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/report.txt",
+      "sha256": "sha256:ca1526653ef946dfddbe414da9ad87f55cbab0a9a4c78872bb3320a8bad2524e",
+      "bytes": 8253
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/run-config.json",
+      "sha256": "sha256:8a693cb4e7e79287b325a4ad18ed7197bdfc052b8f54aa1894a53528bf0c40da",
+      "bytes": 581
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin.chunks.json",
+      "sha256": "sha256:a2be106b77f529c72634226bec8cc2f3d627947f95bc6d08a3f4f6955cca9ebf",
+      "bytes": 788
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin.part00",
+      "sha256": "sha256:a719aa1dab62176b7576dfa487c8038d10cd22dedf68765f19e0cfccf60015f7",
+      "bytes": 45000000
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin.part01",
+      "sha256": "sha256:74de3fa329e380f6dc80d656d735b4ef443f094fefe7cefd14ad5f387da81fc2",
+      "bytes": 11979986
+    }
+  ]
+}

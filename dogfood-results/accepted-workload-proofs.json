@@ -10,12 +10,12 @@
     {
       "workload": "raft",
       "assertion_id": 1806003755,
-      "evidence_dir": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114",
+      "evidence_dir": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z",
       "summary": "accepted-snapshot-verdict-summary.json",
       "bug": "bug_0.json",
       "verdict": "replay-verdict-bug0.json",
-      "snapshot": "snapshots/4d7dba4913dfd20c3cd7cbd3df5016edf5d1d749bd71dc153227542b69448c11.snapshot.bin",
-      "notes": "Raft bounded snapshot_replay_probe with filtered export proof."
+      "snapshot": "snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin",
+      "notes": "Raft bounded snapshot_replay_probe refreshed under CBOR/zstd chunked snapshot replay proof."
     },
     {
       "workload": "redb",

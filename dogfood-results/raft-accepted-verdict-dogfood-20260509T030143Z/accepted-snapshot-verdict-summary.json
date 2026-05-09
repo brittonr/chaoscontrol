@@ -1,0 +1,26 @@
+{
+  "workload": "raft",
+  "seed": 42,
+  "snapshot_probe_fail_after": 25,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 1806003755,
+      "replay_parent_depth": 2,
+      "has_snapshot_ref": true
+    }
+  ],
+  "verdict": {
+    "path": "replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 2,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "bug_0.json",
+  "accepted_verdict": "replay-verdict-bug0.json"
+}

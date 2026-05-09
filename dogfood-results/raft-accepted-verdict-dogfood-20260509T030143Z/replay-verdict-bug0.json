@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778295851960",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "/nix/store/afr8jv1dal1zih8x28g4xv9zrc071zps-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/inn4r7ksfamxds56yd2kgqk2jzs6ir6i-chaoscontrol-initrd-raft --bug dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/bug_0.json --vms 3 --bootstrap-budget 10000 --memory-mb 256 --extra-cmdline raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25 --verdict-output dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED \u2014 assertion 1806003755 failed",
+  "bug_path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/bug_0.json",
+  "bug_id": 0,
+  "assertion_id": 1806003755,
+  "replay_parent_depth": 2,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2",
+      "codec": "simulation-snapshot-cbor-zstd-v2",
+      "schema_version": 2,
+      "path": "snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/bug_0.json",
+      "sha256": "sha256:fea2b056993d40f895275b10638d51e04b5cf63bc38cfa82786e17b0c8950105"
+    },
+    {
+      "path": "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/snapshots/cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2.snapshot.bin",
+      "sha256": "sha256:cc0161208b3e591ef79625c902e7418aa70a2f33e1445095790e5202265511d2"
+    }
+  ]
+}

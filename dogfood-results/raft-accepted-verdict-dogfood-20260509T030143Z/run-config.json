@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "workload": "raft",
+  "purpose": "fresh raft accepted snapshot-backed replay verdict dogfood proof under CBOR snapshot codec",
+  "git_rev": "87576cd7aa43fda8326ae0899d8942b92034f192",
+  "vms": 3,
+  "rounds": 3,
+  "branches": 2,
+  "ticks": 80,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 256,
+  "extra_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=25",
+  "assertion_id": 1806003755,
+  "export_filter": {
+    "assertion_id": 1806003755,
+    "min_replay_parent_depth": 1,
+    "max_bugs": 1
+  }
+}

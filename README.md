@@ -342,7 +342,7 @@ python scripts/check-evidence-contracts.py
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-doc .
 cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- --selftest
-python scripts/generate-replay-readiness-report.py --check
+cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .
 python scripts/generate-assertion-readiness-report.py --check
 python scripts/check-assertion-readiness-promotion-gate.py
 python scripts/check-dogfood-artifact-sizes.py

@@ -26,6 +26,39 @@ pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
 ];
 pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
 
+pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
+pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExperimentalReplaySurface {
+    pub surface: &'static str,
+    pub status: &'static str,
+    pub reason: &'static str,
+}
+
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 4] = [
+    ExperimentalReplaySurface {
+        surface: "Fresh workload authoring",
+        status: "experimental",
+        reason: "New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Schedule-only replay",
+        status: "gap-evidence-only",
+        reason: "Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Arbitrary guest/device determinism",
+        status: "unproven",
+        reason: "Current evidence covers named bounded workload rails only, not universal hypervisor/device/timing behavior.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Full Antithesis-style product replacement",
+        status: "not-supported",
+        reason: "No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence.",
+    },
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EvidenceError {
     message: String,
@@ -475,9 +508,116 @@ pub fn render_replay_proof_coverage_doc_from_parts(
     output.push_str(
         "cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-doc .\n",
     );
-    output.push_str("python scripts/generate-replay-readiness-report.py --check\n");
+    output.push_str(
+        "cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .\n",
+    );
     output.push_str("```\n");
     Ok(output)
+}
+
+pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<String> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    ensure(
+        !manifest.proofs.is_empty(),
+        "accepted workload proof manifest has no proofs",
+    )?;
+
+    let workloads = manifest
+        .proofs
+        .iter()
+        .map(|proof| format!("`{}`", proof.workload))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut output = String::new();
+    output.push_str("# Replay Readiness Status\n\n");
+    output.push_str("Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .`.\n\n");
+    output.push_str("## Summary\n\n");
+    output.push_str(&format!(
+        "ChaosControl currently supports bounded snapshot-backed replay proof claims for: {workloads}.\n\n"
+    ));
+    output.push_str("This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.\n\n");
+    output.push_str("## Supported bounded replay surfaces\n\n");
+    output.push_str("| Workload | Status | Assertion ID | Accepted verdict | Replay parent depth | export/reproduce exit | Evidence |\n");
+    output.push_str("| --- | --- | ---: | --- | ---: | --- | --- |\n");
+    for proof in &manifest.proofs {
+        output.push_str(&render_replay_readiness_proof_row(root, proof)?);
+        output.push('\n');
+    }
+    output.push('\n');
+    output.push_str("Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by the Rust `check-replay-proof-coverage` gate.\n\n");
+    output.push_str("## Experimental or unproven surfaces\n\n");
+    output.push_str("| Surface | Status | Why it is not promoted |\n");
+    output.push_str("| --- | --- | --- |\n");
+    for item in EXPERIMENTAL_REPLAY_SURFACES {
+        output.push_str(&format!(
+            "| {} | `{}` | {} |\n",
+            item.surface, item.status, item.reason
+        ));
+    }
+    output.push('\n');
+    output.push_str("## Promotion rule\n\n");
+    output.push_str("A new surface can move into `supported-bounded` only after it has committed evidence in the accepted workload manifest and all of these checks pass:\n\n");
+    output.push_str("```bash\n");
+    output.push_str("cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .\n");
+    output.push_str(
+        "cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .\n",
+    );
+    output.push_str("nix build .#checks.x86_64-linux.evidence-contracts --no-link -L\n");
+    output.push_str("```\n");
+    Ok(output)
+}
+
+fn render_replay_readiness_proof_row(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<String> {
+    let evidence_dir = root.join(&proof.evidence_dir);
+    let verdict: ReplayVerdict = load_json(root, &evidence_dir.join(&proof.verdict))?;
+    let summary: AcceptedVerdictSummary = load_json(root, &evidence_dir.join(&proof.summary))?;
+    Ok(format!(
+        "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` / `{}` | `{}/` |",
+        proof.workload,
+        SUPPORTED_REPLAY_STATUS,
+        proof.assertion_id,
+        verdict.replay_class,
+        verdict.replay_parent_depth,
+        summary.export_exit_status,
+        summary.reproduce_exit_status,
+        proof.evidence_dir
+    ))
+}
+
+pub fn check_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let expected = render_replay_readiness_status(root)?;
+    let report_path = root.join(REPLAY_READINESS_STATUS_DOC);
+    let actual = std::fs::read_to_string(&report_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, &report_path)
+        ))
+    })?;
+    ensure(
+        actual == expected,
+        "readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .",
+    )
+}
+
+pub fn write_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let rendered = render_replay_readiness_status(root)?;
+    let report_path = root.join(REPLAY_READINESS_STATUS_DOC);
+    std::fs::write(&report_path, rendered).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to write {}: {err}",
+            rel_display(root, &report_path)
+        ))
+    })
 }
 
 fn coverage_workload_label(workload: &str) -> String {

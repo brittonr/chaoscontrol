@@ -72,7 +72,7 @@ def render() -> str:
     lines: list[str] = [
         "# Replay Readiness Status",
         "",
-        "Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `python scripts/generate-replay-readiness-report.py --write`.",
+        "Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .`.",
         "",
         "## Summary",
         "",
@@ -105,7 +105,7 @@ def render() -> str:
         "",
         "```bash",
         "cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .",
-        "python scripts/generate-replay-readiness-report.py --check",
+        "cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .",
         "nix build .#checks.x86_64-linux.evidence-contracts --no-link -L",
         "```",
         "",
@@ -133,7 +133,7 @@ def main() -> int:
                 print(f"readiness report missing: {rel(REPORT)}", file=sys.stderr)
                 return 1
             if current != content:
-                print(f"readiness report stale: run python scripts/generate-replay-readiness-report.py --write", file=sys.stderr)
+                print(f"readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .", file=sys.stderr)
                 return 1
             print(f"replay readiness report ok: {rel(REPORT)}")
             return 0

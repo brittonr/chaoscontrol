@@ -1,8 +1,9 @@
 use chaoscontrol_evidence::{
-    check_replay_proof_coverage_doc, materialize_snapshot_chunks, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, run_materialize_snapshot_chunks_selftest,
-    validate_replay_proof_coverage, write_snapshot_chunk_fixture, AcceptedWorkloadProofs,
-    ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, REQUIRED_REPLAY_CLASS,
+    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
+    render_replay_proof_coverage, render_replay_proof_coverage_doc, render_replay_readiness_status,
+    run_materialize_snapshot_chunks_selftest, validate_replay_proof_coverage,
+    write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
+    SnapshotStorage, REQUIRED_REPLAY_CLASS,
 };
 
 #[test]
@@ -60,6 +61,54 @@ fn rejects_stale_replay_proof_coverage_doc() {
     assert!(err
         .message()
         .contains("docs/replay-proof-coverage.md is stale"));
+}
+
+#[test]
+fn renders_committed_replay_readiness_status() {
+    let rendered = render_replay_readiness_status("../..").expect("readiness renders");
+    assert_eq!(
+        rendered,
+        include_str!("../../../docs/replay-readiness-status.md")
+    );
+    assert!(rendered.contains("Fresh workload authoring | `experimental`"));
+    assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
+    check_replay_readiness_status("../..").expect("committed readiness report is fresh");
+}
+
+#[test]
+fn rejects_stale_replay_readiness_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("docs")).expect("create docs");
+    std::fs::write(root.join("docs/replay-readiness-status.md"), "stale\n")
+        .expect("write stale doc");
+    write_valid_minimal_coverage_fixture(root);
+
+    let err = check_replay_readiness_status(root).expect_err("stale doc rejected");
+    assert!(err.message().contains("readiness report stale"));
+}
+
+#[test]
+fn rejects_empty_replay_readiness_manifest() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("dogfood-results")).expect("create dogfood-results");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{
+          "schema_version": 1,
+          "scope": "test",
+          "anti_claims": [],
+          "required_replay_class": "snapshot_backed_reproduced",
+          "proofs": []
+        }"#,
+    )
+    .expect("write manifest");
+
+    let err = render_replay_readiness_status(root).expect_err("empty manifest rejected");
+    assert!(err
+        .message()
+        .contains("manifest must contain at least two independent workload proofs"));
 }
 
 #[test]

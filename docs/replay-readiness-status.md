@@ -1,6 +1,6 @@
 # Replay Readiness Status
 
-Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `python scripts/generate-replay-readiness-report.py --write`.
+Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .`.
 
 ## Summary
 
@@ -34,6 +34,6 @@ A new surface can move into `supported-bounded` only after it has committed evid
 
 ```bash
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
-python scripts/generate-replay-readiness-report.py --check
+cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```

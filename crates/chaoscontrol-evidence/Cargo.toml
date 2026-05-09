@@ -18,3 +18,7 @@ path = "src/bin/check-replay-proof-coverage.rs"
 [[bin]]
 name = "materialize-snapshot-chunks"
 path = "src/bin/materialize-snapshot-chunks.rs"
+
+[[bin]]
+name = "generate-replay-readiness-report"
+path = "src/bin/generate-replay-readiness-report.rs"

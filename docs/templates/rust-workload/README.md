@@ -12,7 +12,7 @@ Set the `chaoscontrol-sdk` dependency in `Cargo.toml`. Assertion catalog macros 
 CHAOSCONTROL_SDK_LOCAL_OUTPUT=/tmp/my-service.sdk.jsonl \
   cargo run --bin my-service-chaos-workload
 
-python /path/to/chaoscontrol/scripts/summarize-sdk-local-output.py \
+summarize-sdk-local-output \
   --input /tmp/my-service.sdk.jsonl \
   --output /tmp/my-service.local-report.json
 ```
@@ -27,7 +27,7 @@ If public APIs or the workload driver cannot see an important invariant, move a 
 CHAOSCONTROL_SDK_LOCAL_OUTPUT=/tmp/my-service.in-process.sdk.jsonl \
   cargo run --features chaoscontrol-in-process --bin my-service-chaos-workload
 
-python /path/to/chaoscontrol/scripts/summarize-sdk-local-output.py \
+summarize-sdk-local-output \
   --input /tmp/my-service.in-process.sdk.jsonl \
   --output /tmp/my-service.in-process.local-report.json
 ```

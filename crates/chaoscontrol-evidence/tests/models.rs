@@ -6,7 +6,7 @@ use chaoscontrol_evidence::{
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
     run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
     run_materialize_snapshot_chunks_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_receipt, summarize_replay_readiness_receipt,
+    sample_replay_readiness_receipt, summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
     validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
     validate_gate_metadata, validate_replay_proof_coverage, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
@@ -148,6 +148,31 @@ fn rejects_malformed_replay_readiness_operator_receipt() {
 
     let err = summarize_replay_readiness_receipt(&receipt).expect_err("command mismatch rejected");
     assert!(err.message().contains("expected replay-readiness"));
+}
+
+#[test]
+fn summarizes_sdk_local_adoption_tracks_in_rust() {
+    let harness = "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"id\":\"1\",\"message\":\"driver invariant\",\"details\":{\"category\":\"driver\",\"adoption_track\":\"external-harness\"}}}\n";
+    let in_process = "{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"id\":\"2\",\"message\":\"internal invariant\",\"details\":{\"category\":\"service-invariant\",\"instrumentation_source\":\"in-process-service\"}}}\n";
+    let report = summarize_sdk_local_jsonl(
+        &format!("{harness}{in_process}"),
+        "instrumentation-dry-run",
+        None,
+    )
+    .expect("sdk local report summarizes");
+
+    assert_eq!(report["adoption_tracks"]["external-harness"], 2);
+    assert_eq!(report["adoption_tracks"]["in-process-service"], 1);
+    assert_eq!(report["instrumentation_sources"], report["adoption_tracks"]);
+    assert_eq!(report["replay_evidence"], false);
+    assert_eq!(report["setup_complete"], true);
+}
+
+#[test]
+fn rejects_invalid_sdk_local_jsonl() {
+    let err = summarize_sdk_local_jsonl("not-json\n", "instrumentation-dry-run", None)
+        .expect_err("invalid jsonl rejected");
+    assert!(err.message().contains("invalid JSONL"));
 }
 
 #[test]

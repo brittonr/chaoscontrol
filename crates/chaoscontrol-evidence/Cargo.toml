@@ -38,3 +38,11 @@ path = "src/bin/check-dogfood-artifact-sizes.rs"
 [[bin]]
 name = "check-accepted-dogfood-config"
 path = "src/bin/check-accepted-dogfood-config.rs"
+
+[[bin]]
+name = "summarize-sdk-local-output"
+path = "src/bin/summarize-sdk-local-output.rs"
+
+[[bin]]
+name = "check-sdk-local-report-tracks"
+path = "src/bin/check-sdk-local-report-tracks.rs"

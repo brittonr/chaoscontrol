@@ -617,7 +617,7 @@
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
-                  ("sdk-local-report-tracks", "python scripts/check-sdk-local-report-tracks.py", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
+                  ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
                   ("dogfood-artifact-sizes", "check-dogfood-artifact-sizes", os.environ["ARTIFACT_SIZES_STATUS"]),
                   ("accepted-dogfood-config", "check-accepted-dogfood-config --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
               ]
@@ -747,7 +747,7 @@
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
-              run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
+              run_gate sdk-local-report-tracks sdk_local_report_tracks_status check-sdk-local-report-tracks
               run_gate dogfood-artifact-sizes artifact_sizes_status check-dogfood-artifact-sizes
               run_gate accepted-dogfood-config accepted_dogfood_config_status check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
               echo "replay readiness checks passed"
@@ -935,13 +935,13 @@
             rust-workload-local-report =
               pkgs.runCommand "rust-workload-local-report"
                 {
-                  nativeBuildInputs = [ pkgs.python3 ];
+                  nativeBuildInputs = [ chaoscontrol ];
                 }
                 ''
                   mkdir -p $out
                   export CHAOSCONTROL_SDK_LOCAL_OUTPUT=$out/sdk.jsonl
                   ${guest-rust-workload}/bin/chaoscontrol-rust-workload-guest
-                  python ${./scripts/summarize-sdk-local-output.py} \
+                  summarize-sdk-local-output \
                     --input $out/sdk.jsonl \
                     --output $out/report.json \
                     --evidence-class instrumentation-dry-run
@@ -1262,8 +1262,8 @@
                   name = "rust-workload-local-report";
                   runtimeInputs = [
                     guest-rust-workload
+                    chaoscontrol
                     pkgs.coreutils
-                    pkgs.python3
                   ];
                   text = ''
                     out="''${1:-./chaoscontrol-rust-workload-local-report}"
@@ -1271,7 +1271,7 @@
                     export CHAOSCONTROL_SDK_LOCAL_OUTPUT="$out/sdk.jsonl"
                     rm -f "$CHAOSCONTROL_SDK_LOCAL_OUTPUT"
                     chaoscontrol-rust-workload-guest
-                    python ${./scripts/summarize-sdk-local-output.py} \
+                    summarize-sdk-local-output \
                       --input "$CHAOSCONTROL_SDK_LOCAL_OUTPUT" \
                       --output "$out/report.json" \
                       --evidence-class instrumentation-dry-run

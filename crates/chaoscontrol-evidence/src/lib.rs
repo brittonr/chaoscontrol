@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 
 pub mod dogfood_guards;
 pub mod replay_readiness_surfaces;
+pub mod sdk_local_report;
 pub use dogfood_guards::{
     check_dogfood_artifact_sizes, run_dogfood_guards_selftest, validate_accepted_dogfood_config,
     DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
@@ -28,6 +29,10 @@ pub use replay_readiness_surfaces::{
     summarize_receipt_path as summarize_replay_readiness_receipt_path,
     update_readme_status_path as update_replay_readiness_readme_status_path,
     validate_gate_metadata, write_dashboard_path as write_replay_readiness_dashboard_path,
+};
+pub use sdk_local_report::{
+    check_sdk_local_report_tracks, summarize_sdk_local_jsonl, summarize_sdk_local_report,
+    write_sdk_local_report, DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
 };
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;

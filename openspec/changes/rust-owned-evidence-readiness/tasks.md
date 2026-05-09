@@ -7,7 +7,7 @@
 - [x] [serial] Add a Rust evidence/readiness core crate or module with typed models for accepted workload proofs, replay verdicts, assertion summaries, snapshot refs, and chunk manifests.
 - [x] [depends:core-models] Port aggregate replay proof coverage validation into Rust with positive committed-evidence tests and negative malformed/tampered fixture tests.
 - [x] [depends:core-models] Add Rust generation/check support for `docs/replay-proof-coverage.md` so the public coverage doc derives from `dogfood-results/accepted-workload-proofs.json`.
-- [ ] [parallel] Port snapshot chunk materialization validation into Rust, including missing, reordered, corrupt, unsafe path, wrong digest, and temp-cleanup negative tests.
+- [x] [parallel] Port snapshot chunk materialization validation into Rust, including missing, reordered, corrupt, unsafe path, wrong digest, and temp-cleanup negative tests.
 
 ## Phase 3: Readiness Reports and Gates
 

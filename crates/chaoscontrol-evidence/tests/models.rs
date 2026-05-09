@@ -1,6 +1,7 @@
 use chaoscontrol_evidence::{
-    check_replay_proof_coverage_doc, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, validate_replay_proof_coverage, AcceptedWorkloadProofs,
+    check_replay_proof_coverage_doc, materialize_snapshot_chunks, render_replay_proof_coverage,
+    render_replay_proof_coverage_doc, run_materialize_snapshot_chunks_selftest,
+    validate_replay_proof_coverage, write_snapshot_chunk_fixture, AcceptedWorkloadProofs,
     ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, REQUIRED_REPLAY_CLASS,
 };
 
@@ -129,6 +130,50 @@ fn rejects_malformed_snapshot_ref() {
         .validate_shape()
         .expect_err("bad digest is rejected");
     assert!(err.message().contains("snapshot digest is not sha256"));
+}
+
+#[test]
+fn materializes_snapshot_chunks_and_rejects_existing_raw_without_force() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");
+
+    let result = materialize_snapshot_chunks(&manifest_path, false).expect("materializes");
+    assert_eq!(result.size, b"alpha-beta-gamma".len() as u64);
+    assert!(result.path.exists());
+    assert_eq!(
+        std::fs::read(&result.path).expect("read snapshot"),
+        b"alpha-beta-gamma"
+    );
+    assert!(result.render().contains("sha256:"));
+
+    let err =
+        materialize_snapshot_chunks(&manifest_path, false).expect_err("existing raw rejected");
+    assert!(err.message().contains("raw snapshot already exists"));
+}
+
+#[test]
+fn materialize_snapshot_chunks_selftest_covers_negative_fixtures() {
+    run_materialize_snapshot_chunks_selftest().expect("selftest passes");
+}
+
+#[test]
+fn rejects_unsafe_materialize_original_path() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let manifest_path = write_snapshot_chunk_fixture(temp.path()).expect("fixture");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path).expect("read manifest"))
+            .expect("manifest json");
+    manifest["original_path"] = serde_json::Value::String("../escape.snapshot.bin".to_string());
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).expect("json"),
+    )
+    .expect("write manifest");
+
+    let err = materialize_snapshot_chunks(&manifest_path, true).expect_err("unsafe path rejected");
+    assert!(err
+        .message()
+        .contains("chunk manifest original_path must be a local snapshot filename"));
 }
 
 #[test]

@@ -9,10 +9,12 @@ license.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tempfile = "3"
 
 [[bin]]
 name = "check-replay-proof-coverage"
 path = "src/bin/check-replay-proof-coverage.rs"
 
-[dev-dependencies]
-tempfile = "3"
+[[bin]]
+name = "materialize-snapshot-chunks"
+path = "src/bin/materialize-snapshot-chunks.rs"

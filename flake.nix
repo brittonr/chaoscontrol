@@ -1084,7 +1084,7 @@
                   python scripts/check-evidence-contracts.py
                   check-replay-proof-coverage .
                   check-replay-proof-coverage --check-doc .
-                  python scripts/materialize-snapshot-chunks.py --selftest
+                  materialize-snapshot-chunks --selftest
                   python scripts/check-readiness-promotion-gate.py
                   python scripts/check-readiness-surface-drift.py
                   python scripts/generate-replay-readiness-report.py --check

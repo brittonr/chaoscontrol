@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,7 @@ pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
 pub const REPLAY_PROOF_COVERAGE_DOC: &str = "docs/replay-proof-coverage.md";
 pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
+pub const SNAPSHOT_COPY_BUFFER_BYTES: usize = 1024 * 1024;
 pub const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 pub const REQUIRED_WORKLOADS: [&str; 2] = ["raft", "redb"];
 pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
@@ -109,6 +110,263 @@ impl SnapshotStorage {
             Self::Chunks => "chunks",
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaterializedSnapshot {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub size: u64,
+}
+
+impl MaterializedSnapshot {
+    pub fn render(&self) -> String {
+        format!(
+            "materialized {} sha256:{} size={}",
+            self.path.display(),
+            self.sha256,
+            self.size
+        )
+    }
+}
+
+pub fn materialize_snapshot_chunks(
+    manifest_path: impl AsRef<Path>,
+    force: bool,
+) -> EvidenceResult<MaterializedSnapshot> {
+    let manifest_path = manifest_path.as_ref();
+    let manifest: SnapshotChunkManifest =
+        load_json(Path::new(""), manifest_path).map_err(|err| {
+            EvidenceError::new(format!(
+                "chunk manifest invalid: {}: {}",
+                manifest_path.display(),
+                err.message()
+            ))
+        })?;
+    manifest.validate_shape()?;
+
+    ensure(
+        manifest.original_path.ends_with(".snapshot.bin")
+            && !manifest.original_path.contains('/')
+            && !manifest.original_path.contains(".."),
+        format!(
+            "chunk manifest original_path must be a local snapshot filename: {}",
+            manifest_path.display()
+        ),
+    )?;
+
+    let snapshot_dir = manifest_path.parent().ok_or_else(|| {
+        EvidenceError::new(format!(
+            "chunk manifest has no parent directory: {}",
+            manifest_path.display()
+        ))
+    })?;
+    let evidence_dir = snapshot_dir.parent().ok_or_else(|| {
+        EvidenceError::new(format!(
+            "chunk manifest lacks evidence directory: {}",
+            manifest_path.display()
+        ))
+    })?;
+    let original_path = snapshot_dir.join(&manifest.original_path);
+    ensure(
+        force || !original_path.exists(),
+        format!(
+            "raw snapshot already exists: {} (use --force)",
+            original_path.display()
+        ),
+    )?;
+
+    let tmp_path = original_path.with_file_name(format!("{}.tmp", manifest.original_path));
+    let materialized =
+        write_materialized_snapshot(&manifest, evidence_dir, &original_path, &tmp_path);
+    if materialized.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    materialized
+}
+
+fn write_materialized_snapshot(
+    manifest: &SnapshotChunkManifest,
+    evidence_dir: &Path,
+    original_path: &Path,
+    tmp_path: &Path,
+) -> EvidenceResult<MaterializedSnapshot> {
+    let mut aggregate = Sha256::new();
+    let mut total_size = 0_u64;
+    let mut output = File::create(tmp_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to create temp snapshot {}: {err}",
+            tmp_path.display()
+        ))
+    })?;
+
+    for (idx, chunk) in manifest.chunks.iter().enumerate() {
+        let chunk_path = safe_join_relative(evidence_dir, &chunk.path)
+            .map_err(|err| EvidenceError::new(format!("chunk {idx} path invalid: {err}")))?;
+        ensure(
+            chunk_path.exists(),
+            format!("snapshot chunk missing: {}", chunk_path.display()),
+        )?;
+        let metadata = chunk_path.metadata().map_err(|err| {
+            EvidenceError::new(format!(
+                "snapshot chunk unreadable: {}: {err}",
+                chunk_path.display()
+            ))
+        })?;
+        ensure(
+            metadata.len() == chunk.size,
+            format!(
+                "snapshot chunk size mismatch: {} expected={} actual={}",
+                chunk_path.display(),
+                chunk.size,
+                metadata.len()
+            ),
+        )?;
+        let actual_chunk_sha = sha256_file(&chunk_path)?;
+        ensure(
+            actual_chunk_sha == chunk.sha256,
+            format!(
+                "snapshot chunk hash mismatch: {} expected={} actual={}",
+                chunk_path.display(),
+                chunk.sha256,
+                actual_chunk_sha
+            ),
+        )?;
+        copy_file_into(&chunk_path, &mut output, &mut aggregate)?;
+        total_size += metadata.len();
+    }
+    drop(output);
+
+    ensure(
+        total_size == manifest.original_size,
+        format!(
+            "aggregate size mismatch: {} expected={} actual={}",
+            original_path.display(),
+            manifest.original_size,
+            total_size
+        ),
+    )?;
+    let actual = format!("{:x}", aggregate.finalize());
+    ensure(
+        actual == manifest.original_sha256,
+        format!(
+            "aggregate hash mismatch: {} expected={} actual={}",
+            original_path.display(),
+            manifest.original_sha256,
+            actual
+        ),
+    )?;
+    std::fs::rename(tmp_path, original_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to install materialized snapshot {}: {err}",
+            original_path.display()
+        ))
+    })?;
+
+    Ok(MaterializedSnapshot {
+        path: original_path.to_path_buf(),
+        sha256: actual,
+        size: total_size,
+    })
+}
+
+pub fn write_snapshot_chunk_fixture(root: impl AsRef<Path>) -> EvidenceResult<PathBuf> {
+    let root = root.as_ref();
+    let snapshots = root.join("snapshots");
+    std::fs::create_dir(&snapshots).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to create fixture snapshot dir {}: {err}",
+            snapshots.display()
+        ))
+    })?;
+    let parts: [&[u8]; 3] = [b"alpha", b"-beta", b"-gamma"];
+    let original = parts.concat();
+    let digest = sha256_bytes(&original);
+    let mut chunks = Vec::new();
+    for (idx, data) in parts.iter().enumerate() {
+        let name = format!("{digest}.snapshot.bin.part{idx:02}");
+        let path = snapshots.join(&name);
+        std::fs::write(&path, data).map_err(|err| {
+            EvidenceError::new(format!(
+                "failed to write fixture chunk {}: {err}",
+                path.display()
+            ))
+        })?;
+        chunks.push(SnapshotChunk {
+            path: format!("snapshots/{name}"),
+            size: data.len() as u64,
+            sha256: sha256_bytes(data),
+        });
+    }
+
+    let manifest = SnapshotChunkManifest {
+        schema_version: CHUNK_MANIFEST_SCHEMA_VERSION,
+        original_path: format!("{digest}.snapshot.bin"),
+        original_size: original.len() as u64,
+        original_sha256: digest.clone(),
+        chunks,
+    };
+    let manifest_path = snapshots.join(format!("{digest}.snapshot.bin.chunks.json"));
+    let rendered = serde_json::to_string_pretty(&manifest)?;
+    std::fs::write(&manifest_path, format!("{rendered}\n")).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to write fixture manifest {}: {err}",
+            manifest_path.display()
+        ))
+    })?;
+    Ok(manifest_path)
+}
+
+pub fn run_materialize_snapshot_chunks_selftest() -> EvidenceResult<()> {
+    let temp = tempfile::tempdir()?;
+    let manifest_path = write_snapshot_chunk_fixture(temp.path())?;
+    let result = materialize_snapshot_chunks(&manifest_path, false)?;
+    ensure(
+        result.path.exists() && result.render().contains("sha256:"),
+        "positive materialization result malformed",
+    )?;
+
+    let temp = tempfile::tempdir()?;
+    let manifest_path = write_snapshot_chunk_fixture(temp.path())?;
+    let manifest: SnapshotChunkManifest = load_json(Path::new(""), &manifest_path)?;
+    let missing = temp.path().join(&manifest.chunks[1].path);
+    std::fs::remove_file(&missing)?;
+    let err = materialize_snapshot_chunks(&manifest_path, true)
+        .expect_err("missing chunk materialization should fail");
+    ensure(
+        err.message().contains("snapshot chunk missing"),
+        format!("missing chunk error mismatch: {}", err.message()),
+    )?;
+    ensure(
+        !manifest_path
+            .with_file_name(format!("{}.tmp", manifest.original_path))
+            .exists(),
+        "missing chunk left a partial .tmp snapshot",
+    )?;
+
+    let temp = tempfile::tempdir()?;
+    let manifest_path = write_snapshot_chunk_fixture(temp.path())?;
+    let mut manifest: SnapshotChunkManifest = load_json(Path::new(""), &manifest_path)?;
+    manifest.chunks.swap(0, 1);
+    std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+    let err = materialize_snapshot_chunks(&manifest_path, true)
+        .expect_err("reordered chunks should fail");
+    ensure(
+        err.message().contains("aggregate hash mismatch"),
+        format!("reordered chunks error mismatch: {}", err.message()),
+    )?;
+
+    let temp = tempfile::tempdir()?;
+    let manifest_path = write_snapshot_chunk_fixture(temp.path())?;
+    let manifest: SnapshotChunkManifest = load_json(Path::new(""), &manifest_path)?;
+    let corrupt = temp.path().join(&manifest.chunks[0].path);
+    std::fs::write(corrupt, b"ALPHA")?;
+    let err =
+        materialize_snapshot_chunks(&manifest_path, true).expect_err("corrupt chunk should fail");
+    ensure(
+        err.message().contains("snapshot chunk hash mismatch"),
+        format!("corrupt chunk error mismatch: {}", err.message()),
+    )
 }
 
 pub fn validate_replay_proof_coverage(
@@ -428,10 +686,31 @@ fn sha256_file(path: &Path) -> EvidenceResult<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn copy_file_into(path: &Path, writer: &mut impl Write, hasher: &mut Sha256) -> EvidenceResult<()> {
+    let mut file =
+        File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        writer.write_all(&buffer[..read])?;
+    }
+    Ok(())
+}
+
 fn hash_file_into(path: &Path, hasher: &mut Sha256) -> EvidenceResult<()> {
     let mut file =
         File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
-    let mut buffer = [0_u8; 1024 * 1024];
+    let mut buffer = [0_u8; SNAPSHOT_COPY_BUFFER_BYTES];
     loop {
         let read = file.read(&mut buffer)?;
         if read == 0 {

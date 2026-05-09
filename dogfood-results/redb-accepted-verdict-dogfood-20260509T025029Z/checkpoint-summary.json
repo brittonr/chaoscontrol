@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "workload": "redb",
+  "report": {
+    "exploration_rounds": 3,
+    "total_branches_explored": 6,
+    "unique_edges_found": 154,
+    "bugs_discovered": 3,
+    "registered_assertion_sites": 27,
+    "exercised_assertion_sites": 18,
+    "failed_assertion_sites": 1
+  },
+  "selected_bug": {
+    "file": "bug_0.json",
+    "assertion_id": 2718281828,
+    "assertion_location": "redb snapshot replay probe trips only after restored parent context",
+    "tick": 1326,
+    "replay_parent_depth": 1,
+    "snapshot_ref": {
+      "store": "file-content-addressed",
+      "digest": "sha256:2258099fe1cde4119b3f5b380456b710bb81962e523f1ea09229a0a4a1564a01",
+      "codec": "simulation-snapshot-cbor-zstd-v2",
+      "schema_version": 2,
+      "path": "snapshots/2258099fe1cde4119b3f5b380456b710bb81962e523f1ea09229a0a4a1564a01.snapshot.bin"
+    }
+  },
+  "accepted_verdict": {
+    "file": "replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "snapshot_status": "valid",
+    "snapshot_digest_verified": true,
+    "command_exit_status": 0
+  },
+  "raw_artifacts_excluded": [
+    "checkpoint.json",
+    "run.log",
+    "reproduce.log",
+    "export-bugs.log",
+    "attempts/"
+  ]
+}

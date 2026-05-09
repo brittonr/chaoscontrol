@@ -11,7 +11,7 @@ This report is an assertion-density and uncovered-catalog view over accepted rep
 | Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |
 | --- | ---: | ---: | --- | ---: | ---: | --- |
 | `raft` | `43` | `41` | `11` / `15` / `17` / `0` | `43` | `3` | `dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114/assertions.json` |
-| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `27` | `10` | `dogfood-results/redb-accepted-verdict-dogfood-20260507-020314/assertions.json` |
+| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `27` | `10` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/assertions.json` |
 | `net` | `5` | `5` | `3` / `2` / `0` / `0` | `5` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
 | `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `6` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/assertions.json` |
 

@@ -11,8 +11,9 @@ use snafu::Snafu;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
-pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-bincode-zstd-v1";
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+pub const LEGACY_SNAPSHOT_CODEC: &str = "simulation-snapshot-bincode-zstd-v1";
 pub const FILE_STORE_KIND: &str = "file-content-addressed";
 pub const SNAPSHOT_DIR: &str = "snapshots";
 
@@ -59,8 +60,26 @@ pub enum SnapshotStoreError {
     Io { source: std::io::Error },
     #[snafu(display("snapshot artifact JSON error: {source}"))]
     Json { source: serde_json::Error },
-    #[snafu(display("snapshot artifact binary codec error: {source}"))]
-    Binary { source: Box<bincode::ErrorKind> },
+    #[snafu(display("snapshot artifact CBOR encode error: {source}"))]
+    CborEncode {
+        source: ciborium::ser::Error<std::io::Error>,
+    },
+    #[snafu(display("snapshot artifact CBOR decode error: {source}"))]
+    CborDecode {
+        source: ciborium::de::Error<std::io::Error>,
+    },
+}
+
+fn encode_cbor<T: Serialize>(value: &T) -> Result<Vec<u8>, SnapshotStoreError> {
+    let mut encoded = Vec::new();
+    ciborium::ser::into_writer(value, &mut encoded)
+        .map_err(|source| SnapshotStoreError::CborEncode { source })?;
+    Ok(encoded)
+}
+
+fn decode_cbor<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, SnapshotStoreError> {
+    ciborium::de::from_reader(std::io::Cursor::new(bytes))
+        .map_err(|source| SnapshotStoreError::CborDecode { source })
 }
 
 pub trait SnapshotStore {
@@ -142,8 +161,7 @@ impl SnapshotStore for FileSnapshotStore {
             vm_count: snapshot.vm_snapshots.len(),
             snapshot: snapshot.clone(),
         };
-        let uncompressed = bincode::serialize(&envelope)
-            .map_err(|source| SnapshotStoreError::Binary { source })?;
+        let uncompressed = encode_cbor(&envelope)?;
         let bytes = zstd::stream::encode_all(std::io::Cursor::new(uncompressed), 3)
             .map_err(|source| SnapshotStoreError::Io { source })?;
         let digest = digest_bytes(&bytes);
@@ -183,8 +201,7 @@ impl SnapshotStore for FileSnapshotStore {
         }
         let decompressed = zstd::stream::decode_all(std::io::Cursor::new(bytes))
             .map_err(|source| SnapshotStoreError::Io { source })?;
-        let artifact: SnapshotArtifactEnvelope = bincode::deserialize(&decompressed)
-            .map_err(|source| SnapshotStoreError::Binary { source })?;
+        let artifact: SnapshotArtifactEnvelope = decode_cbor(&decompressed)?;
         if artifact.codec != reference.codec {
             return Err(SnapshotStoreError::UnsupportedCodec {
                 codec: reference.codec.clone(),
@@ -232,7 +249,7 @@ pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), Sna
             store: reference.store.clone(),
         });
     }
-    if reference.codec != SNAPSHOT_CODEC {
+    if reference.codec != SNAPSHOT_CODEC && reference.codec != LEGACY_SNAPSHOT_CODEC {
         return Err(SnapshotStoreError::UnsupportedCodec {
             codec: reference.codec.clone(),
         });
@@ -293,11 +310,9 @@ mod tests {
     }
 
     fn write_artifact(dir: &Path, artifact: &SnapshotArtifactEnvelope) -> ReplayParentSnapshotRef {
-        let bytes = zstd::stream::encode_all(
-            std::io::Cursor::new(bincode::serialize(artifact).unwrap()),
-            3,
-        )
-        .unwrap();
+        let bytes =
+            zstd::stream::encode_all(std::io::Cursor::new(encode_cbor(artifact).unwrap()), 3)
+                .unwrap();
         let digest = digest_bytes(&bytes);
         let hex = digest.strip_prefix("sha256:").unwrap();
         let rel = format!("snapshots/{hex}.snapshot.bin");

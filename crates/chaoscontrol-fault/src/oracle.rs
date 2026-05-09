@@ -585,16 +585,16 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn oracle_event_details_round_trip_through_binary_codec() {
+    fn oracle_event_details_round_trip_through_bytes() {
         let event = OracleEvent {
             run_id: 7,
             name: "setup_complete".to_string(),
             details: json!({"workload": "rust-workload", "attempt": 2}),
         };
 
-        let encoded = bincode::serialize(&event).expect("serialize oracle event");
+        let encoded = serde_json::to_vec(&event).expect("serialize oracle event");
         let decoded: OracleEvent =
-            bincode::deserialize(&encoded).expect("deserialize oracle event");
+            serde_json::from_slice(&encoded).expect("deserialize oracle event");
 
         assert_eq!(decoded.run_id, event.run_id);
         assert_eq!(decoded.name, event.name);

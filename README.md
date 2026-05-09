@@ -212,7 +212,7 @@ Output directory contains:
 - `report.txt` — human-readable report with per-round history
 - `assertions.json` — per-assertion verdicts and hit counts
 - `bug_N.json` — bug reports (consumable by minimize/reproduce)
-- `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed bincode `SimulationSnapshot` payloads for bugs that need parent context
+- `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed CBOR `SimulationSnapshot` payloads (legacy evidence may still reference the v1 bincode codec) for bugs that need parent context
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 

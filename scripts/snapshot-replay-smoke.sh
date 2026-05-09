@@ -85,7 +85,7 @@ for path in sorted(run_dir.glob("bug_*.json")):
     actual = "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
     if actual != digest:
         raise SystemExit(f"snapshot digest mismatch in {path}: expected {digest}, got {actual}")
-    if ref.get("codec") != "simulation-snapshot-bincode-zstd-v1":
+    if ref.get("codec") not in SUPPORTED_SNAPSHOT_CODECS:
         raise SystemExit(f"unexpected snapshot codec in {path}: {ref.get('codec')}")
     selected = path
     break

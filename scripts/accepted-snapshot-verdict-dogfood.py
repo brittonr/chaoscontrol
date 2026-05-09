@@ -9,6 +9,9 @@ local debugging; callers should curate/ignore those before committing.
 
 from __future__ import annotations
 
+SUPPORTED_SNAPSHOT_CODECS = {"simulation-snapshot-cbor-zstd-v2", "simulation-snapshot-bincode-zstd-v1"}
+SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = {1, 2}
+
 import argparse
 import hashlib
 import json
@@ -70,7 +73,7 @@ def select_snapshot_bug(run_dir: Path, assertion_id: int) -> Path | None:
         actual = sha256(artifact)
         if actual != digest:
             raise RuntimeError(f"snapshot digest mismatch for {bug_path}: expected {digest}, got {actual}")
-        if ref.get("codec") != "simulation-snapshot-bincode-zstd-v1":
+        if ref.get("codec") not in SUPPORTED_SNAPSHOT_CODECS:
             raise RuntimeError(f"unexpected snapshot codec for {bug_path}: {ref.get('codec')}")
         return bug_path
     return None

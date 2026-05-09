@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+SUPPORTED_SNAPSHOT_CODECS = {"simulation-snapshot-cbor-zstd-v2", "simulation-snapshot-bincode-zstd-v1"}
+SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = {1, 2}
+
 import hashlib
 import json
 import shutil
@@ -99,8 +102,8 @@ def validate_snapshot_ref(value: Any, *, check_files: bool = False, root: Path =
     digest = value.get("digest")
     require(isinstance(digest, str) and digest.startswith("sha256:") and len(digest) == 71, "snapshot-ref.digest: expected sha256:<64 hex>")
     int(digest.removeprefix("sha256:"), 16)
-    require(value.get("codec") == "simulation-snapshot-bincode-zstd-v1", "snapshot-ref.codec: unsupported")
-    require(value.get("schema_version") == 1, "snapshot-ref.schema_version: unsupported")
+    require(value.get("codec") in SUPPORTED_SNAPSHOT_CODECS, "snapshot-ref.codec: unsupported")
+    require(value.get("schema_version") in SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS, "snapshot-ref.schema_version: unsupported")
     path_value = value.get("path")
     require_str(path_value, "snapshot-ref.path")
     path = Path(path_value)

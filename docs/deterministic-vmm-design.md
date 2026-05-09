@@ -636,7 +636,7 @@ rand_chacha = "0.3"          # Seeded PRNG
 
 # Snapshot serialization
 serde = { version = "1", features = ["derive"] }
-bincode = "1"
+ciborium = "0.2" # current snapshot bytes use CBOR; historical receipts may reference legacy bincode codec
 
 # Guest image building
 # (uses nix or docker to build minimal kernel + initrd)

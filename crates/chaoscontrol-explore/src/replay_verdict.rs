@@ -190,7 +190,8 @@ impl ReplaySnapshotValidation {
             | SnapshotStoreError::PathEscape { .. }
             | SnapshotStoreError::Io { .. }
             | SnapshotStoreError::Json { .. }
-            | SnapshotStoreError::Binary { .. } => SnapshotValidationStatus::InvalidRef,
+            | SnapshotStoreError::CborEncode { .. }
+            | SnapshotStoreError::CborDecode { .. } => SnapshotValidationStatus::InvalidRef,
         };
         Self {
             status,

@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+SUPPORTED_SNAPSHOT_CODECS = {"simulation-snapshot-cbor-zstd-v2", "simulation-snapshot-bincode-zstd-v1"}
+SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = {1, 2}
+
 import hashlib
 import json
 import sys
@@ -116,7 +119,7 @@ def validate_proof(proof: dict[str, Any]) -> str:
     require(snapshot.get("status") == "valid", f"{workload}: snapshot status is not valid")
     require(snapshot.get("present") is True, f"{workload}: snapshot not present")
     require(snapshot.get("digest_verified") is True, f"{workload}: snapshot digest not verified")
-    require(reference.get("codec") == "simulation-snapshot-bincode-zstd-v1", f"{workload}: unexpected snapshot codec")
+    require(reference.get("codec") in SUPPORTED_SNAPSHOT_CODECS, f"{workload}: unexpected snapshot codec")
     require(reference.get("path") == proof["snapshot"], f"{workload}: manifest snapshot path disagrees with verdict ref")
 
     digest = reference.get("digest", "")

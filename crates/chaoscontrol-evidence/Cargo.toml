@@ -30,3 +30,11 @@ path = "src/bin/generate-assertion-readiness-report.rs"
 [[bin]]
 name = "check-assertion-readiness-promotion-gate"
 path = "src/bin/check-assertion-readiness-promotion-gate.rs"
+
+[[bin]]
+name = "check-dogfood-artifact-sizes"
+path = "src/bin/check-dogfood-artifact-sizes.rs"
+
+[[bin]]
+name = "check-accepted-dogfood-config"
+path = "src/bin/check-accepted-dogfood-config.rs"

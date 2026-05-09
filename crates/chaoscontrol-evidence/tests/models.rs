@@ -1,12 +1,13 @@
 use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
-    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
-    render_assertion_readiness_status, render_replay_proof_coverage,
+    check_dogfood_artifact_sizes, check_replay_proof_coverage_doc, check_replay_readiness_status,
+    materialize_snapshot_chunks, render_assertion_readiness_status, render_replay_proof_coverage,
     render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
-    run_assertion_readiness_promotion_selftest, run_materialize_snapshot_chunks_selftest,
-    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
-    summarize_replay_readiness_receipt, validate_assertion_readiness_promotion,
+    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
+    run_materialize_snapshot_chunks_selftest, run_readiness_surface_drift_selftest,
+    sample_replay_readiness_receipt, summarize_replay_readiness_receipt,
+    validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
     validate_gate_metadata, validate_replay_proof_coverage, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
     REQUIRED_REPLAY_CLASS,
@@ -147,6 +148,93 @@ fn rejects_malformed_replay_readiness_operator_receipt() {
 
     let err = summarize_replay_readiness_receipt(&receipt).expect_err("command mismatch rejected");
     assert!(err.message().contains("expected replay-readiness"));
+}
+
+#[test]
+fn validates_dogfood_artifact_size_guard_in_rust() {
+    let line = check_dogfood_artifact_sizes("../../dogfood-results", 50 * 1024 * 1024)
+        .expect("committed dogfood artifacts are bounded");
+
+    assert!(line.contains("dogfood artifact size guard ok"));
+    run_dogfood_guards_selftest().expect("artifact size selftest passes");
+}
+
+#[test]
+fn validates_accepted_dogfood_config_in_rust() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("dogfood-results/fake-proof")).expect("create proof dir");
+    std::fs::write(
+        root.join("dogfood-results/fake-proof/summary.json"),
+        r#"{"accepted":true,"snapshot_probe_fail_after":25,"verdict":{"replay_class":"snapshot_backed_reproduced","replay_parent_depth":2}}"#,
+    )
+    .expect("write summary");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{
+          "schema_version": 1,
+          "scope": "test",
+          "anti_claims": [],
+          "required_replay_class": "snapshot_backed_reproduced",
+          "proofs": [
+            {"workload":"fake-workload","assertion_id":7,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshot.bin"}
+          ]
+        }"#,
+    )
+    .expect("write manifest");
+    std::fs::write(
+        root.join("dogfood-results/accepted-dogfood-expectations.json"),
+        r#"{"workloads":{"fake-workload":{"assertion_id":7,"probe_key":"fake_probe","fail_after_key":"fake_fail_after","runner":{"fail_after_values":[25],"max_attempts":3},"expected":{"accepted":true,"replay_class":"snapshot_backed_reproduced","min_replay_parent_depth":2,"fail_after_values":[25]}}}}"#,
+    )
+    .expect("write expectations");
+    std::fs::write(
+        root.join("config.json"),
+        r#"{"fake-workload":{"assertion_id":7,"fail_after_values":[25],"max_attempts":3,"cmdline_template":"fake_probe=snapshot_replay_probe fake_fail_after={fail_after}","expectation":{"assertion_id":7,"probe_key":"fake_probe","fail_after_key":"fake_fail_after","runner":{"fail_after_values":[25],"max_attempts":3},"expected":{"accepted":true,"replay_class":"snapshot_backed_reproduced","min_replay_parent_depth":2,"fail_after_values":[25]}}}}"#,
+    )
+    .expect("write config");
+
+    let line = validate_accepted_dogfood_config(
+        root.join("config.json"),
+        root.join("dogfood-results/accepted-dogfood-expectations.json"),
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+    )
+    .expect("accepted dogfood config validates");
+    assert!(line.contains("1 workloads match"));
+}
+
+#[test]
+fn rejects_drifted_accepted_dogfood_config() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("dogfood-results/fake-proof")).expect("create proof dir");
+    std::fs::write(
+        root.join("dogfood-results/fake-proof/summary.json"),
+        r#"{"accepted":true,"snapshot_probe_fail_after":25,"verdict":{"replay_class":"snapshot_backed_reproduced","replay_parent_depth":2}}"#,
+    )
+    .expect("write summary");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{"schema_version":1,"scope":"test","anti_claims":[],"required_replay_class":"snapshot_backed_reproduced","proofs":[{"workload":"fake-workload","assertion_id":7,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshot.bin"}]}"#,
+    )
+    .expect("write manifest");
+    std::fs::write(
+        root.join("dogfood-results/accepted-dogfood-expectations.json"),
+        r#"{"workloads":{"fake-workload":{"assertion_id":7,"probe_key":"fake_probe","fail_after_key":"fake_fail_after","runner":{"fail_after_values":[25]},"expected":{"accepted":true,"replay_class":"snapshot_backed_reproduced","fail_after_values":[25]}}}}"#,
+    )
+    .expect("write expectations");
+    std::fs::write(
+        root.join("config.json"),
+        r#"{"fake-workload":{"assertion_id":8,"fail_after_values":[30],"cmdline_template":"missing","expectation":{}}}"#,
+    )
+    .expect("write config");
+
+    let err = validate_accepted_dogfood_config(
+        root.join("config.json"),
+        root.join("dogfood-results/accepted-dogfood-expectations.json"),
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+    )
+    .expect_err("drifted config rejected");
+    assert!(err.message().contains("wrapper assertion_id"));
 }
 
 #[test]

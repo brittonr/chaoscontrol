@@ -13,7 +13,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod dogfood_guards;
 pub mod replay_readiness_surfaces;
+pub use dogfood_guards::{
+    check_dogfood_artifact_sizes, run_dogfood_guards_selftest, validate_accepted_dogfood_config,
+    DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
+};
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift, render_dashboard as render_replay_readiness_dashboard,
     render_readme_status_block as render_replay_readiness_readme_status_block,

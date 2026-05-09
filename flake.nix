@@ -618,8 +618,8 @@
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "python scripts/check-sdk-local-report-tracks.py", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
-                  ("dogfood-artifact-sizes", "python scripts/check-dogfood-artifact-sizes.py", os.environ["ARTIFACT_SIZES_STATUS"]),
-                  ("accepted-dogfood-config", "python scripts/check-accepted-dogfood-config.py --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
+                  ("dogfood-artifact-sizes", "check-dogfood-artifact-sizes", os.environ["ARTIFACT_SIZES_STATUS"]),
+                  ("accepted-dogfood-config", "check-accepted-dogfood-config --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
               ]
               receipt = {
                   "schema_version": 1,
@@ -748,8 +748,8 @@
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status python scripts/check-sdk-local-report-tracks.py
-              run_gate dogfood-artifact-sizes artifact_sizes_status python scripts/check-dogfood-artifact-sizes.py
-              run_gate accepted-dogfood-config accepted_dogfood_config_status python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
+              run_gate dogfood-artifact-sizes artifact_sizes_status check-dogfood-artifact-sizes
+              run_gate accepted-dogfood-config accepted_dogfood_config_status check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
               echo "replay readiness checks passed"
 
               case "$dogfood" in
@@ -1090,8 +1090,8 @@
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
                   check-assertion-readiness-promotion-gate .
-                  python scripts/check-dogfood-artifact-sizes.py
-                  python scripts/check-accepted-dogfood-config.py --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
+                  check-dogfood-artifact-sizes
+                  check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
                   touch $out
                 '';
 

@@ -345,8 +345,8 @@ cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- --selfte
 cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .
 cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --check .
 cargo run -p chaoscontrol-evidence --bin check-assertion-readiness-promotion-gate -- .
-python scripts/check-dogfood-artifact-sizes.py
-python scripts/check-accepted-dogfood-config.py \
+cargo run -p chaoscontrol-evidence --bin check-dogfood-artifact-sizes --
+cargo run -p chaoscontrol-evidence --bin check-accepted-dogfood-config -- \
   --config $(nix build .#accepted-verdict-dogfood-config --print-out-paths --no-link) \
   --expectations dogfood-results/accepted-dogfood-expectations.json
 nix build .#checks.x86_64-linux.dependency-audit --no-link -L

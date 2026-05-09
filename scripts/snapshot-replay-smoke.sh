@@ -61,6 +61,8 @@ import json
 import pathlib
 import sys
 
+SUPPORTED_SNAPSHOT_CODECS = {"simulation-snapshot-cbor-zstd-v2", "simulation-snapshot-bincode-zstd-v1"}
+
 run_dir = pathlib.Path(sys.argv[1]).resolve()
 out_path = pathlib.Path(sys.argv[2])
 selected = None

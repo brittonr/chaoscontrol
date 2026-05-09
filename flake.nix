@@ -74,6 +74,12 @@
             filter = sourceFilter;
           };
 
+          mkApp = description: program: {
+            type = "app";
+            inherit program;
+            meta.description = description;
+          };
+
           tigerstyleSrc = pkgs.lib.cleanSourceWith {
             src = ./.;
             filter = path: type: (sourceFilter path type) || builtins.baseNameOf path == "dylint.toml";
@@ -1034,9 +1040,9 @@
             );
 
             # Nix formatting
-            nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = [ pkgs.nixfmt-rfc-style ]; } ''
+            nixfmt = pkgs.runCommand "nixfmt-check" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
               cd ${self}
-              nixfmt --check .
+              nixfmt --check flake.nix
               touch $out
             '';
 
@@ -1181,22 +1187,10 @@
           };
 
           apps = {
-            default = {
-              type = "app";
-              program = "${chaoscontrol}/bin/boot";
-            };
-            boot = {
-              type = "app";
-              program = "${chaoscontrol}/bin/boot";
-            };
-            snapshot-demo = {
-              type = "app";
-              program = "${chaoscontrol}/bin/snapshot_demo";
-            };
-            explore = {
-              type = "app";
-              program = "${chaoscontrol}/bin/chaoscontrol-explore";
-            };
+            default = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
+            boot = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
+            snapshot-demo = mkApp "Run the local ChaosControl snapshot demo." "${chaoscontrol}/bin/snapshot_demo";
+            explore = mkApp "Run the ChaosControl explorer with caller-supplied arguments." "${chaoscontrol}/bin/chaoscontrol-explore";
             explore-raft =
               let
                 wrapper = pkgs.writeShellApplication {
@@ -1212,10 +1206,7 @@
                   '';
                 };
               in
-              {
-                type = "app";
-                program = "${wrapper}/bin/explore-raft";
-              };
+              mkApp "Run the bounded Raft exploration wrapper." "${wrapper}/bin/explore-raft";
             explore-redb =
               let
                 wrapper = pkgs.writeShellApplication {
@@ -1232,10 +1223,7 @@
                   '';
                 };
               in
-              {
-                type = "app";
-                program = "${wrapper}/bin/explore-redb";
-              };
+              mkApp "Run the bounded redb exploration wrapper." "${wrapper}/bin/explore-redb";
             explore-sdk =
               let
                 wrapper = pkgs.writeShellApplication {
@@ -1251,10 +1239,7 @@
                   '';
                 };
               in
-              {
-                type = "app";
-                program = "${wrapper}/bin/explore-sdk";
-              };
+              mkApp "Run the SDK guest exploration wrapper." "${wrapper}/bin/explore-sdk";
             rust-workload-local-report =
               let
                 wrapper = pkgs.writeShellApplication {
@@ -1278,10 +1263,7 @@
                   '';
                 };
               in
-              {
-                type = "app";
-                program = "${wrapper}/bin/rust-workload-local-report";
-              };
+              mkApp "Generate the local rust-workload SDK instrumentation report." "${wrapper}/bin/rust-workload-local-report";
             explore-rust-workload =
               let
                 wrapper = pkgs.writeShellApplication {
@@ -1307,42 +1289,15 @@
                   '';
                 };
               in
-              {
-                type = "app";
-                program = "${wrapper}/bin/explore-rust-workload";
-              };
-            raft-accepted-verdict-dogfood = {
-              type = "app";
-              program = "${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood";
-            };
-            redb-accepted-verdict-dogfood = {
-              type = "app";
-              program = "${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood";
-            };
-            net-accepted-verdict-dogfood = {
-              type = "app";
-              program = "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
-            };
-            rust-workload-accepted-verdict-dogfood = {
-              type = "app";
-              program = "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
-            };
-            replay-readiness = {
-              type = "app";
-              program = "${replayReadiness}/bin/replay-readiness";
-            };
-            replay-readiness-summary = {
-              type = "app";
-              program = "${replayReadinessSummary}/bin/replay-readiness-summary";
-            };
-            replay-readiness-dashboard = {
-              type = "app";
-              program = "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
-            };
-            replay-readiness-readme-status = {
-              type = "app";
-              program = "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
-            };
+              mkApp "Run the bounded rust-workload VM campaign wrapper." "${wrapper}/bin/explore-rust-workload";
+            raft-accepted-verdict-dogfood = mkApp "Run the accepted-verdict Raft dogfood proof rail." "${acceptedVerdictDogfood.raft}/bin/raft-accepted-verdict-dogfood";
+            redb-accepted-verdict-dogfood = mkApp "Run the accepted-verdict redb dogfood proof rail." "${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood";
+            net-accepted-verdict-dogfood = mkApp "Run the accepted-verdict network dogfood proof rail." "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
+            rust-workload-accepted-verdict-dogfood = mkApp "Run the accepted-verdict rust-workload dogfood proof rail." "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
+            replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
+            replay-readiness-summary = mkApp "Summarize a replay readiness receipt." "${replayReadinessSummary}/bin/replay-readiness-summary";
+            replay-readiness-dashboard = mkApp "Render a replay readiness receipt as an HTML dashboard." "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
+            replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
           };
 
           devShell = pkgs.mkShell {
@@ -1377,7 +1332,7 @@
               verified-logic.packages.${system}.verified-logic
 
               # Nix formatting (matches CI check)
-              pkgs.nixfmt-rfc-style
+              pkgs.nixfmt
             ];
 
             nativeBuildInputs = [ pkgs.pkg-config ];

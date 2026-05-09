@@ -249,7 +249,7 @@ It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-
 For a single operator-facing readiness button, run:
 
 <!-- replay-readiness-status:start -->
-> **Replay readiness:** `replay-readiness status=passed exit=0 static_gates=7/7 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
+> **Replay readiness:** `replay-readiness status=passed exit=0 static_gates=11/11 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
 >
 > This is a bounded committed-evidence signal for ChaosControl's Antithesis-alternative rail: static contracts, accepted proof manifests, and optional selected dogfood evidence. It is not a claim of universal determinism or hosted-product parity.
 <!-- replay-readiness-status:end -->
@@ -270,7 +270,7 @@ The receipt records final status, static gate outcomes, optional selected dogfoo
 nix run .#replay-readiness-summary -- "$PWD/target/replay-readiness-receipt.json"
 ```
 
-It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=7/7 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. The README status block above is generated from the same receipt summary and can be refreshed with:
+It prints a stable line such as `replay-readiness status=passed exit=0 static_gates=11/11 failed_gates=none dogfood=skipped failed_phase=none scope=bounded` and fails closed on malformed receipts. The README status block above is generated from the same receipt summary and can be refreshed with:
 
 ```bash
 nix run .#replay-readiness-readme-status -- "$PWD/target/replay-readiness-receipt.json" --readme README.md

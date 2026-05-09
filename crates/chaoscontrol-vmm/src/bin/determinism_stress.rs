@@ -1,38 +1,96 @@
-//! Determinism stress test: run the same seed N times and verify
-//! every run produces identical results.
+//! Determinism stress gate: run the same seed N times and verify every run
+//! produces identical VM/controller fingerprints.
 //!
 //! Usage:
-//!   
-//!
-//! Tests four configurations:
-//!   1. Single VM, 1 vCPU, 10 runs
-//!   2. Single VM, 2 vCPUs (SMP), 10 runs
-//!   3. 3 VMs via SimulationController, 1 vCPU each, 10 runs
-//!   4. 3 VMs via SimulationController, 2 vCPUs each, 10 runs
+//!   determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]
 
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
+use chaoscontrol_vmm::determinism_gate::{
+    compare_case, ControllerFingerprint, DeterminismCaseReport, DeterminismGateReceipt,
+    RunFingerprint, RunObservation, VmFingerprint,
+};
+use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
+use crc32fast::Hasher;
 use std::env;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// Fingerprint of a single-VM run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct VmFingerprint {
-    exit_count: u64,
-    virtual_tsc: u64,
-    /// Serial output with non-deterministic lines stripped.
-    serial_stripped: String,
+const DEFAULT_RUNS: usize = 10;
+const SINGLE_VM_MAX_EXITS: u64 = 70_000;
+const CONTROLLER_TICKS: u64 = 10;
+const CONTROLLER_SEED: u64 = 42;
+const DLOG_REGISTER_INTERVAL: u64 = 100;
+
+#[derive(Debug)]
+struct Args {
+    kernel: String,
+    initrd: String,
+    runs: usize,
+    receipt: Option<PathBuf>,
+    dlog_dir: Option<PathBuf>,
 }
 
-/// Fingerprint of a multi-VM controller run.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ControllerFingerprint {
-    tick: u64,
-    vm_exits: Vec<u64>,
-    vm_vtscs: Vec<u64>,
-    serials_stripped: Vec<String>,
+fn parse_args() -> Args {
+    let mut positional = Vec::new();
+    let mut receipt = None;
+    let mut dlog_dir = None;
+    let mut iter = env::args().skip(1);
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--receipt" => {
+                receipt =
+                    Some(PathBuf::from(iter.next().unwrap_or_else(|| {
+                        usage_and_exit("--receipt requires a path")
+                    })));
+            }
+            "--dlog-dir" => {
+                dlog_dir =
+                    Some(PathBuf::from(iter.next().unwrap_or_else(|| {
+                        usage_and_exit("--dlog-dir requires a directory")
+                    })));
+            }
+            "--help" | "-h" => usage_and_exit_code("", 0),
+            _ if arg.starts_with('-') => usage_and_exit(&format!("unknown option: {arg}")),
+            _ => positional.push(arg),
+        }
+    }
+
+    if positional.len() < 2 || positional.len() > 3 {
+        usage_and_exit("expected <kernel-path> <initrd-path> [N]");
+    }
+
+    let runs = positional
+        .get(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_RUNS);
+
+    Args {
+        kernel: positional[0].clone(),
+        initrd: positional[1].clone(),
+        runs,
+        receipt,
+        dlog_dir,
+    }
+}
+
+fn usage_and_exit(message: &str) -> ! {
+    usage_and_exit_code(message, 2)
+}
+
+fn usage_and_exit_code(message: &str, code: i32) -> ! {
+    if !message.is_empty() {
+        eprintln!("error: {message}\n");
+    }
+    eprintln!(
+        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir]"
+    );
+    std::process::exit(code);
 }
 
 /// Strip known non-deterministic lines from serial output.
@@ -40,7 +98,6 @@ fn strip_nondeterministic(s: &str) -> String {
     s.lines()
         .filter(|line| {
             let stripped = line.trim();
-            // PIT calibration reads host time → varies
             !stripped.contains("Detected") || !stripped.contains("MHz processor")
         })
         .filter(|line| {
@@ -59,9 +116,17 @@ fn strip_nondeterministic(s: &str) -> String {
         .join("\n")
 }
 
-fn run_single_vm(kernel: &str, initrd: &str, num_vcpus: usize, max_exits: u64) -> VmFingerprint {
+fn run_single_vm(
+    kernel: &str,
+    initrd: &str,
+    num_vcpus: usize,
+    max_exits: u64,
+    dlog_path: Option<PathBuf>,
+) -> VmFingerprint {
     let config = VmConfig {
         num_vcpus,
+        dlog_path,
+        dlog_register_interval: DLOG_REGISTER_INTERVAL,
         ..Default::default()
     };
     let mut vm = DeterministicVm::new(config).expect("create VM");
@@ -93,6 +158,7 @@ fn run_controller(
     num_vcpus: usize,
     seed: u64,
     ticks: u64,
+    dlog_dir: Option<PathBuf>,
 ) -> ControllerFingerprint {
     let schedule = FaultScheduleBuilder::new()
         .at_ns(
@@ -115,6 +181,7 @@ fn run_controller(
         num_vms,
         vm_config: VmConfig {
             num_vcpus,
+            dlog_register_interval: DLOG_REGISTER_INTERVAL,
             ..Default::default()
         },
         kernel_path: kernel.to_string(),
@@ -124,7 +191,7 @@ fn run_controller(
         schedule,
         disk_image_path: None,
         base_core: None,
-        dlog_dir: None,
+        dlog_dir,
         bootstrap_budget: None,
     };
 
@@ -135,7 +202,6 @@ fn run_controller(
         ctrl.step_round().expect("step");
     }
 
-    // Collect fingerprints from each VM
     let mut vm_exits = Vec::new();
     let mut vm_vtscs = Vec::new();
     let mut serials_stripped = Vec::new();
@@ -144,7 +210,6 @@ fn run_controller(
         let slot = ctrl.vm_slot(i).unwrap();
         vm_exits.push(slot.vm.exit_count());
         vm_vtscs.push(slot.vm.virtual_tsc());
-        // Controller doesn't expose serial easily, so we just track exits/vtsc
         serials_stripped.push(String::new());
     }
 
@@ -156,356 +221,266 @@ fn run_controller(
     }
 }
 
-fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+fn run_case<F>(
+    name: &str,
+    runs: usize,
+    dlog_root: Option<&Path>,
+    mut run_once: F,
+) -> DeterminismCaseReport
+where
+    F: FnMut(usize, Option<PathBuf>) -> RunFingerprint,
+{
+    println!("━━━ {name}: {runs} runs ━━━");
+    let start = Instant::now();
+    let mut observations = Vec::new();
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 3 {
-        eprintln!("Usage: {} <kernel-path> <initrd-path> [N=10]", args[0]);
-        std::process::exit(1);
+    for run_index in 1..=runs {
+        let dlog_path = dlog_root.map(|root| dlog_path_for(root, name, run_index));
+        if let Some(path) = &dlog_path {
+            if path.extension().is_some() {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).expect("create dlog parent");
+                }
+            } else {
+                std::fs::create_dir_all(path).expect("create dlog directory");
+            }
+        }
+
+        let fingerprint = run_once(run_index, dlog_path.clone());
+        print_observation(run_index, &fingerprint, run_index == 1);
+        observations.push(RunObservation {
+            run_index,
+            fingerprint,
+            dlog_path: dlog_path.map(|p| p.display().to_string()),
+        });
     }
 
-    let kernel = &args[1];
-    let initrd = &args[2];
-    let n: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(10);
+    let mut report = compare_case(name, observations);
+    report.dlog_structural_match = compare_case_dlogs(&report);
+    if matches!(report.dlog_structural_match, Some(false)) {
+        report.passed = false;
+    }
+
+    let elapsed = start.elapsed();
+    if report.passed {
+        println!(
+            "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
+            runs,
+            runs,
+            elapsed.as_secs_f64()
+        );
+    } else {
+        println!(
+            "  ❌ FAIL: {} mismatch(es) across {} runs ({:.1}s)",
+            report.mismatches.len(),
+            runs,
+            elapsed.as_secs_f64()
+        );
+        for mismatch in &report.mismatches {
+            eprintln!(
+                "         run {} {}: {} vs reference {}",
+                mismatch.run_index, mismatch.field, mismatch.actual, mismatch.expected
+            );
+        }
+        println!();
+    }
+
+    report
+}
+
+fn dlog_path_for(root: &Path, case_name: &str, run_index: usize) -> PathBuf {
+    let safe_name = case_name
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>();
+    if case_name.contains("controller") {
+        root.join(format!("{safe_name}-run-{run_index}"))
+    } else {
+        root.join(format!("{safe_name}-run-{run_index}.dlog"))
+    }
+}
+
+fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<bool> {
+    let reference_path = report.observations.first()?.dlog_path.as_deref()?;
+    let mut all_match = true;
+    for observation in report.observations.iter().skip(1) {
+        let Some(path) = observation.dlog_path.as_deref() else {
+            return Some(false);
+        };
+        if !structural_dlog_paths_match(Path::new(reference_path), Path::new(path)) {
+            all_match = false;
+        }
+    }
+    Some(all_match)
+}
+
+fn structural_dlog_paths_match(reference: &Path, actual: &Path) -> bool {
+    if reference.is_dir() || actual.is_dir() {
+        for vm_idx in 0..64 {
+            let ref_file = reference.join(format!("vm_{vm_idx}.dlog"));
+            let actual_file = actual.join(format!("vm_{vm_idx}.dlog"));
+            if !ref_file.exists() && !actual_file.exists() {
+                break;
+            }
+            if !dlog_files_match(&ref_file, &actual_file) {
+                return false;
+            }
+        }
+        true
+    } else {
+        dlog_files_match(reference, actual)
+    }
+}
+
+fn dlog_files_match(reference: &Path, actual: &Path) -> bool {
+    match dlog_diff_structural(reference, actual) {
+        Ok(DiffResult::Identical { .. }) => true,
+        Ok(diff) => {
+            eprintln!(
+                "         dlog structural mismatch: {} vs {}: {diff}",
+                reference.display(),
+                actual.display()
+            );
+            false
+        }
+        Err(err) => {
+            eprintln!(
+                "         dlog structural compare failed: {} vs {}: {err}",
+                reference.display(),
+                actual.display()
+            );
+            false
+        }
+    }
+}
+
+fn print_observation(run_index: usize, fingerprint: &RunFingerprint, reference: bool) {
+    let suffix = if reference {
+        " ✅ (reference)"
+    } else {
+        " ✅"
+    };
+    match fingerprint {
+        RunFingerprint::SingleVm(fp) => println!(
+            "  run {run_index:>2}: exits={:<8} vtsc={:<16}{suffix}",
+            fp.exit_count, fp.virtual_tsc
+        ),
+        RunFingerprint::Controller(fp) => println!(
+            "  run {run_index:>2}: tick={:<4} exits={:?}{suffix}",
+            fp.tick, fp.vm_exits
+        ),
+    }
+}
+
+fn crc32_file(path: &str) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = Hasher::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("crc32:{:08x}", hasher.finalize()))
+}
+
+fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    let args = parse_args();
 
     println!("╔══════════════════════════════════════════════════════════════╗");
     println!(
-        "║       Determinism Stress Test — {} runs per config           ║",
-        n
+        "║       Determinism Stress Gate — {} runs per config           ║",
+        args.runs
     );
     println!("╚══════════════════════════════════════════════════════════════╝");
     println!();
 
-    let mut all_passed = true;
+    let dlog_root = args.dlog_dir.as_deref();
+    let cases = vec![
+        run_case("single-vm-1vcpu", args.runs, dlog_root, |_, dlog_path| {
+            RunFingerprint::SingleVm(run_single_vm(
+                &args.kernel,
+                &args.initrd,
+                1,
+                SINGLE_VM_MAX_EXITS,
+                dlog_path,
+            ))
+        }),
+        run_case("single-vm-2vcpu", args.runs, dlog_root, |_, dlog_path| {
+            RunFingerprint::SingleVm(run_single_vm(
+                &args.kernel,
+                &args.initrd,
+                2,
+                SINGLE_VM_MAX_EXITS,
+                dlog_path,
+            ))
+        }),
+        run_case(
+            "controller-3vm-1vcpu",
+            args.runs,
+            dlog_root,
+            |_, dlog_dir| {
+                RunFingerprint::Controller(run_controller(
+                    &args.kernel,
+                    &args.initrd,
+                    3,
+                    1,
+                    CONTROLLER_SEED,
+                    CONTROLLER_TICKS,
+                    dlog_dir,
+                ))
+            },
+        ),
+        run_case(
+            "controller-3vm-2vcpu",
+            args.runs,
+            dlog_root,
+            |_, dlog_dir| {
+                RunFingerprint::Controller(run_controller(
+                    &args.kernel,
+                    &args.initrd,
+                    3,
+                    2,
+                    CONTROLLER_SEED,
+                    CONTROLLER_TICKS,
+                    dlog_dir,
+                ))
+            },
+        ),
+    ];
 
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 1: Single VM, 1 vCPU, N runs
-    // ═══════════════════════════════════════════════════════════════
-    {
-        println!("━━━ Test 1: Single VM, 1 vCPU, {} runs × 70K exits ━━━", n);
-        let start = Instant::now();
-        let max_exits = 70_000;
+    let receipt = DeterminismGateReceipt::new(
+        args.kernel.clone(),
+        args.initrd.clone(),
+        crc32_file(&args.kernel).unwrap_or_else(|err| format!("unavailable:{err}")),
+        crc32_file(&args.initrd).unwrap_or_else(|err| format!("unavailable:{err}")),
+        cases,
+    );
 
-        let reference = run_single_vm(kernel, initrd, 1, max_exits);
-        println!(
-            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)",
-            reference.exit_count, reference.virtual_tsc
-        );
-
-        let mut mismatches = 0;
-        for i in 2..=n {
-            let fp = run_single_vm(kernel, initrd, 1, max_exits);
-            let ok = fp == reference;
-            if ok {
-                println!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅",
-                    i, fp.exit_count, fp.virtual_tsc
-                );
-            } else {
-                println!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH",
-                    i, fp.exit_count, fp.virtual_tsc
-                );
-                if fp.exit_count != reference.exit_count {
-                    eprintln!(
-                        "         exit_count: {} vs reference {}",
-                        fp.exit_count, reference.exit_count
-                    );
-                }
-                if fp.virtual_tsc != reference.virtual_tsc {
-                    eprintln!(
-                        "         virtual_tsc: {} vs reference {}",
-                        fp.virtual_tsc, reference.virtual_tsc
-                    );
-                }
-                if fp.serial_stripped != reference.serial_stripped {
-                    // Find first differing line
-                    let ref_lines: Vec<&str> = reference.serial_stripped.lines().collect();
-                    let fp_lines: Vec<&str> = fp.serial_stripped.lines().collect();
-                    for (j, (a, b)) in ref_lines.iter().zip(fp_lines.iter()).enumerate() {
-                        if a != b {
-                            eprintln!("         first serial diff at line {}:", j);
-                            eprintln!("           ref: {}", a);
-                            eprintln!("           got: {}", b);
-                            break;
-                        }
-                    }
-                    if ref_lines.len() != fp_lines.len() {
-                        eprintln!(
-                            "         serial line count: {} vs reference {}",
-                            fp_lines.len(),
-                            ref_lines.len()
-                        );
-                    }
-                }
-                mismatches += 1;
-            }
+    if let Some(path) = &args.receipt {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create receipt parent");
         }
-
-        let elapsed = start.elapsed();
-        if mismatches == 0 {
-            println!(
-                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
-                n,
-                n,
-                elapsed.as_secs_f64()
-            );
-        } else {
-            println!(
-                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
-                mismatches,
-                n,
-                elapsed.as_secs_f64()
-            );
-            all_passed = false;
-        }
+        let json = serde_json::to_string_pretty(&receipt).expect("serialize receipt");
+        std::fs::write(path, format!("{json}\n")).expect("write receipt");
+        println!("receipt: {}", path.display());
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 2: Single VM, 2 vCPUs (SMP), N runs
-    // ═══════════════════════════════════════════════════════════════
-    {
-        println!(
-            "━━━ Test 2: Single VM, 2 vCPUs (SMP), {} runs × 70K exits ━━━",
-            n
-        );
-        let start = Instant::now();
-        let max_exits = 70_000;
-
-        let reference = run_single_vm(kernel, initrd, 2, max_exits);
-        println!(
-            "  run  1: exits={:<8} vtsc={:<16} ✅ (reference)",
-            reference.exit_count, reference.virtual_tsc
-        );
-
-        let mut mismatches = 0;
-        for i in 2..=n {
-            let fp = run_single_vm(kernel, initrd, 2, max_exits);
-            let ok = fp == reference;
-            if ok {
-                println!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ✅",
-                    i, fp.exit_count, fp.virtual_tsc
-                );
-            } else {
-                println!(
-                    "  run {:>2}: exits={:<8} vtsc={:<16} ❌ MISMATCH",
-                    i, fp.exit_count, fp.virtual_tsc
-                );
-                if fp.exit_count != reference.exit_count {
-                    eprintln!(
-                        "         exit_count: {} vs reference {}",
-                        fp.exit_count, reference.exit_count
-                    );
-                }
-                if fp.virtual_tsc != reference.virtual_tsc {
-                    eprintln!(
-                        "         virtual_tsc: {} vs reference {}",
-                        fp.virtual_tsc, reference.virtual_tsc
-                    );
-                }
-                if fp.serial_stripped != reference.serial_stripped {
-                    let ref_lines: Vec<&str> = reference.serial_stripped.lines().collect();
-                    let fp_lines: Vec<&str> = fp.serial_stripped.lines().collect();
-                    for (j, (a, b)) in ref_lines.iter().zip(fp_lines.iter()).enumerate() {
-                        if a != b {
-                            eprintln!("         first serial diff at line {}:", j);
-                            eprintln!("           ref: {}", a);
-                            eprintln!("           got: {}", b);
-                            break;
-                        }
-                    }
-                }
-                mismatches += 1;
-            }
-        }
-
-        let elapsed = start.elapsed();
-        if mismatches == 0 {
-            println!(
-                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
-                n,
-                n,
-                elapsed.as_secs_f64()
-            );
-        } else {
-            println!(
-                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
-                mismatches,
-                n,
-                elapsed.as_secs_f64()
-            );
-            all_passed = false;
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 3: 3 VMs, 1 vCPU each, N runs via SimulationController
-    // ═══════════════════════════════════════════════════════════════
-    {
-        println!("━━━ Test 3: 3 VMs × 1 vCPU, {} runs × 10 ticks ━━━", n);
-        let start = Instant::now();
-        let seed = 42u64;
-
-        let reference = run_controller(kernel, initrd, 3, 1, seed, 10);
-        println!(
-            "  run  1: tick={:<4} exits={:?} ✅ (reference)",
-            reference.tick, reference.vm_exits
-        );
-
-        let mut mismatches = 0;
-        for i in 2..=n {
-            let fp = run_controller(kernel, initrd, 3, 1, seed, 10);
-            let ok = fp == reference;
-            if ok {
-                println!(
-                    "  run {:>2}: tick={:<4} exits={:?} ✅",
-                    i, fp.tick, fp.vm_exits
-                );
-            } else {
-                println!(
-                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH",
-                    i, fp.tick, fp.vm_exits
-                );
-                if fp.tick != reference.tick {
-                    eprintln!("         tick: {} vs reference {}", fp.tick, reference.tick);
-                }
-                for (j, (a, b)) in fp
-                    .vm_exits
-                    .iter()
-                    .zip(reference.vm_exits.iter())
-                    .enumerate()
-                {
-                    if a != b {
-                        eprintln!("         VM{} exits: {} vs reference {}", j, a, b);
-                    }
-                }
-                for (j, (a, b)) in fp
-                    .vm_vtscs
-                    .iter()
-                    .zip(reference.vm_vtscs.iter())
-                    .enumerate()
-                {
-                    if a != b {
-                        eprintln!("         VM{} vtsc: {} vs reference {}", j, a, b);
-                    }
-                }
-                mismatches += 1;
-            }
-        }
-
-        let elapsed = start.elapsed();
-        if mismatches == 0 {
-            println!(
-                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
-                n,
-                n,
-                elapsed.as_secs_f64()
-            );
-        } else {
-            println!(
-                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
-                mismatches,
-                n,
-                elapsed.as_secs_f64()
-            );
-            all_passed = false;
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Test 4: 3 VMs, 2 vCPUs each (SMP), N runs via Controller
-    // ═══════════════════════════════════════════════════════════════
-    {
-        println!(
-            "━━━ Test 4: 3 VMs × 2 vCPUs (SMP), {} runs × 10 ticks ━━━",
-            n
-        );
-        let start = Instant::now();
-        let seed = 42u64;
-
-        let reference = run_controller(kernel, initrd, 3, 2, seed, 10);
-        println!(
-            "  run  1: tick={:<4} exits={:?} ✅ (reference)",
-            reference.tick, reference.vm_exits
-        );
-
-        let mut mismatches = 0;
-        for i in 2..=n {
-            let fp = run_controller(kernel, initrd, 3, 2, seed, 10);
-            let ok = fp == reference;
-            if ok {
-                println!(
-                    "  run {:>2}: tick={:<4} exits={:?} ✅",
-                    i, fp.tick, fp.vm_exits
-                );
-            } else {
-                println!(
-                    "  run {:>2}: tick={:<4} exits={:?} ❌ MISMATCH",
-                    i, fp.tick, fp.vm_exits
-                );
-                if fp.tick != reference.tick {
-                    eprintln!("         tick: {} vs reference {}", fp.tick, reference.tick);
-                }
-                for (j, (a, b)) in fp
-                    .vm_exits
-                    .iter()
-                    .zip(reference.vm_exits.iter())
-                    .enumerate()
-                {
-                    if a != b {
-                        eprintln!("         VM{} exits: {} vs reference {}", j, a, b);
-                    }
-                }
-                for (j, (a, b)) in fp
-                    .vm_vtscs
-                    .iter()
-                    .zip(reference.vm_vtscs.iter())
-                    .enumerate()
-                {
-                    if a != b {
-                        eprintln!("         VM{} vtsc: {} vs reference {}", j, a, b);
-                    }
-                }
-                mismatches += 1;
-            }
-        }
-
-        let elapsed = start.elapsed();
-        if mismatches == 0 {
-            println!(
-                "  ✅ PASS: {}/{} runs identical ({:.1}s)\n",
-                n,
-                n,
-                elapsed.as_secs_f64()
-            );
-        } else {
-            println!(
-                "  ❌ FAIL: {}/{} runs mismatched ({:.1}s)\n",
-                mismatches,
-                n,
-                elapsed.as_secs_f64()
-            );
-            all_passed = false;
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Summary
-    // ═══════════════════════════════════════════════════════════════
     println!("╔══════════════════════════════════════════════════════════════╗");
-    if all_passed {
+    if receipt.passed {
         println!(
             "║  ✅ ALL CONFIGURATIONS DETERMINISTIC ({} runs each)         ║",
-            n
+            args.runs
         );
     } else {
         println!("║  ❌ DETERMINISM FAILURES DETECTED                           ║");
     }
     println!("╚══════════════════════════════════════════════════════════════╝");
 
-    if !all_passed {
+    if !receipt.passed {
         std::process::exit(1);
     }
 }

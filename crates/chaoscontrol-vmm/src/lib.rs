@@ -23,6 +23,7 @@
 pub mod acpi;
 pub mod controller;
 pub mod cpu;
+pub mod determinism_gate;
 pub mod devices;
 pub mod dlog;
 pub mod memory;

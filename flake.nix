@@ -1157,6 +1157,7 @@
                 "chaoscontrol-explore"
                 "chaoscontrol-dashboard"
                 "chaoscontrol-replay"
+                "chaoscontrol-evidence"
                 "chaoscontrol-guest"
                 "chaoscontrol-raft-guest"
                 "chaoscontrol-guest-net"

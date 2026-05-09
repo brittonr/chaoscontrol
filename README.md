@@ -80,9 +80,11 @@ chaoscontrol/
     ├── chaoscontrol-sdk/                  # Guest-side SDK (Antithesis-style)
     ├── chaoscontrol-fault/                # Host-side fault injection engine
     ├── chaoscontrol-vmm/                  # VMM implementation
+    ├── chaoscontrol-dashboard/            # Web dashboard backend and static UI
     ├── chaoscontrol-explore/              # Coverage-guided exploration engine
     ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger
-    ├── chaoscontrol-trace/                # eBPF-based KVM tracing
+    ├── chaoscontrol-evidence/             # Typed evidence/readiness models and gates
+    ├── chaoscontrol-trace/                # eBPF/ftrace tracing
     ├── chaoscontrol-guest/                # Minimal SDK-instrumented guest binary
     ├── chaoscontrol-raft-guest/           # 3-node Raft consensus guest (35 assertions)
     ├── chaoscontrol-guest-net/            # Network guest library (smoltcp)

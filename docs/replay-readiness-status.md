@@ -17,7 +17,7 @@ This status is evidence-backed but narrow: it is not a mathematical determinism 
 | `net` | `supported-bounded` | `3141592653` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/` |
 | `rust-workload` | `supported-bounded` | `1414213562` | `snapshot_backed_reproduced` | `2` | `0` / `0` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/` |
 
-Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by `scripts/check-replay-proof-coverage.py`.
+Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by the Rust `check-replay-proof-coverage` gate.
 
 ## Experimental or unproven surfaces
 
@@ -33,7 +33,7 @@ Supported here means the committed evidence contains an accepted summary, export
 A new surface can move into `supported-bounded` only after it has committed evidence in the accepted workload manifest and all of these checks pass:
 
 ```bash
-python scripts/check-replay-proof-coverage.py
+cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
 python scripts/generate-replay-readiness-report.py --check
 nix build .#checks.x86_64-linux.evidence-contracts --no-link -L
 ```

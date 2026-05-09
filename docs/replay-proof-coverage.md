@@ -14,6 +14,6 @@ The manifest/check are intentionally conservative: every listed proof must have 
 This is workload coverage evidence, not a mathematical or universal determinism proof. It only supports claims about the named bounded workload rails and their committed verdict/snapshot artifacts. Operator-facing supported vs experimental status is generated in `docs/replay-readiness-status.md`. New breadth claims should add a manifest entry plus committed evidence and pass:
 
 ```bash
-python scripts/check-replay-proof-coverage.py
+cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
 python scripts/generate-replay-readiness-report.py --check
 ```

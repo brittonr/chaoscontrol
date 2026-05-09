@@ -6,10 +6,12 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io;
-use std::path::Path;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
@@ -67,6 +69,292 @@ fn ensure(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
     } else {
         Err(EvidenceError::new(message))
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayProofCoverageLine {
+    pub workload: String,
+    pub replay_class: String,
+    pub assertion_id: u64,
+    pub replay_parent_depth: u64,
+    pub snapshot_digest: String,
+    pub snapshot_storage: SnapshotStorage,
+}
+
+impl ReplayProofCoverageLine {
+    pub fn render(&self) -> String {
+        format!(
+            "{}: {}, assertion={}, depth={}, snapshot={} ({})",
+            self.workload,
+            self.replay_class,
+            self.assertion_id,
+            self.replay_parent_depth,
+            self.snapshot_digest,
+            self.snapshot_storage.as_str()
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotStorage {
+    Raw,
+    Chunks,
+}
+
+impl SnapshotStorage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Raw => "raw",
+            Self::Chunks => "chunks",
+        }
+    }
+}
+
+pub fn validate_replay_proof_coverage(
+    root: impl AsRef<Path>,
+) -> EvidenceResult<Vec<ReplayProofCoverageLine>> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+
+    manifest
+        .proofs
+        .iter()
+        .map(|proof| validate_workload_proof(root, proof))
+        .collect()
+}
+
+pub fn render_replay_proof_coverage(lines: &[ReplayProofCoverageLine]) -> String {
+    let mut output = String::from("replay proof coverage ok:\n");
+    for line in lines {
+        output.push_str("  ");
+        output.push_str(&line.render());
+        output.push('\n');
+    }
+    output
+}
+
+fn validate_workload_proof(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<ReplayProofCoverageLine> {
+    let evidence_dir = root.join(&proof.evidence_dir);
+    let summary_path = evidence_dir.join(&proof.summary);
+    let bug_path = evidence_dir.join(&proof.bug);
+    let verdict_path = evidence_dir.join(&proof.verdict);
+    let snapshot_path = evidence_dir.join(&proof.snapshot);
+
+    let summary: AcceptedVerdictSummary = load_json(root, &summary_path)?;
+    let bug: BugRecord = load_json(root, &bug_path)?;
+    let verdict: ReplayVerdict = load_json(root, &verdict_path)?;
+
+    ensure(
+        summary.accepted,
+        format!("{}: summary is not accepted", proof.workload),
+    )?;
+    ensure(
+        summary.export_exit_status == 0,
+        format!("{}: export-bugs did not exit 0", proof.workload),
+    )?;
+    ensure(
+        summary.reproduce_exit_status == 0,
+        format!("{}: reproduce did not exit 0", proof.workload),
+    )?;
+
+    ensure(
+        bug.assertion_id == proof.assertion_id,
+        format!("{}: bug assertion mismatch", proof.workload),
+    )?;
+    ensure(
+        bug.replay_parent_depth > 0,
+        format!("{}: bug lacks replay parent depth", proof.workload),
+    )?;
+    ensure(
+        bug.replay_parent_snapshot_ref.is_some(),
+        format!("{}: bug lacks snapshot ref", proof.workload),
+    )?;
+
+    verdict
+        .validate_shape()
+        .map_err(|err| EvidenceError::new(format!("{}: {}", proof.workload, err.message())))?;
+    ensure(
+        verdict.assertion_id == proof.assertion_id,
+        format!("{}: verdict assertion mismatch", proof.workload),
+    )?;
+    ensure(
+        verdict.snapshot.reference.path == proof.snapshot,
+        format!(
+            "{}: manifest snapshot path disagrees with verdict ref",
+            proof.workload
+        ),
+    )?;
+
+    let (actual_snapshot_sha, storage) = snapshot_artifact_sha256(root, &snapshot_path)?;
+    let expected_digest = format!("sha256:{actual_snapshot_sha}");
+    ensure(
+        verdict.snapshot.reference.digest == expected_digest,
+        format!("{}: snapshot digest mismatch", proof.workload),
+    )?;
+
+    Ok(ReplayProofCoverageLine {
+        workload: proof.workload.clone(),
+        replay_class: REQUIRED_REPLAY_CLASS.to_string(),
+        assertion_id: proof.assertion_id,
+        replay_parent_depth: verdict.replay_parent_depth,
+        snapshot_digest: expected_digest,
+        snapshot_storage: storage,
+    })
+}
+
+fn load_json<T>(root: &Path, path: &Path) -> EvidenceResult<T>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let input = std::fs::read_to_string(path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, path)
+        ))
+    })?;
+    serde_json::from_str(&input).map_err(|err| {
+        EvidenceError::new(format!(
+            "invalid JSON in {}: {err}",
+            rel_display(root, path)
+        ))
+    })
+}
+
+fn snapshot_artifact_sha256(
+    root: &Path,
+    snapshot_path: &Path,
+) -> EvidenceResult<(String, SnapshotStorage)> {
+    if snapshot_path.exists() {
+        return Ok((sha256_file(snapshot_path)?, SnapshotStorage::Raw));
+    }
+
+    let manifest_path = snapshot_path.with_file_name(format!(
+        "{}.chunks.json",
+        snapshot_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| EvidenceError::new("snapshot path has no file name"))?
+    ));
+    let manifest: SnapshotChunkManifest = load_json(root, &manifest_path)?;
+    manifest.validate_shape().map_err(|err| {
+        EvidenceError::new(format!(
+            "chunk manifest invalid: {}: {}",
+            rel_display(root, &manifest_path),
+            err.message()
+        ))
+    })?;
+
+    let snapshot_name = snapshot_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| EvidenceError::new("snapshot path has no file name"))?;
+    ensure(
+        manifest.original_path == snapshot_name,
+        format!(
+            "chunk manifest original_path mismatch: {}",
+            rel_display(root, &manifest_path)
+        ),
+    )?;
+
+    let mut aggregate = Sha256::new();
+    let mut total_size = 0_u64;
+    let evidence_dir = snapshot_path
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| EvidenceError::new("snapshot path lacks evidence directory"))?;
+    for (idx, chunk) in manifest.chunks.iter().enumerate() {
+        let chunk_path = safe_join_relative(evidence_dir, &chunk.path)
+            .map_err(|err| EvidenceError::new(format!("chunk {idx} path invalid: {err}")))?;
+        ensure(
+            chunk_path.exists(),
+            format!("snapshot chunk missing: {}", rel_display(root, &chunk_path)),
+        )?;
+        let metadata = chunk_path.metadata().map_err(|err| {
+            EvidenceError::new(format!(
+                "snapshot chunk unreadable: {}: {err}",
+                rel_display(root, &chunk_path)
+            ))
+        })?;
+        ensure(
+            metadata.len() == chunk.size,
+            format!(
+                "snapshot chunk size mismatch: {}",
+                rel_display(root, &chunk_path)
+            ),
+        )?;
+        let actual_chunk_sha = sha256_file(&chunk_path)?;
+        ensure(
+            actual_chunk_sha == chunk.sha256,
+            format!(
+                "snapshot chunk hash mismatch: {}",
+                rel_display(root, &chunk_path)
+            ),
+        )?;
+        hash_file_into(&chunk_path, &mut aggregate)?;
+        total_size += metadata.len();
+    }
+
+    let actual = format!("{:x}", aggregate.finalize());
+    ensure(
+        total_size == manifest.original_size,
+        format!(
+            "chunk manifest aggregate size mismatch: {}",
+            rel_display(root, &manifest_path)
+        ),
+    )?;
+    ensure(
+        actual == manifest.original_sha256,
+        format!(
+            "chunk manifest aggregate hash mismatch: {}",
+            rel_display(root, &manifest_path)
+        ),
+    )?;
+    Ok((actual, SnapshotStorage::Chunks))
+}
+
+fn safe_join_relative(base: &Path, relative: &str) -> EvidenceResult<PathBuf> {
+    let path = Path::new(relative);
+    ensure(!path.is_absolute(), "absolute paths are not allowed")?;
+    ensure(
+        path.components()
+            .all(|component| matches!(component, std::path::Component::Normal(_))),
+        "path traversal is not allowed",
+    )?;
+    Ok(base.join(path))
+}
+
+fn sha256_file(path: &Path) -> EvidenceResult<String> {
+    let mut hasher = Sha256::new();
+    hash_file_into(path, &mut hasher)?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn hash_file_into(path: &Path, hasher: &mut Sha256) -> EvidenceResult<()> {
+    let mut file =
+        File::open(path).map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(())
+}
+
+fn rel_display(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

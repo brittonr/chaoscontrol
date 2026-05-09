@@ -13,6 +13,18 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod replay_readiness_surfaces;
+pub use replay_readiness_surfaces::{
+    check_readiness_surface_drift, render_dashboard as render_replay_readiness_dashboard,
+    render_readme_status_block as render_replay_readiness_readme_status_block,
+    replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
+    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
+    summarize_receipt as summarize_replay_readiness_receipt,
+    summarize_receipt_path as summarize_replay_readiness_receipt_path,
+    update_readme_status_path as update_replay_readiness_readme_status_path,
+    validate_gate_metadata, write_dashboard_path as write_replay_readiness_dashboard_path,
+};
+
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
 pub const REPLAY_PROOF_COVERAGE_DOC: &str = "docs/replay-proof-coverage.md";

@@ -613,7 +613,7 @@
                   ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
                   ("replay-proof-coverage", "check-replay-proof-coverage .", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
                   ("readiness-promotion", "python scripts/check-readiness-promotion-gate.py", os.environ["READINESS_PROMOTION_STATUS"]),
-                  ("readiness-surface-drift", "python scripts/check-readiness-surface-drift.py", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
+                  ("readiness-surface-drift", "check-readiness-surface-drift .", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
@@ -743,7 +743,7 @@
               run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
               run_gate replay-proof-coverage replay_proof_coverage_status check-replay-proof-coverage .
               run_gate readiness-promotion readiness_promotion_status python scripts/check-readiness-promotion-gate.py
-              run_gate readiness-surface-drift readiness_surface_drift_status python scripts/check-readiness-surface-drift.py
+              run_gate readiness-surface-drift readiness_surface_drift_status check-readiness-surface-drift .
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
@@ -782,25 +782,25 @@
 
           replayReadinessSummary = pkgs.writeShellApplication {
             name = "replay-readiness-summary";
-            runtimeInputs = [ pkgs.python3 ];
+            runtimeInputs = [ chaoscontrol ];
             text = ''
-              exec python ${self}/scripts/summarize-replay-readiness-receipt.py "$@"
+              exec ${chaoscontrol}/bin/replay-readiness-summary "$@"
             '';
           };
 
           replayReadinessDashboard = pkgs.writeShellApplication {
             name = "replay-readiness-dashboard";
-            runtimeInputs = [ pkgs.python3 ];
+            runtimeInputs = [ chaoscontrol ];
             text = ''
-              exec python ${self}/scripts/render-replay-readiness-dashboard.py "$@"
+              exec ${chaoscontrol}/bin/replay-readiness-dashboard "$@"
             '';
           };
 
           replayReadinessReadmeStatus = pkgs.writeShellApplication {
             name = "replay-readiness-readme-status";
-            runtimeInputs = [ pkgs.python3 ];
+            runtimeInputs = [ chaoscontrol ];
             text = ''
-              exec python ${self}/scripts/update-replay-readiness-readme-status.py "$@"
+              exec ${chaoscontrol}/bin/replay-readiness-readme-status "$@"
             '';
           };
 
@@ -1086,7 +1086,7 @@
                   check-replay-proof-coverage --check-doc .
                   materialize-snapshot-chunks --selftest
                   python scripts/check-readiness-promotion-gate.py
-                  python scripts/check-readiness-surface-drift.py
+                  check-readiness-surface-drift .
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
                   check-assertion-readiness-promotion-gate .

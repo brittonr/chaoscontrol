@@ -2,11 +2,14 @@ use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
     check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, render_replay_readiness_status,
+    render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
+    render_replay_readiness_readme_status_block, render_replay_readiness_status,
     run_assertion_readiness_promotion_selftest, run_materialize_snapshot_chunks_selftest,
-    validate_assertion_readiness_promotion, validate_replay_proof_coverage,
-    write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
-    SnapshotStorage, REQUIRED_REPLAY_CLASS,
+    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
+    summarize_replay_readiness_receipt, validate_assertion_readiness_promotion,
+    validate_gate_metadata, validate_replay_proof_coverage, write_snapshot_chunk_fixture,
+    AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
+    REQUIRED_REPLAY_CLASS,
 };
 
 #[test]
@@ -112,6 +115,38 @@ fn rejects_empty_replay_readiness_manifest() {
     assert!(err
         .message()
         .contains("manifest must contain at least two independent workload proofs"));
+}
+
+#[test]
+fn validates_replay_readiness_surface_drift_in_rust() {
+    let flake = include_str!("../../../flake.nix");
+    let gates = validate_gate_metadata(flake).expect("flake static gate metadata matches");
+
+    assert!(gates.contains(&"readiness-surface-drift".to_string()));
+    run_readiness_surface_drift_selftest("../..").expect("surface drift selftest passes");
+}
+
+#[test]
+fn renders_replay_readiness_operator_surfaces_in_rust() {
+    let receipt = sample_replay_readiness_receipt(true, "passed");
+    let summary = summarize_replay_readiness_receipt(&receipt).expect("receipt summarizes");
+    let dashboard =
+        render_replay_readiness_dashboard(&receipt, &summary).expect("dashboard renders");
+    let readme_block = render_replay_readiness_readme_status_block(&summary);
+
+    assert!(summary.contains("dogfood=rust-workload:pass"));
+    assert!(dashboard.contains("snapshot_backed_reproduced"));
+    assert!(dashboard.contains("not universal determinism"));
+    assert!(readme_block.contains("bounded committed-evidence signal"));
+}
+
+#[test]
+fn rejects_malformed_replay_readiness_operator_receipt() {
+    let mut receipt = sample_replay_readiness_receipt(true, "passed");
+    receipt["command"] = serde_json::json!("other");
+
+    let err = summarize_replay_readiness_receipt(&receipt).expect_err("command mismatch rejected");
+    assert!(err.message().contains("expected replay-readiness"));
 }
 
 #[test]

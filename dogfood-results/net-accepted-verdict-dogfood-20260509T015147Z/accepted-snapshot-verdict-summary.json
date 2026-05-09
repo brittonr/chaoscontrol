@@ -1,0 +1,26 @@
+{
+  "workload": "net",
+  "seed": 42,
+  "snapshot_probe_fail_after": 3,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 3141592653,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true
+    }
+  ],
+  "verdict": {
+    "path": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 1,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/bug_0.json",
+  "accepted_verdict": "/home/brittonr/git/chaoscontrol/dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/replay-verdict-bug0.json"
+}

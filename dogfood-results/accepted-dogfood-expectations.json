@@ -14,12 +14,31 @@
         "accepted": true,
         "replay_class": "snapshot_backed_reproduced",
         "min_replay_parent_depth": 1,
-        "allowed_seeds": [42, 43, 44, 45, 46, 47],
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "allowed_seeds": [
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "runner": {
         "max_attempts": 6,
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "curated_evidence": {
         "manifest": "dogfood-results/accepted-workload-proofs.json",
@@ -35,12 +54,31 @@
         "accepted": true,
         "replay_class": "snapshot_backed_reproduced",
         "min_replay_parent_depth": 1,
-        "allowed_seeds": [42, 43, 44, 45, 46, 47],
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "allowed_seeds": [
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "runner": {
         "max_attempts": 6,
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "curated_evidence": {
         "manifest": "dogfood-results/accepted-workload-proofs.json",
@@ -56,19 +94,24 @@
         "accepted": true,
         "replay_class": "snapshot_backed_reproduced",
         "min_replay_parent_depth": 1,
-        "allowed_seeds": [42],
-        "fail_after_values": [3]
+        "allowed_seeds": [
+          42
+        ],
+        "fail_after_values": [
+          3
+        ]
       },
       "runner": {
         "max_attempts": 1,
-        "fail_after_values": [3]
+        "fail_after_values": [
+          3
+        ]
       },
       "curated_evidence": {
         "manifest": "dogfood-results/accepted-workload-proofs.json",
-        "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858",
+        "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z",
         "summary": "accepted-snapshot-verdict-summary.json",
-        "observed_historical_fail_after": 8,
-        "drift_note": "The 2026-05-07 curated proof used fail_after=8; the live 2026-05-08 replay-readiness net wrapper expectation is fail_after=3/max_attempts=1."
+        "drift_note": "The 2026-05-09 curated proof uses the live wrapper default fail_after=3/max_attempts=1 and current CBOR snapshot codec."
       }
     },
     "rust-workload": {
@@ -79,12 +122,31 @@
         "accepted": true,
         "replay_class": "snapshot_backed_reproduced",
         "min_replay_parent_depth": 1,
-        "allowed_seeds": [42, 43, 44, 45, 46, 47],
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "allowed_seeds": [
+          42,
+          43,
+          44,
+          45,
+          46,
+          47
+        ],
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "runner": {
         "max_attempts": 6,
-        "fail_after_values": [25, 30, 35, 20, 40]
+        "fail_after_values": [
+          25,
+          30,
+          35,
+          20,
+          40
+        ]
       },
       "curated_evidence": {
         "manifest": "dogfood-results/accepted-workload-proofs.json",

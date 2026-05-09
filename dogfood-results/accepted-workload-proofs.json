@@ -30,12 +30,12 @@
     {
       "workload": "net",
       "assertion_id": 3141592653,
-      "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260507-025858",
+      "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z",
       "summary": "accepted-snapshot-verdict-summary.json",
       "bug": "bug_0.json",
       "verdict": "replay-verdict-bug0.json",
-      "snapshot": "snapshots/062dfe88dabf701842d02ba0524751ad10b5339a533af50c99f5972eedaa3720.snapshot.bin",
-      "notes": "net bounded snapshot_replay_probe with virtio-net multi-VM replay proof."
+      "snapshot": "snapshots/0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5.snapshot.bin",
+      "notes": "net bounded snapshot_replay_probe with virtio-net multi-VM CBOR snapshot replay proof."
     },
     {
       "workload": "rust-workload",

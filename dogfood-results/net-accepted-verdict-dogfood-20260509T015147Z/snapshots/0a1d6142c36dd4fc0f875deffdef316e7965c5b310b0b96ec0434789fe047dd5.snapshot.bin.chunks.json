@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "original_path": "0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5.snapshot.bin",
+  "original_size": 106968184,
+  "original_sha256": "0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5",
+  "chunk_size": 45000000,
+  "chunks": [
+    {
+      "index": 0,
+      "path": "snapshots/0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5.snapshot.bin.part00",
+      "size": 45000000,
+      "sha256": "9b8e9e0b182852c524800b57edfdf0ff053741e6f3e2eea87925eeb8e2db3072"
+    },
+    {
+      "index": 1,
+      "path": "snapshots/0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5.snapshot.bin.part01",
+      "size": 45000000,
+      "sha256": "27c585303fd20bdea77275362cfdeed7ad77a6a61b525c554d2fc089fa79470d"
+    },
+    {
+      "index": 2,
+      "path": "snapshots/0a1d6142c36dd4fc0f875deffdef316e7965c5b310b0b96ec0434789fe047dd5.snapshot.bin.part02",
+      "size": 16968184,
+      "sha256": "731cf4ff8d51b540615681fa2b724ba10434a8017ea6822f8fdf39d45e42897d"
+    }
+  ]
+}

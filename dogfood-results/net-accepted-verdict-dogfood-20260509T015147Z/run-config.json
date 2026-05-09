@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "workload": "net",
+  "git_revision": "fbcb2a5a790d7687285a98cc353beb205f3d4843",
+  "kernel": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+  "initrd": "/nix/store/45l3cyam35gby5wm07kdx788mpzhbaf6-chaoscontrol-initrd-net",
+  "vms": 3,
+  "rounds": 4,
+  "branches": 3,
+  "ticks": 120,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 256,
+  "extra_cmdline": "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after=3",
+  "assertion_id": 3141592653,
+  "export_filter": {
+    "assertion_id": 3141592653,
+    "min_replay_parent_depth": 1,
+    "max_bugs": 1
+  },
+  "raw_log_policy": "debug-only-excluded-from-git"
+}

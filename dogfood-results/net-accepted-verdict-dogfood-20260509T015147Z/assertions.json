@@ -1,0 +1,60 @@
+[
+  {
+    "id": 3141592653,
+    "message": "net snapshot replay probe trips only after restored parent context",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "failed",
+    "hit_count": 9,
+    "true_count": 2,
+    "false_count": 7,
+    "last_failure_details": "{\"fail_after\":3,\"pong_count\":9}"
+  },
+  {
+    "id": 139963819,
+    "message": "server handles multiple pings",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 9,
+    "true_count": 8,
+    "false_count": 1,
+    "last_failure_details": "{\"pong_count\":1}"
+  },
+  {
+    "id": 470850465,
+    "message": "client receives correct pong",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 8,
+    "true_count": 8,
+    "false_count": 0
+  },
+  {
+    "id": 2166712241,
+    "message": "server responds to ping",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 9,
+    "true_count": 9,
+    "false_count": 0
+  },
+  {
+    "id": 2675094514,
+    "message": "client gets 3+ pongs",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 8,
+    "true_count": 6,
+    "false_count": 2,
+    "last_failure_details": "{\"delivered\":true,\"from\":0,\"pongs\":2,\"to\":1}"
+  }
+]

@@ -13,12 +13,28 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod contract_registry;
 pub mod dogfood_guards;
+pub mod evidence_contracts;
+pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 pub mod sdk_local_report;
+pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
 pub use dogfood_guards::{
     check_dogfood_artifact_sizes, run_dogfood_guards_selftest, validate_accepted_dogfood_config,
     DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
+};
+pub use evidence_contracts::{
+    check_evidence_contract_fixtures, check_evidence_contracts, run_nickel_examples,
+    validate_artifact_hash, validate_assertion_summary, validate_bug_report,
+    validate_checkpoint_reference, validate_markdown_receipt, validate_receipt,
+    validate_receipt_with_root, validate_replay_verdict, validate_replay_verdict_with_options,
+    validate_run_config, validate_snapshot_ref, validate_snapshot_ref_with_root,
+    EVIDENCE_CONTRACTS_SUCCESS,
+};
+pub use readiness_promotion_gate::{
+    default_readiness_promotion_paths, run_readiness_promotion_selftest,
+    validate_readiness_promotion, validate_readiness_promotion_files,
 };
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift, render_dashboard as render_replay_readiness_dashboard,

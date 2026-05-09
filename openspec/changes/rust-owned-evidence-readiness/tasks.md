@@ -13,7 +13,7 @@
 
 - [x] [depends:core-models] Port replay readiness report generation/checking into Rust while preserving current Markdown and anti-claim output.
 - [x] [depends:core-models] Port assertion readiness report generation/checking into Rust while preserving current Markdown and promotion guidance output.
-- [ ] [depends:readiness-reports] Port readiness promotion, assertion promotion, surface drift, dogfood artifact size, SDK local report track, and accepted dogfood config checks into Rust or explicitly document any retained non-policy wrapper boundary.
+- [x] [depends:readiness-reports] Port readiness promotion, assertion promotion, surface drift, dogfood artifact size, SDK local report track, and accepted dogfood config checks into Rust or explicitly document any retained non-policy wrapper boundary.
 
 ## Phase 4: Operator/Nix Integration
 

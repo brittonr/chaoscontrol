@@ -1,23 +1,34 @@
+use std::path::PathBuf;
+
 use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
-    check_dogfood_artifact_sizes, check_replay_proof_coverage_doc, check_replay_readiness_status,
-    materialize_snapshot_chunks, render_assertion_readiness_status, render_replay_proof_coverage,
+    check_dogfood_artifact_sizes, check_evidence_contract_fixtures,
+    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
+    render_assertion_readiness_status, render_replay_proof_coverage,
     render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
     run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
-    run_materialize_snapshot_chunks_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_receipt, summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
+    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
+    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
+    summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
     validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
-    validate_gate_metadata, validate_replay_proof_coverage, write_snapshot_chunk_fixture,
-    AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
-    REQUIRED_REPLAY_CLASS,
+    validate_contract_registry_json, validate_gate_metadata, validate_readiness_promotion_files,
+    validate_replay_proof_coverage, write_snapshot_chunk_fixture, AcceptedWorkloadProofs,
+    ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, REQUIRED_REPLAY_CLASS,
 };
+
+fn repo_file(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
 
 #[test]
 fn parses_committed_accepted_workload_manifest() {
-    let manifest = AcceptedWorkloadProofs::from_json_str(include_str!(
-        "../../../dogfood-results/accepted-workload-proofs.json"
-    ))
+    let manifest = AcceptedWorkloadProofs::from_json_str(
+        &std::fs::read_to_string(repo_file("dogfood-results/accepted-workload-proofs.json"))
+            .expect("read manifest"),
+    )
     .expect("manifest parses");
 
     manifest.validate_shape().expect("manifest shape is valid");
@@ -50,7 +61,8 @@ fn validates_committed_replay_proof_coverage_doc() {
     let rendered = render_replay_proof_coverage_doc("../..").expect("doc renders");
     assert_eq!(
         rendered,
-        include_str!("../../../docs/replay-proof-coverage.md")
+        std::fs::read_to_string(repo_file("docs/replay-proof-coverage.md"))
+            .expect("read replay proof coverage doc")
     );
     assert!(rendered.contains("dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/"));
     check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
@@ -75,7 +87,8 @@ fn renders_committed_replay_readiness_status() {
     let rendered = render_replay_readiness_status("../..").expect("readiness renders");
     assert_eq!(
         rendered,
-        include_str!("../../../docs/replay-readiness-status.md")
+        std::fs::read_to_string(repo_file("docs/replay-readiness-status.md"))
+            .expect("read replay readiness status")
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
@@ -120,8 +133,8 @@ fn rejects_empty_replay_readiness_manifest() {
 
 #[test]
 fn validates_replay_readiness_surface_drift_in_rust() {
-    let flake = include_str!("../../../flake.nix");
-    let gates = validate_gate_metadata(flake).expect("flake static gate metadata matches");
+    let flake = std::fs::read_to_string(repo_file("flake.nix")).expect("read flake");
+    let gates = validate_gate_metadata(&flake).expect("flake static gate metadata matches");
 
     assert!(gates.contains(&"readiness-surface-drift".to_string()));
     run_readiness_surface_drift_selftest("../..").expect("surface drift selftest passes");
@@ -228,6 +241,61 @@ fn validates_accepted_dogfood_config_in_rust() {
 }
 
 #[test]
+fn validates_evidence_contract_fixtures_in_rust() {
+    check_evidence_contract_fixtures("../..").expect("evidence contract fixtures validate");
+}
+
+#[test]
+fn validates_contract_registry_model_in_rust() {
+    let input = r#"{
+      "schema_version": "1",
+      "policy": "fixtures cover every required shape",
+      "families": [
+        {"id":"run-config","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/run-config.ncl"],"artifact_paths":["dogfood-results/run-config.json"],"validation_commands":["check run-config"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"dogfood-receipt","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/receipt.json"],"validation_commands":["check receipt"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"bug-report","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/bug.ncl"],"artifact_paths":["dogfood-results/bug.json"],"validation_commands":["check bug"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"assertion-summary","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/assertions.json"],"validation_commands":["check assertions"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"checkpoint-reference","ownership":"nickel-authored","owner":"evidence","source_paths":["contracts/checkpoint.ncl"],"artifact_paths":["dogfood-results/checkpoint.json"],"validation_commands":["check checkpoint"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"snapshot-reference","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/snapshot.json"],"validation_commands":["check snapshot"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"replay-verdict","ownership":"rust-derived","owner":"evidence","source_paths":["crates/chaoscontrol-evidence"],"artifact_paths":["dogfood-results/replay-verdict.json"],"validation_commands":["check verdict"],"fixture_coverage":["fixture"],"freshness":"committed","rationale":"required"},
+        {"id":"raw-runtime-logs","ownership":"excluded","owner":"evidence","source_paths":["runtime/logs"],"artifact_paths":[],"validation_commands":["check excluded"],"fixture_coverage":["fixture"],"freshness":"excluded","rationale":"not durable"},
+        {"id":"secrets-and-crypto-internals","ownership":"excluded","owner":"security","source_paths":["secrets"],"artifact_paths":[],"validation_commands":["check excluded"],"fixture_coverage":["fixture"],"freshness":"excluded","rationale":"not durable"}
+      ]
+    }"#;
+
+    let line = validate_contract_registry_json(input).expect("registry validates");
+    assert_eq!(
+        line,
+        "contract registry ok: 9 families, ownership=excluded,nickel-authored,rust-derived"
+    );
+}
+
+#[test]
+fn rejects_invalid_contract_registry_shape() {
+    let input = r#"{
+      "schema_version": "2",
+      "policy": "",
+      "families": [
+        {"id":"run-config","ownership":"excluded","owner":"","source_paths":[""],"artifact_paths":["durable.json"],"validation_commands":[],"fixture_coverage":["fixture"],"freshness":"","rationale":""},
+        "not-object"
+      ]
+    }"#;
+
+    let err = validate_contract_registry_json(input).expect_err("bad registry rejected");
+    assert!(err.message().contains("schema_version must be '1'"));
+    assert!(err.message().contains("families[1] must be an object"));
+    assert!(err
+        .message()
+        .contains("families[0] is excluded and must not declare durable artifact_paths"));
+    assert!(err
+        .message()
+        .contains("missing required family ids: ['assertion-summary'"));
+    assert!(err
+        .message()
+        .contains("registry must include all ownership classes; saw ['excluded']"));
+}
+
+#[test]
 fn rejects_drifted_accepted_dogfood_config() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();
@@ -267,7 +335,8 @@ fn renders_committed_assertion_readiness_status() {
     let rendered = render_assertion_readiness_status("../..").expect("assertion readiness renders");
     assert_eq!(
         rendered,
-        include_str!("../../../docs/assertion-readiness-status.md")
+        std::fs::read_to_string(repo_file("docs/assertion-readiness-status.md"))
+            .expect("read assertion readiness status")
     );
     assert!(rendered.contains("## Promotion guidance"));
     assert!(rendered.contains("rust-workload: 1 non-passing assertion(s)"));
@@ -300,6 +369,29 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 }
 
 #[test]
+fn validates_committed_readiness_promotion_gate() {
+    let summary = validate_readiness_promotion_files(
+        "../../dogfood-results/accepted-workload-proofs.json",
+        "../../docs/replay-readiness-status.md",
+    )
+    .expect("readiness promotion gate passes");
+
+    assert!(summary
+        .lines
+        .iter()
+        .any(|line| line == "raft: assertion=1806003755"));
+    assert!(summary
+        .lines
+        .iter()
+        .any(|line| line == "rust-workload: assertion=1414213562"));
+    run_readiness_promotion_selftest(
+        "../../dogfood-results/accepted-workload-proofs.json",
+        "../../docs/replay-readiness-status.md",
+    )
+    .expect("selftest passes");
+}
+
+#[test]
 fn validates_committed_assertion_readiness_promotion_gate() {
     let lines = check_assertion_readiness_promotion("../..").expect("promotion gate passes");
 
@@ -322,7 +414,8 @@ fn rejects_assertion_readiness_overclaim() {
         "{}
 assertion coverage proves replay.
 ",
-        include_str!("../../../docs/assertion-readiness-status.md")
+        std::fs::read_to_string(repo_file("docs/assertion-readiness-status.md"))
+            .expect("read assertion readiness status")
     );
 
     let err = validate_assertion_readiness_promotion(root, &manifest, &report)
@@ -352,9 +445,12 @@ fn rejects_duplicate_workload_manifest() {
 
 #[test]
 fn parses_committed_replay_verdict_model() {
-    let verdict: ReplayVerdict = serde_json::from_str(include_str!(
-        "../../../dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json"
-    ))
+    let verdict: ReplayVerdict = serde_json::from_str(
+        &std::fs::read_to_string(repo_file(
+            "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/replay-verdict-bug0.json",
+        ))
+        .expect("read replay verdict"),
+    )
     .expect("verdict parses");
 
     verdict.validate_shape().expect("verdict shape is valid");

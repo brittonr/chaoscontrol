@@ -609,10 +609,10 @@
               dogfood_expectation_status = expectation_status(dogfood_expectation, dogfood_summary)
 
               gates = [
-                  ("contract-registry", "python scripts/check-contract-registry.py", os.environ["CONTRACT_REGISTRY_STATUS"]),
-                  ("evidence-contracts", "python scripts/check-evidence-contracts.py", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
+                  ("contract-registry", "check-contract-registry .", os.environ["CONTRACT_REGISTRY_STATUS"]),
+                  ("evidence-contracts", "check-evidence-contracts --root .", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
                   ("replay-proof-coverage", "check-replay-proof-coverage .", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
-                  ("readiness-promotion", "python scripts/check-readiness-promotion-gate.py", os.environ["READINESS_PROMOTION_STATUS"]),
+                  ("readiness-promotion", "check-readiness-promotion-gate --root .", os.environ["READINESS_PROMOTION_STATUS"]),
                   ("readiness-surface-drift", "check-readiness-surface-drift .", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
@@ -739,10 +739,10 @@
 
               echo "== replay readiness: static checks =="
               cd ${self}
-              run_gate contract-registry contract_registry_status python scripts/check-contract-registry.py
-              run_gate evidence-contracts evidence_contracts_status python scripts/check-evidence-contracts.py
+              run_gate contract-registry contract_registry_status check-contract-registry .
+              run_gate evidence-contracts evidence_contracts_status check-evidence-contracts --root .
               run_gate replay-proof-coverage replay_proof_coverage_status check-replay-proof-coverage .
-              run_gate readiness-promotion readiness_promotion_status python scripts/check-readiness-promotion-gate.py
+              run_gate readiness-promotion readiness_promotion_status check-readiness-promotion-gate --root .
               run_gate readiness-surface-drift readiness_surface_drift_status check-readiness-surface-drift .
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
@@ -1075,17 +1075,16 @@
                   nativeBuildInputs = [
                     chaoscontrol
                     pkgs.nickel
-                    pkgs.python3
                   ];
                 }
                 ''
                   cd ${self}
-                  python scripts/check-contract-registry.py
-                  python scripts/check-evidence-contracts.py
+                  check-contract-registry .
+                  check-evidence-contracts --root .
                   check-replay-proof-coverage .
                   check-replay-proof-coverage --check-doc .
                   materialize-snapshot-chunks --selftest
-                  python scripts/check-readiness-promotion-gate.py
+                  check-readiness-promotion-gate --root .
                   check-readiness-surface-drift .
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .

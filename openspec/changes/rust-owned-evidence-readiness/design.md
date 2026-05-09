@@ -59,7 +59,7 @@ The repository currently has a green full flake check and refreshed accepted pro
 - `cargo fmt --check`
 - Focused Rust tests for evidence/readiness core and CLI subcommands.
 - Positive and negative fixture tests for each migrated gate.
-- `python scripts/check-replay-proof-coverage.py` or old-script parity checks while the predecessor still exists.
+- Old-script parity checks via `git show HEAD:<script>` while the predecessor still exists in the previous commit.
 - `nix build .#checks.x86_64-linux.evidence-contracts --no-link -L`
 - `nix build .#checks.x86_64-linux.replay-readiness --no-link -L`
 - `nix flake check -L` before declaring the migration complete.

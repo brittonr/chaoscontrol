@@ -337,8 +337,8 @@ The current accepted workload-proof coverage is tracked in `docs/replay-proof-co
 Validate the committed evidence bundle with:
 
 ```bash
-python scripts/check-contract-registry.py
-python scripts/check-evidence-contracts.py
+check-contract-registry .
+check-evidence-contracts --root .
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-doc .
 cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- --selftest

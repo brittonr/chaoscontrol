@@ -12,6 +12,10 @@ sha2 = "0.10"
 tempfile = "3"
 
 [[bin]]
+name = "check-evidence-contracts"
+path = "src/bin/check-evidence-contracts.rs"
+
+[[bin]]
 name = "check-replay-proof-coverage"
 path = "src/bin/check-replay-proof-coverage.rs"
 
@@ -46,3 +50,11 @@ path = "src/bin/summarize-sdk-local-output.rs"
 [[bin]]
 name = "check-sdk-local-report-tracks"
 path = "src/bin/check-sdk-local-report-tracks.rs"
+
+[[bin]]
+name = "check-readiness-promotion-gate"
+path = "src/bin/check-readiness-promotion-gate.rs"
+
+[[bin]]
+name = "check-contract-registry"
+path = "src/bin/check-contract-registry.rs"

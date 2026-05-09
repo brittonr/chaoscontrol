@@ -95,7 +95,7 @@ let Registry = {
         "dogfood-results/*/bug_*.json",
       ],
       validation_commands = [
-        "python scripts/check-evidence-contracts.py",
+        "check-evidence-contracts --root .",
         "nickel export contracts/evidence/examples/raft-bug-report.ncl",
       ],
       fixture_coverage = [
@@ -165,7 +165,7 @@ let Registry = {
       ],
       validation_commands = [
         "cargo test -p chaoscontrol-explore snapshot_store",
-        "python scripts/check-evidence-contracts.py",
+        "check-evidence-contracts --root .",
       ],
       fixture_coverage = [
         "contracts/evidence/fixtures/valid/snapshot-ref.valid.json",
@@ -193,7 +193,7 @@ let Registry = {
       ],
       validation_commands = [
         "cargo test -p chaoscontrol-explore replay_verdict",
-        "python scripts/check-evidence-contracts.py",
+        "check-evidence-contracts --root .",
       ],
       fixture_coverage = [
         "contracts/evidence/fixtures/valid/replay-verdict.snapshot-backed.valid.json",

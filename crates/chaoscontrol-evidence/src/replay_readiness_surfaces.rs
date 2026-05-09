@@ -312,7 +312,7 @@ pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceR
     let flake_text = std::fs::read_to_string(root.join("flake.nix"))?;
     validate_gate_metadata(&flake_text)?;
     validate_renderer_equivalence(root)?;
-    let missing = flake_text.replace("                  (\"readiness-promotion\", \"python scripts/check-readiness-promotion-gate.py\", os.environ[\"READINESS_PROMOTION_STATUS\"]),\n", "");
+    let missing = flake_text.replace("                  (\"readiness-promotion\", \"check-readiness-promotion-gate --root .\", os.environ[\"READINESS_PROMOTION_STATUS\"]),\n", "");
     match validate_gate_metadata(&missing) {
         Err(err) if err.message().contains("missing from receipt metadata") => {}
         Err(err) => {
@@ -378,7 +378,7 @@ pub fn sample_replay_readiness_receipt(dogfood: bool, status: &str) -> Value {
     } else {
         json!({"selected_workload":null,"status":"skipped","output":null,"summary":null,"expectation":null,"expectation_status":"not-applicable","evidence_curation":"explicit-follow-up"})
     };
-    json!({"schema_version":1,"command":"replay-readiness","status":status,"exit_code": if status == "passed" {0} else {1},"failed_phase": if status == "passed" {Value::Null} else {Value::String("evidence-contracts".into())},"started_at":"2026-05-08T00:00:00Z","finished_at":"2026-05-08T00:00:01Z","static_gates":[{"name":"contract-registry","command":"python scripts/check-contract-registry.py","status":"pass"},{"name":"evidence-contracts","command":"python scripts/check-evidence-contracts.py","status": if status == "passed" {"pass"} else {"fail"}}],"dogfood":dogfood_obj,"scope":"bounded committed replay/evidence readiness; not universal determinism or hosted-product parity"})
+    json!({"schema_version":1,"command":"replay-readiness","status":status,"exit_code": if status == "passed" {0} else {1},"failed_phase": if status == "passed" {Value::Null} else {Value::String("evidence-contracts".into())},"started_at":"2026-05-08T00:00:00Z","finished_at":"2026-05-08T00:00:01Z","static_gates":[{"name":"contract-registry","command":"check-contract-registry .","status":"pass"},{"name":"evidence-contracts","command":"check-evidence-contracts --root .","status": if status == "passed" {"pass"} else {"fail"}}],"dogfood":dogfood_obj,"scope":"bounded committed replay/evidence readiness; not universal determinism or hosted-product parity"})
 }
 
 fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {

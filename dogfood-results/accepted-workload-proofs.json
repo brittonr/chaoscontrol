@@ -40,12 +40,12 @@
     {
       "workload": "rust-workload",
       "assertion_id": 1414213562,
-      "evidence_dir": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z",
+      "evidence_dir": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z",
       "summary": "accepted-snapshot-verdict-summary.json",
-      "bug": "bug_2.json",
-      "verdict": "replay-verdict-bug2.json",
-      "snapshot": "snapshots/3eb8387b728913e872cef3277d8238d2cfc40f6903f0cbdf143140bb6bfbed60.snapshot.bin",
-      "notes": "Rust workload harness bounded snapshot_replay_probe accepted replay proof."
+      "bug": "bug_0.json",
+      "verdict": "replay-verdict-bug0.json",
+      "snapshot": "snapshots/6c703b80417d94ae71f4cc36b41479c66eecd3d5d63d0dcd987542e8e3563199.snapshot.bin",
+      "notes": "Rust workload harness bounded snapshot_replay_probe refreshed under CBOR/zstd snapshot replay proof."
     }
   ]
 }

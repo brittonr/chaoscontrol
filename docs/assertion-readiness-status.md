@@ -13,7 +13,7 @@ This report is an assertion-density and uncovered-catalog view over accepted rep
 | `raft` | `43` | `42` | `11` / `15` / `17` / `0` | `43` | `2` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
 | `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `27` | `10` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/assertions.json` |
 | `net` | `5` | `5` | `3` / `2` / `0` / `0` | `5` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
-| `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `6` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z/assertions.json` |
+| `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `6` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/assertions.json` |
 
 ## Promotion guidance
 

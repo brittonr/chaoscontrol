@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "workload": "rust-workload",
+  "purpose": "fresh rust workload accepted snapshot-backed replay verdict dogfood proof under CBOR snapshot codec",
+  "git_rev": "9c37700539f58b553227ac1effd0bfbd224cba7c",
+  "vms": 1,
+  "rounds": 3,
+  "branches": 2,
+  "ticks": 80,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 128,
+  "extra_cmdline": "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25",
+  "assertion_id": 1414213562,
+  "export_filter": {
+    "assertion_id": 1414213562,
+    "min_replay_parent_depth": 1,
+    "max_bugs": 1
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/accepted-snapshot-verdict-summary.json",
+      "sha256": "sha256:46f8d42e486a4c96beafb407d48bcb45c422781ea98e00b7dd4d4458b169e31d",
+      "bytes": 615
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/assertions.json",
+      "sha256": "sha256:eecad847666f34b4c9ee434b1a5685732c6501a3a9db68588a0964db1b17fc36",
+      "bytes": 1669
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/bug_0.json",
+      "sha256": "sha256:7f0f4e97b710e43efc96da8dc7b437f0f2a36e0dc6e0151d8870cc640c22f79b",
+      "bytes": 696
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/checkpoint-summary.json",
+      "sha256": "sha256:d29c9216cf9437dd029b3950245f63bee83be406ad5a4e947607a413a959974c",
+      "bytes": 1256
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/receipt.md",
+      "sha256": "sha256:a0b1fc0b2df4607367de54d1e93783cb26b0555dbabc1d456cd151d3db93ec35",
+      "bytes": 1075
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/replay-verdict-bug0.json",
+      "sha256": "sha256:815fb001385eb6b6ca687f093b4ec4df0da19083d83c2db8d673afe7f5f0734c",
+      "bytes": 1994
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/report.txt",
+      "sha256": "sha256:81275f15bcc4e9cf0682e6bb63ad4f6fd4450245f326d9dd5256f010951f6966",
+      "bytes": 5699
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/run-config.json",
+      "sha256": "sha256:a08ec33b054b5bc65cbc761da0936410b4b97222962fe4dba11c56e7235b41dd",
+      "bytes": 617
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/snapshots/6c703b80417d94ae71f4cc36b41479c66eecd3d5d63d0dcd987542e8e3563199.snapshot.bin",
+      "sha256": "sha256:6c703b80417d94ae71f4cc36b41479c66eecd3d5d63d0dcd987542e8e3563199",
+      "bytes": 23618399
+    }
+  ]
+}

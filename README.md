@@ -340,6 +340,7 @@ Validate the committed evidence bundle with:
 python scripts/check-contract-registry.py
 python scripts/check-evidence-contracts.py
 cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .
+cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-doc .
 python scripts/generate-replay-readiness-report.py --check
 python scripts/generate-assertion-readiness-report.py --check
 python scripts/check-assertion-readiness-promotion-gate.py

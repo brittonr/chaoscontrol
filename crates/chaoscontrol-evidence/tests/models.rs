@@ -1,5 +1,6 @@
 use chaoscontrol_evidence::{
-    render_replay_proof_coverage, validate_replay_proof_coverage, AcceptedWorkloadProofs,
+    check_replay_proof_coverage_doc, render_replay_proof_coverage,
+    render_replay_proof_coverage_doc, validate_replay_proof_coverage, AcceptedWorkloadProofs,
     ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, REQUIRED_REPLAY_CLASS,
 };
 
@@ -33,6 +34,31 @@ fn validates_committed_replay_proof_coverage() {
     assert!(rendered.starts_with("replay proof coverage ok:\n"));
     assert!(rendered.contains("raft: snapshot_backed_reproduced"));
     assert!(rendered.contains("snapshot=sha256:"));
+}
+
+#[test]
+fn validates_committed_replay_proof_coverage_doc() {
+    let rendered = render_replay_proof_coverage_doc("../..").expect("doc renders");
+    assert_eq!(
+        rendered,
+        include_str!("../../../docs/replay-proof-coverage.md")
+    );
+    assert!(rendered.contains("dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/"));
+    check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
+}
+
+#[test]
+fn rejects_stale_replay_proof_coverage_doc() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("docs")).expect("create docs");
+    std::fs::write(root.join("docs/replay-proof-coverage.md"), "stale\n").expect("write stale doc");
+    write_valid_minimal_coverage_fixture(root);
+
+    let err = check_replay_proof_coverage_doc(root).expect_err("stale doc rejected");
+    assert!(err
+        .message()
+        .contains("docs/replay-proof-coverage.md is stale"));
 }
 
 #[test]
@@ -181,6 +207,35 @@ fn rejects_tampered_snapshot_digest_in_full_coverage_validator() {
 
     let err = validate_replay_proof_coverage(root).expect_err("tamper is rejected");
     assert!(err.message().contains("raft: snapshot digest mismatch"));
+}
+
+fn write_valid_minimal_coverage_fixture(root: &std::path::Path) {
+    let evidence_dir = root.join("dogfood-results/fake-proof");
+    let snapshots = evidence_dir.join("snapshots");
+    std::fs::create_dir_all(&snapshots).expect("create fixture dirs");
+    std::fs::write(snapshots.join("fixture.snapshot.bin"), b"fixture snapshot")
+        .expect("write snapshot");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{
+          "schema_version": 1,
+          "scope": "test",
+          "anti_claims": [],
+          "required_replay_class": "snapshot_backed_reproduced",
+          "proofs": [
+            {"workload":"raft","assertion_id":1,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshots/fixture.snapshot.bin"},
+            {"workload":"redb","assertion_id":2,"evidence_dir":"dogfood-results/fake-proof","summary":"summary-redb.json","bug":"bug-redb.json","verdict":"verdict-redb.json","snapshot":"snapshots/fixture.snapshot.bin"}
+          ]
+        }"#,
+    )
+    .expect("write manifest");
+    write_summary(&evidence_dir.join("summary.json"), "raft", 1);
+    write_summary(&evidence_dir.join("summary-redb.json"), "redb", 2);
+    write_bug(&evidence_dir.join("bug.json"), 1);
+    write_bug(&evidence_dir.join("bug-redb.json"), 2);
+    let digest = "sha256:181b5fc5c39e672546f5611977eabee17a4ef4dc262fd1d74d7d07d250e2fd81";
+    write_verdict(&evidence_dir.join("verdict.json"), 1, digest);
+    write_verdict(&evidence_dir.join("verdict-redb.json"), 2, digest);
 }
 
 fn write_summary(path: &std::path::Path, workload: &str, assertion_id: u64) {

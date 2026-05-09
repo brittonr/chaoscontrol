@@ -15,6 +15,7 @@ use sha2::{Digest, Sha256};
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
+pub const REPLAY_PROOF_COVERAGE_DOC: &str = "docs/replay-proof-coverage.md";
 pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
 pub const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 pub const REQUIRED_WORKLOADS: [&str; 2] = ["raft", "redb"];
@@ -135,6 +136,97 @@ pub fn render_replay_proof_coverage(lines: &[ReplayProofCoverageLine]) -> String
         output.push('\n');
     }
     output
+}
+
+pub fn render_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult<String> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
+        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    let coverage = validate_replay_proof_coverage(root)?;
+    render_replay_proof_coverage_doc_from_parts(&manifest, &coverage)
+}
+
+pub fn check_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let expected = render_replay_proof_coverage_doc(root)?;
+    let doc_path = root.join(REPLAY_PROOF_COVERAGE_DOC);
+    let actual = std::fs::read_to_string(&doc_path).map_err(|err| {
+        EvidenceError::new(format!(
+            "missing or unreadable file: {}: {err}",
+            rel_display(root, &doc_path)
+        ))
+    })?;
+    ensure(
+        actual == expected,
+        format!(
+            "{} is stale; run `cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --write-doc .`",
+            REPLAY_PROOF_COVERAGE_DOC
+        ),
+    )
+}
+
+pub fn write_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult<()> {
+    let root = root.as_ref();
+    let rendered = render_replay_proof_coverage_doc(root)?;
+    let doc_path = root.join(REPLAY_PROOF_COVERAGE_DOC);
+    std::fs::write(&doc_path, rendered).map_err(|err| {
+        EvidenceError::new(format!(
+            "failed to write {}: {err}",
+            rel_display(root, &doc_path)
+        ))
+    })
+}
+
+pub fn render_replay_proof_coverage_doc_from_parts(
+    manifest: &AcceptedWorkloadProofs,
+    coverage: &[ReplayProofCoverageLine],
+) -> EvidenceResult<String> {
+    ensure(
+        manifest.proofs.len() == coverage.len(),
+        "coverage lines do not match manifest proof count",
+    )?;
+
+    let mut output = String::new();
+    output.push_str("# Replay Proof Coverage\n\n");
+    output.push_str("ChaosControl currently has accepted snapshot-backed replay proof coverage for the workloads listed in `dogfood-results/accepted-workload-proofs.json`.\n\n");
+    output.push_str("| Workload | Assertion ID | Evidence | Verdict |\n");
+    output.push_str("| --- | ---: | --- | --- |\n");
+    for proof in &manifest.proofs {
+        let line = coverage
+            .iter()
+            .find(|line| line.workload == proof.workload)
+            .ok_or_else(|| {
+                EvidenceError::new(format!("missing coverage line for {}", proof.workload))
+            })?;
+        output.push_str(&format!(
+            "| {} | `{}` | `{}/` | `{}` |\n",
+            coverage_workload_label(&proof.workload),
+            proof.assertion_id,
+            proof.evidence_dir,
+            line.replay_class
+        ));
+    }
+    output.push('\n');
+    output.push_str("The manifest/check are intentionally conservative: every listed proof must have an accepted summary, exported bug artifact, replay verdict with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `command.exit_status = 0`, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified `.snapshot.bin.chunks.json` sidecar whose ordered chunks reconstruct to the referenced digest.\n\n");
+    output.push_str("This is workload coverage evidence, not a mathematical or universal determinism proof. It only supports claims about the named bounded workload rails and their committed verdict/snapshot artifacts. Operator-facing supported vs experimental status is generated in `docs/replay-readiness-status.md`. New breadth claims should add a manifest entry plus committed evidence and pass:\n\n");
+    output.push_str("```bash\n");
+    output.push_str("cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .\n");
+    output.push_str(
+        "cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- --check-doc .\n",
+    );
+    output.push_str("python scripts/generate-replay-readiness-report.py --check\n");
+    output.push_str("```\n");
+    Ok(output)
+}
+
+fn coverage_workload_label(workload: &str) -> String {
+    match workload {
+        "raft" => "Raft".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn validate_workload_proof(

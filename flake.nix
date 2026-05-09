@@ -1083,6 +1083,7 @@
                   python scripts/check-contract-registry.py
                   python scripts/check-evidence-contracts.py
                   check-replay-proof-coverage .
+                  check-replay-proof-coverage --check-doc .
                   python scripts/materialize-snapshot-chunks.py --selftest
                   python scripts/check-readiness-promotion-gate.py
                   python scripts/check-readiness-surface-drift.py

@@ -28,6 +28,21 @@ const CONTROLLER_TICKS: u64 = 10;
 const CONTROLLER_SEED: u64 = 42;
 const DLOG_REGISTER_INTERVAL: u64 = 100;
 
+#[derive(Debug, Clone, Copy)]
+struct VmClockProfile {
+    extra_cmdline: Option<&'static str>,
+    hide_tsc: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ControllerRunConfig {
+    num_vms: usize,
+    num_vcpus: usize,
+    seed: u64,
+    ticks: u64,
+    clock: VmClockProfile,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SingleClockProfile {
     Tsc,
@@ -56,6 +71,13 @@ impl SingleClockProfile {
 
     fn hide_tsc(self) -> bool {
         matches!(self, Self::HideTsc)
+    }
+
+    fn vm_profile(self) -> VmClockProfile {
+        VmClockProfile {
+            extra_cmdline: self.extra_cmdline(),
+            hide_tsc: self.hide_tsc(),
+        }
     }
 }
 
@@ -223,12 +245,16 @@ fn run_single_vm(
 fn run_controller(
     kernel: &str,
     initrd: &str,
-    num_vms: usize,
-    num_vcpus: usize,
-    seed: u64,
-    ticks: u64,
+    config: ControllerRunConfig,
     dlog_dir: Option<PathBuf>,
 ) -> ControllerFingerprint {
+    let ControllerRunConfig {
+        num_vms,
+        num_vcpus,
+        seed,
+        ticks,
+        clock,
+    } = config;
     let schedule = FaultScheduleBuilder::new()
         .at_ns(
             2_000_000,
@@ -251,6 +277,11 @@ fn run_controller(
         vm_config: VmConfig {
             num_vcpus,
             dlog_register_interval: DLOG_REGISTER_INTERVAL,
+            extra_cmdline: clock.extra_cmdline.map(str::to_string),
+            cpu: chaoscontrol_vmm::cpu::CpuConfig {
+                hide_tsc: clock.hide_tsc,
+                ..VmConfig::default().cpu
+            },
             ..Default::default()
         },
         kernel_path: kernel.to_string(),
@@ -570,8 +601,7 @@ fn main() {
     println!();
 
     let dlog_root = args.dlog_dir.as_deref();
-    let single_extra_cmdline = args.single_clock_profile.extra_cmdline();
-    let single_hide_tsc = args.single_clock_profile.hide_tsc();
+    let vm_clock_profile = args.single_clock_profile.vm_profile();
     let mut cases = Vec::new();
 
     if case_enabled(&args, "single-vm-1vcpu") {
@@ -586,8 +616,8 @@ fn main() {
                     1,
                     SINGLE_VM_MAX_EXITS,
                     dlog_path,
-                    single_extra_cmdline,
-                    single_hide_tsc,
+                    vm_clock_profile.extra_cmdline,
+                    vm_clock_profile.hide_tsc,
                 ))
             },
         ));
@@ -604,8 +634,8 @@ fn main() {
                     2,
                     SINGLE_VM_MAX_EXITS,
                     dlog_path,
-                    None,
-                    false,
+                    vm_clock_profile.extra_cmdline,
+                    vm_clock_profile.hide_tsc,
                 ))
             },
         ));
@@ -619,10 +649,13 @@ fn main() {
                 RunFingerprint::Controller(run_controller(
                     &args.kernel,
                     &args.initrd,
-                    3,
-                    1,
-                    CONTROLLER_SEED,
-                    CONTROLLER_TICKS,
+                    ControllerRunConfig {
+                        num_vms: 3,
+                        num_vcpus: 1,
+                        seed: CONTROLLER_SEED,
+                        ticks: CONTROLLER_TICKS,
+                        clock: vm_clock_profile,
+                    },
                     dlog_dir,
                 ))
             },
@@ -637,10 +670,13 @@ fn main() {
                 RunFingerprint::Controller(run_controller(
                     &args.kernel,
                     &args.initrd,
-                    3,
-                    2,
-                    CONTROLLER_SEED,
-                    CONTROLLER_TICKS,
+                    ControllerRunConfig {
+                        num_vms: 3,
+                        num_vcpus: 2,
+                        seed: CONTROLLER_SEED,
+                        ticks: CONTROLLER_TICKS,
+                        clock: vm_clock_profile,
+                    },
                     dlog_dir,
                 ))
             },

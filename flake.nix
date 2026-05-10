@@ -1191,6 +1191,62 @@
                   test -s "$out/replay-readiness-dashboard.html"
                 '';
 
+            # Cheap CI/report guard for the latest packaged hide-TSC VM drift receipt.
+            vm-determinism-drift-receipt =
+              pkgs.runCommand "vm-determinism-drift-receipt-check"
+                {
+                  nativeBuildInputs = [ pkgs.python3 ];
+                }
+                ''
+                  mkdir -p "$out"
+                  python - <<'PY' > "$out/summary.txt"
+                  import json
+                  from pathlib import Path
+
+                  receipt_path = Path("${./dogfood-results/vm-determinism-drift-latest/receipt.json}")
+                  receipt = json.loads(receipt_path.read_text())
+                  expected_cases = {
+                      "single-vm-1vcpu",
+                      "single-vm-2vcpu",
+                      "controller-3vm-1vcpu",
+                      "controller-3vm-2vcpu",
+                  }
+
+                  def require(condition, message):
+                      if not condition:
+                          raise SystemExit(message)
+
+                  require(receipt.get("schema_version") == 1, "schema_version must be 1")
+                  require(receipt.get("gate") == "vm-determinism-drift", "unexpected gate")
+                  require(str(receipt.get("kernel_crc32", "")).startswith("crc32:"), "missing kernel_crc32")
+                  require(str(receipt.get("initrd_crc32", "")).startswith("crc32:"), "missing initrd_crc32")
+
+                  cases = receipt.get("cases")
+                  require(isinstance(cases, list) and cases, "cases must be a non-empty list")
+                  seen = {case.get("name") for case in cases}
+                  require(seen == expected_cases, f"unexpected cases: {sorted(seen)}")
+
+                  for case in cases:
+                      name = case.get("name")
+                      require(case.get("runs") == 5, f"{name}: expected 5 runs")
+                      require(case.get("passed") is True, f"{name}: not passed")
+                      require(case.get("mismatches") == [], f"{name}: mismatches present")
+                      require(case.get("dlog_structural_match") is True, f"{name}: dlog structural mismatch")
+                      require(case.get("dlog_mismatches") == [], f"{name}: dlog mismatches present")
+                      require(case.get("dlog_divergences") == [], f"{name}: dlog divergences present")
+                      observations = case.get("observations")
+                      require(isinstance(observations, list), f"{name}: observations must be a list")
+                      require(len(observations) == case.get("runs"), f"{name}: observation count != runs")
+
+                  print("vm-determinism-drift receipt: pass")
+                  for case in cases:
+                      print(f"{case['name']}: {case['runs']} runs, mismatches=0, dlog_structural_match=true")
+                  PY
+                  cp ${./dogfood-results/vm-determinism-drift-latest/receipt.json} "$out/receipt.json"
+                  test -s "$out/summary.txt"
+                  test -s "$out/receipt.json"
+                '';
+
             # KVM-required smoke gate for the snapshot-backed Raft replay rail.
             snapshot-replay-smoke =
               pkgs.runCommand "snapshot-replay-smoke-check"

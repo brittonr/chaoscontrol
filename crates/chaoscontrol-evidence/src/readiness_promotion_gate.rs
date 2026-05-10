@@ -12,10 +12,11 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
 ];
-const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 4] = [
+const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 5] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "unproven"),
+    ("Hosted/fleet triage UI", "missing-hosted-fleet-ui"),
     ("Full Antithesis-style product replacement", "not-supported"),
 ];
 
@@ -183,6 +184,17 @@ pub fn run_readiness_promotion_selftest(
         &manifest,
         &missing_fresh_surface,
         "Fresh workload authoring",
+    )?;
+
+    let missing_hosted_fleet_surface = report.replace(
+        "| Hosted/fleet triage UI | `missing-hosted-fleet-ui` |",
+        "| Hosted/fleet triage UI | `supported-bounded` |",
+    );
+    expect_failure(
+        "hosted fleet triage overclaim",
+        &manifest,
+        &missing_hosted_fleet_surface,
+        "Hosted/fleet triage UI",
     )?;
 
     let report_only = report.replacen(

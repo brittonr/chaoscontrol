@@ -93,6 +93,9 @@ fn renders_committed_replay_readiness_status() {
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `missing-hosted-fleet-ui`"));
+    assert!(rendered.contains("static single-receipt artifact"));
+    assert!(rendered.contains("shared decision store"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));

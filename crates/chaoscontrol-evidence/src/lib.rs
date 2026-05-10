@@ -100,7 +100,7 @@ pub struct ExperimentalReplaySurface {
     pub promotion_evidence: &'static str,
 }
 
-pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 5] = [
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 6] = [
     ExperimentalReplaySurface {
         surface: "Fresh workload authoring",
         status: "experimental",
@@ -122,8 +122,14 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 5] = [
     ExperimentalReplaySurface {
         surface: "Operator triage UX",
         status: "local-runbook",
-        reason: "Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and accepted proof artifacts, but not a hosted triage workflow or fleet UI.",
-        promotion_evidence: "Hosted or UI-backed triage evidence that starts from a readiness receipt, opens the bug/replay artifacts, runs reproduce/minimize, and records operator decisions without raw-log scraping.",
+        reason: "Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and accepted proof artifacts. It records local decisions without raw-log scraping, but it is not a hosted service or fleet workflow.",
+        promotion_evidence: "A local triage runbook must stay generated from readiness receipts, open committed bug/replay artifacts, run reproduce/minimize, and record operator decisions without raw-log scraping.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Hosted/fleet triage UI",
+        status: "missing-hosted-fleet-ui",
+        reason: "The current dashboard is a static single-receipt artifact and the runbook is local-only; there is no hosted multi-run UI, shared decision store, fleet scheduler integration, or operator workflow evidence across machines.",
+        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists operator decisions, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

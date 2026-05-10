@@ -18,6 +18,9 @@ hunt-fig8-*
 docs/generated/
 result-redb-guest
 
+# Local VM debug traces; receipts/summaries carry reviewable evidence.
+dogfood-results/vm-determinism-drift-latest/dlogs/
+
 target/
 __pycache__/
 */__pycache__/

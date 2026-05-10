@@ -874,6 +874,14 @@
             '';
           };
 
+          replayReadinessTriage = pkgs.writeShellApplication {
+            name = "replay-readiness-triage";
+            runtimeInputs = [ chaoscontrol ];
+            text = ''
+              exec ${chaoscontrol}/bin/replay-readiness-triage "$@"
+            '';
+          };
+
           replayReadinessReadmeStatus = pkgs.writeShellApplication {
             name = "replay-readiness-readme-status";
             runtimeInputs = [ chaoscontrol ];
@@ -960,6 +968,7 @@
             replay-readiness = replayReadiness;
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
+            replay-readiness-triage = replayReadinessTriage;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
@@ -1164,6 +1173,7 @@
                   materialize-snapshot-chunks --selftest
                   check-readiness-promotion-gate --root .
                   check-readiness-surface-drift .
+                  replay-readiness-triage --root . --sample-receipt --check docs/operator-triage-runbook.md
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
                   check-assertion-readiness-promotion-gate .
@@ -1180,6 +1190,7 @@
                     replayReadiness
                     replayReadinessSummary
                     replayReadinessDashboard
+                    replayReadinessTriage
                   ];
                 }
                 ''
@@ -1188,9 +1199,11 @@
                   replay-readiness --receipt "$receipt"
                   replay-readiness-summary "$receipt" | tee "$out/replay-readiness-summary.txt"
                   replay-readiness-dashboard "$receipt" --output "$out/replay-readiness-dashboard.html"
+                  replay-readiness-triage "$receipt" --root ${self} --output "$out/operator-triage-runbook.md"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
+                  test -s "$out/operator-triage-runbook.md"
                 '';
 
             # Cheap CI/report guard for the latest packaged hide-TSC VM drift receipt.
@@ -1426,6 +1439,7 @@
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             replay-readiness-summary = mkApp "Summarize a replay readiness receipt." "${replayReadinessSummary}/bin/replay-readiness-summary";
             replay-readiness-dashboard = mkApp "Render a replay readiness receipt as an HTML dashboard." "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
+            replay-readiness-triage = mkApp "Render a local operator triage runbook from a replay readiness receipt." "${replayReadinessTriage}/bin/replay-readiness-triage";
             replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
           };
 

@@ -285,13 +285,21 @@ nix run .#replay-readiness-dashboard -- "$PWD/target/replay-readiness-receipt.js
   --output "$PWD/target/replay-readiness-dashboard.html"
 ```
 
-The dashboard is a self-contained HTML artifact that shows final status, static gates, selected dogfood expectation/replay-class details, raw receipt JSON, and the bounded-readiness scope string. The CI/check surface packages all three artifacts with:
+The dashboard is a self-contained HTML artifact that shows final status, static gates, selected dogfood expectation/replay-class details, raw receipt JSON, and the bounded-readiness scope string. To render the same receipt into a local operator triage runbook that opens committed bug/replay artifacts, gives reproduce/minimize commands, and records decisions without raw-log scraping, run:
+
+```bash
+nix run .#replay-readiness-triage -- "$PWD/target/replay-readiness-receipt.json" \
+  --root "$PWD" \
+  --output "$PWD/target/operator-triage-runbook.md"
+```
+
+The committed baseline runbook lives at `docs/operator-triage-runbook.md` and can be checked with `cargo run -p chaoscontrol-evidence --bin replay-readiness-triage -- --root . --sample-receipt --check docs/operator-triage-runbook.md`. The CI/check surface packages all four artifacts with:
 
 ```bash
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L
 ```
 
-GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, and `replay-readiness-dashboard.html` as the `replay-readiness-receipt` artifact.
+GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, `replay-readiness-dashboard.html`, and `operator-triage-runbook.md` as the `replay-readiness-receipt` artifact.
 
 For the VM drift gate specifically, run the bounded hide-TSC operator profile:
 

@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
+pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 pub mod sdk_local_report;
@@ -31,6 +32,11 @@ pub use evidence_contracts::{
     validate_receipt_with_root, validate_replay_verdict, validate_replay_verdict_with_options,
     validate_run_config, validate_snapshot_ref, validate_snapshot_ref_with_root,
     EVIDENCE_CONTRACTS_SUCCESS,
+};
+pub use operator_triage::{
+    check_operator_triage_runbook_path, committed_operator_triage_runbook_path,
+    render_operator_triage_runbook, render_operator_triage_runbook_path,
+    write_operator_triage_runbook_path, TriageReceiptSource,
 };
 pub use readiness_promotion_gate::{
     default_readiness_promotion_paths, run_readiness_promotion_selftest,
@@ -115,9 +121,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 5] = [
     },
     ExperimentalReplaySurface {
         surface: "Operator triage UX",
-        status: "local-artifacts-only",
-        reason: "Current evidence exposes receipts, summaries, dashboards, bug files, and reproduce/minimize commands, but not a hosted triage workflow or fleet UI.",
-        promotion_evidence: "A committed local triage runbook or UI flow that starts from a readiness receipt, opens the bug/replay artifacts, runs reproduce/minimize, and records operator decisions without raw-log scraping.",
+        status: "local-runbook",
+        reason: "Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and accepted proof artifacts, but not a hosted triage workflow or fleet UI.",
+        promotion_evidence: "Hosted or UI-backed triage evidence that starts from a readiness receipt, opens the bug/replay artifacts, runs reproduce/minimize, and records operator decisions without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

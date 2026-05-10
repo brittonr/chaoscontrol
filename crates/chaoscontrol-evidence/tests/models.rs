@@ -4,17 +4,18 @@ use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
     check_dogfood_artifact_sizes, check_evidence_contract_fixtures,
     check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
-    render_assertion_readiness_status, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
-    render_replay_readiness_readme_status_block, render_replay_readiness_status,
-    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
-    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
-    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
-    summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
+    render_assertion_readiness_status, render_operator_triage_runbook_path,
+    render_replay_proof_coverage, render_replay_proof_coverage_doc,
+    render_replay_readiness_dashboard, render_replay_readiness_readme_status_block,
+    render_replay_readiness_status, run_assertion_readiness_promotion_selftest,
+    run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
+    run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
+    sample_replay_readiness_receipt, summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
     validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
     validate_contract_registry_json, validate_gate_metadata, validate_readiness_promotion_files,
     validate_replay_proof_coverage, write_snapshot_chunk_fixture, AcceptedWorkloadProofs,
-    ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, REQUIRED_REPLAY_CLASS,
+    ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, TriageReceiptSource,
+    REQUIRED_REPLAY_CLASS,
 };
 
 fn repo_file(relative: &str) -> PathBuf {
@@ -91,7 +92,7 @@ fn renders_committed_replay_readiness_status() {
             .expect("read replay readiness status")
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
-    assert!(rendered.contains("Operator triage UX | `local-artifacts-only`"));
+    assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
@@ -164,6 +165,43 @@ fn rejects_malformed_replay_readiness_operator_receipt() {
 
     let err = summarize_replay_readiness_receipt(&receipt).expect_err("command mismatch rejected");
     assert!(err.message().contains("expected replay-readiness"));
+}
+
+#[test]
+fn renders_committed_operator_triage_runbook() {
+    let rendered = render_operator_triage_runbook_path("../..", TriageReceiptSource::Sample)
+        .expect("operator triage runbook renders");
+    assert_eq!(
+        rendered,
+        std::fs::read_to_string(repo_file("docs/operator-triage-runbook.md"))
+            .expect("read operator triage runbook")
+    );
+    assert!(rendered.contains("Do not scrape `run.log`, `reproduce.log`, or temporary VM logs"));
+    assert!(rendered.contains("replay_class = snapshot_backed_reproduced"));
+    assert!(rendered.contains("--verdict-output target/operator-triage/raft-replay-verdict.json"));
+    assert!(rendered.contains("minimize --bug dogfood-results/raft-accepted-verdict-dogfood"));
+    assert!(rendered.contains("\"raw_log_scraping\": false"));
+}
+
+#[test]
+fn operator_triage_rejects_unknown_selected_workload() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("dogfood-results")).expect("create dogfood-results");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        std::fs::read_to_string(repo_file("dogfood-results/accepted-workload-proofs.json"))
+            .expect("read manifest"),
+    )
+    .expect("write manifest");
+    let mut receipt = sample_replay_readiness_receipt(true, "passed");
+    receipt["dogfood"]["selected_workload"] = serde_json::json!("missing-workload");
+
+    let err = chaoscontrol_evidence::render_operator_triage_runbook(root, &receipt)
+        .expect_err("unknown workload rejected");
+    assert!(err
+        .message()
+        .contains("missing from accepted proof manifest"));
 }
 
 #[test]

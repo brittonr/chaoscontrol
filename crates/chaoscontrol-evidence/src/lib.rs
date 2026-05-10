@@ -714,19 +714,25 @@ pub struct AssertionGapDetail {
     pub label: String,
     pub kind: String,
     pub category: String,
+    pub category_inferred: bool,
     pub verdict: String,
     pub hit_count: i64,
 }
 
 impl AssertionGapDetail {
     fn render(&self) -> String {
+        let category = if self.category_inferred {
+            format!("{} (inferred)", self.category)
+        } else {
+            self.category.clone()
+        };
         format!(
             "- {} / {}: `{}` (kind={}, category={}, verdict={}, hit_count={})",
             self.workload,
             self.gap_class.as_str(),
             self.label,
             self.kind,
-            self.category,
+            category,
             self.verdict,
             self.hit_count
         )
@@ -788,7 +794,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         }
     }
     output.push_str("\n## Gap details\n\n");
-    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts and identify the next remediation targets without running a fresh VM campaign.\n\n");
+    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts and deterministic report-local category inference; inferred categories are marked and no fresh VM campaign is required.\n\n");
     let mut rendered_details = rows
         .iter()
         .flat_map(|row| row.gap_details.iter())
@@ -1037,22 +1043,22 @@ pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> Evi
         "missing anti-claim",
     )?;
     expect_assertion_promotion_failure(
-        "hidden uncategorized gap",
+        "hidden unhit gap",
         root,
         &manifest,
-        report.replacen("- raft: 43 uncategorized assertion(s)\n", "", 1),
-        "raft: promotion guidance uncategorized",
+        report.replacen("- raft: 1 unhit assertion(s)\n", "", 1),
+        "raft: promotion guidance unhit",
     )?;
     expect_assertion_promotion_failure(
         "weakened report count",
         root,
         &manifest,
         report.replacen(
-            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `27` | `10` |",
             "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `10` |",
+            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `0` |",
             1,
         ),
-        "redb: report uncategorized=0",
+        "redb: report nonpassing=0",
     )?;
     expect_assertion_promotion_failure(
         "report-only workload",
@@ -1265,13 +1271,12 @@ fn assertion_readiness_row(
         let kind = item.kind_string();
         let kind = assertion_kind_label(kind.as_deref()).to_string();
         *counts.entry(kind.clone()).or_default() += 1;
-        let category = item
-            .category_string()
-            .unwrap_or_else(|| "uncategorized".to_string());
-        if category == "uncategorized" {
+        let label = item.message_or_id();
+        let category =
+            effective_assertion_category(&proof.workload, &label, item.category_string());
+        if category.name == "uncategorized" {
             uncategorized += 1;
         }
-        let label = item.message_or_id();
         let verdict = item
             .verdict_string()
             .unwrap_or_else(|| "unknown".to_string());
@@ -1283,7 +1288,8 @@ fn assertion_readiness_row(
                 gap_class: AssertionGapClass::Unhit,
                 label: label.clone(),
                 kind: kind.clone(),
-                category: category.clone(),
+                category: category.name.clone(),
+                category_inferred: category.inferred,
                 verdict: verdict.clone(),
                 hit_count,
             });
@@ -1295,7 +1301,8 @@ fn assertion_readiness_row(
                 gap_class: AssertionGapClass::NonPassing,
                 label,
                 kind,
-                category,
+                category: category.name,
+                category_inferred: category.inferred,
                 verdict,
                 hit_count,
             });
@@ -1329,6 +1336,102 @@ fn assertion_readiness_row(
         ],
         gap_details,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EffectiveAssertionCategory {
+    name: String,
+    inferred: bool,
+}
+
+fn effective_assertion_category(
+    workload: &str,
+    message: &str,
+    artifact_category: Option<String>,
+) -> EffectiveAssertionCategory {
+    if let Some(category) = artifact_category.filter(|category| category != "uncategorized") {
+        return EffectiveAssertionCategory {
+            name: category,
+            inferred: false,
+        };
+    }
+
+    let inferred = infer_assertion_category(workload, message);
+    EffectiveAssertionCategory {
+        name: inferred.unwrap_or("uncategorized").to_string(),
+        inferred: inferred.is_some(),
+    }
+}
+
+fn infer_assertion_category(workload: &str, message: &str) -> Option<&'static str> {
+    if message.contains("snapshot replay probe") {
+        return Some("replay-probe");
+    }
+
+    match workload {
+        "redb" => infer_redb_assertion_category(message),
+        "raft" => infer_raft_assertion_category(message),
+        "net" => Some("network"),
+        "rust-workload" => infer_rust_workload_assertion_category(message),
+        _ => None,
+    }
+}
+
+fn infer_redb_assertion_category(message: &str) -> Option<&'static str> {
+    if message.starts_with("op: ") || matches!(message, "commit succeeds" | "large batch committed")
+    {
+        Some("operation")
+    } else {
+        Some("invariant")
+    }
+}
+
+fn infer_raft_assertion_category(message: &str) -> Option<&'static str> {
+    if matches!(
+        message,
+        "message reordered"
+            | "message duplicated"
+            | "message delivered"
+            | "message dropped"
+            | "partition healed"
+            | "link partitioned"
+    ) {
+        Some("network")
+    } else if matches!(message, "node crashed" | "node restarted") {
+        Some("fault")
+    } else if message.contains("election")
+        || message.contains("vote")
+        || message.contains("candidate")
+        || message.contains("leader elected")
+        || message.contains("leader skipped")
+        || message.contains("stepped down")
+        || message.contains("term")
+        || message.contains("timer")
+        || message.contains("quorum")
+    {
+        Some("election")
+    } else if message.contains("log")
+        || message.contains("append")
+        || message.contains("commit")
+        || message.contains("entry")
+        || message.contains("entries")
+        || message.contains("index")
+        || message.contains("proposal")
+        || message.contains("value")
+    {
+        Some("replication")
+    } else {
+        None
+    }
+}
+
+fn infer_rust_workload_assertion_category(message: &str) -> Option<&'static str> {
+    match message {
+        "read branch exercised" => Some("branch"),
+        "write succeeds" | "at least one write succeeds" => Some("operation"),
+        "choice remains in range" | "operation counters stay bounded" => Some("workload-driver"),
+        _ => None,
+    }
 }
 
 fn assertion_kind_label(kind: Option<&str>) -> &str {

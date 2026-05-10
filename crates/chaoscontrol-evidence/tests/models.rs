@@ -363,6 +363,78 @@ fn rejects_stale_assertion_readiness_status() {
 }
 
 #[test]
+fn infers_accepted_assertion_categories_without_mutating_artifacts() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    let evidence_dir = root.join("dogfood-results/fake-proof");
+    std::fs::create_dir_all(&evidence_dir).expect("create evidence dir");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{
+          "schema_version": 1,
+          "scope": "test",
+          "anti_claims": [],
+          "required_replay_class": "snapshot_backed_reproduced",
+          "proofs": [
+            {"workload":"redb","assertion_id":1,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshots/fixture.snapshot.bin"},
+            {"workload":"raft","assertion_id":2,"evidence_dir":"dogfood-results/fake-proof","summary":"summary-raft.json","bug":"bug-raft.json","verdict":"verdict-raft.json","snapshot":"snapshots/fixture.snapshot.bin"}
+          ]
+        }"#,
+    )
+    .expect("write manifest");
+    std::fs::write(
+        evidence_dir.join("assertions.json"),
+        r#"[
+          {"id":"a","message":"redb snapshot replay probe trips only after restored parent context","kind":"always","category":"uncategorized","hit_count":0,"verdict":"failed"},
+          {"id":"b","message":"op: insert","kind":"reachable","category":"uncategorized","hit_count":1,"verdict":"passed"}
+        ]"#,
+    )
+    .expect("write assertions");
+
+    let report = render_assertion_readiness_status(root).expect("render report");
+
+    assert!(report.contains("| `redb` | `2` | `1` | `1` / `0` / `1` / `0` | `0` | `1` |"));
+    assert!(report.contains("category=replay-probe (inferred)"));
+    assert!(report.contains("- redb: 0 uncategorized assertion(s)"));
+}
+
+#[test]
+fn keeps_unknown_accepted_assertions_uncategorized() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    let evidence_dir = root.join("dogfood-results/fake-proof");
+    std::fs::create_dir_all(&evidence_dir).expect("create evidence dir");
+    std::fs::write(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
+        r#"{
+          "schema_version": 1,
+          "scope": "test",
+          "anti_claims": [],
+          "required_replay_class": "snapshot_backed_reproduced",
+          "proofs": [
+            {"workload":"custom","assertion_id":1,"evidence_dir":"dogfood-results/fake-proof","summary":"summary.json","bug":"bug.json","verdict":"verdict.json","snapshot":"snapshots/fixture.snapshot.bin"},
+            {"workload":"raft","assertion_id":2,"evidence_dir":"dogfood-results/fake-proof","summary":"summary-raft.json","bug":"bug-raft.json","verdict":"verdict-raft.json","snapshot":"snapshots/fixture.snapshot.bin"},
+            {"workload":"redb","assertion_id":3,"evidence_dir":"dogfood-results/fake-proof","summary":"summary-redb.json","bug":"bug-redb.json","verdict":"verdict-redb.json","snapshot":"snapshots/fixture.snapshot.bin"}
+          ]
+        }"#,
+    )
+    .expect("write manifest");
+    std::fs::write(
+        evidence_dir.join("assertions.json"),
+        r#"[
+          {"id":"a","message":"mystery invariant","kind":"always","category":"uncategorized","hit_count":0,"verdict":"failed"}
+        ]"#,
+    )
+    .expect("write assertions");
+
+    let report = render_assertion_readiness_status(root).expect("render report");
+
+    assert!(report.contains("| `custom` | `1` | `0` | `1` / `0` / `0` / `0` | `1` | `1` |"));
+    assert!(report.contains("category=uncategorized, verdict=failed"));
+    assert!(report.contains("- custom: 1 uncategorized assertion(s)"));
+}
+
+#[test]
 fn rejects_missing_assertions_for_assertion_readiness_status() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();

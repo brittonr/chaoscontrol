@@ -71,6 +71,19 @@ The PropertyOracle MUST distinguish between exercised and unexercised assertions
 - THEN the system MUST include deterministic gap details that identify the workload, gap class, assertion ID or message, kind, category, verdict, and hit count when those fields are present
 - AND the details MUST be derived from committed accepted-proof assertion artifacts rather than fresh VM execution
 
+#### Scenario: Accepted assertion category inference
+
+- GIVEN a committed accepted-proof assertion artifact lacks category metadata for a known workload assertion
+- WHEN assertion-readiness status is generated
+- THEN the system MUST render a deterministic effective category for that assertion without modifying the committed artifact
+- AND the gap detail MUST distinguish inferred categories from categories present in the artifact
+
+#### Scenario: Unknown accepted assertion remains uncategorized
+
+- GIVEN a committed accepted-proof assertion artifact lacks category metadata and has no deterministic category mapping
+- WHEN assertion-readiness status and promotion checks are generated
+- THEN the system MUST keep that assertion uncategorized so promotion remains fail-closed until metadata or explicit rationale exists
+
 ### Requirement: Assertion-readiness promotion gate
 
 The static readiness surface MUST fail closed when assertion-readiness evidence is weakened, hidden, or promoted beyond the accepted workload's documented instrumentation state.

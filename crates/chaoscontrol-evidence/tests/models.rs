@@ -350,6 +350,21 @@ fn renders_committed_assertion_readiness_status() {
 }
 
 #[test]
+fn guards_operator_scope_language_in_readme_and_assertion_status() {
+    let readme = std::fs::read_to_string(repo_file("README.md")).expect("read README");
+    let status = std::fs::read_to_string(repo_file("docs/assertion-readiness-status.md"))
+        .expect("read assertion readiness status");
+
+    for text in [&readme, &status] {
+        let lowered = text.to_lowercase();
+        assert!(lowered.contains("zero ordinary assertion blockers"));
+        assert!(lowered.contains("instrumentation-readiness signal"));
+        assert!(lowered.contains("does not establish hosted-product parity"));
+        assert!(lowered.contains("operator triage"));
+    }
+}
+
+#[test]
 fn rejects_stale_assertion_readiness_status() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();

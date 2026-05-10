@@ -8,10 +8,11 @@ use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 use chaoscontrol_vmm::determinism_gate::{
-    compare_case, ControllerFingerprint, DeterminismCaseReport, DeterminismGateReceipt,
-    RunFingerprint, RunObservation, VmFingerprint,
+    compare_case, refresh_divergence_classes, ControllerFingerprint, DeterminismCaseReport,
+    DeterminismGateReceipt, DivergenceClass, DlogDivergenceDetail, RunFingerprint, RunObservation,
+    VmFingerprint,
 };
-use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult};
+use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult, DlogRecord, DlogTag};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use crc32fast::Hasher;
 use std::env;
@@ -256,12 +257,18 @@ where
     }
 
     let mut report = compare_case(name, observations);
-    let dlog_mismatches = compare_case_dlogs(&report);
-    report.dlog_structural_match = dlog_mismatches.as_ref().map(Vec::is_empty);
-    report.dlog_mismatches = dlog_mismatches.unwrap_or_default();
-    if !report.dlog_mismatches.is_empty() {
+    let dlog_divergences = compare_case_dlogs(&report);
+    report.dlog_structural_match = dlog_divergences.as_ref().map(Vec::is_empty);
+    report.dlog_divergences = dlog_divergences.unwrap_or_default();
+    report.dlog_mismatches = report
+        .dlog_divergences
+        .iter()
+        .map(|detail| detail.summary.clone())
+        .collect();
+    if !report.dlog_divergences.is_empty() {
         report.passed = false;
     }
+    refresh_divergence_classes(&mut report);
 
     let elapsed = start.elapsed();
     if report.passed {
@@ -306,15 +313,19 @@ fn dlog_path_for(root: &Path, case_name: &str, run_index: usize) -> PathBuf {
     }
 }
 
-fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<Vec<String>> {
+fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<Vec<DlogDivergenceDetail>> {
     let reference_path = report.observations.first()?.dlog_path.as_deref()?;
     let mut mismatches = Vec::new();
     for observation in report.observations.iter().skip(1) {
         let Some(path) = observation.dlog_path.as_deref() else {
-            mismatches.push(format!(
-                "run {} missing dlog path for comparison against {reference_path}",
-                observation.run_index
-            ));
+            mismatches.push(DlogDivergenceDetail {
+                run_index: observation.run_index,
+                class: DivergenceClass::DlogCompareError,
+                summary: format!(
+                    "run {} missing dlog path for comparison against {reference_path}",
+                    observation.run_index
+                ),
+            });
             continue;
         };
         mismatches.extend(structural_dlog_path_mismatches(
@@ -330,7 +341,7 @@ fn structural_dlog_path_mismatches(
     reference: &Path,
     actual: &Path,
     run_index: usize,
-) -> Vec<String> {
+) -> Vec<DlogDivergenceDetail> {
     if reference.is_dir() || actual.is_dir() {
         let mut mismatches = Vec::new();
         for vm_idx in 0..64 {
@@ -351,20 +362,99 @@ fn structural_dlog_path_mismatches(
     }
 }
 
-fn dlog_file_mismatch(reference: &Path, actual: &Path, run_index: usize) -> Option<String> {
+fn dlog_file_mismatch(
+    reference: &Path,
+    actual: &Path,
+    run_index: usize,
+) -> Option<DlogDivergenceDetail> {
     match dlog_diff_structural(reference, actual) {
         Ok(DiffResult::Identical { .. }) => None,
-        Ok(diff) => Some(format!(
-            "run {run_index} dlog structural mismatch: {} vs {}: {diff}",
-            reference.display(),
-            actual.display()
-        )),
-        Err(err) => Some(format!(
-            "run {run_index} dlog structural compare failed: {} vs {}: {err}",
-            reference.display(),
-            actual.display()
-        )),
+        Ok(diff) => Some(DlogDivergenceDetail {
+            run_index,
+            class: classify_dlog_diff(&diff),
+            summary: format!(
+                "run {run_index} dlog structural mismatch: {} vs {}: {diff}",
+                reference.display(),
+                actual.display()
+            ),
+        }),
+        Err(err) => Some(DlogDivergenceDetail {
+            run_index,
+            class: DivergenceClass::DlogCompareError,
+            summary: format!(
+                "run {run_index} dlog structural compare failed: {} vs {}: {err}",
+                reference.display(),
+                actual.display()
+            ),
+        }),
     }
+}
+
+fn classify_dlog_diff(diff: &DiffResult) -> DivergenceClass {
+    match diff {
+        DiffResult::Identical { .. } => DivergenceClass::Unknown,
+        DiffResult::LengthMismatch { .. } => DivergenceClass::DlogLength,
+        DiffResult::Diverged {
+            record_a, record_b, ..
+        } => classify_dlog_records(record_a, record_b),
+    }
+}
+
+fn classify_dlog_records(a: &DlogRecord, b: &DlogRecord) -> DivergenceClass {
+    if a.vcpu != b.vcpu
+        || matches!(a.tag(), Some(DlogTag::SchedulerSwitch))
+        || matches!(b.tag(), Some(DlogTag::SchedulerSwitch))
+    {
+        return DivergenceClass::VcpuScheduling;
+    }
+
+    let ports = [record_port(a), record_port(b)];
+    if ports
+        .iter()
+        .flatten()
+        .any(|port| matches!(*port, 0x0cf8 | 0x0cfc))
+    {
+        return DivergenceClass::PciConfigAccess;
+    }
+    if ports
+        .iter()
+        .flatten()
+        .any(|port| matches!(*port, 0x0070 | 0x0071))
+    {
+        return DivergenceClass::RtcCmosAccess;
+    }
+    if ports
+        .iter()
+        .flatten()
+        .any(|port| matches!(*port, 0x0040..=0x0043 | 0x0061))
+    {
+        return DivergenceClass::PitTscCalibration;
+    }
+    let port_count = ports.iter().flatten().count();
+    if port_count > 0
+        && ports
+            .iter()
+            .flatten()
+            .all(|port| matches!(*port, 0x03f8 | 0x03fd))
+    {
+        return DivergenceClass::SerialByteStream;
+    }
+
+    if matches!(a.tag(), Some(DlogTag::MmioRead | DlogTag::MmioWrite))
+        || matches!(b.tag(), Some(DlogTag::MmioRead | DlogTag::MmioWrite))
+    {
+        DivergenceClass::MmioDeviceAccess
+    } else if matches!(a.tag(), Some(DlogTag::IoIn | DlogTag::IoOut))
+        || matches!(b.tag(), Some(DlogTag::IoIn | DlogTag::IoOut))
+    {
+        DivergenceClass::DeviceIoAccess
+    } else {
+        DivergenceClass::Unknown
+    }
+}
+
+fn record_port(record: &DlogRecord) -> Option<u16> {
+    matches!(record.tag(), Some(DlogTag::IoIn | DlogTag::IoOut)).then_some(record.port_or_addr_lo)
 }
 
 fn print_observation(run_index: usize, fingerprint: &RunFingerprint, reference: bool) {
@@ -495,5 +585,42 @@ fn main() {
 
     if !receipt.passed {
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn io(tag: DlogTag, port: u16) -> DlogRecord {
+        DlogRecord::new(1, 1_000, 1, 0, tag, 0).with_port(port)
+    }
+
+    #[test]
+    fn dlog_classifier_prefers_pci_config_when_serial_order_reaches_pci() {
+        let serial = io(DlogTag::IoIn, 0x03fd);
+        let pci = io(DlogTag::IoOut, 0x0cf8);
+        assert_eq!(
+            classify_dlog_records(&serial, &pci),
+            DivergenceClass::PciConfigAccess
+        );
+    }
+
+    #[test]
+    fn dlog_classifier_distinguishes_rtc_and_length() {
+        let serial = io(DlogTag::IoOut, 0x03f8);
+        let rtc = io(DlogTag::IoOut, 0x0070);
+        assert_eq!(
+            classify_dlog_records(&serial, &rtc),
+            DivergenceClass::RtcCmosAccess
+        );
+        assert_eq!(
+            classify_dlog_diff(&DiffResult::LengthMismatch {
+                matched: 3,
+                len_a: 3,
+                len_b: 4,
+            }),
+            DivergenceClass::DlogLength
+        );
     }
 }

@@ -54,6 +54,35 @@ pub struct MismatchDetail {
     pub field: String,
     pub expected: String,
     pub actual: String,
+    #[serde(default)]
+    pub class: DivergenceClass,
+}
+
+/// Coarse first-divergence classes used to make drift receipts actionable.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DivergenceClass {
+    FingerprintCounters,
+    SerialByteStream,
+    PciConfigAccess,
+    RtcCmosAccess,
+    PitTscCalibration,
+    VcpuScheduling,
+    MmioDeviceAccess,
+    DeviceIoAccess,
+    DlogLength,
+    DlogCompareError,
+    FingerprintKind,
+    #[default]
+    Unknown,
+}
+
+/// Machine-readable dlog first-divergence detail.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DlogDivergenceDetail {
+    pub run_index: usize,
+    pub class: DivergenceClass,
+    pub summary: String,
 }
 
 /// Result for one deterministic configuration.
@@ -71,6 +100,14 @@ pub struct DeterminismCaseReport {
     /// Machine-readable dlog structural mismatch summaries. Empty means no dlog
     /// comparison failed or dlogs were not requested.
     pub dlog_mismatches: Vec<String>,
+    /// Structured dlog first-divergence details. Mirrors `dlog_mismatches`
+    /// with a stable class for downstream summaries.
+    #[serde(default)]
+    pub dlog_divergences: Vec<DlogDivergenceDetail>,
+    /// Unique fingerprint and dlog first-divergence classes observed in this
+    /// case, in first-seen order.
+    #[serde(default)]
+    pub divergence_classes: Vec<DivergenceClass>,
 }
 
 /// Top-level receipt for a determinism drift-gate run.
@@ -129,6 +166,8 @@ pub fn compare_case(
         ));
     }
 
+    let divergence_classes = unique_mismatch_classes(&mismatches);
+
     DeterminismCaseReport {
         name: name.into(),
         runs: observations.len(),
@@ -138,6 +177,8 @@ pub fn compare_case(
         mismatches,
         dlog_structural_match: None,
         dlog_mismatches: Vec::new(),
+        dlog_divergences: Vec::new(),
+        divergence_classes,
     }
 }
 
@@ -158,6 +199,7 @@ fn compare_fingerprints(
             field: "kind".to_string(),
             expected: fingerprint_kind(expected).to_string(),
             actual: fingerprint_kind(actual).to_string(),
+            class: DivergenceClass::FingerprintKind,
         }],
     }
 }
@@ -192,6 +234,7 @@ fn compare_single_vm(
             actual: first_diff_line(&expected.serial_stripped, &actual.serial_stripped)
                 .1
                 .unwrap_or_else(|| format!("{} bytes", actual.serial_stripped.len())),
+            class: classify_serial_mismatch(&expected.serial_stripped, &actual.serial_stripped),
         });
     }
     mismatches
@@ -249,6 +292,7 @@ fn push_if_ne<T>(
             field: field.to_string(),
             expected: expected.to_string(),
             actual: actual.to_string(),
+            class: DivergenceClass::FingerprintCounters,
         });
     }
 }
@@ -268,6 +312,7 @@ fn push_vec_if_ne<T>(
             field: field.to_string(),
             expected: format!("{expected:?}"),
             actual: format!("{actual:?}"),
+            class: DivergenceClass::FingerprintCounters,
         });
     }
 }
@@ -277,6 +322,44 @@ fn fingerprint_kind(fingerprint: &RunFingerprint) -> &'static str {
         RunFingerprint::SingleVm(_) => "single-vm",
         RunFingerprint::Controller(_) => "controller",
     }
+}
+
+/// Classify a serial-output mismatch by the first differing line. This keeps
+/// the classifier pure and usable without KVM/dlog artifacts.
+pub fn classify_serial_mismatch(expected: &str, actual: &str) -> DivergenceClass {
+    let (expected_line, actual_line) = first_diff_line(expected, actual);
+    let text = format!(
+        "{} {}",
+        expected_line.as_deref().unwrap_or_default(),
+        actual_line.as_deref().unwrap_or_default()
+    )
+    .to_ascii_lowercase();
+
+    if text.contains("tsc") || text.contains("pit") || text.contains("clocksource") {
+        DivergenceClass::PitTscCalibration
+    } else {
+        DivergenceClass::SerialByteStream
+    }
+}
+
+/// Recompute aggregate first-divergence classes after optional dlog comparison.
+pub fn refresh_divergence_classes(report: &mut DeterminismCaseReport) {
+    report.divergence_classes = unique_mismatch_classes(&report.mismatches);
+    for detail in &report.dlog_divergences {
+        if !report.divergence_classes.contains(&detail.class) {
+            report.divergence_classes.push(detail.class);
+        }
+    }
+}
+
+fn unique_mismatch_classes(mismatches: &[MismatchDetail]) -> Vec<DivergenceClass> {
+    let mut classes = Vec::new();
+    for mismatch in mismatches {
+        if !classes.contains(&mismatch.class) {
+            classes.push(mismatch.class);
+        }
+    }
+    classes
 }
 
 fn first_diff_line(expected: &str, actual: &str) -> (Option<String>, Option<String>) {
@@ -354,6 +437,77 @@ mod tests {
         );
         assert!(!report.passed);
         assert_eq!(report.mismatches[0].field, "exit_count");
+        assert_eq!(
+            report.mismatches[0].class,
+            DivergenceClass::FingerprintCounters
+        );
+        assert_eq!(
+            report.divergence_classes,
+            vec![DivergenceClass::FingerprintCounters]
+        );
+    }
+
+    #[test]
+    fn serial_tsc_calibration_mismatch_is_classified() {
+        let report = compare_case(
+            "single",
+            vec![
+                RunObservation {
+                    run_index: 1,
+                    fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+                        exit_count: 10,
+                        virtual_tsc: 20,
+                        serial_stripped: "boot\ntsc: Fast TSC calibration using PIT".to_string(),
+                    }),
+                    dlog_path: None,
+                },
+                RunObservation {
+                    run_index: 2,
+                    fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+                        exit_count: 10,
+                        virtual_tsc: 20,
+                        serial_stripped: "boot\ntsc: Fast TSC calibration failed".to_string(),
+                    }),
+                    dlog_path: None,
+                },
+            ],
+        );
+        assert_eq!(report.mismatches[0].field, "serial_stripped");
+        assert_eq!(
+            report.mismatches[0].class,
+            DivergenceClass::PitTscCalibration
+        );
+        assert_eq!(
+            report.divergence_classes,
+            vec![DivergenceClass::PitTscCalibration]
+        );
+    }
+
+    #[test]
+    fn refresh_divergence_classes_appends_dlog_classes() {
+        let fp = RunFingerprint::SingleVm(VmFingerprint {
+            exit_count: 10,
+            virtual_tsc: 20,
+            serial_stripped: "ready".to_string(),
+        });
+        let mut report = compare_case(
+            "single",
+            vec![RunObservation {
+                run_index: 1,
+                fingerprint: fp,
+                dlog_path: None,
+            }],
+        );
+        report.dlog_divergences.push(DlogDivergenceDetail {
+            run_index: 2,
+            class: DivergenceClass::PciConfigAccess,
+            summary: "run 2 dlog structural mismatch".to_string(),
+        });
+        refresh_divergence_classes(&mut report);
+        assert_eq!(
+            report.divergence_classes,
+            vec![DivergenceClass::PciConfigAccess]
+        );
     }
 
     #[test]

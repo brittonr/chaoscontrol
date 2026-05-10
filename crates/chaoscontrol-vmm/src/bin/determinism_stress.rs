@@ -3,6 +3,7 @@
 //!
 //! Usage:
 //!   determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]
+//!       [--case name] [--single-clock-profile tsc|jiffies]
 
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
@@ -27,6 +28,31 @@ const CONTROLLER_TICKS: u64 = 10;
 const CONTROLLER_SEED: u64 = 42;
 const DLOG_REGISTER_INTERVAL: u64 = 100;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SingleClockProfile {
+    Tsc,
+    Jiffies,
+}
+
+impl SingleClockProfile {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "tsc" => Some(Self::Tsc),
+            "jiffies" => Some(Self::Jiffies),
+            _ => None,
+        }
+    }
+
+    fn extra_cmdline(self) -> Option<&'static str> {
+        match self {
+            Self::Tsc => None,
+            // Appended after the default single-vCPU clock parameters; Linux
+            // treats later duplicate command-line keys as the effective value.
+            Self::Jiffies => Some("clocksource=jiffies notsc"),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Args {
     kernel: String,
@@ -34,36 +60,59 @@ struct Args {
     runs: usize,
     receipt: Option<PathBuf>,
     dlog_dir: Option<PathBuf>,
+    cases: Vec<String>,
+    single_clock_profile: SingleClockProfile,
 }
 
 fn parse_args() -> Args {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    parse_args_from(args).unwrap_or_else(|err| usage_and_exit(&err))
+}
+
+fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
     let mut positional = Vec::new();
     let mut receipt = None;
     let mut dlog_dir = None;
-    let mut iter = env::args().skip(1);
+    let mut cases = Vec::new();
+    let mut single_clock_profile = SingleClockProfile::Tsc;
+    let mut iter = args.into_iter();
 
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--receipt" => {
-                receipt =
-                    Some(PathBuf::from(iter.next().unwrap_or_else(|| {
-                        usage_and_exit("--receipt requires a path")
-                    })));
+                receipt = Some(PathBuf::from(
+                    iter.next()
+                        .ok_or_else(|| "--receipt requires a path".to_string())?,
+                ));
             }
             "--dlog-dir" => {
                 dlog_dir =
-                    Some(PathBuf::from(iter.next().unwrap_or_else(|| {
-                        usage_and_exit("--dlog-dir requires a directory")
-                    })));
+                    Some(PathBuf::from(iter.next().ok_or_else(|| {
+                        "--dlog-dir requires a directory".to_string()
+                    })?));
+            }
+            "--case" => {
+                cases.push(
+                    iter.next()
+                        .ok_or_else(|| "--case requires a case name".to_string())?,
+                );
+            }
+            "--single-clock-profile" => {
+                let value = iter
+                    .next()
+                    .ok_or_else(|| "--single-clock-profile requires tsc or jiffies".to_string())?;
+                single_clock_profile = SingleClockProfile::parse(&value).ok_or_else(|| {
+                    format!("unknown --single-clock-profile {value:?}; expected tsc or jiffies")
+                })?;
             }
             "--help" | "-h" => usage_and_exit_code("", 0),
-            _ if arg.starts_with('-') => usage_and_exit(&format!("unknown option: {arg}")),
+            _ if arg.starts_with('-') => return Err(format!("unknown option: {arg}")),
             _ => positional.push(arg),
         }
     }
 
     if positional.len() < 2 || positional.len() > 3 {
-        usage_and_exit("expected <kernel-path> <initrd-path> [N]");
+        return Err("expected <kernel-path> <initrd-path> [N]".to_string());
     }
 
     let runs = positional
@@ -71,13 +120,15 @@ fn parse_args() -> Args {
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_RUNS);
 
-    Args {
+    Ok(Args {
         kernel: positional[0].clone(),
         initrd: positional[1].clone(),
         runs,
         receipt,
         dlog_dir,
-    }
+        cases,
+        single_clock_profile,
+    })
 }
 
 fn usage_and_exit(message: &str) -> ! {
@@ -89,9 +140,13 @@ fn usage_and_exit_code(message: &str, code: i32) -> ! {
         eprintln!("error: {message}\n");
     }
     eprintln!(
-        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir]"
+        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies]"
     );
     std::process::exit(code);
+}
+
+fn case_enabled(args: &Args, name: &str) -> bool {
+    args.cases.is_empty() || args.cases.iter().any(|case| case == name)
 }
 
 /// Strip known non-deterministic lines from serial output.
@@ -123,11 +178,13 @@ fn run_single_vm(
     num_vcpus: usize,
     max_exits: u64,
     dlog_path: Option<PathBuf>,
+    extra_cmdline: Option<&str>,
 ) -> VmFingerprint {
     let config = VmConfig {
         num_vcpus,
         dlog_path,
         dlog_register_interval: DLOG_REGISTER_INTERVAL,
+        extra_cmdline: extra_cmdline.map(str::to_string),
         ..Default::default()
     };
     let mut vm = DeterministicVm::new(config).expect("create VM");
@@ -502,26 +559,45 @@ fn main() {
     println!();
 
     let dlog_root = args.dlog_dir.as_deref();
-    let cases = vec![
-        run_case("single-vm-1vcpu", args.runs, dlog_root, |_, dlog_path| {
-            RunFingerprint::SingleVm(run_single_vm(
-                &args.kernel,
-                &args.initrd,
-                1,
-                SINGLE_VM_MAX_EXITS,
-                dlog_path,
-            ))
-        }),
-        run_case("single-vm-2vcpu", args.runs, dlog_root, |_, dlog_path| {
-            RunFingerprint::SingleVm(run_single_vm(
-                &args.kernel,
-                &args.initrd,
-                2,
-                SINGLE_VM_MAX_EXITS,
-                dlog_path,
-            ))
-        }),
-        run_case(
+    let single_extra_cmdline = args.single_clock_profile.extra_cmdline();
+    let mut cases = Vec::new();
+
+    if case_enabled(&args, "single-vm-1vcpu") {
+        cases.push(run_case(
+            "single-vm-1vcpu",
+            args.runs,
+            dlog_root,
+            |_, dlog_path| {
+                RunFingerprint::SingleVm(run_single_vm(
+                    &args.kernel,
+                    &args.initrd,
+                    1,
+                    SINGLE_VM_MAX_EXITS,
+                    dlog_path,
+                    single_extra_cmdline,
+                ))
+            },
+        ));
+    }
+    if case_enabled(&args, "single-vm-2vcpu") {
+        cases.push(run_case(
+            "single-vm-2vcpu",
+            args.runs,
+            dlog_root,
+            |_, dlog_path| {
+                RunFingerprint::SingleVm(run_single_vm(
+                    &args.kernel,
+                    &args.initrd,
+                    2,
+                    SINGLE_VM_MAX_EXITS,
+                    dlog_path,
+                    None,
+                ))
+            },
+        ));
+    }
+    if case_enabled(&args, "controller-3vm-1vcpu") {
+        cases.push(run_case(
             "controller-3vm-1vcpu",
             args.runs,
             dlog_root,
@@ -536,8 +612,10 @@ fn main() {
                     dlog_dir,
                 ))
             },
-        ),
-        run_case(
+        ));
+    }
+    if case_enabled(&args, "controller-3vm-2vcpu") {
+        cases.push(run_case(
             "controller-3vm-2vcpu",
             args.runs,
             dlog_root,
@@ -552,8 +630,12 @@ fn main() {
                     dlog_dir,
                 ))
             },
-        ),
-    ];
+        ));
+    }
+
+    if cases.is_empty() {
+        usage_and_exit("no cases selected; valid cases: single-vm-1vcpu, single-vm-2vcpu, controller-3vm-1vcpu, controller-3vm-2vcpu");
+    }
 
     let receipt = DeterminismGateReceipt::new(
         args.kernel.clone(),
@@ -622,5 +704,38 @@ mod tests {
             }),
             DivergenceClass::DlogLength
         );
+    }
+
+    #[test]
+    fn parse_args_accepts_narrow_jiffies_case() {
+        let args = parse_args_from(vec![
+            "kernel".to_string(),
+            "initrd".to_string(),
+            "5".to_string(),
+            "--case".to_string(),
+            "single-vm-1vcpu".to_string(),
+            "--single-clock-profile".to_string(),
+            "jiffies".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(args.runs, 5);
+        assert_eq!(args.cases, vec!["single-vm-1vcpu"]);
+        assert_eq!(args.single_clock_profile, SingleClockProfile::Jiffies);
+        assert_eq!(
+            args.single_clock_profile.extra_cmdline(),
+            Some("clocksource=jiffies notsc")
+        );
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_clock_profile() {
+        let err = parse_args_from(vec![
+            "kernel".to_string(),
+            "initrd".to_string(),
+            "--single-clock-profile".to_string(),
+            "walltime".to_string(),
+        ])
+        .unwrap_err();
+        assert!(err.contains("unknown --single-clock-profile"));
     }
 }

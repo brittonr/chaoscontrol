@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "gate": "vm-determinism-single-clock-ab-summary",
+  "date": "2026-05-10",
+  "kernel_path": "/nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/30z2dm8jnpbrxiw30bbyq4sgcqam3avq-chaoscontrol-initrd-rust-workload",
+  "case": "single-vm-1vcpu",
+  "runs": 5,
+  "bounded_claim": "A/B evidence for the pinned kernel/initrd and single-vCPU drift gate case only; not a universal VM determinism claim.",
+  "profiles": [
+    {
+      "name": "tsc",
+      "extra_cmdline": null,
+      "receipt": "dogfood-results/vm-determinism-ab-single-clock-2026-05-10/baseline-receipt.json",
+      "receipt_sha256": "0f307bfb893f738a5e61158316a6779b44295c92aeadc5222fc5ba3487b37457",
+      "receipt_size_bytes": 54956,
+      "exit_code": 0,
+      "passed": true,
+      "divergence_classes": [],
+      "fingerprint_mismatches": 0,
+      "dlog_mismatches": 0
+    },
+    {
+      "name": "jiffies",
+      "extra_cmdline": "clocksource=jiffies notsc",
+      "receipt": "dogfood-results/vm-determinism-ab-single-clock-2026-05-10/jiffies-receipt.json",
+      "receipt_sha256": "9c77ea4b04b38f14104bfd7c419f85860e88cd78871e356edd63d87851e7e913",
+      "receipt_size_bytes": 58623,
+      "exit_code": 1,
+      "passed": false,
+      "divergence_classes": ["pit-tsc-calibration", "pci-config-access"],
+      "fingerprint_mismatches": 1,
+      "dlog_mismatches": 1,
+      "first_fingerprint_mismatch": {
+        "run_index": 2,
+        "field": "serial_stripped",
+        "class": "pit-tsc-calibration",
+        "actual": "line 13: tsc: Fast TSC calibration using PIT"
+      },
+      "first_dlog_divergence": {
+        "run_index": 2,
+        "class": "pci-config-access"
+      }
+    }
+  ],
+  "conclusion": "Appending clocksource=jiffies notsc to the single-vCPU profile did not eliminate the early TSC calibration drift in this bounded run; baseline TSC was stable across 5 runs while the jiffies variant still failed."
+}

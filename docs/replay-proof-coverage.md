@@ -5,7 +5,7 @@ ChaosControl currently has accepted snapshot-backed replay proof coverage for th
 | Workload | Assertion ID | Evidence | Verdict |
 | --- | ---: | --- | --- |
 | Raft | `1806003755` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/` | `snapshot_backed_reproduced` |
-| redb | `2718281828` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/` | `snapshot_backed_reproduced` |
+| redb | `2718281828` | `dogfood-results/redb-accepted-verdict-dogfood-20260510T191449Z/` | `snapshot_backed_reproduced` |
 | net | `3141592653` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/` | `snapshot_backed_reproduced` |
 | rust-workload | `1414213562` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/` | `snapshot_backed_reproduced` |
 

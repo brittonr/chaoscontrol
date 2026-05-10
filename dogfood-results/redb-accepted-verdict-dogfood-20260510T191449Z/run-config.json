@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "workload": "redb",
+  "purpose": "fresh redb accepted snapshot-backed replay verdict dogfood proof under CBOR snapshot codec",
+  "git_rev": "6698ddf636bea9d10d38d332f6d82b9a2376d21a",
+  "explore": "/nix/store/15ja72bg2flpzxj3hj736lzbrph8qnsg-chaoscontrol-0.1.0/bin/chaoscontrol-explore",
+  "kernel": "/nix/store/96hxkvhlf1ifzvkrl5xpkigf3g2jv1m6-chaoscontrol-vmlinux/vmlinux",
+  "initrd": "/nix/store/yrdzgqbyp7gg88s28mkm8ybs5m2gij9g-chaoscontrol-initrd-redb",
+  "disk_image": "/nix/store/8i68yqrfslag4nxlkn331sq1n93bh8x5-redb-disk-image",
+  "vms": 1,
+  "rounds": 3,
+  "branches": 2,
+  "ticks": 80,
+  "seed": 42,
+  "mode": "hybrid",
+  "bootstrap_budget": 10000,
+  "memory_mb": 256,
+  "extra_cmdline": "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after=25",
+  "assertion_id": 2718281828,
+  "export_filter": {
+    "assertion_id": 2718281828,
+    "min_replay_parent_depth": 1,
+    "max_bugs": 1
+  }
+}

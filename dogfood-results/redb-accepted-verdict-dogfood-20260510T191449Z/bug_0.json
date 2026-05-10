@@ -1,0 +1,21 @@
+{
+  "bug_id": 0,
+  "assertion_id": 2718281828,
+  "assertion_location": "redb snapshot replay probe trips only after restored parent context",
+  "schedule": {
+    "faults": []
+  },
+  "tick": 1328,
+  "replay_parent_depth": 1,
+  "replay_parent_snapshot_ref": {
+    "store": "file-content-addressed",
+    "digest": "sha256:bacc336ca613083d1276472e79fe6845220205c30582dbac93cd9537629134ac",
+    "codec": "simulation-snapshot-cbor-zstd-v2",
+    "schema_version": 2,
+    "path": "snapshots/bacc336ca613083d1276472e79fe6845220205c30582dbac93cd9537629134ac.snapshot.bin"
+  },
+  "dedup_key": 12849709613891327551,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

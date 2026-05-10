@@ -21,12 +21,13 @@ Supported here means the committed evidence contains an accepted summary, export
 
 ## Experimental or unproven surfaces
 
-| Surface | Status | Why it is not promoted |
-| --- | --- | --- |
-| Fresh workload authoring | `experimental` | New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. |
-| Schedule-only replay | `gap-evidence-only` | Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage. |
-| Arbitrary guest/device determinism | `unproven` | Current evidence covers named bounded workload rails only. The bounded hide-TSC VM drift gate receipt at `dogfood-results/vm-determinism-hide-tsc-broader-2026-05-10/receipt.json` passes across selected single-VM and controller configurations, but it is a profile-specific drift check rather than a universal hypervisor/device/timing determinism proof. |
-| Full Antithesis-style product replacement | `not-supported` | No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence. |
+| Surface | Status | Why it is not promoted | Required promotion evidence |
+| --- | --- | --- | --- |
+| Fresh workload authoring | `experimental` | New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. | Committed workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that workload. |
+| Schedule-only replay | `gap-evidence-only` | Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage. | A reproduced bug with `replay_parent_depth > 0`, valid snapshot ref/artifact or chunks, and `snapshot_backed_reproduced` verdict. |
+| Arbitrary guest/device determinism | `unproven` | Current evidence covers named bounded workload rails only. The bounded hide-TSC VM drift gate receipt at `dogfood-results/vm-determinism-hide-tsc-broader-2026-05-10/receipt.json` passes across selected single-VM and controller configurations, but it is a profile-specific drift check rather than a universal hypervisor/device/timing determinism proof. | Broader device/profile matrix receipts plus negative drift evidence; a bounded drift gate must not be promoted into a universal theorem. |
+| Operator triage UX | `local-artifacts-only` | Current evidence exposes receipts, summaries, dashboards, bug files, and reproduce/minimize commands, but not a hosted triage workflow or fleet UI. | A committed local triage runbook or UI flow that starts from a readiness receipt, opens the bug/replay artifacts, runs reproduce/minimize, and records operator decisions without raw-log scraping. |
+| Full Antithesis-style product replacement | `not-supported` | No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence. | Separate hosted-service, scheduler, workload catalog, UI, fleet, and formal determinism evidence; no existing bounded rail may imply this status. |
 
 ## Promotion rule
 

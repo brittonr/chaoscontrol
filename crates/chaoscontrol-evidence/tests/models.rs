@@ -91,6 +91,9 @@ fn renders_committed_replay_readiness_status() {
             .expect("read replay readiness status")
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
+    assert!(rendered.contains("Operator triage UX | `local-artifacts-only`"));
+    assert!(rendered.contains("Required promotion evidence"));
+    assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
     check_replay_readiness_status("../..").expect("committed readiness report is fresh");
 }

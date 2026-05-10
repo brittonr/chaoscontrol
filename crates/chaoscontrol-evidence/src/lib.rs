@@ -91,28 +91,39 @@ pub struct ExperimentalReplaySurface {
     pub surface: &'static str,
     pub status: &'static str,
     pub reason: &'static str,
+    pub promotion_evidence: &'static str,
 }
 
-pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 4] = [
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 5] = [
     ExperimentalReplaySurface {
         surface: "Fresh workload authoring",
         status: "experimental",
         reason: "New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion.",
+        promotion_evidence: "Committed workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that workload.",
     },
     ExperimentalReplaySurface {
         surface: "Schedule-only replay",
         status: "gap-evidence-only",
         reason: "Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage.",
+        promotion_evidence: "A reproduced bug with `replay_parent_depth > 0`, valid snapshot ref/artifact or chunks, and `snapshot_backed_reproduced` verdict.",
     },
     ExperimentalReplaySurface {
         surface: "Arbitrary guest/device determinism",
         status: "unproven",
         reason: "Current evidence covers named bounded workload rails only. The bounded hide-TSC VM drift gate receipt at `dogfood-results/vm-determinism-hide-tsc-broader-2026-05-10/receipt.json` passes across selected single-VM and controller configurations, but it is a profile-specific drift check rather than a universal hypervisor/device/timing determinism proof.",
+        promotion_evidence: "Broader device/profile matrix receipts plus negative drift evidence; a bounded drift gate must not be promoted into a universal theorem.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Operator triage UX",
+        status: "local-artifacts-only",
+        reason: "Current evidence exposes receipts, summaries, dashboards, bug files, and reproduce/minimize commands, but not a hosted triage workflow or fleet UI.",
+        promotion_evidence: "A committed local triage runbook or UI flow that starts from a readiness receipt, opens the bug/replay artifacts, runs reproduce/minimize, and records operator decisions without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",
         status: "not-supported",
         reason: "No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence.",
+        promotion_evidence: "Separate hosted-service, scheduler, workload catalog, UI, fleet, and formal determinism evidence; no existing bounded rail may imply this status.",
     },
 ];
 
@@ -608,12 +619,13 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
     output.push('\n');
     output.push_str("Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by the Rust `check-replay-proof-coverage` gate.\n\n");
     output.push_str("## Experimental or unproven surfaces\n\n");
-    output.push_str("| Surface | Status | Why it is not promoted |\n");
-    output.push_str("| --- | --- | --- |\n");
+    output
+        .push_str("| Surface | Status | Why it is not promoted | Required promotion evidence |\n");
+    output.push_str("| --- | --- | --- | --- |\n");
     for item in EXPERIMENTAL_REPLAY_SURFACES {
         output.push_str(&format!(
-            "| {} | `{}` | {} |\n",
-            item.surface, item.status, item.reason
+            "| {} | `{}` | {} | {} |\n",
+            item.surface, item.status, item.reason, item.promotion_evidence
         ));
     }
     output.push('\n');

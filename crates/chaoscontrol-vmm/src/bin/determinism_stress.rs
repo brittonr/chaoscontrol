@@ -4,6 +4,10 @@
 //! Usage:
 //!   determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]
 //!       [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]
+//!
+//! The default single-VM/controller clock profile is `hide-tsc`, the current
+//! bounded operator profile with committed passing drift evidence. Use
+//! `--single-clock-profile tsc` for legacy baseline A/B diagnosis.
 
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
@@ -102,7 +106,7 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
     let mut receipt = None;
     let mut dlog_dir = None;
     let mut cases = Vec::new();
-    let mut single_clock_profile = SingleClockProfile::Tsc;
+    let mut single_clock_profile = SingleClockProfile::HideTsc;
     let mut iter = args.into_iter();
 
     while let Some(arg) = iter.next() {
@@ -168,7 +172,7 @@ fn usage_and_exit_code(message: &str, code: i32) -> ! {
         eprintln!("error: {message}\n");
     }
     eprintln!(
-        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]"
+        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]\n\nDefault profile: hide-tsc (bounded operator drift gate); use --single-clock-profile tsc for legacy baseline A/B."
     );
     std::process::exit(code);
 }
@@ -778,20 +782,28 @@ mod tests {
     }
 
     #[test]
-    fn parse_args_accepts_hide_tsc_profile() {
-        let args = parse_args_from(vec![
-            "kernel".to_string(),
-            "initrd".to_string(),
-            "--single-clock-profile".to_string(),
-            "hide-tsc".to_string(),
-        ])
-        .unwrap();
+    fn parse_args_defaults_to_hide_tsc_operator_profile() {
+        let args = parse_args_from(vec!["kernel".to_string(), "initrd".to_string()]).unwrap();
         assert_eq!(args.single_clock_profile, SingleClockProfile::HideTsc);
         assert_eq!(
             args.single_clock_profile.extra_cmdline(),
             Some("clocksource=jiffies notsc")
         );
         assert!(args.single_clock_profile.hide_tsc());
+    }
+
+    #[test]
+    fn parse_args_accepts_explicit_tsc_legacy_baseline() {
+        let args = parse_args_from(vec![
+            "kernel".to_string(),
+            "initrd".to_string(),
+            "--single-clock-profile".to_string(),
+            "tsc".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(args.single_clock_profile, SingleClockProfile::Tsc);
+        assert_eq!(args.single_clock_profile.extra_cmdline(), None);
+        assert!(!args.single_clock_profile.hide_tsc());
     }
 
     #[test]

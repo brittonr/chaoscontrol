@@ -453,6 +453,76 @@
             )
           );
 
+          vmDeterminismDrift = pkgs.writeShellApplication {
+            name = "vm-determinism-drift";
+            runtimeInputs = [
+              chaoscontrol
+              pkgs.coreutils
+            ];
+            text = ''
+              usage() {
+                cat <<'EOF'
+              usage: vm-determinism-drift [--out DIR] [--runs N] [-- DETERMINISM_STRESS_ARGS...]
+
+              Runs the bounded operator VM determinism drift gate with the current
+              hide-tsc clock profile across the single-VM and controller cases. The
+              default writes a JSON receipt and dlogs under
+              ./dogfood-results/vm-determinism-drift-latest/. Extra arguments after
+              -- are forwarded to determinism_stress.
+              EOF
+              }
+
+              out="./dogfood-results/vm-determinism-drift-latest"
+              runs="5"
+              extra_args=()
+              while [ "$#" -gt 0 ]; do
+                case "$1" in
+                  -h|--help)
+                    usage
+                    exit 0
+                    ;;
+                  --out)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--out requires a directory" >&2
+                      exit 2
+                    fi
+                    out="$2"
+                    shift 2
+                    ;;
+                  --runs)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--runs requires a count" >&2
+                      exit 2
+                    fi
+                    runs="$2"
+                    shift 2
+                    ;;
+                  --)
+                    shift
+                    extra_args=("$@")
+                    break
+                    ;;
+                  *)
+                    echo "unknown argument: $1" >&2
+                    usage >&2
+                    exit 2
+                    ;;
+                esac
+              done
+
+              mkdir -p "$out"
+              determinism_stress \
+                ${mkChaosKernel { }}/vmlinux \
+                ${initrd-rust-workload} \
+                "$runs" \
+                --single-clock-profile hide-tsc \
+                --receipt "$out/receipt.json" \
+                --dlog-dir "$out/dlogs" \
+                "''${extra_args[@]}"
+              printf 'vm determinism drift receipt: %s\n' "$out/receipt.json"
+            '';
+          };
+
           replayReadiness = pkgs.writeShellApplication {
             name = "replay-readiness";
             runtimeInputs = [
@@ -1295,6 +1365,7 @@
             net-accepted-verdict-dogfood = mkApp "Run the accepted-verdict network dogfood proof rail." "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
             rust-workload-accepted-verdict-dogfood = mkApp "Run the accepted-verdict rust-workload dogfood proof rail." "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
+            vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             replay-readiness-summary = mkApp "Summarize a replay readiness receipt." "${replayReadinessSummary}/bin/replay-readiness-summary";
             replay-readiness-dashboard = mkApp "Render a replay readiness receipt as an HTML dashboard." "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
             replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";

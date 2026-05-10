@@ -103,7 +103,7 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 4] = [
     ExperimentalReplaySurface {
         surface: "Arbitrary guest/device determinism",
         status: "unproven",
-        reason: "Current evidence covers named bounded workload rails only. A live bounded VM drift gate receipt at `dogfood-results/vm-determinism-drift-2026-05-09/receipt.json` currently fails across selected single-VM and controller configurations, so universal hypervisor/device/timing determinism remains unpromoted.",
+        reason: "Current evidence covers named bounded workload rails only. The bounded hide-TSC VM drift gate receipt at `dogfood-results/vm-determinism-hide-tsc-broader-2026-05-10/receipt.json` passes across selected single-VM and controller configurations, but it is a profile-specific drift check rather than a universal hypervisor/device/timing determinism proof.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

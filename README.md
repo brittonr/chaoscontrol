@@ -293,6 +293,14 @@ nix build .#checks.x86_64-linux.replay-readiness --no-link -L
 
 GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, and `replay-readiness-dashboard.html` as the `replay-readiness-receipt` artifact.
 
+For the VM drift gate specifically, run the bounded hide-TSC operator profile:
+
+```bash
+nix run .#vm-determinism-drift -- --out "$PWD/dogfood-results/vm-determinism-drift-latest" --runs 5
+```
+
+This is the current passing DST VM confidence rail for the selected single-VM and controller cases. It emits `receipt.json` plus dlogs and remains a bounded drift check; it does not promote arbitrary guest/device/timing determinism. For legacy A/B diagnosis, call `determinism_stress` directly with `--single-clock-profile tsc`.
+
 To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
 
 ```bash

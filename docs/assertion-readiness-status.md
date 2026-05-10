@@ -32,6 +32,35 @@ Before promoting a workload beyond a bounded replay proof, review these gaps and
 - rust-workload: 6 uncategorized assertion(s)
 - rust-workload: 1 non-passing assertion(s)
 
+## Gap details
+
+These details are derived from committed accepted-proof `assertions.json` artifacts and identify the next remediation targets without running a fresh VM campaign.
+
+- net / non-passing: `net snapshot replay probe trips only after restored parent context` (kind=always, category=uncategorized, verdict=failed, hit_count=9)
+- raft / non-passing: `commits advance when quorum healthy` (kind=sometimes, category=uncategorized, verdict=unexercised, hit_count=0)
+- raft / non-passing: `snapshot replay probe trips only after restored parent context` (kind=always, category=uncategorized, verdict=failed, hit_count=2975)
+- raft / unhit: `commits advance when quorum healthy` (kind=sometimes, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `committed data survives restart` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `committed key missing after recovery` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `data survives compaction` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `database opens after repair` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `database opens after repair` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `range scan empty table matches oracle` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `read matches oracle (no table)` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `redb snapshot replay probe trips only after restored parent context` (kind=always, category=uncategorized, verdict=failed, hit_count=195)
+- redb / non-passing: `table len matches oracle (no table)` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / non-passing: `uncommitted data not visible` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `committed data survives restart` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `committed key missing after recovery` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `data survives compaction` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `database opens after repair` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `database opens after repair` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `range scan empty table matches oracle` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `read matches oracle (no table)` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `table len matches oracle (no table)` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- redb / unhit: `uncommitted data not visible` (kind=always, category=uncategorized, verdict=unexercised, hit_count=0)
+- rust-workload / non-passing: `rust workload snapshot replay probe trips only after restored parent context` (kind=always, category=uncategorized, verdict=failed, hit_count=10619)
+
 ## Anti-claim
 
 A high exercised count only says the committed run observed cataloged SDK assertions. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.

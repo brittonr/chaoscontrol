@@ -64,6 +64,13 @@ The PropertyOracle MUST distinguish between exercised and unexercised assertions
 - THEN the system MUST report those gaps as promotion blockers unless explicit workload-specific rationale is present
 - AND the workload MUST NOT be described as richer-than-bounded replay support solely because its accepted proof exercised cataloged assertions
 
+#### Scenario: Assertion readiness gap details identify remediation targets
+
+- GIVEN an accepted workload proof has unhit or non-passing assertions
+- WHEN assertion-readiness status is generated
+- THEN the system MUST include deterministic gap details that identify the workload, gap class, assertion ID or message, kind, category, verdict, and hit count when those fields are present
+- AND the details MUST be derived from committed accepted-proof assertion artifacts rather than fresh VM execution
+
 ### Requirement: Assertion-readiness promotion gate
 
 The static readiness surface MUST fail closed when assertion-readiness evidence is weakened, hidden, or promoted beyond the accepted workload's documented instrumentation state.

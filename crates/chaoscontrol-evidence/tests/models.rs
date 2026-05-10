@@ -339,7 +339,11 @@ fn renders_committed_assertion_readiness_status() {
             .expect("read assertion readiness status")
     );
     assert!(rendered.contains("## Promotion guidance"));
+    assert!(rendered.contains("## Gap details"));
     assert!(rendered.contains("rust-workload: 1 non-passing assertion(s)"));
+    assert!(rendered.contains(
+        "rust-workload / non-passing: `rust workload snapshot replay probe trips only after restored parent context`"
+    ));
     check_assertion_readiness_status("../..")
         .expect("committed assertion readiness report is fresh");
 }

@@ -686,6 +686,7 @@ pub struct AssertionReadinessRow {
     pub nonpassing: usize,
     pub evidence_path: String,
     pub gaps: Vec<String>,
+    pub gap_details: Vec<AssertionGapDetail>,
 }
 
 impl AssertionReadinessRow {
@@ -703,6 +704,47 @@ impl AssertionReadinessRow {
             self.nonpassing,
             self.evidence_path
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssertionGapDetail {
+    pub workload: String,
+    pub gap_class: AssertionGapClass,
+    pub label: String,
+    pub kind: String,
+    pub category: String,
+    pub verdict: String,
+    pub hit_count: i64,
+}
+
+impl AssertionGapDetail {
+    fn render(&self) -> String {
+        format!(
+            "- {} / {}: `{}` (kind={}, category={}, verdict={}, hit_count={})",
+            self.workload,
+            self.gap_class.as_str(),
+            self.label,
+            self.kind,
+            self.category,
+            self.verdict,
+            self.hit_count
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssertionGapClass {
+    Unhit,
+    NonPassing,
+}
+
+impl AssertionGapClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Unhit => "unhit",
+            Self::NonPassing => "non-passing",
+        }
     }
 }
 
@@ -742,6 +784,23 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         for gap in &row.gaps {
             output.push_str("- ");
             output.push_str(gap);
+            output.push('\n');
+        }
+    }
+    output.push_str("\n## Gap details\n\n");
+    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts and identify the next remediation targets without running a fresh VM campaign.\n\n");
+    let mut rendered_details = rows
+        .iter()
+        .flat_map(|row| row.gap_details.iter())
+        .map(AssertionGapDetail::render)
+        .collect::<Vec<_>>();
+    rendered_details.sort();
+    if rendered_details.is_empty() {
+        output
+            .push_str("- No unhit or non-passing assertion details in accepted proof artifacts.\n");
+    } else {
+        for detail in rendered_details {
+            output.push_str(&detail);
             output.push('\n');
         }
     }
@@ -1200,20 +1259,46 @@ fn assertion_readiness_row(
     let mut uncategorized = 0_usize;
     let mut unhit = Vec::new();
     let mut nonpassing = Vec::new();
+    let mut gap_details = Vec::new();
 
     for item in assertions {
         let kind = item.kind_string();
-        let kind = assertion_kind_label(kind.as_deref());
-        *counts.entry(kind.to_string()).or_default() += 1;
-        if item.category_string().as_deref().unwrap_or("uncategorized") == "uncategorized" {
+        let kind = assertion_kind_label(kind.as_deref()).to_string();
+        *counts.entry(kind.clone()).or_default() += 1;
+        let category = item
+            .category_string()
+            .unwrap_or_else(|| "uncategorized".to_string());
+        if category == "uncategorized" {
             uncategorized += 1;
         }
         let label = item.message_or_id();
-        if item.hit_count_i64().unwrap_or(0) == 0 {
+        let verdict = item
+            .verdict_string()
+            .unwrap_or_else(|| "unknown".to_string());
+        let hit_count = item.hit_count_i64().unwrap_or(0);
+        if hit_count == 0 {
             unhit.push(label.clone());
+            gap_details.push(AssertionGapDetail {
+                workload: proof.workload.clone(),
+                gap_class: AssertionGapClass::Unhit,
+                label: label.clone(),
+                kind: kind.clone(),
+                category: category.clone(),
+                verdict: verdict.clone(),
+                hit_count,
+            });
         }
-        if item.verdict_string().as_deref() != Some("passed") {
-            nonpassing.push(label);
+        if verdict != "passed" {
+            nonpassing.push(label.clone());
+            gap_details.push(AssertionGapDetail {
+                workload: proof.workload.clone(),
+                gap_class: AssertionGapClass::NonPassing,
+                label,
+                kind,
+                category,
+                verdict,
+                hit_count,
+            });
         }
     }
 
@@ -1242,6 +1327,7 @@ fn assertion_readiness_row(
                 nonpassing.len()
             ),
         ],
+        gap_details,
     })
 }
 

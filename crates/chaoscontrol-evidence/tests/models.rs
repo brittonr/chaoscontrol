@@ -340,9 +340,10 @@ fn renders_committed_assertion_readiness_status() {
     );
     assert!(rendered.contains("## Promotion guidance"));
     assert!(rendered.contains("## Gap details"));
-    assert!(rendered.contains("rust-workload: 1 non-passing assertion(s)"));
+    assert!(rendered.contains("rust-workload: 0 non-passing assertion(s)"));
+    assert!(rendered.contains("## Replay proof signals"));
     assert!(rendered.contains(
-        "rust-workload / non-passing: `rust workload snapshot replay probe trips only after restored parent context`"
+        "rust-workload: `rust workload snapshot replay probe trips only after restored parent context`"
     ));
     check_assertion_readiness_status("../..")
         .expect("committed assertion readiness report is fresh");
@@ -393,9 +394,11 @@ fn infers_accepted_assertion_categories_without_mutating_artifacts() {
 
     let report = render_assertion_readiness_status(root).expect("render report");
 
-    assert!(report.contains("| `redb` | `2` | `1` | `1` / `0` / `1` / `0` | `0` | `1` |"));
+    assert!(report.contains("| `redb` | `2` | `1` | `1` / `0` / `1` / `0` | `0` | `0` | `1` |"));
     assert!(report.contains("category=replay-probe (inferred)"));
     assert!(report.contains("- redb: 0 uncategorized assertion(s)"));
+    assert!(report
+        .contains("- redb: `redb snapshot replay probe trips only after restored parent context`"));
 }
 
 #[test]

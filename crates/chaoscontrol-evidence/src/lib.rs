@@ -685,8 +685,10 @@ pub struct AssertionReadinessRow {
     pub unreachable: usize,
     pub uncategorized: usize,
     pub nonpassing: usize,
+    pub replay_probe_failures: usize,
     pub evidence_path: String,
     pub gaps: Vec<String>,
+    pub replay_probe_signals: Vec<String>,
     pub gap_details: Vec<AssertionGapDetail>,
     pub local_fixture_covered: Vec<String>,
 }
@@ -694,7 +696,7 @@ pub struct AssertionReadinessRow {
 impl AssertionReadinessRow {
     fn render(&self) -> String {
         format!(
-            "| `{}` | `{}` | `{}` | `{}` / `{}` / `{}` / `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | `{}` | `{}` | `{}` / `{}` / `{}` / `{}` | `{}` | `{}` | `{}` | `{}` |",
             self.workload,
             self.total,
             self.exercised,
@@ -704,6 +706,7 @@ impl AssertionReadinessRow {
             self.unreachable,
             self.uncategorized,
             self.nonpassing,
+            self.replay_probe_failures,
             self.evidence_path
         )
     }
@@ -780,8 +783,8 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     output.push_str("## Summary\n\n");
     output.push_str("This report is an assertion-density and uncovered-catalog view over accepted replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
     output.push_str("## Accepted proof assertion coverage\n\n");
-    output.push_str("| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |\n");
-    output.push_str("| --- | ---: | ---: | --- | ---: | ---: | --- |\n");
+    output.push_str("| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Replay probe failures | Evidence |\n");
+    output.push_str("| --- | ---: | ---: | --- | ---: | ---: | ---: | --- |\n");
     for row in &rows {
         output.push_str(&row.render());
         output.push('\n');
@@ -795,6 +798,24 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
             output.push('\n');
         }
     }
+    output.push_str("\n## Replay proof signals\n\n");
+    output.push_str("Replay-probe failures are intentional snapshot-replay proof signals. They remain checked evidence, but they are not ordinary instrumentation-readiness promotion blockers.\n\n");
+    let mut replay_probe_signals = rows
+        .iter()
+        .flat_map(|row| row.replay_probe_signals.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    replay_probe_signals.sort();
+    if replay_probe_signals.is_empty() {
+        output.push_str("- No replay-probe failure signals in accepted proof artifacts.\n");
+    } else {
+        for signal in replay_probe_signals {
+            output.push_str("- ");
+            output.push_str(&signal);
+            output.push('\n');
+        }
+    }
+
     output.push_str("\n## Gap details\n\n");
     output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.\n\n");
     let mut rendered_details = rows
@@ -833,7 +854,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     }
 
     output.push_str("\n## Anti-claim\n\n");
-    output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
+    output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Replay-probe failure visibility is proof-signal accounting, not an application invariant failure. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
     Ok(output)
 }
 
@@ -924,6 +945,7 @@ pub fn validate_assertion_readiness_promotion(
         .collect::<EvidenceResult<Vec<_>>>()?;
     let rows = parse_assertion_readiness_rows(report)?;
     let gaps = parse_assertion_readiness_gaps(report)?;
+    let replay_probe_counts = parse_assertion_replay_probe_counts(report)?;
 
     let expected_workloads = expected
         .iter()
@@ -995,6 +1017,12 @@ pub fn validate_assertion_readiness_promotion(
             row.nonpassing,
             summary.nonpassing,
         )?;
+        compare_assertion_field(
+            &summary.workload,
+            "replay_probe_failures",
+            row.replay_probe_failures,
+            summary.replay_probe_failures,
+        )?;
         ensure(
             row.evidence_path == summary.evidence_path,
             format!(
@@ -1017,19 +1045,28 @@ pub fn validate_assertion_readiness_promotion(
                 ),
             )?;
         }
+        let actual_replay_probe_failures = replay_probe_counts.get(&summary.workload);
+        ensure(
+            actual_replay_probe_failures == Some(&summary.replay_probe_failures),
+            format!(
+                "{}: replay-probe signal count {:?}, expected {}",
+                summary.workload, actual_replay_probe_failures, summary.replay_probe_failures
+            ),
+        )?;
     }
 
     let mut lines = expected
         .iter()
         .map(|summary| {
             format!(
-                "{}: cataloged={} exercised={} unhit={} uncategorized={} nonpassing={}",
+                "{}: cataloged={} exercised={} unhit={} uncategorized={} nonpassing={} replay_probe_failures={}",
                 summary.workload,
                 summary.total,
                 summary.exercised,
                 summary.total - summary.exercised,
                 summary.uncategorized,
-                summary.nonpassing
+                summary.nonpassing,
+                summary.replay_probe_failures
             )
         })
         .collect::<Vec<_>>();
@@ -1065,22 +1102,26 @@ pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> Evi
         "missing anti-claim",
     )?;
     expect_assertion_promotion_failure(
-        "hidden nonpassing gap",
+        "hidden replay-probe signal",
         root,
         &manifest,
-        report.replacen("- raft: 1 non-passing assertion(s)\n", "", 1),
-        "raft: promotion guidance non-passing",
+        report.replacen(
+            "- raft: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)\n",
+            "",
+            1,
+        ),
+        "raft: replay-probe signal count",
     )?;
     expect_assertion_promotion_failure(
         "weakened report count",
         root,
         &manifest,
         report.replacen(
-            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` |",
-            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` |",
+            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` | `1` |",
+            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` | `1` |",
             1,
         ),
-        "redb: report nonpassing=0",
+        "redb: report nonpassing=1",
     )?;
     expect_assertion_promotion_failure(
         "report-only workload",
@@ -1140,6 +1181,7 @@ struct AssertionReadinessParsedRow {
     unreachable: usize,
     uncategorized: usize,
     nonpassing: usize,
+    replay_probe_failures: usize,
     evidence_path: String,
 }
 
@@ -1152,7 +1194,7 @@ fn parse_assertion_readiness_rows(
             continue;
         }
         let cells = markdown_table_cells(line);
-        if cells.len() != 7 {
+        if cells.len() != 8 {
             continue;
         }
         let workload = unbacktick(cells[0]).ok_or_else(|| {
@@ -1169,7 +1211,8 @@ fn parse_assertion_readiness_rows(
         }
         let uncategorized = parse_backtick_usize(cells[4], line)?;
         let nonpassing = parse_backtick_usize(cells[5], line)?;
-        let evidence_path = unbacktick(cells[6]).ok_or_else(|| {
+        let replay_probe_failures = parse_backtick_usize(cells[6], line)?;
+        let evidence_path = unbacktick(cells[7]).ok_or_else(|| {
             EvidenceError::new(format!(
                 "malformed assertion-readiness evidence cell: {line}"
             ))
@@ -1187,6 +1230,7 @@ fn parse_assertion_readiness_rows(
                     unreachable: kinds[3],
                     uncategorized,
                     nonpassing,
+                    replay_probe_failures,
                     evidence_path,
                 },
             )
@@ -1249,6 +1293,27 @@ fn parse_assertion_readiness_gaps(
     Ok(gaps)
 }
 
+fn parse_assertion_replay_probe_counts(report: &str) -> EvidenceResult<BTreeMap<String, usize>> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for line in report.lines() {
+        let Some(rest) = line.strip_prefix("- ") else {
+            continue;
+        };
+        let Some((workload, rest)) = rest.split_once(": `") else {
+            continue;
+        };
+        if !rest.contains("snapshot replay probe") || !rest.contains("category=replay-probe") {
+            continue;
+        }
+        *counts.entry(workload.to_string()).or_default() += 1;
+    }
+    ensure(
+        !counts.is_empty(),
+        "assertion-readiness report has no replay-probe signal lines",
+    )?;
+    Ok(counts)
+}
+
 fn markdown_table_cells(line: &str) -> Vec<&str> {
     line.trim()
         .trim_matches('|')
@@ -1288,6 +1353,7 @@ fn assertion_readiness_row(
     let mut uncategorized = 0_usize;
     let mut unhit = Vec::new();
     let mut nonpassing = Vec::new();
+    let mut replay_probe_signals = Vec::new();
     let mut gap_details = Vec::new();
     let mut local_fixture_covered = Vec::new();
 
@@ -1339,17 +1405,30 @@ fn assertion_readiness_row(
             });
         }
         if verdict != "passed" {
-            nonpassing.push(label.clone());
-            gap_details.push(AssertionGapDetail {
-                workload: proof.workload.clone(),
-                gap_class: AssertionGapClass::NonPassing,
-                label,
-                kind,
-                category: category.name,
-                category_inferred: category.inferred,
-                verdict,
-                hit_count,
-            });
+            let is_replay_probe = category.name == "replay-probe";
+            if is_replay_probe {
+                let rendered_category = if category.inferred {
+                    format!("{} (inferred)", category.name)
+                } else {
+                    category.name.clone()
+                };
+                replay_probe_signals.push(format!(
+                    "{}: `{}` (kind={}, category={}, verdict={}, hit_count={})",
+                    proof.workload, label, kind, rendered_category, verdict, hit_count
+                ));
+            } else {
+                nonpassing.push(label.clone());
+                gap_details.push(AssertionGapDetail {
+                    workload: proof.workload.clone(),
+                    gap_class: AssertionGapClass::NonPassing,
+                    label,
+                    kind,
+                    category: category.name,
+                    category_inferred: category.inferred,
+                    verdict,
+                    hit_count,
+                });
+            }
         }
     }
 
@@ -1365,6 +1444,7 @@ fn assertion_readiness_row(
         unreachable: *counts.get("unreachable").unwrap_or(&0),
         uncategorized,
         nonpassing: nonpassing.len(),
+        replay_probe_failures: replay_probe_signals.len(),
         evidence_path,
         gaps: vec![
             format!("{}: {} unhit assertion(s)", proof.workload, unhit.len()),
@@ -1378,6 +1458,7 @@ fn assertion_readiness_row(
                 nonpassing.len()
             ),
         ],
+        replay_probe_signals,
         gap_details,
         local_fixture_covered,
     })

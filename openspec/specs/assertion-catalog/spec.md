@@ -54,7 +54,7 @@ The PropertyOracle MUST distinguish between exercised and unexercised assertions
 #### Scenario: Unexercised assertion reporting
 
 - GIVEN an assertion is registered in the catalog but never fires
-- WHEN a coverage report is generated  
+- WHEN a coverage report is generated
 - THEN the assertion MUST be reported as unexercised with catalog metadata
 
 #### Scenario: Assertion readiness gaps remain promotion blockers
@@ -83,6 +83,14 @@ The PropertyOracle MUST distinguish between exercised and unexercised assertions
 - GIVEN a committed accepted-proof assertion artifact lacks category metadata and has no deterministic category mapping
 - WHEN assertion-readiness status and promotion checks are generated
 - THEN the system MUST keep that assertion uncategorized so promotion remains fail-closed until metadata or explicit rationale exists
+
+#### Scenario: Replay probes are checked proof signals, not instrumentation blockers [r[assertion-readiness.replay-probes-not-blockers]]
+
+- GIVEN an accepted workload proof includes a non-passing assertion categorized as `replay-probe`
+- WHEN assertion-readiness status and promotion checks are generated
+- THEN the system MUST report that assertion as a replay-proof signal outside the ordinary non-passing instrumentation gap count
+- AND the promotion checker MUST fail closed if the replay-probe signal count is omitted or weakened
+- AND the report MUST preserve anti-claim text that replay-probe visibility is not product parity by itself
 
 ### Requirement: Assertion-readiness promotion gate
 

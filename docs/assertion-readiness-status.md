@@ -60,6 +60,10 @@ These details are derived from committed accepted-proof `assertions.json` artifa
 - redb: `table len matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
 - redb: `uncommitted data not visible` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
 
+## Operator interpretation
+
+Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions after deterministic local harness coverage is applied. It does not promote a workload, device profile, or ChaosControl as a hosted product by itself. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.
+
 ## Anti-claim
 
 A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Replay-probe failure visibility is proof-signal accounting, not an application invariant failure. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.

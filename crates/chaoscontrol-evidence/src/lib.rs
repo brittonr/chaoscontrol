@@ -71,15 +71,18 @@ pub const REQUIRED_ASSERTION_SUMMARY_FRAGMENTS: [&str; 2] = [
     "assertion-density and uncovered-catalog view over accepted replay evidence",
     "not replay proof by itself",
 ];
-pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
+pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 4] = [
     "A high exercised count only says the committed run observed cataloged SDK assertions",
     "Local harness coverage is not snapshot replay evidence",
+    "Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions",
+    "Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence",
 ];
-pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 4] = [
+pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 5] = [
     "product parity is established",
     "full antithesis-style product replacement",
     "assertion density proves replay",
     "assertion coverage proves replay",
+    "zero assertion blockers proves product parity",
 ];
 pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
 
@@ -852,6 +855,9 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
             output.push('\n');
         }
     }
+
+    output.push_str("\n## Operator interpretation\n\n");
+    output.push_str("Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions after deterministic local harness coverage is applied. It does not promote a workload, device profile, or ChaosControl as a hosted product by itself. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.\n");
 
     output.push_str("\n## Anti-claim\n\n");
     output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Replay-probe failure visibility is proof-signal accounting, not an application invariant failure. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");

@@ -1065,11 +1065,11 @@ pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> Evi
         "missing anti-claim",
     )?;
     expect_assertion_promotion_failure(
-        "hidden unhit gap",
+        "hidden nonpassing gap",
         root,
         &manifest,
-        report.replacen("- raft: 1 unhit assertion(s)\n", "", 1),
-        "raft: promotion guidance unhit",
+        report.replacen("- raft: 1 non-passing assertion(s)\n", "", 1),
+        "raft: promotion guidance non-passing",
     )?;
     expect_assertion_promotion_failure(
         "weakened report count",

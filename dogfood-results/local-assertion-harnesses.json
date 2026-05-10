@@ -2,6 +2,17 @@
   "schema_version": 1,
   "harnesses": [
     {
+      "workload": "raft",
+      "evidence": "crates/chaoscontrol-raft-guest/src/lib.rs::raft_local_assertion_harness_covers_quorum_commit_progress",
+      "covered_assertions": [
+        {
+          "id": 944661337,
+          "message": "commits advance when quorum healthy",
+          "status": "passed"
+        }
+      ]
+    },
+    {
       "workload": "redb",
       "evidence": "crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions",
       "covered_assertions": [

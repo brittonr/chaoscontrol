@@ -927,6 +927,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn raft_local_assertion_harness_covers_quorum_commit_progress() {
+        let mut leader = Node::new(0);
+        leader.current_term = 3;
+        leader.role = Role::Leader;
+        leader.log.push(LogEntry { term: 3, value: 42 });
+        leader.next_index = vec![2, 2, 1];
+        leader.match_index = vec![1, 1, 0];
+
+        assert_eq!(leader.quorum(), 2);
+        assert_eq!(leader.commit_index, 0);
+        leader.try_advance_commit();
+
+        assert_eq!(
+            leader.commit_index, 1,
+            "commits advance when quorum healthy"
+        );
+    }
+
     // ─── Category C: RequestVote handling ────────────────────────
 
     #[test]

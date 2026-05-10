@@ -10,7 +10,7 @@ This report is an assertion-density and uncovered-catalog view over accepted rep
 
 | Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |
 | --- | ---: | ---: | --- | ---: | ---: | --- |
-| `raft` | `43` | `42` | `11` / `15` / `17` / `0` | `0` | `2` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
+| `raft` | `43` | `43` | `11` / `15` / `17` / `0` | `0` | `1` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
 | `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/assertions.json` |
 | `net` | `5` | `5` | `3` / `2` / `0` / `0` | `0` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
 | `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/assertions.json` |
@@ -19,9 +19,9 @@ This report is an assertion-density and uncovered-catalog view over accepted rep
 
 Before promoting a workload beyond a bounded replay proof, review these gaps and either add meaningful assertion categories/coverage or explicitly document why the remaining gaps are acceptable for that workload:
 
-- raft: 1 unhit assertion(s)
+- raft: 0 unhit assertion(s)
 - raft: 0 uncategorized assertion(s)
-- raft: 2 non-passing assertion(s)
+- raft: 1 non-passing assertion(s)
 - redb: 0 unhit assertion(s)
 - redb: 0 uncategorized assertion(s)
 - redb: 1 non-passing assertion(s)
@@ -37,14 +37,13 @@ Before promoting a workload beyond a bounded replay proof, review these gaps and
 These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.
 
 - net / non-passing: `net snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=9)
-- raft / non-passing: `commits advance when quorum healthy` (kind=sometimes, category=election (inferred), verdict=unexercised, hit_count=0)
 - raft / non-passing: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)
-- raft / unhit: `commits advance when quorum healthy` (kind=sometimes, category=election (inferred), verdict=unexercised, hit_count=0)
 - redb / non-passing: `redb snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=195)
 - rust-workload / non-passing: `rust workload snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=10619)
 
 ## Local deterministic assertion harness coverage
 
+- raft: `commits advance when quorum healthy` covered by local deterministic harness `crates/chaoscontrol-raft-guest/src/lib.rs::raft_local_assertion_harness_covers_quorum_commit_progress` (accepted-proof verdict=unexercised, hit_count=0)
 - redb: `committed data survives restart` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
 - redb: `committed key missing after recovery` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
 - redb: `data survives compaction` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)

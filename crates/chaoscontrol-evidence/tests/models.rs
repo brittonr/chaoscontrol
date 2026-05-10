@@ -473,7 +473,7 @@ fn validates_committed_assertion_readiness_promotion_gate() {
 
     assert!(lines
         .iter()
-        .any(|line| line.contains("raft: cataloged=43 exercised=42")));
+        .any(|line| line.contains("raft: cataloged=43 exercised=43")));
     assert!(lines
         .iter()
         .any(|line| line.contains("redb: cataloged=27 exercised=27")));

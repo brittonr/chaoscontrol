@@ -25,7 +25,7 @@ Supported here means the committed evidence contains an accepted summary, export
 | --- | --- | --- |
 | Fresh workload authoring | `experimental` | New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. |
 | Schedule-only replay | `gap-evidence-only` | Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage. |
-| Arbitrary guest/device determinism | `unproven` | Current evidence covers named bounded workload rails only, not universal hypervisor/device/timing behavior. |
+| Arbitrary guest/device determinism | `unproven` | Current evidence covers named bounded workload rails only. A live bounded VM drift gate receipt at `dogfood-results/vm-determinism-drift-2026-05-09/receipt.json` currently fails across selected single-VM and controller configurations, so universal hypervisor/device/timing determinism remains unpromoted. |
 | Full Antithesis-style product replacement | `not-supported` | No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence. |
 
 ## Promotion rule

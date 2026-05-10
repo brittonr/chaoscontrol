@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "gate": "vm-determinism-drift-summary",
+  "receipt": "dogfood-results/vm-determinism-drift-2026-05-09/receipt.json",
+  "receipt_sha256": "c0b1cda9710f11d137887e08fa37ada36902dd5c569add07732ad48d7c12e367",
+  "receipt_size_bytes": 308706,
+  "command": "RUSTC_WRAPPER= CARGO_TARGET_DIR=target cargo run -p chaoscontrol-vmm --bin determinism_stress -- /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux /nix/store/iwnqg98k0vy4kk80cn76a0kwpdajk434-chaoscontrol-initrd-rust-workload 10 --receipt dogfood-results/vm-determinism-drift-2026-05-09/receipt.json --dlog-dir dogfood-results/vm-determinism-drift-2026-05-09/dlogs",
+  "exit_code": 1,
+  "passed": false,
+  "kernel_path": "/nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux",
+  "initrd_path": "/nix/store/iwnqg98k0vy4kk80cn76a0kwpdajk434-chaoscontrol-initrd-rust-workload",
+  "kernel_crc32": "crc32:502a7950",
+  "initrd_crc32": "crc32:5e621b14",
+  "cases": [
+    {
+      "name": "single-vm-1vcpu",
+      "runs": 10,
+      "passed": false,
+      "fingerprint_mismatches": 1,
+      "dlog_structural_match": false,
+      "dlog_mismatches": 1,
+      "first_fingerprint_mismatch": {
+        "run_index": 7,
+        "field": "serial_stripped",
+        "expected": "line 13: tsc: Fast TSC calibration using PIT",
+        "actual": "line 13: last_pfn = 0x10000 max_arch_pfn = 0x400000000"
+      },
+      "first_dlog_mismatch": "run 7 dlog structural mismatch: dogfood-results/vm-determinism-drift-2026-05-09/dlogs/single-vm-1vcpu-run-1.dlog vs dogfood-results/vm-determinism-drift-2026-05-09/dlogs/single-vm-1vcpu-run-7.dlog: Divergence at record #3313\n\n  A[3308]: #3308     tsc=3277000      exits=3277     vcpu=0 IoOut          port=0x03f8 data=[6e, 00, 00, 00]\n  A[3309]: #3309     tsc=3278000      exits=3278     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3310]: #3310     tsc=3279000      exits=3279     vcpu=0 IoOut          port=0x03f8 data=[20, 00, 00, 00]\n  A[3311]: #3311     tsc=3280000      exits=3280     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3312]: #3312     tsc=3281000      exits=3281     vcpu=0 IoOut          port=0x03f8 data=[64, 00, 00, 00]\n>>A[3313]: #3313     tsc=3282000      exits=3282     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n\n  B[3308]: #3308     tsc=3277000      exits=3277     vcpu=0 IoOut          port=0x03f8 data=[29, 00, 00, 00]\n  B[3309]: #3309     tsc=3278000      exits=3278     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3310]: #3310     tsc=3279000      exits=3279     vcpu=0 IoOut          port=0x03f8 data=[0d, 00, 00, 00]\n  B[3311]: #3311     tsc=3280000      exits=3280     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3312]: #3312     tsc=3281000      exits=3281     vcpu=0 IoOut          port=0x03f8 data=[0a, 00, 00, 00]\n>>B[3313]: #3313     tsc=3282000      exits=3282     vcpu=0 IoOut          port=0x0cf8 data=[00, 00, 00, 00]\n"
+    },
+    {
+      "name": "single-vm-2vcpu",
+      "runs": 10,
+      "passed": false,
+      "fingerprint_mismatches": 4,
+      "dlog_structural_match": false,
+      "dlog_mismatches": 4,
+      "first_fingerprint_mismatch": {
+        "run_index": 2,
+        "field": "serial_stripped",
+        "expected": "line 13: tsc: Fast TSC calibration failed",
+        "actual": "line 13: last_pfn = 0x10000 max_arch_pfn = 0x400000000"
+      },
+      "first_dlog_mismatch": "run 2 dlog structural mismatch: dogfood-results/vm-determinism-drift-2026-05-09/dlogs/single-vm-2vcpu-run-1.dlog vs dogfood-results/vm-determinism-drift-2026-05-09/dlogs/single-vm-2vcpu-run-2.dlog: Divergence at record #3837\n\n  A[3832]: #3832     tsc=3759000      exits=3759     vcpu=0 IoOut          port=0x03f8 data=[73, 00, 00, 00]\n  A[3833]: #3833     tsc=3760000      exits=3760     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3834]: #3834     tsc=3761000      exits=3761     vcpu=0 IoOut          port=0x03f8 data=[65, 00, 00, 00]\n  A[3835]: #3835     tsc=3762000      exits=3762     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3836]: #3836     tsc=3763000      exits=3763     vcpu=0 IoOut          port=0x03f8 data=[72, 00, 00, 00]\n>>A[3837]: #3837     tsc=3764000      exits=3764     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n\n  B[3832]: #3832     tsc=3759000      exits=3759     vcpu=0 IoOut          port=0x03f8 data=[5d, 00, 00, 00]\n  B[3833]: #3833     tsc=3760000      exits=3760     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3834]: #3834     tsc=3761000      exits=3761     vcpu=0 IoOut          port=0x03f8 data=[0d, 00, 00, 00]\n  B[3835]: #3835     tsc=3762000      exits=3762     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3836]: #3836     tsc=3763000      exits=3763     vcpu=0 IoOut          port=0x03f8 data=[0a, 00, 00, 00]\n>>B[3837]: #3837     tsc=3764000      exits=3764     vcpu=0 IoOut          port=0x0cf8 data=[00, 00, 00, 00]\n"
+    },
+    {
+      "name": "controller-3vm-1vcpu",
+      "runs": 10,
+      "passed": false,
+      "fingerprint_mismatches": 0,
+      "dlog_structural_match": false,
+      "dlog_mismatches": 25,
+      "first_fingerprint_mismatch": null,
+      "first_dlog_mismatch": "run 2 dlog structural mismatch: dogfood-results/vm-determinism-drift-2026-05-09/dlogs/controller-3vm-1vcpu-run-1/vm_0.dlog vs dogfood-results/vm-determinism-drift-2026-05-09/dlogs/controller-3vm-1vcpu-run-2/vm_0.dlog: Divergence at record #14745\n\n  A[14740]: #14740    tsc=14593000     exits=14593    vcpu=0 IoOut          port=0x03f8 data=[65, 00, 00, 00]\n  A[14741]: #14741    tsc=14594000     exits=14594    vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[14742]: #14742    tsc=14595000     exits=14595    vcpu=0 IoOut          port=0x03f8 data=[6e, 00, 00, 00]\n  A[14743]: #14743    tsc=14596000     exits=14596    vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[14744]: #14744    tsc=14597000     exits=14597    vcpu=0 IoOut          port=0x03f8 data=[74, 00, 00, 00]\n>>A[14745]: #14745    tsc=14598000     exits=14598    vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n\n  B[14740]: #14740    tsc=14593000     exits=14593    vcpu=0 IoOut          port=0x03f8 data=[2e, 00, 00, 00]\n  B[14741]: #14741    tsc=14594000     exits=14594    vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[14742]: #14742    tsc=14595000     exits=14595    vcpu=0 IoOut          port=0x03f8 data=[0d, 00, 00, 00]\n  B[14743]: #14743    tsc=14596000     exits=14596    vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[14744]: #14744    tsc=14597000     exits=14597    vcpu=0 IoOut          port=0x03f8 data=[0a, 00, 00, 00]\n>>B[14745]: #14745    tsc=14598000     exits=14598    vcpu=0 IoOut          port=0x0070 data=[00, 00, 00, 00]\n"
+    },
+    {
+      "name": "controller-3vm-2vcpu",
+      "runs": 10,
+      "passed": false,
+      "fingerprint_mismatches": 0,
+      "dlog_structural_match": false,
+      "dlog_mismatches": 27,
+      "first_fingerprint_mismatch": null,
+      "first_dlog_mismatch": "run 2 dlog structural mismatch: dogfood-results/vm-determinism-drift-2026-05-09/dlogs/controller-3vm-2vcpu-run-1/vm_0.dlog vs dogfood-results/vm-determinism-drift-2026-05-09/dlogs/controller-3vm-2vcpu-run-2/vm_0.dlog: Divergence at record #3838\n\n  A[3833]: #3833     tsc=3759000      exits=3759     vcpu=0 IoOut          port=0x03f8 data=[5d, 00, 00, 00]\n  A[3834]: #3834     tsc=3760000      exits=3760     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3835]: #3835     tsc=3761000      exits=3761     vcpu=0 IoOut          port=0x03f8 data=[0d, 00, 00, 00]\n  A[3836]: #3836     tsc=3762000      exits=3762     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  A[3837]: #3837     tsc=3763000      exits=3763     vcpu=0 IoOut          port=0x03f8 data=[0a, 00, 00, 00]\n>>A[3838]: #3838     tsc=3764000      exits=3764     vcpu=0 IoOut          port=0x0cf8 data=[00, 00, 00, 00]\n\n  B[3833]: #3833     tsc=3759000      exits=3759     vcpu=0 IoOut          port=0x03f8 data=[73, 00, 00, 00]\n  B[3834]: #3834     tsc=3760000      exits=3760     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3835]: #3835     tsc=3761000      exits=3761     vcpu=0 IoOut          port=0x03f8 data=[65, 00, 00, 00]\n  B[3836]: #3836     tsc=3762000      exits=3762     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n  B[3837]: #3837     tsc=3763000      exits=3763     vcpu=0 IoOut          port=0x03f8 data=[72, 00, 00, 00]\n>>B[3838]: #3838     tsc=3764000      exits=3764     vcpu=0 IoIn           port=0x03fd data=[60, 00, 00, 00]\n"
+    }
+  ]
+}

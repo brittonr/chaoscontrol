@@ -68,6 +68,9 @@ pub struct DeterminismCaseReport {
     /// True when dlog structural comparison was requested and matched for all
     /// non-reference runs. None means the run did not emit dlogs.
     pub dlog_structural_match: Option<bool>,
+    /// Machine-readable dlog structural mismatch summaries. Empty means no dlog
+    /// comparison failed or dlogs were not requested.
+    pub dlog_mismatches: Vec<String>,
 }
 
 /// Top-level receipt for a determinism drift-gate run.
@@ -134,6 +137,7 @@ pub fn compare_case(
         observations,
         mismatches,
         dlog_structural_match: None,
+        dlog_mismatches: Vec::new(),
     }
 }
 

@@ -256,8 +256,10 @@ where
     }
 
     let mut report = compare_case(name, observations);
-    report.dlog_structural_match = compare_case_dlogs(&report);
-    if matches!(report.dlog_structural_match, Some(false)) {
+    let dlog_mismatches = compare_case_dlogs(&report);
+    report.dlog_structural_match = dlog_mismatches.as_ref().map(Vec::is_empty);
+    report.dlog_mismatches = dlog_mismatches.unwrap_or_default();
+    if !report.dlog_mismatches.is_empty() {
         report.passed = false;
     }
 
@@ -271,8 +273,9 @@ where
         );
     } else {
         println!(
-            "  ❌ FAIL: {} mismatch(es) across {} runs ({:.1}s)",
+            "  ❌ FAIL: {} fingerprint mismatch(es), {} dlog mismatch(es) across {} runs ({:.1}s)",
             report.mismatches.len(),
+            report.dlog_mismatches.len(),
             runs,
             elapsed.as_secs_f64()
         );
@@ -281,6 +284,9 @@ where
                 "         run {} {}: {} vs reference {}",
                 mismatch.run_index, mismatch.field, mismatch.actual, mismatch.expected
             );
+        }
+        for mismatch in &report.dlog_mismatches {
+            eprintln!("         {mismatch}");
         }
         println!();
     }
@@ -300,57 +306,64 @@ fn dlog_path_for(root: &Path, case_name: &str, run_index: usize) -> PathBuf {
     }
 }
 
-fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<bool> {
+fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<Vec<String>> {
     let reference_path = report.observations.first()?.dlog_path.as_deref()?;
-    let mut all_match = true;
+    let mut mismatches = Vec::new();
     for observation in report.observations.iter().skip(1) {
         let Some(path) = observation.dlog_path.as_deref() else {
-            return Some(false);
+            mismatches.push(format!(
+                "run {} missing dlog path for comparison against {reference_path}",
+                observation.run_index
+            ));
+            continue;
         };
-        if !structural_dlog_paths_match(Path::new(reference_path), Path::new(path)) {
-            all_match = false;
-        }
+        mismatches.extend(structural_dlog_path_mismatches(
+            Path::new(reference_path),
+            Path::new(path),
+            observation.run_index,
+        ));
     }
-    Some(all_match)
+    Some(mismatches)
 }
 
-fn structural_dlog_paths_match(reference: &Path, actual: &Path) -> bool {
+fn structural_dlog_path_mismatches(
+    reference: &Path,
+    actual: &Path,
+    run_index: usize,
+) -> Vec<String> {
     if reference.is_dir() || actual.is_dir() {
+        let mut mismatches = Vec::new();
         for vm_idx in 0..64 {
             let ref_file = reference.join(format!("vm_{vm_idx}.dlog"));
             let actual_file = actual.join(format!("vm_{vm_idx}.dlog"));
             if !ref_file.exists() && !actual_file.exists() {
                 break;
             }
-            if !dlog_files_match(&ref_file, &actual_file) {
-                return false;
+            if let Some(mismatch) = dlog_file_mismatch(&ref_file, &actual_file, run_index) {
+                mismatches.push(mismatch);
             }
         }
-        true
+        mismatches
     } else {
-        dlog_files_match(reference, actual)
+        dlog_file_mismatch(reference, actual, run_index)
+            .into_iter()
+            .collect()
     }
 }
 
-fn dlog_files_match(reference: &Path, actual: &Path) -> bool {
+fn dlog_file_mismatch(reference: &Path, actual: &Path, run_index: usize) -> Option<String> {
     match dlog_diff_structural(reference, actual) {
-        Ok(DiffResult::Identical { .. }) => true,
-        Ok(diff) => {
-            eprintln!(
-                "         dlog structural mismatch: {} vs {}: {diff}",
-                reference.display(),
-                actual.display()
-            );
-            false
-        }
-        Err(err) => {
-            eprintln!(
-                "         dlog structural compare failed: {} vs {}: {err}",
-                reference.display(),
-                actual.display()
-            );
-            false
-        }
+        Ok(DiffResult::Identical { .. }) => None,
+        Ok(diff) => Some(format!(
+            "run {run_index} dlog structural mismatch: {} vs {}: {diff}",
+            reference.display(),
+            actual.display()
+        )),
+        Err(err) => Some(format!(
+            "run {run_index} dlog structural compare failed: {} vs {}: {err}",
+            reference.display(),
+            actual.display()
+        )),
     }
 }
 

@@ -984,6 +984,25 @@ mod tests {
     }
 
     #[test]
+    fn filter_leaf1_hides_tsc_when_asked() {
+        let c = CpuConfig {
+            hide_tsc: true,
+            ..Default::default()
+        };
+        let mut e = make_entry(0x1, 0, 0, 0, 0, CPUID_1_EDX_TSC);
+        filter_entry(&mut e, &c);
+        assert_eq!(e.edx & CPUID_1_EDX_TSC, 0);
+    }
+
+    #[test]
+    fn filter_leaf1_keeps_tsc_by_default() {
+        let c = CpuConfig::default();
+        let mut e = make_entry(0x1, 0, 0, 0, 0, CPUID_1_EDX_TSC);
+        filter_entry(&mut e, &c);
+        assert_ne!(e.edx & CPUID_1_EDX_TSC, 0);
+    }
+
+    #[test]
     fn filter_leaf1_fixed_family_simple() {
         let c = CpuConfig {
             fixed_family: Some(6),

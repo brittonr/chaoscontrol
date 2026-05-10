@@ -66,13 +66,14 @@ pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
+pub const LOCAL_ASSERTION_HARNESSES_PATH: &str = "dogfood-results/local-assertion-harnesses.json";
 pub const REQUIRED_ASSERTION_SUMMARY_FRAGMENTS: [&str; 2] = [
     "assertion-density and uncovered-catalog view over accepted replay evidence",
     "not replay proof by itself",
 ];
 pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "A high exercised count only says the committed run observed cataloged SDK assertions",
-    "Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces",
+    "Local harness coverage is not snapshot replay evidence",
 ];
 pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 4] = [
     "product parity is established",
@@ -687,6 +688,7 @@ pub struct AssertionReadinessRow {
     pub evidence_path: String,
     pub gaps: Vec<String>,
     pub gap_details: Vec<AssertionGapDetail>,
+    pub local_fixture_covered: Vec<String>,
 }
 
 impl AssertionReadinessRow {
@@ -776,7 +778,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     output.push_str("# Assertion Readiness Status\n\n");
     output.push_str("Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .`.\n\n");
     output.push_str("## Summary\n\n");
-    output.push_str("This report is an assertion-density and uncovered-catalog view over accepted replay evidence. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
+    output.push_str("This report is an assertion-density and uncovered-catalog view over accepted replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
     output.push_str("## Accepted proof assertion coverage\n\n");
     output.push_str("| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |\n");
     output.push_str("| --- | ---: | ---: | --- | ---: | ---: | --- |\n");
@@ -794,7 +796,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         }
     }
     output.push_str("\n## Gap details\n\n");
-    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts and deterministic report-local category inference; inferred categories are marked and no fresh VM campaign is required.\n\n");
+    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.\n\n");
     let mut rendered_details = rows
         .iter()
         .flat_map(|row| row.gap_details.iter())
@@ -810,8 +812,28 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
             output.push('\n');
         }
     }
+    output.push_str("\n## Local deterministic assertion harness coverage\n\n");
+    let mut local_covered = rows
+        .iter()
+        .flat_map(|row| {
+            row.local_fixture_covered
+                .iter()
+                .map(|detail| format!("{}: {detail}", row.workload))
+        })
+        .collect::<Vec<_>>();
+    local_covered.sort();
+    if local_covered.is_empty() {
+        output.push_str("- No accepted-proof gaps are covered by local deterministic assertion harness fixtures.\n");
+    } else {
+        for detail in local_covered {
+            output.push_str("- ");
+            output.push_str(&detail);
+            output.push('\n');
+        }
+    }
+
     output.push_str("\n## Anti-claim\n\n");
-    output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
+    output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
     Ok(output)
 }
 
@@ -1054,8 +1076,8 @@ pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> Evi
         root,
         &manifest,
         report.replacen(
-            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `10` |",
-            "| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `0` |",
+            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` |",
+            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` |",
             1,
         ),
         "redb: report nonpassing=0",
@@ -1261,26 +1283,48 @@ fn assertion_readiness_row(
     let evidence_path = format!("{}/assertions.json", proof.evidence_dir);
     let assertions_path = root.join(&evidence_path);
     let assertions: Vec<AssertionSummaryEntry> = load_json(root, &assertions_path)?;
+    let local_support = local_assertion_support(root, &proof.workload)?;
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     let mut uncategorized = 0_usize;
     let mut unhit = Vec::new();
     let mut nonpassing = Vec::new();
     let mut gap_details = Vec::new();
+    let mut local_fixture_covered = Vec::new();
 
     for item in assertions {
         let kind = item.kind_string();
         let kind = assertion_kind_label(kind.as_deref()).to_string();
         *counts.entry(kind.clone()).or_default() += 1;
         let label = item.message_or_id();
+        let id = item.id_u64();
         let category =
             effective_assertion_category(&proof.workload, &label, item.category_string());
         if category.name == "uncategorized" {
             uncategorized += 1;
         }
-        let verdict = item
+        let artifact_verdict = item
             .verdict_string()
             .unwrap_or_else(|| "unknown".to_string());
-        let hit_count = item.hit_count_i64().unwrap_or(0);
+        let artifact_hit_count = item.hit_count_i64().unwrap_or(0);
+        let local_evidence = (artifact_hit_count == 0)
+            .then(|| local_support.evidence_for(id, &label))
+            .flatten();
+        let locally_covered = local_evidence.is_some();
+        let hit_count = if locally_covered {
+            1
+        } else {
+            artifact_hit_count
+        };
+        let verdict = if locally_covered {
+            "passed".to_string()
+        } else {
+            artifact_verdict.clone()
+        };
+        if let Some(evidence) = local_evidence {
+            local_fixture_covered.push(format!(
+                "`{label}` covered by local deterministic harness `{evidence}` (accepted-proof verdict={artifact_verdict}, hit_count={artifact_hit_count})"
+            ));
+        }
         if hit_count == 0 {
             unhit.push(label.clone());
             gap_details.push(AssertionGapDetail {
@@ -1335,7 +1379,84 @@ fn assertion_readiness_row(
             ),
         ],
         gap_details,
+        local_fixture_covered,
     })
+}
+
+#[derive(Debug, Default, Clone)]
+struct LocalAssertionSupport {
+    by_id: BTreeMap<u64, String>,
+    by_message: BTreeMap<String, String>,
+}
+
+impl LocalAssertionSupport {
+    fn evidence_for(&self, id: Option<u64>, message: &str) -> Option<String> {
+        id.and_then(|id| self.by_id.get(&id).cloned())
+            .or_else(|| self.by_message.get(message).cloned())
+    }
+}
+
+fn local_assertion_support(root: &Path, workload: &str) -> EvidenceResult<LocalAssertionSupport> {
+    let path = root.join(LOCAL_ASSERTION_HARNESSES_PATH);
+    if !path.exists() {
+        return Ok(LocalAssertionSupport::default());
+    }
+    let manifest: LocalAssertionHarnessManifest = load_json(root, &path)?;
+    ensure(
+        manifest.schema_version == 1,
+        format!(
+            "{}: unsupported local assertion harness schema_version {}",
+            rel_display(root, &path),
+            manifest.schema_version
+        ),
+    )?;
+    let mut support = LocalAssertionSupport::default();
+    for harness in manifest
+        .harnesses
+        .into_iter()
+        .filter(|h| h.workload == workload)
+    {
+        ensure(
+            !harness.evidence.is_empty(),
+            format!("{workload}: local assertion harness evidence must be non-empty"),
+        )?;
+        for assertion in harness.covered_assertions {
+            ensure(
+                assertion.status == "passed",
+                format!(
+                    "{workload}: local assertion harness {} has non-passing status {}",
+                    assertion.message, assertion.status
+                ),
+            )?;
+            if let Some(id) = assertion.id {
+                support.by_id.insert(id, harness.evidence.clone());
+            }
+            support
+                .by_message
+                .insert(assertion.message, harness.evidence.clone());
+        }
+    }
+    Ok(support)
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct LocalAssertionHarnessManifest {
+    schema_version: u64,
+    harnesses: Vec<LocalAssertionHarness>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct LocalAssertionHarness {
+    workload: String,
+    evidence: String,
+    covered_assertions: Vec<LocalAssertionHarnessAssertion>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct LocalAssertionHarnessAssertion {
+    id: Option<u64>,
+    message: String,
+    status: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1942,6 +2063,16 @@ impl AssertionSummaryEntry {
             .or(self.id.as_ref())
             .map(Self::value_string)
             .unwrap_or_else(|| "<unnamed>".to_string())
+    }
+
+    fn id_u64(&self) -> Option<u64> {
+        match self.id.as_ref()? {
+            serde_json::Value::Number(number) => number.as_u64(),
+            serde_json::Value::String(text) => text.parse().ok(),
+            serde_json::Value::Bool(value) => Some(u64::from(*value)),
+            serde_json::Value::Null => None,
+            _ => None,
+        }
     }
 
     fn kind_string(&self) -> Option<String> {

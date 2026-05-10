@@ -4,14 +4,14 @@ Generated from `dogfood-results/accepted-workload-proofs.json` and each committe
 
 ## Summary
 
-This report is an assertion-density and uncovered-catalog view over accepted replay evidence. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.
+This report is an assertion-density and uncovered-catalog view over accepted replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.
 
 ## Accepted proof assertion coverage
 
 | Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Evidence |
 | --- | ---: | ---: | --- | ---: | ---: | --- |
 | `raft` | `43` | `42` | `11` / `15` / `17` / `0` | `0` | `2` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
-| `redb` | `27` | `18` | `17` / `2` / `8` / `0` | `0` | `10` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/assertions.json` |
+| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` | `dogfood-results/redb-accepted-verdict-dogfood-20260509T025029Z/assertions.json` |
 | `net` | `5` | `5` | `3` / `2` / `0` / `0` | `0` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
 | `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/assertions.json` |
 
@@ -22,9 +22,9 @@ Before promoting a workload beyond a bounded replay proof, review these gaps and
 - raft: 1 unhit assertion(s)
 - raft: 0 uncategorized assertion(s)
 - raft: 2 non-passing assertion(s)
-- redb: 9 unhit assertion(s)
+- redb: 0 unhit assertion(s)
 - redb: 0 uncategorized assertion(s)
-- redb: 10 non-passing assertion(s)
+- redb: 1 non-passing assertion(s)
 - net: 0 unhit assertion(s)
 - net: 0 uncategorized assertion(s)
 - net: 1 non-passing assertion(s)
@@ -34,33 +34,27 @@ Before promoting a workload beyond a bounded replay proof, review these gaps and
 
 ## Gap details
 
-These details are derived from committed accepted-proof `assertions.json` artifacts and deterministic report-local category inference; inferred categories are marked and no fresh VM campaign is required.
+These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.
 
 - net / non-passing: `net snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=9)
 - raft / non-passing: `commits advance when quorum healthy` (kind=sometimes, category=election (inferred), verdict=unexercised, hit_count=0)
 - raft / non-passing: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)
 - raft / unhit: `commits advance when quorum healthy` (kind=sometimes, category=election (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `committed data survives restart` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `committed key missing after recovery` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `data survives compaction` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `database opens after repair` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `database opens after repair` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `range scan empty table matches oracle` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `read matches oracle (no table)` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
 - redb / non-passing: `redb snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=195)
-- redb / non-passing: `table len matches oracle (no table)` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / non-passing: `uncommitted data not visible` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `committed data survives restart` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `committed key missing after recovery` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `data survives compaction` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `database opens after repair` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `database opens after repair` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `range scan empty table matches oracle` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `read matches oracle (no table)` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `table len matches oracle (no table)` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
-- redb / unhit: `uncommitted data not visible` (kind=always, category=invariant (inferred), verdict=unexercised, hit_count=0)
 - rust-workload / non-passing: `rust workload snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=10619)
+
+## Local deterministic assertion harness coverage
+
+- redb: `committed data survives restart` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `committed key missing after recovery` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `data survives compaction` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `range scan empty table matches oracle` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `read matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `table len matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- redb: `uncommitted data not visible` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
 
 ## Anti-claim
 
-A high exercised count only says the committed run observed cataloged SDK assertions. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.
+A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.

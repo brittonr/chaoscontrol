@@ -476,7 +476,7 @@ fn validates_committed_assertion_readiness_promotion_gate() {
         .any(|line| line.contains("raft: cataloged=43 exercised=42")));
     assert!(lines
         .iter()
-        .any(|line| line.contains("redb: cataloged=27 exercised=18")));
+        .any(|line| line.contains("redb: cataloged=27 exercised=27")));
     run_assertion_readiness_promotion_selftest("../..").expect("selftest passes");
 }
 

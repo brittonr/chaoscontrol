@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "harnesses": [
+    {
+      "workload": "redb",
+      "evidence": "crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions",
+      "covered_assertions": [
+        {
+          "id": 431494179,
+          "message": "uncommitted data not visible",
+          "status": "passed"
+        },
+        {
+          "id": 1226710147,
+          "message": "range scan empty table matches oracle",
+          "status": "passed"
+        },
+        {
+          "id": 1358590131,
+          "message": "committed data survives restart",
+          "status": "passed"
+        },
+        {
+          "id": 3075375162,
+          "message": "data survives compaction",
+          "status": "passed"
+        },
+        {
+          "id": 3437709884,
+          "message": "database opens after repair",
+          "status": "passed"
+        },
+        {
+          "id": 3562563515,
+          "message": "table len matches oracle (no table)",
+          "status": "passed"
+        },
+        {
+          "id": 3926666994,
+          "message": "committed key missing after recovery",
+          "status": "passed"
+        },
+        {
+          "id": 4052181737,
+          "message": "read matches oracle (no table)",
+          "status": "passed"
+        },
+        {
+          "id": 4078592511,
+          "message": "database opens after repair",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

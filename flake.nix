@@ -60,10 +60,12 @@
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
+              isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
             || isDogfoodCheckpointFixture
+            || isDogfoodAssertionHarnessFixture
             || (builtins.match ".*\\.bpf\\.c$" path != null)
             || (builtins.match ".*\\.h$" path != null)
             || (builtins.match ".*\\.html$" path != null)

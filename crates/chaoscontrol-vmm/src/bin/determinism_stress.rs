@@ -2,8 +2,8 @@
 //! produces identical VM/controller fingerprints.
 //!
 //! Usage:
-//!   determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]
-//!       [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]
+//!   `determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]`
+//!       `[--case name] [--single-clock-profile tsc|jiffies|hide-tsc]`
 //!
 //! The default single-VM/controller clock profile is `hide-tsc`, the current
 //! bounded operator profile with committed passing drift evidence. Use

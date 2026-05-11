@@ -45,6 +45,7 @@ pub use readiness_promotion_gate::{
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift,
     execute_fleet_scheduler_receipt_path as execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_multi_hypervisor_campaign_receipt_path as execute_replay_readiness_multi_hypervisor_campaign_receipt_path,
     execute_scheduler_receipt_path as execute_replay_readiness_scheduler_receipt_path,
     render_dashboard as render_replay_readiness_dashboard, render_fleet_triage_index,
     render_fleet_triage_index_path,
@@ -54,6 +55,8 @@ pub use replay_readiness_surfaces::{
     sample_decision_receipt as sample_replay_readiness_decision_receipt,
     sample_fleet_scheduler_plan as sample_replay_readiness_fleet_scheduler_plan,
     sample_fleet_scheduler_receipt as sample_replay_readiness_fleet_scheduler_receipt,
+    sample_multi_hypervisor_campaign_plan as sample_replay_readiness_multi_hypervisor_campaign_plan,
+    sample_multi_hypervisor_campaign_receipt as sample_replay_readiness_multi_hypervisor_campaign_receipt,
     sample_replay_readiness_receipt,
     sample_scheduler_receipt as sample_replay_readiness_scheduler_receipt,
     summarize_receipt as summarize_replay_readiness_receipt,
@@ -64,6 +67,8 @@ pub use replay_readiness_surfaces::{
     validate_fleet_scheduler_receipt as validate_replay_readiness_fleet_scheduler_receipt,
     validate_fleet_scheduler_receipt_path as validate_replay_readiness_fleet_scheduler_receipt_path,
     validate_gate_metadata,
+    validate_multi_hypervisor_campaign_receipt as validate_replay_readiness_multi_hypervisor_campaign_receipt,
+    validate_multi_hypervisor_campaign_receipt_path as validate_replay_readiness_multi_hypervisor_campaign_receipt_path,
     validate_scheduler_execution_receipt as validate_replay_readiness_scheduler_execution_receipt,
     validate_scheduler_execution_receipt_path as validate_replay_readiness_scheduler_execution_receipt_path,
     validate_scheduler_receipt as validate_replay_readiness_scheduler_receipt,
@@ -72,6 +77,7 @@ pub use replay_readiness_surfaces::{
     write_decision_receipt_path as write_replay_readiness_decision_receipt_path,
     write_fleet_scheduler_receipt_path as write_replay_readiness_fleet_scheduler_receipt_path,
     write_fleet_triage_index_path,
+    write_multi_hypervisor_campaign_receipt_path as write_replay_readiness_multi_hypervisor_campaign_receipt_path,
     write_scheduler_receipt_path as write_replay_readiness_scheduler_receipt_path,
 };
 pub use sdk_local_report::{
@@ -155,8 +161,8 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "restart-persistent-fleet-scheduler-runtime",
-        reason: "Current evidence includes bounded local sequential scheduler execution plus a bounded local hosted/fleet worker loop that consumes a durable queue plan, persists queue state for restart recovery, leases work to workers, executes replay-readiness commands, and emits run-linked receipt summaries. It is still not a multi-machine hosted campaign service.",
+        status: "local-multi-hypervisor-campaign",
+        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, and a bounded local multi-hypervisor campaign receipt that assigns queue leases to multiple local ChaosControl hypervisor workers with persisted queue state and run-linked receipt summaries. It is still not a hosted service, shared remote queue, or cross-machine scheduler.",
         promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {

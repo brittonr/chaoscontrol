@@ -1332,6 +1332,500 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
     ))
 }
 
+pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&sample_multi_hypervisor_campaign_receipt())?,
+    )?;
+    Ok(())
+}
+
+pub fn validate_multi_hypervisor_campaign_receipt_path(
+    path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    validate_multi_hypervisor_campaign_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn execute_multi_hypervisor_campaign_receipt_path(
+    plan_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let plan_path = plan_path.as_ref();
+    let output_path = output_path.as_ref();
+    let receipt = execute_multi_hypervisor_campaign_receipt(&load_json(plan_path)?, plan_path)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    validate_multi_hypervisor_campaign_receipt(&receipt)
+}
+
+pub fn execute_multi_hypervisor_campaign_receipt(
+    plan: &Value,
+    plan_path: &Path,
+) -> EvidenceResult<Value> {
+    let campaign_id = token_field(plan.get("campaign_id"), "multi_hypervisor_plan.campaign_id")?;
+    let max_hypervisors = int_field(
+        plan.get("max_hypervisors"),
+        "multi_hypervisor_plan.max_hypervisors",
+    )?;
+    ensure(
+        max_hypervisors > 1,
+        "multi_hypervisor_plan.max_hypervisors: expected at least 2",
+    )?;
+    let state_path = plan
+        .get("state_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("state.json"));
+    let previous_state = if state_path.exists() {
+        Some(load_json(&state_path)?)
+    } else {
+        None
+    };
+    let completed_before_start = previous_state
+        .as_ref()
+        .and_then(|state| state.get("completed_runs"))
+        .and_then(Value::as_array)
+        .map(|runs| runs.len())
+        .unwrap_or(0);
+
+    let hypervisors = array_field(plan.get("hypervisors"), "multi_hypervisor_plan.hypervisors")?;
+    ensure(
+        hypervisors.len() >= 2,
+        "multi_hypervisor_plan.hypervisors: expected at least two local hypervisor workers",
+    )?;
+    ensure(
+        max_hypervisors as usize <= hypervisors.len(),
+        "multi_hypervisor_plan.max_hypervisors: cannot exceed hypervisor worker count",
+    )?;
+    let mut hypervisor_ids = Vec::with_capacity(hypervisors.len());
+    for (idx, hypervisor) in hypervisors.iter().enumerate() {
+        let hypervisor = object_field(
+            Some(hypervisor),
+            &format!("multi_hypervisor_plan.hypervisors[{idx}]"),
+        )?;
+        hypervisor_ids.push(token_field(
+            hypervisor.get("hypervisor_worker_id"),
+            &format!("multi_hypervisor_plan.hypervisors[{idx}].hypervisor_worker_id"),
+        )?);
+    }
+
+    let queue = object_field(plan.get("queue"), "multi_hypervisor_plan.queue")?;
+    let entries = array_field(queue.get("entries"), "multi_hypervisor_plan.queue.entries")?;
+    ensure(
+        !entries.is_empty(),
+        "multi_hypervisor_plan.queue.entries: expected non-empty list",
+    )?;
+    let mut completed_runs = previous_state
+        .as_ref()
+        .and_then(|state| state.get("completed_runs"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut receipt_entries = Vec::with_capacity(entries.len());
+    let mut runs = Vec::with_capacity(entries.len());
+    let mut failures = 0usize;
+
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].run_id"),
+        )?;
+        let workload = token_field(
+            entry.get("workload"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].workload"),
+        )?;
+        let command = str_field(
+            entry.get("command"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].command"),
+        )?;
+        let receipt_path = str_field(
+            entry.get("receipt_path"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].receipt_path"),
+        )?;
+        let hypervisor_worker_id = hypervisor_ids[idx % (max_hypervisors as usize)];
+        let lease_id = format!("lease-{campaign_id}-{queue_entry_id}");
+        let status = Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .status()
+            .map_err(|err| {
+                EvidenceError::new(format!("multi-hypervisor campaign run {run_id}: {err}"))
+            })?;
+        let exit_code = status.code().unwrap_or(125);
+        let run_status = if exit_code == 0 { "passed" } else { "failed" };
+        if exit_code != 0 {
+            failures += 1;
+        }
+        let receipt_summary = if exit_code == 0 {
+            Some(summarize_receipt_path(receipt_path)?)
+        } else {
+            None
+        };
+        receipt_entries.push(json!({"queue_entry_id": queue_entry_id, "run_id": run_id, "workload": workload, "state": if exit_code == 0 {"completed"} else {"failed"}, "lease_id": lease_id, "hypervisor_worker_id": hypervisor_worker_id}));
+        if exit_code == 0 {
+            completed_runs.push(Value::String(run_id.to_string()));
+        }
+        let state_snapshot = json!({
+            "schema_version": 1,
+            "campaign_id": campaign_id,
+            "state_path": state_path.display().to_string(),
+            "last_persisted_run_id": run_id,
+            "completed_runs": completed_runs,
+            "entries": receipt_entries,
+            "persisted_at": format!("unix:{}", unix_seconds())
+        });
+        if let Some(parent) = state_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+        runs.push(json!({
+            "campaign_id": campaign_id,
+            "run_id": run_id,
+            "queue_entry_id": queue_entry_id,
+            "hypervisor_worker_id": hypervisor_worker_id,
+            "workload": workload,
+            "command": command,
+            "lease_id": lease_id,
+            "receipt_path": receipt_path,
+            "receipt_summary": receipt_summary,
+            "status": run_status,
+            "exit_code": exit_code
+        }));
+    }
+
+    let status = if failures == 0 {
+        "recorded"
+    } else if failures == entries.len() {
+        "failed"
+    } else {
+        "partial"
+    };
+    Ok(json!({
+        "schema_version": 1,
+        "command": "replay-readiness-local-multi-hypervisor-campaign",
+        "status": status,
+        "generated_at": format!("unix:{}", unix_seconds()),
+        "campaign_id": campaign_id,
+        "plan_path": plan_path.display().to_string(),
+        "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
+        "raw_log_scraping": false,
+        "queue_state": {
+            "kind": "durable-local-file",
+            "state_path": state_path.display().to_string(),
+            "loaded_existing_state": previous_state.is_some(),
+            "completed_before_start": completed_before_start,
+            "persisted_after_each_run": true
+        },
+        "queue": {"entries": receipt_entries},
+        "hypervisors": hypervisors,
+        "runs": runs,
+        "operator_decisions": plan.get("operator_decisions").and_then(Value::as_array).cloned().unwrap_or_else(|| vec![Value::String("target/decision-receipt.json".to_string())]),
+        "anti_claims": [
+            "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
+            "This is not a shared remote queue or cross-machine scheduler.",
+            "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
+            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping."
+        ]
+    }))
+}
+
+pub fn sample_multi_hypervisor_campaign_plan() -> Value {
+    json!({
+        "schema_version": 1,
+        "campaign_id": "local-campaign-0001",
+        "max_hypervisors": 2,
+        "state_path": "target/multi-hypervisor/campaign-state.json",
+        "hypervisors": [
+            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
+            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+        ],
+        "queue": {"entries": [
+            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/multi-hypervisor/raft-replay-readiness.json", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json"},
+            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/multi-hypervisor/redb-replay-readiness.json", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json"}
+        ]},
+        "operator_decisions": ["target/decision-receipt.json"]
+    })
+}
+
+pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-local-multi-hypervisor-campaign",
+        "status": "recorded",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "campaign_id": "local-campaign-0001",
+        "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
+        "raw_log_scraping": false,
+        "queue_state": {"kind": "durable-local-file", "state_path": "target/multi-hypervisor/campaign-state.json", "loaded_existing_state": false, "completed_before_start": 0, "persisted_after_each_run": true},
+        "queue": {"entries": [
+            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "state": "completed", "lease_id": "lease-local-campaign-0001-mhq-raft-0001", "hypervisor_worker_id": "local-hv-a"},
+            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "state": "completed", "lease_id": "lease-local-campaign-0001-mhq-redb-0001", "hypervisor_worker_id": "local-hv-b"}
+        ]},
+        "hypervisors": [
+            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
+            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+        ],
+        "runs": [
+            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-raft-0001", "queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "workload": "raft", "lease_id": "lease-local-campaign-0001-mhq-raft-0001", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded", "status": "passed", "exit_code": 0},
+            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-redb-0001", "queue_entry_id": "mhq-redb-0001", "hypervisor_worker_id": "local-hv-b", "workload": "redb", "lease_id": "lease-local-campaign-0001-mhq-redb-0001", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded", "status": "passed", "exit_code": 0}
+        ],
+        "operator_decisions": ["target/decision-receipt.json"],
+        "anti_claims": [
+            "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
+            "This is not a shared remote queue or cross-machine scheduler.",
+            "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
+            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping."
+        ]
+    })
+}
+
+pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(
+        receipt.get("schema_version"),
+        "multi_hypervisor.schema_version",
+    )?;
+    ensure(
+        schema_version == 1,
+        format!("multi_hypervisor.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "multi_hypervisor.command")?;
+    ensure(command == "replay-readiness-local-multi-hypervisor-campaign", format!("multi_hypervisor.command: expected replay-readiness-local-multi-hypervisor-campaign, got {command:?}"))?;
+    let status = str_field(receipt.get("status"), "multi_hypervisor.status")?;
+    ensure(
+        matches!(status, "recorded" | "partial" | "failed"),
+        format!("multi_hypervisor.status: unsupported value {status:?}"),
+    )?;
+    let campaign_id = token_field(receipt.get("campaign_id"), "multi_hypervisor.campaign_id")?;
+    let scope = str_field(receipt.get("scope"), "multi_hypervisor.scope")?.to_lowercase();
+    ensure(
+        scope.contains("bounded local multi-hypervisor")
+            && scope.contains("not a hosted service")
+            && scope.contains("not a shared remote queue")
+            && scope.contains("not cross-machine scheduling")
+            && scope.contains("not universal fleet-scale")
+            && scope.contains("not a full antithesis-style product replacement"),
+        "multi_hypervisor.scope: must preserve bounded local anti-claims",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "multi_hypervisor.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let queue_state = object_field(receipt.get("queue_state"), "multi_hypervisor.queue_state")?;
+    str_field(
+        queue_state.get("state_path"),
+        "multi_hypervisor.queue_state.state_path",
+    )?;
+    ensure(
+        matches!(
+            queue_state.get("persisted_after_each_run"),
+            Some(Value::Bool(true))
+        ),
+        "multi_hypervisor.queue_state.persisted_after_each_run: expected true",
+    )?;
+    int_field(
+        queue_state.get("completed_before_start"),
+        "multi_hypervisor.queue_state.completed_before_start",
+    )?;
+
+    let hypervisors = array_field(receipt.get("hypervisors"), "multi_hypervisor.hypervisors")?;
+    ensure(
+        hypervisors.len() >= 2,
+        "multi_hypervisor.hypervisors: expected at least two local hypervisor workers",
+    )?;
+    let mut hypervisor_ids = BTreeSet::new();
+    for (idx, hypervisor) in hypervisors.iter().enumerate() {
+        let hypervisor = object_field(
+            Some(hypervisor),
+            &format!("multi_hypervisor.hypervisors[{idx}]"),
+        )?;
+        let id = token_field(
+            hypervisor.get("hypervisor_worker_id"),
+            &format!("multi_hypervisor.hypervisors[{idx}].hypervisor_worker_id"),
+        )?;
+        ensure(
+            hypervisor_ids.insert(id.to_string()),
+            format!("multi_hypervisor.hypervisors[{idx}].hypervisor_worker_id: duplicate {id}"),
+        )?;
+        token_field(
+            hypervisor.get("node_id"),
+            &format!("multi_hypervisor.hypervisors[{idx}].node_id"),
+        )?;
+    }
+
+    let queue = object_field(receipt.get("queue"), "multi_hypervisor.queue")?;
+    let entries = array_field(queue.get("entries"), "multi_hypervisor.queue.entries")?;
+    ensure(
+        !entries.is_empty(),
+        "multi_hypervisor.queue.entries: expected non-empty list",
+    )?;
+    let mut entry_ids = BTreeSet::new();
+    let mut entry_run_ids = BTreeSet::new();
+    let mut lease_ids = BTreeSet::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("multi_hypervisor.queue.entries[{idx}]"),
+        )?;
+        let entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("multi_hypervisor.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        ensure(
+            entry_ids.insert(entry_id.to_string()),
+            format!("multi_hypervisor.queue.entries[{idx}].queue_entry_id: duplicate {entry_id}"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("multi_hypervisor.queue.entries[{idx}].run_id"),
+        )?;
+        ensure(
+            entry_run_ids.insert(run_id.to_string()),
+            format!("multi_hypervisor.queue.entries[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        let lease_id = token_field(
+            entry.get("lease_id"),
+            &format!("multi_hypervisor.queue.entries[{idx}].lease_id"),
+        )?;
+        ensure(
+            lease_ids.insert(lease_id.to_string()),
+            format!("multi_hypervisor.queue.entries[{idx}].lease_id: duplicate {lease_id}"),
+        )?;
+        let hypervisor_worker_id = token_field(
+            entry.get("hypervisor_worker_id"),
+            &format!("multi_hypervisor.queue.entries[{idx}].hypervisor_worker_id"),
+        )?;
+        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.queue.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        let state = token_field(
+            entry.get("state"),
+            &format!("multi_hypervisor.queue.entries[{idx}].state"),
+        )?;
+        ensure(
+            matches!(state, "queued" | "leased" | "completed" | "failed"),
+            format!("multi_hypervisor.queue.entries[{idx}].state: unsupported value {state:?}"),
+        )?;
+    }
+
+    let runs = array_field(receipt.get("runs"), "multi_hypervisor.runs")?;
+    ensure(
+        !runs.is_empty(),
+        "multi_hypervisor.runs: expected non-empty list",
+    )?;
+    let mut run_ids = BTreeSet::new();
+    let mut workloads = BTreeSet::new();
+    let mut passed = 0usize;
+    for (idx, run) in runs.iter().enumerate() {
+        let run = object_field(Some(run), &format!("multi_hypervisor.runs[{idx}]"))?;
+        let run_campaign_id = token_field(
+            run.get("campaign_id"),
+            &format!("multi_hypervisor.runs[{idx}].campaign_id"),
+        )?;
+        ensure(
+            run_campaign_id == campaign_id,
+            format!("multi_hypervisor.runs[{idx}].campaign_id: expected {campaign_id}"),
+        )?;
+        let run_id = token_field(
+            run.get("run_id"),
+            &format!("multi_hypervisor.runs[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("multi_hypervisor.runs[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        ensure(
+            entry_run_ids.contains(run_id),
+            format!("multi_hypervisor.runs[{idx}].run_id: {run_id} missing from queue entries"),
+        )?;
+        let queue_entry_id = token_field(
+            run.get("queue_entry_id"),
+            &format!("multi_hypervisor.runs[{idx}].queue_entry_id"),
+        )?;
+        ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        let hypervisor_worker_id = token_field(
+            run.get("hypervisor_worker_id"),
+            &format!("multi_hypervisor.runs[{idx}].hypervisor_worker_id"),
+        )?;
+        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.runs[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        let lease_id = token_field(
+            run.get("lease_id"),
+            &format!("multi_hypervisor.runs[{idx}].lease_id"),
+        )?;
+        ensure(
+            lease_ids.contains(lease_id),
+            format!("multi_hypervisor.runs[{idx}].lease_id: {lease_id} missing from queue entries"),
+        )?;
+        let workload = token_field(
+            run.get("workload"),
+            &format!("multi_hypervisor.runs[{idx}].workload"),
+        )?;
+        workloads.insert(workload.to_string());
+        str_field(
+            run.get("receipt_path"),
+            &format!("multi_hypervisor.runs[{idx}].receipt_path"),
+        )?;
+        let run_status = token_field(
+            run.get("status"),
+            &format!("multi_hypervisor.runs[{idx}].status"),
+        )?;
+        ensure(
+            matches!(run_status, "passed" | "failed"),
+            format!("multi_hypervisor.runs[{idx}].status: unsupported value {run_status:?}"),
+        )?;
+        let exit_code = int_field(
+            run.get("exit_code"),
+            &format!("multi_hypervisor.runs[{idx}].exit_code"),
+        )?;
+        if run_status == "passed" {
+            ensure(
+                exit_code == 0,
+                format!("multi_hypervisor.runs[{idx}].exit_code: passed run must exit 0"),
+            )?;
+            let summary = str_field(
+                run.get("receipt_summary"),
+                &format!("multi_hypervisor.runs[{idx}].receipt_summary"),
+            )?;
+            ensure(summary.contains("replay-readiness status="), format!("multi_hypervisor.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
+            passed += 1;
+        } else {
+            ensure(
+                exit_code != 0,
+                format!("multi_hypervisor.runs[{idx}].exit_code: failed run must be nonzero"),
+            )?;
+        }
+    }
+
+    let anti_claims = array_field(receipt.get("anti_claims"), "multi_hypervisor.anti_claims")?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("bounded local multi-hypervisor")
+            && anti_claim_text.contains("not a hosted service")
+            && anti_claim_text.contains("not a shared remote queue")
+            && anti_claim_text.contains("cross-machine")
+            && anti_claim_text.contains("without raw-log scraping"),
+        "multi_hypervisor.anti_claims: missing bounded local multi-hypervisor anti-overclaim text",
+    )?;
+    Ok(format!("replay-readiness-local-multi-hypervisor-campaign status={status} campaign={campaign_id} hypervisors={} runs={} passed={} restart_persisted=true workloads={} scope=bounded-local-multi-hypervisor", hypervisors.len(), runs.len(), passed, workloads.into_iter().collect::<Vec<_>>().join(",")))
+}
+
 fn unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

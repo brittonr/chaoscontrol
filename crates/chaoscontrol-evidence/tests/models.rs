@@ -4,7 +4,8 @@ use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
     check_dogfood_artifact_sizes, check_evidence_contract_fixtures,
     check_replay_proof_coverage_doc, check_replay_readiness_status,
-    execute_replay_readiness_fleet_scheduler_receipt_path, materialize_snapshot_chunks,
+    execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_replay_readiness_multi_hypervisor_campaign_receipt_path, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_operator_triage_runbook_path,
     render_replay_proof_coverage, render_replay_proof_coverage_doc,
     render_replay_readiness_dashboard, render_replay_readiness_readme_status_block,
@@ -12,12 +13,15 @@ use chaoscontrol_evidence::{
     run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
     sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
-    sample_replay_readiness_fleet_scheduler_receipt, sample_replay_readiness_receipt,
+    sample_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_multi_hypervisor_campaign_plan,
+    sample_replay_readiness_multi_hypervisor_campaign_receipt, sample_replay_readiness_receipt,
     sample_replay_readiness_scheduler_receipt, summarize_replay_readiness_receipt,
     summarize_sdk_local_jsonl, validate_accepted_dogfood_config,
     validate_assertion_readiness_promotion, validate_contract_registry_json,
     validate_gate_metadata, validate_readiness_promotion_files, validate_replay_proof_coverage,
     validate_replay_readiness_decision_receipt, validate_replay_readiness_fleet_scheduler_receipt,
+    validate_replay_readiness_multi_hypervisor_campaign_receipt,
     validate_replay_readiness_scheduler_execution_receipt,
     validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
@@ -100,13 +104,11 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered
-        .contains("Replay scheduler orchestration | `restart-persistent-fleet-scheduler-runtime`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `local-multi-hypervisor-campaign`"));
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
-    assert!(rendered
-        .contains("bounded local hosted/fleet worker loop that consumes a durable queue plan"));
+    assert!(rendered.contains("bounded local multi-hypervisor campaign receipt"));
     assert!(rendered.contains("shared decision store"));
-    assert!(rendered.contains("persists queue state"));
+    assert!(rendered.contains("persisted queue state"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
@@ -439,6 +441,121 @@ fn rejects_fleet_scheduler_plan_over_concurrency() {
     let err = execute_replay_readiness_fleet_scheduler_receipt_path(&plan_path, &output_path)
         .expect_err("over-concurrency is rejected");
     assert!(err.message().contains("cannot exceed worker count"));
+}
+
+#[test]
+fn validates_local_multi_hypervisor_campaign_receipt_model() {
+    let receipt = sample_replay_readiness_multi_hypervisor_campaign_receipt();
+    let summary = validate_replay_readiness_multi_hypervisor_campaign_receipt(&receipt)
+        .expect("multi-hypervisor campaign receipt validates");
+
+    assert!(summary.contains("replay-readiness-local-multi-hypervisor-campaign status=recorded"));
+    assert!(summary.contains("campaign=local-campaign-0001"));
+    assert!(summary.contains("hypervisors=2"));
+    assert!(summary.contains("runs=2"));
+    assert!(summary.contains("restart_persisted=true"));
+    assert!(summary.contains("scope=bounded-local-multi-hypervisor"));
+
+    let mut duplicate_lease = receipt.clone();
+    duplicate_lease["queue"]["entries"][1]["lease_id"] =
+        duplicate_lease["queue"]["entries"][0]["lease_id"].clone();
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&duplicate_lease)
+        .expect_err("duplicate leases are rejected");
+    assert!(err.message().contains("duplicate"));
+
+    let mut missing_hypervisor = receipt.clone();
+    missing_hypervisor["runs"][0]["hypervisor_worker_id"] = serde_json::json!("missing-hv");
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&missing_hypervisor)
+        .expect_err("missing hypervisor link is rejected");
+    assert!(err.message().contains("missing from hypervisors"));
+
+    let mut raw_log = receipt.clone();
+    raw_log["raw_log_scraping"] = serde_json::json!(true);
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&raw_log)
+        .expect_err("raw-log scraping is rejected");
+    assert!(err.message().contains("raw-log scraping is not allowed"));
+
+    let mut no_state = receipt;
+    no_state["queue_state"]["persisted_after_each_run"] = serde_json::json!(false);
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&no_state)
+        .expect_err("queue-state persistence must be proven");
+    assert!(err.message().contains("persisted_after_each_run"));
+}
+
+#[test]
+fn executes_local_multi_hypervisor_campaign_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let receipt_fixture = temp.path().join("readiness.json");
+    std::fs::write(
+        &receipt_fixture,
+        serde_json::to_vec_pretty(&sample_replay_readiness_receipt(false, "passed"))
+            .expect("receipt json"),
+    )
+    .expect("write receipt fixture");
+
+    let run_receipt_a = temp.path().join("mh-run-a.json");
+    let run_receipt_b = temp.path().join("mh-run-b.json");
+    let state_path = temp.path().join("multi-hypervisor-state.json");
+    let mut plan = sample_replay_readiness_multi_hypervisor_campaign_plan();
+    plan["state_path"] = serde_json::json!(state_path.display().to_string());
+    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
+        "cp {} {}",
+        receipt_fixture.display(),
+        run_receipt_a.display()
+    ));
+    plan["queue"]["entries"][0]["receipt_path"] =
+        serde_json::json!(run_receipt_a.display().to_string());
+    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
+        "cp {} {}",
+        receipt_fixture.display(),
+        run_receipt_b.display()
+    ));
+    plan["queue"]["entries"][1]["receipt_path"] =
+        serde_json::json!(run_receipt_b.display().to_string());
+
+    let plan_path = temp.path().join("multi-hypervisor-plan.json");
+    let output_path = temp.path().join("multi-hypervisor-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let summary =
+        execute_replay_readiness_multi_hypervisor_campaign_receipt_path(&plan_path, &output_path)
+            .expect("multi-hypervisor campaign executes");
+    assert!(summary.contains("status=recorded"));
+    assert!(summary.contains("hypervisors=2"));
+    assert!(summary.contains("passed=2"));
+    assert!(state_path.exists(), "campaign queue state is persisted");
+
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&output_path).expect("read generated receipt"))
+            .expect("generated receipt json");
+    assert_eq!(receipt["runs"][0]["status"], "passed");
+    assert_eq!(receipt["runs"][0]["hypervisor_worker_id"], "local-hv-a");
+    assert_eq!(receipt["runs"][1]["hypervisor_worker_id"], "local-hv-b");
+}
+
+#[test]
+fn rejects_multi_hypervisor_plan_over_worker_count() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = sample_replay_readiness_multi_hypervisor_campaign_plan();
+    plan["max_hypervisors"] = serde_json::json!(3);
+    let plan_path = temp.path().join("multi-hypervisor-plan.json");
+    let output_path = temp.path().join("multi-hypervisor-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let err =
+        execute_replay_readiness_multi_hypervisor_campaign_receipt_path(&plan_path, &output_path)
+            .expect_err("over-worker plan is rejected");
+    assert!(err
+        .message()
+        .contains("cannot exceed hypervisor worker count"));
 }
 
 #[test]

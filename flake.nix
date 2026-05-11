@@ -1289,6 +1289,27 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-fleet-plan "$out/fleet-scheduler-plan.json" --output "$out/fleet-scheduler-receipt.json" > "$out/fleet-scheduler-summary.txt"
                   replay-readiness-scheduler-receipt --check-fleet "$out/fleet-scheduler-receipt.json" >> "$out/fleet-scheduler-summary.txt"
+                  cat > "$out/local-multi-hypervisor-campaign-plan.json" <<EOF
+                  {
+                    "schema_version": 1,
+                    "campaign_id": "local-multi-hypervisor-check",
+                    "max_hypervisors": 2,
+                    "state_path": "$out/local-multi-hypervisor-campaign-state.json",
+                    "hypervisors": [
+                      {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
+                      {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+                    ],
+                    "queue": {
+                      "entries": [
+                        {"queue_entry_id": "mhq-static-0001", "run_id": "mh-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/local-multi-hypervisor-run-1.json'", "receipt_path": "$out/local-multi-hypervisor-run-1.json"},
+                        {"queue_entry_id": "mhq-static-0002", "run_id": "mh-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/local-multi-hypervisor-run-2.json'", "receipt_path": "$out/local-multi-hypervisor-run-2.json"}
+                      ]
+                    },
+                    "operator_decisions": ["$out/decision-receipt.json"]
+                  }
+                  EOF
+                  replay-readiness-scheduler-receipt --run-multi-hypervisor-plan "$out/local-multi-hypervisor-campaign-plan.json" --output "$out/local-multi-hypervisor-campaign-receipt.json" > "$out/local-multi-hypervisor-campaign-summary.txt"
+                  replay-readiness-scheduler-receipt --check-multi-hypervisor "$out/local-multi-hypervisor-campaign-receipt.json" >> "$out/local-multi-hypervisor-campaign-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1307,6 +1328,12 @@
                   test -s "$out/fleet-scheduler-state.json"
                   test -s "$out/fleet-scheduled-run-1.json"
                   test -s "$out/fleet-scheduled-run-2.json"
+                  test -s "$out/local-multi-hypervisor-campaign-plan.json"
+                  test -s "$out/local-multi-hypervisor-campaign-receipt.json"
+                  test -s "$out/local-multi-hypervisor-campaign-summary.txt"
+                  test -s "$out/local-multi-hypervisor-campaign-state.json"
+                  test -s "$out/local-multi-hypervisor-run-1.json"
+                  test -s "$out/local-multi-hypervisor-run-2.json"
                   test -s "$out/scheduled-run-1.json"
                   test -s "$out/scheduled-run-2.json"
                 '';

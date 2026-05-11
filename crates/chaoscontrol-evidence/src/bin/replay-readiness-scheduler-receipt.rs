@@ -2,17 +2,23 @@ use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
     execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_replay_readiness_multi_hypervisor_campaign_receipt_path,
     execute_replay_readiness_scheduler_receipt_path, sample_replay_readiness_fleet_scheduler_plan,
-    sample_replay_readiness_fleet_scheduler_receipt, sample_replay_readiness_scheduler_receipt,
+    sample_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_multi_hypervisor_campaign_plan,
+    sample_replay_readiness_multi_hypervisor_campaign_receipt,
+    sample_replay_readiness_scheduler_receipt,
     validate_replay_readiness_fleet_scheduler_receipt_path,
+    validate_replay_readiness_multi_hypervisor_campaign_receipt_path,
     validate_replay_readiness_scheduler_execution_receipt_path,
     validate_replay_readiness_scheduler_receipt_path,
     write_replay_readiness_fleet_scheduler_receipt_path,
+    write_replay_readiness_multi_hypervisor_campaign_receipt_path,
     write_replay_readiness_scheduler_receipt_path, EvidenceResult,
 };
 
 fn usage() -> &'static str {
-    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH"
+    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor --output PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor-plan --output PATH\n       replay-readiness-scheduler-receipt --run-multi-hypervisor-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-multi-hypervisor PATH"
 }
 
 fn main() {
@@ -29,9 +35,13 @@ fn run() -> EvidenceResult<()> {
     let mut run_fleet_plan: Option<PathBuf> = None;
     let mut check_execution: Option<PathBuf> = None;
     let mut check_fleet: Option<PathBuf> = None;
+    let mut run_multi_hypervisor_plan: Option<PathBuf> = None;
+    let mut check_multi_hypervisor: Option<PathBuf> = None;
     let mut sample = false;
     let mut sample_fleet = false;
     let mut sample_fleet_plan = false;
+    let mut sample_multi_hypervisor = false;
+    let mut sample_multi_hypervisor_plan = false;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -75,9 +85,27 @@ fn run() -> EvidenceResult<()> {
                 })?;
                 check_fleet = Some(PathBuf::from(value));
             }
+            "--run-multi-hypervisor-plan" => {
+                let value = args.next().ok_or_else(|| {
+                    chaoscontrol_evidence::EvidenceError::new(
+                        "--run-multi-hypervisor-plan requires a path",
+                    )
+                })?;
+                run_multi_hypervisor_plan = Some(PathBuf::from(value));
+            }
+            "--check-multi-hypervisor" => {
+                let value = args.next().ok_or_else(|| {
+                    chaoscontrol_evidence::EvidenceError::new(
+                        "--check-multi-hypervisor requires a path",
+                    )
+                })?;
+                check_multi_hypervisor = Some(PathBuf::from(value));
+            }
             "--sample" => sample = true,
             "--sample-fleet" => sample_fleet = true,
             "--sample-fleet-plan" => sample_fleet_plan = true,
+            "--sample-multi-hypervisor" => sample_multi_hypervisor = true,
+            "--sample-multi-hypervisor-plan" => sample_multi_hypervisor_plan = true,
             _ => {
                 return Err(chaoscontrol_evidence::EvidenceError::new(format!(
                     "unexpected argument: {}\n{}",
@@ -92,14 +120,32 @@ fn run() -> EvidenceResult<()> {
         sample,
         sample_fleet,
         sample_fleet_plan,
+        sample_multi_hypervisor,
+        sample_multi_hypervisor_plan,
         output,
         check,
         run_plan,
         run_fleet_plan,
         check_execution,
         check_fleet,
+        run_multi_hypervisor_plan,
+        check_multi_hypervisor,
     ) {
-        (true, false, false, Some(output), None, None, None, None, None) => {
+        (
+            true,
+            false,
+            false,
+            false,
+            false,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
             write_replay_readiness_scheduler_receipt_path(&output)?;
             println!(
                 "wrote {} ({})",
@@ -109,23 +155,79 @@ fn run() -> EvidenceResult<()> {
                 )?
             );
         }
-        (false, false, false, None, Some(path), None, None, None, None) => {
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            Some(path),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
             println!(
                 "{}",
                 validate_replay_readiness_scheduler_receipt_path(path)?
             );
         }
-        (false, false, false, Some(output), None, Some(plan), None, None, None) => {
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(output),
+            None,
+            Some(plan),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
             let summary = execute_replay_readiness_scheduler_receipt_path(plan, &output)?;
             println!("wrote {} ({summary})", output.display());
         }
-        (false, false, false, None, None, None, None, Some(path), None) => {
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            Some(path),
+            None,
+            None,
+            None,
+        ) => {
             println!(
                 "{}",
                 validate_replay_readiness_scheduler_execution_receipt_path(path)?
             );
         }
-        (false, true, false, Some(output), None, None, None, None, None) => {
+        (
+            false,
+            true,
+            false,
+            false,
+            false,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
             write_replay_readiness_fleet_scheduler_receipt_path(&output)?;
             println!(
                 "wrote {} ({})",
@@ -135,7 +237,21 @@ fn run() -> EvidenceResult<()> {
                 )?
             );
         }
-        (false, false, true, Some(output), None, None, None, None, None) => {
+        (
+            false,
+            false,
+            true,
+            false,
+            false,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
             if let Some(parent) = output.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -148,19 +264,139 @@ fn run() -> EvidenceResult<()> {
                 output.display()
             );
         }
-        (false, false, false, Some(output), None, None, Some(plan), None, None) => {
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(output),
+            None,
+            None,
+            Some(plan),
+            None,
+            None,
+            None,
+            None,
+        ) => {
             let summary = execute_replay_readiness_fleet_scheduler_receipt_path(plan, &output)?;
             println!("wrote {} ({summary})", output.display());
         }
-        (false, false, false, None, None, None, None, None, Some(path)) => {
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(path),
+            None,
+            None,
+        ) => {
             println!(
                 "{}",
                 validate_replay_readiness_fleet_scheduler_receipt_path(path)?
             );
         }
+        (
+            false,
+            false,
+            false,
+            true,
+            false,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
+            write_replay_readiness_multi_hypervisor_campaign_receipt_path(&output)?;
+            println!(
+                "wrote {} ({})",
+                output.display(),
+                chaoscontrol_evidence::validate_replay_readiness_multi_hypervisor_campaign_receipt(
+                    &sample_replay_readiness_multi_hypervisor_campaign_receipt()
+                )?
+            );
+        }
+        (
+            false,
+            false,
+            false,
+            false,
+            true,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ) => {
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(
+                &output,
+                serde_json::to_vec_pretty(
+                    &sample_replay_readiness_multi_hypervisor_campaign_plan(),
+                )?,
+            )?;
+            println!(
+                "wrote {} (replay-readiness-local-multi-hypervisor-campaign-plan)",
+                output.display()
+            );
+        }
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            Some(output),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(plan),
+            None,
+        ) => {
+            let summary =
+                execute_replay_readiness_multi_hypervisor_campaign_receipt_path(plan, &output)?;
+            println!("wrote {} ({summary})", output.display());
+        }
+        (
+            false,
+            false,
+            false,
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(path),
+        ) => {
+            println!(
+                "{}",
+                validate_replay_readiness_multi_hypervisor_campaign_receipt_path(path)?
+            );
+        }
         _ => {
             return Err(chaoscontrol_evidence::EvidenceError::new(format!(
-                "choose exactly one mode: --sample --output PATH, --check PATH, --run-plan PLAN --output PATH, --check-execution PATH, --sample-fleet --output PATH, --sample-fleet-plan --output PATH, --run-fleet-plan PLAN --output PATH, or --check-fleet PATH\n{}",
+                "choose exactly one mode: --sample --output PATH, --check PATH, --run-plan PLAN --output PATH, --check-execution PATH, --sample-fleet --output PATH, --sample-fleet-plan --output PATH, --run-fleet-plan PLAN --output PATH, or --check-fleet PATH, --sample-multi-hypervisor --output PATH, --sample-multi-hypervisor-plan --output PATH, --run-multi-hypervisor-plan PLAN --output PATH, or --check-multi-hypervisor PATH\n{}",
                 usage()
             )));
         }

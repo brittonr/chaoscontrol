@@ -1235,6 +1235,41 @@
                   replay-readiness-decision-receipt --check "$out/decision-receipt.json" > "$out/decision-receipt-summary.txt"
                   replay-readiness-scheduler-receipt --sample --output "$out/scheduler-receipt.json"
                   replay-readiness-scheduler-receipt --check "$out/scheduler-receipt.json" > "$out/scheduler-receipt-summary.txt"
+                  cat > "$out/scheduler-execution-plan.json" <<EOF
+                  {
+                    "schema_version": 1,
+                    "command": "replay-readiness-scheduler-receipt",
+                    "status": "planned",
+                    "generated_at": "2026-05-11T00:00:00Z",
+                    "scope": "bounded local replay run manifest; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
+                    "raw_log_scraping": false,
+                    "source_decision_receipt": "$out/decision-receipt.json",
+                    "schedule": { "mode": "manual-batch", "max_runs": 2, "concurrency": 1 },
+                    "run_plan": [
+                      {
+                        "run_id": "local-run-static-0001",
+                        "workload": "static-readiness",
+                        "command": "replay-readiness --receipt '$out/scheduled-run-1.json'",
+                        "receipt_path": "$out/scheduled-run-1.json",
+                        "decision_policy": "record-local-decision"
+                      },
+                      {
+                        "run_id": "local-run-static-0002",
+                        "workload": "static-readiness",
+                        "command": "replay-readiness --receipt '$out/scheduled-run-2.json'",
+                        "receipt_path": "$out/scheduled-run-2.json",
+                        "decision_policy": "record-local-decision"
+                      }
+                    ],
+                    "anti_claims": [
+                      "This is not a hosted service.",
+                      "This is not a fleet-scale scheduler and not a shared queue.",
+                      "This scheduler receipt uses no raw-log scraping and does not prove product parity."
+                    ]
+                  }
+                  EOF
+                  replay-readiness-scheduler-receipt --run-plan "$out/scheduler-execution-plan.json" --output "$out/scheduler-execution-receipt.json" > "$out/scheduler-execution-summary.txt"
+                  replay-readiness-scheduler-receipt --check-execution "$out/scheduler-execution-receipt.json" >> "$out/scheduler-execution-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1244,6 +1279,11 @@
                   test -s "$out/decision-receipt-summary.txt"
                   test -s "$out/scheduler-receipt.json"
                   test -s "$out/scheduler-receipt-summary.txt"
+                  test -s "$out/scheduler-execution-plan.json"
+                  test -s "$out/scheduler-execution-receipt.json"
+                  test -s "$out/scheduler-execution-summary.txt"
+                  test -s "$out/scheduled-run-1.json"
+                  test -s "$out/scheduled-run-2.json"
                 '';
 
             # Cheap CI/report guard for the latest packaged hide-TSC VM drift receipt.

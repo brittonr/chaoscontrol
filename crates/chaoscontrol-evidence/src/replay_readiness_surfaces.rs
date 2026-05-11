@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
@@ -501,6 +503,250 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
     ))
 }
 
+pub fn execute_scheduler_receipt_path(
+    plan_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let plan_path = plan_path.as_ref();
+    let output_path = output_path.as_ref();
+    let plan = load_json(plan_path)?;
+    validate_scheduler_receipt(&plan)?;
+    let execution = execute_scheduler_receipt(&plan, plan_path)?;
+    let summary = validate_scheduler_execution_receipt(&execution)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&execution)?)?;
+    Ok(summary)
+}
+
+pub fn validate_scheduler_execution_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+    validate_scheduler_execution_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResult<Value> {
+    let schedule = object_field(plan.get("schedule"), "scheduler.schedule")?;
+    let concurrency = int_field(
+        schedule.get("concurrency"),
+        "scheduler.schedule.concurrency",
+    )?;
+    ensure(
+        concurrency == 1,
+        "scheduler execution currently supports bounded local sequential concurrency=1 only",
+    )?;
+    let run_plan = array_field(plan.get("run_plan"), "scheduler.run_plan")?;
+    let started_at = unix_seconds();
+    let mut runs = Vec::with_capacity(run_plan.len());
+    let mut failures = 0usize;
+    for (idx, run) in run_plan.iter().enumerate() {
+        let run = object_field(Some(run), &format!("scheduler.run_plan[{idx}]"))?;
+        let run_id = token_field(
+            run.get("run_id"),
+            &format!("scheduler.run_plan[{idx}].run_id"),
+        )?;
+        let workload = token_field(
+            run.get("workload"),
+            &format!("scheduler.run_plan[{idx}].workload"),
+        )?;
+        let command = str_field(
+            run.get("command"),
+            &format!("scheduler.run_plan[{idx}].command"),
+        )?;
+        let receipt_path = str_field(
+            run.get("receipt_path"),
+            &format!("scheduler.run_plan[{idx}].receipt_path"),
+        )?;
+        let decision_policy = token_field(
+            run.get("decision_policy"),
+            &format!("scheduler.run_plan[{idx}].decision_policy"),
+        )?;
+        let run_started = unix_seconds();
+        let status = Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .status()
+            .map_err(|err| EvidenceError::new(format!("scheduler run {run_id}: {err}")))?;
+        let exit_code = status.code().unwrap_or(125);
+        let receipt_summary = if exit_code == 0 {
+            Some(summarize_receipt_path(receipt_path)?)
+        } else {
+            None
+        };
+        if exit_code != 0 {
+            failures += 1;
+        }
+        runs.push(json!({
+            "run_id": run_id,
+            "workload": workload,
+            "command": command,
+            "receipt_path": receipt_path,
+            "decision_policy": decision_policy,
+            "started_at_unix": run_started,
+            "finished_at_unix": unix_seconds(),
+            "exit_code": exit_code,
+            "status": if exit_code == 0 { "passed" } else { "failed" },
+            "receipt_summary": receipt_summary,
+        }));
+    }
+    let status = if failures == 0 {
+        "passed"
+    } else if failures == runs.len() {
+        "failed"
+    } else {
+        "partial"
+    };
+    Ok(json!({
+        "schema_version": 1,
+        "command": "replay-readiness-scheduler-execution",
+        "status": status,
+        "plan_path": plan_path.display().to_string(),
+        "started_at_unix": started_at,
+        "finished_at_unix": unix_seconds(),
+        "scope": "bounded local sequential scheduler execution receipt; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
+        "raw_log_scraping": false,
+        "schedule": schedule,
+        "runs": runs,
+        "anti_claims": [
+            "This is not a hosted service.",
+            "This is not a fleet-scale scheduler and not a shared queue.",
+            "This scheduler execution receipt captures command status and receipt summaries without raw-log scraping."
+        ]
+    }))
+}
+
+pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(
+        receipt.get("schema_version"),
+        "scheduler_execution.schema_version",
+    )?;
+    ensure(
+        schema_version == 1,
+        format!("scheduler_execution.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "scheduler_execution.command")?;
+    ensure(
+        command == "replay-readiness-scheduler-execution",
+        format!("scheduler_execution.command: expected replay-readiness-scheduler-execution, got {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "scheduler_execution.status")?;
+    ensure(
+        matches!(status, "passed" | "failed" | "partial"),
+        format!("scheduler_execution.status: unsupported value {status:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "scheduler_execution.scope")?;
+    ensure(
+        scope.contains("bounded")
+            && scope.contains("local")
+            && scope.contains("not a hosted service")
+            && scope.contains("not a fleet-scale scheduler")
+            && scope.contains("not a shared queue"),
+        "scheduler_execution.scope: must declare bounded local scope and not hosted/fleet/shared-queue scheduler",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "scheduler_execution.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+    let schedule = object_field(receipt.get("schedule"), "scheduler_execution.schedule")?;
+    let concurrency = int_field(
+        schedule.get("concurrency"),
+        "scheduler_execution.schedule.concurrency",
+    )?;
+    ensure(
+        concurrency == 1,
+        "scheduler_execution.schedule.concurrency: expected bounded sequential concurrency=1",
+    )?;
+    let runs = array_field(receipt.get("runs"), "scheduler_execution.runs")?;
+    ensure(
+        !runs.is_empty(),
+        "scheduler_execution.runs: expected non-empty list",
+    )?;
+    let mut run_ids = BTreeSet::new();
+    let mut workloads = BTreeSet::new();
+    let mut passed = 0usize;
+    for (idx, run) in runs.iter().enumerate() {
+        let run = object_field(Some(run), &format!("scheduler_execution.runs[{idx}]"))?;
+        let run_id = token_field(
+            run.get("run_id"),
+            &format!("scheduler_execution.runs[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("scheduler_execution.runs[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        let workload = token_field(
+            run.get("workload"),
+            &format!("scheduler_execution.runs[{idx}].workload"),
+        )?;
+        workloads.insert(workload.to_string());
+        str_field(
+            run.get("command"),
+            &format!("scheduler_execution.runs[{idx}].command"),
+        )?;
+        str_field(
+            run.get("receipt_path"),
+            &format!("scheduler_execution.runs[{idx}].receipt_path"),
+        )?;
+        let run_status = str_field(
+            run.get("status"),
+            &format!("scheduler_execution.runs[{idx}].status"),
+        )?;
+        ensure(
+            matches!(run_status, "passed" | "failed"),
+            format!("scheduler_execution.runs[{idx}].status: unsupported value {run_status:?}"),
+        )?;
+        let exit_code = int_field(
+            run.get("exit_code"),
+            &format!("scheduler_execution.runs[{idx}].exit_code"),
+        )?;
+        if run_status == "passed" {
+            ensure(
+                exit_code == 0,
+                format!("scheduler_execution.runs[{idx}].exit_code: passed run must exit 0"),
+            )?;
+            str_field(
+                run.get("receipt_summary"),
+                &format!("scheduler_execution.runs[{idx}].receipt_summary"),
+            )?;
+            passed += 1;
+        } else {
+            ensure(
+                exit_code != 0,
+                format!("scheduler_execution.runs[{idx}].exit_code: failed run must be nonzero"),
+            )?;
+        }
+    }
+    let anti_claims = array_field(
+        receipt.get("anti_claims"),
+        "scheduler_execution.anti_claims",
+    )?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("not a hosted service")
+            && anti_claim_text.contains("not a fleet-scale scheduler")
+            && anti_claim_text.contains("not a shared queue")
+            && anti_claim_text.contains("without raw-log scraping"),
+        "scheduler_execution.anti_claims: missing scheduler execution anti-overclaim text",
+    )?;
+    Ok(format!(
+        "replay-readiness-scheduler-execution status={status} runs={} passed={} workloads={} scope=bounded-local-sequential-not-hosted",
+        runs.len(),
+        passed,
+        workloads.into_iter().collect::<Vec<_>>().join(",")
+    ))
+}
+
+fn unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
 pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<String> {
     let status = str_field(receipt.get("status"), "receipt.status")?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
@@ -875,13 +1121,56 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
             && scheduler_summary.contains("runs=2"),
         "scheduler receipt summary lost bounded local scope or run count",
     )?;
-    let mut overclaimed_scheduler = scheduler;
+    let mut overclaimed_scheduler = scheduler.clone();
     overclaimed_scheduler["scope"] = json!("hosted fleet-scale scheduler");
     match validate_scheduler_receipt(&overclaimed_scheduler) {
         Err(_) => {}
         Ok(_) => {
             return Err(EvidenceError::new(
                 "overclaiming scheduler receipt unexpectedly passed",
+            ))
+        }
+    }
+    let execution = json!({
+        "schema_version": 1,
+        "command": "replay-readiness-scheduler-execution",
+        "status": "passed",
+        "plan_path": "scheduler.json",
+        "started_at_unix": 1,
+        "finished_at_unix": 2,
+        "scope": "bounded local sequential scheduler execution receipt; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
+        "raw_log_scraping": false,
+        "schedule": {"mode": "manual-batch", "max_runs": 1, "concurrency": 1},
+        "runs": [{
+            "run_id": "local-run-raft-0001",
+            "workload": "raft",
+            "command": "replay-readiness --receipt target/raft.json",
+            "receipt_path": "target/raft.json",
+            "decision_policy": "record-local-decision",
+            "started_at_unix": 1,
+            "finished_at_unix": 2,
+            "exit_code": 0,
+            "status": "passed",
+            "receipt_summary": "replay-readiness status=passed"
+        }],
+        "anti_claims": [
+            "This is not a hosted service.",
+            "This is not a fleet-scale scheduler and not a shared queue.",
+            "This scheduler execution receipt captures command status and receipt summaries without raw-log scraping."
+        ]
+    });
+    ensure(
+        validate_scheduler_execution_receipt(&execution)?
+            .contains("scope=bounded-local-sequential-not-hosted"),
+        "scheduler execution summary lost bounded local scope",
+    )?;
+    let mut overclaimed_execution = execution;
+    overclaimed_execution["raw_log_scraping"] = json!(true);
+    match validate_scheduler_execution_receipt(&overclaimed_execution) {
+        Err(_) => {}
+        Ok(_) => {
+            return Err(EvidenceError::new(
+                "raw-log scheduler execution unexpectedly passed",
             ))
         }
     }

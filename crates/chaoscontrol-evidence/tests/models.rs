@@ -15,9 +15,11 @@ use chaoscontrol_evidence::{
     summarize_sdk_local_jsonl, validate_accepted_dogfood_config,
     validate_assertion_readiness_promotion, validate_contract_registry_json,
     validate_gate_metadata, validate_readiness_promotion_files, validate_replay_proof_coverage,
-    validate_replay_readiness_decision_receipt, validate_replay_readiness_scheduler_receipt,
-    write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
-    SnapshotStorage, TriageReceiptSource, REQUIRED_REPLAY_CLASS,
+    validate_replay_readiness_decision_receipt,
+    validate_replay_readiness_scheduler_execution_receipt,
+    validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
+    AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
+    TriageReceiptSource, REQUIRED_REPLAY_CLASS,
 };
 
 fn repo_file(relative: &str) -> PathBuf {
@@ -96,9 +98,10 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `local-scheduler-receipts`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `local-scheduler-execution`"));
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
-    assert!(rendered.contains("bounded local scheduler receipt for a manual multi-run plan"));
+    assert!(rendered
+        .contains("bounded local sequential scheduler execution receipt for multi-run plans"));
     assert!(rendered.contains("shared decision store"));
     assert!(rendered.contains("shared queue"));
     assert!(rendered.contains("Required promotion evidence"));
@@ -245,6 +248,65 @@ fn validates_replay_readiness_scheduler_receipt_model() {
     let err = validate_replay_readiness_scheduler_receipt(&malformed)
         .expect_err("duplicate run IDs are rejected");
     assert!(err.message().contains("duplicate"));
+}
+
+#[test]
+fn validates_replay_readiness_scheduler_execution_receipt_model() {
+    let receipt = serde_json::json!({
+        "schema_version": 1,
+        "command": "replay-readiness-scheduler-execution",
+        "status": "passed",
+        "plan_path": "scheduler.json",
+        "started_at_unix": 1,
+        "finished_at_unix": 2,
+        "scope": "bounded local sequential scheduler execution receipt; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
+        "raw_log_scraping": false,
+        "schedule": {"mode": "manual-batch", "max_runs": 2, "concurrency": 1},
+        "runs": [
+            {
+                "run_id": "local-run-raft-0001",
+                "workload": "raft",
+                "command": "replay-readiness --receipt target/raft.json",
+                "receipt_path": "target/raft.json",
+                "decision_policy": "record-local-decision",
+                "started_at_unix": 1,
+                "finished_at_unix": 2,
+                "exit_code": 0,
+                "status": "passed",
+                "receipt_summary": "replay-readiness status=passed"
+            },
+            {
+                "run_id": "local-run-redb-0001",
+                "workload": "redb",
+                "command": "replay-readiness --receipt target/redb.json",
+                "receipt_path": "target/redb.json",
+                "decision_policy": "record-local-decision",
+                "started_at_unix": 2,
+                "finished_at_unix": 3,
+                "exit_code": 0,
+                "status": "passed",
+                "receipt_summary": "replay-readiness status=passed"
+            }
+        ],
+        "anti_claims": [
+            "This is not a hosted service.",
+            "This is not a fleet-scale scheduler and not a shared queue.",
+            "This scheduler execution receipt captures command status and receipt summaries without raw-log scraping."
+        ]
+    });
+    let summary = validate_replay_readiness_scheduler_execution_receipt(&receipt)
+        .expect("scheduler execution receipt validates");
+
+    assert!(summary.contains("replay-readiness-scheduler-execution status=passed"));
+    assert!(summary.contains("runs=2"));
+    assert!(summary.contains("passed=2"));
+    assert!(summary.contains("scope=bounded-local-sequential-not-hosted"));
+
+    let mut malformed = receipt;
+    malformed["schedule"]["concurrency"] = serde_json::json!(2);
+    let err = validate_replay_readiness_scheduler_execution_receipt(&malformed)
+        .expect_err("parallel execution overclaim is rejected");
+    assert!(err.message().contains("concurrency=1"));
 }
 
 #[test]

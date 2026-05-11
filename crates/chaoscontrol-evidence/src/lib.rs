@@ -43,8 +43,10 @@ pub use readiness_promotion_gate::{
     validate_readiness_promotion, validate_readiness_promotion_files,
 };
 pub use replay_readiness_surfaces::{
-    check_readiness_surface_drift, render_dashboard as render_replay_readiness_dashboard,
-    render_fleet_triage_index, render_fleet_triage_index_path,
+    check_readiness_surface_drift,
+    execute_scheduler_receipt_path as execute_replay_readiness_scheduler_receipt_path,
+    render_dashboard as render_replay_readiness_dashboard, render_fleet_triage_index,
+    render_fleet_triage_index_path,
     render_readme_status_block as render_replay_readiness_readme_status_block,
     replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
     run_readiness_surface_drift_selftest,
@@ -57,6 +59,8 @@ pub use replay_readiness_surfaces::{
     validate_decision_receipt as validate_replay_readiness_decision_receipt,
     validate_decision_receipt_path as validate_replay_readiness_decision_receipt_path,
     validate_gate_metadata,
+    validate_scheduler_execution_receipt as validate_replay_readiness_scheduler_execution_receipt,
+    validate_scheduler_execution_receipt_path as validate_replay_readiness_scheduler_execution_receipt_path,
     validate_scheduler_receipt as validate_replay_readiness_scheduler_receipt,
     validate_scheduler_receipt_path as validate_replay_readiness_scheduler_receipt_path,
     write_dashboard_path as write_replay_readiness_dashboard_path,
@@ -145,9 +149,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "local-scheduler-receipts",
-        reason: "Current evidence includes a bounded local scheduler receipt for a manual multi-run plan, but not a hosted scheduler, shared queue, cross-machine orchestration, or automatic campaign service.",
-        promotion_evidence: "A scheduler integration that executes or records multiple replay-readiness runs, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping or shared-queue overclaims.",
+        status: "local-scheduler-execution",
+        reason: "Current evidence includes a bounded local sequential scheduler execution receipt for multi-run plans, but not a hosted scheduler, shared queue, cross-machine orchestration, or automatic campaign service.",
+        promotion_evidence: "A hosted scheduler integration that executes or records multiple replay-readiness runs across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping or shared-queue overclaims.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

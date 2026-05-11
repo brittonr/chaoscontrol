@@ -50,9 +50,31 @@ fn run() -> EvidenceResult<()> {
         }),
         "known-bad consistency history did not cite op-read-1 counterexample",
     )?;
+
+    let adapter_path =
+        root.join("dogfood-results/consistency-checker-fixtures/adapter-register-good.json");
+    let adapter_report_path =
+        root.join("dogfood-results/consistency-checker-fixtures/adapter-register-good.report.json");
+    let adapter_history = read_consistency_history_path(&adapter_path)?;
+    let adapter_report = read_consistency_report_path(&adapter_report_path)?;
+    validate_consistency_report_for_history(&adapter_report, &adapter_history)?;
+    let adapter = check_consistency_history_path(&adapter_path)?;
+    validate_consistency_report(&adapter)?;
+    require(
+        adapter.verdict == CheckerVerdict::Passed,
+        "typed-adapter consistency history did not pass",
+    )?;
+    require(
+        adapter_history
+            .limitations
+            .iter()
+            .any(|item| item.contains("typed workload adapter")),
+        "typed-adapter history did not record adapter provenance",
+    )?;
+
     println!(
-        "consistency checker fixtures ok: good={} bad={}",
-        good.history_sha256, bad.history_sha256
+        "consistency checker fixtures ok: good={} bad={} adapter={}",
+        good.history_sha256, bad.history_sha256, adapter.history_sha256
     );
     Ok(())
 }

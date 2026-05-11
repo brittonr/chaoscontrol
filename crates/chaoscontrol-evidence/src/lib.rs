@@ -29,10 +29,12 @@ pub use consistency_checker::{
     validate_history_path as validate_consistency_history_path,
     validate_report as validate_consistency_report,
     validate_report_for_history as validate_consistency_report_for_history,
+    write_adapter_sample_history_path as write_adapter_sample_consistency_history_path,
     write_check_report_path as write_consistency_check_report_path,
     write_sample_history_path as write_sample_consistency_history_path, CheckerVerdict,
     ConsistencyCheckReport, ConsistencyChecker, Counterexample, HistoryOperation,
-    OperationCompletion, OperationHistory, OperationInvocation, SingleRegisterChecker,
+    OperationCompletion, OperationHistory, OperationInvocation, RegisterHistoryAdapterConfig,
+    RegisterWorkloadHistoryAdapter, SingleRegisterChecker,
 };
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
 pub use dogfood_guards::{

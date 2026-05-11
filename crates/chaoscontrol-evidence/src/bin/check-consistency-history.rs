@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
     check_consistency_history_path, validate_consistency_history_path,
-    write_consistency_check_report_path, write_sample_consistency_history_path, CheckerVerdict,
-    EvidenceError, EvidenceResult,
+    write_adapter_sample_consistency_history_path, write_consistency_check_report_path,
+    write_sample_consistency_history_path, CheckerVerdict, EvidenceError, EvidenceResult,
 };
 
 fn main() {
@@ -44,9 +44,14 @@ fn run() -> EvidenceResult<()> {
         [cmd, path] if cmd == "sample-bad" => {
             write_consistency_sample(path, true)?;
         }
+        [cmd, path] if cmd == "adapter-sample" => {
+            let path = PathBuf::from(path);
+            write_adapter_sample_consistency_history_path(&path)?;
+            println!("wrote {}", path.display());
+        }
         _ => {
             return Err(EvidenceError::new(
-                "usage: check-consistency-history validate <history.json> | check <history.json> [report.json] | sample-good <path> | sample-bad <path>",
+                "usage: check-consistency-history validate <history.json> | check <history.json> [report.json] | sample-good <path> | sample-bad <path> | adapter-sample <path>",
             ));
         }
     }

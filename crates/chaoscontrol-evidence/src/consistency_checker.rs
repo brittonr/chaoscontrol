@@ -23,6 +23,127 @@ pub struct OperationHistory {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RegisterHistoryAdapterConfig {
+    pub history_id: String,
+    pub workload: String,
+    pub source_artifact: String,
+    pub limitations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RegisterWorkloadHistoryAdapter {
+    config: RegisterHistoryAdapterConfig,
+    operations: Vec<HistoryOperation>,
+}
+
+impl RegisterWorkloadHistoryAdapter {
+    pub fn new(config: RegisterHistoryAdapterConfig) -> EvidenceResult<Self> {
+        validate_adapter_config(&config)?;
+        Ok(Self {
+            config,
+            operations: Vec::new(),
+        })
+    }
+
+    pub fn record_write_ok(
+        &mut self,
+        operation_id: impl Into<String>,
+        process: impl Into<String>,
+        invoked_at: u64,
+        completed_at: u64,
+        value: i64,
+    ) -> EvidenceResult<()> {
+        self.record_operation(HistoryOperation {
+            operation_id: operation_id.into(),
+            process: process.into(),
+            invoked_at,
+            completed_at,
+            invocation: OperationInvocation::Write { value },
+            completion: OperationCompletion::Ok { value: None },
+        })
+    }
+
+    pub fn record_read_ok(
+        &mut self,
+        operation_id: impl Into<String>,
+        process: impl Into<String>,
+        invoked_at: u64,
+        completed_at: u64,
+        value: Option<i64>,
+    ) -> EvidenceResult<()> {
+        self.record_operation(HistoryOperation {
+            operation_id: operation_id.into(),
+            process: process.into(),
+            invoked_at,
+            completed_at,
+            invocation: OperationInvocation::Read,
+            completion: OperationCompletion::Ok { value },
+        })
+    }
+
+    pub fn record_failed(
+        &mut self,
+        operation_id: impl Into<String>,
+        process: impl Into<String>,
+        invoked_at: u64,
+        completed_at: u64,
+        invocation: OperationInvocation,
+        error: impl Into<String>,
+    ) -> EvidenceResult<()> {
+        self.record_operation(HistoryOperation {
+            operation_id: operation_id.into(),
+            process: process.into(),
+            invoked_at,
+            completed_at,
+            invocation,
+            completion: OperationCompletion::Failed {
+                error: error.into(),
+            },
+        })
+    }
+
+    pub fn record_operation(&mut self, operation: HistoryOperation) -> EvidenceResult<()> {
+        validate_operation(&operation)?;
+        require(
+            !self
+                .operations
+                .iter()
+                .any(|existing| existing.operation_id == operation.operation_id),
+            format!("duplicate operation_id {:?}", operation.operation_id),
+        )?;
+        self.operations.push(operation);
+        Ok(())
+    }
+
+    pub fn emit_history(self) -> EvidenceResult<OperationHistory> {
+        require(
+            !self.operations.is_empty(),
+            "adapter history must contain at least one typed operation",
+        )?;
+        let mut limitations = self.config.limitations;
+        if !limitations
+            .iter()
+            .any(|item| item.contains("not parsed from raw logs"))
+        {
+            limitations.push(
+                "emitted from typed workload adapter events; not parsed from raw logs".to_string(),
+            );
+        }
+        let history = OperationHistory {
+            schema_version: HISTORY_SCHEMA_VERSION,
+            history_id: self.config.history_id,
+            workload: self.config.workload,
+            model: REGISTER_MODEL.to_string(),
+            source_artifact: self.config.source_artifact,
+            operations: self.operations,
+            limitations,
+        };
+        validate_history(&history)?;
+        Ok(history)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct HistoryOperation {
     pub operation_id: String,
     pub process: String,
@@ -174,6 +295,24 @@ pub fn check_history_path(path: impl AsRef<Path>) -> EvidenceResult<ConsistencyC
     SingleRegisterChecker.check(&history)
 }
 
+pub fn write_adapter_sample_history_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut adapter = RegisterWorkloadHistoryAdapter::new(RegisterHistoryAdapterConfig {
+        history_id: "adapter-register-good".to_string(),
+        workload: "register-adapter-fixture".to_string(),
+        source_artifact: path.display().to_string(),
+        limitations: vec!["fixture emitted by typed workload adapter".to_string()],
+    })?;
+    adapter.record_write_ok("adapter-write-1", "client-a", 1, 2, 7)?;
+    adapter.record_read_ok("adapter-read-1", "client-b", 3, 4, Some(7))?;
+    let history = adapter.emit_history()?;
+    std::fs::write(path, serde_json::to_vec_pretty(&history)?)?;
+    Ok(())
+}
+
 pub fn write_sample_history_path(path: impl AsRef<Path>, bad: bool) -> EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
@@ -310,26 +449,59 @@ pub fn validate_history(history: &OperationHistory) -> EvidenceResult<()> {
                 ),
             )?;
         }
-        require(
-            op.invoked_at <= op.completed_at,
-            format!("{}: completion precedes invocation", op.operation_id),
-        )?;
-        match (&op.invocation, &op.completion) {
-            (OperationInvocation::Read, OperationCompletion::Ok { value: Some(_) }) => {}
-            (OperationInvocation::Read, OperationCompletion::Ok { value: None }) => {}
-            (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: None }) => {}
-            (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: Some(_) }) => {
-                return Err(EvidenceError::new(format!(
-                    "{}: write completion must not return a value",
-                    op.operation_id
-                )))
-            }
-            (_, OperationCompletion::Failed { error }) => {
-                require(
-                    !error.is_empty(),
-                    "failed operation error must be non-empty",
-                )?;
-            }
+        validate_operation(op)?;
+    }
+    Ok(())
+}
+
+fn validate_adapter_config(config: &RegisterHistoryAdapterConfig) -> EvidenceResult<()> {
+    require(
+        !config.history_id.is_empty(),
+        "adapter history_id must be non-empty",
+    )?;
+    require(
+        !config.workload.is_empty(),
+        "adapter workload must be non-empty",
+    )?;
+    require(
+        !config.source_artifact.is_empty(),
+        "adapter source_artifact must be non-empty",
+    )?;
+    require(
+        !config.source_artifact.ends_with(".log"),
+        "adapter source_artifact must reference typed history output, not a raw log",
+    )?;
+    Ok(())
+}
+
+fn validate_operation(op: &HistoryOperation) -> EvidenceResult<()> {
+    require(
+        !op.operation_id.is_empty(),
+        "operation_id must be non-empty",
+    )?;
+    require(
+        !op.process.is_empty(),
+        "operation process must be non-empty",
+    )?;
+    require(
+        op.invoked_at <= op.completed_at,
+        format!("{}: completion precedes invocation", op.operation_id),
+    )?;
+    match (&op.invocation, &op.completion) {
+        (OperationInvocation::Read, OperationCompletion::Ok { value: Some(_) }) => {}
+        (OperationInvocation::Read, OperationCompletion::Ok { value: None }) => {}
+        (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: None }) => {}
+        (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: Some(_) }) => {
+            return Err(EvidenceError::new(format!(
+                "{}: write completion must not return a value",
+                op.operation_id
+            )))
+        }
+        (_, OperationCompletion::Failed { error }) => {
+            require(
+                !error.is_empty(),
+                "failed operation error must be non-empty",
+            )?;
         }
     }
     Ok(())
@@ -478,6 +650,67 @@ mod tests {
             .expect_err("unsupported model rejected")
             .message()
             .contains("unsupported history model"));
+    }
+
+    #[test]
+    fn typed_workload_adapter_emits_valid_history_without_raw_log_scraping() {
+        let mut adapter = RegisterWorkloadHistoryAdapter::new(RegisterHistoryAdapterConfig {
+            history_id: "adapter-register-good".to_string(),
+            workload: "register-adapter-fixture".to_string(),
+            source_artifact:
+                "dogfood-results/consistency-checker-fixtures/adapter-register-good.json"
+                    .to_string(),
+            limitations: vec!["fixture emitted by typed workload adapter".to_string()],
+        })
+        .expect("adapter config is valid");
+        adapter
+            .record_write_ok("adapter-write-1", "client-a", 1, 2, 7)
+            .expect("write recorded");
+        adapter
+            .record_read_ok("adapter-read-1", "client-b", 3, 4, Some(7))
+            .expect("read recorded");
+
+        let history = adapter.emit_history().expect("history emitted");
+        validate_history(&history).expect("adapter history validates");
+        assert_eq!(history.model, REGISTER_MODEL);
+        assert!(history
+            .limitations
+            .iter()
+            .any(|item| item.contains("typed workload adapter")));
+        assert_eq!(
+            SingleRegisterChecker
+                .check(&history)
+                .expect("adapter history checks")
+                .verdict,
+            CheckerVerdict::Passed
+        );
+    }
+
+    #[test]
+    fn adapter_rejects_raw_log_source_and_bad_operations() {
+        let raw_log_config = RegisterHistoryAdapterConfig {
+            history_id: "raw-log".to_string(),
+            workload: "register-adapter-fixture".to_string(),
+            source_artifact: "run.log".to_string(),
+            limitations: vec![],
+        };
+        assert!(RegisterWorkloadHistoryAdapter::new(raw_log_config)
+            .expect_err("raw log source rejected")
+            .message()
+            .contains("not a raw log"));
+
+        let mut adapter = RegisterWorkloadHistoryAdapter::new(RegisterHistoryAdapterConfig {
+            history_id: "bad-op".to_string(),
+            workload: "register-adapter-fixture".to_string(),
+            source_artifact: "typed-history.json".to_string(),
+            limitations: vec![],
+        })
+        .expect("adapter config is valid");
+        assert!(adapter
+            .record_write_ok("write-backwards", "client-a", 5, 4, 7)
+            .expect_err("bad operation rejected")
+            .message()
+            .contains("completion precedes invocation"));
     }
 
     #[test]

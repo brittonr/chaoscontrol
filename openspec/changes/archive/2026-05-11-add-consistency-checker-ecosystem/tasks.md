@@ -10,7 +10,7 @@
 
 ## Phase 3: Workload integration
 
-- [ ] [depends:history-core] Add a workload adapter path that emits operation histories without raw-log scraping.
+- [x] [depends:history-core] Add a workload adapter path that emits operation histories without raw-log scraping.
 - [x] [depends:checker-core] Add a CLI/report path that runs checkers over committed or freshly generated histories.
 
 ## Phase 4: Evidence and gates

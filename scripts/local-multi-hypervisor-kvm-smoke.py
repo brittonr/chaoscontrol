@@ -72,8 +72,15 @@ def build_plan(
         "campaign_id": "local-kvm-smoke-0001",
         "max_hypervisors": min(len(workloads), 2),
         "state_path": str(out / "campaign-state.json"),
+        "artifact_index_path": str(out / "artifact-index.json"),
+        "follow_up_policy": {"enabled": False, "reproduce": False, "minimize": False},
         "hypervisors": [
-            {"hypervisor_worker_id": f"local-kvm-hv-{idx}", "node_id": f"local-kvm-node-{idx}"}
+            {
+                "hypervisor_worker_id": f"local-kvm-hv-{idx}",
+                "node_id": f"local-kvm-node-{idx}",
+                "resource_budget": {"vcpus": 2, "memory_mib": 1024},
+                "artifact_root": str(out / "hypervisors" / f"local-kvm-hv-{idx}"),
+            }
             for idx in range(1, len(workloads) + 1)
         ],
         "queue": {"entries": entries},

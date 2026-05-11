@@ -3833,7 +3833,7 @@ pub fn write_multi_hypervisor_campaign_dashboard_path(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(output_path, dashboard)?;
-    Ok(validate_multi_hypervisor_campaign_receipt(&receipt)?)
+    validate_multi_hypervisor_campaign_receipt(&receipt)
 }
 
 fn validate_multi_hypervisor_follow_up_job(
@@ -3887,6 +3887,11 @@ fn validate_multi_hypervisor_follow_up_job(
     Ok(())
 }
 
+#[allow(unknown_lints)]
+#[allow(
+    ambient_clock,
+    reason = "receipt writer shell timestamps bounded local scheduler evidence"
+)]
 fn unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

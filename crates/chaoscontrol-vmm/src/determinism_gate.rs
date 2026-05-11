@@ -821,7 +821,7 @@ mod tests {
         assert!(err.contains("missing row"));
 
         let duplicate = DeterminismMatrixReceipt::new("bounded-smoke", vec![row.clone(), row]);
-        let err = validate_determinism_matrix_receipt(&duplicate, &[profile.clone()])
+        let err = validate_determinism_matrix_receipt(&duplicate, std::slice::from_ref(&profile))
             .expect_err("duplicate row rejected");
         assert!(err.contains("duplicate row_id"));
 

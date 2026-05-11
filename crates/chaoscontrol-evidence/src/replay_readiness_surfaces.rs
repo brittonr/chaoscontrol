@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -1330,6 +1330,367 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         passed,
         workloads.into_iter().collect::<Vec<_>>().join(",")
     ))
+}
+
+pub fn write_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&sample_hosted_shared_state_receipt())?,
+    )?;
+    Ok(())
+}
+
+pub fn validate_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+    validate_hosted_shared_state_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn sample_hosted_shared_state_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-hosted-shared-state",
+        "status": "recorded",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "scope": "bounded hosted/shared-state scheduler and decision-store contract with shared queue leases, machine identities, hypervisor workers, run receipts, replay-readiness summaries, decision revisions, and writer identities; not SaaS hosting, not product parity, not Antithesis parity, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "machines": [
+            {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+            {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+        ],
+        "hypervisor_workers": [
+            {"hypervisor_worker_id": "hv-a", "machine_id": "machine-a"},
+            {"hypervisor_worker_id": "hv-b", "machine_id": "machine-b"}
+        ],
+        "queue": {
+            "kind": "durable-shared",
+            "queue_id": "hosted-queue-0001",
+            "entries": [
+                {
+                    "queue_entry_id": "hosted-q-raft-0001",
+                    "run_id": "hosted-run-raft-0001",
+                    "workload": "raft",
+                    "state": "completed",
+                    "lease": {"lease_id": "lease-hosted-q-raft-0001", "lease_epoch": 1, "owner_machine_id": "machine-a", "hypervisor_worker_id": "hv-a"},
+                    "receipt_path": "target/hosted/raft-replay-readiness.json",
+                    "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded"
+                },
+                {
+                    "queue_entry_id": "hosted-q-redb-0001",
+                    "run_id": "hosted-run-redb-0001",
+                    "workload": "redb",
+                    "state": "completed",
+                    "lease": {"lease_id": "lease-hosted-q-redb-0001", "lease_epoch": 1, "owner_machine_id": "machine-b", "hypervisor_worker_id": "hv-b"},
+                    "receipt_path": "target/hosted/redb-replay-readiness.json",
+                    "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded"
+                }
+            ]
+        },
+        "decision_store": {
+            "kind": "durable-shared",
+            "store_id": "hosted-decision-store-0001",
+            "records": [
+                {"decision_id": "decision-raft-0001", "decision_revision": 1, "previous_revision": null, "writer_id": "writer-machine-a", "machine_id": "machine-a", "run_id": "hosted-run-raft-0001", "queue_entry_id": "hosted-q-raft-0001", "action": "reproduce", "status": "recorded", "receipt_path": "target/hosted/raft-decision.json"},
+                {"decision_id": "decision-redb-0001", "decision_revision": 1, "previous_revision": null, "writer_id": "writer-machine-b", "machine_id": "machine-b", "run_id": "hosted-run-redb-0001", "queue_entry_id": "hosted-q-redb-0001", "action": "triage", "status": "recorded", "receipt_path": "target/hosted/redb-decision.json"}
+            ]
+        },
+        "anti_claims": [
+            "This is a bounded hosted/shared-state contract receipt, not SaaS hosting evidence.",
+            "This is not product parity or Antithesis parity.",
+            "This receipt links shared queue leases, machine IDs, hypervisor workers, run receipts, replay-readiness summaries, decision revisions, and writer identities without raw-log scraping."
+        ]
+    })
+}
+
+pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(
+        receipt.get("schema_version"),
+        "hosted_shared_state.schema_version",
+    )?;
+    ensure(
+        schema_version == 1,
+        format!("hosted_shared_state.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "hosted_shared_state.command")?;
+    ensure(
+        command == "replay-readiness-hosted-shared-state",
+        format!("hosted_shared_state.command: unexpected {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "hosted_shared_state.status")?;
+    ensure(
+        matches!(status, "recorded" | "partial" | "failed"),
+        format!("hosted_shared_state.status: unsupported value {status:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "hosted_shared_state.scope")?.to_lowercase();
+    ensure(
+        scope.contains("bounded hosted/shared-state")
+            && scope.contains("shared queue")
+            && scope.contains("decision-store")
+            && scope.contains("not saas")
+            && scope.contains("not product parity")
+            && scope.contains("not antithesis parity"),
+        "hosted_shared_state.scope: must declare bounded shared-state scope and non-claims",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "hosted_shared_state.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let machines = array_field(receipt.get("machines"), "hosted_shared_state.machines")?;
+    ensure(
+        machines.len() >= 2,
+        "hosted_shared_state.machines: expected at least two machine identities",
+    )?;
+    let mut machine_ids = BTreeSet::new();
+    let mut writer_to_machine = BTreeMap::new();
+    for (idx, machine) in machines.iter().enumerate() {
+        let machine = object_field(
+            Some(machine),
+            &format!("hosted_shared_state.machines[{idx}]"),
+        )?;
+        let machine_id = token_field(
+            machine.get("machine_id"),
+            &format!("hosted_shared_state.machines[{idx}].machine_id"),
+        )?;
+        ensure(
+            machine_ids.insert(machine_id.to_string()),
+            format!("hosted_shared_state.machines[{idx}].machine_id: duplicate {machine_id}"),
+        )?;
+        let writer_id = token_field(
+            machine.get("writer_id"),
+            &format!("hosted_shared_state.machines[{idx}].writer_id"),
+        )?;
+        ensure(
+            writer_to_machine
+                .insert(writer_id.to_string(), machine_id.to_string())
+                .is_none(),
+            format!("hosted_shared_state.machines[{idx}].writer_id: duplicate {writer_id}"),
+        )?;
+    }
+
+    let workers = array_field(
+        receipt.get("hypervisor_workers"),
+        "hosted_shared_state.hypervisor_workers",
+    )?;
+    ensure(
+        workers.len() >= 2,
+        "hosted_shared_state.hypervisor_workers: expected at least two hypervisor workers",
+    )?;
+    let mut worker_to_machine = BTreeMap::new();
+    for (idx, worker) in workers.iter().enumerate() {
+        let worker = object_field(
+            Some(worker),
+            &format!("hosted_shared_state.hypervisor_workers[{idx}]"),
+        )?;
+        let worker_id = token_field(
+            worker.get("hypervisor_worker_id"),
+            &format!("hosted_shared_state.hypervisor_workers[{idx}].hypervisor_worker_id"),
+        )?;
+        let machine_id = token_field(
+            worker.get("machine_id"),
+            &format!("hosted_shared_state.hypervisor_workers[{idx}].machine_id"),
+        )?;
+        ensure(machine_ids.contains(machine_id), format!("hosted_shared_state.hypervisor_workers[{idx}].machine_id: {machine_id} missing from machines"))?;
+        ensure(worker_to_machine.insert(worker_id.to_string(), machine_id.to_string()).is_none(), format!("hosted_shared_state.hypervisor_workers[{idx}].hypervisor_worker_id: duplicate {worker_id}"))?;
+    }
+
+    let queue = object_field(receipt.get("queue"), "hosted_shared_state.queue")?;
+    let queue_kind = token_field(queue.get("kind"), "hosted_shared_state.queue.kind")?;
+    ensure(
+        queue_kind == "durable-shared",
+        format!("hosted_shared_state.queue.kind: expected durable-shared, got {queue_kind:?}"),
+    )?;
+    token_field(queue.get("queue_id"), "hosted_shared_state.queue.queue_id")?;
+    let entries = array_field(queue.get("entries"), "hosted_shared_state.queue.entries")?;
+    ensure(
+        !entries.is_empty(),
+        "hosted_shared_state.queue.entries: expected non-empty list",
+    )?;
+    let mut queue_entry_ids = BTreeSet::new();
+    let mut run_ids = BTreeSet::new();
+    let mut lease_owners = BTreeMap::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("hosted_shared_state.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("hosted_shared_state.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("hosted_shared_state.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("hosted_shared_state.queue.entries[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("hosted_shared_state.queue.entries[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        token_field(
+            entry.get("workload"),
+            &format!("hosted_shared_state.queue.entries[{idx}].workload"),
+        )?;
+        let state = token_field(
+            entry.get("state"),
+            &format!("hosted_shared_state.queue.entries[{idx}].state"),
+        )?;
+        ensure(
+            matches!(state, "queued" | "leased" | "completed" | "failed"),
+            format!("hosted_shared_state.queue.entries[{idx}].state: unsupported value {state:?}"),
+        )?;
+        let lease = object_field(
+            entry.get("lease"),
+            &format!("hosted_shared_state.queue.entries[{idx}].lease"),
+        )?;
+        let lease_id = token_field(
+            lease.get("lease_id"),
+            &format!("hosted_shared_state.queue.entries[{idx}].lease.lease_id"),
+        )?;
+        let lease_epoch = int_field(
+            lease.get("lease_epoch"),
+            &format!("hosted_shared_state.queue.entries[{idx}].lease.lease_epoch"),
+        )?;
+        ensure(lease_epoch > 0, format!("hosted_shared_state.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
+        let owner_machine_id = token_field(
+            lease.get("owner_machine_id"),
+            &format!("hosted_shared_state.queue.entries[{idx}].lease.owner_machine_id"),
+        )?;
+        ensure(machine_ids.contains(owner_machine_id), format!("hosted_shared_state.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
+        let worker_id = token_field(
+            lease.get("hypervisor_worker_id"),
+            &format!("hosted_shared_state.queue.entries[{idx}].lease.hypervisor_worker_id"),
+        )?;
+        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| EvidenceError::new(format!("hosted_shared_state.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from hypervisor_workers")))?;
+        ensure(worker_machine == owner_machine_id, format!("hosted_shared_state.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match hypervisor worker machine {worker_machine}"))?;
+        ensure(lease_owners.insert(lease_id.to_string(), (owner_machine_id.to_string(), lease_epoch)).is_none(), format!("hosted_shared_state.queue.entries[{idx}].lease.lease_id: duplicate lease ownership for {lease_id}"))?;
+        str_field(
+            entry.get("receipt_path"),
+            &format!("hosted_shared_state.queue.entries[{idx}].receipt_path"),
+        )?;
+        let summary = str_field(
+            entry.get("receipt_summary"),
+            &format!("hosted_shared_state.queue.entries[{idx}].receipt_summary"),
+        )?;
+        ensure(summary.contains("replay-readiness status="), format!("hosted_shared_state.queue.entries[{idx}].receipt_summary: expected replay-readiness summary"))?;
+    }
+
+    let decision_store = object_field(
+        receipt.get("decision_store"),
+        "hosted_shared_state.decision_store",
+    )?;
+    let store_kind = token_field(
+        decision_store.get("kind"),
+        "hosted_shared_state.decision_store.kind",
+    )?;
+    ensure(
+        store_kind == "durable-shared",
+        format!(
+            "hosted_shared_state.decision_store.kind: expected durable-shared, got {store_kind:?}"
+        ),
+    )?;
+    token_field(
+        decision_store.get("store_id"),
+        "hosted_shared_state.decision_store.store_id",
+    )?;
+    let records = array_field(
+        decision_store.get("records"),
+        "hosted_shared_state.decision_store.records",
+    )?;
+    ensure(
+        !records.is_empty(),
+        "hosted_shared_state.decision_store.records: expected non-empty list",
+    )?;
+    let mut decision_revisions = BTreeSet::new();
+    let mut decision_writers = BTreeMap::new();
+    for (idx, record) in records.iter().enumerate() {
+        let record = object_field(
+            Some(record),
+            &format!("hosted_shared_state.decision_store.records[{idx}]"),
+        )?;
+        let decision_id = token_field(
+            record.get("decision_id"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].decision_id"),
+        )?;
+        let revision = int_field(
+            record.get("decision_revision"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].decision_revision"),
+        )?;
+        ensure(revision > 0, format!("hosted_shared_state.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
+        let revision_key = format!("{decision_id}@{revision}");
+        ensure(decision_revisions.insert(revision_key), format!("hosted_shared_state.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
+        if let Some(previous_revision) = record
+            .get("previous_revision")
+            .filter(|value| !value.is_null())
+        {
+            let previous_revision = int_field(
+                Some(previous_revision),
+                &format!("hosted_shared_state.decision_store.records[{idx}].previous_revision"),
+            )?;
+            ensure(previous_revision < revision, format!("hosted_shared_state.decision_store.records[{idx}].previous_revision: stale decision write"))?;
+        }
+        let writer_id = token_field(
+            record.get("writer_id"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].writer_id"),
+        )?;
+        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| EvidenceError::new(format!("hosted_shared_state.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
+        let machine_id = token_field(
+            record.get("machine_id"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].machine_id"),
+        )?;
+        ensure(writer_machine == machine_id, format!("hosted_shared_state.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
+        if let Some(previous_writer) =
+            decision_writers.insert(decision_id.to_string(), writer_id.to_string())
+        {
+            ensure(previous_writer == writer_id, format!("hosted_shared_state.decision_store.records[{idx}]: split-brain decision writer for {decision_id}"))?;
+        }
+        let run_id = token_field(
+            record.get("run_id"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].run_id"),
+        )?;
+        ensure(run_ids.contains(run_id), format!("hosted_shared_state.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
+        let queue_entry_id = token_field(
+            record.get("queue_entry_id"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].queue_entry_id"),
+        )?;
+        ensure(queue_entry_ids.contains(queue_entry_id), format!("hosted_shared_state.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        let action = token_field(
+            record.get("action"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].action"),
+        )?;
+        ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("hosted_shared_state.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
+        let decision_status = token_field(
+            record.get("status"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].status"),
+        )?;
+        ensure(matches!(decision_status, "recorded" | "superseded"), format!("hosted_shared_state.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
+        str_field(
+            record.get("receipt_path"),
+            &format!("hosted_shared_state.decision_store.records[{idx}].receipt_path"),
+        )?;
+    }
+
+    let anti_claims = array_field(
+        receipt.get("anti_claims"),
+        "hosted_shared_state.anti_claims",
+    )?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("bounded hosted/shared-state")
+            && anti_claim_text.contains("not saas")
+            && anti_claim_text.contains("not product parity")
+            && anti_claim_text.contains("antithesis parity")
+            && anti_claim_text.contains("without raw-log scraping"),
+        "hosted_shared_state.anti_claims: missing hosted/shared-state anti-overclaim text",
+    )?;
+    Ok(format!("replay-readiness-hosted-shared-state status={status} machines={} hypervisors={} queue_entries={} decisions={} scope=bounded-hosted-shared-state", machines.len(), workers.len(), entries.len(), records.len()))
 }
 
 pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {

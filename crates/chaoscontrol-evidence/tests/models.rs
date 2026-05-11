@@ -14,6 +14,7 @@ use chaoscontrol_evidence::{
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
     sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
     sample_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
     sample_replay_readiness_multi_hypervisor_campaign_receipt, sample_replay_readiness_receipt,
     sample_replay_readiness_scheduler_receipt, summarize_replay_readiness_receipt,
@@ -21,6 +22,7 @@ use chaoscontrol_evidence::{
     validate_assertion_readiness_promotion, validate_contract_registry_json,
     validate_gate_metadata, validate_readiness_promotion_files, validate_replay_proof_coverage,
     validate_replay_readiness_decision_receipt, validate_replay_readiness_fleet_scheduler_receipt,
+    validate_replay_readiness_hosted_shared_state_receipt,
     validate_replay_readiness_multi_hypervisor_campaign_receipt,
     validate_replay_readiness_scheduler_execution_receipt,
     validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
@@ -443,6 +445,72 @@ fn rejects_fleet_scheduler_plan_over_concurrency() {
     let err = execute_replay_readiness_fleet_scheduler_receipt_path(&plan_path, &output_path)
         .expect_err("over-concurrency is rejected");
     assert!(err.message().contains("cannot exceed worker count"));
+}
+
+#[test]
+fn validates_hosted_shared_state_receipt_model() {
+    let receipt = sample_replay_readiness_hosted_shared_state_receipt();
+    let summary = validate_replay_readiness_hosted_shared_state_receipt(&receipt)
+        .expect("hosted shared-state receipt validates");
+
+    assert!(summary.contains("replay-readiness-hosted-shared-state status=recorded"));
+    assert!(summary.contains("machines=2"));
+    assert!(summary.contains("hypervisors=2"));
+    assert!(summary.contains("queue_entries=2"));
+    assert!(summary.contains("decisions=2"));
+    assert!(summary.contains("scope=bounded-hosted-shared-state"));
+
+    let mut raw_log = receipt.clone();
+    raw_log["raw_log_scraping"] = serde_json::json!(true);
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&raw_log)
+        .expect_err("raw-log scraping is rejected");
+    assert!(err.message().contains("raw-log scraping is not allowed"));
+
+    let mut split_brain = receipt.clone();
+    split_brain["decision_store"]["records"][1]["decision_id"] =
+        split_brain["decision_store"]["records"][0]["decision_id"].clone();
+    split_brain["decision_store"]["records"][1]["decision_revision"] = serde_json::json!(1);
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&split_brain)
+        .expect_err("split-brain duplicate revision is rejected");
+    assert!(err.message().contains("split-brain"));
+
+    let mut stale_write = receipt.clone();
+    stale_write["decision_store"]["records"][0]["previous_revision"] = serde_json::json!(1);
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&stale_write)
+        .expect_err("stale decision write is rejected");
+    assert!(err.message().contains("stale decision write"));
+
+    let mut orphan_lease = receipt.clone();
+    orphan_lease["queue"]["entries"][0]["lease"]["owner_machine_id"] =
+        serde_json::json!("missing-machine");
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&orphan_lease)
+        .expect_err("unknown machine lease owner is rejected");
+    assert!(err.message().contains("missing from machines"));
+
+    let mut stale_lease = receipt.clone();
+    stale_lease["queue"]["entries"][0]["lease"]["lease_epoch"] = serde_json::json!(0);
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&stale_lease)
+        .expect_err("stale lease epoch is rejected");
+    assert!(err.message().contains("positive epoch"));
+
+    let mut duplicate_lease = receipt.clone();
+    duplicate_lease["queue"]["entries"][1]["lease"]["lease_id"] =
+        duplicate_lease["queue"]["entries"][0]["lease"]["lease_id"].clone();
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&duplicate_lease)
+        .expect_err("duplicate lease ownership is rejected");
+    assert!(err.message().contains("duplicate lease ownership"));
+
+    let mut missing_run = receipt.clone();
+    missing_run["decision_store"]["records"][0]["run_id"] = serde_json::json!("missing-run");
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&missing_run)
+        .expect_err("missing run link is rejected");
+    assert!(err.message().contains("missing from queue runs"));
+
+    let mut overclaim = receipt;
+    overclaim["scope"] = serde_json::json!("hosted production parity SaaS scheduler");
+    let err = validate_replay_readiness_hosted_shared_state_receipt(&overclaim)
+        .expect_err("hosted/product-parity overclaim is rejected");
+    assert!(err.message().contains("non-claims"));
 }
 
 #[test]

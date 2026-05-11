@@ -4,8 +4,8 @@
 
 ## Phase 2: Shared-state contracts
 
-- [ ] [serial] Add shared queue and decision-store data models that bind machine IDs, hypervisor worker IDs, queue entries, lease IDs/epochs, run receipt paths, replay-readiness summaries, decision revisions, and writer identities.
-- [ ] [serial] Add fail-closed validators and negative fixtures for duplicate lease ownership, stale lease epochs, missing machine/run links, stale decision writes, split-brain decision records, raw-log scraping, and hosted/product-parity overclaims.
+- [x] [serial] Add shared queue and decision-store data models that bind machine IDs, hypervisor worker IDs, queue entries, lease IDs/epochs, run receipt paths, replay-readiness summaries, decision revisions, and writer identities.
+- [x] [serial] Add fail-closed validators and negative fixtures for duplicate lease ownership, stale lease epochs, missing machine/run links, stale decision writes, split-brain decision records, raw-log scraping, and hosted/product-parity overclaims.
 
 ## Phase 3: Bounded hosted/fleet harness
 

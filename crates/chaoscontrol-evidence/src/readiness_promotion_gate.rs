@@ -15,7 +15,7 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
 const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 6] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
-    ("Arbitrary guest/device determinism", "unproven"),
+    ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
     ("Hosted/fleet triage UI", "bounded-shared-state-harness"),
     (
         "Replay scheduler orchestration",
@@ -109,6 +109,7 @@ pub fn validate_readiness_promotion(
             ),
         )?;
     }
+    require_bounded_matrix_surface(report)?;
 
     Ok(ReadinessPromotionSummary {
         lines: proofs
@@ -210,6 +211,25 @@ pub fn run_readiness_promotion_selftest(
         &manifest,
         &missing_scheduler_surface,
         "Replay scheduler orchestration",
+    )?;
+
+    let missing_matrix_tokens = report.replace(".#vm-determinism-matrix", ".#vm-determinism-drift");
+    expect_failure(
+        "matrix rail evidence missing",
+        &manifest,
+        &missing_matrix_tokens,
+        "bounded matrix token",
+    )?;
+
+    let arbitrary_determinism_overclaim = report.replace(
+        "| Arbitrary guest/device determinism | `bounded-matrix-rail` |",
+        "| Arbitrary guest/device determinism | `supported-bounded` |",
+    );
+    expect_failure(
+        "arbitrary determinism overclaim",
+        &manifest,
+        &arbitrary_determinism_overclaim,
+        "Arbitrary guest/device determinism",
     )?;
 
     let report_only = report.replacen(
@@ -375,6 +395,48 @@ fn report_experimental_surfaces(report: &str) -> BTreeMap<String, String> {
         }
     }
     surfaces
+}
+
+fn require_bounded_matrix_surface(report: &str) -> EvidenceResult<()> {
+    let line = experimental_surface_line(report, "Arbitrary guest/device determinism")?;
+    for token in [
+        "`bounded-matrix-rail`",
+        ".#vm-determinism-matrix",
+        "`matrix-receipt.json`",
+        "matrix-scoped evidence only",
+        "not a universal hypervisor/device/timing determinism proof",
+        "negative drift evidence",
+    ] {
+        require(
+            line.contains(token),
+            format!(
+                "Arbitrary guest/device determinism row missing bounded matrix token {token:?}"
+            ),
+        )?;
+    }
+    for forbidden in [
+        "`supported-bounded`",
+        "proves universal determinism",
+        "claims universal determinism",
+        "proves arbitrary determinism",
+        "all guests",
+        "all devices",
+    ] {
+        require(
+            !line.to_ascii_lowercase().contains(forbidden),
+            format!(
+                "Arbitrary guest/device determinism row contains forbidden overclaim {forbidden:?}"
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+fn experimental_surface_line<'a>(report: &'a str, surface: &str) -> EvidenceResult<&'a str> {
+    report
+        .lines()
+        .find(|line| line.starts_with(&format!("| {surface} |")))
+        .ok_or_else(|| EvidenceError::new(format!("missing experimental surface row: {surface}")))
 }
 
 fn markdown_columns(line: &str) -> Vec<String> {

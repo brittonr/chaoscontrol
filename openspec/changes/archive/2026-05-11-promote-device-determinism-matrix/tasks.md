@@ -15,6 +15,6 @@
 
 ## Phase 4: Status and promotion gate
 
-- [ ] [depends:packaging] Regenerate readiness/status docs with a bounded matrix label, not a universal determinism claim.
-- [ ] [depends:status] Add promotion-gate checks that fail if arbitrary determinism is claimed without matrix evidence.
-- [ ] [depends:promotion-gate] Verify with focused cargo tests, report `--check`, OpenSpec validation, and the packaged drift rail.
+- [x] [depends:packaging] Regenerate readiness/status docs with a bounded matrix label, not a universal determinism claim.
+- [x] [depends:status] Add promotion-gate checks that fail if arbitrary determinism is claimed without matrix evidence.
+- [x] [depends:promotion-gate] Verify with focused cargo tests, report `--check`, OpenSpec validation, and the packaged drift rail.

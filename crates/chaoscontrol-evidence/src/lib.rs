@@ -149,9 +149,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Arbitrary guest/device determinism",
-        status: "unproven",
-        reason: "Current evidence covers named bounded workload rails only. The bounded hide-TSC VM drift gate receipt at `dogfood-results/vm-determinism-hide-tsc-broader-2026-05-10/receipt.json` passes across selected single-VM and controller configurations, but it is a profile-specific drift check rather than a universal hypervisor/device/timing determinism proof.",
-        promotion_evidence: "Broader device/profile matrix receipts plus negative drift evidence; a bounded drift gate must not be promoted into a universal theorem.",
+        status: "bounded-matrix-rail",
+        reason: "Current evidence includes a bounded hide-TSC device/profile matrix rail (`nix run .#vm-determinism-matrix`) that emits a `matrix-receipt.json` from listed VM determinism observations. This is matrix-scoped evidence only; unlisted guests, devices, clock profiles, and timing behaviors remain unproven, and the rail is not a universal hypervisor/device/timing determinism proof.",
+        promotion_evidence: "Committed device/profile matrix receipts for each promoted row, negative drift evidence for unsupported profiles, and promotion-gate checks that reject converting the bounded matrix rail into an arbitrary or universal determinism claim.",
     },
     ExperimentalReplaySurface {
         surface: "Operator triage UX",
@@ -687,6 +687,9 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
     output.push_str("cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .\n");
     output.push_str(
         "cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --check .\n",
+    );
+    output.push_str(
+        "cargo run -p chaoscontrol-evidence --bin check-readiness-promotion-gate -- --root .\n",
     );
     output.push_str("nix build .#checks.x86_64-linux.evidence-contracts --no-link -L\n");
     output.push_str("```\n");

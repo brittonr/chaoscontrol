@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
@@ -20,6 +21,19 @@ pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 pub mod sdk_local_report;
+pub use consistency_checker::{
+    check_history_path as check_consistency_history_path, history_digest,
+    read_history_path as read_consistency_history_path,
+    read_report_path as read_consistency_report_path,
+    validate_history as validate_consistency_history,
+    validate_history_path as validate_consistency_history_path,
+    validate_report as validate_consistency_report,
+    validate_report_for_history as validate_consistency_report_for_history,
+    write_check_report_path as write_consistency_check_report_path,
+    write_sample_history_path as write_sample_consistency_history_path, CheckerVerdict,
+    ConsistencyCheckReport, ConsistencyChecker, Counterexample, HistoryOperation,
+    OperationCompletion, OperationHistory, OperationInvocation, SingleRegisterChecker,
+};
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
 pub use dogfood_guards::{
     check_dogfood_artifact_sizes, run_dogfood_guards_selftest, validate_accepted_dogfood_config,

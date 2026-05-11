@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "checker": "single-register-checker",
+  "model": "single-register-sequential",
+  "history_id": "sample-register-bad",
+  "history_sha256": "sha256:21a86f2f7f1e826d22f84f20c2383a66f50e68707ecf6761131241047e0f7255",
+  "checked_operations": 2,
+  "verdict": "failed",
+  "limitations": [
+    "single-register completion-order checker; not a full Jepsen linearizability proof",
+    "semantic checker evidence is not snapshot replay proof by itself"
+  ],
+  "counterexample": {
+    "operation_ids": [
+      "op-read-1"
+    ],
+    "reason": "read observed Some(8) but completion-order register value was Some(7)"
+  },
+  "scope": "bounded semantic consistency-checker evidence; not snapshot replay proof, not deterministic replay proof, not hosted-product parity"
+}

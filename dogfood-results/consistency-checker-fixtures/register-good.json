@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "history_id": "sample-register-good",
+  "workload": "register-fixture",
+  "model": "single-register-sequential",
+  "source_artifact": "dogfood-results/consistency-checker-fixtures/register-good.json",
+  "operations": [
+    {
+      "operation_id": "op-write-1",
+      "process": "client-a",
+      "invoked_at": 1,
+      "completed_at": 2,
+      "invocation": {
+        "kind": "write",
+        "value": 7
+      },
+      "completion": {
+        "kind": "ok",
+        "value": null
+      }
+    },
+    {
+      "operation_id": "op-read-1",
+      "process": "client-b",
+      "invoked_at": 3,
+      "completed_at": 4,
+      "invocation": {
+        "kind": "read"
+      },
+      "completion": {
+        "kind": "ok",
+        "value": 7
+      }
+    }
+  ],
+  "limitations": [
+    "fixture history for bounded checker validation"
+  ]
+}

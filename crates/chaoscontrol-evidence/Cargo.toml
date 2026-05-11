@@ -58,3 +58,11 @@ path = "src/bin/check-readiness-promotion-gate.rs"
 [[bin]]
 name = "check-contract-registry"
 path = "src/bin/check-contract-registry.rs"
+
+[[bin]]
+name = "check-consistency-history"
+path = "src/bin/check-consistency-history.rs"
+
+[[bin]]
+name = "check-consistency-fixtures"
+path = "src/bin/check-consistency-fixtures.rs"

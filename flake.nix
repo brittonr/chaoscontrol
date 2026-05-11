@@ -691,6 +691,7 @@
               assertion_report_status="pending"
               assertion_promotion_status="pending"
               sdk_local_report_tracks_status="pending"
+              consistency_fixtures_status="pending"
               artifact_sizes_status="pending"
               accepted_dogfood_config_status="pending"
               dogfood_status="skipped"
@@ -724,6 +725,7 @@
                 ASSERTION_REPORT_STATUS="$assertion_report_status" \
                 ASSERTION_PROMOTION_STATUS="$assertion_promotion_status" \
                 SDK_LOCAL_REPORT_TRACKS_STATUS="$sdk_local_report_tracks_status" \
+                CONSISTENCY_FIXTURES_STATUS="$consistency_fixtures_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
                 DOGFOOD_EXPECTATIONS="${./dogfood-results/accepted-dogfood-expectations.json}" \
@@ -793,6 +795,7 @@
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
+                  ("consistency-checker-fixtures", "check-consistency-fixtures .", os.environ["CONSISTENCY_FIXTURES_STATUS"]),
                   ("dogfood-artifact-sizes", "check-dogfood-artifact-sizes", os.environ["ARTIFACT_SIZES_STATUS"]),
                   ("accepted-dogfood-config", "check-accepted-dogfood-config --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
               ]
@@ -923,6 +926,7 @@
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status check-sdk-local-report-tracks
+              run_gate consistency-checker-fixtures consistency_fixtures_status check-consistency-fixtures .
               run_gate dogfood-artifact-sizes artifact_sizes_status check-dogfood-artifact-sizes
               run_gate accepted-dogfood-config accepted_dogfood_config_status check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
               echo "replay readiness checks passed"

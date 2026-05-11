@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "checker": "single-register-checker",
+  "model": "single-register-sequential",
+  "history_id": "sample-register-good",
+  "history_sha256": "sha256:6709761706db63b52ca9bb0fcd1b007335077d0de3fbf740b48d9e81c75082f8",
+  "checked_operations": 2,
+  "verdict": "passed",
+  "limitations": [
+    "single-register completion-order checker; not a full Jepsen linearizability proof",
+    "semantic checker evidence is not snapshot replay proof by itself"
+  ],
+  "counterexample": null,
+  "scope": "bounded semantic consistency-checker evidence; not snapshot replay proof, not deterministic replay proof, not hosted-product parity"
+}

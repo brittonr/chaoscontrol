@@ -161,8 +161,8 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "local-multi-hypervisor-campaign",
-        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, and a bounded local multi-hypervisor campaign receipt that assigns queue leases to multiple local ChaosControl hypervisor workers with persisted queue state and run-linked receipt summaries. It is still not a hosted service, shared remote queue, or cross-machine scheduler.",
+        status: "local-multi-hypervisor-kvm-smoke",
+        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, a bounded local multi-hypervisor campaign receipt, and the packaged `nix run .#local-multi-hypervisor-kvm-smoke` rail that ran real KVM replay-readiness workloads through multiple local ChaosControl hypervisor workers with persisted queue state and run-linked receipt summaries. It is still not a hosted service, shared remote queue, cross-machine scheduler, or Antithesis parity claim.",
         promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {

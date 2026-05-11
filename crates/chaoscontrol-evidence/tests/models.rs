@@ -104,7 +104,9 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `local-multi-hypervisor-campaign`"));
+    assert!(
+        rendered.contains("Replay scheduler orchestration | `local-multi-hypervisor-kvm-smoke`")
+    );
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
     assert!(rendered.contains("bounded local multi-hypervisor campaign receipt"));
     assert!(rendered.contains("shared decision store"));

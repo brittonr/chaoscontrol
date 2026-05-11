@@ -316,6 +316,14 @@ The CI/check surface packages the receipt, summary, dashboard, triage runbook, f
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L
 ```
 
+For real local KVM multi-hypervisor evidence, run the packaged smoke rail:
+
+```bash
+nix run .#local-multi-hypervisor-kvm-smoke
+```
+
+That rail drives at least two replay-readiness dogfood workloads through the bounded local multi-hypervisor campaign runner, persists queue state and per-run receipts, and validates the campaign receipt. It covers local multi-hypervisor KVM proof only; it is not a hosted service, shared remote queue, cross-machine scheduler, or Antithesis parity claim.
+
 GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, `replay-readiness-dashboard.html`, `operator-triage-runbook.md`, `fleet-triage-index.html`, `decision-receipt.json`, and `decision-receipt-summary.txt` as the `replay-readiness-receipt` artifact.
 
 For the VM drift gate specifically, run the bounded hide-TSC operator profile:

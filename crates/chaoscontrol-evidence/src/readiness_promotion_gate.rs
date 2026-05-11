@@ -12,11 +12,15 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
 ];
-const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 5] = [
+const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 6] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "unproven"),
     ("Hosted/fleet triage UI", "local-decision-receipts"),
+    (
+        "Replay scheduler orchestration",
+        "local-multi-hypervisor-kvm-smoke",
+    ),
     ("Full Antithesis-style product replacement", "not-supported"),
 ];
 
@@ -195,6 +199,17 @@ pub fn run_readiness_promotion_selftest(
         &manifest,
         &missing_hosted_fleet_surface,
         "Hosted/fleet triage UI",
+    )?;
+
+    let missing_scheduler_surface = report.replace(
+        "| Replay scheduler orchestration | `local-multi-hypervisor-kvm-smoke` |",
+        "| Replay scheduler orchestration | `supported-bounded` |",
+    );
+    expect_failure(
+        "replay scheduler overclaim",
+        &manifest,
+        &missing_scheduler_surface,
+        "Replay scheduler orchestration",
     )?;
 
     let report_only = report.replacen(

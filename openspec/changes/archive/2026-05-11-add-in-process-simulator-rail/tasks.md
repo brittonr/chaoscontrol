@@ -15,6 +15,6 @@
 
 ## Phase 4: Evidence and readiness boundary
 
-- [ ] [depends:simulator-run] Emit reproducibility receipts and summaries for deterministic simulator runs.
-- [ ] [depends:receipts] Add readiness wording and gates that keep simulator evidence separate from VMM replay proof and full FoundationDB parity.
-- [ ] [depends:verification] Verify with pure simulator tests, negative fixtures, OpenSpec validation, and relevant Nix checks.
+- [x] [depends:simulator-run] Emit reproducibility receipts and summaries for deterministic simulator runs.
+- [x] [depends:receipts] Add readiness wording and gates that keep simulator evidence separate from VMM replay proof and full FoundationDB parity.
+- [x] [depends:verification] Verify with pure simulator tests, negative fixtures, OpenSpec validation, and relevant Nix checks.

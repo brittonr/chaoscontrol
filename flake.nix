@@ -1007,6 +1007,14 @@
             '';
           };
 
+          inProcessSimulatorReceipt = pkgs.writeShellApplication {
+            name = "in-process-simulator-receipt";
+            runtimeInputs = [ chaoscontrol ];
+            text = ''
+              exec ${chaoscontrol}/bin/in-process-simulator-receipt "$@"
+            '';
+          };
+
           localMultiHypervisorKvmSmoke = pkgs.writeShellApplication {
             name = "local-multi-hypervisor-kvm-smoke";
             runtimeInputs = [
@@ -1113,6 +1121,7 @@
             replay-readiness-fleet-index = replayReadinessFleetIndex;
             replay-readiness-decision-receipt = replayReadinessDecisionReceipt;
             replay-readiness-scheduler-receipt = replayReadinessSchedulerReceipt;
+            in-process-simulator-receipt = inProcessSimulatorReceipt;
             local-multi-hypervisor-kvm-smoke = localMultiHypervisorKvmSmoke;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
@@ -1339,6 +1348,7 @@
                     replayReadinessFleetIndex
                     replayReadinessDecisionReceipt
                     replayReadinessSchedulerReceipt
+                    inProcessSimulatorReceipt
                   ];
                 }
                 ''
@@ -1353,6 +1363,8 @@
                   replay-readiness-decision-receipt --check "$out/decision-receipt.json" > "$out/decision-receipt-summary.txt"
                   replay-readiness-scheduler-receipt --sample --output "$out/scheduler-receipt.json"
                   replay-readiness-scheduler-receipt --check "$out/scheduler-receipt.json" > "$out/scheduler-receipt-summary.txt"
+                  in-process-simulator-receipt --sample --output "$out/in-process-simulator-receipt.json" > "$out/in-process-simulator-summary.txt"
+                  in-process-simulator-receipt --check "$out/in-process-simulator-receipt.json" >> "$out/in-process-simulator-summary.txt"
                   cat > "$out/scheduler-execution-plan.json" <<EOF
                   {
                     "schema_version": 1,
@@ -1461,6 +1473,8 @@
                   test -s "$out/decision-receipt-summary.txt"
                   test -s "$out/scheduler-receipt.json"
                   test -s "$out/scheduler-receipt-summary.txt"
+                  test -s "$out/in-process-simulator-receipt.json"
+                  test -s "$out/in-process-simulator-summary.txt"
                   test -s "$out/scheduler-execution-plan.json"
                   test -s "$out/scheduler-execution-receipt.json"
                   test -s "$out/scheduler-execution-summary.txt"
@@ -1739,6 +1753,7 @@
             replay-readiness-fleet-index = mkApp "Render a static multi-receipt fleet triage index." "${replayReadinessFleetIndex}/bin/replay-readiness-fleet-index";
             replay-readiness-decision-receipt = mkApp "Write or validate a bounded local replay-readiness decision receipt." "${replayReadinessDecisionReceipt}/bin/replay-readiness-decision-receipt";
             replay-readiness-scheduler-receipt = mkApp "Write or validate a bounded local replay-readiness scheduler receipt." "${replayReadinessSchedulerReceipt}/bin/replay-readiness-scheduler-receipt";
+            in-process-simulator-receipt = mkApp "Emit or validate a bounded in-process simulator receipt." "${inProcessSimulatorReceipt}/bin/in-process-simulator-receipt";
             local-multi-hypervisor-kvm-smoke = mkApp "Run the bounded local KVM multi-hypervisor replay-readiness smoke rail." "${localMultiHypervisorKvmSmoke}/bin/local-multi-hypervisor-kvm-smoke";
             replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
           };

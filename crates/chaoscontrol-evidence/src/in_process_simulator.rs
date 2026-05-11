@@ -134,6 +134,25 @@ pub struct DeterministicScheduler {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatorRunEvidence {
+    pub events: Vec<SimulatorAdapterEvent>,
+    pub receipt: SimulatorReceipt,
+    pub summary: SimulatorRunSummary,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatorRunSummary {
+    pub run_id: String,
+    pub adapter_id: String,
+    pub event_count: usize,
+    pub fault_count: usize,
+    pub network_deliveries: usize,
+    pub disk_writes: usize,
+    pub receipt_summary: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SimulatorAdapterEvent {
     pub step: SchedulerStep,
     pub operation: SimulatorOperation,
@@ -556,6 +575,111 @@ pub fn run_simulator_adapter<A: InProcessWorkloadAdapter>(
         events.push(adapter.apply_step(step, hooks)?);
     }
     Ok(events)
+}
+
+pub fn run_simulator_adapter_receipt<A: InProcessWorkloadAdapter>(
+    config: SimulatorConfig,
+    adapter: &mut A,
+    hooks: &mut SimulatedFaultHooks,
+) -> EvidenceResult<SimulatorRunEvidence> {
+    let config_for_receipt = config.clone();
+    let adapter_id = adapter.adapter_id().to_string();
+    let events = run_simulator_adapter(config, adapter, hooks)?;
+    let history_bytes = adapter.history_bytes()?;
+    let output_bytes = serde_json::to_vec(&serde_json::json!({
+        "events": events,
+        "network": hooks.network,
+        "disk": hooks.disk,
+        "scope": DEFAULT_SIMULATOR_SCOPE,
+    }))?;
+    let observations = events
+        .iter()
+        .flat_map(|event| {
+            [
+                SimulatorObservation {
+                    tick: event.step.tick,
+                    task_id: event.step.task_id.clone(),
+                    event: format!("{:?}", event.result),
+                    entropy: EntropySource::SimulatorClock,
+                },
+                SimulatorObservation {
+                    tick: event.step.tick,
+                    task_id: event.step.task_id.clone(),
+                    event: "scheduler-rng-bound".to_string(),
+                    entropy: EntropySource::SimulatorRng,
+                },
+            ]
+        })
+        .collect::<Vec<_>>();
+    let core = DeterministicSimulatorCore::new(config_for_receipt, vec![adapter_id.clone()])?;
+    let receipt = core.receipt_for_history(&history_bytes, &output_bytes, observations)?;
+    let summary = summarize_simulator_run(&adapter_id, &events, hooks, &receipt)?;
+    Ok(SimulatorRunEvidence {
+        events,
+        receipt,
+        summary,
+    })
+}
+
+pub fn sample_simulator_run_evidence() -> EvidenceResult<SimulatorRunEvidence> {
+    let config = sample_simulator_config();
+    let mut adapter = RegisterSimulatorAdapter::sample()?;
+    let mut hooks = sample_simulated_fault_hooks(&config)?;
+    run_simulator_adapter_receipt(config, &mut adapter, &mut hooks)
+}
+
+pub fn write_sample_simulator_receipt_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    let evidence = sample_simulator_run_evidence()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_vec_pretty(&evidence.receipt)?)?;
+    Ok(())
+}
+
+pub fn validate_simulator_receipt_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<String> {
+    let bytes = std::fs::read(path)?;
+    let receipt: SimulatorReceipt = serde_json::from_slice(&bytes)?;
+    validate_simulator_receipt(&receipt)?;
+    Ok(summarize_simulator_receipt(&receipt))
+}
+
+pub fn summarize_simulator_receipt(receipt: &SimulatorReceipt) -> String {
+    format!(
+        "in-process-simulator run={} observations={} history={} output={} scope=adapter-simulator-not-vm-replay",
+        receipt.run_id,
+        receipt.observations.len(),
+        receipt.history_sha256,
+        receipt.output_sha256
+    )
+}
+
+fn summarize_simulator_run(
+    adapter_id: &str,
+    events: &[SimulatorAdapterEvent],
+    hooks: &SimulatedFaultHooks,
+    receipt: &SimulatorReceipt,
+) -> EvidenceResult<SimulatorRunSummary> {
+    validate_simulator_receipt(receipt)?;
+    let fault_count = events
+        .iter()
+        .filter(|event| matches!(event.result, SimulatorOperationResult::FaultInjected { .. }))
+        .count();
+    Ok(SimulatorRunSummary {
+        run_id: receipt.run_id.clone(),
+        adapter_id: adapter_id.to_string(),
+        event_count: events.len(),
+        fault_count,
+        network_deliveries: hooks.network.delivered.len(),
+        disk_writes: hooks.disk.writes.len(),
+        receipt_summary: summarize_simulator_receipt(receipt),
+        scope: DEFAULT_SIMULATOR_SCOPE.to_string(),
+    })
 }
 
 pub fn sample_simulated_fault_hooks(
@@ -1015,6 +1139,36 @@ mod tests {
             SimulatorOperationResult::FaultInjected { ref fault_id, .. } if fault_id == "drop-replica-b"
         ));
         assert!(left_hooks.network.delivered.is_empty());
+    }
+
+    #[test]
+    fn simulator_run_evidence_emits_reproducibility_receipt_and_summary() {
+        let left = sample_simulator_run_evidence().expect("left evidence emits");
+        let right = sample_simulator_run_evidence().expect("right evidence emits");
+
+        assert_eq!(left.receipt, right.receipt);
+        assert_eq!(left.summary, right.summary);
+        assert_eq!(left.summary.event_count, 4);
+        assert_eq!(left.summary.network_deliveries, 1);
+        assert_eq!(left.summary.disk_writes, 1);
+        assert!(left.summary.receipt_summary.contains("not-vm-replay"));
+        assert!(
+            compare_simulator_receipts(&left.receipt, &right.receipt)
+                .expect("receipts compare")
+                .matched
+        );
+    }
+
+    #[test]
+    fn simulator_receipt_summary_keeps_boundary_wording() {
+        let evidence = sample_simulator_run_evidence().expect("evidence emits");
+        assert!(evidence.summary.scope.contains("not VM replay proof"));
+        assert!(evidence
+            .summary
+            .scope
+            .contains("not full FoundationDB parity"));
+        assert!(summarize_simulator_receipt(&evidence.receipt)
+            .contains("adapter-simulator-not-vm-replay"));
     }
 
     #[test]

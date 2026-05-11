@@ -12,7 +12,7 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
 ];
-const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 6] = [
+const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
@@ -20,6 +20,10 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 6] = [
     (
         "Replay scheduler orchestration",
         "bounded-shared-state-harness",
+    ),
+    (
+        "FoundationDB-style in-process deterministic simulator",
+        "adapter-simulator-receipt",
     ),
     ("Full Antithesis-style product replacement", "not-supported"),
 ];
@@ -110,6 +114,7 @@ pub fn validate_readiness_promotion(
         )?;
     }
     require_bounded_matrix_surface(report)?;
+    require_in_process_simulator_surface(report)?;
 
     Ok(ReadinessPromotionSummary {
         lines: proofs
@@ -230,6 +235,26 @@ pub fn run_readiness_promotion_selftest(
         &manifest,
         &arbitrary_determinism_overclaim,
         "Arbitrary guest/device determinism",
+    )?;
+
+    let simulator_overclaim = report.replace(
+        "| FoundationDB-style in-process deterministic simulator | `adapter-simulator-receipt` |",
+        "| FoundationDB-style in-process deterministic simulator | `supported-bounded` |",
+    );
+    expect_failure(
+        "in-process simulator overclaim",
+        &manifest,
+        &simulator_overclaim,
+        "FoundationDB-style in-process deterministic simulator",
+    )?;
+
+    let simulator_missing_boundary =
+        report.replace("not full FoundationDB parity", "FoundationDB parity");
+    expect_failure(
+        "in-process simulator boundary missing",
+        &manifest,
+        &simulator_missing_boundary,
+        "in-process simulator token",
     )?;
 
     let report_only = report.replacen(
@@ -427,6 +452,42 @@ fn require_bounded_matrix_surface(report: &str) -> EvidenceResult<()> {
             format!(
                 "Arbitrary guest/device determinism row contains forbidden overclaim {forbidden:?}"
             ),
+        )?;
+    }
+    Ok(())
+}
+
+fn require_in_process_simulator_surface(report: &str) -> EvidenceResult<()> {
+    let line = experimental_surface_line(
+        report,
+        "FoundationDB-style in-process deterministic simulator",
+    )?;
+    for token in [
+        "`adapter-simulator-receipt`",
+        "`in-process-simulator-receipt`",
+        "deterministic scheduler",
+        "virtual clock",
+        "simulated network/disk hooks",
+        "not VM replay proof",
+        "not arbitrary binary support",
+        "not full FoundationDB parity",
+        "separate VMM replay evidence",
+    ] {
+        require(
+            line.contains(token),
+            format!("FoundationDB-style in-process deterministic simulator row missing in-process simulator token {token:?}"),
+        )?;
+    }
+    for forbidden in [
+        "`supported-bounded`",
+        "is vm replay proof",
+        "proves vm replay",
+        "supports arbitrary binaries",
+        "foundationdb parity achieved",
+    ] {
+        require(
+            !line.to_ascii_lowercase().contains(forbidden),
+            format!("FoundationDB-style in-process deterministic simulator row contains forbidden overclaim {forbidden:?}"),
         )?;
     }
     Ok(())

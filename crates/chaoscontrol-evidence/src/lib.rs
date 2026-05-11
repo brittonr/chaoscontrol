@@ -51,16 +51,21 @@ pub use evidence_contracts::{
     EVIDENCE_CONTRACTS_SUCCESS,
 };
 pub use in_process_simulator::{
-    compare_simulator_receipts, run_simulator_adapter, sample_simulated_fault_hooks,
-    sample_simulator_config, validate_simulator_config, validate_simulator_receipt,
+    compare_simulator_receipts, run_simulator_adapter, run_simulator_adapter_receipt,
+    sample_simulated_fault_hooks, sample_simulator_config, sample_simulator_run_evidence,
+    summarize_simulator_receipt as summarize_in_process_simulator_receipt,
+    validate_simulator_config, validate_simulator_receipt,
+    validate_simulator_receipt_path as validate_in_process_simulator_receipt_path,
+    write_sample_simulator_receipt_path as write_sample_in_process_simulator_receipt_path,
     DeterministicClock, DeterministicRng, DeterministicScheduler, DeterministicSimulatorCore,
     DiskProfile, EntropySource, FaultAction, FaultScheduleRef, InProcessWorkloadAdapter,
     NetworkMessage, NetworkProfile, RegisterSimulatorAdapter, RngPolicy, SchedulerPolicy,
     SchedulerStep, SimulatedDisk, SimulatedFaultHooks, SimulatedNetwork, SimulatorAdapterEvent,
     SimulatorConfig, SimulatorFault, SimulatorObservation, SimulatorOperation,
     SimulatorOperationResult, SimulatorReceipt, SimulatorReceiptComparison,
-    SimulatorReceiptMismatch, VirtualClockPolicy, WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE,
-    SIMULATOR_CONFIG_SCHEMA_VERSION, SIMULATOR_RECEIPT_SCHEMA_VERSION,
+    SimulatorReceiptMismatch, SimulatorRunEvidence, SimulatorRunSummary, VirtualClockPolicy,
+    WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE, SIMULATOR_CONFIG_SCHEMA_VERSION,
+    SIMULATOR_RECEIPT_SCHEMA_VERSION,
 };
 pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,
@@ -163,7 +168,7 @@ pub struct ExperimentalReplaySurface {
     pub promotion_evidence: &'static str,
 }
 
-pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     ExperimentalReplaySurface {
         surface: "Fresh workload authoring",
         status: "experimental",
@@ -199,6 +204,12 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
         status: "bounded-shared-state-harness",
         reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, a bounded local multi-hypervisor campaign receipt, a real KVM multi-hypervisor smoke rail, and a loopback hosted/shared-state harness that exercises shared queue leasing plus shared decision writes through the adapter boundary. It is still not a SaaS service, real cross-machine scheduler, universal fleet-scale scheduler, or Antithesis parity claim.",
         promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and shared decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
+    },
+    ExperimentalReplaySurface {
+        surface: "FoundationDB-style in-process deterministic simulator",
+        status: "adapter-simulator-receipt",
+        reason: "Current evidence includes a Rust-owned in-process simulator adapter receipt emitted by `in-process-simulator-receipt`; it binds deterministic scheduler, virtual clock, RNG, simulated network/disk hooks, fault schedule, history, and output digests. This is adapter-simulator evidence only: not VM replay proof, not arbitrary binary support, and not full FoundationDB parity.",
+        promotion_evidence: "Committed simulator receipts for promoted workload adapters, negative nondeterminism fixtures, readiness gates that reject VM-replay or full-FoundationDB overclaims, and separate VMM replay evidence before any replay-product claim.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

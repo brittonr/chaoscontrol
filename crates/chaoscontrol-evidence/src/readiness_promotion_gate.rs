@@ -17,7 +17,10 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
     ("Hosted/fleet triage UI", "non-goal-current-scope"),
-    ("Local multi-hypervisor control plane", "active-local-gap"),
+    (
+        "Local multi-hypervisor control plane",
+        "supported-bounded-local",
+    ),
     (
         "FoundationDB-style in-process deterministic simulator",
         "adapter-simulator-receipt",
@@ -209,14 +212,25 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_scheduler_surface = report.replace(
+        "| Local multi-hypervisor control plane | `supported-bounded-local` |",
         "| Local multi-hypervisor control plane | `active-local-gap` |",
-        "| Local multi-hypervisor control plane | `supported-bounded` |",
     );
     expect_failure(
-        "local multi-hypervisor overclaim",
+        "local multi-hypervisor missing promotion",
         &manifest,
         &missing_scheduler_surface,
         "Local multi-hypervisor control plane",
+    )?;
+
+    let hosted_control_plane_overclaim = report.replace(
+        "not a hosted service, shared remote queue, cross-machine scheduler, universal fleet-scale throughput claim, or full Antithesis-style product replacement",
+        "hosted service with shared remote queue and cross-machine scheduler support",
+    );
+    expect_failure(
+        "local multi-hypervisor hosted overclaim",
+        &manifest,
+        &hosted_control_plane_overclaim,
+        "local multi-hypervisor control-plane token",
     )?;
 
     let hosted_scope_overclaim = report.replace(
@@ -511,7 +525,8 @@ fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
     let summary = report;
     for token in [
         "Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors",
-        "remaining product gaps are local multi-hypervisor control-plane depth, Rust workload authoring/onboarding, bounded determinism/fault coverage, local triage, and local artifact hygiene",
+        "supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration",
+        "remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene",
         "Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope",
         "Rust workload authoring",
         "Local multi-hypervisor control plane",
@@ -522,6 +537,8 @@ fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
             format!("readiness report missing current product scope token {token:?}"),
         )?;
     }
+
+    require_local_multi_hypervisor_control_plane_surface(report)?;
 
     for line in [
         experimental_surface_line(report, "Hosted/fleet triage UI")?,
@@ -542,6 +559,43 @@ fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
         }
     }
 
+    Ok(())
+}
+
+fn require_local_multi_hypervisor_control_plane_surface(report: &str) -> EvidenceResult<()> {
+    let line = experimental_surface_line(report, "Local multi-hypervisor control plane")?;
+    for token in [
+        "`supported-bounded-local`",
+        "durable local multi-hypervisor campaign receipt",
+        "KVM multi-hypervisor smoke rail",
+        "worker resource budgets",
+        "artifact roots/indexes",
+        "queue-state transitions",
+        "run receipts",
+        "bug follow-up jobs",
+        "local artifact retention",
+        "not a hosted service",
+        "shared remote queue",
+        "cross-machine scheduler",
+        "universal fleet-scale throughput claim",
+        "full Antithesis-style product replacement",
+    ] {
+        require(
+            line.contains(token),
+            format!("Local multi-hypervisor control plane row missing local multi-hypervisor control-plane token {token:?}"),
+        )?;
+    }
+    for forbidden in [
+        "hosted service with",
+        "shared remote queue support",
+        "cross-machine scheduler support",
+        "antithesis parity achieved",
+    ] {
+        require(
+            !line.to_ascii_lowercase().contains(forbidden),
+            format!("Local multi-hypervisor control plane row contains forbidden overclaim {forbidden:?}"),
+        )?;
+    }
     Ok(())
 }
 

@@ -637,7 +637,7 @@ Current green baseline: bounded snapshot-backed replay is proven for `raft`, `re
 
 **Hypervisor / local control plane**
 
-- [ ] Promote the local multi-hypervisor control plane beyond the KVM smoke rail: durable worker state, resource budgets, artifact roots/indexes, queue transitions, and follow-up reproduce/minimize jobs as one supported local workflow.
+- [x] Promote the local multi-hypervisor control plane beyond the KVM smoke rail: durable worker state, resource budgets, artifact roots/indexes, queue transitions, and follow-up reproduce/minimize jobs as one supported local workflow.
 - [ ] Broaden bounded determinism matrix coverage for named product profiles while preserving visible failing/unsupported rows and rejecting universal guest/device/timing claims.
 - [ ] Expand structured deterministic fault coverage across the local campaign rail with per-workload observed/not-observed/unsupported fault-class evidence.
 - [ ] Keep hosted UI, SaaS, cross-machine scheduling, non-Rust SDKs, and full Antithesis parity as non-goals unless product scope is explicitly reopened.

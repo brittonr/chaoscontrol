@@ -213,9 +213,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     },
     ExperimentalReplaySurface {
         surface: "Local multi-hypervisor control plane",
-        status: "active-local-gap",
-        reason: "Current evidence includes bounded local sequential scheduler execution, a bounded local multi-hypervisor campaign receipt, and a real KVM multi-hypervisor smoke rail. The current product gap is a stronger one-machine control plane with resource budgets, artifact roots, follow-up jobs, and durable state for multiple local hypervisor workers.",
-        promotion_evidence: "A committed single-machine multi-hypervisor control-plane receipt that binds worker budgets, artifact roots, queue state transitions, run receipts, bug follow-up jobs, and local artifact retention without raw-log scraping or hosted/cross-machine claims.",
+        status: "supported-bounded-local",
+        reason: "Current evidence includes bounded local sequential scheduler execution, a durable local multi-hypervisor campaign receipt, a real KVM multi-hypervisor smoke rail, worker resource budgets, artifact roots/indexes, queue-state transitions, run receipts, bug follow-up jobs, and local artifact retention. This is a supported one-machine local control-plane workflow only; it is not a hosted service, shared remote queue, cross-machine scheduler, universal fleet-scale throughput claim, or full Antithesis-style product replacement.",
+        promotion_evidence: "Keep the committed single-machine multi-hypervisor control-plane receipt, KVM smoke rail, worker budgets, artifact roots/indexes, queue-state transitions, run receipts, bug follow-up jobs, local artifact retention, and anti-overclaim gates green without raw-log scraping or hosted/cross-machine claims.",
     },
     ExperimentalReplaySurface {
         surface: "FoundationDB-style in-process deterministic simulator",
@@ -712,7 +712,7 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
     output.push_str(&format!(
         "ChaosControl currently supports bounded snapshot-backed replay proof claims for: {workloads}.\n\n"
     ));
-    output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The remaining product gaps are local multi-hypervisor control-plane depth, Rust workload authoring/onboarding, bounded determinism/fault coverage, local triage, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.\n\n");
+    output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration; remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.\n\n");
     output.push_str("This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.\n\n");
     output.push_str("## Supported bounded replay surfaces\n\n");
     output.push_str("| Workload | Status | Assertion ID | Accepted verdict | Replay parent depth | export/reproduce exit | Evidence |\n");

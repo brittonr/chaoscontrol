@@ -114,9 +114,9 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Rust workload authoring | `experimental-rust-only`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `non-goal-current-scope`"));
-    assert!(rendered.contains("Local multi-hypervisor control plane | `active-local-gap`"));
-    assert!(rendered.contains("real KVM multi-hypervisor smoke rail"));
-    assert!(rendered.contains("artifact roots"));
+    assert!(rendered.contains("Local multi-hypervisor control plane | `supported-bounded-local`"));
+    assert!(rendered.contains("durable local multi-hypervisor campaign receipt"));
+    assert!(rendered.contains("worker resource budgets"));
     assert!(rendered.contains("local artifact hygiene"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));

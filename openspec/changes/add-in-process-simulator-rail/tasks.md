@@ -10,8 +10,8 @@
 
 ## Phase 3: Workload adapter and faults
 
-- [ ] [depends:core-contracts] Add a first explicit Rust workload/model adapter for in-process simulation.
-- [ ] [depends:adapter] Add bounded simulated network/disk/fault hooks sufficient for the first workload.
+- [x] [depends:core-contracts] Add a first explicit Rust workload/model adapter for in-process simulation.
+- [x] [depends:adapter] Add bounded simulated network/disk/fault hooks sufficient for the first workload.
 
 ## Phase 4: Evidence and readiness boundary
 

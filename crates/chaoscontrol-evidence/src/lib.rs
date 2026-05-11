@@ -51,13 +51,16 @@ pub use evidence_contracts::{
     EVIDENCE_CONTRACTS_SUCCESS,
 };
 pub use in_process_simulator::{
-    compare_simulator_receipts, sample_simulator_config, validate_simulator_config,
-    validate_simulator_receipt, DeterministicClock, DeterministicRng, DeterministicScheduler,
-    DeterministicSimulatorCore, DiskProfile, EntropySource, FaultScheduleRef, NetworkProfile,
-    RngPolicy, SchedulerPolicy, SchedulerStep, SimulatorConfig, SimulatorObservation,
-    SimulatorReceipt, SimulatorReceiptComparison, SimulatorReceiptMismatch, VirtualClockPolicy,
-    WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE, SIMULATOR_CONFIG_SCHEMA_VERSION,
-    SIMULATOR_RECEIPT_SCHEMA_VERSION,
+    compare_simulator_receipts, run_simulator_adapter, sample_simulated_fault_hooks,
+    sample_simulator_config, validate_simulator_config, validate_simulator_receipt,
+    DeterministicClock, DeterministicRng, DeterministicScheduler, DeterministicSimulatorCore,
+    DiskProfile, EntropySource, FaultAction, FaultScheduleRef, InProcessWorkloadAdapter,
+    NetworkMessage, NetworkProfile, RegisterSimulatorAdapter, RngPolicy, SchedulerPolicy,
+    SchedulerStep, SimulatedDisk, SimulatedFaultHooks, SimulatedNetwork, SimulatorAdapterEvent,
+    SimulatorConfig, SimulatorFault, SimulatorObservation, SimulatorOperation,
+    SimulatorOperationResult, SimulatorReceipt, SimulatorReceiptComparison,
+    SimulatorReceiptMismatch, VirtualClockPolicy, WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE,
+    SIMULATOR_CONFIG_SCHEMA_VERSION, SIMULATOR_RECEIPT_SCHEMA_VERSION,
 };
 pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,

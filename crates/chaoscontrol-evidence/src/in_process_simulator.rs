@@ -134,6 +134,91 @@ pub struct DeterministicScheduler {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatorAdapterEvent {
+    pub step: SchedulerStep,
+    pub operation: SimulatorOperation,
+    pub result: SimulatorOperationResult,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SimulatorOperation {
+    RegisterWrite { key: String, value: i64 },
+    RegisterRead { key: String },
+    NetworkSend { to: String, payload: String },
+    DiskWrite { path: String, value: String },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SimulatorOperationResult {
+    WriteOk,
+    ReadOk { value: Option<i64> },
+    NetworkDelivered,
+    DiskWriteOk,
+    FaultInjected { fault_id: String, reason: String },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RegisterSimulatorAdapter {
+    adapter_id: String,
+    state: BTreeMap<String, i64>,
+    script: VecDeque<SimulatorOperation>,
+    events: Vec<SimulatorAdapterEvent>,
+}
+
+pub trait InProcessWorkloadAdapter {
+    fn adapter_id(&self) -> &str;
+    fn runnable_tasks(&self) -> Vec<String>;
+    fn apply_step(
+        &mut self,
+        step: SchedulerStep,
+        hooks: &mut SimulatedFaultHooks,
+    ) -> EvidenceResult<SimulatorAdapterEvent>;
+    fn history_bytes(&self) -> EvidenceResult<Vec<u8>>;
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatedFaultHooks {
+    pub network: SimulatedNetwork,
+    pub disk: SimulatedDisk,
+    pub faults: Vec<SimulatorFault>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatedNetwork {
+    pub profile_id: String,
+    pub delivered: Vec<NetworkMessage>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NetworkMessage {
+    pub from: String,
+    pub to: String,
+    pub payload: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatedDisk {
+    pub profile_id: String,
+    pub writes: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatorFault {
+    pub fault_id: String,
+    pub step_index: u64,
+    pub action: FaultAction,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FaultAction {
+    DropNetwork { to: String },
+    FailDiskWrite { path: String },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SimulatorReceiptComparison {
     pub matched: bool,
     pub mismatch: Option<SimulatorReceiptMismatch>,
@@ -255,6 +340,231 @@ impl DeterministicScheduler {
         self.emitted_steps += 1;
         Some(task_id)
     }
+}
+
+impl RegisterSimulatorAdapter {
+    pub fn new(
+        adapter_id: impl Into<String>,
+        script: Vec<SimulatorOperation>,
+    ) -> EvidenceResult<Self> {
+        let adapter_id = adapter_id.into();
+        require(
+            !adapter_id.is_empty(),
+            "simulator adapter_id must be non-empty",
+        )?;
+        require(
+            !script.is_empty(),
+            "simulator adapter script must contain at least one operation",
+        )?;
+        Ok(Self {
+            adapter_id,
+            state: BTreeMap::new(),
+            script: script.into(),
+            events: Vec::new(),
+        })
+    }
+
+    pub fn sample() -> EvidenceResult<Self> {
+        Self::new(
+            "register-simulator-adapter-v1",
+            vec![
+                SimulatorOperation::RegisterWrite {
+                    key: "counter".to_string(),
+                    value: 1,
+                },
+                SimulatorOperation::NetworkSend {
+                    to: "replica-b".to_string(),
+                    payload: "counter=1".to_string(),
+                },
+                SimulatorOperation::DiskWrite {
+                    path: "/register/counter".to_string(),
+                    value: "1".to_string(),
+                },
+                SimulatorOperation::RegisterRead {
+                    key: "counter".to_string(),
+                },
+            ],
+        )
+    }
+
+    pub fn events(&self) -> &[SimulatorAdapterEvent] {
+        &self.events
+    }
+}
+
+impl InProcessWorkloadAdapter for RegisterSimulatorAdapter {
+    fn adapter_id(&self) -> &str {
+        &self.adapter_id
+    }
+
+    fn runnable_tasks(&self) -> Vec<String> {
+        vec![self.adapter_id.clone()]
+    }
+
+    fn apply_step(
+        &mut self,
+        step: SchedulerStep,
+        hooks: &mut SimulatedFaultHooks,
+    ) -> EvidenceResult<SimulatorAdapterEvent> {
+        let operation = self
+            .script
+            .pop_front()
+            .ok_or_else(|| EvidenceError::new("simulator adapter script exhausted"))?;
+        let result = hooks.apply(&step, &operation, &mut self.state)?;
+        let event = SimulatorAdapterEvent {
+            step,
+            operation,
+            result,
+        };
+        self.events.push(event.clone());
+        Ok(event)
+    }
+
+    fn history_bytes(&self) -> EvidenceResult<Vec<u8>> {
+        Ok(serde_json::to_vec(&self.events)?)
+    }
+}
+
+impl SimulatedFaultHooks {
+    pub fn new(
+        network_profile_id: impl Into<String>,
+        disk_profile_id: impl Into<String>,
+    ) -> EvidenceResult<Self> {
+        let network_profile_id = network_profile_id.into();
+        let disk_profile_id = disk_profile_id.into();
+        require(
+            !network_profile_id.is_empty(),
+            "simulated network profile_id must be non-empty",
+        )?;
+        require(
+            !disk_profile_id.is_empty(),
+            "simulated disk profile_id must be non-empty",
+        )?;
+        Ok(Self {
+            network: SimulatedNetwork {
+                profile_id: network_profile_id,
+                delivered: Vec::new(),
+            },
+            disk: SimulatedDisk {
+                profile_id: disk_profile_id,
+                writes: BTreeMap::new(),
+            },
+            faults: Vec::new(),
+        })
+    }
+
+    pub fn with_faults(mut self, faults: Vec<SimulatorFault>) -> EvidenceResult<Self> {
+        for fault in &faults {
+            validate_simulator_fault(fault)?;
+        }
+        self.faults = faults;
+        Ok(self)
+    }
+
+    fn apply(
+        &mut self,
+        step: &SchedulerStep,
+        operation: &SimulatorOperation,
+        state: &mut BTreeMap<String, i64>,
+    ) -> EvidenceResult<SimulatorOperationResult> {
+        match operation {
+            SimulatorOperation::RegisterWrite { key, value } => {
+                require(!key.is_empty(), "register write key must be non-empty")?;
+                state.insert(key.clone(), *value);
+                Ok(SimulatorOperationResult::WriteOk)
+            }
+            SimulatorOperation::RegisterRead { key } => {
+                require(!key.is_empty(), "register read key must be non-empty")?;
+                Ok(SimulatorOperationResult::ReadOk {
+                    value: state.get(key).copied(),
+                })
+            }
+            SimulatorOperation::NetworkSend { to, payload } => {
+                require(!step.task_id.is_empty(), "network sender must be non-empty")?;
+                require(!to.is_empty(), "network recipient must be non-empty")?;
+                require(!payload.is_empty(), "network payload must be non-empty")?;
+                if let Some(fault) = self.matching_network_fault(step.step_index, to) {
+                    return Ok(SimulatorOperationResult::FaultInjected {
+                        fault_id: fault.fault_id.clone(),
+                        reason: format!("dropped network message to {to}"),
+                    });
+                }
+                self.network.delivered.push(NetworkMessage {
+                    from: step.task_id.clone(),
+                    to: to.clone(),
+                    payload: payload.clone(),
+                });
+                Ok(SimulatorOperationResult::NetworkDelivered)
+            }
+            SimulatorOperation::DiskWrite { path, value } => {
+                require(!path.is_empty(), "disk write path must be non-empty")?;
+                if let Some(fault) = self.matching_disk_fault(step.step_index, path) {
+                    return Ok(SimulatorOperationResult::FaultInjected {
+                        fault_id: fault.fault_id.clone(),
+                        reason: format!("failed disk write to {path}"),
+                    });
+                }
+                self.disk.writes.insert(path.clone(), value.clone());
+                Ok(SimulatorOperationResult::DiskWriteOk)
+            }
+        }
+    }
+
+    fn matching_network_fault(&self, step_index: u64, to: &str) -> Option<&SimulatorFault> {
+        self.faults.iter().find(|fault| match &fault.action {
+            FaultAction::DropNetwork { to: target } => {
+                fault.step_index == step_index && target == to
+            }
+            FaultAction::FailDiskWrite { .. } => false,
+        })
+    }
+
+    fn matching_disk_fault(&self, step_index: u64, path: &str) -> Option<&SimulatorFault> {
+        self.faults.iter().find(|fault| match &fault.action {
+            FaultAction::FailDiskWrite { path: target } => {
+                fault.step_index == step_index && target == path
+            }
+            FaultAction::DropNetwork { .. } => false,
+        })
+    }
+}
+
+pub fn run_simulator_adapter<A: InProcessWorkloadAdapter>(
+    config: SimulatorConfig,
+    adapter: &mut A,
+    hooks: &mut SimulatedFaultHooks,
+) -> EvidenceResult<Vec<SimulatorAdapterEvent>> {
+    require(
+        adapter.adapter_id() == config.workload.adapter_version,
+        format!(
+            "simulator adapter version mismatch: config {:?}, adapter {:?}",
+            config.workload.adapter_version,
+            adapter.adapter_id()
+        ),
+    )?;
+    require(
+        hooks.network.profile_id == config.network.profile_id,
+        "simulated network profile must match config",
+    )?;
+    require(
+        hooks.disk.profile_id == config.disk.profile_id,
+        "simulated disk profile must match config",
+    )?;
+    let mut core = DeterministicSimulatorCore::new(config, adapter.runnable_tasks())?;
+    let mut events = Vec::new();
+    for step in core.run_steps() {
+        events.push(adapter.apply_step(step, hooks)?);
+    }
+    Ok(events)
+}
+
+pub fn sample_simulated_fault_hooks(
+    config: &SimulatorConfig,
+) -> EvidenceResult<SimulatedFaultHooks> {
+    SimulatedFaultHooks::new(
+        config.network.profile_id.clone(),
+        config.disk.profile_id.clone(),
+    )
 }
 
 pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()> {
@@ -411,7 +721,7 @@ pub fn sample_simulator_config() -> SimulatorConfig {
         seed: 42,
         workload: WorkloadIdentity {
             name: "register-model".to_string(),
-            adapter_version: "register-adapter-v1".to_string(),
+            adapter_version: "register-simulator-adapter-v1".to_string(),
         },
         scheduler: SchedulerPolicy {
             name: "round-robin-v1".to_string(),
@@ -440,6 +750,23 @@ pub fn sample_simulator_config() -> SimulatorConfig {
         },
         artifacts,
         scope: DEFAULT_SIMULATOR_SCOPE.to_string(),
+    }
+}
+
+fn validate_simulator_fault(fault: &SimulatorFault) -> EvidenceResult<()> {
+    require(
+        !fault.fault_id.is_empty(),
+        "simulator fault_id must be non-empty",
+    )?;
+    match &fault.action {
+        FaultAction::DropNetwork { to } => require(
+            !to.is_empty(),
+            "drop-network fault recipient must be non-empty",
+        ),
+        FaultAction::FailDiskWrite { path } => require(
+            !path.is_empty(),
+            "fail-disk-write fault path must be non-empty",
+        ),
     }
 }
 
@@ -616,5 +943,121 @@ mod tests {
             .contains("not VM replay proof"));
         receipt.scope = DEFAULT_SIMULATOR_SCOPE.to_string();
         validate_simulator_receipt(&receipt).expect("bounded receipt validates");
+    }
+
+    #[test]
+    fn register_adapter_runs_on_simulated_network_and_disk() {
+        let mut config = sample_simulator_config();
+        config.scheduler.max_steps = 4;
+        let mut adapter = RegisterSimulatorAdapter::sample().expect("sample adapter builds");
+        let mut hooks = sample_simulated_fault_hooks(&config).expect("hooks build");
+
+        let events = run_simulator_adapter(config, &mut adapter, &mut hooks).expect("adapter runs");
+
+        assert_eq!(events.len(), 4);
+        assert!(matches!(
+            events[0].result,
+            SimulatorOperationResult::WriteOk
+        ));
+        assert!(matches!(
+            events[1].result,
+            SimulatorOperationResult::NetworkDelivered
+        ));
+        assert!(matches!(
+            events[2].result,
+            SimulatorOperationResult::DiskWriteOk
+        ));
+        assert!(matches!(
+            events[3].result,
+            SimulatorOperationResult::ReadOk { value: Some(1) }
+        ));
+        assert_eq!(hooks.network.delivered.len(), 1);
+        assert_eq!(
+            hooks.disk.writes.get("/register/counter"),
+            Some(&"1".to_string())
+        );
+        assert_eq!(
+            adapter.history_bytes().expect("history serializes"),
+            serde_json::to_vec(adapter.events()).expect("events serialize")
+        );
+    }
+
+    #[test]
+    fn simulated_fault_hooks_are_bounded_and_deterministic() {
+        let mut config = sample_simulator_config();
+        config.scheduler.max_steps = 4;
+        let fault = SimulatorFault {
+            fault_id: "drop-replica-b".to_string(),
+            step_index: 1,
+            action: FaultAction::DropNetwork {
+                to: "replica-b".to_string(),
+            },
+        };
+        let mut left_adapter = RegisterSimulatorAdapter::sample().expect("left adapter builds");
+        let mut right_adapter = RegisterSimulatorAdapter::sample().expect("right adapter builds");
+        let mut left_hooks = sample_simulated_fault_hooks(&config)
+            .expect("hooks build")
+            .with_faults(vec![fault.clone()])
+            .expect("fault validates");
+        let mut right_hooks = sample_simulated_fault_hooks(&config)
+            .expect("hooks build")
+            .with_faults(vec![fault])
+            .expect("fault validates");
+
+        let left = run_simulator_adapter(config.clone(), &mut left_adapter, &mut left_hooks)
+            .expect("left run succeeds");
+        let right = run_simulator_adapter(config, &mut right_adapter, &mut right_hooks)
+            .expect("right run succeeds");
+
+        assert_eq!(left, right);
+        assert!(matches!(
+            left[1].result,
+            SimulatorOperationResult::FaultInjected { ref fault_id, .. } if fault_id == "drop-replica-b"
+        ));
+        assert!(left_hooks.network.delivered.is_empty());
+    }
+
+    #[test]
+    fn adapter_and_hook_mismatches_fail_closed() {
+        let mut config = sample_simulator_config();
+        config.scheduler.max_steps = 1;
+        let mut adapter = RegisterSimulatorAdapter::new(
+            "wrong-adapter-version",
+            vec![SimulatorOperation::RegisterRead {
+                key: "counter".to_string(),
+            }],
+        )
+        .expect("adapter builds");
+        let mut hooks = sample_simulated_fault_hooks(&config).expect("hooks build");
+        assert!(
+            run_simulator_adapter(config.clone(), &mut adapter, &mut hooks)
+                .expect_err("adapter mismatch rejected")
+                .message()
+                .contains("adapter version mismatch")
+        );
+
+        let mut adapter = RegisterSimulatorAdapter::sample().expect("sample adapter builds");
+        let mut wrong_hooks =
+            SimulatedFaultHooks::new("wrong-network", config.disk.profile_id.clone())
+                .expect("wrong hooks build");
+        assert!(
+            run_simulator_adapter(config, &mut adapter, &mut wrong_hooks)
+                .expect_err("network mismatch rejected")
+                .message()
+                .contains("network profile")
+        );
+
+        assert!(SimulatedFaultHooks::new("net", "disk")
+            .expect("hooks build")
+            .with_faults(vec![SimulatorFault {
+                fault_id: "".to_string(),
+                step_index: 0,
+                action: FaultAction::DropNetwork {
+                    to: "replica-b".to_string(),
+                },
+            }])
+            .expect_err("bad fault rejected")
+            .message()
+            .contains("fault_id"));
     }
 }

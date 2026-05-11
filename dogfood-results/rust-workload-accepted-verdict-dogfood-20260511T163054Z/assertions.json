@@ -1,0 +1,69 @@
+[
+  {
+    "id": 1414213562,
+    "message": "rust workload snapshot replay probe trips only after restored parent context",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "failed",
+    "hit_count": 10617,
+    "true_count": 12,
+    "false_count": 10605,
+    "last_failure_details": "{\"fail_after\":25,\"iteration\":10629,\"jitter\":1,\"workload\":\"sample-rust-service\"}"
+  },
+  {
+    "id": 1625328273,
+    "message": "choice remains in range",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 12,
+    "true_count": 12,
+    "false_count": 0
+  },
+  {
+    "id": 1800977159,
+    "message": "at least one write succeeds",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 1,
+    "true_count": 1,
+    "false_count": 0
+  },
+  {
+    "id": 3471405723,
+    "message": "read branch exercised",
+    "kind": "reachable",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 3,
+    "true_count": 3,
+    "false_count": 0
+  },
+  {
+    "id": 3574955167,
+    "message": "write succeeds",
+    "kind": "sometimes",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 4,
+    "true_count": 4,
+    "false_count": 0
+  },
+  {
+    "id": 3780648081,
+    "message": "operation counters stay bounded",
+    "kind": "always",
+    "guest": "uncategorized",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 12,
+    "true_count": 12,
+    "false_count": 0
+  }
+]

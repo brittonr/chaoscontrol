@@ -1,0 +1,51 @@
+{
+  "bug_id": 2,
+  "assertion_id": 1414213562,
+  "assertion_location": "rust workload snapshot replay probe trips only after restored parent context",
+  "schedule": {
+    "faults": [
+      {
+        "time_ns": 159798947,
+        "fault": {
+          "InjectInterrupt": {
+            "target": 1,
+            "irq": 13
+          }
+        },
+        "label": null
+      },
+      {
+        "time_ns": 695081997,
+        "fault": {
+          "DiskFull": {
+            "target": 1
+          }
+        },
+        "label": null
+      },
+      {
+        "time_ns": 967316862,
+        "fault": {
+          "InjectNmi": {
+            "target": 1,
+            "vcpu": 0
+          }
+        },
+        "label": null
+      }
+    ]
+  },
+  "tick": 1407,
+  "replay_parent_depth": 2,
+  "replay_parent_snapshot_ref": {
+    "store": "file-content-addressed",
+    "digest": "sha256:e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7",
+    "codec": "simulation-snapshot-cbor-zstd-v2",
+    "schema_version": 2,
+    "path": "snapshots/e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7.snapshot.bin"
+  },
+  "dedup_key": 14544712957530499647,
+  "schedule_variant": null,
+  "scenario_config": null,
+  "scenario_summary": null
+}

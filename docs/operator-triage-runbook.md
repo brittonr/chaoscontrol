@@ -144,24 +144,24 @@ JSON
 ### `rust-workload`
 
 - Assertion: `1414213562`
-- Evidence directory: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/`
-- Bug: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/bug_0.json`
-- Replay verdict: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/replay-verdict-bug0.json`
-- Snapshot artifact or chunk manifest: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/snapshots/6c703b80417d94ae71f4cc36b41479c66eecd3d5d63d0dcd987542e8e3563199.snapshot.bin`
-- Accepted summary: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/accepted-snapshot-verdict-summary.json`
+- Evidence directory: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/`
+- Bug: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json`
+- Replay verdict: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/replay-verdict-bug0.json`
+- Snapshot artifact or chunk manifest: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/snapshots/e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7.snapshot.bin`
+- Accepted summary: `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/accepted-snapshot-verdict-summary.json`
 - Replay class/depth: `snapshot_backed_reproduced` / `2`
 
 Reproduce from committed artifacts:
 
 ```bash
 mkdir -p target/operator-triage
-/nix/store/c3as1zic70r76y2qnracybgl68d9kzcm-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/77xkm6w0s8p71r9b0l9a6dycy37gpbr3-chaoscontrol-initrd-rust-workload --bug dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/bug_0.json --vms 1 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25 --verdict-output target/operator-triage/rust-workload-replay-verdict.json
+/nix/store/adk06696jdqmvpy9q834f2zsasq9bxk3-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/vd7lbmdcglbr11izp2wk19bhr1h6gnkx-chaoscontrol-initrd-rust-workload --bug dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json --vms 1 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25 --verdict-output target/operator-triage/rust-workload-replay-verdict.json
 ```
 
 Minimize using the same kernel/initrd/VM options as the reproduce command above:
 
 ```bash
-cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/bug_0.json --output target/operator-triage/rust-workload-minimized-bug.json
+cargo run --release --bin chaoscontrol-explore -- minimize --bug dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json --output target/operator-triage/rust-workload-minimized-bug.json
 ```
 
 Record the operator decision:
@@ -170,7 +170,7 @@ Record the operator decision:
 cat > target/operator-triage/rust-workload-decision.json <<'JSON'
 {
   "assertion_id": 1414213562,
-  "bug": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/bug_0.json",
+  "bug": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json",
   "decision": "accepted|needs-refresh|blocked",
   "minimized_bug": "target/operator-triage/rust-workload-minimized-bug.json",
   "raw_log_scraping": false,

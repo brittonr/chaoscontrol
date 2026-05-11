@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "run_id": "replay-1778517096211",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "/nix/store/adk06696jdqmvpy9q834f2zsasq9bxk3-chaoscontrol-0.1.0/bin/chaoscontrol-explore reproduce --kernel /nix/store/x9qp3ls75w73mxf1mvypsj6p8zmyk9x4-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/vd7lbmdcglbr11izp2wk19bhr1h6gnkx-chaoscontrol-initrd-rust-workload --bug dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json --vms 1 --bootstrap-budget 10000 --memory-mb 128 --extra-cmdline rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after=25 --verdict-output dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/replay-verdict-bug0.json",
+    "exit_status": 0
+  },
+  "diagnostic": "BUG REPRODUCED \u2014 assertion 1414213562 failed",
+  "bug_path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json",
+  "bug_id": 2,
+  "assertion_id": 1414213562,
+  "replay_parent_depth": 2,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7",
+      "codec": "simulation-snapshot-cbor-zstd-v2",
+      "schema_version": 2,
+      "path": "snapshots/e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/bug_0.json",
+      "sha256": "sha256:adb78b24b81e88e67515fe285873e8533ef189bde2e579b5244b99c12fc2f169"
+    },
+    {
+      "path": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/snapshots/e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7.snapshot.bin",
+      "sha256": "sha256:e8e870d6577678e4de12d874716b8c7f9a87b8a9dbdb6ae1dbcac935e03718b7"
+    }
+  ]
+}

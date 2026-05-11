@@ -13,7 +13,7 @@ This report is an assertion-density and uncovered-catalog view over accepted rep
 | `raft` | `43` | `43` | `11` / `15` / `17` / `0` | `0` | `0` | `1` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
 | `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` | `1` | `dogfood-results/redb-accepted-verdict-dogfood-20260510T191449Z/assertions.json` |
 | `net` | `5` | `5` | `3` / `2` / `0` / `0` | `0` | `0` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
-| `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260509T031107Z/assertions.json` |
+| `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/assertions.json` |
 
 ## Promotion guidance
 
@@ -39,7 +39,7 @@ Replay-probe failures are intentional snapshot-replay proof signals. They remain
 - net: `net snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=9)
 - raft: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)
 - redb: `redb snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=200)
-- rust-workload: `rust workload snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=10619)
+- rust-workload: `rust workload snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=10617)
 
 ## Gap details
 

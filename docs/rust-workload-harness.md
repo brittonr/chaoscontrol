@@ -59,6 +59,14 @@ In-process local evidence means the assertion is closer to the invariant source;
 - `crates/chaoscontrol-sdk/examples/rust_workload_harness.rs` is a downstream-style example that uses only the public prelude surface.
 - `docs/templates/rust-workload/` is the copyable golden path for a downstream service. Start there when evaluating ChaosControl as an Antithesis-style Rust workload harness: run the local smoke first, optionally enable `--features chaoscontrol-in-process` when driver coverage is too shallow, fix instrumentation gaps from the report, then promote to VM/replay rails only when the assertion surface is useful.
 
+To generate a downstream copy plus an explicit command manifest:
+
+```bash
+nix run .#scaffold-rust-workload -- ./chaos-workload my-service
+```
+
+The scaffold writes `chaoscontrol-scaffold.json` with the local dry-run, local report, `check-sdk-assertion-quality`, bounded VM campaign, and promotion-boundary commands so users do not have to infer the evidence classes.
+
 ## Nix packaging and one-command rails
 
 The repository also includes a downstream-shaped guest crate at
@@ -81,6 +89,10 @@ That writes:
 - `sdk.jsonl` — raw local SDK fallback events;
 - `report.json` — summarized setup/assertion/randomness coverage with
   `evidence_class = instrumentation-dry-run` and `replay_evidence = false`.
+- `assertion-quality.json` — the deterministic pre-VM quality gate result. The
+  gate fails on missing setup lifecycle, uncategorized assertions,
+  unobserved/reachability assertions, sometimes assertions without success, or
+  failing ordinary assertions, and still does not claim replay evidence.
 
 For a bounded VM campaign against the packaged initrd, run:
 

@@ -131,8 +131,10 @@ pub use replay_readiness_surfaces::{
     write_scheduler_receipt_path as write_replay_readiness_scheduler_receipt_path,
 };
 pub use sdk_local_report::{
-    check_sdk_local_report_tracks, summarize_sdk_local_jsonl, summarize_sdk_local_report,
-    write_sdk_local_report, DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
+    check_sdk_assertion_quality_fixtures, check_sdk_assertion_quality_path,
+    check_sdk_assertion_quality_report, check_sdk_local_report_tracks, summarize_sdk_local_jsonl,
+    summarize_sdk_local_report, write_sdk_local_report, AssertionQualityGate,
+    DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
 };
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;

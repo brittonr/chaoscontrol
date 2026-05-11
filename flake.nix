@@ -691,6 +691,7 @@
               assertion_report_status="pending"
               assertion_promotion_status="pending"
               sdk_local_report_tracks_status="pending"
+              sdk_assertion_quality_status="pending"
               consistency_fixtures_status="pending"
               artifact_sizes_status="pending"
               accepted_dogfood_config_status="pending"
@@ -725,6 +726,7 @@
                 ASSERTION_REPORT_STATUS="$assertion_report_status" \
                 ASSERTION_PROMOTION_STATUS="$assertion_promotion_status" \
                 SDK_LOCAL_REPORT_TRACKS_STATUS="$sdk_local_report_tracks_status" \
+                SDK_ASSERTION_QUALITY_STATUS="$sdk_assertion_quality_status" \
                 CONSISTENCY_FIXTURES_STATUS="$consistency_fixtures_status" \
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
@@ -795,6 +797,7 @@
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
                   ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
+                  ("sdk-assertion-quality", "check-sdk-assertion-quality", os.environ["SDK_ASSERTION_QUALITY_STATUS"]),
                   ("consistency-checker-fixtures", "check-consistency-fixtures .", os.environ["CONSISTENCY_FIXTURES_STATUS"]),
                   ("dogfood-artifact-sizes", "check-dogfood-artifact-sizes", os.environ["ARTIFACT_SIZES_STATUS"]),
                   ("accepted-dogfood-config", "check-accepted-dogfood-config --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
@@ -926,6 +929,7 @@
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
               run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status check-sdk-local-report-tracks
+              run_gate sdk-assertion-quality sdk_assertion_quality_status check-sdk-assertion-quality
               run_gate consistency-checker-fixtures consistency_fixtures_status check-consistency-fixtures .
               run_gate dogfood-artifact-sizes artifact_sizes_status check-dogfood-artifact-sizes
               run_gate accepted-dogfood-config accepted_dogfood_config_status check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
@@ -956,6 +960,65 @@
                   exit 2
                   ;;
               esac
+            '';
+          };
+
+          scaffoldRustWorkload = pkgs.writeShellApplication {
+            name = "scaffold-rust-workload";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.python3
+            ];
+            text = ''
+              usage() {
+                echo "usage: scaffold-rust-workload DEST [WORKLOAD_NAME]" >&2
+              }
+              if [ "''${1:-}" = "-h" ] || [ "''${1:-}" = "--help" ]; then
+                usage
+                exit 0
+              fi
+              if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+                usage
+                exit 2
+              fi
+              dest="$1"
+              workload="''${2:-my-service}"
+              if [ -e "$dest" ]; then
+                echo "destination already exists: $dest" >&2
+                exit 1
+              fi
+              mkdir -p "$(dirname "$dest")"
+              cp -R ${./docs/templates/rust-workload} "$dest"
+              chmod -R u+w "$dest"
+              python - "$dest" "$workload" <<'PY'
+              import json, pathlib, sys
+              dest = pathlib.Path(sys.argv[1])
+              workload = sys.argv[2]
+              package = workload.replace('_', '-').lower() + "-chaos-workload"
+              replacements = {
+                  "my-service-chaos-workload": package,
+                  "my-service": workload,
+              }
+              for path in dest.rglob("*"):
+                  if path.is_file() and path.suffix in {".md", ".rs", ".toml"}:
+                      text = path.read_text()
+                      for old, new in replacements.items():
+                          text = text.replace(old, new)
+                      path.write_text(text)
+              manifest = {
+                  "schema": "chaoscontrol.rust_workload_scaffold.v1",
+                  "workload": workload,
+                  "template_source": "docs/templates/rust-workload",
+                  "local_dry_run": f"CHAOSCONTROL_SDK_LOCAL_OUTPUT=/tmp/{workload}.sdk.jsonl cargo run --bin {package}",
+                  "local_report": f"summarize-sdk-local-output --input /tmp/{workload}.sdk.jsonl --output /tmp/{workload}.local-report.json",
+                  "quality_gate": f"check-sdk-assertion-quality --input /tmp/{workload}.local-report.json",
+                  "bounded_vm_campaign": "nix run github:your-org/chaoscontrol#explore-rust-workload -- /tmp/cc-rust-workload-vm",
+                  "promotion_boundary": "local assertion quality is not snapshot-backed replay proof; require accepted replay verdict artifacts before support promotion",
+              }
+              (dest / "chaoscontrol-scaffold.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+              PY
+              echo "scaffolded Rust workload at: $dest"
+              echo "manifest: $dest/chaoscontrol-scaffold.json"
             '';
           };
 
@@ -1114,6 +1177,7 @@
             rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
             accepted-verdict-dogfood-config = acceptedVerdictDogfoodConfig;
             replay-readiness = replayReadiness;
+            scaffold-rust-workload = scaffoldRustWorkload;
             vm-determinism-matrix = vmDeterminismMatrix;
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
@@ -1186,6 +1250,7 @@
                     --input $out/sdk.jsonl \
                     --output $out/report.json \
                     --evidence-class instrumentation-dry-run
+                  check-sdk-assertion-quality --input $out/report.json > $out/assertion-quality.json
                 '';
 
             # Generated documentation (mdBook + rustdoc)
@@ -1331,6 +1396,7 @@
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
                   check-assertion-readiness-promotion-gate .
+                  check-sdk-assertion-quality
                   check-dogfood-artifact-sizes
                   check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
                   touch $out
@@ -1679,6 +1745,7 @@
             boot = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
             snapshot-demo = mkApp "Run the local ChaosControl snapshot demo." "${chaoscontrol}/bin/snapshot_demo";
             explore = mkApp "Run the ChaosControl explorer with caller-supplied arguments." "${chaoscontrol}/bin/chaoscontrol-explore";
+            scaffold-rust-workload = mkApp "Copy the Rust workload harness template and write explicit local/VM promotion commands." "${scaffoldRustWorkload}/bin/scaffold-rust-workload";
             explore-raft =
               let
                 wrapper = pkgs.writeShellApplication {

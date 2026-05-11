@@ -285,6 +285,152 @@ pub fn write_sdk_local_report(
     Ok(report)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssertionQualityGate {
+    pub passed: bool,
+    pub blockers: Vec<String>,
+    pub summary: String,
+}
+
+impl AssertionQualityGate {
+    fn pass(summary: impl Into<String>) -> Self {
+        Self {
+            passed: true,
+            blockers: Vec::new(),
+            summary: summary.into(),
+        }
+    }
+
+    fn fail(blockers: Vec<String>) -> Self {
+        Self {
+            passed: false,
+            summary: format!("{} assertion-quality blocker(s)", blockers.len()),
+            blockers,
+        }
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut value = Map::new();
+        value.insert(
+            "schema".to_string(),
+            Value::String("chaoscontrol.sdk.assertion_quality_gate.v1".to_string()),
+        );
+        value.insert("passed".to_string(), Value::Bool(self.passed));
+        value.insert("summary".to_string(), Value::String(self.summary.clone()));
+        value.insert("blockers".to_string(), string_array(self.blockers.clone()));
+        value.insert("replay_evidence".to_string(), Value::Bool(false));
+        value.insert(
+            "replay_boundary".to_string(),
+            Value::String(
+                "assertion quality is local instrumentation evidence only; accepted replay still requires snapshot-backed verdict artifacts"
+                    .to_string(),
+            ),
+        );
+        Value::Object(value)
+    }
+}
+
+pub fn check_sdk_assertion_quality_report(report: &Value) -> EvidenceResult<AssertionQualityGate> {
+    let object = report
+        .as_object()
+        .ok_or_else(|| EvidenceError::new("SDK local report must be a JSON object"))?;
+    let mut blockers = Vec::new();
+    if object.get("setup_complete").and_then(Value::as_bool) != Some(true) {
+        blockers.push("missing setup_complete lifecycle event; call WorkloadHarness::setup_complete after service setup".to_string());
+    }
+    let cataloged = object
+        .get("cataloged_assertions")
+        .or_else(|| object.get("registered_assertions"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if cataloged == 0 {
+        blockers.push("no cataloged Rust SDK assertions; add categorized cc_assert_*_category! calls before VM campaign".to_string());
+    }
+    let failed = object
+        .get("failed_assertions")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if failed > 0 {
+        blockers.push(format!(
+            "{failed} failing ordinary assertion(s); fix local workload behavior before VM campaign"
+        ));
+    }
+    let uncategorized = object
+        .get("uncategorized_assertions")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if uncategorized > 0 {
+        blockers.push(format!(
+            "{uncategorized} uncategorized assertion(s); use a stable category such as invariant, operation, or branch"
+        ));
+    }
+    for message in string_values(object.get("unobserved_assertions")) {
+        blockers.push(format!(
+            "assertion not observed locally: {message}; drive the scenario or remove unreachable instrumentation"
+        ));
+    }
+    for message in string_values(object.get("reachable_without_hit")) {
+        blockers.push(format!(
+            "reachability assertion had no successful hit: {message}; exercise the branch before VM campaign"
+        ));
+    }
+    for message in string_values(object.get("sometimes_without_success")) {
+        blockers.push(format!(
+            "sometimes assertion had no observed success: {message}; tune the scenario so success is reachable locally"
+        ));
+    }
+    if blockers.is_empty() {
+        Ok(AssertionQualityGate::pass(
+            "assertion quality gate passed for local instrumentation; this is not snapshot replay evidence",
+        ))
+    } else {
+        Ok(AssertionQualityGate::fail(blockers))
+    }
+}
+
+pub fn check_sdk_assertion_quality_path(
+    path: impl AsRef<Path>,
+) -> EvidenceResult<AssertionQualityGate> {
+    let path = path.as_ref();
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+    let report: Value = serde_json::from_str(&text).map_err(|err| {
+        EvidenceError::new(format!("{}: invalid JSON report: {err}", path.display()))
+    })?;
+    check_sdk_assertion_quality_report(&report)
+}
+
+pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
+    let weak = summarize_sdk_local_jsonl(
+        "{\"antithesis_assert\":{\"assert_type\":\"sometimes\",\"condition\":false,\"hit\":false,\"must_hit\":true,\"id\":\"1\",\"message\":\"write succeeds\",\"display_type\":\"sometimes\",\"details\":{\"category\":\"uncategorized\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"reachability\",\"condition\":false,\"hit\":false,\"must_hit\":true,\"id\":\"2\",\"message\":\"read branch\",\"display_type\":\"reachability\",\"details\":{\"category\":\"branch\"}}}\n",
+        DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
+        None,
+    )?;
+    let weak_gate = check_sdk_assertion_quality_report(&weak)?;
+    if weak_gate.passed || weak_gate.blockers.len() < 4 {
+        return Err(EvidenceError::new(format!(
+            "weak fixture should fail with multiple blockers, got {:?}",
+            weak_gate
+        )));
+    }
+
+    let credible = summarize_sdk_local_jsonl(
+        "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"sometimes\",\"condition\":true,\"hit\":true,\"must_hit\":true,\"id\":\"1\",\"message\":\"write succeeds\",\"display_type\":\"sometimes\",\"details\":{\"category\":\"operation\",\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"reachability\",\"condition\":true,\"hit\":true,\"must_hit\":true,\"id\":\"2\",\"message\":\"read branch\",\"display_type\":\"reachability\",\"details\":{\"category\":\"branch\",\"adoption_track\":\"external-harness\"}}}\n",
+        DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
+        None,
+    )?;
+    let credible_gate = check_sdk_assertion_quality_report(&credible)?;
+    if !credible_gate.passed
+        || credible_gate.to_json().get("replay_evidence") != Some(&Value::Bool(false))
+    {
+        return Err(EvidenceError::new(format!(
+            "credible fixture should pass without replay evidence, got {:?}",
+            credible_gate
+        )));
+    }
+    Ok("sdk-assertion-quality: ok".to_string())
+}
+
 pub fn check_sdk_local_report_tracks() -> EvidenceResult<String> {
     let harness = "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"must_hit\":false,\"id\":\"1\",\"message\":\"driver invariant\",\"display_type\":\"always\",\"details\":{\"category\":\"driver\",\"adoption_track\":\"external-harness\"}}}\n";
     let in_process = "{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"must_hit\":false,\"id\":\"2\",\"message\":\"internal invariant\",\"display_type\":\"always\",\"details\":{\"category\":\"service-invariant\",\"instrumentation_source\":\"in-process-service\"}}}\n";
@@ -374,6 +520,19 @@ fn count_object(value: Option<&Value>) -> BTreeMap<String, u64> {
             object
                 .iter()
                 .filter_map(|(key, value)| value.as_u64().map(|value| (key.clone(), value)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn string_values(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
                 .collect()
         })
         .unwrap_or_default()

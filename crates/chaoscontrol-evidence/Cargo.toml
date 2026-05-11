@@ -52,6 +52,10 @@ name = "check-sdk-local-report-tracks"
 path = "src/bin/check-sdk-local-report-tracks.rs"
 
 [[bin]]
+name = "check-sdk-assertion-quality"
+path = "src/bin/check-sdk-assertion-quality.rs"
+
+[[bin]]
 name = "check-readiness-promotion-gate"
 path = "src/bin/check-readiness-promotion-gate.rs"
 

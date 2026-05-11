@@ -109,18 +109,20 @@ fn renders_committed_replay_readiness_status() {
         std::fs::read_to_string(repo_file("docs/replay-readiness-status.md"))
             .expect("read replay readiness status")
     );
-    assert!(rendered.contains("Fresh workload authoring | `experimental`"));
+    assert!(rendered.contains("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors"));
+    assert!(rendered.contains("Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope"));
+    assert!(rendered.contains("Rust workload authoring | `experimental-rust-only`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
-    assert!(rendered.contains("Hosted/fleet triage UI | `networked-shared-state-harness`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `networked-shared-state-harness`"));
-    assert!(rendered.contains("bounded networked hosted scheduler receipt"));
-    assert!(rendered.contains("independently started worker sessions"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `non-goal-current-scope`"));
+    assert!(rendered.contains("Local multi-hypervisor control plane | `active-local-gap`"));
     assert!(rendered.contains("real KVM multi-hypervisor smoke rail"));
-    assert!(rendered.contains("shared decision"));
-    assert!(rendered.contains("queue"));
+    assert!(rendered.contains("artifact roots"));
+    assert!(rendered.contains("local artifact hygiene"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
-    assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
+    assert!(
+        rendered.contains("Full Antithesis-style product replacement | `non-goal-current-scope`")
+    );
     check_replay_readiness_status("../..").expect("committed readiness report is fresh");
 }
 

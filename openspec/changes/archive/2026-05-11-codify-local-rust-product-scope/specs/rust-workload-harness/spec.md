@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Rust-only SDK scope [r[rust-workload-harness.rust-only-scope]]
 

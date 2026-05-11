@@ -1,6 +1,6 @@
 # Rust Workload Harness
 
-ChaosControl's SDK is Rust-first. The workload harness is the thin layer for using it across local Rust projects without repeating VM/setup/report glue.
+ChaosControl's SDK is Rust-only for the current product scope. The workload harness is the supported path for local Rust projects without repeating VM/setup/report glue; Go, Java, Python, C, and other SDKs are not current readiness blockers.
 
 ## Minimal downstream shape
 

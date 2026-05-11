@@ -13,19 +13,19 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "proves only the named workload",
 ];
 const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
-    ("Fresh workload authoring", "experimental"),
+    ("Rust workload authoring", "experimental-rust-only"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
-    ("Hosted/fleet triage UI", "networked-shared-state-harness"),
-    (
-        "Replay scheduler orchestration",
-        "networked-shared-state-harness",
-    ),
+    ("Hosted/fleet triage UI", "non-goal-current-scope"),
+    ("Local multi-hypervisor control plane", "active-local-gap"),
     (
         "FoundationDB-style in-process deterministic simulator",
         "adapter-simulator-receipt",
     ),
-    ("Full Antithesis-style product replacement", "not-supported"),
+    (
+        "Full Antithesis-style product replacement",
+        "non-goal-current-scope",
+    ),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +115,7 @@ pub fn validate_readiness_promotion(
     }
     require_bounded_matrix_surface(report)?;
     require_in_process_simulator_surface(report)?;
+    require_local_rust_product_scope(report)?;
 
     Ok(ReadinessPromotionSummary {
         lines: proofs
@@ -186,18 +187,18 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_fresh_surface = report.replace(
-        "| Fresh workload authoring | `experimental` |",
-        "| Fresh workload authoring | `supported-bounded` |",
+        "| Rust workload authoring | `experimental-rust-only` |",
+        "| Rust workload authoring | `supported-bounded` |",
     );
     expect_failure(
-        "fresh workload overclaim",
+        "fresh Rust workload overclaim",
         &manifest,
         &missing_fresh_surface,
-        "Fresh workload authoring",
+        "Rust workload authoring",
     )?;
 
     let missing_hosted_fleet_surface = report.replace(
-        "| Hosted/fleet triage UI | `networked-shared-state-harness` |",
+        "| Hosted/fleet triage UI | `non-goal-current-scope` |",
         "| Hosted/fleet triage UI | `supported-bounded` |",
     );
     expect_failure(
@@ -208,14 +209,25 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_scheduler_surface = report.replace(
-        "| Replay scheduler orchestration | `networked-shared-state-harness` |",
-        "| Replay scheduler orchestration | `supported-bounded` |",
+        "| Local multi-hypervisor control plane | `active-local-gap` |",
+        "| Local multi-hypervisor control plane | `supported-bounded` |",
     );
     expect_failure(
-        "replay scheduler overclaim",
+        "local multi-hypervisor overclaim",
         &manifest,
         &missing_scheduler_surface,
-        "Replay scheduler orchestration",
+        "Local multi-hypervisor control plane",
+    )?;
+
+    let hosted_scope_overclaim = report.replace(
+        "Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope",
+        "Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are current missing features",
+    );
+    expect_failure(
+        "current scope hosted/multi-language overclaim",
+        &manifest,
+        &hosted_scope_overclaim,
+        "current product scope token",
     )?;
 
     let missing_matrix_tokens = report.replace(".#vm-determinism-matrix", ".#vm-determinism-drift");
@@ -490,6 +502,44 @@ fn require_in_process_simulator_surface(report: &str) -> EvidenceResult<()> {
             format!("FoundationDB-style in-process deterministic simulator row contains forbidden overclaim {forbidden:?}"),
         )?;
     }
+    Ok(())
+}
+
+fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
+    let summary = report;
+    for token in [
+        "Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors",
+        "remaining product gaps are local multi-hypervisor control-plane depth, Rust workload authoring/onboarding, bounded determinism/fault coverage, local triage, and local artifact hygiene",
+        "Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope",
+        "Rust workload authoring",
+        "Local multi-hypervisor control plane",
+        "`non-goal-current-scope`",
+    ] {
+        require(
+            summary.contains(token),
+            format!("readiness report missing current product scope token {token:?}"),
+        )?;
+    }
+
+    for line in [
+        experimental_surface_line(report, "Hosted/fleet triage UI")?,
+        experimental_surface_line(report, "Full Antithesis-style product replacement")?,
+    ] {
+        let lower = line.to_ascii_lowercase();
+        for forbidden in [
+            "`supported-bounded`",
+            "active missing feature",
+            "current product gap",
+        ] {
+            require(
+                !lower.contains(forbidden),
+                format!(
+                    "out-of-scope row contains forbidden current-scope overclaim {forbidden:?}"
+                ),
+            )?;
+        }
+    }
+
     Ok(())
 }
 

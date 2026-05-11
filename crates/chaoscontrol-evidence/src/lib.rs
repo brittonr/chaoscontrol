@@ -176,10 +176,10 @@ pub struct ExperimentalReplaySurface {
 
 pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     ExperimentalReplaySurface {
-        surface: "Fresh workload authoring",
-        status: "experimental",
-        reason: "New workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion.",
-        promotion_evidence: "Committed workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that workload.",
+        surface: "Rust workload authoring",
+        status: "experimental-rust-only",
+        reason: "New Rust workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. Non-Rust SDKs are not current product blockers.",
+        promotion_evidence: "Committed Rust workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that Rust workload.",
     },
     ExperimentalReplaySurface {
         surface: "Schedule-only replay",
@@ -201,15 +201,15 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     },
     ExperimentalReplaySurface {
         surface: "Hosted/fleet triage UI",
-        status: "networked-shared-state-harness",
-        reason: "Current evidence includes a static multi-receipt fleet triage index, bounded local operator decision receipts, a loopback hosted/shared-state harness, and a bounded networked hosted scheduler receipt that persists shared decision records with worker sessions and writer identities. There is still no hosted UI, SaaS service, or real cross-machine operator workflow evidence.",
-        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple real runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists shared operator decisions across real machine boundaries, and proves the workflow without raw-log scraping.",
+        status: "non-goal-current-scope",
+        reason: "Hosted UI, SaaS service, and real cross-machine operator workflows are out of current product scope. Local operator triage remains bounded to generated runbooks and local decision receipts.",
+        promotion_evidence: "No current-scope promotion path; any future hosted/UI-backed fleet triage would need explicit scope reopening plus evidence that ingests readiness receipts, links bug/replay artifacts, persists shared operator decisions across real machine boundaries, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
-        surface: "Replay scheduler orchestration",
-        status: "networked-shared-state-harness",
-        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, a bounded local multi-hypervisor campaign receipt, a real KVM multi-hypervisor smoke rail, a loopback hosted/shared-state harness, and a bounded networked hosted scheduler harness that records independently started worker sessions, shared queue leases/revisions, state snapshot digests, run receipts, and decision-store revisions. It is still not a SaaS service, real cross-machine scheduler, universal fleet-scale scheduler, or Antithesis parity claim.",
-        promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across real machines, links each run to receipt artifacts and shared decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
+        surface: "Local multi-hypervisor control plane",
+        status: "active-local-gap",
+        reason: "Current evidence includes bounded local sequential scheduler execution, a bounded local multi-hypervisor campaign receipt, and a real KVM multi-hypervisor smoke rail. The current product gap is a stronger one-machine control plane with resource budgets, artifact roots, follow-up jobs, and durable state for multiple local hypervisor workers.",
+        promotion_evidence: "A committed single-machine multi-hypervisor control-plane receipt that binds worker budgets, artifact roots, queue state transitions, run receipts, bug follow-up jobs, and local artifact retention without raw-log scraping or hosted/cross-machine claims.",
     },
     ExperimentalReplaySurface {
         surface: "FoundationDB-style in-process deterministic simulator",
@@ -219,9 +219,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",
-        status: "not-supported",
-        reason: "No hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence.",
-        promotion_evidence: "Separate hosted-service, scheduler, workload catalog, UI, fleet, and formal determinism evidence; no existing bounded rail may imply this status.",
+        status: "non-goal-current-scope",
+        reason: "Full Antithesis-style hosted product replacement is not the current product target; no hosted service, broad workload catalog, fleet-scale scheduler, UI, or formal determinism theorem is claimed by this evidence.",
+        promotion_evidence: "No current-scope promotion path; no existing bounded local/Rust rail may imply full Antithesis-style product parity.",
     },
 ];
 
@@ -706,6 +706,7 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
     output.push_str(&format!(
         "ChaosControl currently supports bounded snapshot-backed replay proof claims for: {workloads}.\n\n"
     ));
+    output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The remaining product gaps are local multi-hypervisor control-plane depth, Rust workload authoring/onboarding, bounded determinism/fault coverage, local triage, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.\n\n");
     output.push_str("This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.\n\n");
     output.push_str("## Supported bounded replay surfaces\n\n");
     output.push_str("| Workload | Status | Assertion ID | Accepted verdict | Replay parent depth | export/reproduce exit | Evidence |\n");

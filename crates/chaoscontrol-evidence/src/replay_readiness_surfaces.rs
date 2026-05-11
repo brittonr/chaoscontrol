@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::{ensure, EvidenceError, EvidenceResult};
 
@@ -1982,6 +1983,892 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
         "hosted_shared_state.anti_claims: missing hosted/shared-state anti-overclaim text",
     )?;
     Ok(format!("replay-readiness-hosted-shared-state status={status} machines={} hypervisors={} queue_entries={} decisions={} scope=bounded-hosted-shared-state", machines.len(), workers.len(), entries.len(), records.len()))
+}
+
+pub fn write_networked_hosted_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&sample_networked_hosted_scheduler_receipt())?,
+    )?;
+    Ok(())
+}
+
+pub fn validate_networked_hosted_scheduler_receipt_path(
+    path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    validate_networked_hosted_scheduler_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn execute_networked_hosted_scheduler_receipt_path(
+    plan_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let plan_path = plan_path.as_ref();
+    let output_path = output_path.as_ref();
+    let receipt = execute_networked_hosted_scheduler_receipt(&load_json(plan_path)?, plan_path)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    validate_networked_hosted_scheduler_receipt(&receipt)
+}
+
+pub fn execute_networked_hosted_scheduler_receipt(
+    plan: &Value,
+    plan_path: &Path,
+) -> EvidenceResult<Value> {
+    let harness_id = token_field(
+        plan.get("harness_id"),
+        "networked_hosted_scheduler_plan.harness_id",
+    )?;
+    let transport = token_field(
+        plan.get("transport"),
+        "networked_hosted_scheduler_plan.transport",
+    )?;
+    ensure(
+        matches!(
+            transport,
+            "loopback-tcp" | "loopback-uds" | "multi-process-file"
+        ),
+        format!("networked_hosted_scheduler_plan.transport: unsupported value {transport:?}"),
+    )?;
+    let machines = array_field(
+        plan.get("machines"),
+        "networked_hosted_scheduler_plan.machines",
+    )?;
+    ensure(
+        machines.len() >= 2,
+        "networked_hosted_scheduler_plan.machines: expected at least two machines",
+    )?;
+    let mut machine_writer = BTreeMap::new();
+    let mut machine_values = Vec::with_capacity(machines.len());
+    for (idx, machine) in machines.iter().enumerate() {
+        let machine = object_field(
+            Some(machine),
+            &format!("networked_hosted_scheduler_plan.machines[{idx}]"),
+        )?;
+        let machine_id = token_field(
+            machine.get("machine_id"),
+            &format!("networked_hosted_scheduler_plan.machines[{idx}].machine_id"),
+        )?;
+        let writer_id = token_field(
+            machine.get("writer_id"),
+            &format!("networked_hosted_scheduler_plan.machines[{idx}].writer_id"),
+        )?;
+        ensure(
+            machine_writer
+                .insert(machine_id.to_string(), writer_id.to_string())
+                .is_none(),
+            format!("networked_hosted_scheduler_plan.machines[{idx}].machine_id: duplicate {machine_id}"),
+        )?;
+        machine_values.push(json!({"machine_id": machine_id, "writer_id": writer_id}));
+    }
+
+    let sessions = array_field(
+        plan.get("worker_sessions"),
+        "networked_hosted_scheduler_plan.worker_sessions",
+    )?;
+    ensure(
+        sessions.len() >= 2,
+        "networked_hosted_scheduler_plan.worker_sessions: expected at least two worker sessions",
+    )?;
+    let mut session_values = Vec::with_capacity(sessions.len());
+    let mut session_ids = Vec::with_capacity(sessions.len());
+    let mut session_machine = BTreeMap::new();
+    let mut session_worker = BTreeMap::new();
+    for (idx, session) in sessions.iter().enumerate() {
+        let session = object_field(
+            Some(session),
+            &format!("networked_hosted_scheduler_plan.worker_sessions[{idx}]"),
+        )?;
+        let session_id = token_field(
+            session.get("worker_session_id"),
+            &format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].worker_session_id"),
+        )?;
+        let worker_id = token_field(
+            session.get("hypervisor_worker_id"),
+            &format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].hypervisor_worker_id"),
+        )?;
+        let machine_id = token_field(
+            session.get("machine_id"),
+            &format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].machine_id"),
+        )?;
+        ensure(
+            machine_writer.contains_key(machine_id),
+            format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].machine_id: {machine_id} missing from machines"),
+        )?;
+        let heartbeat_revision = session
+            .get("heartbeat_revision")
+            .and_then(Value::as_i64)
+            .unwrap_or(1);
+        ensure(
+            heartbeat_revision > 0,
+            format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].heartbeat_revision: expected positive heartbeat revision"),
+        )?;
+        ensure(
+            session_machine
+                .insert(session_id.to_string(), machine_id.to_string())
+                .is_none(),
+            format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].worker_session_id: duplicate {session_id}"),
+        )?;
+        session_worker.insert(session_id.to_string(), worker_id.to_string());
+        session_ids.push(session_id.to_string());
+        session_values.push(json!({
+            "worker_session_id": session_id,
+            "hypervisor_worker_id": worker_id,
+            "machine_id": machine_id,
+            "started_by": session.get("started_by").and_then(Value::as_str).unwrap_or("independent-process"),
+            "heartbeat_revision": heartbeat_revision,
+            "last_heartbeat": session.get("last_heartbeat").and_then(Value::as_str).unwrap_or("unix:0"),
+            "state": "healthy"
+        }));
+    }
+
+    let queue = object_field(plan.get("queue"), "networked_hosted_scheduler_plan.queue")?;
+    let queue_id = token_field(
+        queue.get("queue_id"),
+        "networked_hosted_scheduler_plan.queue.queue_id",
+    )?;
+    let queue_adapter = token_field(
+        queue.get("adapter"),
+        "networked_hosted_scheduler_plan.queue.adapter",
+    )?;
+    let queue_state_path = queue
+        .get("state_snapshot_path")
+        .or_else(|| queue.get("state_path"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("networked-queue-state.json"));
+    let entries = array_field(
+        queue.get("entries"),
+        "networked_hosted_scheduler_plan.queue.entries",
+    )?;
+    ensure(
+        !entries.is_empty(),
+        "networked_hosted_scheduler_plan.queue.entries: expected non-empty list",
+    )?;
+
+    let decision_store = object_field(
+        plan.get("decision_store"),
+        "networked_hosted_scheduler_plan.decision_store",
+    )?;
+    let store_id = token_field(
+        decision_store.get("store_id"),
+        "networked_hosted_scheduler_plan.decision_store.store_id",
+    )?;
+    let store_adapter = token_field(
+        decision_store.get("adapter"),
+        "networked_hosted_scheduler_plan.decision_store.adapter",
+    )?;
+    let decision_state_path = decision_store
+        .get("state_snapshot_path")
+        .or_else(|| decision_store.get("path"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("networked-decision-store.json"));
+
+    let mut queue_entries = Vec::with_capacity(entries.len());
+    let mut decision_records = Vec::with_capacity(entries.len());
+    let mut failures = 0usize;
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].run_id"),
+        )?;
+        let workload = token_field(
+            entry.get("workload"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].workload"),
+        )?;
+        let command = str_field(
+            entry.get("command"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].command"),
+        )?;
+        let receipt_path = str_field(
+            entry.get("receipt_path"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].receipt_path"),
+        )?;
+        let session_id = session_ids[idx % session_ids.len()].as_str();
+        let machine_id = session_machine
+            .get(session_id)
+            .expect("session id selected from known sessions");
+        let worker_id = session_worker
+            .get(session_id)
+            .expect("session worker recorded with known session");
+        let writer_id = machine_writer
+            .get(machine_id)
+            .expect("machine id validated for session");
+        let status = Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .status()
+            .map_err(|err| {
+                EvidenceError::new(format!("networked hosted scheduler run {run_id}: {err}"))
+            })?;
+        let exit_code = status.code().unwrap_or(125);
+        let state = if exit_code == 0 {
+            "completed"
+        } else {
+            "failed"
+        };
+        if exit_code != 0 {
+            failures += 1;
+        }
+        let receipt_summary = if exit_code == 0 {
+            summarize_receipt_path(receipt_path)?
+        } else {
+            format!("replay-readiness status=failed exit_code={exit_code}")
+        };
+        let queue_revision = (idx + 1) as i64;
+        queue_entries.push(json!({
+            "queue_entry_id": queue_entry_id,
+            "run_id": run_id,
+            "workload": workload,
+            "state": state,
+            "command": command,
+            "exit_code": exit_code,
+            "lease": {
+                "lease_id": format!("lease-{queue_entry_id}"),
+                "lease_epoch": 1,
+                "queue_revision": queue_revision,
+                "owner_machine_id": machine_id,
+                "hypervisor_worker_id": worker_id,
+                "worker_session_id": session_id
+            },
+            "receipt_path": receipt_path,
+            "receipt_summary": receipt_summary
+        }));
+        let queue_snapshot = json!({
+            "schema_version": 1,
+            "queue_id": queue_id,
+            "adapter": queue_adapter,
+            "state_revision": queue_revision,
+            "entries": queue_entries,
+            "persisted_at": format!("unix:{}", unix_seconds())
+        });
+        if let Some(parent) = queue_state_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(
+            &queue_state_path,
+            serde_json::to_vec_pretty(&queue_snapshot)?,
+        )?;
+        decision_records.push(json!({
+            "decision_id": format!("decision-{queue_entry_id}"),
+            "decision_revision": queue_revision,
+            "previous_revision": if idx == 0 { Value::Null } else { json!(idx as i64) },
+            "writer_id": writer_id,
+            "machine_id": machine_id,
+            "worker_session_id": session_id,
+            "run_id": run_id,
+            "queue_entry_id": queue_entry_id,
+            "source_receipt_paths": [receipt_path],
+            "summary": format!("decision recorded for replay-readiness run {run_id}"),
+            "action": entry.get("decision_action").and_then(Value::as_str).unwrap_or("triage"),
+            "status": "recorded",
+            "receipt_path": entry.get("decision_receipt_path").and_then(Value::as_str).unwrap_or("target/networked-hosted/decision.json")
+        }));
+    }
+
+    let decision_snapshot = json!({
+        "schema_version": 1,
+        "store_id": store_id,
+        "adapter": store_adapter,
+        "state_revision": decision_records.len() as i64,
+        "records": decision_records,
+        "persisted_at": format!("unix:{}", unix_seconds())
+    });
+    if let Some(parent) = decision_state_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        &decision_state_path,
+        serde_json::to_vec_pretty(&decision_snapshot)?,
+    )?;
+    let queue_snapshot = load_json(&queue_state_path)?;
+    let decision_snapshot = load_json(&decision_state_path)?;
+    let queue_digest = digest_json_value(&queue_snapshot)?;
+    let decision_digest = digest_json_value(&decision_snapshot)?;
+    let status = if failures == 0 {
+        "recorded"
+    } else if failures == entries.len() {
+        "failed"
+    } else {
+        "partial"
+    };
+
+    Ok(json!({
+        "schema_version": 1,
+        "command": "replay-readiness-networked-hosted-scheduler",
+        "status": status,
+        "generated_at": format!("unix:{}", unix_seconds()),
+        "harness_id": harness_id,
+        "transport": transport,
+        "plan_path": plan_path.display().to_string(),
+        "scope": "bounded networked hosted/shared-state scheduler receipt with independently started worker sessions, shared queue revisions, state snapshot digests, decision-store revisions, linked run receipts, and worker heartbeats; not SaaS hosting, not product parity, not Antithesis parity, not universal fleet scale, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "machines": machine_values,
+        "worker_sessions": session_values,
+        "queue": {
+            "kind": "networked-shared",
+            "queue_id": queue_id,
+            "adapter": queue_adapter,
+            "state_revision": entries.len() as i64,
+            "state_snapshot_path": queue_state_path.display().to_string(),
+            "state_snapshot_digest": queue_digest,
+            "entries": queue_entries
+        },
+        "decision_store": {
+            "kind": "networked-shared",
+            "store_id": store_id,
+            "adapter": store_adapter,
+            "state_revision": decision_records.len() as i64,
+            "state_snapshot_path": decision_state_path.display().to_string(),
+            "state_snapshot_digest": decision_digest,
+            "records": decision_records
+        },
+        "anti_claims": [
+            "This is bounded networked hosted/shared-state scheduler evidence, not SaaS hosting evidence.",
+            "This proves only local loopback or bounded networked shared queue semantics, not product parity, not universal fleet scale, and not Antithesis parity.",
+            "This receipt links independently started worker sessions, worker heartbeats, shared queue leases, queue revisions, state snapshot digests, run receipts, decision-store revisions, writer identities, and source receipt links without raw-log scraping."
+        ]
+    }))
+}
+
+fn digest_json_value(value: &Value) -> EvidenceResult<String> {
+    let bytes = serde_json::to_vec(value)?;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+pub fn sample_networked_hosted_scheduler_plan() -> Value {
+    json!({
+        "schema_version": 1,
+        "harness_id": "networked-hosted-harness-0001",
+        "transport": "loopback-tcp",
+        "machines": [
+            {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+            {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+        ],
+        "worker_sessions": [
+            {"worker_session_id": "session-a-0001", "hypervisor_worker_id": "hv-a", "machine_id": "machine-a", "heartbeat_revision": 1, "last_heartbeat": "unix:1000"},
+            {"worker_session_id": "session-b-0001", "hypervisor_worker_id": "hv-b", "machine_id": "machine-b", "heartbeat_revision": 1, "last_heartbeat": "unix:1001"}
+        ],
+        "queue": {
+            "queue_id": "networked-queue-0001",
+            "adapter": "shared-loopback-file",
+            "state_snapshot_path": "target/networked-hosted/queue-state.json",
+            "state_snapshot_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "entries": [
+                {"queue_entry_id": "net-q-raft-0001", "run_id": "net-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/networked-hosted/raft-replay-readiness.json", "receipt_path": "target/networked-hosted/raft-replay-readiness.json"},
+                {"queue_entry_id": "net-q-redb-0001", "run_id": "net-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/networked-hosted/redb-replay-readiness.json", "receipt_path": "target/networked-hosted/redb-replay-readiness.json"}
+            ]
+        },
+        "decision_store": {"store_id": "networked-decision-store-0001", "adapter": "shared-loopback-file", "state_snapshot_path": "target/networked-hosted/decision-store.json", "state_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+    })
+}
+
+pub fn sample_networked_hosted_scheduler_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-networked-hosted-scheduler",
+        "status": "recorded",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "harness_id": "networked-hosted-harness-0001",
+        "transport": "loopback-tcp",
+        "scope": "bounded networked hosted/shared-state scheduler receipt with independently started worker sessions, shared queue revisions, state snapshot digests, decision-store revisions, linked run receipts, and worker heartbeats; not SaaS hosting, not product parity, not Antithesis parity, not universal fleet scale, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "machines": [
+            {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+            {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+        ],
+        "worker_sessions": [
+            {"worker_session_id": "session-a-0001", "hypervisor_worker_id": "hv-a", "machine_id": "machine-a", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1000", "state": "healthy"},
+            {"worker_session_id": "session-b-0001", "hypervisor_worker_id": "hv-b", "machine_id": "machine-b", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1001", "state": "healthy"}
+        ],
+        "queue": {
+            "kind": "networked-shared",
+            "queue_id": "networked-queue-0001",
+            "adapter": "shared-loopback-file",
+            "state_revision": 2,
+            "state_snapshot_path": "target/networked-hosted/queue-state.json",
+            "state_snapshot_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "entries": [
+                {"queue_entry_id": "net-q-raft-0001", "run_id": "net-run-raft-0001", "workload": "raft", "state": "completed", "command": "replay-readiness --receipt target/networked-hosted/raft-replay-readiness.json", "exit_code": 0, "lease": {"lease_id": "lease-net-q-raft-0001", "lease_epoch": 1, "queue_revision": 1, "owner_machine_id": "machine-a", "hypervisor_worker_id": "hv-a", "worker_session_id": "session-a-0001"}, "receipt_path": "target/networked-hosted/raft-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded"},
+                {"queue_entry_id": "net-q-redb-0001", "run_id": "net-run-redb-0001", "workload": "redb", "state": "completed", "command": "replay-readiness --receipt target/networked-hosted/redb-replay-readiness.json", "exit_code": 0, "lease": {"lease_id": "lease-net-q-redb-0001", "lease_epoch": 1, "queue_revision": 2, "owner_machine_id": "machine-b", "hypervisor_worker_id": "hv-b", "worker_session_id": "session-b-0001"}, "receipt_path": "target/networked-hosted/redb-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded"}
+            ]
+        },
+        "decision_store": {
+            "kind": "networked-shared",
+            "store_id": "networked-decision-store-0001",
+            "adapter": "shared-loopback-file",
+            "state_revision": 2,
+            "state_snapshot_path": "target/networked-hosted/decision-store.json",
+            "state_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "records": [
+                {"decision_id": "decision-net-raft-0001", "decision_revision": 1, "previous_revision": null, "writer_id": "writer-machine-a", "machine_id": "machine-a", "worker_session_id": "session-a-0001", "run_id": "net-run-raft-0001", "queue_entry_id": "net-q-raft-0001", "source_receipt_paths": ["target/networked-hosted/raft-replay-readiness.json"], "summary": "triage decision recorded for raft replay-readiness receipt", "action": "reproduce", "status": "recorded", "receipt_path": "target/networked-hosted/raft-decision.json"},
+                {"decision_id": "decision-net-redb-0001", "decision_revision": 2, "previous_revision": 1, "writer_id": "writer-machine-b", "machine_id": "machine-b", "worker_session_id": "session-b-0001", "run_id": "net-run-redb-0001", "queue_entry_id": "net-q-redb-0001", "source_receipt_paths": ["target/networked-hosted/redb-replay-readiness.json"], "summary": "triage decision recorded for redb replay-readiness receipt", "action": "triage", "status": "recorded", "receipt_path": "target/networked-hosted/redb-decision.json"}
+            ]
+        },
+        "anti_claims": [
+            "This is bounded networked hosted/shared-state scheduler evidence, not SaaS hosting evidence.",
+            "This proves only local loopback or bounded networked shared queue semantics, not product parity, not universal fleet scale, and not Antithesis parity.",
+            "This receipt links independently started worker sessions, worker heartbeats, shared queue leases, queue revisions, state snapshot digests, run receipts, decision-store revisions, writer identities, and source receipt links without raw-log scraping."
+        ]
+    })
+}
+
+pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(
+        receipt.get("schema_version"),
+        "networked_hosted_scheduler.schema_version",
+    )?;
+    ensure(
+        schema_version == 1,
+        format!("networked_hosted_scheduler.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "networked_hosted_scheduler.command")?;
+    ensure(
+        command == "replay-readiness-networked-hosted-scheduler",
+        format!("networked_hosted_scheduler.command: unexpected {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "networked_hosted_scheduler.status")?;
+    ensure(
+        matches!(status, "recorded" | "partial" | "failed"),
+        format!("networked_hosted_scheduler.status: unsupported value {status:?}"),
+    )?;
+    token_field(
+        receipt.get("harness_id"),
+        "networked_hosted_scheduler.harness_id",
+    )?;
+    let transport = token_field(
+        receipt.get("transport"),
+        "networked_hosted_scheduler.transport",
+    )?;
+    ensure(
+        matches!(
+            transport,
+            "loopback-tcp" | "loopback-uds" | "multi-process-file"
+        ),
+        format!("networked_hosted_scheduler.transport: unsupported value {transport:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "networked_hosted_scheduler.scope")?.to_lowercase();
+    ensure(
+        scope.contains("bounded networked hosted/shared-state")
+            && scope.contains("independently started worker sessions")
+            && scope.contains("shared queue")
+            && scope.contains("decision-store")
+            && scope.contains("not saas")
+            && scope.contains("not product parity")
+            && scope.contains("not antithesis parity")
+            && scope.contains("not universal fleet scale"),
+        "networked_hosted_scheduler.scope: must declare bounded networked scope and non-claims",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "networked_hosted_scheduler.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let machines = array_field(
+        receipt.get("machines"),
+        "networked_hosted_scheduler.machines",
+    )?;
+    ensure(
+        machines.len() >= 2,
+        "networked_hosted_scheduler.machines: expected at least two machine identities",
+    )?;
+    let mut machine_ids = BTreeSet::new();
+    let mut writer_to_machine = BTreeMap::new();
+    for (idx, machine) in machines.iter().enumerate() {
+        let machine = object_field(
+            Some(machine),
+            &format!("networked_hosted_scheduler.machines[{idx}]"),
+        )?;
+        let machine_id = token_field(
+            machine.get("machine_id"),
+            &format!("networked_hosted_scheduler.machines[{idx}].machine_id"),
+        )?;
+        ensure(
+            machine_ids.insert(machine_id.to_string()),
+            format!(
+                "networked_hosted_scheduler.machines[{idx}].machine_id: duplicate {machine_id}"
+            ),
+        )?;
+        let writer_id = token_field(
+            machine.get("writer_id"),
+            &format!("networked_hosted_scheduler.machines[{idx}].writer_id"),
+        )?;
+        ensure(
+            writer_to_machine
+                .insert(writer_id.to_string(), machine_id.to_string())
+                .is_none(),
+            format!("networked_hosted_scheduler.machines[{idx}].writer_id: duplicate {writer_id}"),
+        )?;
+    }
+
+    let worker_sessions = array_field(
+        receipt.get("worker_sessions"),
+        "networked_hosted_scheduler.worker_sessions",
+    )?;
+    ensure(
+        worker_sessions.len() >= 2,
+        "networked_hosted_scheduler.worker_sessions: expected at least two worker sessions",
+    )?;
+    let mut session_to_worker = BTreeMap::new();
+    let mut session_to_machine = BTreeMap::new();
+    let mut worker_to_machine = BTreeMap::new();
+    for (idx, session) in worker_sessions.iter().enumerate() {
+        let session = object_field(
+            Some(session),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}]"),
+        )?;
+        let session_id = token_field(
+            session.get("worker_session_id"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].worker_session_id"),
+        )?;
+        let worker_id = token_field(
+            session.get("hypervisor_worker_id"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].hypervisor_worker_id"),
+        )?;
+        let machine_id = token_field(
+            session.get("machine_id"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].machine_id"),
+        )?;
+        ensure(machine_ids.contains(machine_id), format!("networked_hosted_scheduler.worker_sessions[{idx}].machine_id: {machine_id} missing from machines"))?;
+        token_field(
+            session.get("started_by"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].started_by"),
+        )?;
+        let heartbeat_revision = int_field(
+            session.get("heartbeat_revision"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].heartbeat_revision"),
+        )?;
+        ensure(heartbeat_revision > 0, format!("networked_hosted_scheduler.worker_sessions[{idx}].heartbeat_revision: expected positive heartbeat revision"))?;
+        str_field(
+            session.get("last_heartbeat"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].last_heartbeat"),
+        )?;
+        let state = token_field(
+            session.get("state"),
+            &format!("networked_hosted_scheduler.worker_sessions[{idx}].state"),
+        )?;
+        ensure(matches!(state, "healthy" | "draining" | "stopped"), format!("networked_hosted_scheduler.worker_sessions[{idx}].state: unsupported value {state:?}"))?;
+        ensure(session_to_worker.insert(session_id.to_string(), worker_id.to_string()).is_none(), format!("networked_hosted_scheduler.worker_sessions[{idx}].worker_session_id: duplicate {session_id}"))?;
+        session_to_machine.insert(session_id.to_string(), machine_id.to_string());
+        if let Some(previous_machine) =
+            worker_to_machine.insert(worker_id.to_string(), machine_id.to_string())
+        {
+            ensure(previous_machine == machine_id, format!("networked_hosted_scheduler.worker_sessions[{idx}].hypervisor_worker_id: split worker machine for {worker_id}"))?;
+        }
+    }
+
+    let queue = object_field(receipt.get("queue"), "networked_hosted_scheduler.queue")?;
+    let queue_kind = token_field(queue.get("kind"), "networked_hosted_scheduler.queue.kind")?;
+    ensure(
+        queue_kind == "networked-shared",
+        format!(
+            "networked_hosted_scheduler.queue.kind: expected networked-shared, got {queue_kind:?}"
+        ),
+    )?;
+    token_field(
+        queue.get("queue_id"),
+        "networked_hosted_scheduler.queue.queue_id",
+    )?;
+    token_field(
+        queue.get("adapter"),
+        "networked_hosted_scheduler.queue.adapter",
+    )?;
+    let queue_state_revision = int_field(
+        queue.get("state_revision"),
+        "networked_hosted_scheduler.queue.state_revision",
+    )?;
+    ensure(
+        queue_state_revision > 0,
+        "networked_hosted_scheduler.queue.state_revision: expected positive revision",
+    )?;
+    str_field(
+        queue.get("state_snapshot_path"),
+        "networked_hosted_scheduler.queue.state_snapshot_path",
+    )?;
+    validate_digest_field(
+        queue.get("state_snapshot_digest"),
+        "networked_hosted_scheduler.queue.state_snapshot_digest",
+    )?;
+    let entries = array_field(
+        queue.get("entries"),
+        "networked_hosted_scheduler.queue.entries",
+    )?;
+    ensure(
+        !entries.is_empty(),
+        "networked_hosted_scheduler.queue.entries: expected non-empty list",
+    )?;
+    let mut queue_entry_ids = BTreeSet::new();
+    let mut run_ids = BTreeSet::new();
+    let mut lease_ids = BTreeSet::new();
+    let mut last_queue_revision = 0i64;
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("networked_hosted_scheduler.queue.entries[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        token_field(
+            entry.get("workload"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].workload"),
+        )?;
+        str_field(
+            entry.get("command"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].command"),
+        )?;
+        let state = token_field(
+            entry.get("state"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].state"),
+        )?;
+        ensure(matches!(state, "queued" | "leased" | "completed" | "failed"), format!("networked_hosted_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"))?;
+        let exit_code = int_field(
+            entry.get("exit_code"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].exit_code"),
+        )?;
+        let lease = object_field(
+            entry.get("lease"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease"),
+        )?;
+        let lease_id = token_field(
+            lease.get("lease_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_id"),
+        )?;
+        ensure(lease_ids.insert(lease_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_id: duplicate active lease {lease_id}"))?;
+        let lease_epoch = int_field(
+            lease.get("lease_epoch"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_epoch"),
+        )?;
+        ensure(lease_epoch > 0, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
+        let queue_revision = int_field(
+            lease.get("queue_revision"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision"),
+        )?;
+        ensure(queue_revision > last_queue_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: stale queue-state revision"))?;
+        ensure(queue_revision <= queue_state_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: exceeds queue state revision"))?;
+        last_queue_revision = queue_revision;
+        let owner_machine_id = token_field(
+            lease.get("owner_machine_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.owner_machine_id"),
+        )?;
+        ensure(machine_ids.contains(owner_machine_id), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
+        let worker_id = token_field(
+            lease.get("hypervisor_worker_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.hypervisor_worker_id"),
+        )?;
+        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from worker sessions")))?;
+        ensure(worker_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match worker machine {worker_machine}"))?;
+        let session_id = token_field(
+            lease.get("worker_session_id"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id"),
+        )?;
+        let session_worker = session_to_worker.get(session_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: {session_id} missing worker-session heartbeat")))?;
+        ensure(session_worker == worker_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} does not own worker {worker_id}"))?;
+        let session_machine = session_to_machine
+            .get(session_id)
+            .expect("session machine recorded with session worker");
+        ensure(session_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} machine {session_machine} does not match lease owner {owner_machine_id}"))?;
+        str_field(
+            entry.get("receipt_path"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_path"),
+        )?;
+        let summary = str_field(
+            entry.get("receipt_summary"),
+            &format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_summary"),
+        )?;
+        if state == "completed" && exit_code == 0 {
+            ensure(summary.contains("replay-readiness status="), format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_summary: missing passed-run replay-readiness summary"))?;
+        }
+    }
+
+    let decision_store = object_field(
+        receipt.get("decision_store"),
+        "networked_hosted_scheduler.decision_store",
+    )?;
+    let store_kind = token_field(
+        decision_store.get("kind"),
+        "networked_hosted_scheduler.decision_store.kind",
+    )?;
+    ensure(store_kind == "networked-shared", format!("networked_hosted_scheduler.decision_store.kind: expected networked-shared, got {store_kind:?}"))?;
+    token_field(
+        decision_store.get("store_id"),
+        "networked_hosted_scheduler.decision_store.store_id",
+    )?;
+    token_field(
+        decision_store.get("adapter"),
+        "networked_hosted_scheduler.decision_store.adapter",
+    )?;
+    let store_revision = int_field(
+        decision_store.get("state_revision"),
+        "networked_hosted_scheduler.decision_store.state_revision",
+    )?;
+    ensure(
+        store_revision > 0,
+        "networked_hosted_scheduler.decision_store.state_revision: expected positive revision",
+    )?;
+    str_field(
+        decision_store.get("state_snapshot_path"),
+        "networked_hosted_scheduler.decision_store.state_snapshot_path",
+    )?;
+    validate_digest_field(
+        decision_store.get("state_snapshot_digest"),
+        "networked_hosted_scheduler.decision_store.state_snapshot_digest",
+    )?;
+    let records = array_field(
+        decision_store.get("records"),
+        "networked_hosted_scheduler.decision_store.records",
+    )?;
+    ensure(
+        !records.is_empty(),
+        "networked_hosted_scheduler.decision_store.records: expected non-empty list",
+    )?;
+    let mut decision_revisions = BTreeSet::new();
+    let mut last_decision_revision = 0i64;
+    for (idx, record) in records.iter().enumerate() {
+        let record = object_field(
+            Some(record),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}]"),
+        )?;
+        let decision_id = token_field(
+            record.get("decision_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_id"),
+        )?;
+        let revision = int_field(
+            record.get("decision_revision"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision"),
+        )?;
+        ensure(revision > 0, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
+        ensure(revision > last_decision_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: stale decision-store revision"))?;
+        ensure(revision <= store_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: exceeds decision-store revision"))?;
+        last_decision_revision = revision;
+        ensure(decision_revisions.insert(format!("{decision_id}@{revision}")), format!("networked_hosted_scheduler.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
+        if let Some(previous_revision) = record
+            .get("previous_revision")
+            .filter(|value| !value.is_null())
+        {
+            let previous_revision = int_field(
+                Some(previous_revision),
+                &format!(
+                    "networked_hosted_scheduler.decision_store.records[{idx}].previous_revision"
+                ),
+            )?;
+            ensure(previous_revision < revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].previous_revision: stale decision write"))?;
+        }
+        let writer_id = token_field(
+            record.get("writer_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id"),
+        )?;
+        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
+        let machine_id = token_field(
+            record.get("machine_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].machine_id"),
+        )?;
+        ensure(writer_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
+        let session_id = token_field(
+            record.get("worker_session_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id"),
+        )?;
+        let session_machine = session_to_machine.get(session_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: {session_id} missing worker-session heartbeat")))?;
+        ensure(session_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: session {session_id} is not owned by machine {machine_id}"))?;
+        let run_id = token_field(
+            record.get("run_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].run_id"),
+        )?;
+        ensure(run_ids.contains(run_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
+        let queue_entry_id = token_field(
+            record.get("queue_entry_id"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].queue_entry_id"),
+        )?;
+        ensure(queue_entry_ids.contains(queue_entry_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        let source_receipts = array_field(
+            record.get("source_receipt_paths"),
+            &format!(
+                "networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths"
+            ),
+        )?;
+        ensure(!source_receipts.is_empty(), format!("networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths: expected linked source receipt"))?;
+        for (source_idx, source) in source_receipts.iter().enumerate() {
+            str_field(Some(source), &format!("networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths[{source_idx}]"))?;
+        }
+        let summary = str_field(
+            record.get("summary"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].summary"),
+        )?;
+        ensure(summary.contains("decision") && summary.contains("replay-readiness"), format!("networked_hosted_scheduler.decision_store.records[{idx}].summary: expected stable replay-readiness decision summary"))?;
+        let action = token_field(
+            record.get("action"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].action"),
+        )?;
+        ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("networked_hosted_scheduler.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
+        let decision_status = token_field(
+            record.get("status"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].status"),
+        )?;
+        ensure(matches!(decision_status, "recorded" | "superseded" | "conflict"), format!("networked_hosted_scheduler.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
+        str_field(
+            record.get("receipt_path"),
+            &format!("networked_hosted_scheduler.decision_store.records[{idx}].receipt_path"),
+        )?;
+    }
+
+    let anti_claims = array_field(
+        receipt.get("anti_claims"),
+        "networked_hosted_scheduler.anti_claims",
+    )?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("bounded networked hosted/shared-state")
+            && anti_claim_text.contains("not saas")
+            && anti_claim_text.contains("not product parity")
+            && anti_claim_text.contains("not universal fleet scale")
+            && anti_claim_text.contains("antithesis parity")
+            && anti_claim_text.contains("without raw-log scraping"),
+        "networked_hosted_scheduler.anti_claims: missing bounded hosted/fleet anti-overclaim text",
+    )?;
+    Ok(format!("replay-readiness-networked-hosted-scheduler status={status} machines={} worker_sessions={} queue_entries={} decisions={} scope=bounded-networked-hosted-shared-state", machines.len(), worker_sessions.len(), entries.len(), records.len()))
+}
+
+fn validate_digest_field(value: Option<&Value>, field: &str) -> EvidenceResult<()> {
+    let digest = str_field(value, field)?;
+    let hex = digest
+        .strip_prefix("sha256:")
+        .ok_or_else(|| EvidenceError::new(format!("{field}: expected sha256 digest")))?;
+    ensure(
+        hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        format!("{field}: expected 64 hex characters"),
+    )
 }
 
 pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {

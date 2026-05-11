@@ -4,21 +4,26 @@ use chaoscontrol_evidence::{
     execute_replay_readiness_fleet_scheduler_receipt_path,
     execute_replay_readiness_hosted_shared_state_receipt_path,
     execute_replay_readiness_multi_hypervisor_campaign_receipt_path,
+    execute_replay_readiness_networked_hosted_scheduler_receipt_path,
     execute_replay_readiness_scheduler_receipt_path, sample_replay_readiness_fleet_scheduler_plan,
     sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_hosted_shared_state_plan,
     sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
     sample_replay_readiness_multi_hypervisor_campaign_receipt,
+    sample_replay_readiness_networked_hosted_scheduler_plan,
+    sample_replay_readiness_networked_hosted_scheduler_receipt,
     sample_replay_readiness_scheduler_receipt,
     validate_replay_readiness_fleet_scheduler_receipt_path,
     validate_replay_readiness_hosted_shared_state_receipt_path,
     validate_replay_readiness_multi_hypervisor_campaign_receipt_path,
+    validate_replay_readiness_networked_hosted_scheduler_receipt_path,
     validate_replay_readiness_scheduler_execution_receipt_path,
     validate_replay_readiness_scheduler_receipt_path,
     write_replay_readiness_fleet_scheduler_receipt_path,
     write_replay_readiness_hosted_shared_state_receipt_path,
     write_replay_readiness_multi_hypervisor_campaign_receipt_path,
+    write_replay_readiness_networked_hosted_scheduler_receipt_path,
     write_replay_readiness_scheduler_receipt_path, EvidenceResult,
 };
 
@@ -38,6 +43,8 @@ struct Args {
     check_multi_hypervisor: Option<PathBuf>,
     run_hosted_shared_state_plan: Option<PathBuf>,
     check_hosted_shared_state: Option<PathBuf>,
+    run_networked_hosted_plan: Option<PathBuf>,
+    check_networked_hosted: Option<PathBuf>,
     sample: bool,
     sample_fleet: bool,
     sample_fleet_plan: bool,
@@ -45,6 +52,8 @@ struct Args {
     sample_multi_hypervisor_plan: bool,
     sample_hosted_shared_state: bool,
     sample_hosted_shared_state_plan: bool,
+    sample_networked_hosted: bool,
+    sample_networked_hosted_plan: bool,
 }
 
 fn main() {
@@ -63,6 +72,8 @@ fn run() -> EvidenceResult<()> {
         + args.sample_multi_hypervisor_plan as usize
         + args.sample_hosted_shared_state as usize
         + args.sample_hosted_shared_state_plan as usize
+        + args.sample_networked_hosted as usize
+        + args.sample_networked_hosted_plan as usize
         + args.check.is_some() as usize
         + args.run_plan.is_some() as usize
         + args.check_execution.is_some() as usize
@@ -71,7 +82,9 @@ fn run() -> EvidenceResult<()> {
         + args.run_multi_hypervisor_plan.is_some() as usize
         + args.check_multi_hypervisor.is_some() as usize
         + args.run_hosted_shared_state_plan.is_some() as usize
-        + args.check_hosted_shared_state.is_some() as usize;
+        + args.check_hosted_shared_state.is_some() as usize
+        + args.run_networked_hosted_plan.is_some() as usize
+        + args.check_networked_hosted.is_some() as usize;
     if mode_count != 1 {
         return Err(chaoscontrol_evidence::EvidenceError::new(format!(
             "choose exactly one mode\n{}",
@@ -185,6 +198,36 @@ fn run() -> EvidenceResult<()> {
             "{}",
             validate_replay_readiness_hosted_shared_state_receipt_path(path)?
         );
+    } else if args.sample_networked_hosted {
+        let output = require_output(args.output)?;
+        write_replay_readiness_networked_hosted_scheduler_receipt_path(&output)?;
+        println!(
+            "wrote {} ({})",
+            output.display(),
+            chaoscontrol_evidence::validate_replay_readiness_networked_hosted_scheduler_receipt(
+                &sample_replay_readiness_networked_hosted_scheduler_receipt()
+            )?
+        );
+    } else if args.sample_networked_hosted_plan {
+        let output = require_output(args.output)?;
+        write_json(
+            &output,
+            &sample_replay_readiness_networked_hosted_scheduler_plan(),
+        )?;
+        println!(
+            "wrote {} (replay-readiness-networked-hosted-scheduler-plan)",
+            output.display()
+        );
+    } else if let Some(plan) = args.run_networked_hosted_plan {
+        let output = require_output(args.output)?;
+        let summary =
+            execute_replay_readiness_networked_hosted_scheduler_receipt_path(plan, &output)?;
+        println!("wrote {} ({summary})", output.display());
+    } else if let Some(path) = args.check_networked_hosted {
+        println!(
+            "{}",
+            validate_replay_readiness_networked_hosted_scheduler_receipt_path(path)?
+        );
     }
     Ok(())
 }
@@ -224,6 +267,14 @@ fn parse_args() -> EvidenceResult<Args> {
                 parsed.check_hosted_shared_state =
                     Some(next_path(&mut args, "--check-hosted-shared-state")?);
             }
+            "--run-networked-hosted-plan" => {
+                parsed.run_networked_hosted_plan =
+                    Some(next_path(&mut args, "--run-networked-hosted-plan")?);
+            }
+            "--check-networked-hosted" => {
+                parsed.check_networked_hosted =
+                    Some(next_path(&mut args, "--check-networked-hosted")?);
+            }
             "--sample" => parsed.sample = true,
             "--sample-fleet" => parsed.sample_fleet = true,
             "--sample-fleet-plan" => parsed.sample_fleet_plan = true,
@@ -231,6 +282,8 @@ fn parse_args() -> EvidenceResult<Args> {
             "--sample-multi-hypervisor-plan" => parsed.sample_multi_hypervisor_plan = true,
             "--sample-hosted-shared-state" => parsed.sample_hosted_shared_state = true,
             "--sample-hosted-shared-state-plan" => parsed.sample_hosted_shared_state_plan = true,
+            "--sample-networked-hosted" => parsed.sample_networked_hosted = true,
+            "--sample-networked-hosted-plan" => parsed.sample_networked_hosted_plan = true,
             _ => {
                 return Err(chaoscontrol_evidence::EvidenceError::new(format!(
                     "unexpected argument: {}\n{}",

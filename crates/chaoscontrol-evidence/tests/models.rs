@@ -6,7 +6,8 @@ use chaoscontrol_evidence::{
     check_replay_proof_coverage_doc, check_replay_readiness_status,
     execute_replay_readiness_fleet_scheduler_receipt_path,
     execute_replay_readiness_hosted_shared_state_receipt_path,
-    execute_replay_readiness_multi_hypervisor_campaign_receipt_path, materialize_snapshot_chunks,
+    execute_replay_readiness_multi_hypervisor_campaign_receipt_path,
+    execute_replay_readiness_networked_hosted_scheduler_receipt_path, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_operator_triage_runbook_path,
     render_replay_proof_coverage, render_replay_proof_coverage_doc,
     render_replay_readiness_dashboard, render_replay_readiness_readme_status_block,
@@ -18,7 +19,9 @@ use chaoscontrol_evidence::{
     sample_replay_readiness_hosted_shared_state_plan,
     sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
-    sample_replay_readiness_multi_hypervisor_campaign_receipt, sample_replay_readiness_receipt,
+    sample_replay_readiness_multi_hypervisor_campaign_receipt,
+    sample_replay_readiness_networked_hosted_scheduler_plan,
+    sample_replay_readiness_networked_hosted_scheduler_receipt, sample_replay_readiness_receipt,
     sample_replay_readiness_scheduler_receipt, summarize_replay_readiness_receipt,
     summarize_sdk_local_jsonl, validate_accepted_dogfood_config,
     validate_assertion_readiness_promotion, validate_contract_registry_json,
@@ -26,6 +29,7 @@ use chaoscontrol_evidence::{
     validate_replay_readiness_decision_receipt, validate_replay_readiness_fleet_scheduler_receipt,
     validate_replay_readiness_hosted_shared_state_receipt,
     validate_replay_readiness_multi_hypervisor_campaign_receipt,
+    validate_replay_readiness_networked_hosted_scheduler_receipt,
     validate_replay_readiness_scheduler_execution_receipt,
     validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
@@ -107,12 +111,10 @@ fn renders_committed_replay_readiness_status() {
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
-    assert!(rendered.contains("Hosted/fleet triage UI | `bounded-shared-state-harness`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `bounded-shared-state-harness`"));
-    assert!(rendered
-        .contains("loopback hosted/shared-state harness that persists shared decision records"));
-    assert!(rendered
-        .contains("shared queue leasing plus shared decision writes through the adapter boundary"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `networked-shared-state-harness`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `networked-shared-state-harness`"));
+    assert!(rendered.contains("bounded networked hosted scheduler receipt"));
+    assert!(rendered.contains("independently started worker sessions"));
     assert!(rendered.contains("real KVM multi-hypervisor smoke rail"));
     assert!(rendered.contains("shared decision"));
     assert!(rendered.contains("queue"));
@@ -514,6 +516,129 @@ fn validates_hosted_shared_state_receipt_model() {
     let err = validate_replay_readiness_hosted_shared_state_receipt(&overclaim)
         .expect_err("hosted/product-parity overclaim is rejected");
     assert!(err.message().contains("non-claims"));
+}
+
+#[test]
+fn validates_networked_hosted_scheduler_receipt_model() {
+    let receipt = sample_replay_readiness_networked_hosted_scheduler_receipt();
+    let summary = validate_replay_readiness_networked_hosted_scheduler_receipt(&receipt)
+        .expect("networked hosted scheduler receipt validates");
+
+    assert!(summary.contains("replay-readiness-networked-hosted-scheduler status=recorded"));
+    assert!(summary.contains("machines=2"));
+    assert!(summary.contains("worker_sessions=2"));
+    assert!(summary.contains("queue_entries=2"));
+    assert!(summary.contains("decisions=2"));
+    assert!(summary.contains("scope=bounded-networked-hosted-shared-state"));
+
+    let mut duplicate_lease = receipt.clone();
+    duplicate_lease["queue"]["entries"][1]["lease"]["lease_id"] =
+        duplicate_lease["queue"]["entries"][0]["lease"]["lease_id"].clone();
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&duplicate_lease)
+        .expect_err("duplicate active lease is rejected");
+    assert!(err.message().contains("duplicate active lease"));
+
+    let mut missing_heartbeat = receipt.clone();
+    missing_heartbeat["queue"]["entries"][0]["lease"]["worker_session_id"] =
+        serde_json::json!("missing-session");
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&missing_heartbeat)
+        .expect_err("missing worker-session heartbeat is rejected");
+    assert!(err.message().contains("missing worker-session heartbeat"));
+
+    let mut stale_queue = receipt.clone();
+    stale_queue["queue"]["entries"][1]["lease"]["queue_revision"] = serde_json::json!(1);
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&stale_queue)
+        .expect_err("stale queue revision is rejected");
+    assert!(err.message().contains("stale queue-state revision"));
+
+    let mut stale_decision = receipt.clone();
+    stale_decision["decision_store"]["records"][1]["decision_revision"] = serde_json::json!(1);
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&stale_decision)
+        .expect_err("stale decision-store revision is rejected");
+    assert!(err.message().contains("stale decision-store revision"));
+
+    let mut missing_summary = receipt.clone();
+    missing_summary["queue"]["entries"][0]["receipt_summary"] = serde_json::json!("passed");
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&missing_summary)
+        .expect_err("passed-run summary is required");
+    assert!(err
+        .message()
+        .contains("missing passed-run replay-readiness summary"));
+
+    let mut raw_log = receipt.clone();
+    raw_log["raw_log_scraping"] = serde_json::json!(true);
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&raw_log)
+        .expect_err("raw-log scraping is rejected");
+    assert!(err.message().contains("raw-log scraping is not allowed"));
+
+    let mut overclaim = receipt;
+    overclaim["scope"] = serde_json::json!("hosted production product parity scheduler");
+    let err = validate_replay_readiness_networked_hosted_scheduler_receipt(&overclaim)
+        .expect_err("hosted/product-parity overclaim is rejected");
+    assert!(err.message().contains("non-claims"));
+}
+
+#[test]
+fn executes_networked_hosted_scheduler_harness() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = sample_replay_readiness_networked_hosted_scheduler_plan();
+    let run_1 = temp.path().join("networked-run-1.json");
+    let run_2 = temp.path().join("networked-run-2.json");
+    let queue_state = temp.path().join("networked-queue-state.json");
+    let decision_store = temp.path().join("networked-decision-store.json");
+    let receipt_template = temp.path().join("replay-readiness-template.json");
+    std::fs::write(
+        &receipt_template,
+        serde_json::to_vec_pretty(&sample_replay_readiness_receipt(false, "passed"))
+            .expect("receipt json"),
+    )
+    .expect("write receipt template");
+    plan["queue"]["state_snapshot_path"] = serde_json::json!(queue_state.display().to_string());
+    plan["decision_store"]["state_snapshot_path"] =
+        serde_json::json!(decision_store.display().to_string());
+    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
+        "cp '{}' '{}'",
+        receipt_template.display(),
+        run_1.display()
+    ));
+    plan["queue"]["entries"][0]["receipt_path"] = serde_json::json!(run_1.display().to_string());
+    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
+        "cp '{}' '{}'",
+        receipt_template.display(),
+        run_2.display()
+    ));
+    plan["queue"]["entries"][1]["receipt_path"] = serde_json::json!(run_2.display().to_string());
+
+    let plan_path = temp.path().join("networked-plan.json");
+    let output_path = temp.path().join("networked-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let summary =
+        execute_replay_readiness_networked_hosted_scheduler_receipt_path(&plan_path, &output_path)
+            .expect("execute networked hosted scheduler harness");
+    assert!(summary.contains("replay-readiness-networked-hosted-scheduler status=recorded"));
+    assert!(queue_state.exists());
+    assert!(decision_store.exists());
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&output_path).expect("read networked scheduler receipt"),
+    )
+    .expect("networked scheduler receipt json");
+    assert_eq!(receipt["queue"]["kind"], "networked-shared");
+    assert_eq!(
+        receipt["worker_sessions"]
+            .as_array()
+            .expect("sessions")
+            .len(),
+        2
+    );
+    assert!(receipt["queue"]["state_snapshot_digest"]
+        .as_str()
+        .expect("queue digest")
+        .starts_with("sha256:"));
 }
 
 #[test]

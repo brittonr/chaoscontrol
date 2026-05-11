@@ -16,10 +16,10 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
-    ("Hosted/fleet triage UI", "bounded-shared-state-harness"),
+    ("Hosted/fleet triage UI", "networked-shared-state-harness"),
     (
         "Replay scheduler orchestration",
-        "bounded-shared-state-harness",
+        "networked-shared-state-harness",
     ),
     (
         "FoundationDB-style in-process deterministic simulator",
@@ -197,7 +197,7 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_hosted_fleet_surface = report.replace(
-        "| Hosted/fleet triage UI | `bounded-shared-state-harness` |",
+        "| Hosted/fleet triage UI | `networked-shared-state-harness` |",
         "| Hosted/fleet triage UI | `supported-bounded` |",
     );
     expect_failure(
@@ -208,7 +208,7 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_scheduler_surface = report.replace(
-        "| Replay scheduler orchestration | `bounded-shared-state-harness` |",
+        "| Replay scheduler orchestration | `networked-shared-state-harness` |",
         "| Replay scheduler orchestration | `supported-bounded` |",
     );
     expect_failure(

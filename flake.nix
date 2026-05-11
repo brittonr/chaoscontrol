@@ -1464,6 +1464,33 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-hosted-shared-state-plan "$out/hosted-shared-state-plan.json" --output "$out/hosted-shared-state-receipt.json" > "$out/hosted-shared-state-summary.txt"
                   replay-readiness-scheduler-receipt --check-hosted-shared-state "$out/hosted-shared-state-receipt.json" >> "$out/hosted-shared-state-summary.txt"
+                  cat > "$out/networked-hosted-scheduler-plan.json" <<EOF
+                  {
+                    "schema_version": 1,
+                    "harness_id": "networked-hosted-check",
+                    "transport": "loopback-tcp",
+                    "machines": [
+                      {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+                      {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+                    ],
+                    "worker_sessions": [
+                      {"worker_session_id": "session-a", "hypervisor_worker_id": "hv-a", "machine_id": "machine-a", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1000"},
+                      {"worker_session_id": "session-b", "hypervisor_worker_id": "hv-b", "machine_id": "machine-b", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1001"}
+                    ],
+                    "queue": {
+                      "queue_id": "networked-hosted-check",
+                      "adapter": "shared-loopback-file",
+                      "state_snapshot_path": "$out/networked-hosted-queue-state.json",
+                      "entries": [
+                        {"queue_entry_id": "networked-static-0001", "run_id": "networked-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/networked-run-1.json'", "receipt_path": "$out/networked-run-1.json", "decision_action": "reproduce"},
+                        {"queue_entry_id": "networked-static-0002", "run_id": "networked-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/networked-run-2.json'", "receipt_path": "$out/networked-run-2.json", "decision_action": "triage"}
+                      ]
+                    },
+                    "decision_store": {"store_id": "networked-hosted-decision-store-check", "adapter": "shared-loopback-file", "state_snapshot_path": "$out/networked-hosted-decision-store.json"}
+                  }
+                  EOF
+                  replay-readiness-scheduler-receipt --run-networked-hosted-plan "$out/networked-hosted-scheduler-plan.json" --output "$out/networked-hosted-scheduler-receipt.json" > "$out/networked-hosted-scheduler-summary.txt"
+                  replay-readiness-scheduler-receipt --check-networked-hosted "$out/networked-hosted-scheduler-receipt.json" >> "$out/networked-hosted-scheduler-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1497,6 +1524,13 @@
                   test -s "$out/hosted-shared-decision-store.json"
                   test -s "$out/hosted-run-1.json"
                   test -s "$out/hosted-run-2.json"
+                  test -s "$out/networked-hosted-scheduler-plan.json"
+                  test -s "$out/networked-hosted-scheduler-receipt.json"
+                  test -s "$out/networked-hosted-scheduler-summary.txt"
+                  test -s "$out/networked-hosted-queue-state.json"
+                  test -s "$out/networked-hosted-decision-store.json"
+                  test -s "$out/networked-run-1.json"
+                  test -s "$out/networked-run-2.json"
                   test -s "$out/scheduled-run-1.json"
                   test -s "$out/scheduled-run-2.json"
                 '';

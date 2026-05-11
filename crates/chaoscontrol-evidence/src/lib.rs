@@ -17,6 +17,7 @@ pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
+pub mod in_process_simulator;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
@@ -48,6 +49,15 @@ pub use evidence_contracts::{
     validate_receipt_with_root, validate_replay_verdict, validate_replay_verdict_with_options,
     validate_run_config, validate_snapshot_ref, validate_snapshot_ref_with_root,
     EVIDENCE_CONTRACTS_SUCCESS,
+};
+pub use in_process_simulator::{
+    compare_simulator_receipts, sample_simulator_config, validate_simulator_config,
+    validate_simulator_receipt, DeterministicClock, DeterministicRng, DeterministicScheduler,
+    DeterministicSimulatorCore, DiskProfile, EntropySource, FaultScheduleRef, NetworkProfile,
+    RngPolicy, SchedulerPolicy, SchedulerStep, SimulatorConfig, SimulatorObservation,
+    SimulatorReceipt, SimulatorReceiptComparison, SimulatorReceiptMismatch, VirtualClockPolicy,
+    WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE, SIMULATOR_CONFIG_SCHEMA_VERSION,
+    SIMULATOR_RECEIPT_SCHEMA_VERSION,
 };
 pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,

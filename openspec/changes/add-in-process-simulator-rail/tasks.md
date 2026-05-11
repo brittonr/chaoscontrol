@@ -4,9 +4,9 @@
 
 ## Phase 2: Simulator core contracts
 
-- [ ] [serial] Add simulator config and receipt DTOs for seed, schedule, time, RNG, network, disk, workload, and artifact digests.
-- [ ] [parallel] Add pure deterministic scheduler/clock/RNG interfaces with repeatability tests.
-- [ ] [parallel] Add negative nondeterminism fixtures proving receipt/checker failure on unbound entropy or wall-clock use.
+- [x] [serial] Add simulator config and receipt DTOs for seed, schedule, time, RNG, network, disk, workload, and artifact digests.
+- [x] [parallel] Add pure deterministic scheduler/clock/RNG interfaces with repeatability tests.
+- [x] [parallel] Add negative nondeterminism fixtures proving receipt/checker failure on unbound entropy or wall-clock use.
 
 ## Phase 3: Workload adapter and faults
 

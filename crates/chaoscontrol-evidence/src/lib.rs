@@ -51,6 +51,7 @@ pub use replay_readiness_surfaces::{
     replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
     run_readiness_surface_drift_selftest,
     sample_decision_receipt as sample_replay_readiness_decision_receipt,
+    sample_fleet_scheduler_receipt as sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_receipt,
     sample_scheduler_receipt as sample_replay_readiness_scheduler_receipt,
     summarize_receipt as summarize_replay_readiness_receipt,
@@ -58,6 +59,8 @@ pub use replay_readiness_surfaces::{
     update_readme_status_path as update_replay_readiness_readme_status_path,
     validate_decision_receipt as validate_replay_readiness_decision_receipt,
     validate_decision_receipt_path as validate_replay_readiness_decision_receipt_path,
+    validate_fleet_scheduler_receipt as validate_replay_readiness_fleet_scheduler_receipt,
+    validate_fleet_scheduler_receipt_path as validate_replay_readiness_fleet_scheduler_receipt_path,
     validate_gate_metadata,
     validate_scheduler_execution_receipt as validate_replay_readiness_scheduler_execution_receipt,
     validate_scheduler_execution_receipt_path as validate_replay_readiness_scheduler_execution_receipt_path,
@@ -65,6 +68,7 @@ pub use replay_readiness_surfaces::{
     validate_scheduler_receipt_path as validate_replay_readiness_scheduler_receipt_path,
     write_dashboard_path as write_replay_readiness_dashboard_path,
     write_decision_receipt_path as write_replay_readiness_decision_receipt_path,
+    write_fleet_scheduler_receipt_path as write_replay_readiness_fleet_scheduler_receipt_path,
     write_fleet_triage_index_path,
     write_scheduler_receipt_path as write_replay_readiness_scheduler_receipt_path,
 };
@@ -149,9 +153,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "local-scheduler-execution",
-        reason: "Current evidence includes a bounded local sequential scheduler execution receipt for multi-run plans, but not a hosted scheduler, shared queue, cross-machine orchestration, or automatic campaign service.",
-        promotion_evidence: "A hosted scheduler integration that executes or records multiple replay-readiness runs across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping or shared-queue overclaims.",
+        status: "bounded-fleet-scheduler-receipt",
+        reason: "Current evidence includes bounded local sequential scheduler execution plus a durable queue/lease/worker/run receipt model for hosted/fleet scheduler review, but not a running hosted service or automatic campaign service.",
+        promotion_evidence: "A running hosted scheduler integration that executes multiple replay-readiness runs across machines, persists queue state, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

@@ -1270,6 +1270,8 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-plan "$out/scheduler-execution-plan.json" --output "$out/scheduler-execution-receipt.json" > "$out/scheduler-execution-summary.txt"
                   replay-readiness-scheduler-receipt --check-execution "$out/scheduler-execution-receipt.json" >> "$out/scheduler-execution-summary.txt"
+                  replay-readiness-scheduler-receipt --sample-fleet --output "$out/fleet-scheduler-receipt.json" > "$out/fleet-scheduler-summary.txt"
+                  replay-readiness-scheduler-receipt --check-fleet "$out/fleet-scheduler-receipt.json" >> "$out/fleet-scheduler-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1282,6 +1284,8 @@
                   test -s "$out/scheduler-execution-plan.json"
                   test -s "$out/scheduler-execution-receipt.json"
                   test -s "$out/scheduler-execution-summary.txt"
+                  test -s "$out/fleet-scheduler-receipt.json"
+                  test -s "$out/fleet-scheduler-summary.txt"
                   test -s "$out/scheduled-run-1.json"
                   test -s "$out/scheduled-run-2.json"
                 '';

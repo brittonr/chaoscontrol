@@ -10,12 +10,13 @@ use chaoscontrol_evidence::{
     render_replay_readiness_status, run_assertion_readiness_promotion_selftest,
     run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_decision_receipt, sample_replay_readiness_receipt,
-    sample_replay_readiness_scheduler_receipt, summarize_replay_readiness_receipt,
-    summarize_sdk_local_jsonl, validate_accepted_dogfood_config,
-    validate_assertion_readiness_promotion, validate_contract_registry_json,
-    validate_gate_metadata, validate_readiness_promotion_files, validate_replay_proof_coverage,
-    validate_replay_readiness_decision_receipt,
+    sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_receipt, sample_replay_readiness_scheduler_receipt,
+    summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
+    validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
+    validate_contract_registry_json, validate_gate_metadata, validate_readiness_promotion_files,
+    validate_replay_proof_coverage, validate_replay_readiness_decision_receipt,
+    validate_replay_readiness_fleet_scheduler_receipt,
     validate_replay_readiness_scheduler_execution_receipt,
     validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
@@ -98,12 +99,13 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `local-scheduler-execution`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `bounded-fleet-scheduler-receipt`"));
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
-    assert!(rendered
-        .contains("bounded local sequential scheduler execution receipt for multi-run plans"));
+    assert!(rendered.contains(
+        "durable queue/lease/worker/run receipt model for hosted/fleet scheduler review"
+    ));
     assert!(rendered.contains("shared decision store"));
-    assert!(rendered.contains("shared queue"));
+    assert!(rendered.contains("persists queue state"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
@@ -307,6 +309,31 @@ fn validates_replay_readiness_scheduler_execution_receipt_model() {
     let err = validate_replay_readiness_scheduler_execution_receipt(&malformed)
         .expect_err("parallel execution overclaim is rejected");
     assert!(err.message().contains("concurrency=1"));
+}
+
+#[test]
+fn validates_replay_readiness_fleet_scheduler_receipt_model() {
+    let receipt = sample_replay_readiness_fleet_scheduler_receipt();
+    let summary = validate_replay_readiness_fleet_scheduler_receipt(&receipt)
+        .expect("fleet scheduler receipt validates");
+
+    assert!(summary.contains("replay-readiness-fleet-scheduler status=recorded"));
+    assert!(summary.contains("queue=durable-file-backed"));
+    assert!(summary.contains("workers=2"));
+    assert!(summary.contains("runs=2"));
+    assert!(summary.contains("scope=bounded-hosted-fleet"));
+
+    let mut raw_log = receipt.clone();
+    raw_log["raw_log_scraping"] = serde_json::json!(true);
+    let err = validate_replay_readiness_fleet_scheduler_receipt(&raw_log)
+        .expect_err("raw-log scraping is rejected");
+    assert!(err.message().contains("raw-log scraping is not allowed"));
+
+    let mut missing_worker = receipt;
+    missing_worker["runs"][0]["worker_id"] = serde_json::json!("missing-worker");
+    let err = validate_replay_readiness_fleet_scheduler_receipt(&missing_worker)
+        .expect_err("unknown worker is rejected");
+    assert!(err.message().contains("missing from workers"));
 }
 
 #[test]

@@ -740,6 +740,320 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
     ))
 }
 
+pub fn write_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&sample_fleet_scheduler_receipt())?,
+    )?;
+    Ok(())
+}
+
+pub fn validate_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+    validate_fleet_scheduler_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn sample_fleet_scheduler_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-fleet-scheduler-receipt",
+        "status": "recorded",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "scope": "bounded hosted/fleet scheduler receipt with durable queue leases and worker run receipts; not product-parity evidence, not a full Antithesis replacement, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "queue": {
+            "kind": "durable-file-backed",
+            "queue_id": "fleet-queue-0001",
+            "lease_timeout_seconds": 900,
+            "max_concurrency": 2,
+            "entries": [
+                {"queue_entry_id": "queue-raft-0001", "run_id": "fleet-run-raft-0001", "workload": "raft", "state": "completed"},
+                {"queue_entry_id": "queue-redb-0001", "run_id": "fleet-run-redb-0001", "workload": "redb", "state": "completed"}
+            ]
+        },
+        "workers": [
+            {"worker_id": "worker-a", "node_id": "node-a", "lease_id": "lease-raft-0001", "status": "idle"},
+            {"worker_id": "worker-b", "node_id": "node-b", "lease_id": "lease-redb-0001", "status": "idle"}
+        ],
+        "runs": [
+            {
+                "run_id": "fleet-run-raft-0001",
+                "queue_entry_id": "queue-raft-0001",
+                "worker_id": "worker-a",
+                "workload": "raft",
+                "receipt_path": "target/fleet/raft-replay-readiness.json",
+                "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded",
+                "status": "passed",
+                "exit_code": 0
+            },
+            {
+                "run_id": "fleet-run-redb-0001",
+                "queue_entry_id": "queue-redb-0001",
+                "worker_id": "worker-b",
+                "workload": "redb",
+                "receipt_path": "target/fleet/redb-replay-readiness.json",
+                "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded",
+                "status": "passed",
+                "exit_code": 0
+            }
+        ],
+        "operator_decisions": ["target/decision-receipt.json"],
+        "anti_claims": [
+            "This is bounded hosted/fleet scheduler evidence, not product parity.",
+            "This is not a full Antithesis replacement.",
+            "This fleet scheduler receipt captures durable queue, lease, worker, run, and receipt-summary state without raw-log scraping."
+        ]
+    })
+}
+
+pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(
+        receipt.get("schema_version"),
+        "fleet_scheduler.schema_version",
+    )?;
+    ensure(
+        schema_version == 1,
+        format!("fleet_scheduler.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "fleet_scheduler.command")?;
+    ensure(
+        command == "replay-readiness-fleet-scheduler-receipt",
+        format!("fleet_scheduler.command: expected replay-readiness-fleet-scheduler-receipt, got {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "fleet_scheduler.status")?;
+    ensure(
+        matches!(status, "recorded" | "partial" | "failed"),
+        format!("fleet_scheduler.status: unsupported value {status:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "fleet_scheduler.scope")?;
+    ensure(
+        scope.contains("bounded")
+            && scope.contains("hosted/fleet")
+            && scope.contains("durable queue")
+            && scope.contains("worker")
+            && scope.contains("not product-parity"),
+        "fleet_scheduler.scope: must declare bounded hosted/fleet durable queue and no product-parity claim",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "fleet_scheduler.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let queue = object_field(receipt.get("queue"), "fleet_scheduler.queue")?;
+    let queue_kind = token_field(queue.get("kind"), "fleet_scheduler.queue.kind")?;
+    ensure(
+        matches!(queue_kind, "durable-file-backed" | "durable-service-backed"),
+        format!("fleet_scheduler.queue.kind: unsupported value {queue_kind:?}"),
+    )?;
+    token_field(queue.get("queue_id"), "fleet_scheduler.queue.queue_id")?;
+    let lease_timeout_seconds = int_field(
+        queue.get("lease_timeout_seconds"),
+        "fleet_scheduler.queue.lease_timeout_seconds",
+    )?;
+    ensure(
+        lease_timeout_seconds > 0,
+        "fleet_scheduler.queue.lease_timeout_seconds: expected positive integer",
+    )?;
+    let max_concurrency = int_field(
+        queue.get("max_concurrency"),
+        "fleet_scheduler.queue.max_concurrency",
+    )?;
+    ensure(
+        max_concurrency > 0,
+        "fleet_scheduler.queue.max_concurrency: expected positive integer",
+    )?;
+    let entries = array_field(queue.get("entries"), "fleet_scheduler.queue.entries")?;
+    ensure(
+        !entries.is_empty(),
+        "fleet_scheduler.queue.entries: expected non-empty list",
+    )?;
+    let mut entry_ids = BTreeSet::new();
+    let mut entry_run_ids = BTreeSet::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("fleet_scheduler.queue.entries[{idx}]"),
+        )?;
+        let entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("fleet_scheduler.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        ensure(
+            entry_ids.insert(entry_id.to_string()),
+            format!("fleet_scheduler.queue.entries[{idx}].queue_entry_id: duplicate {entry_id}"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("fleet_scheduler.queue.entries[{idx}].run_id"),
+        )?;
+        entry_run_ids.insert(run_id.to_string());
+        token_field(
+            entry.get("workload"),
+            &format!("fleet_scheduler.queue.entries[{idx}].workload"),
+        )?;
+        let state = token_field(
+            entry.get("state"),
+            &format!("fleet_scheduler.queue.entries[{idx}].state"),
+        )?;
+        ensure(
+            matches!(state, "queued" | "leased" | "completed" | "failed"),
+            format!("fleet_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"),
+        )?;
+    }
+
+    let workers = array_field(receipt.get("workers"), "fleet_scheduler.workers")?;
+    ensure(
+        !workers.is_empty(),
+        "fleet_scheduler.workers: expected non-empty list",
+    )?;
+    let mut worker_ids = BTreeSet::new();
+    for (idx, worker) in workers.iter().enumerate() {
+        let worker = object_field(Some(worker), &format!("fleet_scheduler.workers[{idx}]"))?;
+        let worker_id = token_field(
+            worker.get("worker_id"),
+            &format!("fleet_scheduler.workers[{idx}].worker_id"),
+        )?;
+        ensure(
+            worker_ids.insert(worker_id.to_string()),
+            format!("fleet_scheduler.workers[{idx}].worker_id: duplicate {worker_id}"),
+        )?;
+        token_field(
+            worker.get("node_id"),
+            &format!("fleet_scheduler.workers[{idx}].node_id"),
+        )?;
+        token_field(
+            worker.get("lease_id"),
+            &format!("fleet_scheduler.workers[{idx}].lease_id"),
+        )?;
+        let worker_status = token_field(
+            worker.get("status"),
+            &format!("fleet_scheduler.workers[{idx}].status"),
+        )?;
+        ensure(
+            matches!(worker_status, "idle" | "running" | "offline"),
+            format!("fleet_scheduler.workers[{idx}].status: unsupported value {worker_status:?}"),
+        )?;
+    }
+
+    let runs = array_field(receipt.get("runs"), "fleet_scheduler.runs")?;
+    ensure(
+        !runs.is_empty(),
+        "fleet_scheduler.runs: expected non-empty list",
+    )?;
+    let mut run_ids = BTreeSet::new();
+    let mut workloads = BTreeSet::new();
+    let mut passed = 0usize;
+    for (idx, run) in runs.iter().enumerate() {
+        let run = object_field(Some(run), &format!("fleet_scheduler.runs[{idx}]"))?;
+        let run_id = token_field(
+            run.get("run_id"),
+            &format!("fleet_scheduler.runs[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("fleet_scheduler.runs[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        ensure(
+            entry_run_ids.contains(run_id),
+            format!("fleet_scheduler.runs[{idx}].run_id: {run_id} missing from queue entries"),
+        )?;
+        let queue_entry_id = token_field(
+            run.get("queue_entry_id"),
+            &format!("fleet_scheduler.runs[{idx}].queue_entry_id"),
+        )?;
+        ensure(entry_ids.contains(queue_entry_id), format!("fleet_scheduler.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        let worker_id = token_field(
+            run.get("worker_id"),
+            &format!("fleet_scheduler.runs[{idx}].worker_id"),
+        )?;
+        ensure(
+            worker_ids.contains(worker_id),
+            format!("fleet_scheduler.runs[{idx}].worker_id: {worker_id} missing from workers"),
+        )?;
+        let workload = token_field(
+            run.get("workload"),
+            &format!("fleet_scheduler.runs[{idx}].workload"),
+        )?;
+        workloads.insert(workload.to_string());
+        str_field(
+            run.get("receipt_path"),
+            &format!("fleet_scheduler.runs[{idx}].receipt_path"),
+        )?;
+        let run_status = token_field(
+            run.get("status"),
+            &format!("fleet_scheduler.runs[{idx}].status"),
+        )?;
+        ensure(
+            matches!(run_status, "passed" | "failed"),
+            format!("fleet_scheduler.runs[{idx}].status: unsupported value {run_status:?}"),
+        )?;
+        let exit_code = int_field(
+            run.get("exit_code"),
+            &format!("fleet_scheduler.runs[{idx}].exit_code"),
+        )?;
+        if run_status == "passed" {
+            ensure(
+                exit_code == 0,
+                format!("fleet_scheduler.runs[{idx}].exit_code: passed run must exit 0"),
+            )?;
+            let summary = str_field(
+                run.get("receipt_summary"),
+                &format!("fleet_scheduler.runs[{idx}].receipt_summary"),
+            )?;
+            ensure(summary.contains("replay-readiness status="), format!("fleet_scheduler.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
+            passed += 1;
+        } else {
+            ensure(
+                exit_code != 0,
+                format!("fleet_scheduler.runs[{idx}].exit_code: failed run must be nonzero"),
+            )?;
+        }
+    }
+
+    let decisions = array_field(
+        receipt.get("operator_decisions"),
+        "fleet_scheduler.operator_decisions",
+    )?;
+    ensure(
+        !decisions.is_empty(),
+        "fleet_scheduler.operator_decisions: expected at least one linked decision receipt",
+    )?;
+    for (idx, decision) in decisions.iter().enumerate() {
+        str_field(
+            Some(decision),
+            &format!("fleet_scheduler.operator_decisions[{idx}]"),
+        )?;
+    }
+
+    let anti_claims = array_field(receipt.get("anti_claims"), "fleet_scheduler.anti_claims")?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join(
+            "
+",
+        )
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("bounded hosted/fleet")
+            && anti_claim_text.contains("not product parity")
+            && anti_claim_text.contains("not a full antithesis replacement")
+            && anti_claim_text.contains("without raw-log scraping"),
+        "fleet_scheduler.anti_claims: missing bounded hosted/fleet anti-overclaim text",
+    )?;
+    Ok(format!(
+        "replay-readiness-fleet-scheduler status={status} queue={queue_kind} workers={} runs={} passed={} workloads={} scope=bounded-hosted-fleet",
+        workers.len(),
+        runs.len(),
+        passed,
+        workloads.into_iter().collect::<Vec<_>>().join(",")
+    ))
+}
+
 fn unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1171,6 +1485,22 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
         Ok(_) => {
             return Err(EvidenceError::new(
                 "raw-log scheduler execution unexpectedly passed",
+            ))
+        }
+    }
+    let fleet_scheduler = sample_fleet_scheduler_receipt();
+    let fleet_scheduler_summary = validate_fleet_scheduler_receipt(&fleet_scheduler)?;
+    ensure(
+        fleet_scheduler_summary.contains("scope=bounded-hosted-fleet"),
+        "fleet scheduler summary lost bounded hosted/fleet scope",
+    )?;
+    let mut overclaimed_fleet_scheduler = fleet_scheduler;
+    overclaimed_fleet_scheduler["raw_log_scraping"] = json!(true);
+    match validate_fleet_scheduler_receipt(&overclaimed_fleet_scheduler) {
+        Err(_) => {}
+        Ok(_) => {
+            return Err(EvidenceError::new(
+                "raw-log fleet scheduler receipt unexpectedly passed",
             ))
         }
     }

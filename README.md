@@ -624,6 +624,26 @@ snafu = "0.8"             # Error handling
 
 ## Roadmap
 
+Current green baseline: bounded snapshot-backed replay is proven for `raft`, `redb`, `net`, and `rust-workload`; full `nix flake check -L` passes. The current product target remains Rust-only workload support on one machine with multiple local ChaosControl hypervisors.
+
+### Current missing features
+
+**SDK / workload surface**
+
+- [ ] Promote new Rust workload authoring from experimental to supported: scaffold → local dry-run → assertion-quality gate → VM dogfood → accepted verdict/manifest/snapshot curation should be a repeatable product path per workload.
+- [ ] Add more first-party Rust adapter/checker examples for common service shapes (storage state machines, RPC/queue systems, and consistency histories) without raw-log scraping.
+- [ ] Tighten simulator-to-VM bridge automation so SDK workload metadata, simulator-local receipts, and VM snapshot replay receipts can be compared per workload without merging evidence classes.
+- [ ] Improve local artifact hygiene for SDK users: bounded retention, chunking, promotion receipts, and clear failure diagnostics when a workload is not promotable.
+
+**Hypervisor / local control plane**
+
+- [ ] Promote the local multi-hypervisor control plane beyond the KVM smoke rail: durable worker state, resource budgets, artifact roots/indexes, queue transitions, and follow-up reproduce/minimize jobs as one supported local workflow.
+- [ ] Broaden bounded determinism matrix coverage for named product profiles while preserving visible failing/unsupported rows and rejecting universal guest/device/timing claims.
+- [ ] Expand structured deterministic fault coverage across the local campaign rail with per-workload observed/not-observed/unsupported fault-class evidence.
+- [ ] Keep hosted UI, SaaS, cross-machine scheduling, non-Rust SDKs, and full Antithesis parity as non-goals unless product scope is explicitly reopened.
+
+### Completed baseline
+
 - [x] Boot Linux kernel in single-vCPU KVM VM
 - [x] CPUID filtering (RDRAND, RDSEED, RDTSCP, AVX, hypervisor)
 - [x] TSC pinning + virtual TSC tracking

@@ -525,6 +525,103 @@
             '';
           };
 
+          vmDeterminismMatrix = pkgs.writeShellApplication {
+            name = "vm-determinism-matrix";
+            runtimeInputs = [
+              chaoscontrol
+              pkgs.coreutils
+              pkgs.python3
+            ];
+            text = ''
+              usage() {
+                cat <<'EOF'
+              usage: vm-determinism-matrix [--out DIR] [--runs N] [-- DETERMINISM_STRESS_ARGS...]
+
+              Runs the bounded operator hide-tsc determinism matrix rail. The rail
+              executes the existing determinism_stress cases and emits both the
+              legacy drift receipt and the bounded profile-matrix receipt plus a
+              concise summary under ./dogfood-results/vm-determinism-matrix-latest/.
+              EOF
+              }
+
+              out="./dogfood-results/vm-determinism-matrix-latest"
+              runs="3"
+              extra_args=()
+              while [ "$#" -gt 0 ]; do
+                case "$1" in
+                  -h|--help)
+                    usage
+                    exit 0
+                    ;;
+                  --out)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--out requires a directory" >&2
+                      exit 2
+                    fi
+                    out="$2"
+                    shift 2
+                    ;;
+                  --runs)
+                    if [ "$#" -lt 2 ]; then
+                      echo "--runs requires a count" >&2
+                      exit 2
+                    fi
+                    runs="$2"
+                    shift 2
+                    ;;
+                  --)
+                    shift
+                    extra_args=("$@")
+                    break
+                    ;;
+                  *)
+                    echo "unknown argument: $1" >&2
+                    usage >&2
+                    exit 2
+                    ;;
+                esac
+              done
+
+              mkdir -p "$out"
+              determinism_stress \
+                ${mkChaosKernel { }}/vmlinux \
+                ${initrd-rust-workload} \
+                "$runs" \
+                --single-clock-profile hide-tsc \
+                --receipt "$out/drift-receipt.json" \
+                --matrix-receipt "$out/matrix-receipt.json" \
+                --dlog-dir "$out/dlogs" \
+                "''${extra_args[@]}"
+
+              python3 - "$out/matrix-receipt.json" "$out/summary.txt" <<'PY'
+              import json
+              import sys
+              receipt_path, summary_path = sys.argv[1:]
+              receipt = json.loads(open(receipt_path, encoding="utf-8").read())
+              rows = receipt.get("rows", [])
+              passed = receipt.get("passed") is True
+              lines = [
+                  f"vm determinism matrix: {'pass' if passed else 'fail'}",
+                  f"matrix_id: {receipt.get('matrix_id')}",
+                  f"gate: {receipt.get('gate')}",
+                  f"rows: {len(rows)}",
+                  f"scope: {receipt.get('scope')}",
+              ]
+              for row in rows:
+                  profile = row.get("profile", {})
+                  report = row.get("report", {})
+                  lines.append(
+                      f"- {profile.get('row_id')}: passed={report.get('passed')} runs={report.get('runs')} device={profile.get('device_profile')} clock={profile.get('clock_profile')}"
+                  )
+              with open(summary_path, "w", encoding="utf-8") as fh:
+                  fh.write("\n".join(lines) + "\n")
+              print("\n".join(lines))
+              PY
+              printf 'vm determinism matrix receipt: %s\n' "$out/matrix-receipt.json"
+              printf 'vm determinism matrix summary: %s\n' "$out/summary.txt"
+            '';
+          };
+
           replayReadiness = pkgs.writeShellApplication {
             name = "replay-readiness";
             runtimeInputs = [
@@ -1005,6 +1102,7 @@
             rust-workload-accepted-verdict-dogfood = acceptedVerdictDogfood.rust-workload;
             accepted-verdict-dogfood-config = acceptedVerdictDogfoodConfig;
             replay-readiness = replayReadiness;
+            vm-determinism-matrix = vmDeterminismMatrix;
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
             replay-readiness-triage = replayReadinessTriage;
@@ -1630,6 +1728,7 @@
             rust-workload-accepted-verdict-dogfood = mkApp "Run the accepted-verdict rust-workload dogfood proof rail." "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
+            vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";
             replay-readiness-summary = mkApp "Summarize a replay readiness receipt." "${replayReadinessSummary}/bin/replay-readiness-summary";
             replay-readiness-dashboard = mkApp "Render a replay readiness receipt as an HTML dashboard." "${replayReadinessDashboard}/bin/replay-readiness-dashboard";
             replay-readiness-triage = mkApp "Render a local operator triage runbook from a replay readiness receipt." "${replayReadinessTriage}/bin/replay-readiness-triage";

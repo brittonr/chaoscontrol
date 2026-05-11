@@ -10,8 +10,8 @@
 
 ## Phase 3: Runner and packaging
 
-- [ ] [depends:matrix-model] Wire a bounded matrix CLI/runner around existing VM determinism drift observations.
-- [ ] [depends:runner] Package a small Nix matrix rail that emits matrix receipt and summary artifacts.
+- [x] [depends:matrix-model] Wire a bounded matrix CLI/runner around existing VM determinism drift observations.
+- [x] [depends:runner] Package a small Nix matrix rail that emits matrix receipt and summary artifacts.
 
 ## Phase 4: Status and promotion gate
 

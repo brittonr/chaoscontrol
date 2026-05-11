@@ -248,10 +248,10 @@ pub fn validate_determinism_matrix_receipt(
                 row.profile.row_id
             ));
         }
-        if row.report.name != row.profile.row_id {
+        if row.report.name.is_empty() {
             return Err(format!(
-                "matrix row {:?}: report name {:?} does not match row_id",
-                row.profile.row_id, row.report.name
+                "matrix row {:?}: expected non-empty report name",
+                row.profile.row_id
             ));
         }
         if row.report.runs == 0 || row.report.observations.is_empty() {

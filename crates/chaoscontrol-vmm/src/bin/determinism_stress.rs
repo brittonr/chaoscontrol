@@ -3,7 +3,7 @@
 //!
 //! Usage:
 //!   `determinism_stress <kernel-path> <initrd-path> [N=10] [--receipt path] [--dlog-dir dir]`
-//!       `[--case name] [--single-clock-profile tsc|jiffies|hide-tsc]`
+//!       `[--case name] [--single-clock-profile tsc|jiffies|hide-tsc] [--matrix-receipt path]`
 //!
 //! The default single-VM/controller clock profile is `hide-tsc`, the current
 //! bounded operator profile with committed passing drift evidence. Use
@@ -13,9 +13,10 @@ use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 use chaoscontrol_vmm::determinism_gate::{
-    compare_case, refresh_divergence_classes, ControllerFingerprint, DeterminismCaseReport,
-    DeterminismGateReceipt, DivergenceClass, DlogDivergenceDetail, RunFingerprint, RunObservation,
-    VmFingerprint,
+    compare_case, refresh_divergence_classes, validate_determinism_matrix_receipt,
+    ControllerFingerprint, DeterminismCaseReport, DeterminismGateReceipt, DeterminismMatrixProfile,
+    DeterminismMatrixReceipt, DeterminismMatrixRow, DivergenceClass, DlogDivergenceDetail,
+    RunFingerprint, RunObservation, VmFingerprint,
 };
 use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult, DlogRecord, DlogTag};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
@@ -83,6 +84,14 @@ impl SingleClockProfile {
             hide_tsc: self.hide_tsc(),
         }
     }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Tsc => "tsc",
+            Self::Jiffies => "jiffies",
+            Self::HideTsc => "hide-tsc",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -91,6 +100,7 @@ struct Args {
     initrd: String,
     runs: usize,
     receipt: Option<PathBuf>,
+    matrix_receipt: Option<PathBuf>,
     dlog_dir: Option<PathBuf>,
     cases: Vec<String>,
     single_clock_profile: SingleClockProfile,
@@ -104,6 +114,7 @@ fn parse_args() -> Args {
 fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
     let mut positional = Vec::new();
     let mut receipt = None;
+    let mut matrix_receipt = None;
     let mut dlog_dir = None;
     let mut cases = Vec::new();
     let mut single_clock_profile = SingleClockProfile::HideTsc;
@@ -116,6 +127,12 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
                     iter.next()
                         .ok_or_else(|| "--receipt requires a path".to_string())?,
                 ));
+            }
+            "--matrix-receipt" => {
+                matrix_receipt =
+                    Some(PathBuf::from(iter.next().ok_or_else(|| {
+                        "--matrix-receipt requires a path".to_string()
+                    })?));
             }
             "--dlog-dir" => {
                 dlog_dir =
@@ -157,6 +174,7 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
         initrd: positional[1].clone(),
         runs,
         receipt,
+        matrix_receipt,
         dlog_dir,
         cases,
         single_clock_profile,
@@ -172,7 +190,7 @@ fn usage_and_exit_code(message: &str, code: i32) -> ! {
         eprintln!("error: {message}\n");
     }
     eprintln!(
-        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]\n\nDefault profile: hide-tsc (bounded operator drift gate); use --single-clock-profile tsc for legacy baseline A/B."
+        "Usage: determinism_stress <kernel-path> <initrd-path> [N={DEFAULT_RUNS}] [--receipt path] [--matrix-receipt path] [--dlog-dir dir] [--case name] [--single-clock-profile tsc|jiffies|hide-tsc]\n\nDefault profile: hide-tsc (bounded operator drift gate); use --single-clock-profile tsc for legacy baseline A/B."
     );
     std::process::exit(code);
 }
@@ -592,6 +610,62 @@ fn crc32_file(path: &str) -> io::Result<String> {
     Ok(format!("crc32:{:08x}", hasher.finalize()))
 }
 
+fn profile_for_case(
+    case_name: &str,
+    kernel_fingerprint: &str,
+    initrd_fingerprint: &str,
+    clock_profile: SingleClockProfile,
+) -> DeterminismMatrixProfile {
+    DeterminismMatrixProfile {
+        row_id: format!("rust-workload-{case_name}-{}", clock_profile.as_str()),
+        workload: "rust-workload".to_string(),
+        kernel_fingerprint: kernel_fingerprint.to_string(),
+        initrd_fingerprint: initrd_fingerprint.to_string(),
+        device_profile: device_profile_for_case(case_name).to_string(),
+        clock_profile: clock_profile.as_str().to_string(),
+        controller_profile: case_name.to_string(),
+    }
+}
+
+fn device_profile_for_case(case_name: &str) -> &'static str {
+    match case_name {
+        "single-vm-1vcpu" => "single-vm-virtio-console-1vcpu",
+        "single-vm-2vcpu" => "single-vm-virtio-console-2vcpu",
+        "controller-3vm-1vcpu" => "controller-3vm-network-faults-1vcpu",
+        "controller-3vm-2vcpu" => "controller-3vm-network-faults-2vcpu",
+        _ => "custom-determinism-case",
+    }
+}
+
+fn build_matrix_receipt(
+    matrix_id: &str,
+    reports: &[DeterminismCaseReport],
+    kernel_fingerprint: &str,
+    initrd_fingerprint: &str,
+    clock_profile: SingleClockProfile,
+) -> DeterminismMatrixReceipt {
+    let rows = reports
+        .iter()
+        .map(|report| DeterminismMatrixRow {
+            profile: profile_for_case(
+                &report.name,
+                kernel_fingerprint,
+                initrd_fingerprint,
+                clock_profile,
+            ),
+            report: report.clone(),
+        })
+        .collect::<Vec<_>>();
+    let required_profiles = rows
+        .iter()
+        .map(|row| row.profile.clone())
+        .collect::<Vec<_>>();
+    let receipt = DeterminismMatrixReceipt::new(matrix_id, rows);
+    validate_determinism_matrix_receipt(&receipt, &required_profiles)
+        .expect("matrix receipt built from local case reports validates");
+    receipt
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     let args = parse_args();
@@ -691,11 +765,13 @@ fn main() {
         usage_and_exit("no cases selected; valid cases: single-vm-1vcpu, single-vm-2vcpu, controller-3vm-1vcpu, controller-3vm-2vcpu");
     }
 
+    let kernel_crc32 = crc32_file(&args.kernel).unwrap_or_else(|err| format!("unavailable:{err}"));
+    let initrd_crc32 = crc32_file(&args.initrd).unwrap_or_else(|err| format!("unavailable:{err}"));
     let receipt = DeterminismGateReceipt::new(
         args.kernel.clone(),
         args.initrd.clone(),
-        crc32_file(&args.kernel).unwrap_or_else(|err| format!("unavailable:{err}")),
-        crc32_file(&args.initrd).unwrap_or_else(|err| format!("unavailable:{err}")),
+        kernel_crc32.clone(),
+        initrd_crc32.clone(),
         cases,
     );
 
@@ -706,6 +782,22 @@ fn main() {
         let json = serde_json::to_string_pretty(&receipt).expect("serialize receipt");
         std::fs::write(path, format!("{json}\n")).expect("write receipt");
         println!("receipt: {}", path.display());
+    }
+
+    if let Some(path) = &args.matrix_receipt {
+        let matrix = build_matrix_receipt(
+            "bounded-operator-hide-tsc",
+            &receipt.cases,
+            &kernel_crc32,
+            &initrd_crc32,
+            args.single_clock_profile,
+        );
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create matrix receipt parent");
+        }
+        let json = serde_json::to_string_pretty(&matrix).expect("serialize matrix receipt");
+        std::fs::write(path, format!("{json}\n")).expect("write matrix receipt");
+        println!("matrix receipt: {}", path.display());
     }
 
     println!("╔══════════════════════════════════════════════════════════════╗");
@@ -758,6 +850,48 @@ mod tests {
             }),
             DivergenceClass::DlogLength
         );
+    }
+
+    #[test]
+    fn parse_args_accepts_matrix_receipt_path() {
+        let args = parse_args_from(vec![
+            "kernel".to_string(),
+            "initrd".to_string(),
+            "--matrix-receipt".to_string(),
+            "matrix.json".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(args.matrix_receipt, Some(PathBuf::from("matrix.json")));
+    }
+
+    #[test]
+    fn matrix_receipt_wraps_case_reports_with_bounded_profiles() {
+        let report = compare_case(
+            "single-vm-1vcpu",
+            vec![RunObservation {
+                run_index: 1,
+                fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+                    exit_count: 1,
+                    virtual_tsc: 2,
+                    serial_stripped: "ready".to_string(),
+                }),
+                dlog_path: None,
+            }],
+        );
+        let matrix = build_matrix_receipt(
+            "test-matrix",
+            &[report],
+            "crc32:kernel",
+            "crc32:initrd",
+            SingleClockProfile::HideTsc,
+        );
+        assert!(matrix.passed);
+        assert_eq!(matrix.gate, "vm-determinism-profile-matrix");
+        assert_eq!(
+            matrix.rows[0].profile.row_id,
+            "rust-workload-single-vm-1vcpu-hide-tsc"
+        );
+        assert!(matrix.unlisted_profiles_unproven);
     }
 
     #[test]

@@ -181,17 +181,17 @@ The system MUST provide a bounded local sequential scheduler execution receipt t
 
 ### Requirement: Bounded fleet scheduler runtime [r[bounded-fleet-scheduler-runtime]]
 
-The system MUST provide a bounded hosted/fleet scheduler runtime that consumes a durable queue plan, leases entries to workers, executes replay-readiness commands, emits run-linked receipt summaries, and records linked operator decision receipts without relying on raw-log scraping or claiming a live always-on multi-machine product service.
+The system MUST provide a bounded hosted/fleet scheduler runtime that consumes a durable queue plan, persists queue state for restart recovery, leases entries to workers, executes replay-readiness commands, emits run-linked receipt summaries, and records linked operator decision receipts without relying on raw-log scraping or claiming a live always-on multi-machine product service.
 
 #### Scenario: Fleet scheduler runtime links durable queue and worker runs [r[bounded-fleet-scheduler-runtime.links-queue-workers-runs]]
 
 - GIVEN a fleet scheduler plan with durable queue entries, worker IDs, bounded max concurrency, replay-readiness commands, receipt paths, and decision receipt links
 - WHEN the fleet scheduler runtime command executes the plan
-- THEN it writes a fleet scheduler receipt where each run links to an existing queue entry, existing worker, command, exit code, receipt path, and replay-readiness summary for passed runs
+- THEN it writes a fleet scheduler receipt where each run links to an existing queue entry, existing worker, command, exit code, receipt path, replay-readiness summary for passed runs, and a restart-recovery section proving queue state was persisted after each run
 
 #### Scenario: Fleet scheduler runtime rejects unsafe plans and receipts [r[bounded-fleet-scheduler-runtime.rejects-unsafe-plans-receipts]]
 
-- GIVEN a fleet scheduler plan or receipt with raw-log scraping, duplicate identifiers, missing worker links, missing queue links, missing receipt summaries for passed runs, no linked decision receipts, or max concurrency greater than worker count
+- GIVEN a fleet scheduler plan or receipt with raw-log scraping, duplicate identifiers, missing worker links, missing queue links, missing persisted queue-state evidence, missing receipt summaries for passed runs, no linked decision receipts, or max concurrency greater than worker count
 - WHEN the fleet scheduler runtime or validator runs
 - THEN it rejects the artifact as insufficient hosted/fleet scheduler evidence
 
@@ -199,4 +199,4 @@ The system MUST provide a bounded hosted/fleet scheduler runtime that consumes a
 
 - GIVEN the replay-readiness Nix check succeeds
 - WHEN the check output is inspected
-- THEN it contains a non-empty fleet scheduler plan, fleet scheduler receipt, fleet scheduler summary, and linked per-run replay-readiness receipts alongside local scheduler execution artifacts
+- THEN it contains a non-empty fleet scheduler plan, fleet scheduler receipt, fleet scheduler summary, fleet scheduler queue-state file, and linked per-run replay-readiness receipts alongside local scheduler execution artifacts

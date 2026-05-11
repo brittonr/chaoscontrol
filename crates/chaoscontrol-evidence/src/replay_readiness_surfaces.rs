@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -773,6 +773,23 @@ pub fn execute_fleet_scheduler_receipt_path(
 pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResult<Value> {
     let queue = object_field(plan.get("queue"), "fleet_scheduler_plan.queue")?;
     let queue_id = token_field(queue.get("queue_id"), "fleet_scheduler_plan.queue.queue_id")?;
+    let state_path = plan
+        .get("state_path")
+        .or_else(|| queue.get("state_path"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("state.json"));
+    let previous_state = if state_path.exists() {
+        Some(load_json(&state_path)?)
+    } else {
+        None
+    };
+    let completed_before_start = previous_state
+        .as_ref()
+        .and_then(|state| state.get("completed_runs"))
+        .and_then(Value::as_array)
+        .map(|runs| runs.len())
+        .unwrap_or(0);
     let lease_timeout_seconds = int_field(
         queue.get("lease_timeout_seconds"),
         "fleet_scheduler_plan.queue.lease_timeout_seconds",
@@ -819,6 +836,12 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
     let mut receipt_entries = Vec::with_capacity(entries.len());
     let mut receipt_workers = Vec::with_capacity(workers.len());
     let mut runs = Vec::with_capacity(entries.len());
+    let mut completed_runs = previous_state
+        .as_ref()
+        .and_then(|state| state.get("completed_runs"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let mut failures = 0usize;
 
     for (idx, worker_id) in worker_ids.iter().enumerate() {
@@ -872,12 +895,33 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         } else {
             None
         };
+        let entry_state = if exit_code == 0 {
+            "completed"
+        } else {
+            "failed"
+        };
         receipt_entries.push(json!({
             "queue_entry_id": queue_entry_id,
             "run_id": run_id,
             "workload": workload,
-            "state": if exit_code == 0 { "completed" } else { "failed" }
+            "state": entry_state
         }));
+        if exit_code == 0 {
+            completed_runs.push(Value::String(run_id.to_string()));
+        }
+        let state_snapshot = json!({
+            "schema_version": 1,
+            "queue_id": queue_id,
+            "state_path": state_path.display().to_string(),
+            "last_persisted_run_id": run_id,
+            "completed_runs": completed_runs,
+            "entries": receipt_entries,
+            "persisted_at": format!("unix:{}", unix_seconds())
+        });
+        if let Some(parent) = state_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
         runs.push(json!({
             "run_id": run_id,
             "queue_entry_id": queue_entry_id,
@@ -918,7 +962,14 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
             "queue_id": queue_id,
             "lease_timeout_seconds": lease_timeout_seconds,
             "max_concurrency": max_concurrency,
+            "state_path": state_path.display().to_string(),
             "entries": receipt_entries
+        },
+        "restart_recovery": {
+            "state_path": state_path.display().to_string(),
+            "loaded_existing_state": previous_state.is_some(),
+            "completed_before_start": completed_before_start,
+            "persisted_after_each_run": true
         },
         "workers": receipt_workers,
         "runs": runs,
@@ -964,10 +1015,17 @@ pub fn sample_fleet_scheduler_receipt() -> Value {
             "queue_id": "fleet-queue-0001",
             "lease_timeout_seconds": 900,
             "max_concurrency": 2,
+            "state_path": "target/fleet/fleet-queue-state.json",
             "entries": [
                 {"queue_entry_id": "queue-raft-0001", "run_id": "fleet-run-raft-0001", "workload": "raft", "state": "completed"},
                 {"queue_entry_id": "queue-redb-0001", "run_id": "fleet-run-redb-0001", "workload": "redb", "state": "completed"}
             ]
+        },
+        "restart_recovery": {
+            "state_path": "target/fleet/fleet-queue-state.json",
+            "loaded_existing_state": false,
+            "completed_before_start": 0,
+            "persisted_after_each_run": true
         },
         "workers": [
             {"worker_id": "worker-a", "node_id": "node-a", "lease_id": "lease-raft-0001", "status": "idle"},
@@ -1060,6 +1118,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         max_concurrency > 0,
         "fleet_scheduler.queue.max_concurrency: expected positive integer",
     )?;
+    str_field(queue.get("state_path"), "fleet_scheduler.queue.state_path")?;
     let entries = array_field(queue.get("entries"), "fleet_scheduler.queue.entries")?;
     ensure(
         !entries.is_empty(),
@@ -1098,6 +1157,30 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             format!("fleet_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"),
         )?;
     }
+
+    let restart_recovery = object_field(
+        receipt.get("restart_recovery"),
+        "fleet_scheduler.restart_recovery",
+    )?;
+    str_field(
+        restart_recovery.get("state_path"),
+        "fleet_scheduler.restart_recovery.state_path",
+    )?;
+    let completed_before_start = int_field(
+        restart_recovery.get("completed_before_start"),
+        "fleet_scheduler.restart_recovery.completed_before_start",
+    )?;
+    ensure(
+        completed_before_start >= 0,
+        "fleet_scheduler.restart_recovery.completed_before_start: expected non-negative integer",
+    )?;
+    ensure(
+        matches!(
+            restart_recovery.get("persisted_after_each_run"),
+            Some(Value::Bool(true))
+        ),
+        "fleet_scheduler.restart_recovery.persisted_after_each_run: expected true",
+    )?;
 
     let workers = array_field(receipt.get("workers"), "fleet_scheduler.workers")?;
     ensure(
@@ -1241,7 +1324,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         "fleet_scheduler.anti_claims: missing bounded hosted/fleet anti-overclaim text",
     )?;
     Ok(format!(
-        "replay-readiness-fleet-scheduler status={status} queue={queue_kind} workers={} runs={} passed={} workloads={} scope=bounded-hosted-fleet",
+        "replay-readiness-fleet-scheduler status={status} queue={queue_kind} workers={} runs={} passed={} restart_persisted=true workloads={} scope=bounded-hosted-fleet",
         workers.len(),
         runs.len(),
         passed,

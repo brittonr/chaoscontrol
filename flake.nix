@@ -1277,6 +1277,7 @@
                       "queue_id": "fleet-queue-local-check",
                       "lease_timeout_seconds": 900,
                       "max_concurrency": 2,
+                      "state_path": "$out/fleet-scheduler-state.json",
                       "entries": [
                         {"queue_entry_id": "queue-static-0001", "run_id": "fleet-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-1.json'", "receipt_path": "$out/fleet-scheduled-run-1.json"},
                         {"queue_entry_id": "queue-static-0002", "run_id": "fleet-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-2.json'", "receipt_path": "$out/fleet-scheduled-run-2.json"}
@@ -1303,6 +1304,7 @@
                   test -s "$out/fleet-scheduler-plan.json"
                   test -s "$out/fleet-scheduler-receipt.json"
                   test -s "$out/fleet-scheduler-summary.txt"
+                  test -s "$out/fleet-scheduler-state.json"
                   test -s "$out/fleet-scheduled-run-1.json"
                   test -s "$out/fleet-scheduled-run-2.json"
                   test -s "$out/scheduled-run-1.json"

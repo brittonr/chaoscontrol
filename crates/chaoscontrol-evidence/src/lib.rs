@@ -155,9 +155,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "bounded-fleet-scheduler-runtime",
-        reason: "Current evidence includes bounded local sequential scheduler execution plus a bounded local hosted/fleet worker loop that consumes a durable queue plan, leases work to workers, executes replay-readiness commands, and emits run-linked receipt summaries. It is still not a multi-machine hosted campaign service.",
-        promotion_evidence: "A multi-machine hosted scheduler integration that persists queue state across service restarts, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
+        status: "restart-persistent-fleet-scheduler-runtime",
+        reason: "Current evidence includes bounded local sequential scheduler execution plus a bounded local hosted/fleet worker loop that consumes a durable queue plan, persists queue state for restart recovery, leases work to workers, executes replay-readiness commands, and emits run-linked receipt summaries. It is still not a multi-machine hosted campaign service.",
+        promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

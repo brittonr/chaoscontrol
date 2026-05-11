@@ -100,7 +100,8 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `bounded-fleet-scheduler-runtime`"));
+    assert!(rendered
+        .contains("Replay scheduler orchestration | `restart-persistent-fleet-scheduler-runtime`"));
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
     assert!(rendered
         .contains("bounded local hosted/fleet worker loop that consumes a durable queue plan"));
@@ -321,7 +322,14 @@ fn validates_replay_readiness_fleet_scheduler_receipt_model() {
     assert!(summary.contains("queue=durable-file-backed"));
     assert!(summary.contains("workers=2"));
     assert!(summary.contains("runs=2"));
+    assert!(summary.contains("restart_persisted=true"));
     assert!(summary.contains("scope=bounded-hosted-fleet"));
+
+    let mut no_restart = receipt.clone();
+    no_restart["restart_recovery"]["persisted_after_each_run"] = serde_json::json!(false);
+    let err = validate_replay_readiness_fleet_scheduler_receipt(&no_restart)
+        .expect_err("restart persistence must be proven");
+    assert!(err.message().contains("persisted_after_each_run"));
 
     let mut raw_log = receipt.clone();
     raw_log["raw_log_scraping"] = serde_json::json!(true);
@@ -349,7 +357,9 @@ fn executes_bounded_fleet_scheduler_worker_loop_receipt() {
 
     let run_receipt_a = temp.path().join("run-a.json");
     let run_receipt_b = temp.path().join("run-b.json");
+    let state_path = temp.path().join("fleet-state.json");
     let mut plan = sample_replay_readiness_fleet_scheduler_plan();
+    plan["queue"]["state_path"] = serde_json::json!(state_path.display().to_string());
     plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
         "cp {} {}",
         receipt_fixture.display(),
@@ -378,15 +388,39 @@ fn executes_bounded_fleet_scheduler_worker_loop_receipt() {
     assert!(summary.contains("replay-readiness-fleet-scheduler status=recorded"));
     assert!(summary.contains("workers=2"));
     assert!(summary.contains("passed=2"));
+    assert!(summary.contains("restart_persisted=true"));
+    assert!(
+        state_path.exists(),
+        "fleet queue state is persisted for restart recovery"
+    );
 
     let receipt: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&output_path).expect("read generated receipt"))
             .expect("generated receipt json");
     assert_eq!(receipt["runs"][0]["status"], "passed");
+    assert_eq!(
+        receipt["queue"]["state_path"],
+        state_path.display().to_string()
+    );
+    assert_eq!(
+        receipt["restart_recovery"]["persisted_after_each_run"],
+        true
+    );
     assert!(receipt["runs"][0]["lease_id"]
         .as_str()
         .expect("lease id")
         .starts_with("lease-queue-"));
+
+    let state: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&state_path).expect("read persisted queue state"))
+            .expect("queue state json");
+    assert_eq!(
+        state["completed_runs"]
+            .as_array()
+            .expect("completed runs")
+            .len(),
+        2
+    );
 }
 
 #[test]

@@ -10,12 +10,12 @@ use chaoscontrol_evidence::{
     execute_replay_readiness_networked_hosted_scheduler_receipt_path, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_operator_triage_runbook_path,
     render_replay_proof_coverage, render_replay_proof_coverage_doc,
-    render_replay_readiness_dashboard, render_replay_readiness_readme_status_block,
-    render_replay_readiness_status, run_assertion_readiness_promotion_selftest,
-    run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
-    run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
-    sample_replay_readiness_fleet_scheduler_receipt,
+    render_replay_readiness_dashboard, render_replay_readiness_multi_hypervisor_campaign_dashboard,
+    render_replay_readiness_readme_status_block, render_replay_readiness_status,
+    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
+    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
+    run_readiness_surface_drift_selftest, sample_replay_readiness_decision_receipt,
+    sample_replay_readiness_fleet_scheduler_plan, sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_hosted_shared_state_plan,
     sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
@@ -728,6 +728,33 @@ fn validates_local_multi_hypervisor_campaign_receipt_model() {
         .expect_err("raw-log scraping is rejected");
     assert!(err.message().contains("raw-log scraping is not allowed"));
 
+    let dashboard = render_replay_readiness_multi_hypervisor_campaign_dashboard(&receipt)
+        .expect("local multi-hypervisor dashboard renders");
+    assert!(dashboard.contains("ChaosControl local multi-hypervisor campaign"));
+    assert!(dashboard.contains("local-hv-a"));
+    assert!(dashboard.contains("Artifact index entries: 2"));
+    assert!(dashboard.contains("Follow-up jobs: 2"));
+    assert!(dashboard.contains("not cross-machine scheduling"));
+
+    let mut missing_budget = receipt.clone();
+    missing_budget["hypervisors"][0]["resource_budget"] = serde_json::json!(null);
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&missing_budget)
+        .expect_err("worker resource budget is required");
+    assert!(err.message().contains("resource_budget"));
+
+    let mut bad_artifact_digest = receipt.clone();
+    bad_artifact_digest["artifact_index"]["entries"][0]["digest"] =
+        serde_json::json!("not-a-digest");
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&bad_artifact_digest)
+        .expect_err("artifact digests are hash-bound");
+    assert!(err.message().contains("expected sha256 digest"));
+
+    let mut bad_followup = receipt.clone();
+    bad_followup["follow_up_jobs"][0]["kind"] = serde_json::json!("remote-triage");
+    let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&bad_followup)
+        .expect_err("unsupported follow-up jobs are rejected");
+    assert!(err.message().contains("unsupported value"));
+
     let mut no_state = receipt;
     no_state["queue_state"]["persisted_after_each_run"] = serde_json::json!(false);
     let err = validate_replay_readiness_multi_hypervisor_campaign_receipt(&no_state)
@@ -788,6 +815,24 @@ fn executes_local_multi_hypervisor_campaign_receipt() {
     assert_eq!(receipt["runs"][0]["status"], "passed");
     assert_eq!(receipt["runs"][0]["hypervisor_worker_id"], "local-hv-a");
     assert_eq!(receipt["runs"][1]["hypervisor_worker_id"], "local-hv-b");
+    assert_eq!(
+        receipt["artifact_index"]["entries"]
+            .as_array()
+            .expect("artifact entries")
+            .len(),
+        2
+    );
+    assert_eq!(
+        receipt["follow_up_jobs"]
+            .as_array()
+            .expect("follow-up jobs")
+            .len(),
+        2
+    );
+    assert!(receipt["runs"][0]["artifact_root"]
+        .as_str()
+        .expect("artifact root")
+        .contains("local-hv-a"));
 }
 
 #[test]

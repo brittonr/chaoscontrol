@@ -22,13 +22,14 @@ use chaoscontrol_evidence::{
     validate_replay_readiness_scheduler_receipt_path,
     write_replay_readiness_fleet_scheduler_receipt_path,
     write_replay_readiness_hosted_shared_state_receipt_path,
+    write_replay_readiness_multi_hypervisor_campaign_dashboard_path,
     write_replay_readiness_multi_hypervisor_campaign_receipt_path,
     write_replay_readiness_networked_hosted_scheduler_receipt_path,
     write_replay_readiness_scheduler_receipt_path, EvidenceResult,
 };
 
 fn usage() -> &'static str {
-    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor --output PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor-plan --output PATH\n       replay-readiness-scheduler-receipt --run-multi-hypervisor-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-multi-hypervisor PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state-plan --output PATH\n       replay-readiness-scheduler-receipt --run-hosted-shared-state-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-hosted-shared-state PATH"
+    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor --output PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor-plan --output PATH\n       replay-readiness-scheduler-receipt --run-multi-hypervisor-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-multi-hypervisor PATH\n       replay-readiness-scheduler-receipt --render-multi-hypervisor-dashboard PATH --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state-plan --output PATH\n       replay-readiness-scheduler-receipt --run-hosted-shared-state-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-hosted-shared-state PATH"
 }
 
 #[derive(Default)]
@@ -41,6 +42,7 @@ struct Args {
     check_fleet: Option<PathBuf>,
     run_multi_hypervisor_plan: Option<PathBuf>,
     check_multi_hypervisor: Option<PathBuf>,
+    render_multi_hypervisor_dashboard: Option<PathBuf>,
     run_hosted_shared_state_plan: Option<PathBuf>,
     check_hosted_shared_state: Option<PathBuf>,
     run_networked_hosted_plan: Option<PathBuf>,
@@ -81,6 +83,7 @@ fn run() -> EvidenceResult<()> {
         + args.check_fleet.is_some() as usize
         + args.run_multi_hypervisor_plan.is_some() as usize
         + args.check_multi_hypervisor.is_some() as usize
+        + args.render_multi_hypervisor_dashboard.is_some() as usize
         + args.run_hosted_shared_state_plan.is_some() as usize
         + args.check_hosted_shared_state.is_some() as usize
         + args.run_networked_hosted_plan.is_some() as usize
@@ -172,6 +175,11 @@ fn run() -> EvidenceResult<()> {
             "{}",
             validate_replay_readiness_multi_hypervisor_campaign_receipt_path(path)?
         );
+    } else if let Some(path) = args.render_multi_hypervisor_dashboard {
+        let output = require_output(args.output)?;
+        let summary =
+            write_replay_readiness_multi_hypervisor_campaign_dashboard_path(path, &output)?;
+        println!("wrote {} ({summary})", output.display());
     } else if args.sample_hosted_shared_state {
         let output = require_output(args.output)?;
         write_replay_readiness_hosted_shared_state_receipt_path(&output)?;
@@ -258,6 +266,10 @@ fn parse_args() -> EvidenceResult<Args> {
             "--check-multi-hypervisor" => {
                 parsed.check_multi_hypervisor =
                     Some(next_path(&mut args, "--check-multi-hypervisor")?);
+            }
+            "--render-multi-hypervisor-dashboard" => {
+                parsed.render_multi_hypervisor_dashboard =
+                    Some(next_path(&mut args, "--render-multi-hypervisor-dashboard")?);
             }
             "--run-hosted-shared-state-plan" => {
                 parsed.run_hosted_shared_state_plan =

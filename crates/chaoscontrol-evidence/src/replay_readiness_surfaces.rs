@@ -2921,6 +2921,15 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         .and_then(Value::as_str)
         .map(PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("state.json"));
+    let artifact_index_path = plan
+        .get("artifact_index_path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("artifacts.json"));
+    let follow_up_policy = plan
+        .get("follow_up_policy")
+        .cloned()
+        .unwrap_or_else(|| json!({"enabled": false, "reproduce": false, "minimize": false}));
     let previous_state = if state_path.exists() {
         Some(load_json(&state_path)?)
     } else {
@@ -2943,15 +2952,34 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         "multi_hypervisor_plan.max_hypervisors: cannot exceed hypervisor worker count",
     )?;
     let mut hypervisor_ids = Vec::with_capacity(hypervisors.len());
+    let mut hypervisor_artifact_roots = BTreeMap::new();
     for (idx, hypervisor) in hypervisors.iter().enumerate() {
         let hypervisor = object_field(
             Some(hypervisor),
             &format!("multi_hypervisor_plan.hypervisors[{idx}]"),
         )?;
-        hypervisor_ids.push(token_field(
+        let hypervisor_id = token_field(
             hypervisor.get("hypervisor_worker_id"),
             &format!("multi_hypervisor_plan.hypervisors[{idx}].hypervisor_worker_id"),
-        )?);
+        )?;
+        hypervisor_ids.push(hypervisor_id);
+        let budget = object_field(
+            hypervisor.get("resource_budget"),
+            &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget"),
+        )?;
+        ensure(
+            int_field(budget.get("vcpus"), &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.vcpus"))? > 0,
+            format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.vcpus: expected positive budget"),
+        )?;
+        ensure(
+            int_field(budget.get("memory_mib"), &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.memory_mib"))? > 0,
+            format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.memory_mib: expected positive budget"),
+        )?;
+        let artifact_root = str_field(
+            hypervisor.get("artifact_root"),
+            &format!("multi_hypervisor_plan.hypervisors[{idx}].artifact_root"),
+        )?;
+        hypervisor_artifact_roots.insert(hypervisor_id.to_string(), artifact_root.to_string());
     }
 
     let queue = object_field(plan.get("queue"), "multi_hypervisor_plan.queue")?;
@@ -2968,6 +2996,8 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         .unwrap_or_default();
     let mut receipt_entries = Vec::with_capacity(entries.len());
     let mut runs = Vec::with_capacity(entries.len());
+    let mut artifact_entries = Vec::with_capacity(entries.len());
+    let mut follow_up_jobs = Vec::new();
     let mut failures = 0usize;
 
     for (idx, entry) in entries.iter().enumerate() {
@@ -2996,6 +3026,14 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             &format!("multi_hypervisor_plan.queue.entries[{idx}].receipt_path"),
         )?;
         let hypervisor_worker_id = hypervisor_ids[idx % (max_hypervisors as usize)];
+        let artifact_root = hypervisor_artifact_roots
+            .get(hypervisor_worker_id)
+            .ok_or_else(|| EvidenceError::new(format!("multi_hypervisor_plan.hypervisors: missing artifact root for {hypervisor_worker_id}")))?;
+        let bug_artifacts = entry
+            .get("expected_bug_artifacts")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         let lease_id = format!("lease-{campaign_id}-{queue_entry_id}");
         let status = Command::new("sh")
             .arg("-lc")
@@ -3031,6 +3069,34 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+        let mut run_followups = Vec::new();
+        if follow_up_policy.get("enabled").and_then(Value::as_bool) == Some(true) {
+            for (bug_idx, bug) in bug_artifacts.iter().enumerate() {
+                let bug_path = str_field(Some(bug), &format!("multi_hypervisor_plan.queue.entries[{idx}].expected_bug_artifacts[{bug_idx}]"))?;
+                if follow_up_policy.get("reproduce").and_then(Value::as_bool) == Some(true) {
+                    let job = json!({"job_id": format!("followup-{run_id}-reproduce-{bug_idx}"), "kind": "reproduce", "source_run_id": run_id, "source_queue_entry_id": queue_entry_id, "hypervisor_worker_id": hypervisor_worker_id, "bug_artifact_path": bug_path, "snapshot_ref": format!("snapshot:{run_id}:{bug_idx}"), "status": "queued"});
+                    run_followups.push(job.clone());
+                    follow_up_jobs.push(job);
+                }
+                if follow_up_policy.get("minimize").and_then(Value::as_bool) == Some(true) {
+                    let job = json!({"job_id": format!("followup-{run_id}-minimize-{bug_idx}"), "kind": "minimize", "source_run_id": run_id, "source_queue_entry_id": queue_entry_id, "hypervisor_worker_id": hypervisor_worker_id, "bug_artifact_path": bug_path, "snapshot_ref": format!("snapshot:{run_id}:{bug_idx}"), "status": "queued"});
+                    run_followups.push(job.clone());
+                    follow_up_jobs.push(job);
+                }
+            }
+        }
+        artifact_entries.push(json!({
+            "artifact_id": format!("artifact-{run_id}"),
+            "run_id": run_id,
+            "queue_entry_id": queue_entry_id,
+            "hypervisor_worker_id": hypervisor_worker_id,
+            "artifact_root": artifact_root,
+            "receipt_path": receipt_path,
+            "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "retention": {"policy": "bounded-local", "gc_status": "retained"},
+            "bug_artifacts": bug_artifacts,
+            "follow_up_receipts": []
+        }));
         runs.push(json!({
             "campaign_id": campaign_id,
             "run_id": run_id,
@@ -3039,8 +3105,10 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             "workload": workload,
             "command": command,
             "lease_id": lease_id,
+            "artifact_root": artifact_root,
             "receipt_path": receipt_path,
             "receipt_summary": receipt_summary,
+            "follow_up_jobs": run_followups,
             "status": run_status,
             "exit_code": exit_code
         }));
@@ -3069,9 +3137,12 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             "completed_before_start": completed_before_start,
             "persisted_after_each_run": true
         },
+        "control_plane": {"kind": "single-machine-local", "max_hypervisors": max_hypervisors, "artifact_index_path": artifact_index_path.display().to_string(), "follow_up_policy": follow_up_policy},
         "queue": {"entries": receipt_entries},
         "hypervisors": hypervisors,
         "runs": runs,
+        "artifact_index": {"schema_version": 1, "index_path": artifact_index_path.display().to_string(), "entries": artifact_entries},
+        "follow_up_jobs": follow_up_jobs,
         "operator_decisions": plan.get("operator_decisions").and_then(Value::as_array).cloned().unwrap_or_else(|| vec![Value::String("target/decision-receipt.json".to_string())]),
         "anti_claims": [
             "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
@@ -3088,13 +3159,15 @@ pub fn sample_multi_hypervisor_campaign_plan() -> Value {
         "campaign_id": "local-campaign-0001",
         "max_hypervisors": 2,
         "state_path": "target/multi-hypervisor/campaign-state.json",
+        "artifact_index_path": "target/multi-hypervisor/artifact-index.json",
+        "follow_up_policy": {"enabled": true, "reproduce": true, "minimize": true},
         "hypervisors": [
-            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
-            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "target/multi-hypervisor/local-hv-a"},
+            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "target/multi-hypervisor/local-hv-b"}
         ],
         "queue": {"entries": [
-            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/multi-hypervisor/raft-replay-readiness.json", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json"},
-            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/multi-hypervisor/redb-replay-readiness.json", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json"}
+            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/multi-hypervisor/raft-replay-readiness.json", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "expected_bug_artifacts": ["target/multi-hypervisor/local-hv-a/bug-raft.json"]},
+            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/multi-hypervisor/redb-replay-readiness.json", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "expected_bug_artifacts": []}
         ]},
         "operator_decisions": ["target/decision-receipt.json"]
     })
@@ -3110,18 +3183,24 @@ pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
         "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
         "raw_log_scraping": false,
         "queue_state": {"kind": "durable-local-file", "state_path": "target/multi-hypervisor/campaign-state.json", "loaded_existing_state": false, "completed_before_start": 0, "persisted_after_each_run": true},
+        "control_plane": {"kind": "single-machine-local", "max_hypervisors": 2, "artifact_index_path": "target/multi-hypervisor/artifact-index.json", "follow_up_policy": {"enabled": true, "reproduce": true, "minimize": true}},
         "queue": {"entries": [
             {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "state": "completed", "lease_id": "lease-local-campaign-0001-mhq-raft-0001", "hypervisor_worker_id": "local-hv-a"},
             {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "state": "completed", "lease_id": "lease-local-campaign-0001-mhq-redb-0001", "hypervisor_worker_id": "local-hv-b"}
         ]},
         "hypervisors": [
-            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
-            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+            {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "target/multi-hypervisor/local-hv-a"},
+            {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "target/multi-hypervisor/local-hv-b"}
         ],
         "runs": [
-            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-raft-0001", "queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "workload": "raft", "lease_id": "lease-local-campaign-0001-mhq-raft-0001", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded", "status": "passed", "exit_code": 0},
-            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-redb-0001", "queue_entry_id": "mhq-redb-0001", "hypervisor_worker_id": "local-hv-b", "workload": "redb", "lease_id": "lease-local-campaign-0001-mhq-redb-0001", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded", "status": "passed", "exit_code": 0}
+            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-raft-0001", "queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "workload": "raft", "lease_id": "lease-local-campaign-0001-mhq-raft-0001", "artifact_root": "target/multi-hypervisor/local-hv-a", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=raft:pass scope=bounded", "follow_up_jobs": [{"job_id": "followup-mh-run-raft-0001-reproduce-0", "kind": "reproduce", "source_run_id": "mh-run-raft-0001", "source_queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "bug_artifact_path": "target/multi-hypervisor/local-hv-a/bug-raft.json", "snapshot_ref": "snapshot:mh-run-raft-0001:0", "status": "queued"}, {"job_id": "followup-mh-run-raft-0001-minimize-0", "kind": "minimize", "source_run_id": "mh-run-raft-0001", "source_queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "bug_artifact_path": "target/multi-hypervisor/local-hv-a/bug-raft.json", "snapshot_ref": "snapshot:mh-run-raft-0001:0", "status": "queued"}], "status": "passed", "exit_code": 0},
+            {"campaign_id": "local-campaign-0001", "run_id": "mh-run-redb-0001", "queue_entry_id": "mhq-redb-0001", "hypervisor_worker_id": "local-hv-b", "workload": "redb", "lease_id": "lease-local-campaign-0001-mhq-redb-0001", "artifact_root": "target/multi-hypervisor/local-hv-b", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "receipt_summary": "replay-readiness status=passed dogfood=redb:pass scope=bounded", "follow_up_jobs": [], "status": "passed", "exit_code": 0}
         ],
+        "artifact_index": {"schema_version": 1, "index_path": "target/multi-hypervisor/artifact-index.json", "entries": [
+            {"artifact_id": "artifact-mh-run-raft-0001", "run_id": "mh-run-raft-0001", "queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "artifact_root": "target/multi-hypervisor/local-hv-a", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "retention": {"policy": "bounded-local", "gc_status": "retained"}, "bug_artifacts": ["target/multi-hypervisor/local-hv-a/bug-raft.json"], "follow_up_receipts": []},
+            {"artifact_id": "artifact-mh-run-redb-0001", "run_id": "mh-run-redb-0001", "queue_entry_id": "mhq-redb-0001", "hypervisor_worker_id": "local-hv-b", "artifact_root": "target/multi-hypervisor/local-hv-b", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "retention": {"policy": "bounded-local", "gc_status": "retained"}, "bug_artifacts": [], "follow_up_receipts": []}
+        ]},
+        "follow_up_jobs": [{"job_id": "followup-mh-run-raft-0001-reproduce-0", "kind": "reproduce", "source_run_id": "mh-run-raft-0001", "source_queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "bug_artifact_path": "target/multi-hypervisor/local-hv-a/bug-raft.json", "snapshot_ref": "snapshot:mh-run-raft-0001:0", "status": "queued"}, {"job_id": "followup-mh-run-raft-0001-minimize-0", "kind": "minimize", "source_run_id": "mh-run-raft-0001", "source_queue_entry_id": "mhq-raft-0001", "hypervisor_worker_id": "local-hv-a", "bug_artifact_path": "target/multi-hypervisor/local-hv-a/bug-raft.json", "snapshot_ref": "snapshot:mh-run-raft-0001:0", "status": "queued"}],
         "operator_decisions": ["target/decision-receipt.json"],
         "anti_claims": [
             "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
@@ -3181,12 +3260,40 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         "multi_hypervisor.queue_state.completed_before_start",
     )?;
 
+    let control_plane = object_field(
+        receipt.get("control_plane"),
+        "multi_hypervisor.control_plane",
+    )?;
+    ensure(
+        str_field(
+            control_plane.get("kind"),
+            "multi_hypervisor.control_plane.kind",
+        )? == "single-machine-local",
+        "multi_hypervisor.control_plane.kind: expected single-machine-local",
+    )?;
+    ensure(
+        int_field(
+            control_plane.get("max_hypervisors"),
+            "multi_hypervisor.control_plane.max_hypervisors",
+        )? >= 2,
+        "multi_hypervisor.control_plane.max_hypervisors: expected at least 2",
+    )?;
+    str_field(
+        control_plane.get("artifact_index_path"),
+        "multi_hypervisor.control_plane.artifact_index_path",
+    )?;
+    object_field(
+        control_plane.get("follow_up_policy"),
+        "multi_hypervisor.control_plane.follow_up_policy",
+    )?;
+
     let hypervisors = array_field(receipt.get("hypervisors"), "multi_hypervisor.hypervisors")?;
     ensure(
         hypervisors.len() >= 2,
         "multi_hypervisor.hypervisors: expected at least two local hypervisor workers",
     )?;
     let mut hypervisor_ids = BTreeSet::new();
+    let mut hypervisor_artifact_roots = BTreeMap::new();
     for (idx, hypervisor) in hypervisors.iter().enumerate() {
         let hypervisor = object_field(
             Some(hypervisor),
@@ -3204,6 +3311,23 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             hypervisor.get("node_id"),
             &format!("multi_hypervisor.hypervisors[{idx}].node_id"),
         )?;
+        let budget = object_field(
+            hypervisor.get("resource_budget"),
+            &format!("multi_hypervisor.hypervisors[{idx}].resource_budget"),
+        )?;
+        ensure(
+            int_field(budget.get("vcpus"), &format!("multi_hypervisor.hypervisors[{idx}].resource_budget.vcpus"))? > 0,
+            format!("multi_hypervisor.hypervisors[{idx}].resource_budget.vcpus: expected positive budget"),
+        )?;
+        ensure(
+            int_field(budget.get("memory_mib"), &format!("multi_hypervisor.hypervisors[{idx}].resource_budget.memory_mib"))? > 0,
+            format!("multi_hypervisor.hypervisors[{idx}].resource_budget.memory_mib: expected positive budget"),
+        )?;
+        let artifact_root = str_field(
+            hypervisor.get("artifact_root"),
+            &format!("multi_hypervisor.hypervisors[{idx}].artifact_root"),
+        )?;
+        hypervisor_artifact_roots.insert(id.to_string(), artifact_root.to_string());
     }
 
     let queue = object_field(receipt.get("queue"), "multi_hypervisor.queue")?;
@@ -3312,6 +3436,14 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             &format!("multi_hypervisor.runs[{idx}].workload"),
         )?;
         workloads.insert(workload.to_string());
+        let artifact_root = str_field(
+            run.get("artifact_root"),
+            &format!("multi_hypervisor.runs[{idx}].artifact_root"),
+        )?;
+        ensure(
+            hypervisor_artifact_roots.get(hypervisor_worker_id).is_some_and(|root| root == artifact_root),
+            format!("multi_hypervisor.runs[{idx}].artifact_root: must match assigned hypervisor artifact root"),
+        )?;
         str_field(
             run.get("receipt_path"),
             &format!("multi_hypervisor.runs[{idx}].receipt_path"),
@@ -3328,6 +3460,19 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("exit_code"),
             &format!("multi_hypervisor.runs[{idx}].exit_code"),
         )?;
+        let follow_ups = array_field(
+            run.get("follow_up_jobs"),
+            &format!("multi_hypervisor.runs[{idx}].follow_up_jobs"),
+        )?;
+        for (job_idx, job) in follow_ups.iter().enumerate() {
+            validate_multi_hypervisor_follow_up_job(
+                job,
+                &format!("multi_hypervisor.runs[{idx}].follow_up_jobs[{job_idx}]"),
+                &run_ids,
+                &entry_ids,
+                &hypervisor_ids,
+            )?;
+        }
         if run_status == "passed" {
             ensure(
                 exit_code == 0,
@@ -3347,6 +3492,108 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         }
     }
 
+    let artifact_index = object_field(
+        receipt.get("artifact_index"),
+        "multi_hypervisor.artifact_index",
+    )?;
+    ensure(
+        int_field(
+            artifact_index.get("schema_version"),
+            "multi_hypervisor.artifact_index.schema_version",
+        )? == 1,
+        "multi_hypervisor.artifact_index.schema_version: expected 1",
+    )?;
+    str_field(
+        artifact_index.get("index_path"),
+        "multi_hypervisor.artifact_index.index_path",
+    )?;
+    let artifact_entries = array_field(
+        artifact_index.get("entries"),
+        "multi_hypervisor.artifact_index.entries",
+    )?;
+    ensure(
+        artifact_entries.len() == runs.len(),
+        "multi_hypervisor.artifact_index.entries: expected one artifact entry per run",
+    )?;
+    let mut artifact_ids = BTreeSet::new();
+    for (idx, artifact) in artifact_entries.iter().enumerate() {
+        let artifact = object_field(
+            Some(artifact),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}]"),
+        )?;
+        let artifact_id = token_field(
+            artifact.get("artifact_id"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_id"),
+        )?;
+        ensure(artifact_ids.insert(artifact_id.to_string()), format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_id: duplicate {artifact_id}"))?;
+        let run_id = token_field(
+            artifact.get("run_id"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.contains(run_id),
+            format!(
+                "multi_hypervisor.artifact_index.entries[{idx}].run_id: {run_id} missing from runs"
+            ),
+        )?;
+        let queue_entry_id = token_field(
+            artifact.get("queue_entry_id"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].queue_entry_id"),
+        )?;
+        ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.artifact_index.entries[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        let hypervisor_worker_id = token_field(
+            artifact.get("hypervisor_worker_id"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].hypervisor_worker_id"),
+        )?;
+        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.artifact_index.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        str_field(
+            artifact.get("artifact_root"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_root"),
+        )?;
+        str_field(
+            artifact.get("receipt_path"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].receipt_path"),
+        )?;
+        validate_digest_field(
+            artifact.get("digest"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].digest"),
+        )?;
+        let retention = object_field(
+            artifact.get("retention"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].retention"),
+        )?;
+        str_field(
+            retention.get("policy"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].retention.policy"),
+        )?;
+        let gc_status = token_field(
+            retention.get("gc_status"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].retention.gc_status"),
+        )?;
+        ensure(matches!(gc_status, "retained" | "eligible" | "collected"), format!("multi_hypervisor.artifact_index.entries[{idx}].retention.gc_status: unsupported value {gc_status:?}"))?;
+        array_field(
+            artifact.get("bug_artifacts"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].bug_artifacts"),
+        )?;
+        array_field(
+            artifact.get("follow_up_receipts"),
+            &format!("multi_hypervisor.artifact_index.entries[{idx}].follow_up_receipts"),
+        )?;
+    }
+    let follow_up_jobs = array_field(
+        receipt.get("follow_up_jobs"),
+        "multi_hypervisor.follow_up_jobs",
+    )?;
+    for (idx, job) in follow_up_jobs.iter().enumerate() {
+        validate_multi_hypervisor_follow_up_job(
+            job,
+            &format!("multi_hypervisor.follow_up_jobs[{idx}]"),
+            &run_ids,
+            &entry_ids,
+            &hypervisor_ids,
+        )?;
+    }
+
     let anti_claims = array_field(receipt.get("anti_claims"), "multi_hypervisor.anti_claims")?;
     let anti_claim_text = anti_claims
         .iter()
@@ -3363,6 +3610,157 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         "multi_hypervisor.anti_claims: missing bounded local multi-hypervisor anti-overclaim text",
     )?;
     Ok(format!("replay-readiness-local-multi-hypervisor-campaign status={status} campaign={campaign_id} hypervisors={} runs={} passed={} restart_persisted=true workloads={} scope=bounded-local-multi-hypervisor", hypervisors.len(), runs.len(), passed, workloads.into_iter().collect::<Vec<_>>().join(",")))
+}
+
+pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceResult<String> {
+    let summary = validate_multi_hypervisor_campaign_receipt(receipt)?;
+    let campaign_id = str_field(receipt.get("campaign_id"), "multi_hypervisor.campaign_id")?;
+    let status = str_field(receipt.get("status"), "multi_hypervisor.status")?;
+    let hypervisors = array_field(receipt.get("hypervisors"), "multi_hypervisor.hypervisors")?;
+    let entries = array_field(
+        object_field(receipt.get("queue"), "multi_hypervisor.queue")?.get("entries"),
+        "multi_hypervisor.queue.entries",
+    )?;
+    let runs = array_field(receipt.get("runs"), "multi_hypervisor.runs")?;
+    let follow_up_jobs = array_field(
+        receipt.get("follow_up_jobs"),
+        "multi_hypervisor.follow_up_jobs",
+    )?;
+    let artifact_entries = array_field(
+        object_field(
+            receipt.get("artifact_index"),
+            "multi_hypervisor.artifact_index",
+        )?
+        .get("entries"),
+        "multi_hypervisor.artifact_index.entries",
+    )?;
+    let mut worker_rows = Vec::new();
+    for worker in hypervisors {
+        let worker = object_field(Some(worker), "multi_hypervisor.hypervisors[]")?;
+        let budget = object_field(
+            worker.get("resource_budget"),
+            "multi_hypervisor.hypervisors[].resource_budget",
+        )?;
+        worker_rows.push(format!(
+            "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{} vCPU / {} MiB</td><td><code>{}</code></td></tr>",
+            esc_value(worker.get("hypervisor_worker_id")),
+            esc_value(worker.get("node_id")),
+            esc_value(budget.get("vcpus")),
+            esc_value(budget.get("memory_mib")),
+            esc_value(worker.get("artifact_root")),
+        ));
+    }
+    let mut run_rows = Vec::new();
+    for run in runs {
+        let run = object_field(Some(run), "multi_hypervisor.runs[]")?;
+        let run_followups = array_field(
+            run.get("follow_up_jobs"),
+            "multi_hypervisor.runs[].follow_up_jobs",
+        )?;
+        run_rows.push(format!(
+            r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td><span class="pill {}">{}</span></td><td><code>{}</code></td><td>{}</td></tr>"#,
+            esc_value(run.get("run_id")),
+            esc_value(run.get("hypervisor_worker_id")),
+            esc_value(run.get("workload")),
+            token_class(str_field(run.get("status"), "multi_hypervisor.runs[].status")?),
+            esc_value(run.get("status")),
+            esc_value(run.get("receipt_path")),
+            run_followups.len(),
+        ));
+    }
+    let scope = str_field(receipt.get("scope"), "multi_hypervisor.scope")?;
+    Ok(format!(
+        r#"<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ChaosControl local multi-hypervisor campaign</title>
+<style>:root {{ color-scheme: light dark; --ok:#138a36; --bad:#b42318; --warn:#b7791f; --border:#98a2b3; }} body {{ font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; line-height: 1.45; }} table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }} th,td {{ border-bottom: 1px solid var(--border); padding: .55rem; text-align:left; vertical-align:top; }} .pill {{ border-radius:999px; color:white; padding:.15rem .55rem; font-weight:700; }} .ok {{ background:var(--ok); }} .bad {{ background:var(--bad); }} .warn {{ background:var(--warn); }} .scope {{ border-left:.35rem solid var(--warn); padding-left:.8rem; }}</style></head>
+<body><header><h1>ChaosControl local multi-hypervisor campaign</h1><p><strong>Campaign:</strong> <code>{}</code> <strong>Status:</strong> <span class="pill {}">{}</span></p><p><code>{}</code></p></header>
+<section class="scope"><h2>Scope</h2><p>{}</p><p>This dashboard is local-only: not SaaS, not a remote shared queue, not cross-machine scheduling, and not universal fleet throughput.</p></section>
+<section><h2>Workers</h2><table><thead><tr><th>Worker</th><th>Node</th><th>Budget</th><th>Artifact root</th></tr></thead><tbody>{}</tbody></table></section>
+<section><h2>Queue and runs</h2><p>Queue entries: {} · Runs: {} · Artifact index entries: {} · Follow-up jobs: {}</p><table><thead><tr><th>Run</th><th>Worker</th><th>Workload</th><th>Status</th><th>Receipt</th><th>Follow-ups</th></tr></thead><tbody>{}</tbody></table></section>
+</body></html>"#,
+        esc(campaign_id),
+        token_class(status),
+        esc(status),
+        esc(&summary),
+        esc(scope),
+        worker_rows.join(
+            "
+"
+        ),
+        entries.len(),
+        runs.len(),
+        artifact_entries.len(),
+        follow_up_jobs.len(),
+        run_rows.join(
+            "
+"
+        ),
+    ))
+}
+
+pub fn write_multi_hypervisor_campaign_dashboard_path(
+    receipt_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let receipt = load_json(receipt_path.as_ref())?;
+    let dashboard = render_multi_hypervisor_campaign_dashboard(&receipt)?;
+    let output_path = output_path.as_ref();
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, dashboard)?;
+    Ok(validate_multi_hypervisor_campaign_receipt(&receipt)?)
+}
+
+fn validate_multi_hypervisor_follow_up_job(
+    job: &Value,
+    field: &str,
+    run_ids: &BTreeSet<String>,
+    entry_ids: &BTreeSet<String>,
+    hypervisor_ids: &BTreeSet<String>,
+) -> EvidenceResult<()> {
+    let job = object_field(Some(job), field)?;
+    token_field(job.get("job_id"), &format!("{field}.job_id"))?;
+    let kind = token_field(job.get("kind"), &format!("{field}.kind"))?;
+    ensure(
+        matches!(kind, "reproduce" | "minimize"),
+        format!("{field}.kind: unsupported value {kind:?}"),
+    )?;
+    let run_id = token_field(job.get("source_run_id"), &format!("{field}.source_run_id"))?;
+    ensure(
+        run_ids.contains(run_id),
+        format!("{field}.source_run_id: {run_id} missing from runs"),
+    )?;
+    let queue_entry_id = token_field(
+        job.get("source_queue_entry_id"),
+        &format!("{field}.source_queue_entry_id"),
+    )?;
+    ensure(
+        entry_ids.contains(queue_entry_id),
+        format!("{field}.source_queue_entry_id: {queue_entry_id} missing from queue entries"),
+    )?;
+    let hypervisor_worker_id = token_field(
+        job.get("hypervisor_worker_id"),
+        &format!("{field}.hypervisor_worker_id"),
+    )?;
+    ensure(
+        hypervisor_ids.contains(hypervisor_worker_id),
+        format!("{field}.hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"),
+    )?;
+    str_field(
+        job.get("bug_artifact_path"),
+        &format!("{field}.bug_artifact_path"),
+    )?;
+    str_field(job.get("snapshot_ref"), &format!("{field}.snapshot_ref"))?;
+    let status = token_field(job.get("status"), &format!("{field}.status"))?;
+    ensure(
+        matches!(
+            status,
+            "queued" | "running" | "passed" | "failed" | "skipped"
+        ),
+        format!("{field}.status: unsupported value {status:?}"),
+    )?;
+    Ok(())
 }
 
 fn unix_seconds() -> u64 {

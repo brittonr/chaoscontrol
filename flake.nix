@@ -1425,9 +1425,11 @@
                     "campaign_id": "local-multi-hypervisor-check",
                     "max_hypervisors": 2,
                     "state_path": "$out/local-multi-hypervisor-campaign-state.json",
+                    "artifact_index_path": "$out/local-multi-hypervisor-artifact-index.json",
+                    "follow_up_policy": {"enabled": false, "reproduce": false, "minimize": false},
                     "hypervisors": [
-                      {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a"},
-                      {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b"}
+                      {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "$out/local-hv-a"},
+                      {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "$out/local-hv-b"}
                     ],
                     "queue": {
                       "entries": [
@@ -1440,6 +1442,7 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-multi-hypervisor-plan "$out/local-multi-hypervisor-campaign-plan.json" --output "$out/local-multi-hypervisor-campaign-receipt.json" > "$out/local-multi-hypervisor-campaign-summary.txt"
                   replay-readiness-scheduler-receipt --check-multi-hypervisor "$out/local-multi-hypervisor-campaign-receipt.json" >> "$out/local-multi-hypervisor-campaign-summary.txt"
+                  replay-readiness-scheduler-receipt --render-multi-hypervisor-dashboard "$out/local-multi-hypervisor-campaign-receipt.json" --output "$out/local-multi-hypervisor-dashboard.html" >> "$out/local-multi-hypervisor-campaign-summary.txt"
                   cat > "$out/hosted-shared-state-plan.json" <<EOF
                   {
                     "schema_version": 1,
@@ -1514,6 +1517,7 @@
                   test -s "$out/local-multi-hypervisor-campaign-plan.json"
                   test -s "$out/local-multi-hypervisor-campaign-receipt.json"
                   test -s "$out/local-multi-hypervisor-campaign-summary.txt"
+                  test -s "$out/local-multi-hypervisor-dashboard.html"
                   test -s "$out/local-multi-hypervisor-campaign-state.json"
                   test -s "$out/local-multi-hypervisor-run-1.json"
                   test -s "$out/local-multi-hypervisor-run-2.json"

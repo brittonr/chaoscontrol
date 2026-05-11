@@ -20,6 +20,7 @@ result-redb-guest
 
 # Local VM debug traces; receipts/summaries carry reviewable evidence.
 dogfood-results/vm-determinism-drift-latest/dlogs/
+dogfood-results/local-multi-hypervisor-kvm-smoke-*/
 
 target/
 __pycache__/

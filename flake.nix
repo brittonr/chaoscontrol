@@ -906,6 +906,21 @@
             '';
           };
 
+          localMultiHypervisorKvmSmoke = pkgs.writeShellApplication {
+            name = "local-multi-hypervisor-kvm-smoke";
+            runtimeInputs = [
+              replayReadiness
+              replayReadinessSchedulerReceipt
+              pkgs.python3
+            ];
+            text = ''
+              exec python ${./scripts/local-multi-hypervisor-kvm-smoke.py} \
+                --replay-readiness ${replayReadiness}/bin/replay-readiness \
+                --scheduler-receipt ${replayReadinessSchedulerReceipt}/bin/replay-readiness-scheduler-receipt \
+                "$@"
+            '';
+          };
+
           replayReadinessReadmeStatus = pkgs.writeShellApplication {
             name = "replay-readiness-readme-status";
             runtimeInputs = [ chaoscontrol ];
@@ -996,6 +1011,7 @@
             replay-readiness-fleet-index = replayReadinessFleetIndex;
             replay-readiness-decision-receipt = replayReadinessDecisionReceipt;
             replay-readiness-scheduler-receipt = replayReadinessSchedulerReceipt;
+            local-multi-hypervisor-kvm-smoke = localMultiHypervisorKvmSmoke;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
@@ -1413,6 +1429,20 @@
                     ${pkgs.bash}/bin/bash ${./scripts/snapshot-replay-smoke.sh}
                 '';
 
+            local-multi-hypervisor-kvm-smoke =
+              pkgs.runCommand "local-multi-hypervisor-kvm-smoke-check"
+                {
+                  nativeBuildInputs = [ localMultiHypervisorKvmSmoke ];
+                  requiredSystemFeatures = [ "kvm" ];
+                }
+                ''
+                  local-multi-hypervisor-kvm-smoke --out "$out"
+                  test -s "$out/campaign-plan.json"
+                  test -s "$out/campaign-receipt.json"
+                  test -s "$out/campaign-state.json"
+                  test -s "$out/summary.txt"
+                '';
+
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
             tigerstyle-chaoscontrol-focused = tigerstyle.lib.mkConsumerCheck {
@@ -1575,6 +1605,7 @@
             replay-readiness-fleet-index = mkApp "Render a static multi-receipt fleet triage index." "${replayReadinessFleetIndex}/bin/replay-readiness-fleet-index";
             replay-readiness-decision-receipt = mkApp "Write or validate a bounded local replay-readiness decision receipt." "${replayReadinessDecisionReceipt}/bin/replay-readiness-decision-receipt";
             replay-readiness-scheduler-receipt = mkApp "Write or validate a bounded local replay-readiness scheduler receipt." "${replayReadinessSchedulerReceipt}/bin/replay-readiness-scheduler-receipt";
+            local-multi-hypervisor-kvm-smoke = mkApp "Run the bounded local KVM multi-hypervisor replay-readiness smoke rail." "${localMultiHypervisorKvmSmoke}/bin/local-multi-hypervisor-kvm-smoke";
             replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
           };
 

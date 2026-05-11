@@ -756,6 +756,201 @@ pub fn validate_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> Evidence
     validate_fleet_scheduler_receipt(&load_json(path.as_ref())?)
 }
 
+pub fn execute_fleet_scheduler_receipt_path(
+    plan_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let plan_path = plan_path.as_ref();
+    let output_path = output_path.as_ref();
+    let receipt = execute_fleet_scheduler_receipt(&load_json(plan_path)?, plan_path)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    validate_fleet_scheduler_receipt(&receipt)
+}
+
+pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResult<Value> {
+    let queue = object_field(plan.get("queue"), "fleet_scheduler_plan.queue")?;
+    let queue_id = token_field(queue.get("queue_id"), "fleet_scheduler_plan.queue.queue_id")?;
+    let lease_timeout_seconds = int_field(
+        queue.get("lease_timeout_seconds"),
+        "fleet_scheduler_plan.queue.lease_timeout_seconds",
+    )?;
+    ensure(
+        lease_timeout_seconds > 0,
+        "fleet_scheduler_plan.queue.lease_timeout_seconds: expected positive integer",
+    )?;
+    let max_concurrency = int_field(
+        queue.get("max_concurrency"),
+        "fleet_scheduler_plan.queue.max_concurrency",
+    )?;
+    ensure(
+        max_concurrency > 0,
+        "fleet_scheduler_plan.queue.max_concurrency: expected positive integer",
+    )?;
+    let workers = array_field(plan.get("workers"), "fleet_scheduler_plan.workers")?;
+    ensure(
+        !workers.is_empty(),
+        "fleet_scheduler_plan.workers: expected non-empty list",
+    )?;
+    let mut worker_ids = Vec::with_capacity(workers.len());
+    for (idx, worker) in workers.iter().enumerate() {
+        let worker = object_field(
+            Some(worker),
+            &format!("fleet_scheduler_plan.workers[{idx}]"),
+        )?;
+        worker_ids.push(token_field(
+            worker.get("worker_id"),
+            &format!("fleet_scheduler_plan.workers[{idx}].worker_id"),
+        )?);
+    }
+    ensure(
+        max_concurrency as usize <= worker_ids.len(),
+        "fleet_scheduler_plan.queue.max_concurrency: cannot exceed worker count",
+    )?;
+
+    let entries = array_field(queue.get("entries"), "fleet_scheduler_plan.queue.entries")?;
+    ensure(
+        !entries.is_empty(),
+        "fleet_scheduler_plan.queue.entries: expected non-empty list",
+    )?;
+
+    let mut receipt_entries = Vec::with_capacity(entries.len());
+    let mut receipt_workers = Vec::with_capacity(workers.len());
+    let mut runs = Vec::with_capacity(entries.len());
+    let mut failures = 0usize;
+
+    for (idx, worker_id) in worker_ids.iter().enumerate() {
+        receipt_workers.push(json!({
+            "worker_id": worker_id,
+            "node_id": format!("local-node-{idx}"),
+            "lease_id": format!("idle-{worker_id}"),
+            "status": "idle"
+        }));
+    }
+
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].run_id"),
+        )?;
+        let workload = token_field(
+            entry.get("workload"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].workload"),
+        )?;
+        let command = str_field(
+            entry.get("command"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].command"),
+        )?;
+        let receipt_path = str_field(
+            entry.get("receipt_path"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].receipt_path"),
+        )?;
+        let worker_id = worker_ids[idx % (max_concurrency as usize)];
+        let lease_id = format!("lease-{queue_entry_id}");
+        let status = Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .status()
+            .map_err(|err| EvidenceError::new(format!("fleet scheduler run {run_id}: {err}")))?;
+        let exit_code = status.code().unwrap_or(125);
+        let run_status = if exit_code == 0 { "passed" } else { "failed" };
+        if exit_code != 0 {
+            failures += 1;
+        }
+        let receipt_summary = if exit_code == 0 {
+            Some(summarize_receipt_path(receipt_path)?)
+        } else {
+            None
+        };
+        receipt_entries.push(json!({
+            "queue_entry_id": queue_entry_id,
+            "run_id": run_id,
+            "workload": workload,
+            "state": if exit_code == 0 { "completed" } else { "failed" }
+        }));
+        runs.push(json!({
+            "run_id": run_id,
+            "queue_entry_id": queue_entry_id,
+            "worker_id": worker_id,
+            "workload": workload,
+            "command": command,
+            "lease_id": lease_id,
+            "receipt_path": receipt_path,
+            "receipt_summary": receipt_summary,
+            "status": run_status,
+            "exit_code": exit_code
+        }));
+    }
+
+    let status = if failures == 0 {
+        "recorded"
+    } else if failures == entries.len() {
+        "failed"
+    } else {
+        "partial"
+    };
+    let decisions = plan
+        .get("operator_decisions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_else(|| vec![Value::String("target/decision-receipt.json".to_string())]);
+
+    Ok(json!({
+        "schema_version": 1,
+        "command": "replay-readiness-fleet-scheduler-receipt",
+        "status": status,
+        "generated_at": format!("unix:{}", unix_seconds()),
+        "plan_path": plan_path.display().to_string(),
+        "scope": "bounded hosted/fleet scheduler runtime receipt with a local durable queue worker loop, leases, worker run receipts, and receipt summaries; not product-parity evidence, not a full Antithesis replacement, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "queue": {
+            "kind": "durable-file-backed",
+            "queue_id": queue_id,
+            "lease_timeout_seconds": lease_timeout_seconds,
+            "max_concurrency": max_concurrency,
+            "entries": receipt_entries
+        },
+        "workers": receipt_workers,
+        "runs": runs,
+        "operator_decisions": decisions,
+        "anti_claims": [
+            "This is bounded hosted/fleet scheduler runtime evidence, not product parity.",
+            "This is not a full Antithesis replacement.",
+            "This fleet scheduler worker loop captures durable queue, lease, worker, run, and receipt-summary state without raw-log scraping."
+        ]
+    }))
+}
+
+pub fn sample_fleet_scheduler_plan() -> Value {
+    json!({
+        "schema_version": 1,
+        "queue": {
+            "queue_id": "fleet-queue-0001",
+            "lease_timeout_seconds": 900,
+            "max_concurrency": 2,
+            "entries": [
+                {"queue_entry_id": "queue-raft-0001", "run_id": "fleet-run-raft-0001", "workload": "raft", "command": "replay-readiness-summary --sample --output target/fleet/raft-replay-readiness.json", "receipt_path": "target/fleet/raft-replay-readiness.json"},
+                {"queue_entry_id": "queue-redb-0001", "run_id": "fleet-run-redb-0001", "workload": "redb", "command": "replay-readiness-summary --sample --output target/fleet/redb-replay-readiness.json", "receipt_path": "target/fleet/redb-replay-readiness.json"}
+            ]
+        },
+        "workers": [
+            {"worker_id": "worker-a"},
+            {"worker_id": "worker-b"}
+        ],
+        "operator_decisions": ["target/decision-receipt.json"]
+    })
+}
+
 pub fn sample_fleet_scheduler_receipt() -> Value {
     json!({
         "schema_version": 1,

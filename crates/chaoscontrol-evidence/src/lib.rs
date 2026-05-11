@@ -44,6 +44,7 @@ pub use readiness_promotion_gate::{
 };
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift,
+    execute_fleet_scheduler_receipt_path as execute_replay_readiness_fleet_scheduler_receipt_path,
     execute_scheduler_receipt_path as execute_replay_readiness_scheduler_receipt_path,
     render_dashboard as render_replay_readiness_dashboard, render_fleet_triage_index,
     render_fleet_triage_index_path,
@@ -51,6 +52,7 @@ pub use replay_readiness_surfaces::{
     replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
     run_readiness_surface_drift_selftest,
     sample_decision_receipt as sample_replay_readiness_decision_receipt,
+    sample_fleet_scheduler_plan as sample_replay_readiness_fleet_scheduler_plan,
     sample_fleet_scheduler_receipt as sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_receipt,
     sample_scheduler_receipt as sample_replay_readiness_scheduler_receipt,
@@ -153,9 +155,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "bounded-fleet-scheduler-receipt",
-        reason: "Current evidence includes bounded local sequential scheduler execution plus a durable queue/lease/worker/run receipt model for hosted/fleet scheduler review, but not a running hosted service or automatic campaign service.",
-        promotion_evidence: "A running hosted scheduler integration that executes multiple replay-readiness runs across machines, persists queue state, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping.",
+        status: "bounded-fleet-scheduler-runtime",
+        reason: "Current evidence includes bounded local sequential scheduler execution plus a bounded local hosted/fleet worker loop that consumes a durable queue plan, leases work to workers, executes replay-readiness commands, and emits run-linked receipt summaries. It is still not a multi-machine hosted campaign service.",
+        promotion_evidence: "A multi-machine hosted scheduler integration that persists queue state across service restarts, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

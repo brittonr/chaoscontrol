@@ -179,24 +179,24 @@ The system MUST provide a bounded local sequential scheduler execution receipt t
 - WHEN the check output is inspected
 - THEN it contains a non-empty scheduler execution plan, scheduler execution receipt, scheduler execution summary, and linked per-run replay-readiness receipts
 
-### Requirement: Bounded fleet scheduler receipt [r[bounded-fleet-scheduler-receipt]]
+### Requirement: Bounded fleet scheduler runtime [r[bounded-fleet-scheduler-runtime]]
 
-The system MUST provide a bounded hosted/fleet scheduler receipt that records durable queue entries, worker leases, run outcomes, replay-readiness receipt summaries, and linked operator decision receipts without relying on raw-log scraping or claiming a live always-on product service.
+The system MUST provide a bounded hosted/fleet scheduler runtime that consumes a durable queue plan, leases entries to workers, executes replay-readiness commands, emits run-linked receipt summaries, and records linked operator decision receipts without relying on raw-log scraping or claiming a live always-on multi-machine product service.
 
-#### Scenario: Fleet scheduler receipt links durable queue and worker runs [r[bounded-fleet-scheduler-receipt.links-queue-workers-runs]]
+#### Scenario: Fleet scheduler runtime links durable queue and worker runs [r[bounded-fleet-scheduler-runtime.links-queue-workers-runs]]
 
-- GIVEN a fleet scheduler receipt with a durable queue, worker leases, run records, and decision receipt links
-- WHEN the fleet scheduler receipt validator runs
-- THEN it accepts only receipts where each run links to an existing queue entry, existing worker, receipt path, and replay-readiness summary
+- GIVEN a fleet scheduler plan with durable queue entries, worker IDs, bounded max concurrency, replay-readiness commands, receipt paths, and decision receipt links
+- WHEN the fleet scheduler runtime command executes the plan
+- THEN it writes a fleet scheduler receipt where each run links to an existing queue entry, existing worker, command, exit code, receipt path, and replay-readiness summary for passed runs
 
-#### Scenario: Fleet scheduler receipt rejects ungrounded claims [r[bounded-fleet-scheduler-receipt.rejects-ungrounded-claims]]
+#### Scenario: Fleet scheduler runtime rejects unsafe plans and receipts [r[bounded-fleet-scheduler-runtime.rejects-unsafe-plans-receipts]]
 
-- GIVEN a fleet scheduler receipt with raw-log scraping, duplicate identifiers, missing worker links, missing queue links, missing receipt summaries for passed runs, or no linked decision receipts
-- WHEN the fleet scheduler receipt validator runs
-- THEN it rejects the receipt as insufficient hosted/fleet scheduler evidence
+- GIVEN a fleet scheduler plan or receipt with raw-log scraping, duplicate identifiers, missing worker links, missing queue links, missing receipt summaries for passed runs, no linked decision receipts, or max concurrency greater than worker count
+- WHEN the fleet scheduler runtime or validator runs
+- THEN it rejects the artifact as insufficient hosted/fleet scheduler evidence
 
-#### Scenario: Fleet scheduler receipt is packaged with readiness output [r[bounded-fleet-scheduler-receipt.packaged]]
+#### Scenario: Fleet scheduler runtime is packaged with readiness output [r[bounded-fleet-scheduler-runtime.packaged]]
 
 - GIVEN the replay-readiness Nix check succeeds
 - WHEN the check output is inspected
-- THEN it contains a non-empty fleet scheduler receipt and summary alongside local scheduler execution artifacts
+- THEN it contains a non-empty fleet scheduler plan, fleet scheduler receipt, fleet scheduler summary, and linked per-run replay-readiness receipts alongside local scheduler execution artifacts

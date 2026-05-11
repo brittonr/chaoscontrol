@@ -3,20 +3,21 @@ use std::path::PathBuf;
 use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_status,
     check_dogfood_artifact_sizes, check_evidence_contract_fixtures,
-    check_replay_proof_coverage_doc, check_replay_readiness_status, materialize_snapshot_chunks,
+    check_replay_proof_coverage_doc, check_replay_readiness_status,
+    execute_replay_readiness_fleet_scheduler_receipt_path, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_operator_triage_runbook_path,
     render_replay_proof_coverage, render_replay_proof_coverage_doc,
     render_replay_readiness_dashboard, render_replay_readiness_readme_status_block,
     render_replay_readiness_status, run_assertion_readiness_promotion_selftest,
     run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_receipt,
-    sample_replay_readiness_receipt, sample_replay_readiness_scheduler_receipt,
-    summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
-    validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
-    validate_contract_registry_json, validate_gate_metadata, validate_readiness_promotion_files,
-    validate_replay_proof_coverage, validate_replay_readiness_decision_receipt,
-    validate_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
+    sample_replay_readiness_fleet_scheduler_receipt, sample_replay_readiness_receipt,
+    sample_replay_readiness_scheduler_receipt, summarize_replay_readiness_receipt,
+    summarize_sdk_local_jsonl, validate_accepted_dogfood_config,
+    validate_assertion_readiness_promotion, validate_contract_registry_json,
+    validate_gate_metadata, validate_readiness_promotion_files, validate_replay_proof_coverage,
+    validate_replay_readiness_decision_receipt, validate_replay_readiness_fleet_scheduler_receipt,
     validate_replay_readiness_scheduler_execution_receipt,
     validate_replay_readiness_scheduler_receipt, write_snapshot_chunk_fixture,
     AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest, SnapshotStorage,
@@ -99,11 +100,10 @@ fn renders_committed_replay_readiness_status() {
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(rendered.contains("Replay scheduler orchestration | `bounded-fleet-scheduler-receipt`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `bounded-fleet-scheduler-runtime`"));
     assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
-    assert!(rendered.contains(
-        "durable queue/lease/worker/run receipt model for hosted/fleet scheduler review"
-    ));
+    assert!(rendered
+        .contains("bounded local hosted/fleet worker loop that consumes a durable queue plan"));
     assert!(rendered.contains("shared decision store"));
     assert!(rendered.contains("persists queue state"));
     assert!(rendered.contains("Required promotion evidence"));
@@ -334,6 +334,77 @@ fn validates_replay_readiness_fleet_scheduler_receipt_model() {
     let err = validate_replay_readiness_fleet_scheduler_receipt(&missing_worker)
         .expect_err("unknown worker is rejected");
     assert!(err.message().contains("missing from workers"));
+}
+
+#[test]
+fn executes_bounded_fleet_scheduler_worker_loop_receipt() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let receipt_fixture = temp.path().join("readiness.json");
+    std::fs::write(
+        &receipt_fixture,
+        serde_json::to_vec_pretty(&sample_replay_readiness_receipt(false, "passed"))
+            .expect("receipt json"),
+    )
+    .expect("write receipt fixture");
+
+    let run_receipt_a = temp.path().join("run-a.json");
+    let run_receipt_b = temp.path().join("run-b.json");
+    let mut plan = sample_replay_readiness_fleet_scheduler_plan();
+    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
+        "cp {} {}",
+        receipt_fixture.display(),
+        run_receipt_a.display()
+    ));
+    plan["queue"]["entries"][0]["receipt_path"] =
+        serde_json::json!(run_receipt_a.display().to_string());
+    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
+        "cp {} {}",
+        receipt_fixture.display(),
+        run_receipt_b.display()
+    ));
+    plan["queue"]["entries"][1]["receipt_path"] =
+        serde_json::json!(run_receipt_b.display().to_string());
+
+    let plan_path = temp.path().join("fleet-plan.json");
+    let output_path = temp.path().join("fleet-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let summary = execute_replay_readiness_fleet_scheduler_receipt_path(&plan_path, &output_path)
+        .expect("fleet worker loop executes");
+    assert!(summary.contains("replay-readiness-fleet-scheduler status=recorded"));
+    assert!(summary.contains("workers=2"));
+    assert!(summary.contains("passed=2"));
+
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&output_path).expect("read generated receipt"))
+            .expect("generated receipt json");
+    assert_eq!(receipt["runs"][0]["status"], "passed");
+    assert!(receipt["runs"][0]["lease_id"]
+        .as_str()
+        .expect("lease id")
+        .starts_with("lease-queue-"));
+}
+
+#[test]
+fn rejects_fleet_scheduler_plan_over_concurrency() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = sample_replay_readiness_fleet_scheduler_plan();
+    plan["queue"]["max_concurrency"] = serde_json::json!(3);
+    let plan_path = temp.path().join("fleet-plan.json");
+    let output_path = temp.path().join("fleet-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let err = execute_replay_readiness_fleet_scheduler_receipt_path(&plan_path, &output_path)
+        .expect_err("over-concurrency is rejected");
+    assert!(err.message().contains("cannot exceed worker count"));
 }
 
 #[test]

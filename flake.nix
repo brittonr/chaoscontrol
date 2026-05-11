@@ -1270,7 +1270,23 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-plan "$out/scheduler-execution-plan.json" --output "$out/scheduler-execution-receipt.json" > "$out/scheduler-execution-summary.txt"
                   replay-readiness-scheduler-receipt --check-execution "$out/scheduler-execution-receipt.json" >> "$out/scheduler-execution-summary.txt"
-                  replay-readiness-scheduler-receipt --sample-fleet --output "$out/fleet-scheduler-receipt.json" > "$out/fleet-scheduler-summary.txt"
+                  cat > "$out/fleet-scheduler-plan.json" <<EOF
+                  {
+                    "schema_version": 1,
+                    "queue": {
+                      "queue_id": "fleet-queue-local-check",
+                      "lease_timeout_seconds": 900,
+                      "max_concurrency": 2,
+                      "entries": [
+                        {"queue_entry_id": "queue-static-0001", "run_id": "fleet-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-1.json'", "receipt_path": "$out/fleet-scheduled-run-1.json"},
+                        {"queue_entry_id": "queue-static-0002", "run_id": "fleet-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-2.json'", "receipt_path": "$out/fleet-scheduled-run-2.json"}
+                      ]
+                    },
+                    "workers": [{"worker_id": "worker-a"}, {"worker_id": "worker-b"}],
+                    "operator_decisions": ["$out/decision-receipt.json"]
+                  }
+                  EOF
+                  replay-readiness-scheduler-receipt --run-fleet-plan "$out/fleet-scheduler-plan.json" --output "$out/fleet-scheduler-receipt.json" > "$out/fleet-scheduler-summary.txt"
                   replay-readiness-scheduler-receipt --check-fleet "$out/fleet-scheduler-receipt.json" >> "$out/fleet-scheduler-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
@@ -1284,8 +1300,11 @@
                   test -s "$out/scheduler-execution-plan.json"
                   test -s "$out/scheduler-execution-receipt.json"
                   test -s "$out/scheduler-execution-summary.txt"
+                  test -s "$out/fleet-scheduler-plan.json"
                   test -s "$out/fleet-scheduler-receipt.json"
                   test -s "$out/fleet-scheduler-summary.txt"
+                  test -s "$out/fleet-scheduled-run-1.json"
+                  test -s "$out/fleet-scheduled-run-2.json"
                   test -s "$out/scheduled-run-1.json"
                   test -s "$out/scheduled-run-2.json"
                 '';

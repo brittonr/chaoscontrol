@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
-    execute_replay_readiness_scheduler_receipt_path,
+    execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_replay_readiness_scheduler_receipt_path, sample_replay_readiness_fleet_scheduler_plan,
     sample_replay_readiness_fleet_scheduler_receipt, sample_replay_readiness_scheduler_receipt,
     validate_replay_readiness_fleet_scheduler_receipt_path,
     validate_replay_readiness_scheduler_execution_receipt_path,
@@ -11,7 +12,7 @@ use chaoscontrol_evidence::{
 };
 
 fn usage() -> &'static str {
-    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH"
+    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH"
 }
 
 fn main() {
@@ -25,10 +26,12 @@ fn run() -> EvidenceResult<()> {
     let mut output: Option<PathBuf> = None;
     let mut check: Option<PathBuf> = None;
     let mut run_plan: Option<PathBuf> = None;
+    let mut run_fleet_plan: Option<PathBuf> = None;
     let mut check_execution: Option<PathBuf> = None;
     let mut check_fleet: Option<PathBuf> = None;
     let mut sample = false;
     let mut sample_fleet = false;
+    let mut sample_fleet_plan = false;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -54,6 +57,12 @@ fn run() -> EvidenceResult<()> {
                 })?;
                 run_plan = Some(PathBuf::from(value));
             }
+            "--run-fleet-plan" => {
+                let value = args.next().ok_or_else(|| {
+                    chaoscontrol_evidence::EvidenceError::new("--run-fleet-plan requires a path")
+                })?;
+                run_fleet_plan = Some(PathBuf::from(value));
+            }
             "--check-execution" => {
                 let value = args.next().ok_or_else(|| {
                     chaoscontrol_evidence::EvidenceError::new("--check-execution requires a path")
@@ -68,6 +77,7 @@ fn run() -> EvidenceResult<()> {
             }
             "--sample" => sample = true,
             "--sample-fleet" => sample_fleet = true,
+            "--sample-fleet-plan" => sample_fleet_plan = true,
             _ => {
                 return Err(chaoscontrol_evidence::EvidenceError::new(format!(
                     "unexpected argument: {}\n{}",
@@ -81,13 +91,15 @@ fn run() -> EvidenceResult<()> {
     match (
         sample,
         sample_fleet,
+        sample_fleet_plan,
         output,
         check,
         run_plan,
+        run_fleet_plan,
         check_execution,
         check_fleet,
     ) {
-        (true, false, Some(output), None, None, None, None) => {
+        (true, false, false, Some(output), None, None, None, None, None) => {
             write_replay_readiness_scheduler_receipt_path(&output)?;
             println!(
                 "wrote {} ({})",
@@ -97,23 +109,23 @@ fn run() -> EvidenceResult<()> {
                 )?
             );
         }
-        (false, false, None, Some(path), None, None, None) => {
+        (false, false, false, None, Some(path), None, None, None, None) => {
             println!(
                 "{}",
                 validate_replay_readiness_scheduler_receipt_path(path)?
             );
         }
-        (false, false, Some(output), None, Some(plan), None, None) => {
+        (false, false, false, Some(output), None, Some(plan), None, None, None) => {
             let summary = execute_replay_readiness_scheduler_receipt_path(plan, &output)?;
             println!("wrote {} ({summary})", output.display());
         }
-        (false, false, None, None, None, Some(path), None) => {
+        (false, false, false, None, None, None, None, Some(path), None) => {
             println!(
                 "{}",
                 validate_replay_readiness_scheduler_execution_receipt_path(path)?
             );
         }
-        (false, true, Some(output), None, None, None, None) => {
+        (false, true, false, Some(output), None, None, None, None, None) => {
             write_replay_readiness_fleet_scheduler_receipt_path(&output)?;
             println!(
                 "wrote {} ({})",
@@ -123,7 +135,24 @@ fn run() -> EvidenceResult<()> {
                 )?
             );
         }
-        (false, false, None, None, None, None, Some(path)) => {
+        (false, false, true, Some(output), None, None, None, None, None) => {
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(
+                &output,
+                serde_json::to_vec_pretty(&sample_replay_readiness_fleet_scheduler_plan())?,
+            )?;
+            println!(
+                "wrote {} (replay-readiness-fleet-scheduler-plan)",
+                output.display()
+            );
+        }
+        (false, false, false, Some(output), None, None, Some(plan), None, None) => {
+            let summary = execute_replay_readiness_fleet_scheduler_receipt_path(plan, &output)?;
+            println!("wrote {} ({summary})", output.display());
+        }
+        (false, false, false, None, None, None, None, None, Some(path)) => {
             println!(
                 "{}",
                 validate_replay_readiness_fleet_scheduler_receipt_path(path)?
@@ -131,7 +160,7 @@ fn run() -> EvidenceResult<()> {
         }
         _ => {
             return Err(chaoscontrol_evidence::EvidenceError::new(format!(
-                "choose exactly one mode: --sample --output PATH, --check PATH, --run-plan PLAN --output PATH, --check-execution PATH, --sample-fleet --output PATH, or --check-fleet PATH\n{}",
+                "choose exactly one mode: --sample --output PATH, --check PATH, --run-plan PLAN --output PATH, --check-execution PATH, --sample-fleet --output PATH, --sample-fleet-plan --output PATH, --run-fleet-plan PLAN --output PATH, or --check-fleet PATH\n{}",
                 usage()
             )));
         }

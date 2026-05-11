@@ -4,9 +4,9 @@
 
 ## Phase 2: Matrix model and validation
 
-- [ ] [serial] Add Rust-owned matrix config and receipt models for guest/device/profile rows.
-- [ ] [parallel] Add pure aggregation tests for passing, failing, missing, and duplicate matrix rows.
-- [ ] [parallel] Add negative drift fixtures proving the validator rejects mismatched fingerprints and weakened anti-claims.
+- [x] [serial] Add Rust-owned matrix config and receipt models for guest/device/profile rows.
+- [x] [parallel] Add pure aggregation tests for passing, failing, missing, and duplicate matrix rows.
+- [x] [parallel] Add negative drift fixtures proving the validator rejects mismatched fingerprints and weakened anti-claims.
 
 ## Phase 3: Runner and packaging
 

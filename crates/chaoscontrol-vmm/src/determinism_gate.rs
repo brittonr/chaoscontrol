@@ -146,6 +146,142 @@ impl DeterminismGateReceipt {
     }
 }
 
+/// One required profile row in a bounded determinism matrix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeterminismMatrixProfile {
+    /// Stable row identifier, unique within one matrix receipt.
+    pub row_id: String,
+    /// Guest or workload identity, e.g. `raft`, `net`, or a smoke guest name.
+    pub workload: String,
+    /// Kernel artifact fingerprint used by this row.
+    pub kernel_fingerprint: String,
+    /// Initrd or guest artifact fingerprint used by this row.
+    pub initrd_fingerprint: String,
+    /// Named device profile covered by this row.
+    pub device_profile: String,
+    /// Named clock profile covered by this row.
+    pub clock_profile: String,
+    /// Controller or runner configuration label covered by this row.
+    pub controller_profile: String,
+}
+
+/// One validated row in a bounded determinism matrix receipt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeterminismMatrixRow {
+    pub profile: DeterminismMatrixProfile,
+    pub report: DeterminismCaseReport,
+}
+
+/// Top-level bounded device/profile matrix receipt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeterminismMatrixReceipt {
+    pub schema_version: u32,
+    pub gate: String,
+    pub matrix_id: String,
+    pub rows: Vec<DeterminismMatrixRow>,
+    pub passed: bool,
+    /// Required anti-claim: rows not listed in this matrix remain unproven.
+    pub unlisted_profiles_unproven: bool,
+    /// Operator-facing bounded scope text. Must explicitly avoid arbitrary or
+    /// universal guest/device determinism claims.
+    pub scope: String,
+}
+
+impl DeterminismMatrixReceipt {
+    pub fn new(matrix_id: impl Into<String>, rows: Vec<DeterminismMatrixRow>) -> Self {
+        let passed = rows.iter().all(|row| row.report.passed);
+        Self {
+            schema_version: 1,
+            gate: "vm-determinism-profile-matrix".to_string(),
+            matrix_id: matrix_id.into(),
+            rows,
+            passed,
+            unlisted_profiles_unproven: true,
+            scope: "bounded device/profile matrix; unlisted profiles remain unproven; not arbitrary or universal guest/device determinism proof".to_string(),
+        }
+    }
+}
+
+/// Validate a matrix receipt against its required profile rows.
+///
+/// This pure check is intentionally stricter than serialization shape: it
+/// rejects stale/missing rows, duplicate row IDs, weakened anti-claims, and rows
+/// whose embedded comparison report does not match the aggregate pass/fail bit.
+pub fn validate_determinism_matrix_receipt(
+    receipt: &DeterminismMatrixReceipt,
+    required_profiles: &[DeterminismMatrixProfile],
+) -> Result<(), String> {
+    if receipt.schema_version != 1 {
+        return Err(format!(
+            "matrix schema_version: expected 1, got {}",
+            receipt.schema_version
+        ));
+    }
+    if receipt.gate != "vm-determinism-profile-matrix" {
+        return Err(format!(
+            "matrix gate: expected vm-determinism-profile-matrix, got {:?}",
+            receipt.gate
+        ));
+    }
+    if receipt.rows.is_empty() {
+        return Err("matrix rows: expected at least one row".to_string());
+    }
+    if !receipt.unlisted_profiles_unproven {
+        return Err("matrix anti-claim: unlisted_profiles_unproven must be true".to_string());
+    }
+    let scope = receipt.scope.to_ascii_lowercase();
+    if !(scope.contains("bounded")
+        && scope.contains("unlisted")
+        && scope.contains("unproven")
+        && (scope.contains("not arbitrary") || scope.contains("not universal")))
+    {
+        return Err(
+            "matrix scope: must state bounded scope, unlisted profiles remain unproven, and no arbitrary/universal determinism proof".to_string(),
+        );
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    for row in &receipt.rows {
+        if !seen.insert(row.profile.row_id.as_str()) {
+            return Err(format!(
+                "matrix row {:?}: duplicate row_id",
+                row.profile.row_id
+            ));
+        }
+        if row.report.name != row.profile.row_id {
+            return Err(format!(
+                "matrix row {:?}: report name {:?} does not match row_id",
+                row.profile.row_id, row.report.name
+            ));
+        }
+        if row.report.runs == 0 || row.report.observations.is_empty() {
+            return Err(format!(
+                "matrix row {:?}: expected non-empty observations",
+                row.profile.row_id
+            ));
+        }
+    }
+
+    for required in required_profiles {
+        if !receipt.rows.iter().any(|row| row.profile == *required) {
+            return Err(format!(
+                "matrix required profile {:?}: missing row",
+                required.row_id
+            ));
+        }
+    }
+
+    let aggregate_passed = receipt.rows.iter().all(|row| row.report.passed);
+    if receipt.passed != aggregate_passed {
+        return Err(format!(
+            "matrix passed: expected {aggregate_passed}, got {}",
+            receipt.passed
+        ));
+    }
+
+    Ok(())
+}
+
 /// Build a case report by comparing every observation against the first run.
 pub fn compare_case(
     name: impl Into<String>,
@@ -534,5 +670,106 @@ mod tests {
         );
         assert!(receipt.passed);
         assert_eq!(receipt.schema_version, 1);
+    }
+
+    fn sample_profile(row_id: &str) -> DeterminismMatrixProfile {
+        DeterminismMatrixProfile {
+            row_id: row_id.to_string(),
+            workload: "raft".to_string(),
+            kernel_fingerprint: "sha256:kernel".to_string(),
+            initrd_fingerprint: "sha256:initrd".to_string(),
+            device_profile: "virtio-net-block".to_string(),
+            clock_profile: "hide-tsc".to_string(),
+            controller_profile: "single-vm".to_string(),
+        }
+    }
+
+    fn sample_single_vm_report(row_id: &str, actual_exit_count: u64) -> DeterminismCaseReport {
+        compare_case(
+            row_id,
+            vec![
+                RunObservation {
+                    run_index: 1,
+                    fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+                        exit_count: 10,
+                        virtual_tsc: 20,
+                        serial_stripped: "ready".to_string(),
+                    }),
+                    dlog_path: None,
+                },
+                RunObservation {
+                    run_index: 2,
+                    fingerprint: RunFingerprint::SingleVm(VmFingerprint {
+                        exit_count: actual_exit_count,
+                        virtual_tsc: 20,
+                        serial_stripped: "ready".to_string(),
+                    }),
+                    dlog_path: None,
+                },
+            ],
+        )
+    }
+
+    #[test]
+    fn determinism_matrix_validates_required_profile_rows() {
+        let profile = sample_profile("raft-hide-tsc");
+        let row = DeterminismMatrixRow {
+            profile: profile.clone(),
+            report: sample_single_vm_report("raft-hide-tsc", 10),
+        };
+        let receipt = DeterminismMatrixReceipt::new("bounded-smoke", vec![row]);
+
+        validate_determinism_matrix_receipt(&receipt, &[profile]).expect("matrix validates");
+        assert!(receipt.passed);
+        assert!(receipt.scope.contains("unlisted profiles remain unproven"));
+    }
+
+    #[test]
+    fn determinism_matrix_rejects_failing_observation_with_mismatch_class() {
+        let profile = sample_profile("raft-hide-tsc");
+        let row = DeterminismMatrixRow {
+            profile: profile.clone(),
+            report: sample_single_vm_report("raft-hide-tsc", 11),
+        };
+        let receipt = DeterminismMatrixReceipt::new("bounded-smoke", vec![row]);
+
+        validate_determinism_matrix_receipt(&receipt, &[profile]).expect("shape still valid");
+        assert!(!receipt.passed);
+        assert_eq!(
+            receipt.rows[0].report.divergence_classes,
+            vec![DivergenceClass::FingerprintCounters]
+        );
+    }
+
+    #[test]
+    fn determinism_matrix_rejects_missing_duplicate_and_weakened_anticlaims() {
+        let profile = sample_profile("raft-hide-tsc");
+        let row = DeterminismMatrixRow {
+            profile: profile.clone(),
+            report: sample_single_vm_report("raft-hide-tsc", 10),
+        };
+
+        let missing = DeterminismMatrixReceipt::new("bounded-smoke", vec![row.clone()]);
+        let err = validate_determinism_matrix_receipt(&missing, &[sample_profile("net-hide-tsc")])
+            .expect_err("missing row rejected");
+        assert!(err.contains("missing row"));
+
+        let duplicate = DeterminismMatrixReceipt::new("bounded-smoke", vec![row.clone(), row]);
+        let err = validate_determinism_matrix_receipt(&duplicate, &[profile.clone()])
+            .expect_err("duplicate row rejected");
+        assert!(err.contains("duplicate row_id"));
+
+        let mut overclaim = DeterminismMatrixReceipt::new(
+            "bounded-smoke",
+            vec![DeterminismMatrixRow {
+                profile: profile.clone(),
+                report: sample_single_vm_report("raft-hide-tsc", 10),
+            }],
+        );
+        overclaim.unlisted_profiles_unproven = false;
+        overclaim.scope = "arbitrary guest/device determinism proof".to_string();
+        let err = validate_determinism_matrix_receipt(&overclaim, &[profile])
+            .expect_err("weakened anti-claim rejected");
+        assert!(err.contains("unlisted_profiles_unproven") || err.contains("scope"));
     }
 }

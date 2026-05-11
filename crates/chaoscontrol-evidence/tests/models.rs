@@ -5,6 +5,7 @@ use chaoscontrol_evidence::{
     check_dogfood_artifact_sizes, check_evidence_contract_fixtures,
     check_replay_proof_coverage_doc, check_replay_readiness_status,
     execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_replay_readiness_hosted_shared_state_receipt_path,
     execute_replay_readiness_multi_hypervisor_campaign_receipt_path, materialize_snapshot_chunks,
     render_assertion_readiness_status, render_operator_triage_runbook_path,
     render_replay_proof_coverage, render_replay_proof_coverage_doc,
@@ -14,6 +15,7 @@ use chaoscontrol_evidence::{
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
     sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
     sample_replay_readiness_fleet_scheduler_receipt,
+    sample_replay_readiness_hosted_shared_state_plan,
     sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
     sample_replay_readiness_multi_hypervisor_campaign_receipt, sample_replay_readiness_receipt,
@@ -105,14 +107,15 @@ fn renders_committed_replay_readiness_status() {
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
-    assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
-    assert!(
-        rendered.contains("Replay scheduler orchestration | `local-multi-hypervisor-kvm-smoke`")
-    );
-    assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
-    assert!(rendered.contains("bounded local multi-hypervisor campaign receipt"));
-    assert!(rendered.contains("shared decision store"));
-    assert!(rendered.contains("persisted queue state"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `bounded-shared-state-harness`"));
+    assert!(rendered.contains("Replay scheduler orchestration | `bounded-shared-state-harness`"));
+    assert!(rendered
+        .contains("loopback hosted/shared-state harness that persists shared decision records"));
+    assert!(rendered
+        .contains("shared queue leasing plus shared decision writes through the adapter boundary"));
+    assert!(rendered.contains("real KVM multi-hypervisor smoke rail"));
+    assert!(rendered.contains("shared decision"));
+    assert!(rendered.contains("queue"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
     assert!(rendered.contains("Full Antithesis-style product replacement | `not-supported`"));
@@ -511,6 +514,59 @@ fn validates_hosted_shared_state_receipt_model() {
     let err = validate_replay_readiness_hosted_shared_state_receipt(&overclaim)
         .expect_err("hosted/product-parity overclaim is rejected");
     assert!(err.message().contains("non-claims"));
+}
+
+#[test]
+fn executes_hosted_shared_state_loopback_harness() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut plan = sample_replay_readiness_hosted_shared_state_plan();
+    let run_1 = temp.path().join("hosted-run-1.json");
+    let run_2 = temp.path().join("hosted-run-2.json");
+    let queue_state = temp.path().join("hosted-queue-state.json");
+    let decision_store = temp.path().join("hosted-decision-store.json");
+    let receipt_template = temp.path().join("replay-readiness-template.json");
+    std::fs::write(
+        &receipt_template,
+        serde_json::to_vec_pretty(&sample_replay_readiness_receipt(false, "passed"))
+            .expect("receipt json"),
+    )
+    .expect("write receipt template");
+    plan["queue"]["state_path"] = serde_json::json!(queue_state.display().to_string());
+    plan["decision_store"]["path"] = serde_json::json!(decision_store.display().to_string());
+    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
+        "cp '{}' '{}'",
+        receipt_template.display(),
+        run_1.display()
+    ));
+    plan["queue"]["entries"][0]["receipt_path"] = serde_json::json!(run_1.display().to_string());
+    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
+        "cp '{}' '{}'",
+        receipt_template.display(),
+        run_2.display()
+    ));
+    plan["queue"]["entries"][1]["receipt_path"] = serde_json::json!(run_2.display().to_string());
+    let plan_path = temp.path().join("hosted-plan.json");
+    let output_path = temp.path().join("hosted-receipt.json");
+    std::fs::write(
+        &plan_path,
+        serde_json::to_vec_pretty(&plan).expect("plan json"),
+    )
+    .expect("write plan");
+
+    let summary =
+        execute_replay_readiness_hosted_shared_state_receipt_path(&plan_path, &output_path)
+            .expect("hosted harness executes");
+
+    assert!(summary.contains("replay-readiness-hosted-shared-state status=recorded"));
+    assert!(summary.contains("machines=2"));
+    assert!(summary.contains("hypervisors=2"));
+    assert!(summary.contains("queue_entries=2"));
+    assert!(summary.contains("decisions=2"));
+    assert!(output_path.exists());
+    assert!(run_1.exists());
+    assert!(run_2.exists());
+    assert!(queue_state.exists());
+    assert!(decision_store.exists());
 }
 
 #[test]

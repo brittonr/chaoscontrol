@@ -16,10 +16,10 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 6] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "unproven"),
-    ("Hosted/fleet triage UI", "local-decision-receipts"),
+    ("Hosted/fleet triage UI", "bounded-shared-state-harness"),
     (
         "Replay scheduler orchestration",
-        "local-multi-hypervisor-kvm-smoke",
+        "bounded-shared-state-harness",
     ),
     ("Full Antithesis-style product replacement", "not-supported"),
 ];
@@ -191,7 +191,7 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_hosted_fleet_surface = report.replace(
-        "| Hosted/fleet triage UI | `local-decision-receipts` |",
+        "| Hosted/fleet triage UI | `bounded-shared-state-harness` |",
         "| Hosted/fleet triage UI | `supported-bounded` |",
     );
     expect_failure(
@@ -202,7 +202,7 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_scheduler_surface = report.replace(
-        "| Replay scheduler orchestration | `local-multi-hypervisor-kvm-smoke` |",
+        "| Replay scheduler orchestration | `bounded-shared-state-harness` |",
         "| Replay scheduler orchestration | `supported-bounded` |",
     );
     expect_failure(

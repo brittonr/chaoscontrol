@@ -1326,6 +1326,30 @@
                   EOF
                   replay-readiness-scheduler-receipt --run-multi-hypervisor-plan "$out/local-multi-hypervisor-campaign-plan.json" --output "$out/local-multi-hypervisor-campaign-receipt.json" > "$out/local-multi-hypervisor-campaign-summary.txt"
                   replay-readiness-scheduler-receipt --check-multi-hypervisor "$out/local-multi-hypervisor-campaign-receipt.json" >> "$out/local-multi-hypervisor-campaign-summary.txt"
+                  cat > "$out/hosted-shared-state-plan.json" <<EOF
+                  {
+                    "schema_version": 1,
+                    "machines": [
+                      {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+                      {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+                    ],
+                    "hypervisor_workers": [
+                      {"hypervisor_worker_id": "hv-a", "machine_id": "machine-a"},
+                      {"hypervisor_worker_id": "hv-b", "machine_id": "machine-b"}
+                    ],
+                    "queue": {
+                      "queue_id": "hosted-shared-state-check",
+                      "state_path": "$out/hosted-shared-queue-state.json",
+                      "entries": [
+                        {"queue_entry_id": "hosted-static-0001", "run_id": "hosted-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/hosted-run-1.json'", "receipt_path": "$out/hosted-run-1.json", "decision_action": "reproduce"},
+                        {"queue_entry_id": "hosted-static-0002", "run_id": "hosted-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/hosted-run-2.json'", "receipt_path": "$out/hosted-run-2.json", "decision_action": "triage"}
+                      ]
+                    },
+                    "decision_store": {"store_id": "hosted-shared-decision-store-check", "path": "$out/hosted-shared-decision-store.json"}
+                  }
+                  EOF
+                  replay-readiness-scheduler-receipt --run-hosted-shared-state-plan "$out/hosted-shared-state-plan.json" --output "$out/hosted-shared-state-receipt.json" > "$out/hosted-shared-state-summary.txt"
+                  replay-readiness-scheduler-receipt --check-hosted-shared-state "$out/hosted-shared-state-receipt.json" >> "$out/hosted-shared-state-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1350,6 +1374,13 @@
                   test -s "$out/local-multi-hypervisor-campaign-state.json"
                   test -s "$out/local-multi-hypervisor-run-1.json"
                   test -s "$out/local-multi-hypervisor-run-2.json"
+                  test -s "$out/hosted-shared-state-plan.json"
+                  test -s "$out/hosted-shared-state-receipt.json"
+                  test -s "$out/hosted-shared-state-summary.txt"
+                  test -s "$out/hosted-shared-queue-state.json"
+                  test -s "$out/hosted-shared-decision-store.json"
+                  test -s "$out/hosted-run-1.json"
+                  test -s "$out/hosted-run-2.json"
                   test -s "$out/scheduled-run-1.json"
                   test -s "$out/scheduled-run-2.json"
                 '';

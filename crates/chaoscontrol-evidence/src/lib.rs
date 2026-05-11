@@ -45,6 +45,7 @@ pub use readiness_promotion_gate::{
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift,
     execute_fleet_scheduler_receipt_path as execute_replay_readiness_fleet_scheduler_receipt_path,
+    execute_hosted_shared_state_receipt_path as execute_replay_readiness_hosted_shared_state_receipt_path,
     execute_multi_hypervisor_campaign_receipt_path as execute_replay_readiness_multi_hypervisor_campaign_receipt_path,
     execute_scheduler_receipt_path as execute_replay_readiness_scheduler_receipt_path,
     render_dashboard as render_replay_readiness_dashboard, render_fleet_triage_index,
@@ -55,6 +56,7 @@ pub use replay_readiness_surfaces::{
     sample_decision_receipt as sample_replay_readiness_decision_receipt,
     sample_fleet_scheduler_plan as sample_replay_readiness_fleet_scheduler_plan,
     sample_fleet_scheduler_receipt as sample_replay_readiness_fleet_scheduler_receipt,
+    sample_hosted_shared_state_plan as sample_replay_readiness_hosted_shared_state_plan,
     sample_hosted_shared_state_receipt as sample_replay_readiness_hosted_shared_state_receipt,
     sample_multi_hypervisor_campaign_plan as sample_replay_readiness_multi_hypervisor_campaign_plan,
     sample_multi_hypervisor_campaign_receipt as sample_replay_readiness_multi_hypervisor_campaign_receipt,
@@ -159,15 +161,15 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     },
     ExperimentalReplaySurface {
         surface: "Hosted/fleet triage UI",
-        status: "local-decision-receipts",
-        reason: "Current evidence includes a static multi-receipt fleet triage index plus a bounded local operator decision receipt format, but there is still no hosted UI, shared decision store, or cross-machine operator workflow evidence.",
-        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists shared operator decisions, and proves the workflow without raw-log scraping.",
+        status: "bounded-shared-state-harness",
+        reason: "Current evidence includes a static multi-receipt fleet triage index, bounded local operator decision receipts, and a loopback hosted/shared-state harness that persists shared decision records with writer identities. There is still no hosted UI, SaaS service, or real cross-machine operator workflow evidence.",
+        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple real runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists shared operator decisions across machine boundaries, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Replay scheduler orchestration",
-        status: "local-multi-hypervisor-kvm-smoke",
-        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, a bounded local multi-hypervisor campaign receipt, and the packaged `nix run .#local-multi-hypervisor-kvm-smoke` rail that ran real KVM replay-readiness workloads through multiple local ChaosControl hypervisor workers with persisted queue state and run-linked receipt summaries. It is still not a hosted service, shared remote queue, cross-machine scheduler, or Antithesis parity claim.",
-        promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
+        status: "bounded-shared-state-harness",
+        reason: "Current evidence includes bounded local sequential scheduler execution, a restart-persistent local hosted/fleet worker loop, a bounded local multi-hypervisor campaign receipt, a real KVM multi-hypervisor smoke rail, and a loopback hosted/shared-state harness that exercises shared queue leasing plus shared decision writes through the adapter boundary. It is still not a SaaS service, real cross-machine scheduler, universal fleet-scale scheduler, or Antithesis parity claim.",
+        promotion_evidence: "A multi-machine hosted scheduler integration that shares queue state across machines, links each run to receipt artifacts and shared decisions, enforces bounded concurrency/failure behavior across workers, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

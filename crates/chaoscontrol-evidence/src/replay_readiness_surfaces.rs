@@ -1348,6 +1348,297 @@ pub fn validate_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> Evid
     validate_hosted_shared_state_receipt(&load_json(path.as_ref())?)
 }
 
+pub fn execute_hosted_shared_state_receipt_path(
+    plan_path: impl AsRef<Path>,
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<String> {
+    let plan_path = plan_path.as_ref();
+    let output_path = output_path.as_ref();
+    let receipt = execute_hosted_shared_state_receipt(&load_json(plan_path)?, plan_path)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    validate_hosted_shared_state_receipt(&receipt)
+}
+
+pub fn execute_hosted_shared_state_receipt(
+    plan: &Value,
+    plan_path: &Path,
+) -> EvidenceResult<Value> {
+    let machines = array_field(plan.get("machines"), "hosted_shared_state_plan.machines")?;
+    ensure(
+        machines.len() >= 2,
+        "hosted_shared_state_plan.machines: expected at least two machines",
+    )?;
+    let mut machine_writer = BTreeMap::new();
+    let mut machine_values = Vec::with_capacity(machines.len());
+    for (idx, machine) in machines.iter().enumerate() {
+        let machine = object_field(
+            Some(machine),
+            &format!("hosted_shared_state_plan.machines[{idx}]"),
+        )?;
+        let machine_id = token_field(
+            machine.get("machine_id"),
+            &format!("hosted_shared_state_plan.machines[{idx}].machine_id"),
+        )?;
+        let writer_id = token_field(
+            machine.get("writer_id"),
+            &format!("hosted_shared_state_plan.machines[{idx}].writer_id"),
+        )?;
+        ensure(
+            machine_writer
+                .insert(machine_id.to_string(), writer_id.to_string())
+                .is_none(),
+            format!("hosted_shared_state_plan.machines[{idx}].machine_id: duplicate {machine_id}"),
+        )?;
+        machine_values.push(json!({"machine_id": machine_id, "writer_id": writer_id}));
+    }
+
+    let workers = array_field(
+        plan.get("hypervisor_workers"),
+        "hosted_shared_state_plan.hypervisor_workers",
+    )?;
+    ensure(
+        workers.len() >= 2,
+        "hosted_shared_state_plan.hypervisor_workers: expected at least two hypervisor workers",
+    )?;
+    let mut worker_machine = BTreeMap::new();
+    let mut worker_values = Vec::with_capacity(workers.len());
+    for (idx, worker) in workers.iter().enumerate() {
+        let worker = object_field(
+            Some(worker),
+            &format!("hosted_shared_state_plan.hypervisor_workers[{idx}]"),
+        )?;
+        let worker_id = token_field(
+            worker.get("hypervisor_worker_id"),
+            &format!("hosted_shared_state_plan.hypervisor_workers[{idx}].hypervisor_worker_id"),
+        )?;
+        let machine_id = token_field(
+            worker.get("machine_id"),
+            &format!("hosted_shared_state_plan.hypervisor_workers[{idx}].machine_id"),
+        )?;
+        ensure(
+            machine_writer.contains_key(machine_id),
+            format!("hosted_shared_state_plan.hypervisor_workers[{idx}].machine_id: {machine_id} missing from machines"),
+        )?;
+        ensure(
+            worker_machine
+                .insert(worker_id.to_string(), machine_id.to_string())
+                .is_none(),
+            format!("hosted_shared_state_plan.hypervisor_workers[{idx}].hypervisor_worker_id: duplicate {worker_id}"),
+        )?;
+        worker_values.push(json!({"hypervisor_worker_id": worker_id, "machine_id": machine_id}));
+    }
+    let worker_ids = worker_machine.keys().cloned().collect::<Vec<_>>();
+
+    let queue = object_field(plan.get("queue"), "hosted_shared_state_plan.queue")?;
+    let queue_id = token_field(
+        queue.get("queue_id"),
+        "hosted_shared_state_plan.queue.queue_id",
+    )?;
+    let state_path = plan
+        .get("state_path")
+        .or_else(|| queue.get("state_path"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("queue-state.json"));
+    let entries = array_field(
+        queue.get("entries"),
+        "hosted_shared_state_plan.queue.entries",
+    )?;
+    ensure(
+        !entries.is_empty(),
+        "hosted_shared_state_plan.queue.entries: expected non-empty list",
+    )?;
+    let decision_store = object_field(
+        plan.get("decision_store"),
+        "hosted_shared_state_plan.decision_store",
+    )?;
+    let store_id = token_field(
+        decision_store.get("store_id"),
+        "hosted_shared_state_plan.decision_store.store_id",
+    )?;
+    let decision_store_path = decision_store
+        .get("path")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| plan_path.with_extension("decision-store.json"));
+
+    let mut queue_entries = Vec::with_capacity(entries.len());
+    let mut decision_records = Vec::with_capacity(entries.len());
+    let mut failures = 0usize;
+    for (idx, entry) in entries.iter().enumerate() {
+        let entry = object_field(
+            Some(entry),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}]"),
+        )?;
+        let queue_entry_id = token_field(
+            entry.get("queue_entry_id"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].queue_entry_id"),
+        )?;
+        let run_id = token_field(
+            entry.get("run_id"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].run_id"),
+        )?;
+        let workload = token_field(
+            entry.get("workload"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].workload"),
+        )?;
+        let command = str_field(
+            entry.get("command"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].command"),
+        )?;
+        let receipt_path = str_field(
+            entry.get("receipt_path"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].receipt_path"),
+        )?;
+        let worker_id = worker_ids[idx % worker_ids.len()].as_str();
+        let machine_id = worker_machine
+            .get(worker_id)
+            .expect("worker ids are drawn from worker_machine");
+        let writer_id = machine_writer
+            .get(machine_id)
+            .expect("worker machines were validated");
+        let lease_id = format!("lease-{queue_entry_id}");
+        let status = Command::new("sh")
+            .arg("-lc")
+            .arg(command)
+            .status()
+            .map_err(|err| {
+                EvidenceError::new(format!("hosted shared-state run {run_id}: {err}"))
+            })?;
+        let exit_code = status.code().unwrap_or(125);
+        let run_status = if exit_code == 0 {
+            "completed"
+        } else {
+            "failed"
+        };
+        if exit_code != 0 {
+            failures += 1;
+        }
+        let receipt_summary = if exit_code == 0 {
+            summarize_receipt_path(receipt_path)?
+        } else {
+            format!("replay-readiness status=failed exit_code={exit_code}")
+        };
+        queue_entries.push(json!({
+            "queue_entry_id": queue_entry_id,
+            "run_id": run_id,
+            "workload": workload,
+            "state": run_status,
+            "lease": {
+                "lease_id": lease_id,
+                "lease_epoch": (idx + 1) as u64,
+                "owner_machine_id": machine_id,
+                "hypervisor_worker_id": worker_id
+            },
+            "receipt_path": receipt_path,
+            "receipt_summary": receipt_summary
+        }));
+        decision_records.push(json!({
+            "decision_id": format!("decision-{queue_entry_id}"),
+            "decision_revision": 1,
+            "previous_revision": null,
+            "writer_id": writer_id,
+            "machine_id": machine_id,
+            "run_id": run_id,
+            "queue_entry_id": queue_entry_id,
+            "action": entry.get("decision_action").and_then(Value::as_str).unwrap_or("triage"),
+            "status": "recorded",
+            "receipt_path": entry.get("decision_receipt_path").and_then(Value::as_str).unwrap_or("target/hosted/decision.json")
+        }));
+        let state_snapshot = json!({
+            "schema_version": 1,
+            "queue_id": queue_id,
+            "state_path": state_path.display().to_string(),
+            "last_persisted_run_id": run_id,
+            "entries": queue_entries,
+            "persisted_at": format!("unix:{}", unix_seconds())
+        });
+        if let Some(parent) = state_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
+    }
+
+    let decision_snapshot = json!({
+        "schema_version": 1,
+        "store_id": store_id,
+        "records": decision_records,
+        "persisted_at": format!("unix:{}", unix_seconds())
+    });
+    if let Some(parent) = decision_store_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        &decision_store_path,
+        serde_json::to_vec_pretty(&decision_snapshot)?,
+    )?;
+
+    let status = if failures == 0 {
+        "recorded"
+    } else if failures == entries.len() {
+        "failed"
+    } else {
+        "partial"
+    };
+    Ok(json!({
+        "schema_version": 1,
+        "command": "replay-readiness-hosted-shared-state",
+        "status": status,
+        "generated_at": format!("unix:{}", unix_seconds()),
+        "plan_path": plan_path.display().to_string(),
+        "scope": "bounded hosted/shared-state scheduler and decision-store contract with shared queue leases, machine identities, hypervisor workers, run receipts, replay-readiness summaries, decision revisions, and writer identities; not SaaS hosting, not product parity, not Antithesis parity, and not raw-log evidence",
+        "raw_log_scraping": false,
+        "machines": machine_values,
+        "hypervisor_workers": worker_values,
+        "queue": {
+            "kind": "durable-shared",
+            "queue_id": queue_id,
+            "state_path": state_path.display().to_string(),
+            "entries": queue_entries
+        },
+        "decision_store": {
+            "kind": "durable-shared",
+            "store_id": store_id,
+            "path": decision_store_path.display().to_string(),
+            "records": decision_records
+        },
+        "artifacts": {
+            "queue_state_path": state_path.display().to_string(),
+            "decision_store_path": decision_store_path.display().to_string()
+        },
+        "anti_claims": [
+            "This is a bounded hosted/shared-state contract receipt, not SaaS hosting evidence.",
+            "This is not product parity or Antithesis parity.",
+            "This receipt links shared queue leases, machine IDs, hypervisor workers, run receipts, replay-readiness summaries, decision revisions, and writer identities without raw-log scraping."
+        ]
+    }))
+}
+
+pub fn sample_hosted_shared_state_plan() -> Value {
+    json!({
+        "schema_version": 1,
+        "machines": [
+            {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
+            {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
+        ],
+        "hypervisor_workers": [
+            {"hypervisor_worker_id": "hv-a", "machine_id": "machine-a"},
+            {"hypervisor_worker_id": "hv-b", "machine_id": "machine-b"}
+        ],
+        "queue": {
+            "queue_id": "hosted-queue-0001",
+            "entries": [
+                {"queue_entry_id": "hosted-q-raft-0001", "run_id": "hosted-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/hosted/raft-replay-readiness.json", "receipt_path": "target/hosted/raft-replay-readiness.json", "decision_action": "reproduce"},
+                {"queue_entry_id": "hosted-q-redb-0001", "run_id": "hosted-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/hosted/redb-replay-readiness.json", "receipt_path": "target/hosted/redb-replay-readiness.json", "decision_action": "triage"}
+            ]
+        },
+        "decision_store": {"store_id": "hosted-decision-store-0001"}
+    })
+}
+
 pub fn sample_hosted_shared_state_receipt() -> Value {
     json!({
         "schema_version": 1,

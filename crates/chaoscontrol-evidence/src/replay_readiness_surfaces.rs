@@ -230,6 +230,145 @@ code {{ background: rgba(127,127,127,.14); border-radius: .35rem; padding: .1rem
     ))
 }
 
+pub fn write_decision_receipt_path(output_path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let output_path = output_path.as_ref();
+    let receipt = sample_decision_receipt();
+    validate_decision_receipt(&receipt)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    Ok(())
+}
+
+pub fn validate_decision_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+    validate_decision_receipt(&load_json(path.as_ref())?)
+}
+
+pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(receipt.get("schema_version"), "decision.schema_version")?;
+    ensure(
+        schema_version == 1,
+        format!("decision.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "decision.command")?;
+    ensure(
+        command == "replay-readiness-decision-receipt",
+        format!("decision.command: expected replay-readiness-decision-receipt, got {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "decision.status")?;
+    ensure(
+        status == "recorded",
+        format!("decision.status: unsupported value {status:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "decision.scope")?;
+    ensure(
+        scope.contains("local")
+            && scope.contains("bounded")
+            && scope.contains("not a shared decision store"),
+        "decision.scope: must declare bounded local scope and not a shared decision store",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "decision.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let source = object_field(receipt.get("source"), "decision.source")?;
+    str_field(source.get("fleet_index"), "decision.source.fleet_index")?;
+    let receipt_paths = array_field(source.get("receipt_paths"), "decision.source.receipt_paths")?;
+    ensure(
+        !receipt_paths.is_empty(),
+        "decision.source.receipt_paths: expected non-empty list",
+    )?;
+    for (idx, path) in receipt_paths.iter().enumerate() {
+        str_field(Some(path), &format!("decision.source.receipt_paths[{idx}]"))?;
+    }
+
+    let decisions = array_field(receipt.get("decisions"), "decision.decisions")?;
+    ensure(
+        !decisions.is_empty(),
+        "decision.decisions: expected non-empty list",
+    )?;
+    let mut ids = BTreeSet::new();
+    let mut actions = BTreeSet::new();
+    for (idx, decision) in decisions.iter().enumerate() {
+        let decision = object_field(Some(decision), &format!("decision.decisions[{idx}]"))?;
+        let id = token_field(
+            decision.get("decision_id"),
+            &format!("decision.decisions[{idx}].decision_id"),
+        )?;
+        ensure(
+            ids.insert(id.to_string()),
+            format!("decision.decisions[{idx}].decision_id: duplicate {id}"),
+        )?;
+        str_field(
+            decision.get("receipt_path"),
+            &format!("decision.decisions[{idx}].receipt_path"),
+        )?;
+        str_field(
+            decision.get("operator"),
+            &format!("decision.decisions[{idx}].operator"),
+        )?;
+        let action = token_field(
+            decision.get("action"),
+            &format!("decision.decisions[{idx}].action"),
+        )?;
+        ensure(
+            matches!(
+                action,
+                "accept-for-local-review" | "reproduce" | "minimize" | "defer" | "reject"
+            ),
+            format!("decision.decisions[{idx}].action: unsupported value {action:?}"),
+        )?;
+        actions.insert(action.to_string());
+        str_field(
+            decision.get("rationale"),
+            &format!("decision.decisions[{idx}].rationale"),
+        )?;
+        token_field(
+            decision.get("recorded_at"),
+            &format!("decision.decisions[{idx}].recorded_at"),
+        )?;
+        if let Some(Value::String(_)) = decision.get("replay_class") {
+            token_field(
+                decision.get("replay_class"),
+                &format!("decision.decisions[{idx}].replay_class"),
+            )?;
+        }
+        let artifacts = array_field(
+            decision.get("linked_artifacts"),
+            &format!("decision.decisions[{idx}].linked_artifacts"),
+        )?;
+        for (artifact_idx, artifact) in artifacts.iter().enumerate() {
+            str_field(
+                Some(artifact),
+                &format!("decision.decisions[{idx}].linked_artifacts[{artifact_idx}]"),
+            )?;
+        }
+    }
+
+    let anti_claims = array_field(receipt.get("anti_claims"), "decision.anti_claims")?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("not a shared decision store")
+            && anti_claim_text.contains("not a hosted service")
+            && anti_claim_text.contains("no raw-log scraping"),
+        "decision.anti_claims: missing local-scope anti-overclaim text",
+    )?;
+
+    Ok(format!(
+        "replay-readiness-decision-receipt status={status} decisions={} actions={} receipts={} scope=bounded-local-not-shared",
+        decisions.len(),
+        actions.into_iter().collect::<Vec<_>>().join(","),
+        receipt_paths.len()
+    ))
+}
+
 pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<String> {
     let status = str_field(receipt.get("status"), "receipt.status")?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
@@ -474,6 +613,41 @@ pub fn sample_replay_readiness_receipt(dogfood: bool, status: &str) -> Value {
     json!({"schema_version":1,"command":"replay-readiness","status":status,"exit_code": if status == "passed" {0} else {1},"failed_phase": if status == "passed" {Value::Null} else {Value::String("evidence-contracts".into())},"started_at":"2026-05-08T00:00:00Z","finished_at":"2026-05-08T00:00:01Z","static_gates":[{"name":"contract-registry","command":"check-contract-registry .","status":"pass"},{"name":"evidence-contracts","command":"check-evidence-contracts --root .","status": if status == "passed" {"pass"} else {"fail"}}],"dogfood":dogfood_obj,"scope":"bounded committed replay/evidence readiness; not universal determinism or hosted-product parity"})
 }
 
+pub fn sample_decision_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-decision-receipt",
+        "status": "recorded",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "scope": "bounded local operator review receipt; not a shared decision store, hosted service, scheduler, or product-parity claim",
+        "raw_log_scraping": false,
+        "source": {
+            "fleet_index": "target/fleet-triage-index.html",
+            "receipt_paths": ["target/replay-readiness-receipt.json"]
+        },
+        "decisions": [
+            {
+                "decision_id": "local-review-0001",
+                "receipt_path": "target/replay-readiness-receipt.json",
+                "operator": "local-operator",
+                "action": "reproduce",
+                "rationale": "Replay class is snapshot_backed_reproduced; run reproduce/minimize before promotion.",
+                "replay_class": "snapshot_backed_reproduced",
+                "linked_artifacts": [
+                    "target/fleet-triage-index.html",
+                    "dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/verdict.json"
+                ],
+                "recorded_at": "2026-05-11T00:00:00Z"
+            }
+        ],
+        "anti_claims": [
+            "This is not a shared decision store.",
+            "This is not a hosted service or fleet scheduler.",
+            "This decision receipt requires no raw-log scraping and does not prove product parity."
+        ]
+    })
+}
+
 fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     let receipt = sample_replay_readiness_receipt(true, "passed");
     let summary = summarize_receipt(&receipt)?;
@@ -508,6 +682,22 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
         bounded(&fleet_index) && fleet_index.contains("not a hosted service"),
         "fleet triage index lost hosted-service anti-overclaim language",
     )?;
+    let decision = sample_decision_receipt();
+    let decision_summary = validate_decision_receipt(&decision)?;
+    ensure(
+        decision_summary.contains("scope=bounded-local-not-shared"),
+        "decision receipt summary lost bounded local scope",
+    )?;
+    let mut overclaimed_decision = decision.clone();
+    overclaimed_decision["scope"] = json!("hosted shared decision store");
+    match validate_decision_receipt(&overclaimed_decision) {
+        Err(_) => {}
+        Ok(_) => {
+            return Err(EvidenceError::new(
+                "overclaiming decision receipt unexpectedly passed",
+            ))
+        }
+    }
     match render_fleet_triage_index(&[]) {
         Err(_) => {}
         Ok(_) => return Err(EvidenceError::new("empty fleet index unexpectedly passed")),

@@ -10,12 +10,13 @@ use chaoscontrol_evidence::{
     render_replay_readiness_status, run_assertion_readiness_promotion_selftest,
     run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
     run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_receipt, summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
+    sample_replay_readiness_decision_receipt, sample_replay_readiness_receipt,
+    summarize_replay_readiness_receipt, summarize_sdk_local_jsonl,
     validate_accepted_dogfood_config, validate_assertion_readiness_promotion,
     validate_contract_registry_json, validate_gate_metadata, validate_readiness_promotion_files,
-    validate_replay_proof_coverage, write_snapshot_chunk_fixture, AcceptedWorkloadProofs,
-    ReplayVerdict, SnapshotChunkManifest, SnapshotStorage, TriageReceiptSource,
-    REQUIRED_REPLAY_CLASS,
+    validate_replay_proof_coverage, validate_replay_readiness_decision_receipt,
+    write_snapshot_chunk_fixture, AcceptedWorkloadProofs, ReplayVerdict, SnapshotChunkManifest,
+    SnapshotStorage, TriageReceiptSource, REQUIRED_REPLAY_CLASS,
 };
 
 fn repo_file(relative: &str) -> PathBuf {
@@ -93,8 +94,8 @@ fn renders_committed_replay_readiness_status() {
     );
     assert!(rendered.contains("Fresh workload authoring | `experimental`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
-    assert!(rendered.contains("Hosted/fleet triage UI | `static-fleet-index-only`"));
-    assert!(rendered.contains("static multi-receipt fleet triage index"));
+    assert!(rendered.contains("Hosted/fleet triage UI | `local-decision-receipts`"));
+    assert!(rendered.contains("static multi-receipt fleet triage index plus a bounded local operator decision receipt format"));
     assert!(rendered.contains("shared decision store"));
     assert!(rendered.contains("Required promotion evidence"));
     assert!(rendered.contains("without raw-log scraping"));
@@ -205,6 +206,23 @@ fn operator_triage_rejects_unknown_selected_workload() {
     assert!(err
         .message()
         .contains("missing from accepted proof manifest"));
+}
+
+#[test]
+fn validates_replay_readiness_decision_receipt_model() {
+    let receipt = sample_replay_readiness_decision_receipt();
+    let summary =
+        validate_replay_readiness_decision_receipt(&receipt).expect("decision receipt validates");
+
+    assert!(summary.contains("replay-readiness-decision-receipt status=recorded"));
+    assert!(summary.contains("actions=reproduce"));
+    assert!(summary.contains("scope=bounded-local-not-shared"));
+
+    let mut malformed = receipt;
+    malformed["raw_log_scraping"] = serde_json::json!(true);
+    let err = validate_replay_readiness_decision_receipt(&malformed)
+        .expect_err("raw log scraping is rejected");
+    assert!(err.message().contains("raw-log scraping is not allowed"));
 }
 
 #[test]

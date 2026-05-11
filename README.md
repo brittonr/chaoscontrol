@@ -300,13 +300,23 @@ nix run .#replay-readiness-fleet-index -- --output "$PWD/target/fleet-triage-ind
   "$PWD/target/replay-readiness-receipt.json"
 ```
 
-The CI/check surface packages all four artifacts with:
+
+To persist a bounded local operator decision next to that artifact, write and validate a decision receipt. This is a review artifact format, not a hosted/shared decision store:
+
+```bash
+nix run .#replay-readiness-decision-receipt -- --sample \
+  --output "$PWD/target/replay-readiness-decision-receipt.json"
+nix run .#replay-readiness-decision-receipt -- --check \
+  "$PWD/target/replay-readiness-decision-receipt.json"
+```
+
+The CI/check surface packages the receipt, summary, dashboard, triage runbook, fleet index, and local decision receipt artifacts with:
 
 ```bash
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L
 ```
 
-GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, `replay-readiness-dashboard.html`, and `operator-triage-runbook.md` as the `replay-readiness-receipt` artifact.
+GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, `replay-readiness-dashboard.html`, `operator-triage-runbook.md`, `fleet-triage-index.html`, `decision-receipt.json`, and `decision-receipt-summary.txt` as the `replay-readiness-receipt` artifact.
 
 For the VM drift gate specifically, run the bounded hide-TSC operator profile:
 

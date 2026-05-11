@@ -16,7 +16,7 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 5] = [
     ("Fresh workload authoring", "experimental"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "unproven"),
-    ("Hosted/fleet triage UI", "static-fleet-index-only"),
+    ("Hosted/fleet triage UI", "local-decision-receipts"),
     ("Full Antithesis-style product replacement", "not-supported"),
 ];
 
@@ -187,7 +187,7 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_hosted_fleet_surface = report.replace(
-        "| Hosted/fleet triage UI | `static-fleet-index-only` |",
+        "| Hosted/fleet triage UI | `local-decision-receipts` |",
         "| Hosted/fleet triage UI | `supported-bounded` |",
     );
     expect_failure(

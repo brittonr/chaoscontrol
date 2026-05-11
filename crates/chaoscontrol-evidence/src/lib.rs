@@ -47,11 +47,15 @@ pub use replay_readiness_surfaces::{
     render_fleet_triage_index, render_fleet_triage_index_path,
     render_readme_status_block as render_replay_readiness_readme_status_block,
     replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
-    run_readiness_surface_drift_selftest, sample_replay_readiness_receipt,
-    summarize_receipt as summarize_replay_readiness_receipt,
+    run_readiness_surface_drift_selftest,
+    sample_decision_receipt as sample_replay_readiness_decision_receipt,
+    sample_replay_readiness_receipt, summarize_receipt as summarize_replay_readiness_receipt,
     summarize_receipt_path as summarize_replay_readiness_receipt_path,
     update_readme_status_path as update_replay_readiness_readme_status_path,
+    validate_decision_receipt as validate_replay_readiness_decision_receipt,
+    validate_decision_receipt_path as validate_replay_readiness_decision_receipt_path,
     validate_gate_metadata, write_dashboard_path as write_replay_readiness_dashboard_path,
+    write_decision_receipt_path as write_replay_readiness_decision_receipt_path,
     write_fleet_triage_index_path,
 };
 pub use sdk_local_report::{
@@ -129,9 +133,9 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 6] = [
     },
     ExperimentalReplaySurface {
         surface: "Hosted/fleet triage UI",
-        status: "static-fleet-index-only",
-        reason: "Current evidence includes a static multi-receipt fleet triage index for local or CI artifact review, but there is still no hosted UI, shared decision store, fleet scheduler integration, or cross-machine operator workflow evidence.",
-        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists operator decisions, and proves the workflow without raw-log scraping.",
+        status: "local-decision-receipts",
+        reason: "Current evidence includes a static multi-receipt fleet triage index plus a bounded local operator decision receipt format, but there is still no hosted UI, shared decision store, fleet scheduler integration, or cross-machine operator workflow evidence.",
+        promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists shared operator decisions, and proves the workflow without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

@@ -898,6 +898,14 @@
             '';
           };
 
+          replayReadinessSchedulerReceipt = pkgs.writeShellApplication {
+            name = "replay-readiness-scheduler-receipt";
+            runtimeInputs = [ chaoscontrol ];
+            text = ''
+              exec ${chaoscontrol}/bin/replay-readiness-scheduler-receipt "$@"
+            '';
+          };
+
           replayReadinessReadmeStatus = pkgs.writeShellApplication {
             name = "replay-readiness-readme-status";
             runtimeInputs = [ chaoscontrol ];
@@ -987,6 +995,7 @@
             replay-readiness-triage = replayReadinessTriage;
             replay-readiness-fleet-index = replayReadinessFleetIndex;
             replay-readiness-decision-receipt = replayReadinessDecisionReceipt;
+            replay-readiness-scheduler-receipt = replayReadinessSchedulerReceipt;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
@@ -1211,6 +1220,7 @@
                     replayReadinessTriage
                     replayReadinessFleetIndex
                     replayReadinessDecisionReceipt
+                    replayReadinessSchedulerReceipt
                   ];
                 }
                 ''
@@ -1223,6 +1233,8 @@
                   replay-readiness-fleet-index --output "$out/fleet-triage-index.html" "$receipt"
                   replay-readiness-decision-receipt --sample --output "$out/decision-receipt.json"
                   replay-readiness-decision-receipt --check "$out/decision-receipt.json" > "$out/decision-receipt-summary.txt"
+                  replay-readiness-scheduler-receipt --sample --output "$out/scheduler-receipt.json"
+                  replay-readiness-scheduler-receipt --check "$out/scheduler-receipt.json" > "$out/scheduler-receipt-summary.txt"
                   test -s "$receipt"
                   test -s "$out/replay-readiness-summary.txt"
                   test -s "$out/replay-readiness-dashboard.html"
@@ -1230,6 +1242,8 @@
                   test -s "$out/fleet-triage-index.html"
                   test -s "$out/decision-receipt.json"
                   test -s "$out/decision-receipt-summary.txt"
+                  test -s "$out/scheduler-receipt.json"
+                  test -s "$out/scheduler-receipt-summary.txt"
                 '';
 
             # Cheap CI/report guard for the latest packaged hide-TSC VM drift receipt.
@@ -1468,6 +1482,7 @@
             replay-readiness-triage = mkApp "Render a local operator triage runbook from a replay readiness receipt." "${replayReadinessTriage}/bin/replay-readiness-triage";
             replay-readiness-fleet-index = mkApp "Render a static multi-receipt fleet triage index." "${replayReadinessFleetIndex}/bin/replay-readiness-fleet-index";
             replay-readiness-decision-receipt = mkApp "Write or validate a bounded local replay-readiness decision receipt." "${replayReadinessDecisionReceipt}/bin/replay-readiness-decision-receipt";
+            replay-readiness-scheduler-receipt = mkApp "Write or validate a bounded local replay-readiness scheduler receipt." "${replayReadinessSchedulerReceipt}/bin/replay-readiness-scheduler-receipt";
             replay-readiness-readme-status = mkApp "Check README replay-readiness status against a receipt." "${replayReadinessReadmeStatus}/bin/replay-readiness-readme-status";
           };
 

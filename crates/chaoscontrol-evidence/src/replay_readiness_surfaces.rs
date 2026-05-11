@@ -245,6 +245,21 @@ pub fn validate_decision_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<
     validate_decision_receipt(&load_json(path.as_ref())?)
 }
 
+pub fn write_scheduler_receipt_path(output_path: impl AsRef<Path>) -> EvidenceResult<()> {
+    let output_path = output_path.as_ref();
+    let receipt = sample_scheduler_receipt();
+    validate_scheduler_receipt(&receipt)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, serde_json::to_vec_pretty(&receipt)?)?;
+    Ok(())
+}
+
+pub fn validate_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+    validate_scheduler_receipt(&load_json(path.as_ref())?)
+}
+
 pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
     let schema_version = int_field(receipt.get("schema_version"), "decision.schema_version")?;
     ensure(
@@ -366,6 +381,123 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
         decisions.len(),
         actions.into_iter().collect::<Vec<_>>().join(","),
         receipt_paths.len()
+    ))
+}
+
+pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+    let schema_version = int_field(receipt.get("schema_version"), "scheduler.schema_version")?;
+    ensure(
+        schema_version == 1,
+        format!("scheduler.schema_version: expected 1, got {schema_version}"),
+    )?;
+    let command = str_field(receipt.get("command"), "scheduler.command")?;
+    ensure(
+        command == "replay-readiness-scheduler-receipt",
+        format!("scheduler.command: expected replay-readiness-scheduler-receipt, got {command:?}"),
+    )?;
+    let status = str_field(receipt.get("status"), "scheduler.status")?;
+    ensure(
+        matches!(status, "planned" | "recorded" | "partial"),
+        format!("scheduler.status: unsupported value {status:?}"),
+    )?;
+    let scope = str_field(receipt.get("scope"), "scheduler.scope")?;
+    ensure(
+        scope.contains("bounded")
+            && scope.contains("local")
+            && scope.contains("not a hosted service")
+            && scope.contains("not a fleet-scale scheduler"),
+        "scheduler.scope: must declare bounded local scope and not a hosted/fleet scheduler",
+    )?;
+    ensure(
+        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+        "scheduler.raw_log_scraping: raw-log scraping is not allowed",
+    )?;
+
+    let schedule = object_field(receipt.get("schedule"), "scheduler.schedule")?;
+    let mode = token_field(schedule.get("mode"), "scheduler.schedule.mode")?;
+    ensure(
+        matches!(mode, "manual-batch" | "cron-preview"),
+        format!("scheduler.schedule.mode: unsupported value {mode:?}"),
+    )?;
+    let max_runs = int_field(schedule.get("max_runs"), "scheduler.schedule.max_runs")?;
+    let concurrency = int_field(
+        schedule.get("concurrency"),
+        "scheduler.schedule.concurrency",
+    )?;
+    ensure(
+        max_runs > 0,
+        "scheduler.schedule.max_runs: expected positive integer",
+    )?;
+    ensure(
+        concurrency > 0 && concurrency <= max_runs,
+        "scheduler.schedule.concurrency: expected positive integer no larger than max_runs",
+    )?;
+
+    let run_plan = array_field(receipt.get("run_plan"), "scheduler.run_plan")?;
+    ensure(
+        !run_plan.is_empty(),
+        "scheduler.run_plan: expected non-empty list",
+    )?;
+    ensure(
+        run_plan.len() as i64 <= max_runs,
+        "scheduler.run_plan: cannot exceed schedule.max_runs",
+    )?;
+    let mut run_ids = BTreeSet::new();
+    let mut workloads = BTreeSet::new();
+    for (idx, run) in run_plan.iter().enumerate() {
+        let run = object_field(Some(run), &format!("scheduler.run_plan[{idx}]"))?;
+        let run_id = token_field(
+            run.get("run_id"),
+            &format!("scheduler.run_plan[{idx}].run_id"),
+        )?;
+        ensure(
+            run_ids.insert(run_id.to_string()),
+            format!("scheduler.run_plan[{idx}].run_id: duplicate {run_id}"),
+        )?;
+        let workload = token_field(
+            run.get("workload"),
+            &format!("scheduler.run_plan[{idx}].workload"),
+        )?;
+        workloads.insert(workload.to_string());
+        str_field(
+            run.get("command"),
+            &format!("scheduler.run_plan[{idx}].command"),
+        )?;
+        str_field(
+            run.get("receipt_path"),
+            &format!("scheduler.run_plan[{idx}].receipt_path"),
+        )?;
+        let decision_policy = token_field(
+            run.get("decision_policy"),
+            &format!("scheduler.run_plan[{idx}].decision_policy"),
+        )?;
+        ensure(
+            matches!(decision_policy, "record-local-decision" | "skip-decision"),
+            format!(
+                "scheduler.run_plan[{idx}].decision_policy: unsupported value {decision_policy:?}"
+            ),
+        )?;
+    }
+
+    let anti_claims = array_field(receipt.get("anti_claims"), "scheduler.anti_claims")?;
+    let anti_claim_text = anti_claims
+        .iter()
+        .map(json_display)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+    ensure(
+        anti_claim_text.contains("not a hosted service")
+            && anti_claim_text.contains("not a fleet-scale scheduler")
+            && anti_claim_text.contains("not a shared queue")
+            && anti_claim_text.contains("no raw-log scraping"),
+        "scheduler.anti_claims: missing scheduler anti-overclaim text",
+    )?;
+
+    Ok(format!(
+        "replay-readiness-scheduler-receipt status={status} runs={} workloads={} mode={mode} scope=bounded-local-not-hosted",
+        run_plan.len(),
+        workloads.into_iter().collect::<Vec<_>>().join(",")
     ))
 }
 
@@ -648,6 +780,44 @@ pub fn sample_decision_receipt() -> Value {
     })
 }
 
+pub fn sample_scheduler_receipt() -> Value {
+    json!({
+        "schema_version": 1,
+        "command": "replay-readiness-scheduler-receipt",
+        "status": "planned",
+        "generated_at": "2026-05-11T00:00:00Z",
+        "scope": "bounded local replay run manifest; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
+        "raw_log_scraping": false,
+        "source_decision_receipt": "target/decision-receipt.json",
+        "schedule": {
+            "mode": "manual-batch",
+            "max_runs": 2,
+            "concurrency": 1
+        },
+        "run_plan": [
+            {
+                "run_id": "local-run-raft-0001",
+                "workload": "raft",
+                "command": "replay-readiness --dogfood raft --receipt target/raft-replay-readiness.json",
+                "receipt_path": "target/raft-replay-readiness.json",
+                "decision_policy": "record-local-decision"
+            },
+            {
+                "run_id": "local-run-redb-0001",
+                "workload": "redb",
+                "command": "replay-readiness --dogfood redb --receipt target/redb-replay-readiness.json",
+                "receipt_path": "target/redb-replay-readiness.json",
+                "decision_policy": "record-local-decision"
+            }
+        ],
+        "anti_claims": [
+            "This is not a hosted service.",
+            "This is not a fleet-scale scheduler and not a shared queue.",
+            "This scheduler receipt uses no raw-log scraping and does not prove product parity."
+        ]
+    })
+}
+
 fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     let receipt = sample_replay_readiness_receipt(true, "passed");
     let summary = summarize_receipt(&receipt)?;
@@ -695,6 +865,23 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
         Ok(_) => {
             return Err(EvidenceError::new(
                 "overclaiming decision receipt unexpectedly passed",
+            ))
+        }
+    }
+    let scheduler = sample_scheduler_receipt();
+    let scheduler_summary = validate_scheduler_receipt(&scheduler)?;
+    ensure(
+        scheduler_summary.contains("scope=bounded-local-not-hosted")
+            && scheduler_summary.contains("runs=2"),
+        "scheduler receipt summary lost bounded local scope or run count",
+    )?;
+    let mut overclaimed_scheduler = scheduler;
+    overclaimed_scheduler["scope"] = json!("hosted fleet-scale scheduler");
+    match validate_scheduler_receipt(&overclaimed_scheduler) {
+        Err(_) => {}
+        Ok(_) => {
+            return Err(EvidenceError::new(
+                "overclaiming scheduler receipt unexpectedly passed",
             ))
         }
     }

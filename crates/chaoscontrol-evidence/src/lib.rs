@@ -49,14 +49,20 @@ pub use replay_readiness_surfaces::{
     replace_readme_marker_block as replace_replay_readiness_readme_marker_block,
     run_readiness_surface_drift_selftest,
     sample_decision_receipt as sample_replay_readiness_decision_receipt,
-    sample_replay_readiness_receipt, summarize_receipt as summarize_replay_readiness_receipt,
+    sample_replay_readiness_receipt,
+    sample_scheduler_receipt as sample_replay_readiness_scheduler_receipt,
+    summarize_receipt as summarize_replay_readiness_receipt,
     summarize_receipt_path as summarize_replay_readiness_receipt_path,
     update_readme_status_path as update_replay_readiness_readme_status_path,
     validate_decision_receipt as validate_replay_readiness_decision_receipt,
     validate_decision_receipt_path as validate_replay_readiness_decision_receipt_path,
-    validate_gate_metadata, write_dashboard_path as write_replay_readiness_dashboard_path,
+    validate_gate_metadata,
+    validate_scheduler_receipt as validate_replay_readiness_scheduler_receipt,
+    validate_scheduler_receipt_path as validate_replay_readiness_scheduler_receipt_path,
+    write_dashboard_path as write_replay_readiness_dashboard_path,
     write_decision_receipt_path as write_replay_readiness_decision_receipt_path,
     write_fleet_triage_index_path,
+    write_scheduler_receipt_path as write_replay_readiness_scheduler_receipt_path,
 };
 pub use sdk_local_report::{
     check_sdk_local_report_tracks, summarize_sdk_local_jsonl, summarize_sdk_local_report,
@@ -106,7 +112,7 @@ pub struct ExperimentalReplaySurface {
     pub promotion_evidence: &'static str,
 }
 
-pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 6] = [
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 7] = [
     ExperimentalReplaySurface {
         surface: "Fresh workload authoring",
         status: "experimental",
@@ -134,8 +140,14 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 6] = [
     ExperimentalReplaySurface {
         surface: "Hosted/fleet triage UI",
         status: "local-decision-receipts",
-        reason: "Current evidence includes a static multi-receipt fleet triage index plus a bounded local operator decision receipt format, but there is still no hosted UI, shared decision store, fleet scheduler integration, or cross-machine operator workflow evidence.",
+        reason: "Current evidence includes a static multi-receipt fleet triage index plus a bounded local operator decision receipt format, but there is still no hosted UI, shared decision store, or cross-machine operator workflow evidence.",
         promotion_evidence: "Hosted or UI-backed fleet triage evidence that ingests readiness receipts from multiple runs, links bug/replay artifacts, runs or records reproduce/minimize outcomes, persists shared operator decisions, and proves the workflow without raw-log scraping.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Replay scheduler orchestration",
+        status: "local-scheduler-receipts",
+        reason: "Current evidence includes a bounded local scheduler receipt for a manual multi-run plan, but not a hosted scheduler, shared queue, cross-machine orchestration, or automatic campaign service.",
+        promotion_evidence: "A scheduler integration that executes or records multiple replay-readiness runs, links each run to receipt artifacts and local decisions, enforces bounded concurrency/failure behavior, and proves the workflow without raw-log scraping or shared-queue overclaims.",
     },
     ExperimentalReplaySurface {
         surface: "Full Antithesis-style product replacement",

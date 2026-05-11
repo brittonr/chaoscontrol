@@ -611,7 +611,7 @@
                   profile = row.get("profile", {})
                   report = row.get("report", {})
                   lines.append(
-                      f"- {profile.get('row_id')}: passed={report.get('passed')} runs={report.get('runs')} device={profile.get('device_profile')} clock={profile.get('clock_profile')}"
+                      f"- {profile.get('row_id')}: status={row.get('status')} passed={report.get('passed')} runs={report.get('runs')} product={profile.get('local_product_profile')} workers={profile.get('worker_count')} workload={profile.get('workload')} kernel={profile.get('kernel_fingerprint')} initrd={profile.get('initrd_fingerprint')} device={profile.get('device_profile')} clock={profile.get('clock_profile')} controller={profile.get('controller_profile')} hypervisor={profile.get('hypervisor_profile')} mismatches={len(report.get('mismatches', []))}"
                   )
               with open(summary_path, "w", encoding="utf-8") as fh:
                   fh.write("\n".join(lines) + "\n")

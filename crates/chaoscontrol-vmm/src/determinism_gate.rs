@@ -163,6 +163,12 @@ pub struct DeterminismMatrixProfile {
     pub clock_profile: String,
     /// Controller or runner configuration label covered by this row.
     pub controller_profile: String,
+    /// Current local product profile this row belongs to.
+    pub local_product_profile: String,
+    /// Number of local hypervisor workers represented by this row.
+    pub worker_count: u32,
+    /// Named local hypervisor/controller family for the row.
+    pub hypervisor_profile: String,
 }
 
 /// One validated row in a bounded determinism matrix receipt.
@@ -170,6 +176,30 @@ pub struct DeterminismMatrixProfile {
 pub struct DeterminismMatrixRow {
     pub profile: DeterminismMatrixProfile,
     pub report: DeterminismCaseReport,
+    /// Row status is explicit so unsupported or failing rows stay visible.
+    #[serde(default = "default_matrix_row_status")]
+    pub status: MatrixRowStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MatrixRowStatus {
+    Passed,
+    Failed,
+    Unsupported,
+}
+
+fn default_matrix_row_status() -> MatrixRowStatus {
+    MatrixRowStatus::Passed
+}
+
+impl MatrixRowStatus {
+    fn matches_report(self, passed: bool) -> bool {
+        matches!(
+            (self, passed),
+            (Self::Passed, true) | (Self::Failed, false) | (Self::Unsupported, false)
+        )
+    }
 }
 
 /// Top-level bounded device/profile matrix receipt.
@@ -246,6 +276,36 @@ pub fn validate_determinism_matrix_receipt(
             return Err(format!(
                 "matrix row {:?}: duplicate row_id",
                 row.profile.row_id
+            ));
+        }
+        if row.profile.local_product_profile.is_empty() {
+            return Err(format!(
+                "matrix row {:?}: expected local_product_profile",
+                row.profile.row_id
+            ));
+        }
+        if row.profile.worker_count == 0 {
+            return Err(format!(
+                "matrix row {:?}: expected positive worker_count",
+                row.profile.row_id
+            ));
+        }
+        if row.profile.hypervisor_profile.is_empty() {
+            return Err(format!(
+                "matrix row {:?}: expected hypervisor_profile",
+                row.profile.row_id
+            ));
+        }
+        if row.status == MatrixRowStatus::Unsupported && row.report.mismatches.is_empty() {
+            return Err(format!(
+                "matrix row {:?}: unsupported rows must preserve bounded mismatch details",
+                row.profile.row_id
+            ));
+        }
+        if !row.status.matches_report(row.report.passed) {
+            return Err(format!(
+                "matrix row {:?}: status {:?} does not match report passed={}",
+                row.profile.row_id, row.status, row.report.passed
             ));
         }
         if row.report.name.is_empty() {
@@ -681,6 +741,9 @@ mod tests {
             device_profile: "virtio-net-block".to_string(),
             clock_profile: "hide-tsc".to_string(),
             controller_profile: "single-vm".to_string(),
+            local_product_profile: "single-machine-multi-hypervisor".to_string(),
+            worker_count: 2,
+            hypervisor_profile: "local-kvm-workers".to_string(),
         }
     }
 
@@ -716,6 +779,7 @@ mod tests {
         let row = DeterminismMatrixRow {
             profile: profile.clone(),
             report: sample_single_vm_report("raft-hide-tsc", 10),
+            status: MatrixRowStatus::Passed,
         };
         let receipt = DeterminismMatrixReceipt::new("bounded-smoke", vec![row]);
 
@@ -730,6 +794,7 @@ mod tests {
         let row = DeterminismMatrixRow {
             profile: profile.clone(),
             report: sample_single_vm_report("raft-hide-tsc", 11),
+            status: MatrixRowStatus::Failed,
         };
         let receipt = DeterminismMatrixReceipt::new("bounded-smoke", vec![row]);
 
@@ -747,6 +812,7 @@ mod tests {
         let row = DeterminismMatrixRow {
             profile: profile.clone(),
             report: sample_single_vm_report("raft-hide-tsc", 10),
+            status: MatrixRowStatus::Passed,
         };
 
         let missing = DeterminismMatrixReceipt::new("bounded-smoke", vec![row.clone()]);
@@ -764,6 +830,7 @@ mod tests {
             vec![DeterminismMatrixRow {
                 profile: profile.clone(),
                 report: sample_single_vm_report("raft-hide-tsc", 10),
+                status: MatrixRowStatus::Passed,
             }],
         );
         overclaim.unlisted_profiles_unproven = false;
@@ -771,5 +838,33 @@ mod tests {
         let err = validate_determinism_matrix_receipt(&overclaim, &[profile])
             .expect_err("weakened anti-claim rejected");
         assert!(err.contains("unlisted_profiles_unproven") || err.contains("scope"));
+    }
+
+    #[test]
+    fn determinism_matrix_requires_local_product_metadata_and_visible_unsupported_rows() {
+        let mut profile = sample_profile("raft-hide-tsc");
+        profile.worker_count = 0;
+        let row = DeterminismMatrixRow {
+            profile: profile.clone(),
+            report: sample_single_vm_report("raft-hide-tsc", 10),
+            status: MatrixRowStatus::Passed,
+        };
+        let err = validate_determinism_matrix_receipt(
+            &DeterminismMatrixReceipt::new("bounded-smoke", vec![row]),
+            &[profile],
+        )
+        .expect_err("missing worker count rejected");
+        assert!(err.contains("worker_count"));
+
+        let profile = sample_profile("raft-unsupported-hide-tsc");
+        let unsupported = DeterminismMatrixRow {
+            profile: profile.clone(),
+            report: sample_single_vm_report("raft-unsupported-hide-tsc", 11),
+            status: MatrixRowStatus::Unsupported,
+        };
+        let receipt = DeterminismMatrixReceipt::new("bounded-smoke", vec![unsupported]);
+        validate_determinism_matrix_receipt(&receipt, &[profile])
+            .expect("unsupported row remains visible with mismatch details");
+        assert!(!receipt.passed);
     }
 }

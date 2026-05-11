@@ -624,6 +624,23 @@ fn profile_for_case(
         device_profile: device_profile_for_case(case_name).to_string(),
         clock_profile: clock_profile.as_str().to_string(),
         controller_profile: case_name.to_string(),
+        local_product_profile: "single-machine-multi-hypervisor".to_string(),
+        worker_count: worker_count_for_case(case_name),
+        hypervisor_profile: hypervisor_profile_for_case(case_name).to_string(),
+    }
+}
+
+fn worker_count_for_case(case_name: &str) -> u32 {
+    match case_name {
+        "controller-3vm-1vcpu" | "controller-3vm-2vcpu" => 3,
+        _ => 1,
+    }
+}
+
+fn hypervisor_profile_for_case(case_name: &str) -> &'static str {
+    match case_name {
+        "controller-3vm-1vcpu" | "controller-3vm-2vcpu" => "local-kvm-controller-workers",
+        _ => "local-kvm-single-worker",
     }
 }
 
@@ -654,6 +671,11 @@ fn build_matrix_receipt(
                 clock_profile,
             ),
             report: report.clone(),
+            status: if report.passed {
+                chaoscontrol_vmm::determinism_gate::MatrixRowStatus::Passed
+            } else {
+                chaoscontrol_vmm::determinism_gate::MatrixRowStatus::Failed
+            },
         })
         .collect::<Vec<_>>();
     let required_profiles = rows

@@ -194,8 +194,8 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     ExperimentalReplaySurface {
         surface: "Arbitrary guest/device determinism",
         status: "bounded-matrix-rail",
-        reason: "Current evidence includes a bounded hide-TSC device/profile matrix rail (`nix run .#vm-determinism-matrix`) that emits a `matrix-receipt.json` from listed VM determinism observations. This is matrix-scoped evidence only; unlisted guests, devices, clock profiles, and timing behaviors remain unproven, and the rail is not a universal hypervisor/device/timing determinism proof.",
-        promotion_evidence: "Committed device/profile matrix receipts for each promoted row, negative drift evidence for unsupported profiles, and promotion-gate checks that reject converting the bounded matrix rail into an arbitrary or universal determinism claim.",
+        reason: "Current evidence includes a bounded hide-TSC device/profile matrix rail (`nix run .#vm-determinism-matrix`) that emits a `matrix-receipt.json` from listed VM determinism observations. Matrix rows bind named single-machine multi-hypervisor product profiles, worker counts, workload identity, kernel/initrd fingerprints, device profile, clock profile, and controller configuration. This is matrix-scoped evidence only; unlisted guests, devices, clock profiles, and timing behaviors remain unproven, and the rail is not a universal hypervisor/device/timing determinism proof.",
+        promotion_evidence: "Committed device/profile matrix receipts for each promoted row, visible failing/unsupported rows with bounded mismatch details, negative drift evidence for unsupported profiles, and promotion-gate checks that reject converting the bounded matrix rail into an arbitrary or universal determinism claim.",
     },
     ExperimentalReplaySurface {
         surface: "Operator triage UX",

@@ -3130,6 +3130,14 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         "plan_path": plan_path.display().to_string(),
         "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
         "raw_log_scraping": false,
+        "fault_coverage": {
+            "schema_version": 1,
+            "scope": "listed deterministic fault classes and workloads only; not exhaustive validation of all possible failures",
+            "by_workload": [
+                {"workload": "raft", "configured_fault_classes": ["network", "timer", "scheduler"], "injection_attempts": 3, "observed_injections": 2, "not_observed_fault_classes": ["scheduler"], "affected_run_ids": ["mh-run-raft-0001"], "unsupported_fault_classes": ["process"]},
+                {"workload": "redb", "configured_fault_classes": ["block"], "injection_attempts": 1, "observed_injections": 1, "not_observed_fault_classes": [], "affected_run_ids": ["mh-run-redb-0001"], "unsupported_fault_classes": []}
+            ]
+        },
         "queue_state": {
             "kind": "durable-local-file",
             "state_path": state_path.display().to_string(),
@@ -3148,7 +3156,8 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
             "This is not a shared remote queue or cross-machine scheduler.",
             "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
-            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping."
+            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping.",
+            "Fault coverage is limited to listed deterministic fault classes and workloads; it is not exhaustive validation of all possible failures."
         ]
     }))
 }
@@ -3182,6 +3191,14 @@ pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
         "campaign_id": "local-campaign-0001",
         "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
         "raw_log_scraping": false,
+        "fault_coverage": {
+            "schema_version": 1,
+            "scope": "listed deterministic fault classes and workloads only; not exhaustive validation of all possible failures",
+            "by_workload": [
+                {"workload": "raft", "configured_fault_classes": ["network", "timer", "scheduler"], "injection_attempts": 3, "observed_injections": 2, "not_observed_fault_classes": ["scheduler"], "affected_run_ids": ["mh-run-raft-0001"], "unsupported_fault_classes": ["process"]},
+                {"workload": "redb", "configured_fault_classes": ["block"], "injection_attempts": 1, "observed_injections": 1, "not_observed_fault_classes": [], "affected_run_ids": ["mh-run-redb-0001"], "unsupported_fault_classes": []}
+            ]
+        },
         "queue_state": {"kind": "durable-local-file", "state_path": "target/multi-hypervisor/campaign-state.json", "loaded_existing_state": false, "completed_before_start": 0, "persisted_after_each_run": true},
         "control_plane": {"kind": "single-machine-local", "max_hypervisors": 2, "artifact_index_path": "target/multi-hypervisor/artifact-index.json", "follow_up_policy": {"enabled": true, "reproduce": true, "minimize": true}},
         "queue": {"entries": [
@@ -3206,7 +3223,8 @@ pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
             "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
             "This is not a shared remote queue or cross-machine scheduler.",
             "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
-            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping."
+            "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping.",
+            "Fault coverage is limited to listed deterministic fault classes and workloads; it is not exhaustive validation of all possible failures."
         ]
     })
 }
@@ -3242,6 +3260,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
         "multi_hypervisor.raw_log_scraping: raw-log scraping is not allowed",
     )?;
+    let fault_coverage = validate_fault_coverage_summary(receipt.get("fault_coverage"))?;
 
     let queue_state = object_field(receipt.get("queue_state"), "multi_hypervisor.queue_state")?;
     str_field(
@@ -3609,7 +3628,82 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             && anti_claim_text.contains("without raw-log scraping"),
         "multi_hypervisor.anti_claims: missing bounded local multi-hypervisor anti-overclaim text",
     )?;
-    Ok(format!("replay-readiness-local-multi-hypervisor-campaign status={status} campaign={campaign_id} hypervisors={} runs={} passed={} restart_persisted=true workloads={} scope=bounded-local-multi-hypervisor", hypervisors.len(), runs.len(), passed, workloads.into_iter().collect::<Vec<_>>().join(",")))
+    Ok(format!("replay-readiness-local-multi-hypervisor-campaign status={status} campaign={campaign_id} hypervisors={} runs={} passed={} restart_persisted=true workloads={} fault_classes={} scope=bounded-local-multi-hypervisor", hypervisors.len(), runs.len(), passed, workloads.into_iter().collect::<Vec<_>>().join(","), fault_coverage.join(",")))
+}
+
+fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<String>> {
+    let summary = object_field(value, "multi_hypervisor.fault_coverage")?;
+    ensure(
+        int_field(
+            summary.get("schema_version"),
+            "multi_hypervisor.fault_coverage.schema_version",
+        )? == 1,
+        "multi_hypervisor.fault_coverage.schema_version: expected 1",
+    )?;
+    let scope = str_field(
+        summary.get("scope"),
+        "multi_hypervisor.fault_coverage.scope",
+    )?
+    .to_ascii_lowercase();
+    ensure(
+        scope.contains("listed") && scope.contains("not exhaustive"),
+        "multi_hypervisor.fault_coverage.scope: must preserve listed-only anti-claim",
+    )?;
+    let by_workload = array_field(
+        summary.get("by_workload"),
+        "multi_hypervisor.fault_coverage.by_workload",
+    )?;
+    ensure(
+        !by_workload.is_empty(),
+        "multi_hypervisor.fault_coverage.by_workload: expected non-empty list",
+    )?;
+    let mut classes = BTreeSet::new();
+    for (idx, row) in by_workload.iter().enumerate() {
+        let row = object_field(
+            Some(row),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}]"),
+        )?;
+        token_field(
+            row.get("workload"),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].workload"),
+        )?;
+        let configured = array_field(
+            row.get("configured_fault_classes"),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes"),
+        )?;
+        ensure(!configured.is_empty(), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes: expected non-empty list"))?;
+        for (class_idx, class) in configured.iter().enumerate() {
+            let class = token_field(Some(class), &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes[{class_idx}]"))?;
+            ensure(matches!(class, "network" | "block" | "timer" | "process" | "scheduler"), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes[{class_idx}]: unsupported class {class:?}"))?;
+            classes.insert(class.to_string());
+        }
+        let attempts = int_field(
+            row.get("injection_attempts"),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].injection_attempts"),
+        )?;
+        let observed = int_field(
+            row.get("observed_injections"),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].observed_injections"),
+        )?;
+        ensure(attempts >= 0 && observed >= 0 && observed <= attempts, format!("multi_hypervisor.fault_coverage.by_workload[{idx}]: observed_injections must be <= injection_attempts"))?;
+        array_field(
+            row.get("not_observed_fault_classes"),
+            &format!(
+                "multi_hypervisor.fault_coverage.by_workload[{idx}].not_observed_fault_classes"
+            ),
+        )?;
+        array_field(
+            row.get("affected_run_ids"),
+            &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].affected_run_ids"),
+        )?;
+        array_field(
+            row.get("unsupported_fault_classes"),
+            &format!(
+                "multi_hypervisor.fault_coverage.by_workload[{idx}].unsupported_fault_classes"
+            ),
+        )?;
+    }
+    Ok(classes.into_iter().collect())
 }
 
 pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceResult<String> {
@@ -3650,6 +3744,30 @@ pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceRe
             esc_value(worker.get("artifact_root")),
         ));
     }
+    let fault_coverage = object_field(
+        receipt.get("fault_coverage"),
+        "multi_hypervisor.fault_coverage",
+    )?;
+    let fault_scope = str_field(
+        fault_coverage.get("scope"),
+        "multi_hypervisor.fault_coverage.scope",
+    )?;
+    let mut fault_rows = Vec::new();
+    for row in array_field(
+        fault_coverage.get("by_workload"),
+        "multi_hypervisor.fault_coverage.by_workload",
+    )? {
+        let row = object_field(Some(row), "multi_hypervisor.fault_coverage.by_workload[]")?;
+        fault_rows.push(format!(
+            r#"<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>"#,
+            esc_value(row.get("workload")),
+            esc_value(row.get("configured_fault_classes")),
+            esc_value(row.get("injection_attempts")),
+            esc_value(row.get("observed_injections")),
+            esc_value(row.get("not_observed_fault_classes")),
+            esc_value(row.get("unsupported_fault_classes")),
+        ));
+    }
     let mut run_rows = Vec::new();
     for run in runs {
         let run = object_field(Some(run), "multi_hypervisor.runs[]")?;
@@ -3677,6 +3795,7 @@ pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceRe
 <section class="scope"><h2>Scope</h2><p>{}</p><p>This dashboard is local-only: not SaaS, not a remote shared queue, not cross-machine scheduling, and not universal fleet throughput.</p></section>
 <section><h2>Workers</h2><table><thead><tr><th>Worker</th><th>Node</th><th>Budget</th><th>Artifact root</th></tr></thead><tbody>{}</tbody></table></section>
 <section><h2>Queue and runs</h2><p>Queue entries: {} · Runs: {} · Artifact index entries: {} · Follow-up jobs: {}</p><table><thead><tr><th>Run</th><th>Worker</th><th>Workload</th><th>Status</th><th>Receipt</th><th>Follow-ups</th></tr></thead><tbody>{}</tbody></table></section>
+<section class="scope"><h2>Fault coverage</h2><p>{}</p><table><thead><tr><th>Workload</th><th>Configured classes</th><th>Attempts</th><th>Observed</th><th>Not observed</th><th>Unsupported</th></tr></thead><tbody>{}</tbody></table></section>
 </body></html>"#,
         esc(campaign_id),
         token_class(status),
@@ -3692,6 +3811,11 @@ pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceRe
         artifact_entries.len(),
         follow_up_jobs.len(),
         run_rows.join(
+            "
+"
+        ),
+        esc(fault_scope),
+        fault_rows.join(
             "
 "
         ),

@@ -137,6 +137,99 @@ pub fn write_dashboard_path(
     Ok(())
 }
 
+pub fn write_fleet_triage_index_path(
+    receipt_paths: &[impl AsRef<Path>],
+    output_path: impl AsRef<Path>,
+) -> EvidenceResult<()> {
+    let html = render_fleet_triage_index_path(receipt_paths)?;
+    let output_path = output_path.as_ref();
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(output_path, html)?;
+    Ok(())
+}
+
+pub fn render_fleet_triage_index_path(
+    receipt_paths: &[impl AsRef<Path>],
+) -> EvidenceResult<String> {
+    ensure(
+        !receipt_paths.is_empty(),
+        "fleet triage index requires at least one replay-readiness receipt",
+    )?;
+    let mut entries = Vec::with_capacity(receipt_paths.len());
+    for path in receipt_paths {
+        let path = path.as_ref();
+        let receipt = load_json(path)?;
+        entries.push((
+            path.display().to_string(),
+            receipt,
+            summarize_receipt_path(path)?,
+        ));
+    }
+    render_fleet_triage_index(&entries)
+}
+
+pub fn render_fleet_triage_index(entries: &[(String, Value, String)]) -> EvidenceResult<String> {
+    ensure(
+        !entries.is_empty(),
+        "fleet triage index requires at least one entry",
+    )?;
+    let mut rows = String::new();
+    let mut pass_count = 0usize;
+    for (path, receipt, summary) in entries {
+        let status = str_field(receipt.get("status"), "receipt.status")?;
+        if status == "passed" {
+            pass_count += 1;
+        }
+        let dogfood = object_field(receipt.get("dogfood"), "receipt.dogfood")?;
+        let dogfood_summary = dogfood.get("summary").filter(|v| v.is_object());
+        let verdict = dogfood_summary
+            .and_then(|v| v.get("verdict"))
+            .filter(|v| v.is_object());
+        rows.push_str(&format!(
+            "<tr><td><code>{}</code></td><td><span class=\"pill {}\">{}</span></td><td>{}</td><td>{}</td><td>{}</td><td><code>{}</code></td></tr>\n",
+            esc(path),
+            token_class(status),
+            esc(status),
+            esc_value(dogfood.get("selected_workload")),
+            esc_value(verdict.and_then(|v| v.get("replay_class"))),
+            esc_value(verdict.and_then(|v| v.get("replay_parent_depth"))),
+            esc(summary),
+        ));
+    }
+    Ok(format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChaosControl fleet triage index</title>
+<style>
+:root {{ color-scheme: light dark; --ok:#138a36; --bad:#b42318; --warn:#b7791f; --border:#98a2b3; }}
+body {{ font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.45; }}
+.pill {{ border-radius: 999px; color: white; display: inline-block; font-weight: 700; padding: .15rem .55rem; }}
+.ok {{ background: var(--ok); }} .bad {{ background: var(--bad); }} .warn {{ background: var(--warn); }}
+table {{ border-collapse: collapse; width: 100%; }} th, td {{ border-bottom: 1px solid var(--border); padding: .55rem; text-align: left; vertical-align: top; }}
+code {{ background: rgba(127,127,127,.14); border-radius: .35rem; padding: .1rem .25rem; }}
+.scope {{ border-left: .35rem solid var(--warn); padding-left: .8rem; }}
+</style>
+</head>
+<body>
+<h1>ChaosControl fleet triage index</h1>
+<p><strong>{}</strong> replay-readiness receipts indexed; <strong>{}</strong> passed.</p>
+<p class="scope">This is a bounded static multi-receipt triage artifact for fleet-style review. It is not universal replay evidence, not a hosted service, not scheduler integration, not a shared decision store, and not a full Antithesis-style product replacement.</p>
+<table><thead><tr><th>Receipt</th><th>Status</th><th>Workload</th><th>Replay class</th><th>Depth</th><th>Summary</th></tr></thead><tbody>
+{}</tbody></table>
+</body>
+</html>
+"#,
+        entries.len(),
+        pass_count,
+        rows
+    ))
+}
+
 pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<String> {
     let status = str_field(receipt.get("status"), "receipt.status")?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
@@ -401,6 +494,24 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
         dashboard.contains("snapshot_backed_reproduced"),
         "dashboard lost dogfood replay class",
     )?;
+    let fleet_index = render_fleet_triage_index(&[(
+        "receipt.json".to_string(),
+        receipt.clone(),
+        summary.clone(),
+    )])?;
+    ensure(
+        fleet_index.contains("ChaosControl fleet triage index")
+            && fleet_index.contains("snapshot_backed_reproduced"),
+        "fleet triage index lost receipt summary or replay class",
+    )?;
+    ensure(
+        bounded(&fleet_index) && fleet_index.contains("not a hosted service"),
+        "fleet triage index lost hosted-service anti-overclaim language",
+    )?;
+    match render_fleet_triage_index(&[]) {
+        Err(_) => {}
+        Ok(_) => return Err(EvidenceError::new("empty fleet index unexpectedly passed")),
+    }
     ensure(
         bounded(&dashboard),
         "dashboard lost bounded anti-overclaim language",

@@ -882,6 +882,14 @@
             '';
           };
 
+          replayReadinessFleetIndex = pkgs.writeShellApplication {
+            name = "replay-readiness-fleet-index";
+            runtimeInputs = [ chaoscontrol ];
+            text = ''
+              exec ${chaoscontrol}/bin/replay-readiness-fleet-index "$@"
+            '';
+          };
+
           replayReadinessReadmeStatus = pkgs.writeShellApplication {
             name = "replay-readiness-readme-status";
             runtimeInputs = [ chaoscontrol ];
@@ -969,6 +977,7 @@
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
             replay-readiness-triage = replayReadinessTriage;
+            replay-readiness-fleet-index = replayReadinessFleetIndex;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
             cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;

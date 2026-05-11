@@ -293,7 +293,14 @@ nix run .#replay-readiness-triage -- "$PWD/target/replay-readiness-receipt.json"
   --output "$PWD/target/operator-triage-runbook.md"
 ```
 
-The committed baseline runbook lives at `docs/operator-triage-runbook.md` and can be checked with `cargo run -p chaoscontrol-evidence --bin replay-readiness-triage -- --root . --sample-receipt --check docs/operator-triage-runbook.md`. The CI/check surface packages all four artifacts with:
+The committed baseline runbook lives at `docs/operator-triage-runbook.md` and can be checked with `cargo run -p chaoscontrol-evidence --bin replay-readiness-triage -- --root . --sample-receipt --check docs/operator-triage-runbook.md`. For multi-run artifact review, render a static fleet triage index from one or more saved replay-readiness receipts without promoting it to hosted UI or shared decision-store status:
+
+```bash
+nix run .#replay-readiness-fleet-index -- --output "$PWD/target/fleet-triage-index.html" \
+  "$PWD/target/replay-readiness-receipt.json"
+```
+
+The CI/check surface packages all four artifacts with:
 
 ```bash
 nix build .#checks.x86_64-linux.replay-readiness --no-link -L

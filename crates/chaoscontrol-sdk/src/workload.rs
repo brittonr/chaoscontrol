@@ -12,15 +12,101 @@ use std::path::Path;
 use std::time::Instant;
 
 /// Minimal harness metadata for a Rust workload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadAdapterIdentity {
+    pub workload: String,
+    pub adapter_version: String,
+    pub scenario: String,
+    pub seed_or_schedule_ref: String,
+    pub evidence_class: WorkloadEvidenceClass,
+    pub artifact_digests: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkloadEvidenceClass {
+    SimulatorLocal,
+    VmSnapshotReplay,
+}
+
+impl WorkloadEvidenceClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SimulatorLocal => "simulator-local",
+            Self::VmSnapshotReplay => "vm-snapshot-replay",
+        }
+    }
+}
+
+/// Minimal harness metadata for a Rust workload.
 #[derive(Debug, Clone)]
 pub struct WorkloadHarness {
     name: String,
+    adapter_version: Option<String>,
+    artifact_digests: BTreeMap<String, String>,
 }
 
 impl WorkloadHarness {
     /// Create a harness for one downstream Rust workload.
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
+        Self {
+            name: name.into(),
+            adapter_version: None,
+            artifact_digests: BTreeMap::new(),
+        }
+    }
+
+    /// Attach a shared simulator/VM adapter version to workload lifecycle metadata.
+    pub fn with_adapter_version(mut self, adapter_version: impl Into<String>) -> Self {
+        self.adapter_version = Some(adapter_version.into());
+        self
+    }
+
+    /// Attach a named artifact digest that should appear in simulator/VM bridge metadata.
+    pub fn with_artifact_digest(
+        mut self,
+        name: impl Into<String>,
+        digest: impl Into<String>,
+    ) -> Self {
+        self.artifact_digests.insert(name.into(), digest.into());
+        self
+    }
+
+    /// Build comparable adapter identity metadata for simulator or VM/hypervisor receipts.
+    pub fn adapter_identity(
+        &self,
+        scenario: impl Into<String>,
+        seed_or_schedule_ref: impl Into<String>,
+        evidence_class: WorkloadEvidenceClass,
+    ) -> WorkloadAdapterIdentity {
+        WorkloadAdapterIdentity {
+            workload: self.name.clone(),
+            adapter_version: self
+                .adapter_version
+                .clone()
+                .unwrap_or_else(|| "unspecified-adapter".to_string()),
+            scenario: scenario.into(),
+            seed_or_schedule_ref: seed_or_schedule_ref.into(),
+            evidence_class,
+            artifact_digests: self.artifact_digests.clone(),
+        }
+    }
+
+    /// Serialize adapter identity metadata for SDK lifecycle event details.
+    pub fn adapter_identity_json(
+        &self,
+        scenario: impl Into<String>,
+        seed_or_schedule_ref: impl Into<String>,
+        evidence_class: WorkloadEvidenceClass,
+    ) -> Value {
+        let identity = self.adapter_identity(scenario, seed_or_schedule_ref, evidence_class);
+        json!({
+            "workload": identity.workload,
+            "adapter_version": identity.adapter_version,
+            "scenario": identity.scenario,
+            "seed_or_schedule_ref": identity.seed_or_schedule_ref,
+            "evidence_class": identity.evidence_class.as_str(),
+            "artifact_digests": identity.artifact_digests,
+        })
     }
 
     /// Return the workload name used in lifecycle/report metadata.
@@ -35,6 +121,8 @@ impl WorkloadHarness {
             "workload_init",
             &json!({
                 "workload": self.name,
+                "adapter_version": self.adapter_version,
+                "artifact_digests": self.artifact_digests,
             }),
         );
     }
@@ -56,6 +144,8 @@ impl WorkloadHarness {
             &json!({
                 "workload": self.name,
                 "scenario": name,
+                "adapter_version": self.adapter_version,
+                "artifact_digests": self.artifact_digests,
             }),
         );
         let started = scenario_clock_now();
@@ -65,6 +155,8 @@ impl WorkloadHarness {
             &json!({
                 "workload": self.name,
                 "scenario": name,
+                "adapter_version": self.adapter_version,
+                "artifact_digests": self.artifact_digests,
                 "elapsed_ms": scenario_elapsed_ms(started),
             }),
         );
@@ -385,5 +477,31 @@ mod tests {
             report.assertion_coverage[1].adoption_tracks,
             vec!["in-process-service"]
         );
+    }
+    #[test]
+    fn workload_harness_builds_shared_simulator_vm_adapter_identity() {
+        let harness = WorkloadHarness::new("sample-rust-service")
+            .with_adapter_version("sample-adapter-v1")
+            .with_artifact_digest(
+                "workload-adapter",
+                "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            );
+        let simulator = harness.adapter_identity(
+            "writes survive failover",
+            "seed:42 schedule:no-faults",
+            WorkloadEvidenceClass::SimulatorLocal,
+        );
+        let vm = harness.adapter_identity(
+            "writes survive failover",
+            "seed:42 schedule:no-faults",
+            WorkloadEvidenceClass::VmSnapshotReplay,
+        );
+        assert_eq!(simulator.workload, vm.workload);
+        assert_eq!(simulator.adapter_version, "sample-adapter-v1");
+        assert_eq!(simulator.scenario, vm.scenario);
+        assert_eq!(simulator.seed_or_schedule_ref, vm.seed_or_schedule_ref);
+        assert_ne!(simulator.evidence_class, vm.evidence_class);
+        assert_eq!(simulator.evidence_class.as_str(), "simulator-local");
+        assert_eq!(vm.evidence_class.as_str(), "vm-snapshot-replay");
     }
 }

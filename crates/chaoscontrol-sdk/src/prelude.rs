@@ -79,7 +79,9 @@ pub use crate::random::{random_choice_from, ChaosControlRng};
 
 // ── Workload harness ─────────────────────────────────────────────────
 #[cfg(feature = "full")]
-pub use crate::workload::{LocalDryRunReport, WorkloadHarness};
+pub use crate::workload::{
+    LocalDryRunReport, WorkloadAdapterIdentity, WorkloadEvidenceClass, WorkloadHarness,
+};
 
 // ── Re-export serde_json for json!() macro convenience ───────────────
 #[cfg(feature = "full")]

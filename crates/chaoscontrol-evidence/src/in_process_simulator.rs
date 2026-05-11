@@ -30,6 +30,43 @@ pub struct SimulatorConfig {
 pub struct WorkloadIdentity {
     pub name: String,
     pub adapter_version: String,
+    pub scenario_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReceiptBridgeMetadata {
+    pub workload: WorkloadIdentity,
+    pub seed_or_schedule_ref: String,
+    pub artifact_digests: BTreeMap<String, String>,
+    pub evidence_class: EvidenceClass,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceClass {
+    SimulatorLocal,
+    VmSnapshotReplay,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VmReplayReceiptBridgeMetadata {
+    pub workload: WorkloadIdentity,
+    pub seed_or_schedule_ref: String,
+    pub artifact_digests: BTreeMap<String, String>,
+    pub evidence_class: EvidenceClass,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SimulatorVmReceiptBridgeComparison {
+    pub comparable: bool,
+    pub workload_match: bool,
+    pub adapter_version_match: bool,
+    pub scenario_match: bool,
+    pub seed_or_schedule_match: bool,
+    pub artifact_digest_matches: BTreeMap<String, bool>,
+    pub simulator_evidence_class: EvidenceClass,
+    pub vm_evidence_class: EvidenceClass,
+    pub summary: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -76,6 +113,7 @@ pub struct SimulatorReceipt {
     pub schedule_sha256: String,
     pub history_sha256: String,
     pub output_sha256: String,
+    pub bridge: ReceiptBridgeMetadata,
     pub observations: Vec<SimulatorObservation>,
     pub scope: String,
 }
@@ -202,6 +240,7 @@ pub struct SimulatedFaultHooks {
     pub network: SimulatedNetwork,
     pub disk: SimulatedDisk,
     pub faults: Vec<SimulatorFault>,
+    pub unsupported_environment_hooks: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -289,6 +328,7 @@ impl DeterministicSimulatorCore {
             schedule_sha256: self.config.fault_schedule.digest.clone(),
             history_sha256: digest_bytes(history_bytes),
             output_sha256: digest_bytes(output_bytes),
+            bridge: simulator_bridge_metadata(&self.config),
             observations,
             scope: DEFAULT_SIMULATOR_SCOPE.to_string(),
         };
@@ -469,6 +509,7 @@ impl SimulatedFaultHooks {
                 writes: BTreeMap::new(),
             },
             faults: Vec::new(),
+            unsupported_environment_hooks: Vec::new(),
         })
     }
 
@@ -568,6 +609,13 @@ pub fn run_simulator_adapter<A: InProcessWorkloadAdapter>(
     require(
         hooks.disk.profile_id == config.disk.profile_id,
         "simulated disk profile must match config",
+    )?;
+    require(
+        hooks.unsupported_environment_hooks.is_empty(),
+        format!(
+            "unsupported environment hooks are not allowed in simulator evidence: {:?}",
+            hooks.unsupported_environment_hooks
+        ),
     )?;
     let mut core = DeterministicSimulatorCore::new(config, adapter.runnable_tasks())?;
     let mut events = Vec::new();
@@ -682,6 +730,140 @@ fn summarize_simulator_run(
     })
 }
 
+pub fn simulator_bridge_metadata(config: &SimulatorConfig) -> ReceiptBridgeMetadata {
+    ReceiptBridgeMetadata {
+        workload: config.workload.clone(),
+        seed_or_schedule_ref: format!(
+            "seed:{} schedule:{}",
+            config.seed, config.fault_schedule.schedule_id
+        ),
+        artifact_digests: config.artifacts.clone(),
+        evidence_class: EvidenceClass::SimulatorLocal,
+    }
+}
+
+pub fn sample_vm_replay_bridge_metadata() -> VmReplayReceiptBridgeMetadata {
+    let config = sample_simulator_config();
+    VmReplayReceiptBridgeMetadata {
+        workload: config.workload.clone(),
+        seed_or_schedule_ref: format!(
+            "seed:{} schedule:{}",
+            config.seed, config.fault_schedule.schedule_id
+        ),
+        artifact_digests: config.artifacts,
+        evidence_class: EvidenceClass::VmSnapshotReplay,
+    }
+}
+
+pub fn validate_receipt_bridge_metadata(metadata: &ReceiptBridgeMetadata) -> EvidenceResult<()> {
+    validate_bridge_workload_identity(&metadata.workload)?;
+    validate_bridge_digest_map(&metadata.artifact_digests)?;
+    require(
+        !metadata.seed_or_schedule_ref.is_empty(),
+        "receipt bridge seed_or_schedule_ref must be non-empty",
+    )?;
+    Ok(())
+}
+
+pub fn validate_vm_replay_bridge_metadata(
+    metadata: &VmReplayReceiptBridgeMetadata,
+) -> EvidenceResult<()> {
+    validate_bridge_workload_identity(&metadata.workload)?;
+    validate_bridge_digest_map(&metadata.artifact_digests)?;
+    require(
+        !metadata.seed_or_schedule_ref.is_empty(),
+        "VM bridge seed_or_schedule_ref must be non-empty",
+    )?;
+    require(
+        metadata.evidence_class == EvidenceClass::VmSnapshotReplay,
+        "VM bridge evidence_class must be vm_snapshot_replay",
+    )?;
+    Ok(())
+}
+
+pub fn compare_simulator_vm_receipt_bridge(
+    simulator: &ReceiptBridgeMetadata,
+    vm: &VmReplayReceiptBridgeMetadata,
+) -> EvidenceResult<SimulatorVmReceiptBridgeComparison> {
+    validate_receipt_bridge_metadata(simulator)?;
+    validate_vm_replay_bridge_metadata(vm)?;
+    require(
+        simulator.evidence_class == EvidenceClass::SimulatorLocal,
+        "simulator bridge evidence_class must remain simulator_local",
+    )?;
+    let workload_match = simulator.workload.name == vm.workload.name;
+    let adapter_version_match = simulator.workload.adapter_version == vm.workload.adapter_version;
+    let scenario_match = simulator.workload.scenario_id == vm.workload.scenario_id;
+    let seed_or_schedule_match = simulator.seed_or_schedule_ref == vm.seed_or_schedule_ref;
+    let mut artifact_digest_matches = BTreeMap::new();
+    for key in simulator
+        .artifact_digests
+        .keys()
+        .chain(vm.artifact_digests.keys())
+    {
+        artifact_digest_matches
+            .entry(key.clone())
+            .or_insert_with(|| simulator.artifact_digests.get(key) == vm.artifact_digests.get(key));
+    }
+    let artifacts_match = artifact_digest_matches.values().all(|matched| *matched);
+    let comparable = workload_match
+        && adapter_version_match
+        && scenario_match
+        && seed_or_schedule_match
+        && artifacts_match;
+    let summary = format!(
+        "sim-vm-bridge workload={} adapter={} scenario={} seed_or_schedule={} artifacts={} classes=simulator-local,vm-snapshot-replay comparable={} (simulator evidence is not VM replay proof)",
+        workload_match,
+        adapter_version_match,
+        scenario_match,
+        seed_or_schedule_match,
+        artifacts_match,
+        comparable
+    );
+    Ok(SimulatorVmReceiptBridgeComparison {
+        comparable,
+        workload_match,
+        adapter_version_match,
+        scenario_match,
+        seed_or_schedule_match,
+        artifact_digest_matches,
+        simulator_evidence_class: simulator.evidence_class.clone(),
+        vm_evidence_class: vm.evidence_class.clone(),
+        summary,
+    })
+}
+
+fn validate_bridge_workload_identity(workload: &WorkloadIdentity) -> EvidenceResult<()> {
+    require(
+        !workload.name.is_empty(),
+        "bridge workload name must be non-empty",
+    )?;
+    require(
+        !workload.adapter_version.is_empty(),
+        "bridge workload adapter_version must be non-empty",
+    )?;
+    require(
+        !workload.scenario_id.is_empty(),
+        "bridge workload scenario_id must be non-empty",
+    )?;
+    Ok(())
+}
+
+fn validate_bridge_digest_map(digests: &BTreeMap<String, String>) -> EvidenceResult<()> {
+    require(
+        !digests.is_empty(),
+        "bridge artifact digests must be non-empty",
+    )?;
+    for (name, digest) in digests {
+        require(!name.is_empty(), "bridge artifact name must be non-empty")?;
+        require(
+            digest.starts_with("sha256:"),
+            format!("bridge artifact {name:?} digest must be sha256-bound"),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn sample_simulated_fault_hooks(
     config: &SimulatorConfig,
 ) -> EvidenceResult<SimulatedFaultHooks> {
@@ -707,6 +889,10 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()>
     require(
         !config.workload.adapter_version.is_empty(),
         "simulator workload adapter_version must be non-empty",
+    )?;
+    require(
+        !config.workload.scenario_id.is_empty(),
+        "simulator workload scenario_id must be non-empty",
     )?;
     require(
         !config.scheduler.name.is_empty(),
@@ -793,6 +979,11 @@ pub fn validate_simulator_receipt(receipt: &SimulatorReceipt) -> EvidenceResult<
         receipt.output_sha256.starts_with("sha256:"),
         "simulator receipt output_sha256 must be sha256-bound",
     )?;
+    validate_receipt_bridge_metadata(&receipt.bridge)?;
+    require(
+        receipt.bridge.evidence_class == EvidenceClass::SimulatorLocal,
+        "simulator receipt bridge evidence_class must be simulator_local",
+    )?;
     require(
         receipt.scope.contains(REQUIRED_SCOPE_FRAGMENT),
         "simulator receipt scope must state it is not VM replay proof",
@@ -846,6 +1037,7 @@ pub fn sample_simulator_config() -> SimulatorConfig {
         workload: WorkloadIdentity {
             name: "register-model".to_string(),
             adapter_version: "register-simulator-adapter-v1".to_string(),
+            scenario_id: "register-smoke".to_string(),
         },
         scheduler: SchedulerPolicy {
             name: "round-robin-v1".to_string(),
@@ -1058,6 +1250,7 @@ mod tests {
             output_sha256:
                 "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
                     .to_string(),
+            bridge: simulator_bridge_metadata(&sample_simulator_config()),
             observations: vec![],
             scope: "proves arbitrary binaries".to_string(),
         };
@@ -1195,7 +1388,7 @@ mod tests {
             SimulatedFaultHooks::new("wrong-network", config.disk.profile_id.clone())
                 .expect("wrong hooks build");
         assert!(
-            run_simulator_adapter(config, &mut adapter, &mut wrong_hooks)
+            run_simulator_adapter(config.clone(), &mut adapter, &mut wrong_hooks)
                 .expect_err("network mismatch rejected")
                 .message()
                 .contains("network profile")
@@ -1213,5 +1406,52 @@ mod tests {
             .expect_err("bad fault rejected")
             .message()
             .contains("fault_id"));
+
+        let mut adapter = RegisterSimulatorAdapter::sample().expect("sample adapter builds");
+        let mut unsupported_hooks = sample_simulated_fault_hooks(&config).expect("hooks build");
+        unsupported_hooks
+            .unsupported_environment_hooks
+            .push("host-wall-clock".to_string());
+        assert!(
+            run_simulator_adapter(config, &mut adapter, &mut unsupported_hooks)
+                .expect_err("unsupported env hook rejected")
+                .message()
+                .contains("unsupported environment hooks")
+        );
+    }
+    #[test]
+    fn bridge_metadata_compares_simulator_and_vm_receipts_without_merging_evidence_classes() {
+        let evidence = sample_simulator_run_evidence().expect("simulator evidence emits");
+        let vm = sample_vm_replay_bridge_metadata();
+        let comparison = compare_simulator_vm_receipt_bridge(&evidence.receipt.bridge, &vm)
+            .expect("bridge comparison succeeds");
+        assert!(comparison.comparable);
+        assert_eq!(
+            comparison.simulator_evidence_class,
+            EvidenceClass::SimulatorLocal
+        );
+        assert_eq!(
+            comparison.vm_evidence_class,
+            EvidenceClass::VmSnapshotReplay
+        );
+        assert!(comparison.summary.contains("not VM replay proof"));
+    }
+
+    #[test]
+    fn bridge_metadata_reports_identity_mismatches_and_rejects_replay_overclaim() {
+        let evidence = sample_simulator_run_evidence().expect("simulator evidence emits");
+        let mut vm = sample_vm_replay_bridge_metadata();
+        vm.workload.scenario_id = "different-scenario".to_string();
+        let comparison = compare_simulator_vm_receipt_bridge(&evidence.receipt.bridge, &vm)
+            .expect("bridge comparison succeeds");
+        assert!(!comparison.comparable);
+        assert!(!comparison.scenario_match);
+
+        let mut bad_vm = sample_vm_replay_bridge_metadata();
+        bad_vm.evidence_class = EvidenceClass::SimulatorLocal;
+        assert!(validate_vm_replay_bridge_metadata(&bad_vm)
+            .expect_err("VM bridge class rejected")
+            .message()
+            .contains("vm_snapshot_replay"));
     }
 }

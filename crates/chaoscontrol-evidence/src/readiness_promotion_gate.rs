@@ -480,6 +480,8 @@ fn require_in_process_simulator_surface(report: &str) -> EvidenceResult<()> {
         "deterministic scheduler",
         "virtual clock",
         "simulated network/disk hooks",
+        "sim-vm bridge metadata",
+        "simulator-local vs vm-snapshot-replay evidence classes",
         "not VM replay proof",
         "not arbitrary binary support",
         "not full FoundationDB parity",

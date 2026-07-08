@@ -8,8 +8,8 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    tigerstyle.url = "git+file:../tigerstyle?ref=refs/heads/main&rev=2197d80a2a4a261e141531927084e66f92935f93";
-    verified-logic.url = "git+file:../verified-logic?ref=refs/heads/main&rev=b332e653e3252922eb66aac6912899272d7c6c07";
+    octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
+    trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
     advisory-db = {
       url = "github:RustSec/advisory-db";
       flake = false;
@@ -22,8 +22,8 @@
       nixpkgs,
       crane,
       rust-overlay,
-      tigerstyle,
-      verified-logic,
+      octet,
+      trellis,
       advisory-db,
     }:
     let
@@ -1189,9 +1189,9 @@
             local-multi-hypervisor-kvm-smoke = localMultiHypervisorKvmSmoke;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
-            cargo-tigerstyle = tigerstyle.packages.${system}.cargo-tigerstyle;
-            tigerstyle-standards = tigerstyle.packages.${system}.tigerstyle-standards;
-            verified-logic = verified-logic.packages.${system}.verified-logic;
+            cargo-tigerstyle = octet.packages.${system}.cargo-tigerstyle;
+            tigerstyle-standards = octet.packages.${system}.tigerstyle-standards;
+            verified-logic = trellis.packages.${system}.verified-logic;
 
             net-vmlinux = mkChaosKernel { virtioNet = true; };
             kcov-vmlinux = mkChaosKernel { kcov = true; };
@@ -1695,8 +1695,8 @@
                 '';
 
             # Track the local sibling proof/style repos used by this workspace.
-            tigerstyle-policy-registry = tigerstyle.checks.${system}.policy-registry;
-            tigerstyle-chaoscontrol-focused = tigerstyle.lib.mkConsumerCheck {
+            tigerstyle-policy-registry = octet.checks.${system}.policy-registry;
+            tigerstyle-chaoscontrol-focused = octet.lib.mkConsumerCheck {
               inherit system;
               src = tigerstyleSrc;
               cargoLock = ./Cargo.lock;
@@ -1730,7 +1730,7 @@
               ];
               cargoExtraArgs = "--lib";
             };
-            verified-logic-verus-proofs = verified-logic.checks.${system}.verus-proofs;
+            verified-logic-verus-proofs = trellis.checks.${system}.verus-proofs;
 
             # Simulation tests live in packages, not checks — they take
             # 10+ minutes and need /dev/kvm.  Run explicitly:
@@ -1890,9 +1890,9 @@
               pkgs.nodejs_22
 
               # Local sibling proof/style tools
-              tigerstyle.packages.${system}.cargo-tigerstyle
-              tigerstyle.packages.${system}.tigerstyle-standards
-              verified-logic.packages.${system}.verified-logic
+              octet.packages.${system}.cargo-tigerstyle
+              octet.packages.${system}.tigerstyle-standards
+              trellis.packages.${system}.verified-logic
 
               # Nix formatting (matches CI check)
               pkgs.nixfmt

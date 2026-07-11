@@ -8,7 +8,7 @@ The first rail should run as a Rust-owned host harness and may later be packaged
 
 ### 1. One versioned exploration profile binds the cohort
 
-**Choice:** Define a typed Nickel profile naming wasm-tools generator/mutator/shrinker versions, optional Waffle version, Wasmtime cohort/strategies, WIT/component profile, deterministic runtime configuration, corpus classes, limits, observation model, and non-claims. A case is proof-eligible only when it matches the admitted Octet/Aspen cohort.
+**Choice:** Define a typed Nickel profile naming the Mantle materialization bundle, wasm-tools generator/mutator/shrinker versions, optional Waffle version, Wasmtime cohort/strategies, WIT/component profile, deterministic runtime configuration, corpus classes, limits, observation model, and non-claims. A case is proof-eligible only when it matches the admitted Mantle/Octet/Aspen cohort vector.
 
 **Rationale:** Parser/runtime drift can change whether a seed is valid or how a trap is classified.
 
@@ -52,14 +52,20 @@ The first rail should run as a Rust-owned host harness and may later be packaged
 
 **Choice:** Emit `static-rejection`, `profile-rejection`, `compile-rejection`, `link-rejection`, `deterministic-trap`, `strategy-match`, `strategy-divergence`, `transform-match`, `transform-divergence`, `replay-mismatch`, `shrink-complete`, `bound-skip`, and `harness-error` classes. These artifacts do not count as VM snapshot-backed proof, assertion coverage, correctness, package trust, sandbox proof, or release eligibility.
 
+### 9. Mantle materializes stable exploration inputs
+
+**Choice:** Mantle produces rehashable bundles for the pinned host harness/tool closure, baseline components, WIT packages, and fixed-seed corpora promoted into regression lanes. ChaosControl verifies those identities, then owns iterative generation, mutation, strategy execution, shrinking, retention, and evidence. Newly discovered cases remain exploration artifacts until an explicit promotion regenerates them through Mantle; the live search loop is never forced into a build derivation.
+
+**Rationale:** Stable inputs benefit from Mantle's reproducibility and cache, while stateful bounded search and minimization remain test-runtime behavior owned by ChaosControl.
+
 ## Functional core / imperative shell split
 
-- **Pure core**: profile/case validation, seed and identity material, expected/outcome classification, normalized comparison, failure predicates, shrink-step admission, bound decisions, retention plans, and evidence DTO construction.
-- **Imperative shell**: invoke generator/mutator/shrinker/transform/runtime libraries or tools, allocate stores, execute components, collect observations, persist corpus/artifacts, and render reports.
+- **Pure core**: profile/materialization/case validation, seed and identity material, expected/outcome classification, normalized comparison, failure predicates, shrink-step admission, promotion decisions, bound decisions, retention plans, and evidence DTO construction.
+- **Imperative shell**: rehash Mantle baselines, invoke generator/mutator/shrinker/transform/runtime libraries or tools, allocate stores, execute components, collect observations, persist exploration artifacts, and render reports.
 
 ## Risks / Trade-offs
 
-- Generator and runtime matrices can become expensive. Keep a fast deterministic corpus and separately scheduled deep exploration.
+- Generator and runtime matrices can become expensive. Keep a Mantle-materialized fast deterministic corpus and separately scheduled deep exploration.
 - Pulley is substantially slower and its precompiled bytecode is version-specific. Compare portable source cases and normalized outcomes, not durable Pulley bytecode.
 - Waffle currently targets core Wasm transforms, so component cases may require explicit extraction/recomposition and remain experimental.
 - Differential agreement can miss shared bugs; explicit non-claims and independent static/negative fixtures remain required.
@@ -68,5 +74,5 @@ The first rail should run as a Rust-owned host harness and may later be packaged
 
 - No language-agnostic guest SDK or support commitment for JavaScript, Python, C, Go, or other component languages.
 - No cross-runtime ranking, WAMR integration, performance benchmark, or universal Wasm correctness claim.
-- No promotion of generated artifacts into trusted packages or production executables.
+- No promotion of generated artifacts into trusted packages or production executables; promotion into a regression corpus requires explicit Mantle rematerialization and remains test evidence only.
 - No merging of host-side Wasm exploration with VM snapshot-backed replay evidence classes.

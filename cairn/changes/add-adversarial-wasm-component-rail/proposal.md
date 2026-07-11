@@ -6,7 +6,8 @@ The rail must remain a Rust-owned test harness rather than reopening ChaosContro
 
 ## What Changes
 
-- Add a versioned host-side Wasm component exploration profile bound to the shared Octet/Aspen artifact/runtime cohort.
+- Add a versioned host-side Wasm component exploration profile bound to the shared Mantle/Octet/Aspen materialization, artifact, and runtime cohorts.
+- Use Mantle to materialize the pinned exploration tool closure, host harness, baseline components, and promoted fixed-seed regression corpora; keep iterative mutation, execution, shrinking, and scheduling in ChaosControl.
 - Generate bounded deterministic module, WIT, and component corpora with wasm-smith, wit-smith, and component encoders from recorded seeds.
 - Apply wasm-mutate and deterministic profile-aware mutations, then replay and shrink failures with wasm-shrink or a bounded predicate-preserving reducer.
 - Compare static validation and normalized execution outcomes across selected Wasmtime Cranelift and Pulley strategies under identical deterministic inputs.
@@ -18,5 +19,5 @@ The rail must remain a Rust-owned test harness rather than reopening ChaosContro
 
 - **Surfaces**: a Rust host harness, corpus manifests, generator/mutator/shrinker adapters, deterministic execution profiles, exploration scheduling, evidence DTOs/contracts, fixtures, and optional Nix checks.
 - **Scope**: no new guest-language SDK, component package manager, production Wasm host, WAMR support, or cross-runtime benchmark product.
-- **Dependencies**: the first admitted cohort should match the Octet static artifact rail and Aspen deterministic component profile; missing cohort evidence keeps cases diagnostic-only.
+- **Dependencies**: the first admitted cohort should match the Mantle materialization bundle, Octet static artifact rail, and Aspen deterministic component profile; missing or mismatched cohort evidence keeps cases diagnostic-only.
 - **Claims**: differential agreement and replay prove only the bounded tested artifacts, strategies, inputs, and observation model.

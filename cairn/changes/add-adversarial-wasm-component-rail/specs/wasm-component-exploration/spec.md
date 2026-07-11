@@ -8,7 +8,7 @@ Generate, mutate, execute, compare, replay, and shrink bounded WebAssembly compo
 
 ### Requirement: Wasm exploration uses one versioned profile
 
-r[chaoscontrol.wasm_component.profile] ChaosControl MUST define a typed Wasm exploration profile that binds the wasm-tools generator/mutator/shrinker cohort, optional Waffle cohort, Wasmtime strategies, WIT/component profile, deterministic runtime configuration, corpus classes, observation model, bounds, and non-claims.
+r[chaoscontrol.wasm_component.profile] ChaosControl MUST define a typed Wasm exploration profile that binds the Mantle materialization bundle, wasm-tools generator/mutator/shrinker cohort, optional Waffle cohort, Wasmtime strategies, WIT/component profile, deterministic runtime configuration, corpus classes, observation model, bounds, and non-claims.
 
 #### Scenario: Case matches admitted cohort
 - GIVEN a case and profile identify one supported complete Octet/Aspen-compatible cohort
@@ -16,9 +16,23 @@ r[chaoscontrol.wasm_component.profile] ChaosControl MUST define a typed Wasm exp
 - THEN ChaosControl MAY schedule the case under that exact profile identity.
 
 #### Scenario: Tool or runtime cohort drifts
-- GIVEN a generator, parser, mutator, shrinker, transform, Wasmtime, WIT, or runtime configuration differs from the admitted profile
+- GIVEN a materialization bundle, generator, parser, mutator, shrinker, transform, Wasmtime, WIT, or runtime configuration differs from the admitted profile
 - WHEN admission runs
 - THEN the case MUST be denied or classified diagnostic-only before proof-eligible execution.
+
+### Requirement: Mantle materializes stable exploration inputs
+
+r[chaoscontrol.wasm_component.materialization] The pinned host harness/tool closure, baseline components/WIT packages, and fixed-seed corpora promoted into regression lanes MUST be supplied through rehashable Mantle materialization bundles; ChaosControl MUST own live generation, mutation, execution, shrinking, and scheduling outside the build derivation.
+
+#### Scenario: Stable baseline is admitted
+- GIVEN the harness, tools, baseline artifacts, seed manifests, and cohort/profile identities match a verified Mantle bundle
+- WHEN the fast regression lane starts
+- THEN ChaosControl MAY execute the cases and MUST retain the bundle identity in every result.
+
+#### Scenario: Discovered case is promoted
+- GIVEN live exploration finds a reproducible bounded case
+- WHEN it is proposed for the stable regression corpus
+- THEN the case MUST be regenerated through Mantle with the same exact BLAKE3 before promotion; a mismatch MUST remain exploration-only.
 
 ### Requirement: Generated corpora are exactly reproducible
 
@@ -115,7 +129,7 @@ r[chaoscontrol.wasm_component.evidence] ChaosControl MUST emit distinct static/p
 
 ### Requirement: Exploration decisions have a functional core
 
-r[chaoscontrol.wasm_component.functional_core] Profile/case validation, seed/identity construction, outcome classification, normalized comparison, failure predicates, shrink admission, bound decisions, retention plans, and evidence DTO construction MUST be pure deterministic logic.
+r[chaoscontrol.wasm_component.functional_core] Profile/materialization/case validation, seed/identity construction, outcome classification, normalized comparison, failure predicates, shrink/promotion admission, bound decisions, retention plans, and evidence DTO construction MUST be pure deterministic logic.
 
 #### Scenario: Identical observations produce identical classification
 - GIVEN identical profile, case, execution, transform, and shrink facts
@@ -124,7 +138,7 @@ r[chaoscontrol.wasm_component.functional_core] Profile/case validation, seed/ide
 
 ### Requirement: Wasm exploration has positive and negative validation
 
-r[chaoscontrol.wasm_component.validation] The rail MUST include positive corpus replay/profile/strategy-match cases and negative malformed, profile-denied, compile/link, trap, divergence, replay, shrink-class, bound, evidence, and overclaim cases plus focused lifecycle validation.
+r[chaoscontrol.wasm_component.validation] The rail MUST include positive Mantle-baseline/corpus replay/profile/strategy-match cases and negative materialization, cohort, unmaterialized-promotion, malformed, profile-denied, compile/link, trap, divergence, replay, shrink-class, bound, evidence, and overclaim cases plus focused lifecycle validation.
 
 #### Scenario: Exploration rail changes
 - GIVEN profile, generator, mutator, runtime, transform, comparison, shrinker, bound, or evidence behavior changes

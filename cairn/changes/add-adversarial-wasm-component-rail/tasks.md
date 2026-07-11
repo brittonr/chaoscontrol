@@ -1,0 +1,12 @@
+## Tasks
+
+- [ ] [serial] Define the typed Nickel Wasm exploration profile, pinned tool/runtime cohort, corpus/outcome classes, deterministic configuration, observation model, limits, retention, and non-claims. r[chaoscontrol.wasm_component.profile] r[chaoscontrol.wasm_component.bounds] r[chaoscontrol.wasm_component.evidence]
+- [ ] [depends:wasm-exploration-profile] Implement pure case/profile validation, seed/identity construction, expected/outcome classification, normalized comparison, failure predicates, shrink admission, bound decisions, and evidence DTOs. r[chaoscontrol.wasm_component.functional_core]
+- [ ] [depends:wasm-exploration-profile] Add bounded wasm-smith/wit-smith/componentization corpus generation with exact replay manifests and BLAKE3 outputs. r[chaoscontrol.wasm_component.corpus]
+- [ ] [depends:wasm-component-corpus] Add wasm-mutate and profile-aware mutation plans with distinct static/profile/compile/link/trap/result outcome classes. r[chaoscontrol.wasm_component.mutation]
+- [ ] [depends:wasm-component-mutation] Add deterministic Wasmtime Cranelift/Pulley execution and normalized result/trap/Preserves/hostcall/resource/state comparison. r[chaoscontrol.wasm_component.differential]
+- [ ] [parallel] Add optional Waffle round-trip/instrumentation experiments with original/transformed identities and recorded-only differential evidence. r[chaoscontrol.wasm_component.transforms]
+- [ ] [depends:wasm-component-differential] Add predicate-preserving wasm-shrink/bounded-reducer flows, replay confirmation, accepted-step receipts, and final minimal candidates. r[chaoscontrol.wasm_component.shrink]
+- [ ] [parallel] Add positive valid/profile-match/strategy-match cases and negative malformed, profile-denied, compile/link failure, deterministic trap, strategy divergence fixture, replay mismatch, shrink-class drift, bound skip, and evidence-overclaim cases. r[chaoscontrol.wasm_component.validation]
+- [ ] [depends:wasm-component-validation] Add separate host-side Wasm exploration reports/contracts/readiness classification without changing VM replay or assertion-readiness classes. r[chaoscontrol.wasm_component.evidence]
+- [ ] [depends:wasm-component-evidence] Run focused pure-core/harness tests, deterministic corpus replay, positive/negative fixtures, bounded strategy/transform/shrink smoke, evidence contracts, Cairn validation, and proposal/design/tasks gates. r[chaoscontrol.wasm_component.validation]

@@ -3,7 +3,7 @@ name = "chaoscontrol-explore"
 version = "0.1.0"
 edition = "2021"
 description = "Coverage-guided exploration engine for ChaosControl"
-license.workspace = true
+license = "AGPL-3.0-or-later"
 
 [[bin]]
 name = "chaoscontrol-explore"

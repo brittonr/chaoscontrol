@@ -26,6 +26,36 @@ confidence-threshold = 0.8
 [licenses.private]
 ignore = false
 
+# Repository-owned host/control-plane packages intentionally use AGPL without
+# allowing arbitrary third-party AGPL dependencies.
+[[licenses.exceptions]]
+crate = "chaoscontrol-dashboard"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-evidence"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-explore"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-fault"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-replay"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-trace"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-vmm"
+allow = ["AGPL-3.0-or-later"]
+
 [[licenses.exceptions]]
 crate = "libbpf-cargo"
 allow = ["LGPL-2.1-only"]

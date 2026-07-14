@@ -722,3 +722,9 @@ own guest binaries:
 
 Run with `nix flake check` (requires `system-features = kvm` in
 `nix.conf` for the builder).
+
+## License
+
+ChaosControl uses an authority-aligned split. Guest protocols, SDKs, guest support crates and fixtures, and copied workload templates are `Apache-2.0`. Host fault, VMM, trace, exploration, dashboard, replay, and evidence crates are `AGPL-3.0-or-later`. Complete texts and the path map are in [LICENSES](LICENSES) and [docs/licensing.md](docs/licensing.md).
+
+An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workload through an AGPL controller does not automatically relicense unrelated workload source or output. Package metadata is outside deterministic VM, snapshot, replay, and evidence identity unless a versioned schema says otherwise. Earlier grants and third-party terms remain intact.

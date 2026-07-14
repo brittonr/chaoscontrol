@@ -3,7 +3,7 @@ name = "chaoscontrol-trace"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license.workspace = true
+license = "AGPL-3.0-or-later"
 description = "eBPF-based KVM tracing harness for ChaosControl deterministic VMM"
 
 [dependencies]

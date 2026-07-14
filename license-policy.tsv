@@ -17,6 +17,21 @@ package	crates/chaoscontrol-replay/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-evidence/Cargo.toml	AGPL-3.0-or-later
 artifact	LICENSES/Apache-2.0.txt	Apache License
 artifact	LICENSES/AGPL-3.0-or-later.txt	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-protocol/LICENSE	Apache License
+artifact	crates/chaoscontrol-sdk/LICENSE	Apache License
+artifact	crates/chaoscontrol-guest/LICENSE	Apache License
+artifact	crates/chaoscontrol-guest-net/LICENSE	Apache License
+artifact	crates/chaoscontrol-raft-guest/LICENSE	Apache License
+artifact	crates/chaoscontrol-net-guest/LICENSE	Apache License
+artifact	crates/chaoscontrol-redb-guest/LICENSE	Apache License
+artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	Apache License
+artifact	crates/chaoscontrol-fault/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-vmm/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-trace/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-explore/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-dashboard/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-replay/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-evidence/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 contains	docs/licensing.md	Processing a workload does not by itself relicense unrelated workload source or output
 contains	deny.toml	crate = "chaoscontrol-vmm"
 forbid-any	crates/chaoscontrol-protocol/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence

@@ -25,6 +25,6 @@
 
 Apache guest/SDK packages must not depend on AGPL host packages. Host packages may depend on Apache packages. Third-party dependencies, kernels, web assets, generated material containing upstream content, and external workloads retain their own terms.
 
-Complete texts are in `LICENSES/Apache-2.0.txt` and `LICENSES/AGPL-3.0-or-later.txt`.
+Complete texts are in `LICENSES/Apache-2.0.txt` and `LICENSES/AGPL-3.0-or-later.txt`. Each Cargo package directory carries the applicable text so package archives are self-contained.
 
 Processing a workload does not by itself relicense unrelated workload source or output. License metadata is outside VM, snapshot, replay, and evidence identity unless a versioned schema explicitly includes it. Earlier grants remain valid; this map does not establish legal compliance or global determinism.

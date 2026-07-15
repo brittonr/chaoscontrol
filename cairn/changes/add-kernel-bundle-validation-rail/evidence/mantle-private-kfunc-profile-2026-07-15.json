@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "role": "kernel-bundle/vm-compat-smoke",
+  "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
+  "onix": {
+    "architecture": "x86_64",
+    "kernel_release": "6.18.20",
+    "kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+    "bundle_identity": "onix:blake3:bundle:a669c75d896ca3fefcf8141576ceb1b883c34cf2418ea55d9d53393130a56e82",
+    "manifest_identity": "onix:blake3:manifest:2b6b1bebbde7b93ca974b81d125be970d472c19f2deb17368cb9e5fd7a012688",
+    "module_pack_identity": "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef",
+    "bpf_pack_identity": "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a"
+  },
+  "mantle": {
+    "observation_blake3": "1f3c566a24981f3518709bc5fba1342f93c0dd4fbcc46d55193040f0a5170d05",
+    "module_blake3": "1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+    "module_object_ref": "mantle://blake3/1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+    "bpf_object_blake3": "b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+    "bpf_object_ref": "mantle://blake3/b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de"
+  },
+  "runner": {
+    "runner": "mantle-nixos-vm-smoke-via-chaoscontrol-adapter",
+    "runner_receipt_blake3": "1f3c566a24981f3518709bc5fba1342f93c0dd4fbcc46d55193040f0a5170d05",
+    "behavior_status": "passed",
+    "evidence_class": "disposable-vm-smoke"
+  },
+  "boot": {
+    "observed_architecture": "x86_64",
+    "observed_kernel_release": "6.18.20",
+    "readiness_observation": "uname-r-matched"
+  },
+  "module": {
+    "pack_identity": "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef",
+    "member_path": "modules/private_kfunc.mod.ko",
+    "member_blake3": "1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+    "load_observation": "insmod-private-kfunc-succeeded",
+    "unload_observation": "rmmod-private-kfunc-attempted",
+    "cleanup_class": "succeeded"
+  },
+  "bpf": {
+    "pack_identity": "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a",
+    "object_path": "bpf/private_kfunc.ebpf.o",
+    "object_blake3": "b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+    "section": "xdp",
+    "attach": "xdp",
+    "attach_target": "lo",
+    "verifier_observation": "bpftool-prog-load-xdp-succeeded",
+    "attach_observation": "private-kfunc-loader-attached",
+    "detach_observation": "private-kfunc-loader-detached",
+    "cleanup_class": "succeeded",
+    "required_kfuncs": [
+      "process_value"
+    ]
+  },
+  "bounds": {
+    "max_boot_seconds": 120,
+    "max_module_seconds": 120,
+    "max_bpf_seconds": 120,
+    "max_observations": 16
+  },
+  "non_claims": [
+    "not universal bootability",
+    "not module safety proof",
+    "not eBPF safety proof",
+    "not build correctness proof",
+    "not physical readiness"
+  ]
+}

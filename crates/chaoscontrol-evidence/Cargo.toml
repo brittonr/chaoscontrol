@@ -10,6 +10,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
+blake3 = "1.8"
 
 [[bin]]
 name = "check-evidence-contracts"
@@ -70,3 +71,7 @@ path = "src/bin/check-consistency-history.rs"
 [[bin]]
 name = "check-consistency-fixtures"
 path = "src/bin/check-consistency-fixtures.rs"
+
+[[bin]]
+name = "kernel-bundle-vm-compat-smoke"
+path = "src/bin/kernel-bundle-vm-compat-smoke.rs"

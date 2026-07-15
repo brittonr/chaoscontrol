@@ -18,6 +18,7 @@ pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
 pub mod in_process_simulator;
+pub mod kernel_bundle_validation;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
@@ -68,6 +69,13 @@ pub use in_process_simulator::{
     SimulatorRunSummary, SimulatorVmReceiptBridgeComparison, VirtualClockPolicy,
     VmReplayReceiptBridgeMetadata, WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE,
     SIMULATOR_CONFIG_SCHEMA_VERSION, SIMULATOR_RECEIPT_SCHEMA_VERSION,
+};
+pub use kernel_bundle_validation::{
+    kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_profile,
+    sample_mantle_private_kfunc_receipt, validate_kernel_bundle_smoke_profile, BootCase, BpfCase,
+    KernelBundleSmokeProfile, KernelBundleSmokeReceipt, MantleMaterializationRefs, ModuleCase,
+    OnixKernelBundleRefs, SmokeBounds, SmokeObservation, SmokeRunnerEvidence,
+    KERNEL_BUNDLE_SMOKE_ROLE, KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION, KERNEL_BUNDLE_SMOKE_SCOPE,
 };
 pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,

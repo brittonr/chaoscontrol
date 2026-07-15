@@ -1,0 +1,237 @@
+{
+  "receipt": {
+    "schema": "onix-kernel-bundle-validation-v1",
+    "schema_version": 1,
+    "valid": true,
+    "architecture": "x86_64",
+    "kernel_release": "6.18.20",
+    "component_count": 3,
+    "module_pack_count": 1,
+    "bpf_pack_count": 1,
+    "kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+    "bundle_identity": "onix:blake3:bundle:a669c75d896ca3fefcf8141576ceb1b883c34cf2418ea55d9d53393130a56e82",
+    "manifest_identity": "onix:blake3:manifest:2b6b1bebbde7b93ca974b81d125be970d472c19f2deb17368cb9e5fd7a012688",
+    "kbi_id": "kbi:sha256:08916e1abc20e438f01391fa9d5e271e094637101a595c3ac28d0678be5f63d0",
+    "kbi_status": "verified",
+    "issues": [],
+    "non_claims": [
+      "no bootability claim",
+      "no deployment authority",
+      "no hardware compatibility claim",
+      "no module safety claim",
+      "no BPF safety claim",
+      "no signature trust claim",
+      "KBI ID excludes initrd, modules, firmware, and add-on packs"
+    ],
+    "receipt_identity": "onix:blake3:kernel-bundle-receipt:8f0aec06ffec1316314ce960c6aab88d7dc2dd214f1e9284ab1836518dacb780"
+  },
+  "canonical_manifest": {
+    "schema": "onix-kernel-bundle-v1",
+    "architecture": "x86_64",
+    "kernel_release": "6.18.20",
+    "boot_format": "bzimage",
+    "composition_policy": "exact-selected-packs-v1",
+    "limits": {
+      "max_components": 16,
+      "max_packs": 64,
+      "max_members_per_pack": 4096,
+      "max_total_size_bytes": 1099511627776
+    },
+    "components": [
+      {
+        "role": "kernel",
+        "object_ref": "blake3:848998e5b72b01114de5e291d2621342938d36e6936aa6e2da3fc0239f7d486e",
+        "media_type": "application/vnd.multikernel.kbi.vmlinuz.v1",
+        "size_bytes": 13476352,
+        "content_blake3": "848998e5b72b01114de5e291d2621342938d36e6936aa6e2da3fc0239f7d486e",
+        "content_sha256": "sha256:79e889399a95e2fcee5790a5a5b9c097098712d3b94c1f6bda67fda093f319b0",
+        "identity": "onix:blake3:component:f4553b8c2e31faa37ffacbf7f525043fc2fa70e2b964d3afbc67184cf3397b8b"
+      },
+      {
+        "role": "config",
+        "object_ref": "blake3:af33e9e9a159b3025e6c7d158ced26ee677564c7176dfb20aec896d3dbd3b6ed",
+        "media_type": "application/vnd.multikernel.kbi.kernelconfig.v1",
+        "size_bytes": 311014,
+        "content_blake3": "af33e9e9a159b3025e6c7d158ced26ee677564c7176dfb20aec896d3dbd3b6ed",
+        "content_sha256": "sha256:3bd54ca6803a5b078fcf969a0aad6ee0bdc3b6677df0200e7e85ae8da8222e6b",
+        "identity": "onix:blake3:component:2e6c45ff5e168ca3044df730779556d44107ecb5e0f3651ace10e93ddf4210af"
+      },
+      {
+        "role": "btf",
+        "object_ref": "blake3:223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+        "media_type": "application/vnd.multikernel.kbi.btf.v1",
+        "size_bytes": 394828544,
+        "content_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+        "content_sha256": "sha256:deb21427631da547cb7809dc97f7c4d6e0bb90a8ac60ac9ece61a771e0fbe6fd",
+        "identity": "onix:blake3:component:ba336d5d84c991c0d69fee16ca543fdb1d49f4de586f86e49e747121a98ffeb1"
+      }
+    ],
+    "module_packs": [
+      {
+        "name": "mantle-private-kfunc-module",
+        "target_kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+        "architecture": "x86_64",
+        "kernel_release": "6.18.20",
+        "members": [
+          {
+            "path": "modules/private_kfunc.mod.ko",
+            "object_ref": "mantle://blake3/1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+            "size_bytes": 462184,
+            "content_blake3": "1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+            "vermagic": "6.18.20",
+            "signature": "unsigned",
+            "identity": "onix:blake3:component:420f00adba1c1b9fe30c3d31e21c99957218a1a3c7d6f8701b03a8d06718ea49"
+          }
+        ],
+        "identity": "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef"
+      }
+    ],
+    "bpf_packs": [
+      {
+        "name": "mantle-private-kfunc-xdp",
+        "target_kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+        "architecture": "x86_64",
+        "kernel_release": "6.18.20",
+        "objects": [
+          {
+            "path": "bpf/private_kfunc.ebpf.o",
+            "object_ref": "mantle://blake3/b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+            "size_bytes": 5544,
+            "content_blake3": "b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+            "identity": "onix:blake3:component:122af44e898f2a9787403bb0ab5c5baa1845f188fa8522caa9c5bc3f3687c05f"
+          }
+        ],
+        "programs": [
+          {
+            "object": "bpf/private_kfunc.ebpf.o",
+            "section": "xdp",
+            "attach": "xdp",
+            "target": "lo"
+          }
+        ],
+        "requires": {
+          "btf": true,
+          "kfuncs": [
+            "process_value"
+          ],
+          "kernel_types": []
+        },
+        "identity": "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a"
+      }
+    ],
+    "kernel_capabilities": {
+      "kfuncs": [
+        "process_value"
+      ],
+      "kernel_types": []
+    },
+    "compatibility": {
+      "kbi_id": "kbi:sha256:08916e1abc20e438f01391fa9d5e271e094637101a595c3ac28d0678be5f63d0"
+    },
+    "provenance_refs": [
+      "blake3:1f3c566a24981f3518709bc5fba1342f93c0dd4fbcc46d55193040f0a5170d05"
+    ],
+    "evidence_refs": [
+      "blake3:1f3c566a24981f3518709bc5fba1342f93c0dd4fbcc46d55193040f0a5170d05"
+    ],
+    "non_claims": [
+      "KBI ID excludes initrd, modules, firmware, and add-on packs",
+      "no BPF safety claim",
+      "no bootability claim",
+      "no deployment authority",
+      "no hardware compatibility claim",
+      "no module safety claim",
+      "no signature trust claim"
+    ],
+    "kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+    "bundle_identity": "onix:blake3:bundle:a669c75d896ca3fefcf8141576ceb1b883c34cf2418ea55d9d53393130a56e82",
+    "manifest_identity": "onix:blake3:manifest:2b6b1bebbde7b93ca974b81d125be970d472c19f2deb17368cb9e5fd7a012688"
+  },
+  "projection": {
+    "schema": "mantle-oci-projection-v1",
+    "layers": [
+      {
+        "role": "bpf_pack",
+        "media_type": "application/vnd.multikernel.kbi.bpfpack.v1.tar",
+        "entries": [
+          {
+            "relative_path": "bpf/private_kfunc.ebpf.o",
+            "object_ref": "mantle://blake3/b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+            "identity": "onix:blake3:component:122af44e898f2a9787403bb0ab5c5baa1845f188fa8522caa9c5bc3f3687c05f",
+            "size_bytes": 5544
+          }
+        ],
+        "pack_identity": "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a"
+      },
+      {
+        "role": "btf",
+        "media_type": "application/vnd.multikernel.kbi.btf.v1",
+        "entries": [
+          {
+            "relative_path": "btf",
+            "object_ref": "blake3:223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+            "identity": "onix:blake3:component:ba336d5d84c991c0d69fee16ca543fdb1d49f4de586f86e49e747121a98ffeb1",
+            "size_bytes": 394828544
+          }
+        ]
+      },
+      {
+        "role": "config",
+        "media_type": "application/vnd.multikernel.kbi.kernelconfig.v1",
+        "entries": [
+          {
+            "relative_path": "config",
+            "object_ref": "blake3:af33e9e9a159b3025e6c7d158ced26ee677564c7176dfb20aec896d3dbd3b6ed",
+            "identity": "onix:blake3:component:2e6c45ff5e168ca3044df730779556d44107ecb5e0f3651ace10e93ddf4210af",
+            "size_bytes": 311014
+          }
+        ]
+      },
+      {
+        "role": "kernel",
+        "media_type": "application/vnd.multikernel.kbi.vmlinuz.v1",
+        "entries": [
+          {
+            "relative_path": "kernel",
+            "object_ref": "blake3:848998e5b72b01114de5e291d2621342938d36e6936aa6e2da3fc0239f7d486e",
+            "identity": "onix:blake3:component:f4553b8c2e31faa37ffacbf7f525043fc2fa70e2b964d3afbc67184cf3397b8b",
+            "size_bytes": 13476352
+          }
+        ]
+      },
+      {
+        "role": "module_pack",
+        "media_type": "application/vnd.multikernel.kbi.modulepack.v1.tar",
+        "entries": [
+          {
+            "relative_path": "modules/private_kfunc.mod.ko",
+            "object_ref": "mantle://blake3/1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+            "identity": "onix:blake3:component:420f00adba1c1b9fe30c3d31e21c99957218a1a3c7d6f8701b03a8d06718ea49",
+            "size_bytes": 462184
+          }
+        ],
+        "pack_identity": "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef"
+      }
+    ],
+    "required_annotations": {
+      "io.multikernel.kbi.id": "kbi:sha256:08916e1abc20e438f01391fa9d5e271e094637101a595c3ac28d0678be5f63d0",
+      "io.onix.kernel-bundle.bundle-identity": "onix:blake3:bundle:a669c75d896ca3fefcf8141576ceb1b883c34cf2418ea55d9d53393130a56e82",
+      "io.onix.kernel-bundle.kernel-build-identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+      "io.onix.kernel-bundle.manifest-identity": "onix:blake3:manifest:2b6b1bebbde7b93ca974b81d125be970d472c19f2deb17368cb9e5fd7a012688"
+    },
+    "round_trip": {
+      "kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+      "bundle_identity": "onix:blake3:bundle:a669c75d896ca3fefcf8141576ceb1b883c34cf2418ea55d9d53393130a56e82",
+      "manifest_identity": "onix:blake3:manifest:2b6b1bebbde7b93ca974b81d125be970d472c19f2deb17368cb9e5fd7a012688",
+      "component_identities": [
+        "onix:blake3:component:2e6c45ff5e168ca3044df730779556d44107ecb5e0f3651ace10e93ddf4210af",
+        "onix:blake3:component:ba336d5d84c991c0d69fee16ca543fdb1d49f4de586f86e49e747121a98ffeb1",
+        "onix:blake3:component:f4553b8c2e31faa37ffacbf7f525043fc2fa70e2b964d3afbc67184cf3397b8b"
+      ],
+      "pack_identities": [
+        "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a",
+        "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef"
+      ]
+    }
+  }
+}

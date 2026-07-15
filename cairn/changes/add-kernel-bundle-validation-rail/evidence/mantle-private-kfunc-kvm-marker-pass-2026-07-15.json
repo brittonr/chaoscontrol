@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "role": "kernel-bundle/vm-compat-smoke",
+  "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
+  "status": "passed",
+  "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
+  "runner": "chaoscontrol-vmm-kvm-rail",
+  "kvm_available": true,
+  "loader_available": true,
+  "terminal_classes": {
+    "boot": "ready",
+    "bpf_attach": "private-kfunc-loader-attached",
+    "bpf_cleanup": "succeeded",
+    "bpf_verify": "bpftool-prog-load-xdp-succeeded",
+    "module_cleanup": "succeeded",
+    "module_load": "insmod-private-kfunc-succeeded"
+  },
+  "observations": [
+    {
+      "case_id": "boot",
+      "class": "ready",
+      "detail": "uname-r-matched"
+    },
+    {
+      "case_id": "module",
+      "class": "load",
+      "detail": "insmod-private-kfunc-succeeded"
+    },
+    {
+      "case_id": "module",
+      "class": "unload",
+      "detail": "rmmod-private-kfunc-attempted"
+    },
+    {
+      "case_id": "module",
+      "class": "cleanup",
+      "detail": "succeeded"
+    },
+    {
+      "case_id": "bpf",
+      "class": "verify",
+      "detail": "bpftool-prog-load-xdp-succeeded"
+    },
+    {
+      "case_id": "bpf",
+      "class": "attach",
+      "detail": "private-kfunc-loader-attached"
+    },
+    {
+      "case_id": "bpf",
+      "class": "detach",
+      "detail": "private-kfunc-loader-detached"
+    },
+    {
+      "case_id": "bpf",
+      "class": "cleanup",
+      "detail": "succeeded"
+    }
+  ],
+  "issues": [],
+  "bounds": {
+    "max_boot_seconds": 120,
+    "max_module_seconds": 120,
+    "max_bpf_seconds": 120,
+    "max_observations": 16
+  },
+  "non_claims": [
+    "not universal bootability",
+    "not module safety proof",
+    "not eBPF safety proof",
+    "not build correctness proof",
+    "not physical readiness"
+  ],
+  "receipt_identity_blake3": "ef38c2f41862b9a4c0cf3be09dd50290780004897b307278fc2f41c4380f9ee6"
+}

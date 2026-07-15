@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "role": "kernel-bundle/vm-compat-smoke",
+  "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
+  "status": "blocked",
+  "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
+  "runner": "chaoscontrol-vmm-kvm-rail",
+  "kvm_available": true,
+  "loader_available": false,
+  "terminal_classes": {},
+  "observations": [],
+  "issues": [
+    "loader-unavailable: kernel, initrd, or guest loader input was unavailable",
+    "runner-failure: missing kernel or initrd: kernel=/tmp/chaos-kernel-bundle-kvm-cli/missing-vmlinux initrd=/tmp/chaos-kernel-bundle-kvm-cli/missing-initrd.gz"
+  ],
+  "bounds": {
+    "max_boot_seconds": 120,
+    "max_module_seconds": 120,
+    "max_bpf_seconds": 120,
+    "max_observations": 16
+  },
+  "non_claims": [
+    "not universal bootability",
+    "not module safety proof",
+    "not eBPF safety proof",
+    "not build correctness proof",
+    "not physical readiness"
+  ],
+  "receipt_identity_blake3": "c9798576d1425d456dd6a544c0e2b6d332347ee608e7771c7de0ae2c719cadab"
+}

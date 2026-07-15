@@ -10,8 +10,10 @@
 
 ## Phase 2: Guest harness and boot control
 
-- [ ] [serial] Implement the bounded Rust guest case protocol and setup/boot/module/BPF/cleanup observation DTOs without raw-log verdicts. r[kernel_bundle_validation.boot] r[kernel_bundle_validation.evidence]
-- [ ] [serial] Implement supported-format kernel/initrd injection, deterministic VMM configuration, no-fault boot control, and structured readiness oracle. r[kernel_bundle_validation.boot]
+- [x] [serial] Implement the bounded Rust guest case protocol and setup/boot/module/BPF/cleanup observation DTOs without raw-log verdicts. r[kernel_bundle_validation.boot] r[kernel_bundle_validation.evidence]
+  - Evidence: `KernelBundleKvmObservation`, `extract_kvm_observations`, and the `chaoscontrol-kernel-bundle:v1:` marker protocol in `crates/chaoscontrol-evidence/src/kernel_bundle_validation.rs`; `kernel-bundle-vm-compat-smoke --check-kvm-serial` classifies only structured markers.
+- [x] [serial] Implement supported-format kernel/initrd injection, deterministic VMM configuration, no-fault boot control, and structured readiness oracle. r[kernel_bundle_validation.boot]
+  - Evidence: `kernel-bundle-vm-compat-smoke --kvm-run-profile <profile> --kernel <path> --initrd <path> --out <receipt>` wraps `chaoscontrol_vmm::DeterministicVm` and emits blocked receipts when KVM or loader inputs are unavailable.
 - [ ] [parallel] Add positive boot fixtures and negative unsupported format, stale kernel/initrd, release/architecture mismatch, no readiness, panic, bound, and raw-log-only fixtures. r[kernel_bundle_validation.verification]
 
 ## Phase 3: Module and BPF behavior
@@ -28,6 +30,7 @@
 - [x] [parallel] Add the cheap default profile/fixture/adapter/protocol/non-claim wiring rail with guards against behavior-proof promotion. r[kernel_bundle_validation.rails]
   - Evidence: `cargo test -p chaoscontrol-evidence kernel_bundle_validation` passed with positive and negative tests for exact admission, role confusion, stale inputs, cleanup gaps, and non-claim gaps.
 - [ ] [serial] Add the dedicated KVM rail for selected boot, module, and BPF positive/negative cases; missing KVM or loaders must report blocked. r[kernel_bundle_validation.rails]
+  - Progress: the KVM shell and structured-marker receipt projection landed, with marker-pass and missing-loader blocked receipts in `evidence/kvm-rail-validation-2026-07-15.md`; exact selected boot/module/BPF execution inside a guest remains open.
 - [ ] [parallel] Add guards proving these receipts cannot satisfy snapshot replay, Onix lifecycle replay, physical readiness, build correctness, security, or release gates. r[kernel_bundle_validation.evidence] r[kernel_bundle_validation.verification]
 
 ## Phase 5: Documentation and closeout

@@ -71,10 +71,13 @@ pub use in_process_simulator::{
     SIMULATOR_CONFIG_SCHEMA_VERSION, SIMULATOR_RECEIPT_SCHEMA_VERSION,
 };
 pub use kernel_bundle_validation::{
-    kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_profile,
-    sample_mantle_private_kfunc_receipt, validate_kernel_bundle_smoke_profile, BootCase, BpfCase,
-    KernelBundleSmokeProfile, KernelBundleSmokeReceipt, MantleMaterializationRefs, ModuleCase,
-    OnixKernelBundleRefs, SmokeBounds, SmokeObservation, SmokeRunnerEvidence,
+    extract_kvm_observations, kernel_bundle_kvm_rail_receipt, kernel_bundle_smoke_profile_identity,
+    kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_kvm_markers,
+    sample_mantle_private_kfunc_profile, sample_mantle_private_kfunc_receipt,
+    validate_kernel_bundle_smoke_profile, BootCase, BpfCase, KernelBundleKvmRailReceipt,
+    KernelBundleKvmRun, KernelBundleSmokeProfile, KernelBundleSmokeReceipt,
+    MantleMaterializationRefs, ModuleCase, OnixKernelBundleRefs, SmokeBounds, SmokeObservation,
+    SmokeRunnerEvidence, DEFAULT_KVM_MAX_EXITS, KERNEL_BUNDLE_KVM_MARKER_PREFIX,
     KERNEL_BUNDLE_SMOKE_ROLE, KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION, KERNEL_BUNDLE_SMOKE_SCOPE,
 };
 pub use operator_triage::{

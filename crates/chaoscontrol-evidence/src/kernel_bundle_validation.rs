@@ -9,6 +9,8 @@ pub const KERNEL_BUNDLE_SMOKE_ROLE: &str = "kernel-bundle/vm-compat-smoke";
 pub const KERNEL_BUNDLE_SMOKE_SCOPE: &str = "bounded disposable-VM compatibility smoke for one exact kernel-bundle cohort; not universal bootability, not module safety proof, not eBPF safety proof, not build correctness proof, not physical readiness";
 const RECEIPT_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/receipt/v1";
 const PROFILE_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/profile/v1";
+const KVM_RAIL_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/kvm-rail/v1";
+pub const KERNEL_BUNDLE_KVM_MARKER_PREFIX: &str = "chaoscontrol-kernel-bundle:v1:";
 const ONIX_KERNEL_BUILD_PREFIX: &str = "onix:blake3:kernel-build:";
 const ONIX_BUNDLE_PREFIX: &str = "onix:blake3:bundle:";
 const ONIX_MANIFEST_PREFIX: &str = "onix:blake3:manifest:";
@@ -20,6 +22,9 @@ const MAX_NON_CLAIMS: usize = 16;
 const MAX_OBSERVATIONS: usize = 16;
 const MAX_BOUND_SECONDS: u64 = 600;
 const MIN_BOUND_SECONDS: u64 = 1;
+pub const DEFAULT_KVM_MAX_EXITS: u64 = 50_000_000;
+const MIN_KVM_MAX_EXITS: u64 = 1;
+const MAX_KVM_MAX_EXITS: u64 = 500_000_000;
 const SAMPLE_BOUND_SECONDS: u64 = 120;
 const REQUIRED_NON_CLAIMS: &[&str] = &[
     "not universal bootability",
@@ -142,6 +147,37 @@ pub struct SmokeObservation {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct KernelBundleKvmRun {
+    pub profile_identity_blake3: String,
+    pub runner: String,
+    pub kvm_available: bool,
+    pub loader_available: bool,
+    pub max_exits: u64,
+    pub exits_executed: u64,
+    pub halted: bool,
+    pub observations: Vec<SmokeObservation>,
+    pub failure_class: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct KernelBundleKvmRailReceipt {
+    pub schema_version: u64,
+    pub role: String,
+    pub campaign_id: String,
+    pub status: String,
+    pub profile_identity_blake3: String,
+    pub runner: String,
+    pub kvm_available: bool,
+    pub loader_available: bool,
+    pub terminal_classes: BTreeMap<String, String>,
+    pub observations: Vec<SmokeObservation>,
+    pub issues: Vec<String>,
+    pub bounds: SmokeBounds,
+    pub non_claims: Vec<String>,
+    pub receipt_identity_blake3: String,
+}
+
 pub fn validate_kernel_bundle_smoke_profile(
     profile: &KernelBundleSmokeProfile,
 ) -> EvidenceResult<()> {
@@ -157,11 +193,17 @@ pub fn validate_kernel_bundle_smoke_profile(
     }
 }
 
+pub fn kernel_bundle_smoke_profile_identity(
+    profile: &KernelBundleSmokeProfile,
+) -> EvidenceResult<String> {
+    domain_hash(PROFILE_DOMAIN, profile)
+}
+
 pub fn kernel_bundle_smoke_receipt(
     profile: &KernelBundleSmokeProfile,
 ) -> EvidenceResult<KernelBundleSmokeReceipt> {
     validate_kernel_bundle_smoke_profile(profile)?;
-    let profile_identity_blake3 = domain_hash(PROFILE_DOMAIN, profile)?;
+    let profile_identity_blake3 = kernel_bundle_smoke_profile_identity(profile)?;
     let terminal_classes = terminal_classes(profile);
     let observations = smoke_observations(profile);
     let mut receipt = KernelBundleSmokeReceipt {
@@ -250,6 +292,213 @@ pub fn sample_mantle_private_kfunc_profile() -> KernelBundleSmokeProfile {
 
 pub fn sample_mantle_private_kfunc_receipt() -> EvidenceResult<KernelBundleSmokeReceipt> {
     kernel_bundle_smoke_receipt(&sample_mantle_private_kfunc_profile())
+}
+
+pub fn kernel_bundle_kvm_rail_receipt(
+    profile: &KernelBundleSmokeProfile,
+    run: &KernelBundleKvmRun,
+) -> EvidenceResult<KernelBundleKvmRailReceipt> {
+    validate_kernel_bundle_smoke_profile(profile)?;
+    let profile_identity_blake3 = kernel_bundle_smoke_profile_identity(profile)?;
+    let mut issues = kvm_run_issues(profile, run, &profile_identity_blake3);
+    let status = kvm_status(run, &issues);
+    let observations = if status == "passed" {
+        expected_kvm_observations(profile)
+    } else {
+        run.observations.clone()
+    };
+    let terminal_classes = if status == "passed" {
+        terminal_classes(profile)
+    } else {
+        BTreeMap::new()
+    };
+    dedup_issues(&mut issues);
+    let mut receipt = KernelBundleKvmRailReceipt {
+        schema_version: KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION,
+        role: KERNEL_BUNDLE_SMOKE_ROLE.to_string(),
+        campaign_id: profile.campaign_id.clone(),
+        status,
+        profile_identity_blake3,
+        runner: run.runner.clone(),
+        kvm_available: run.kvm_available,
+        loader_available: run.loader_available,
+        terminal_classes,
+        observations,
+        issues,
+        bounds: profile.bounds.clone(),
+        non_claims: profile.non_claims.clone(),
+        receipt_identity_blake3: String::new(),
+    };
+    receipt.receipt_identity_blake3 = domain_hash(KVM_RAIL_DOMAIN, &receipt)?;
+    debug_assert_eq!(receipt.role, KERNEL_BUNDLE_SMOKE_ROLE);
+    debug_assert!(matches!(
+        receipt.status.as_str(),
+        "passed" | "failed" | "blocked"
+    ));
+    Ok(receipt)
+}
+
+pub fn extract_kvm_observations(serial_output: &str) -> Vec<SmokeObservation> {
+    let mut observations = Vec::new();
+    for line in serial_output.lines() {
+        if observations.len() >= MAX_OBSERVATIONS {
+            break;
+        }
+        if let Some(observation) = parse_kvm_marker(line) {
+            observations.push(observation);
+        }
+    }
+    observations
+}
+
+pub fn sample_mantle_private_kfunc_kvm_markers() -> String {
+    let profile = sample_mantle_private_kfunc_profile();
+    expected_kvm_observations(&profile)
+        .iter()
+        .map(render_kvm_marker)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn kvm_run_issues(
+    profile: &KernelBundleSmokeProfile,
+    run: &KernelBundleKvmRun,
+    expected_profile_id: &str,
+) -> Vec<String> {
+    let mut issues = Vec::new();
+    push_if(
+        !run.kvm_available,
+        &mut issues,
+        "kvm-unavailable: KVM device or capability was unavailable",
+    );
+    push_if(
+        !run.loader_available,
+        &mut issues,
+        "loader-unavailable: kernel, initrd, or guest loader input was unavailable",
+    );
+    push_if(
+        run.profile_identity_blake3 != expected_profile_id,
+        &mut issues,
+        "profile-identity-mismatch: run profile identity differs from request",
+    );
+    push_if(
+        run.max_exits < MIN_KVM_MAX_EXITS || run.max_exits > MAX_KVM_MAX_EXITS,
+        &mut issues,
+        "bound-out-of-range: max_exits is outside supported KVM rail bounds",
+    );
+    push_if(
+        run.exits_executed > run.max_exits,
+        &mut issues,
+        "bound-violation: exits_executed exceeds max_exits",
+    );
+    push_if(
+        run.observations.len() > MAX_OBSERVATIONS,
+        &mut issues,
+        "observation-overflow: structured observation count exceeds bound",
+    );
+    if let Some(failure_class) = &run.failure_class {
+        issues.push(format!("runner-failure: {failure_class}"));
+    }
+    if run.kvm_available && run.loader_available {
+        for expected in expected_kvm_observations(profile) {
+            push_if(
+                !run.observations.contains(&expected),
+                &mut issues,
+                format!(
+                    "missing-structured-observation: case={} class={} detail={}",
+                    expected.case_id, expected.class, expected.detail
+                ),
+            );
+        }
+    }
+    issues
+}
+
+fn kvm_status(run: &KernelBundleKvmRun, issues: &[String]) -> String {
+    if !run.kvm_available || !run.loader_available {
+        return "blocked".to_string();
+    }
+    if issues.is_empty() {
+        "passed".to_string()
+    } else {
+        "failed".to_string()
+    }
+}
+
+fn dedup_issues(issues: &mut Vec<String>) {
+    let mut seen = BTreeSet::new();
+    issues.retain(|issue| seen.insert(issue.clone()));
+}
+
+fn expected_kvm_observations(profile: &KernelBundleSmokeProfile) -> Vec<SmokeObservation> {
+    vec![
+        SmokeObservation {
+            case_id: "boot".to_string(),
+            class: "ready".to_string(),
+            detail: profile.boot.readiness_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "module".to_string(),
+            class: "load".to_string(),
+            detail: profile.module.load_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "module".to_string(),
+            class: "unload".to_string(),
+            detail: profile.module.unload_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "module".to_string(),
+            class: "cleanup".to_string(),
+            detail: profile.module.cleanup_class.clone(),
+        },
+        SmokeObservation {
+            case_id: "bpf".to_string(),
+            class: "verify".to_string(),
+            detail: profile.bpf.verifier_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "bpf".to_string(),
+            class: "attach".to_string(),
+            detail: profile.bpf.attach_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "bpf".to_string(),
+            class: "detach".to_string(),
+            detail: profile.bpf.detach_observation.clone(),
+        },
+        SmokeObservation {
+            case_id: "bpf".to_string(),
+            class: "cleanup".to_string(),
+            detail: profile.bpf.cleanup_class.clone(),
+        },
+    ]
+}
+
+fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
+    let payload = line.trim().strip_prefix(KERNEL_BUNDLE_KVM_MARKER_PREFIX)?;
+    let fields = payload
+        .split(';')
+        .filter_map(|field| field.split_once('='))
+        .collect::<BTreeMap<_, _>>();
+    let case_id = fields.get("case")?.to_string();
+    let class = fields.get("class")?.to_string();
+    let detail = fields.get("detail")?.to_string();
+    if case_id.is_empty() || class.is_empty() || detail.is_empty() {
+        return None;
+    }
+    Some(SmokeObservation {
+        case_id,
+        class,
+        detail,
+    })
+}
+
+fn render_kvm_marker(observation: &SmokeObservation) -> String {
+    format!(
+        "{KERNEL_BUNDLE_KVM_MARKER_PREFIX}case={};class={};detail={}",
+        observation.case_id, observation.class, observation.detail
+    )
 }
 
 fn validate_profile_shape(profile: &KernelBundleSmokeProfile, issues: &mut Vec<String>) {
@@ -616,5 +865,91 @@ mod tests {
         assert!(error
             .message()
             .contains("missing non-claim: not physical readiness"));
+    }
+
+    #[test]
+    fn kvm_markers_emit_passed_rail_receipt() {
+        const PASSING_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 2;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let expected_observation_count = expected_kvm_observations(&profile).len();
+        let observations = extract_kvm_observations(&sample_mantle_private_kfunc_kvm_markers());
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            kvm_available: true,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: PASSING_RUN_EXITS,
+            halted: true,
+            observations,
+            failure_class: None,
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("KVM rail passes");
+
+        assert_eq!(receipt.status, "passed");
+        assert!(receipt.issues.is_empty());
+        assert_eq!(receipt.observations.len(), expected_observation_count);
+        assert_eq!(receipt.receipt_identity_blake3.len(), BLAKE3_HEX_LENGTH);
+        assert!(receipt
+            .non_claims
+            .iter()
+            .any(|claim| claim == "not build correctness proof"));
+    }
+
+    #[test]
+    fn unavailable_kvm_is_blocked_not_passed() {
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            kvm_available: false,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: 0,
+            halted: false,
+            observations: Vec::new(),
+            failure_class: Some("/dev/kvm missing".to_string()),
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("blocked receipt");
+
+        assert_eq!(receipt.status, "blocked");
+        assert!(!receipt.kvm_available);
+        assert!(receipt
+            .issues
+            .iter()
+            .any(|issue| issue.contains("kvm-unavailable")));
+        assert!(receipt.observations.is_empty());
+    }
+
+    #[test]
+    fn raw_log_or_missing_cleanup_cannot_pass_kvm_rail() {
+        const RAW_LOG_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 4;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let raw_log = "Linux booted\nprivate_kfunc_loader attached\nall good\n";
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            kvm_available: true,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: RAW_LOG_RUN_EXITS,
+            halted: false,
+            observations: extract_kvm_observations(raw_log),
+            failure_class: None,
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("failed receipt");
+
+        assert_eq!(receipt.status, "failed");
+        assert!(receipt.observations.is_empty());
+        assert!(receipt
+            .issues
+            .iter()
+            .any(|issue| issue.contains("missing-structured-observation")));
     }
 }

@@ -2,27 +2,20 @@
   "schema_version": 1,
   "role": "kernel-bundle/vm-compat-smoke",
   "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
-  "status": "passed",
+  "status": "failed",
   "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
   "runner": "chaoscontrol-vmm-kvm-rail",
-  "execution_mode": "chaoscontrol-vmm-kvm",
+  "execution_mode": "serial-marker-transcript",
   "scenario": "positive",
-  "expected_kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
-  "expected_initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
-  "kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
-  "initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
+  "expected_kernel_image_blake3": null,
+  "expected_initrd_image_blake3": null,
+  "kernel_image_blake3": null,
+  "initrd_image_blake3": null,
   "kvm_available": true,
   "loader_available": true,
   "negative_fixture_matched": false,
   "failure_class": null,
-  "terminal_classes": {
-    "boot": "ready",
-    "bpf_attach": "private-kfunc-loader-attached",
-    "bpf_cleanup": "succeeded",
-    "bpf_verify": "bpftool-prog-load-xdp-succeeded",
-    "module_cleanup": "succeeded",
-    "module_load": "insmod-private-kfunc-succeeded"
-  },
+  "terminal_classes": {},
   "observations": [
     {
       "case_id": "boot",
@@ -65,7 +58,13 @@
       "detail": "succeeded"
     }
   ],
-  "issues": [],
+  "issues": [
+    "execution-mode-not-exact-kvm: transcript or wiring evidence cannot pass behavior smoke",
+    "kernel image expected digest is missing",
+    "kernel image measured digest is missing",
+    "initrd image expected digest is missing",
+    "initrd image measured digest is missing"
+  ],
   "bounds": {
     "max_boot_seconds": 120,
     "max_module_seconds": 120,
@@ -79,5 +78,5 @@
     "not build correctness proof",
     "not physical readiness"
   ],
-  "receipt_identity_blake3": "40f624ff0ff51e46bbab3813a4122ff5329be9019c1a4d73f44d11cb242daae8"
+  "receipt_identity_blake3": "9f1608fa741701a8595edd535f41c0ca0341fbfd9668f4276e5baffba04247a8"
 }

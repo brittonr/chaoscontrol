@@ -1,98 +1,114 @@
 # Kernel-bundle KVM rail validation
 
 - Date: 2026-07-15
-- Question: Does the ChaosControl kernel-bundle validation rail now have a repo-owned initrd/loader path that executes the exact Mantle private-kfunc module/BPF artifacts under KVM while keeping transcript-only and blocked-input receipts distinct?
-- Decision: **implemented for the positive exact Mantle private-kfunc cohort, not archive-ready for the whole change**. The CLI now builds an uncompressed `newc` initrd from repo-owned code, injects BusyBox, bpftool, a repo-owned exact delete-module helper, required Nix closures, and the exact Mantle `private_kfunc.mod.ko`, `private_kfunc.ebpf.o`, and `private_kfunc` artifacts. The KVM rail hashes the actual kernel/initrd inputs into the receipt, executes the guest through `chaoscontrol-vmm::DeterministicVm`, and records structured boot/module/BPF/cleanup observations. Remaining open work is the broader negative fixture set and documentation.
+- Question: Does the ChaosControl kernel-bundle rail execute the exact Mantle private-kfunc cohort under KVM, reject stale input before VMM creation, exercise selected negative behavior inside disposable guests, and prevent transcript/evidence-role promotion?
+- Decision: **yes for the selected bounded cohort**. One repo-owned deterministic initrd supports the positive case plus missing-kfunc, verifier-rejection, wrong-attach-target, and cleanup-failure scenarios. Expected and measured kernel/initrd BLAKE3 identities are mandatory. Stale digest input is blocked before VMM creation. Marker transcripts are now classified as failed exact-KVM evidence. Pure guards reject snapshot replay, Onix lifecycle replay, physical readiness, build correctness, security, and release use.
 - Owner: ChaosControl kernel-bundle validation maintainers.
-- Next action: add the remaining stale digest, missing BTF/kfunc, verifier rejection, wrong attach target, cleanup failure, and guard/non-claim fixtures before archive.
+- Next action: sync and archive through Cairn; retain all receipts as bounded VM compatibility evidence only.
 
-## Commands
+## Exact cohort
 
-```console
-nix develop -c cargo fmt -p chaoscontrol-evidence
-nix develop -c cargo test -p chaoscontrol-evidence --lib kernel_bundle_validation
-nix develop -c cargo test -p chaoscontrol-evidence --lib kernel_bundle_initrd
-nix develop -c cargo test -p chaoscontrol-evidence --bin kernel-bundle-delete-module -- --list
-/home/brittonr/.cargo-target/debug/kernel-bundle-delete-module
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --sample-profile > /tmp/chaos-kernel-bundle-exact/profile-current.json
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --sample-kvm-markers > /tmp/chaos-kernel-bundle-exact/kvm-markers-current.txt
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --check-kvm-serial /tmp/chaos-kernel-bundle-exact/profile-current.json /tmp/chaos-kernel-bundle-exact/kvm-markers-current.txt > cairn/changes/add-kernel-bundle-validation-rail/evidence/mantle-private-kfunc-kvm-marker-pass-2026-07-15.json
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --kvm-run-profile /tmp/chaos-kernel-bundle-exact/profile-current.json --kernel /tmp/chaos-kernel-bundle-exact/missing-kernel --initrd /tmp/chaos-kernel-bundle-exact/missing-initrd --out cairn/changes/add-kernel-bundle-validation-rail/evidence/mantle-private-kfunc-kvm-blocked-input-2026-07-15.json --max-exits 300000
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --build-private-kfunc-initrd /tmp/chaos-kernel-bundle-exact/private-kfunc-initrd-v7.cpio --artifacts-dir /nix/store/6cz7sqcq3mp7vnpz2nipcjx600b15fxv-mantle-kernelscript-production-artifacts/artifacts --busybox /nix/store/8mf4s8c4xjvlkj12p299qylrb30g7zzh-busybox-static-x86_64-unknown-linux-musl-1.37.0/bin/busybox --bpftool /nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin/bpftool --delete-module-helper /home/brittonr/.cargo-target/debug/kernel-bundle-delete-module --closure-list /tmp/chaos-kernel-bundle-exact/closure-roots-with-helper.txt > /tmp/chaos-kernel-bundle-exact/initrd-summary-v7.json
-/home/brittonr/.cargo-target/debug/kernel-bundle-vm-compat-smoke --kvm-run-profile /tmp/chaos-kernel-bundle-exact/profile.json --kernel /tmp/chaos-kernel-bundle-exact/onix-kernel-dev-dev/vmlinux --initrd /tmp/chaos-kernel-bundle-exact/private-kfunc-initrd-v7.cpio --out /tmp/chaos-kernel-bundle-exact/exact-kvm-receipt-v7.json --max-exits 300000 --memory-mib 1024
+```text
+profile_identity_blake3 = 216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589
+kernel_image_blake3 = 223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7
+initrd_image_blake3 = 48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8
+module_blake3 = 1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1
+bpf_object_blake3 = b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de
 ```
 
-## Focused test results
+The generated initrd summary records schema version `2`, 55 closure roots, the exact three Mantle artifact inputs, and the five guest scenarios.
 
-From pueue task `16` after the final initrd cleanup:
+## Reproduction shape
+
+The full operator procedure is documented in `docs/kernel-bundle-validation.md`. The evidence run built `kernel-bundle-vm-compat-smoke` and `kernel-bundle-delete-module`, generated one uncompressed `newc` initrd, then invoked:
+
+```console
+kernel-bundle-vm-compat-smoke \
+  --kvm-run-profile profile.json \
+  --kernel "$VMLINUX" \
+  --initrd private-kfunc-initrd.cpio \
+  --expected-kernel-blake3 "$VMLINUX_BLAKE3" \
+  --expected-initrd-blake3 "$INITRD_BLAKE3" \
+  --scenario "$SCENARIO" \
+  --memory-mib 1024 \
+  --max-exits 300000 \
+  --out "$RECEIPT"
+```
+
+## Positive receipt
+
+`mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json`:
+
+```text
+status = passed
+execution_mode = chaoscontrol-vmm-kvm
+scenario = positive
+negative_fixture_matched = false
+issues = []
+receipt_identity_blake3 = 40f624ff0ff51e46bbab3813a4122ff5329be9019c1a4d73f44d11cb242daae8
+```
+
+The receipt records exact boot readiness, module load/unload/cleanup, and BPF verify/attach/detach/cleanup observations.
+
+## Negative receipts
+
+| Scenario | Terminal status | Exact negative match | Failure class | Receipt BLAKE3 |
+|---|---|---:|---|---|
+| stale digest | blocked | true | `input-digest-mismatch` before VMM creation | `e1c33944d33527b4335e6d675157c5029808bc0e335fc19ed2fddbf68f70e952` |
+| missing kfunc | failed | true | `guest-error:bpf:missing-kfunc-rejected` | `cfea5752758450bef4cdbbec306a6354958d25e740a5fc9889f4945f7d4ef605` |
+| verifier rejection | failed | true | `guest-error:bpf:verifier-rejected` | `1df978667e04174efad796a09db3866c790d0267b30c47df29d2aa4985cbd86d` |
+| wrong attach target | failed | true | `guest-error:bpf:wrong-attach-target-rejected` | `b637120e3d449375c1b31bc70e744ea425e3915e8a7515d62b31f6a3cd138bd3` |
+| cleanup failure | failed | true | `guest-error:bpf:cleanup-failed` | `bc36de1ea37a6d0e23df5561778f2291b356078e57e127a80b5c0365e526c166` |
+
+The wrong-target and cleanup scenarios first reach the expected earlier positive observations, then fail at the selected boundary. Each scenario runs in a fresh disposable VM.
+
+## Transcript and unavailable-input guards
+
+- `mantle-private-kfunc-kvm-marker-transcript-rejected-2026-07-15.json` records `execution-mode-not-exact-kvm`; structured text is parser evidence, not behavior success.
+- `mantle-private-kfunc-kvm-blocked-input-2026-07-15.json` records missing kernel/initrd inputs as blocked.
+- `kernel_bundle_receipt_supports_use` accepts only an issue-free exact-KVM positive receipt for the narrow VM-compatibility-smoke use and denies all broader evidence roles.
+
+## Focused validation
+
+From pueue task `99`:
 
 ```text
 $ nix develop -c cargo fmt -p chaoscontrol-evidence --check
 $ nix develop -c cargo test -p chaoscontrol-evidence --lib kernel_bundle_validation
-running 6 tests
-test kernel_bundle_validation::tests::stale_or_role_confused_inputs_fail_before_receipt ... ok
-test kernel_bundle_validation::tests::cleanup_and_non_claim_gaps_cannot_pass ... ok
-test kernel_bundle_validation::tests::exact_mantle_private_kfunc_profile_emits_scoped_receipt ... ok
-test kernel_bundle_validation::tests::raw_log_or_missing_cleanup_cannot_pass_kvm_rail ... ok
-test kernel_bundle_validation::tests::unavailable_kvm_is_blocked_not_passed ... ok
-test kernel_bundle_validation::tests::kvm_markers_emit_passed_rail_receipt ... ok
-
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out
 
 $ nix develop -c cargo test -p chaoscontrol-evidence --lib kernel_bundle_initrd
-running 4 tests
-test kernel_bundle_initrd::tests::init_script_rejects_empty_inputs ... ok
-test kernel_bundle_initrd::tests::init_script_contains_structured_private_kfunc_markers ... ok
-test kernel_bundle_initrd::tests::newc_writer_records_regular_files_dirs_and_symlinks ... ok
-test kernel_bundle_initrd::tests::closure_roots_reject_relative_paths ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.01s
-
-$ nix develop -c cargo test -p chaoscontrol-evidence --bin kernel-bundle-delete-module -- --list
-Running unittests src/bin/kernel-bundle-delete-module.rs (...)
-0 tests, 0 benchmarks
+$ nix develop -c cargo clippy -p chaoscontrol-evidence --lib --bin kernel-bundle-vm-compat-smoke --no-deps -- -D warnings
+Finished `dev` profile
 ```
 
-## Receipt excerpts
+The negative matrix also covers unsupported architecture/release, profile bounds, VM-exit overflow, panic/no-readiness, module vermagic/signature/rejection/taint/unload classes, absent BTF/type/event classes, raw-log-only input, cleanup gaps, stale role/digest inputs, and unavailable KVM/loaders in pure deterministic tests.
 
-Structured marker-only classification is still a transcript rail, not exact KVM execution:
+Closeout checks:
 
 ```text
-"status": "passed"
-"execution_mode": "serial-marker-transcript"
-"kernel_image_blake3": null
-"initrd_image_blake3": null
-"receipt_identity_blake3": "3fa7cf844e3c815ab5d31adebce82072bc91b92c6f6985c263c47a9b1938c628"
+pueue task 25: dependency-audit passed with vulnerabilities=0 and no untriaged warnings
+pueue task 25: dependency-policy passed
+pueue task 19: canonical-policy validate plus proposal/design/tasks gates passed
 ```
 
-Missing loader inputs remain fail-closed:
+Canonical policy: `/home/brittonr/git/OnixResearch/cairn/cairn-policy/generated/cairn-policy.json`.
 
-```text
-"status": "blocked"
-"execution_mode": "chaoscontrol-vmm-kvm"
-"kvm_available": true
-"loader_available": false
-"receipt_identity_blake3": "59f0b3425fe465a95b38456c0af9ba8abcacdcec6e14e67e0f2373677dc23f60"
-```
+## Persisted files
 
-Exact repo-owned KVM execution of the selected Mantle private-kfunc artifacts passed:
-
-```text
-"status": "passed"
-"execution_mode": "chaoscontrol-vmm-kvm"
-"kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7"
-"initrd_image_blake3": "9ac442589b7f9e35b610961e67e236461dab8150d5ec1c8139b8a43c9ae1a29a"
-"receipt_identity_blake3": "b0273764265f5beea526aa56acbf5f723a0d193af1e54626c5bf0062e4856cb0"
-"issues": []
-```
-
-Persisted files:
-
-- `mantle-private-kfunc-kvm-marker-pass-2026-07-15.json`
-- `mantle-private-kfunc-kvm-blocked-input-2026-07-15.json`
+- `mantle-private-kfunc-materialization-2026-07-15.json`
 - `mantle-private-kfunc-initrd-summary-2026-07-15.json`
 - `mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json`
+- `mantle-private-kfunc-kvm-negative-stale-digest-2026-07-15.json`
+- `mantle-private-kfunc-kvm-negative-missing-kfunc-2026-07-15.json`
+- `mantle-private-kfunc-kvm-negative-verifier-rejection-2026-07-15.json`
+- `mantle-private-kfunc-kvm-negative-wrong-attach-target-2026-07-15.json`
+- `mantle-private-kfunc-kvm-negative-cleanup-failure-2026-07-15.json`
+- `mantle-private-kfunc-kvm-marker-transcript-rejected-2026-07-15.json`
+- `mantle-private-kfunc-kvm-blocked-input-2026-07-15.json`
 
 ## Non-claims
 
-The exact KVM receipt proves only the bounded disposable-VM path for this selected Mantle private-kfunc cohort under the named ChaosControl runner inputs. It does not claim universal bootability, module safety, eBPF safety, build correctness, snapshot replay, Onix lifecycle replay, physical readiness, security, release eligibility, or production deployability. The marker-only receipt remains transcript classification, and the blocked-input receipt proves fail-closed shell behavior only.
+This proves selected bounded disposable-VM compatibility behavior for one exact cohort only. It does not prove universal bootability, module/eBPF safety, kernel correctness, build correctness, deterministic replay, Onix lifecycle behavior, physical readiness, security, deployability, or release eligibility.

@@ -11,6 +11,8 @@ const RECEIPT_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/receipt
 const PROFILE_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/profile/v1";
 const KVM_RAIL_DOMAIN: &str = "chaoscontrol/kernel-bundle/vm-compat-smoke/kvm-rail/v1";
 pub const KERNEL_BUNDLE_KVM_MARKER_PREFIX: &str = "chaoscontrol-kernel-bundle:v1:";
+pub const KERNEL_BUNDLE_KVM_EXECUTION_MODE: &str = "chaoscontrol-vmm-kvm";
+pub const KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE: &str = "serial-marker-transcript";
 const ONIX_KERNEL_BUILD_PREFIX: &str = "onix:blake3:kernel-build:";
 const ONIX_BUNDLE_PREFIX: &str = "onix:blake3:bundle:";
 const ONIX_MANIFEST_PREFIX: &str = "onix:blake3:manifest:";
@@ -147,11 +149,52 @@ pub struct SmokeObservation {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum KernelBundleKvmScenario {
+    Positive,
+    StaleDigest,
+    MissingKfunc,
+    VerifierRejection,
+    WrongAttachTarget,
+    CleanupFailure,
+}
+
+impl KernelBundleKvmScenario {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Positive => "positive",
+            Self::StaleDigest => "stale-digest",
+            Self::MissingKfunc => "missing-kfunc",
+            Self::VerifierRejection => "verifier-rejection",
+            Self::WrongAttachTarget => "wrong-attach-target",
+            Self::CleanupFailure => "cleanup-failure",
+        }
+    }
+
+    pub fn parse(value: &str) -> EvidenceResult<Self> {
+        match value {
+            "positive" => Ok(Self::Positive),
+            "stale-digest" => Ok(Self::StaleDigest),
+            "missing-kfunc" => Ok(Self::MissingKfunc),
+            "verifier-rejection" => Ok(Self::VerifierRejection),
+            "wrong-attach-target" => Ok(Self::WrongAttachTarget),
+            "cleanup-failure" => Ok(Self::CleanupFailure),
+            _ => Err(EvidenceError::new(format!(
+                "unsupported kernel-bundle KVM scenario: {value}"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct KernelBundleKvmRun {
     pub profile_identity_blake3: String,
     pub runner: String,
     pub execution_mode: String,
+    pub scenario: KernelBundleKvmScenario,
+    pub expected_kernel_image_blake3: Option<String>,
+    pub expected_initrd_image_blake3: Option<String>,
     pub kernel_image_blake3: Option<String>,
     pub initrd_image_blake3: Option<String>,
     pub kvm_available: bool,
@@ -163,6 +206,18 @@ pub struct KernelBundleKvmRun {
     pub failure_class: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum KernelBundleEvidenceUse {
+    VmCompatibilitySmoke,
+    SnapshotReplay,
+    OnixLifecycleReplay,
+    PhysicalReadiness,
+    BuildCorrectness,
+    SecurityProof,
+    ReleaseEligibility,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct KernelBundleKvmRailReceipt {
     pub schema_version: u64,
@@ -172,10 +227,15 @@ pub struct KernelBundleKvmRailReceipt {
     pub profile_identity_blake3: String,
     pub runner: String,
     pub execution_mode: String,
+    pub scenario: KernelBundleKvmScenario,
+    pub expected_kernel_image_blake3: Option<String>,
+    pub expected_initrd_image_blake3: Option<String>,
     pub kernel_image_blake3: Option<String>,
     pub initrd_image_blake3: Option<String>,
     pub kvm_available: bool,
     pub loader_available: bool,
+    pub negative_fixture_matched: bool,
+    pub failure_class: Option<String>,
     pub terminal_classes: BTreeMap<String, String>,
     pub observations: Vec<SmokeObservation>,
     pub issues: Vec<String>,
@@ -319,6 +379,7 @@ pub fn kernel_bundle_kvm_rail_receipt(
         BTreeMap::new()
     };
     dedup_issues(&mut issues);
+    let negative_fixture_matched = negative_fixture_matched(run);
     let mut receipt = KernelBundleKvmRailReceipt {
         schema_version: KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION,
         role: KERNEL_BUNDLE_SMOKE_ROLE.to_string(),
@@ -327,10 +388,15 @@ pub fn kernel_bundle_kvm_rail_receipt(
         profile_identity_blake3,
         runner: run.runner.clone(),
         execution_mode: run.execution_mode.clone(),
+        scenario: run.scenario,
+        expected_kernel_image_blake3: run.expected_kernel_image_blake3.clone(),
+        expected_initrd_image_blake3: run.expected_initrd_image_blake3.clone(),
         kernel_image_blake3: run.kernel_image_blake3.clone(),
         initrd_image_blake3: run.initrd_image_blake3.clone(),
         kvm_available: run.kvm_available,
         loader_available: run.loader_available,
+        negative_fixture_matched,
+        failure_class: run.failure_class.clone(),
         terminal_classes,
         observations,
         issues,
@@ -345,6 +411,26 @@ pub fn kernel_bundle_kvm_rail_receipt(
         "passed" | "failed" | "blocked"
     ));
     Ok(receipt)
+}
+
+pub fn kernel_bundle_receipt_supports_use(
+    receipt: &KernelBundleKvmRailReceipt,
+    requested_use: KernelBundleEvidenceUse,
+) -> bool {
+    if requested_use != KernelBundleEvidenceUse::VmCompatibilitySmoke {
+        return false;
+    }
+    let exact_mode = receipt.execution_mode == KERNEL_BUNDLE_KVM_EXECUTION_MODE;
+    let positive_scenario = receipt.scenario == KernelBundleKvmScenario::Positive;
+    let images_bound = receipt.expected_kernel_image_blake3.is_some()
+        && receipt.expected_kernel_image_blake3 == receipt.kernel_image_blake3
+        && receipt.expected_initrd_image_blake3.is_some()
+        && receipt.expected_initrd_image_blake3 == receipt.initrd_image_blake3;
+    receipt.status == "passed"
+        && exact_mode
+        && positive_scenario
+        && images_bound
+        && receipt.issues.is_empty()
 }
 
 pub fn extract_kvm_observations(serial_output: &str) -> Vec<SmokeObservation> {
@@ -399,12 +485,36 @@ fn kvm_run_issues(
         "profile-identity-mismatch: run profile identity differs from request",
     );
     push_if(
-        run.execution_mode.is_empty(),
+        run.execution_mode != KERNEL_BUNDLE_KVM_EXECUTION_MODE,
         &mut issues,
-        "execution-mode-missing: KVM rail run did not declare its execution mode",
+        "execution-mode-not-exact-kvm: transcript or wiring evidence cannot pass behavior smoke",
+    );
+    validate_optional_hex(
+        "expected kernel image",
+        &run.expected_kernel_image_blake3,
+        &mut issues,
+    );
+    validate_optional_hex(
+        "expected initrd image",
+        &run.expected_initrd_image_blake3,
+        &mut issues,
     );
     validate_optional_hex("kernel image", &run.kernel_image_blake3, &mut issues);
     validate_optional_hex("initrd image", &run.initrd_image_blake3, &mut issues);
+    validate_image_binding(
+        "kernel image",
+        &run.expected_kernel_image_blake3,
+        &run.kernel_image_blake3,
+        run.loader_available,
+        &mut issues,
+    );
+    validate_image_binding(
+        "initrd image",
+        &run.expected_initrd_image_blake3,
+        &run.initrd_image_blake3,
+        run.loader_available,
+        &mut issues,
+    );
     push_if(
         run.max_exits < MIN_KVM_MAX_EXITS || run.max_exits > MAX_KVM_MAX_EXITS,
         &mut issues,
@@ -423,19 +533,81 @@ fn kvm_run_issues(
     if let Some(failure_class) = &run.failure_class {
         issues.push(format!("runner-failure: {failure_class}"));
     }
-    if run.kvm_available && run.loader_available {
-        for expected in expected_kvm_observations(profile) {
-            push_if(
-                !run.observations.contains(&expected),
-                &mut issues,
-                format!(
-                    "missing-structured-observation: case={} class={} detail={}",
-                    expected.case_id, expected.class, expected.detail
-                ),
-            );
+    if run.scenario == KernelBundleKvmScenario::Positive {
+        if run.kvm_available && run.loader_available {
+            for expected in expected_kvm_observations(profile) {
+                push_if(
+                    !run.observations.contains(&expected),
+                    &mut issues,
+                    format!(
+                        "missing-structured-observation: case={} class={} detail={}",
+                        expected.case_id, expected.class, expected.detail
+                    ),
+                );
+            }
         }
+    } else {
+        push_if(
+            !negative_fixture_matched(run),
+            &mut issues,
+            format!(
+                "negative-fixture-mismatch: scenario={} did not reach its exact failure class",
+                run.scenario.as_str()
+            ),
+        );
     }
     issues
+}
+
+fn validate_image_binding(
+    label: &str,
+    expected: &Option<String>,
+    actual: &Option<String>,
+    loader_available: bool,
+    issues: &mut Vec<String>,
+) {
+    if !loader_available {
+        return;
+    }
+    push_if(
+        expected.is_none(),
+        issues,
+        format!("{label} expected digest is missing"),
+    );
+    push_if(
+        actual.is_none(),
+        issues,
+        format!("{label} measured digest is missing"),
+    );
+    if let (Some(expected), Some(actual)) = (expected, actual) {
+        push_if(
+            expected != actual,
+            issues,
+            format!("{label} digest mismatch"),
+        );
+    }
+}
+
+fn negative_fixture_matched(run: &KernelBundleKvmRun) -> bool {
+    match run.scenario {
+        KernelBundleKvmScenario::Positive => false,
+        KernelBundleKvmScenario::StaleDigest => run
+            .failure_class
+            .as_deref()
+            .is_some_and(|failure| failure.starts_with("input-digest-mismatch:")),
+        KernelBundleKvmScenario::MissingKfunc => has_error_detail(run, "missing-kfunc-rejected"),
+        KernelBundleKvmScenario::VerifierRejection => has_error_detail(run, "verifier-rejected"),
+        KernelBundleKvmScenario::WrongAttachTarget => {
+            has_error_detail(run, "wrong-attach-target-rejected")
+        }
+        KernelBundleKvmScenario::CleanupFailure => has_error_detail(run, "cleanup-failed"),
+    }
+}
+
+fn has_error_detail(run: &KernelBundleKvmRun, detail: &str) -> bool {
+    run.observations
+        .iter()
+        .any(|observation| observation.class == "error" && observation.detail == detail)
 }
 
 fn kvm_status(run: &KernelBundleKvmRun, issues: &[String]) -> String {
@@ -789,7 +961,7 @@ fn domain_hash<T: Serialize>(domain: &str, value: &T) -> EvidenceResult<String> 
 
 fn validate_bound(name: &str, value: u64, issues: &mut Vec<String>) {
     push_if(
-        value < MIN_BOUND_SECONDS || value > MAX_BOUND_SECONDS,
+        !(MIN_BOUND_SECONDS..=MAX_BOUND_SECONDS).contains(&value),
         issues,
         format!("{name} is outside supported bounds"),
     );
@@ -906,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn kvm_markers_emit_passed_rail_receipt() {
+    fn transcript_markers_cannot_pass_exact_kvm_rail() {
         const PASSING_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 2;
         let profile = sample_mantle_private_kfunc_profile();
         let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
@@ -915,7 +1087,10 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
-            execution_mode: "serial-marker-transcript".to_string(),
+            execution_mode: KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: None,
+            expected_initrd_image_blake3: None,
             kernel_image_blake3: None,
             initrd_image_blake3: None,
             kvm_available: true,
@@ -927,10 +1102,13 @@ mod tests {
             failure_class: None,
         };
 
-        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("KVM rail passes");
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("classified receipt");
 
-        assert_eq!(receipt.status, "passed");
-        assert!(receipt.issues.is_empty());
+        assert_eq!(receipt.status, "failed");
+        assert!(receipt
+            .issues
+            .iter()
+            .any(|issue| issue.contains("execution-mode-not-exact-kvm")));
         assert_eq!(receipt.observations.len(), expected_observation_count);
         assert_eq!(receipt.receipt_identity_blake3.len(), BLAKE3_HEX_LENGTH);
         assert!(receipt
@@ -946,7 +1124,10 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
-            execution_mode: "chaoscontrol-vmm-kvm".to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: None,
+            expected_initrd_image_blake3: None,
             kernel_image_blake3: None,
             initrd_image_blake3: None,
             kvm_available: false,
@@ -978,7 +1159,10 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
-            execution_mode: "serial-marker-transcript".to_string(),
+            execution_mode: KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: None,
+            expected_initrd_image_blake3: None,
             kernel_image_blake3: None,
             initrd_image_blake3: None,
             kvm_available: true,
@@ -998,5 +1182,263 @@ mod tests {
             .issues
             .iter()
             .any(|issue| issue.contains("missing-structured-observation")));
+    }
+
+    #[test]
+    fn exact_kvm_positive_requires_matching_image_digests() {
+        const POSITIVE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 2;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let digest = "a".repeat(BLAKE3_HEX_LENGTH);
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: Some(digest.clone()),
+            expected_initrd_image_blake3: Some(digest.clone()),
+            kernel_image_blake3: Some(digest.clone()),
+            initrd_image_blake3: Some(digest),
+            kvm_available: true,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: POSITIVE_RUN_EXITS,
+            halted: true,
+            observations: expected_kvm_observations(&profile),
+            failure_class: None,
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("exact receipt");
+
+        assert_eq!(receipt.status, "passed");
+        assert!(receipt.issues.is_empty());
+        assert!(!receipt.negative_fixture_matched);
+        assert!(receipt.failure_class.is_none());
+        assert!(kernel_bundle_receipt_supports_use(
+            &receipt,
+            KernelBundleEvidenceUse::VmCompatibilitySmoke
+        ));
+    }
+
+    #[test]
+    fn behavior_receipt_cannot_satisfy_broader_evidence_roles() {
+        const POSITIVE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 2;
+        const FORBIDDEN_USE_COUNT: usize = 6;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let digest = "e".repeat(BLAKE3_HEX_LENGTH);
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: Some(digest.clone()),
+            expected_initrd_image_blake3: Some(digest.clone()),
+            kernel_image_blake3: Some(digest.clone()),
+            initrd_image_blake3: Some(digest),
+            kvm_available: true,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: POSITIVE_RUN_EXITS,
+            halted: true,
+            observations: expected_kvm_observations(&profile),
+            failure_class: None,
+        };
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("exact receipt");
+        let forbidden = [
+            KernelBundleEvidenceUse::SnapshotReplay,
+            KernelBundleEvidenceUse::OnixLifecycleReplay,
+            KernelBundleEvidenceUse::PhysicalReadiness,
+            KernelBundleEvidenceUse::BuildCorrectness,
+            KernelBundleEvidenceUse::SecurityProof,
+            KernelBundleEvidenceUse::ReleaseEligibility,
+        ];
+
+        assert!(forbidden
+            .iter()
+            .all(|requested| !kernel_bundle_receipt_supports_use(&receipt, *requested)));
+        assert_eq!(forbidden.len(), FORBIDDEN_USE_COUNT);
+    }
+
+    #[test]
+    fn unsupported_boot_facts_and_bounds_fail_before_receipt() {
+        let mut profile = sample_mantle_private_kfunc_profile();
+        profile.boot.observed_architecture = "aarch64".to_string();
+        profile.boot.observed_kernel_release = "6.18.21".to_string();
+        profile.bounds.max_boot_seconds = MAX_BOUND_SECONDS.saturating_add(1);
+
+        let error = kernel_bundle_smoke_receipt(&profile).expect_err("unsupported profile");
+
+        assert!(error.message().contains("boot architecture"));
+        assert!(error.message().contains("boot kernel release"));
+        assert!(error.message().contains("max_boot_seconds"));
+    }
+
+    #[test]
+    fn each_negative_scenario_requires_its_exact_failure() {
+        const NEGATIVE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 3;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let digest = "b".repeat(BLAKE3_HEX_LENGTH);
+        let cases = [
+            (
+                KernelBundleKvmScenario::MissingKfunc,
+                "missing-kfunc-rejected",
+            ),
+            (
+                KernelBundleKvmScenario::VerifierRejection,
+                "verifier-rejected",
+            ),
+            (
+                KernelBundleKvmScenario::WrongAttachTarget,
+                "wrong-attach-target-rejected",
+            ),
+            (KernelBundleKvmScenario::CleanupFailure, "cleanup-failed"),
+        ];
+        for (scenario, detail) in cases {
+            let run = KernelBundleKvmRun {
+                profile_identity_blake3: profile_id.clone(),
+                runner: "chaoscontrol-vmm".to_string(),
+                execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+                scenario,
+                expected_kernel_image_blake3: Some(digest.clone()),
+                expected_initrd_image_blake3: Some(digest.clone()),
+                kernel_image_blake3: Some(digest.clone()),
+                initrd_image_blake3: Some(digest.clone()),
+                kvm_available: true,
+                loader_available: true,
+                max_exits: DEFAULT_KVM_MAX_EXITS,
+                exits_executed: NEGATIVE_RUN_EXITS,
+                halted: false,
+                observations: vec![SmokeObservation {
+                    case_id: "bpf".to_string(),
+                    class: "error".to_string(),
+                    detail: detail.to_string(),
+                }],
+                failure_class: Some(format!("guest-error:bpf:{detail}")),
+            };
+            let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("negative receipt");
+
+            assert_eq!(receipt.status, "failed");
+            assert!(receipt.negative_fixture_matched);
+            assert_eq!(receipt.scenario, scenario);
+            assert!(receipt.failure_class.is_some());
+        }
+    }
+
+    #[test]
+    fn additional_boot_module_and_bpf_failure_classes_never_pass() {
+        const FAILURE_RUN_EXITS: u64 = DEFAULT_KVM_MAX_EXITS / 5;
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let digest = "f".repeat(BLAKE3_HEX_LENGTH);
+        let failures = [
+            ("boot", "panic"),
+            ("boot", "readiness-missing"),
+            ("module", "vermagic-rejected"),
+            ("module", "signature-policy-rejected"),
+            ("module", "module-rejected"),
+            ("module", "module-tainted"),
+            ("module", "module-unload-failed"),
+            ("bpf", "btf-missing"),
+            ("bpf", "required-type-missing"),
+            ("bpf", "expected-event-missing"),
+        ];
+        for (case_id, detail) in failures {
+            let run = KernelBundleKvmRun {
+                profile_identity_blake3: profile_id.clone(),
+                runner: "chaoscontrol-vmm".to_string(),
+                execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+                scenario: KernelBundleKvmScenario::Positive,
+                expected_kernel_image_blake3: Some(digest.clone()),
+                expected_initrd_image_blake3: Some(digest.clone()),
+                kernel_image_blake3: Some(digest.clone()),
+                initrd_image_blake3: Some(digest.clone()),
+                kvm_available: true,
+                loader_available: true,
+                max_exits: DEFAULT_KVM_MAX_EXITS,
+                exits_executed: FAILURE_RUN_EXITS,
+                halted: false,
+                observations: vec![SmokeObservation {
+                    case_id: case_id.to_string(),
+                    class: "error".to_string(),
+                    detail: detail.to_string(),
+                }],
+                failure_class: Some(format!("guest-error:{case_id}:{detail}")),
+            };
+            let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("failure receipt");
+
+            assert_eq!(receipt.status, "failed");
+            assert!(!receipt.negative_fixture_matched);
+            assert!(receipt
+                .failure_class
+                .as_deref()
+                .is_some_and(|failure| failure.contains(detail)));
+        }
+    }
+
+    #[test]
+    fn vm_exit_bound_violation_never_passes() {
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let digest = "1".repeat(BLAKE3_HEX_LENGTH);
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::Positive,
+            expected_kernel_image_blake3: Some(digest.clone()),
+            expected_initrd_image_blake3: Some(digest.clone()),
+            kernel_image_blake3: Some(digest.clone()),
+            initrd_image_blake3: Some(digest),
+            kvm_available: true,
+            loader_available: true,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: DEFAULT_KVM_MAX_EXITS.saturating_add(1),
+            halted: false,
+            observations: Vec::new(),
+            failure_class: Some("vm-run:bound-exceeded".to_string()),
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("bound receipt");
+
+        assert_eq!(receipt.status, "failed");
+        assert!(receipt
+            .issues
+            .iter()
+            .any(|issue| issue.contains("bound-violation")));
+        assert!(receipt.terminal_classes.is_empty());
+    }
+
+    #[test]
+    fn stale_digest_is_blocked_before_vmm_and_bound_to_expected_and_actual() {
+        let profile = sample_mantle_private_kfunc_profile();
+        let profile_id = kernel_bundle_smoke_profile_identity(&profile).expect("hash profile");
+        let expected = "c".repeat(BLAKE3_HEX_LENGTH);
+        let actual = "d".repeat(BLAKE3_HEX_LENGTH);
+        let run = KernelBundleKvmRun {
+            profile_identity_blake3: profile_id,
+            runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario: KernelBundleKvmScenario::StaleDigest,
+            expected_kernel_image_blake3: Some(expected.clone()),
+            expected_initrd_image_blake3: Some(actual.clone()),
+            kernel_image_blake3: Some(actual.clone()),
+            initrd_image_blake3: Some(actual),
+            kvm_available: true,
+            loader_available: false,
+            max_exits: DEFAULT_KVM_MAX_EXITS,
+            exits_executed: 0,
+            halted: false,
+            observations: Vec::new(),
+            failure_class: Some(format!("input-digest-mismatch:kernel:expected={expected}")),
+        };
+
+        let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run).expect("blocked receipt");
+
+        assert_eq!(receipt.status, "blocked");
+        assert!(receipt.negative_fixture_matched);
+        assert_eq!(receipt.expected_kernel_image_blake3, Some(expected));
+        assert!(receipt.observations.is_empty());
     }
 }

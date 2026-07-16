@@ -79,14 +79,16 @@ pub use kernel_bundle_initrd::{
 };
 pub use kernel_bundle_validation::{
     expected_kernel_bundle_kvm_observations, extract_kvm_observations,
-    kernel_bundle_kvm_rail_receipt, kernel_bundle_smoke_profile_identity,
-    kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_kvm_markers,
-    sample_mantle_private_kfunc_profile, sample_mantle_private_kfunc_receipt,
-    validate_kernel_bundle_smoke_profile, BootCase, BpfCase, KernelBundleKvmRailReceipt,
-    KernelBundleKvmRun, KernelBundleSmokeProfile, KernelBundleSmokeReceipt,
+    kernel_bundle_kvm_rail_receipt, kernel_bundle_receipt_supports_use,
+    kernel_bundle_smoke_profile_identity, kernel_bundle_smoke_receipt,
+    sample_mantle_private_kfunc_kvm_markers, sample_mantle_private_kfunc_profile,
+    sample_mantle_private_kfunc_receipt, validate_kernel_bundle_smoke_profile, BootCase, BpfCase,
+    KernelBundleEvidenceUse, KernelBundleKvmRailReceipt, KernelBundleKvmRun,
+    KernelBundleKvmScenario, KernelBundleSmokeProfile, KernelBundleSmokeReceipt,
     MantleMaterializationRefs, ModuleCase, OnixKernelBundleRefs, SmokeBounds, SmokeObservation,
-    SmokeRunnerEvidence, DEFAULT_KVM_MAX_EXITS, KERNEL_BUNDLE_KVM_MARKER_PREFIX,
-    KERNEL_BUNDLE_SMOKE_ROLE, KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION, KERNEL_BUNDLE_SMOKE_SCOPE,
+    SmokeRunnerEvidence, DEFAULT_KVM_MAX_EXITS, KERNEL_BUNDLE_KVM_EXECUTION_MODE,
+    KERNEL_BUNDLE_KVM_MARKER_PREFIX, KERNEL_BUNDLE_SMOKE_ROLE, KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION,
+    KERNEL_BUNDLE_SMOKE_SCOPE, KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE,
 };
 pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,

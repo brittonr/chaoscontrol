@@ -6,10 +6,15 @@
   "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
   "runner": "chaoscontrol-vmm-kvm-rail",
   "execution_mode": "chaoscontrol-vmm-kvm",
+  "scenario": "positive",
+  "expected_kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+  "expected_initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
   "kernel_image_blake3": null,
   "initrd_image_blake3": null,
   "kvm_available": true,
   "loader_available": false,
+  "negative_fixture_matched": false,
+  "failure_class": "missing kernel or initrd: kernel=/tmp/chaos-kernel-bundle-exact/missing-kernel initrd=/tmp/chaos-kernel-bundle-exact/missing-initrd",
   "terminal_classes": {},
   "observations": [],
   "issues": [
@@ -29,5 +34,5 @@
     "not build correctness proof",
     "not physical readiness"
   ],
-  "receipt_identity_blake3": "59f0b3425fe465a95b38456c0af9ba8abcacdcec6e14e67e0f2373677dc23f60"
+  "receipt_identity_blake3": "772571012d9cf77c371fdefd55c53c1529ee197814f07fe9df1188d298e6c717"
 }

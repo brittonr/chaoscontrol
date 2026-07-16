@@ -2,27 +2,20 @@
   "schema_version": 1,
   "role": "kernel-bundle/vm-compat-smoke",
   "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
-  "status": "passed",
+  "status": "failed",
   "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
   "runner": "chaoscontrol-vmm-kvm-rail",
   "execution_mode": "chaoscontrol-vmm-kvm",
-  "scenario": "positive",
+  "scenario": "missing-kfunc",
   "expected_kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
   "expected_initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
   "kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
   "initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
   "kvm_available": true,
   "loader_available": true,
-  "negative_fixture_matched": false,
-  "failure_class": null,
-  "terminal_classes": {
-    "boot": "ready",
-    "bpf_attach": "private-kfunc-loader-attached",
-    "bpf_cleanup": "succeeded",
-    "bpf_verify": "bpftool-prog-load-xdp-succeeded",
-    "module_cleanup": "succeeded",
-    "module_load": "insmod-private-kfunc-succeeded"
-  },
+  "negative_fixture_matched": true,
+  "failure_class": "guest-error:bpf:missing-kfunc-rejected",
+  "terminal_classes": {},
   "observations": [
     {
       "case_id": "boot",
@@ -30,42 +23,14 @@
       "detail": "uname-r-matched"
     },
     {
-      "case_id": "module",
-      "class": "load",
-      "detail": "insmod-private-kfunc-succeeded"
-    },
-    {
-      "case_id": "module",
-      "class": "unload",
-      "detail": "rmmod-private-kfunc-attempted"
-    },
-    {
-      "case_id": "module",
-      "class": "cleanup",
-      "detail": "succeeded"
-    },
-    {
       "case_id": "bpf",
-      "class": "verify",
-      "detail": "bpftool-prog-load-xdp-succeeded"
-    },
-    {
-      "case_id": "bpf",
-      "class": "attach",
-      "detail": "private-kfunc-loader-attached"
-    },
-    {
-      "case_id": "bpf",
-      "class": "detach",
-      "detail": "private-kfunc-loader-detached"
-    },
-    {
-      "case_id": "bpf",
-      "class": "cleanup",
-      "detail": "succeeded"
+      "class": "error",
+      "detail": "missing-kfunc-rejected"
     }
   ],
-  "issues": [],
+  "issues": [
+    "runner-failure: guest-error:bpf:missing-kfunc-rejected"
+  ],
   "bounds": {
     "max_boot_seconds": 120,
     "max_module_seconds": 120,
@@ -79,5 +44,5 @@
     "not build correctness proof",
     "not physical readiness"
   ],
-  "receipt_identity_blake3": "40f624ff0ff51e46bbab3813a4122ff5329be9019c1a4d73f44d11cb242daae8"
+  "receipt_identity_blake3": "cfea5752758450bef4cdbbec306a6354958d25e740a5fc9889f4945f7d4ef605"
 }

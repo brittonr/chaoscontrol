@@ -13,7 +13,7 @@ pub const PRIVATE_KFUNC_MODULE_FILE: &str = "private_kfunc.mod.ko";
 pub const PRIVATE_KFUNC_BPF_FILE: &str = "private_kfunc.ebpf.o";
 pub const PRIVATE_KFUNC_LOADER_FILE: &str = "private_kfunc";
 pub const PRIVATE_KFUNC_BPFFS_PIN: &str = "/sys/fs/bpf/mantle-kfunc";
-pub const PRIVATE_KFUNC_INITRD_SCHEMA_VERSION: u64 = 1;
+pub const PRIVATE_KFUNC_INITRD_SCHEMA_VERSION: u64 = 2;
 
 const NEWC_MAGIC: &str = "070701";
 const NEWC_HEADER_LEN: u64 = 110;
@@ -22,6 +22,15 @@ const NEWC_ALIGNMENT: u64 = 4;
 const INIT_SCRIPT_PATH: &str = "init";
 const BUSYBOX_GUEST_PATH: &str = "bin/busybox";
 const ARTIFACT_GUEST_DIR: &str = "artifacts";
+const VERIFIER_REJECT_ARTIFACT_PATH: &str = "artifacts/verifier-reject.ebpf.o";
+const VERIFIER_REJECT_ARTIFACT_BYTES: &[u8] = b"not-an-elf-bpf-object\n";
+const SUPPORTED_SCENARIOS: &[&str] = &[
+    "positive",
+    "missing-kfunc",
+    "verifier-rejection",
+    "wrong-attach-target",
+    "cleanup-failure",
+];
 const ROOT_UID: u32 = 0;
 const ROOT_GID: u32 = 0;
 const DEFAULT_INODE_START: u32 = 1;
@@ -107,6 +116,7 @@ pub struct PrivateKfuncInitrdSummary {
     pub archive_bytes: u64,
     pub closure_roots: usize,
     pub artifact_files: Vec<String>,
+    pub supported_scenarios: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,10 +158,15 @@ pub fn private_kfunc_init_script(
     script.push_str("PIN='");
     script.push_str(PRIVATE_KFUNC_BPFFS_PIN);
     script.push_str("'\n");
+    script.push_str("CASE=positive\n");
     script.push_str("marker() { printf '%scase=%s;class=%s;detail=%s\\n' \"$MARKER_PREFIX\" \"$1\" \"$2\" \"$3\" >\"$CONSOLE\"; sleep 1; }\n");
     script.push_str("finish() { sleep 1; sync; poweroff -f 2>/dev/null || reboot -f 2>/dev/null || halt -f 2>/dev/null; while true; do sleep 1; done; }\n");
     script.push_str("fail() { marker \"$1\" error \"$2\"; finish; }\n");
+    script.push_str("find_module_name() { MODULE_NAME=''; while read -r module_name _rest; do case \"$module_name\" in private_kfunc*) MODULE_NAME=\"$module_name\"; break;; esac; done </proc/modules; }\n");
+    script.push_str("unload_module() { find_module_name; if [ -n \"$MODULE_NAME\" ]; then \"$DELETE_MODULE\" \"$MODULE_NAME\"; else return 1; fi; }\n");
     script.push_str("mount -t proc proc /proc || fail boot mount-proc-failed\n");
+    script.push_str("for arg in $(cat /proc/cmdline); do case \"$arg\" in chaos_kernel_bundle_case=*) CASE=${arg#*=};; esac; done\n");
+    script.push_str("case \"$CASE\" in positive|missing-kfunc|verifier-rejection|wrong-attach-target|cleanup-failure) ;; *) fail boot unsupported-scenario;; esac\n");
     script.push_str("dmesg -n 1 2>/dev/null || true\n");
     script.push_str("mount -t sysfs sysfs /sys || fail boot mount-sysfs-failed\n");
     script.push_str("mount -t devtmpfs devtmpfs /dev 2>/dev/null || true\n");
@@ -159,12 +174,15 @@ pub fn private_kfunc_init_script(
     script.push_str("mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf || fail bpf mount-bpffs-failed\n");
     script.push_str("ip link set lo up 2>/tmp/lo-up.err || true\n");
     script.push_str("if [ \"$(uname -r)\" = \"$EXPECTED_KERNEL_RELEASE\" ]; then marker boot ready uname-r-matched; else fail boot uname-r-mismatch; fi\n");
+    script.push_str("if [ \"$CASE\" = missing-kfunc ]; then if \"$BPFTOOL\" prog load /artifacts/private_kfunc.ebpf.o \"$PIN\" type xdp >/tmp/missing-kfunc.out 2>&1; then rm -f \"$PIN\"; fail bpf missing-kfunc-unexpectedly-admitted; else cat /tmp/missing-kfunc.out; fail bpf missing-kfunc-rejected; fi; fi\n");
+    script.push_str("if [ \"$CASE\" = verifier-rejection ]; then if \"$BPFTOOL\" prog load /artifacts/verifier-reject.ebpf.o \"$PIN\" type xdp >/tmp/verifier-reject.out 2>&1; then rm -f \"$PIN\"; fail bpf malformed-object-unexpectedly-admitted; else cat /tmp/verifier-reject.out; fail bpf verifier-rejected; fi; fi\n");
     script.push_str(
         "insmod /artifacts/private_kfunc.mod.ko || fail module insmod-private-kfunc-failed\n",
     );
     script.push_str("marker module load insmod-private-kfunc-succeeded\n");
     script.push_str("\"$BPFTOOL\" prog load /artifacts/private_kfunc.ebpf.o \"$PIN\" type xdp || fail bpf bpftool-prog-load-xdp-failed\n");
     script.push_str("marker bpf verify bpftool-prog-load-xdp-succeeded\n");
+    script.push_str("if [ \"$CASE\" = wrong-attach-target ]; then if \"$BPFTOOL\" net attach xdp pinned \"$PIN\" dev chaos-missing0 >/tmp/wrong-target.out 2>&1; then fail bpf wrong-attach-target-unexpectedly-admitted; else cat /tmp/wrong-target.out; rm -f \"$PIN\" || true; unload_module || true; fail bpf wrong-attach-target-rejected; fi; fi\n");
     script.push_str("cd /artifacts || fail bpf artifacts-chdir-failed\n");
     script.push_str("./private_kfunc > /tmp/private_kfunc.out 2>&1\n");
     script.push_str("loader_status=$?\n");
@@ -176,11 +194,10 @@ pub fn private_kfunc_init_script(
     script.push_str("marker bpf attach private-kfunc-loader-attached\n");
     script.push_str("grep -q 'TCP monitor detached' /tmp/private_kfunc.out || fail bpf private-kfunc-loader-detach-marker-missing\n");
     script.push_str("marker bpf detach private-kfunc-loader-detached\n");
+    script.push_str("if [ \"$CASE\" = cleanup-failure ]; then if rm -f /sys/fs/bpf >/tmp/cleanup-failure.out 2>&1; then fail bpf cleanup-unexpectedly-succeeded; else cat /tmp/cleanup-failure.out; fail bpf cleanup-failed; fi; fi\n");
     script.push_str("rm -f \"$PIN\" || fail bpf pinned-prog-cleanup-failed\n");
     script.push_str("marker bpf cleanup succeeded\n");
-    script.push_str("MODULE_NAME=''\n");
-    script.push_str("while read -r module_name _rest; do case \"$module_name\" in private_kfunc*) MODULE_NAME=\"$module_name\"; break;; esac; done </proc/modules\n");
-    script.push_str("if [ -n \"$MODULE_NAME\" ]; then \"$DELETE_MODULE\" \"$MODULE_NAME\" || fail module rmmod-private-kfunc-failed; else fail module loaded-module-name-missing; fi\n");
+    script.push_str("unload_module || fail module rmmod-private-kfunc-failed\n");
     script.push_str("marker module unload rmmod-private-kfunc-attempted\n");
     script.push_str("marker module cleanup succeeded\n");
     script.push_str("finish\n");
@@ -247,6 +264,13 @@ pub fn write_private_kfunc_initrd(
         let executable = name == PRIVATE_KFUNC_LOADER_FILE;
         writer.add_file_at(&mut seen, artifact, &guest_path, executable)?;
     }
+    writer.add_static_entry(
+        &mut seen,
+        VERIFIER_REJECT_ARTIFACT_PATH,
+        EntryKind::Regular,
+        DEFAULT_FILE_MODE,
+        VERIFIER_REJECT_ARTIFACT_BYTES,
+    )?;
     for root in &closure_roots {
         writer.add_absolute_tree(&mut seen, root)?;
     }
@@ -264,6 +288,10 @@ pub fn write_private_kfunc_initrd(
         artifact_files: artifact_files
             .iter()
             .map(|path| path.display().to_string())
+            .collect(),
+        supported_scenarios: SUPPORTED_SCENARIOS
+            .iter()
+            .map(|scenario| (*scenario).to_string())
             .collect(),
     })
 }
@@ -730,6 +758,11 @@ mod tests {
         assert!(script.contains("marker module load insmod-private-kfunc-succeeded"));
         assert!(script.contains("marker bpf verify bpftool-prog-load-xdp-succeeded"));
         assert!(script.contains("marker bpf attach private-kfunc-loader-attached"));
+        assert!(script.contains("chaos_kernel_bundle_case="));
+        assert!(script.contains("fail bpf missing-kfunc-rejected"));
+        assert!(script.contains("fail bpf verifier-rejected"));
+        assert!(script.contains("fail bpf wrong-attach-target-rejected"));
+        assert!(script.contains("fail bpf cleanup-failed"));
         assert!(script.contains("marker bpf detach private-kfunc-loader-detached"));
         assert!(script.contains("marker module cleanup succeeded"));
         assert!(script.len() <= MAX_SCRIPT_BYTES);

@@ -8,8 +8,9 @@ use chaoscontrol_evidence::{
     kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_kvm_markers,
     sample_mantle_private_kfunc_profile, validate_kernel_bundle_smoke_profile,
     write_private_kfunc_initrd, EvidenceError, EvidenceResult, KernelBundleKvmRun,
-    KernelBundleSmokeProfile, PrivateKfuncInitrdRequest, SmokeObservation, DEFAULT_KVM_MAX_EXITS,
-    PRIVATE_KFUNC_EXPECTED_KERNEL_RELEASE,
+    KernelBundleKvmScenario, KernelBundleSmokeProfile, PrivateKfuncInitrdRequest, SmokeObservation,
+    DEFAULT_KVM_MAX_EXITS, KERNEL_BUNDLE_KVM_EXECUTION_MODE,
+    KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE, PRIVATE_KFUNC_EXPECTED_KERNEL_RELEASE,
 };
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 
@@ -31,15 +32,17 @@ const ARG_INITRD: &str = "--initrd";
 const ARG_OUT: &str = "--out";
 const ARG_MAX_EXITS: &str = "--max-exits";
 const ARG_MEMORY_MIB: &str = "--memory-mib";
+const ARG_SCENARIO: &str = "--scenario";
+const ARG_EXPECTED_KERNEL_BLAKE3: &str = "--expected-kernel-blake3";
+const ARG_EXPECTED_INITRD_BLAKE3: &str = "--expected-initrd-blake3";
 const BYTES_PER_MIB: usize = 1024 * 1024;
 const DEFAULT_MEMORY_MIB: usize = 256;
 const MIN_MEMORY_MIB: usize = 128;
 const MAX_MEMORY_MIB: usize = 4096;
 const KVM_OBSERVATION_POLL_EXITS: u64 = 256;
 const GUEST_ERROR_CLASS: &str = "error";
-const EXECUTION_MODE_EXACT_KVM: &str = "chaoscontrol-vmm-kvm";
-const EXECUTION_MODE_SERIAL_TRANSCRIPT: &str = "serial-marker-transcript";
 const FILE_HASH_BUFFER_BYTES: usize = 64 * 1024;
+const BLAKE3_HEX_LENGTH: usize = 64;
 const ARG_HELP_SHORT: &str = "-h";
 const ARG_HELP_LONG: &str = "--help";
 const EXPECTED_CHECK_ARG_COUNT: usize = 3;
@@ -47,6 +50,40 @@ const EXPECTED_KVM_SERIAL_ARG_COUNT: usize = 4;
 const EXPECTED_SINGLE_ARG_COUNT: usize = 2;
 const STATUS_STDERR_PREFIX: &str = "kernel-bundle-vm-compat-smoke";
 const DEFAULT_RUNNER_ID: &str = "chaoscontrol-vmm-kvm-rail";
+
+#[derive(Debug, Clone)]
+struct ExpectedImageDigests {
+    kernel: String,
+    initrd: String,
+}
+
+#[derive(Debug, Clone)]
+struct ImageDigests {
+    expected_kernel: Option<String>,
+    expected_initrd: Option<String>,
+    kernel: Option<String>,
+    initrd: Option<String>,
+}
+
+impl ImageDigests {
+    fn expected(expected_kernel: &str, expected_initrd: &str) -> Self {
+        Self {
+            expected_kernel: Some(expected_kernel.to_string()),
+            expected_initrd: Some(expected_initrd.to_string()),
+            kernel: None,
+            initrd: None,
+        }
+    }
+
+    fn measured(expected_kernel: &str, expected_initrd: &str, kernel: &str, initrd: &str) -> Self {
+        Self {
+            expected_kernel: Some(expected_kernel.to_string()),
+            expected_initrd: Some(expected_initrd.to_string()),
+            kernel: Some(kernel.to_string()),
+            initrd: Some(initrd.to_string()),
+        }
+    }
+}
 
 fn main() {
     if let Err(error) = run(std::env::args().collect()) {
@@ -99,7 +136,7 @@ fn run(args: Vec<String>) -> EvidenceResult<()> {
         return Ok(());
     }
     Err(EvidenceError::new(
-        "usage error: expected --sample-profile, --sample-receipt, --sample-kvm-markers, --check-profile <path>, --check-kvm-serial <profile> <serial>, --build-private-kfunc-initrd <out> --artifacts-dir <dir> --busybox <path> --bpftool <path> --delete-module-helper <path> --closure-list <path>, or --kvm-run-profile <profile> --kernel <path> --initrd <path> --out <path> [--max-exits N] [--memory-mib N]",
+        "usage error: expected --sample-profile, --sample-receipt, --sample-kvm-markers, --check-profile <path>, --check-kvm-serial <profile> <serial>, --build-private-kfunc-initrd <out> --artifacts-dir <dir> --busybox <path> --bpftool <path> --delete-module-helper <path> --closure-list <path>, or --kvm-run-profile <profile> --kernel <path> --initrd <path> --out <path> --expected-kernel-blake3 <hex> --expected-initrd-blake3 <hex> [--scenario positive|stale-digest|missing-kfunc|verifier-rejection|wrong-attach-target|cleanup-failure] [--max-exits N] [--memory-mib N]",
     ))
 }
 
@@ -131,6 +168,12 @@ fn run_kvm_profile(args: &[String]) -> EvidenceResult<()> {
     let kernel_path = required_arg(args, ARG_KERNEL)?;
     let initrd_path = required_arg(args, ARG_INITRD)?;
     let out_path = required_arg(args, ARG_OUT)?;
+    let expected_kernel_blake3 = required_arg(args, ARG_EXPECTED_KERNEL_BLAKE3)?;
+    let expected_initrd_blake3 = required_arg(args, ARG_EXPECTED_INITRD_BLAKE3)?;
+    let scenario = optional_arg(args, ARG_SCENARIO)
+        .map(KernelBundleKvmScenario::parse)
+        .transpose()?
+        .unwrap_or(KernelBundleKvmScenario::Positive);
     let max_exits = optional_arg(args, ARG_MAX_EXITS)
         .map(parse_max_exits)
         .transpose()?
@@ -140,12 +183,18 @@ fn run_kvm_profile(args: &[String]) -> EvidenceResult<()> {
         .transpose()?
         .unwrap_or(DEFAULT_MEMORY_MIB);
     let profile = read_profile(Path::new(profile_path))?;
+    let expected_images = ExpectedImageDigests {
+        kernel: expected_kernel_blake3.to_string(),
+        initrd: expected_initrd_blake3.to_string(),
+    };
     let run = execute_kvm_run(
         &profile,
         Path::new(kernel_path),
         Path::new(initrd_path),
         max_exits,
         memory_mib,
+        scenario,
+        &expected_images,
     )?;
     let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run)?;
     write_json(Path::new(out_path), &receipt)?;
@@ -162,19 +211,20 @@ fn execute_kvm_run(
     initrd_path: &Path,
     max_exits: u64,
     memory_mib: usize,
+    scenario: KernelBundleKvmScenario,
+    expected_images: &ExpectedImageDigests,
 ) -> EvidenceResult<KernelBundleKvmRun> {
+    let expected_kernel_blake3 = expected_images.kernel.as_str();
+    let expected_initrd_blake3 = expected_images.initrd.as_str();
     validate_kernel_bundle_smoke_profile(profile)?;
+    validate_blake3_arg(ARG_EXPECTED_KERNEL_BLAKE3, expected_kernel_blake3)?;
+    validate_blake3_arg(ARG_EXPECTED_INITRD_BLAKE3, expected_initrd_blake3)?;
     let profile_id = kernel_bundle_smoke_profile_identity(profile)?;
-    if !Path::new("/dev/kvm").exists() {
-        return Ok(blocked_run(
-            profile_id,
-            max_exits,
-            "kvm-device-missing".to_string(),
-        ));
-    }
     if !kernel_path.is_file() || !initrd_path.is_file() {
         return Ok(loader_blocked_run(
             profile_id,
+            scenario,
+            ImageDigests::expected(expected_kernel_blake3, expected_initrd_blake3),
             max_exits,
             format!(
                 "missing kernel or initrd: kernel={} initrd={}",
@@ -183,25 +233,72 @@ fn execute_kvm_run(
             ),
         ));
     }
-    let mut config = VmConfig::default();
-    config.memory_size = memory_mib.saturating_mul(BYTES_PER_MIB);
+    let kernel_image_blake3 = hash_file_blake3(kernel_path)?;
+    let initrd_image_blake3 = hash_file_blake3(initrd_path)?;
+    if kernel_image_blake3 != expected_kernel_blake3
+        || initrd_image_blake3 != expected_initrd_blake3
+    {
+        let images = ImageDigests::measured(
+            expected_kernel_blake3,
+            expected_initrd_blake3,
+            &kernel_image_blake3,
+            &initrd_image_blake3,
+        );
+        return Ok(input_digest_blocked_run(
+            profile_id, scenario, images, max_exits,
+        ));
+    }
+    if scenario == KernelBundleKvmScenario::StaleDigest {
+        return Err(EvidenceError::new(
+            "stale-digest scenario requires at least one mismatched expected image digest",
+        ));
+    }
+    if !Path::new("/dev/kvm").exists() {
+        let images = ImageDigests::measured(
+            expected_kernel_blake3,
+            expected_initrd_blake3,
+            &kernel_image_blake3,
+            &initrd_image_blake3,
+        );
+        return Ok(blocked_run(
+            profile_id,
+            scenario,
+            images,
+            max_exits,
+            "kvm-device-missing".to_string(),
+        ));
+    }
+    let config = VmConfig {
+        memory_size: memory_mib.saturating_mul(BYTES_PER_MIB),
+        extra_cmdline: Some(format!("chaos_kernel_bundle_case={}", scenario.as_str())),
+        ..VmConfig::default()
+    };
     let mut vm = match DeterministicVm::new(config) {
         Ok(vm) => vm,
         Err(error) => {
+            let images = ImageDigests::measured(
+                expected_kernel_blake3,
+                expected_initrd_blake3,
+                &kernel_image_blake3,
+                &initrd_image_blake3,
+            );
             return Ok(blocked_run(
                 profile_id,
+                scenario,
+                images,
                 max_exits,
                 format!("kvm-create:{error}"),
-            ))
+            ));
         }
     };
-    let kernel_image_blake3 = hash_file_blake3(kernel_path)?;
-    let initrd_image_blake3 = hash_file_blake3(initrd_path)?;
     if let Err(error) = vm.load_kernel(path_str(kernel_path)?, Some(path_str(initrd_path)?)) {
         return Ok(KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: DEFAULT_RUNNER_ID.to_string(),
-            execution_mode: EXECUTION_MODE_EXACT_KVM.to_string(),
+            execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+            scenario,
+            expected_kernel_image_blake3: Some(expected_kernel_blake3.to_string()),
+            expected_initrd_image_blake3: Some(expected_initrd_blake3.to_string()),
             kernel_image_blake3: Some(kernel_image_blake3),
             initrd_image_blake3: Some(initrd_image_blake3),
             kvm_available: true,
@@ -218,7 +315,10 @@ fn execute_kvm_run(
     Ok(KernelBundleKvmRun {
         profile_identity_blake3: profile_id,
         runner: DEFAULT_RUNNER_ID.to_string(),
-        execution_mode: EXECUTION_MODE_EXACT_KVM.to_string(),
+        execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+        scenario,
+        expected_kernel_image_blake3: Some(expected_kernel_blake3.to_string()),
+        expected_initrd_image_blake3: Some(expected_initrd_blake3.to_string()),
         kernel_image_blake3: Some(kernel_image_blake3),
         initrd_image_blake3: Some(initrd_image_blake3),
         kvm_available: true,
@@ -296,7 +396,10 @@ fn kvm_run_from_serial(
     Ok(KernelBundleKvmRun {
         profile_identity_blake3: kernel_bundle_smoke_profile_identity(profile)?,
         runner: DEFAULT_RUNNER_ID.to_string(),
-        execution_mode: EXECUTION_MODE_SERIAL_TRANSCRIPT.to_string(),
+        execution_mode: KERNEL_BUNDLE_TRANSCRIPT_EXECUTION_MODE.to_string(),
+        scenario: KernelBundleKvmScenario::Positive,
+        expected_kernel_image_blake3: None,
+        expected_initrd_image_blake3: None,
         kernel_image_blake3: None,
         initrd_image_blake3: None,
         kvm_available: true,
@@ -311,15 +414,20 @@ fn kvm_run_from_serial(
 
 fn blocked_run(
     profile_identity_blake3: String,
+    scenario: KernelBundleKvmScenario,
+    images: ImageDigests,
     max_exits: u64,
     reason: String,
 ) -> KernelBundleKvmRun {
     KernelBundleKvmRun {
         profile_identity_blake3,
         runner: DEFAULT_RUNNER_ID.to_string(),
-        execution_mode: EXECUTION_MODE_EXACT_KVM.to_string(),
-        kernel_image_blake3: None,
-        initrd_image_blake3: None,
+        execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+        scenario,
+        expected_kernel_image_blake3: images.expected_kernel,
+        expected_initrd_image_blake3: images.expected_initrd,
+        kernel_image_blake3: images.kernel,
+        initrd_image_blake3: images.initrd,
         kvm_available: false,
         loader_available: true,
         max_exits,
@@ -332,16 +440,21 @@ fn blocked_run(
 
 fn loader_blocked_run(
     profile_identity_blake3: String,
+    scenario: KernelBundleKvmScenario,
+    images: ImageDigests,
     max_exits: u64,
     reason: String,
 ) -> KernelBundleKvmRun {
     KernelBundleKvmRun {
         profile_identity_blake3,
         runner: DEFAULT_RUNNER_ID.to_string(),
-        execution_mode: EXECUTION_MODE_EXACT_KVM.to_string(),
-        kernel_image_blake3: None,
-        initrd_image_blake3: None,
-        kvm_available: true,
+        execution_mode: KERNEL_BUNDLE_KVM_EXECUTION_MODE.to_string(),
+        scenario,
+        expected_kernel_image_blake3: images.expected_kernel,
+        expected_initrd_image_blake3: images.expected_initrd,
+        kernel_image_blake3: images.kernel,
+        initrd_image_blake3: images.initrd,
+        kvm_available: Path::new("/dev/kvm").exists(),
         loader_available: false,
         max_exits,
         exits_executed: 0,
@@ -349,6 +462,22 @@ fn loader_blocked_run(
         observations: Vec::new(),
         failure_class: Some(reason),
     }
+}
+
+fn input_digest_blocked_run(
+    profile_identity_blake3: String,
+    scenario: KernelBundleKvmScenario,
+    images: ImageDigests,
+    max_exits: u64,
+) -> KernelBundleKvmRun {
+    let reason = format!(
+        "input-digest-mismatch:kernel:expected={}:actual={}:initrd-expected={}:initrd-actual={}",
+        images.expected_kernel.as_deref().unwrap_or("missing"),
+        images.kernel.as_deref().unwrap_or("missing"),
+        images.expected_initrd.as_deref().unwrap_or("missing"),
+        images.initrd.as_deref().unwrap_or("missing"),
+    );
+    loader_blocked_run(profile_identity_blake3, scenario, images, max_exits, reason)
 }
 
 fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
@@ -374,6 +503,19 @@ fn read_profile(path: &Path) -> EvidenceResult<KernelBundleSmokeProfile> {
 fn path_str(path: &Path) -> EvidenceResult<&str> {
     path.to_str()
         .ok_or_else(|| EvidenceError::new(format!("path is not UTF-8: {}", path.display())))
+}
+
+fn validate_blake3_arg(flag: &str, value: &str) -> EvidenceResult<()> {
+    let valid = value.len() == BLAKE3_HEX_LENGTH
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'));
+    if !valid {
+        return Err(EvidenceError::new(format!(
+            "{flag} must be lowercase BLAKE3 hex"
+        )));
+    }
+    Ok(())
 }
 
 fn parse_memory_mib(value: &str) -> EvidenceResult<usize> {
@@ -430,5 +572,5 @@ fn print_usage() {
     println!("kernel-bundle-vm-compat-smoke --check-profile <profile.json>");
     println!("kernel-bundle-vm-compat-smoke --check-kvm-serial <profile.json> <serial.txt>");
     println!("kernel-bundle-vm-compat-smoke --build-private-kfunc-initrd <out.cpio> --artifacts-dir <dir> --busybox <busybox> --bpftool <bpftool> --delete-module-helper <helper> --closure-list <store-paths.txt> [--expected-kernel-release 6.18.20]");
-    println!("kernel-bundle-vm-compat-smoke --kvm-run-profile <profile.json> --kernel <vmlinux> --initrd <initrd.cpio> --out <receipt.json> [--max-exits N] [--memory-mib 1024]");
+    println!("kernel-bundle-vm-compat-smoke --kvm-run-profile <profile.json> --kernel <vmlinux> --initrd <initrd.cpio> --out <receipt.json> --expected-kernel-blake3 <hex> --expected-initrd-blake3 <hex> [--scenario positive|stale-digest|missing-kfunc|verifier-rejection|wrong-attach-target|cleanup-failure] [--max-exits N] [--memory-mib 1024]");
 }

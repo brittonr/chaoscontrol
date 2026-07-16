@@ -1,10 +1,10 @@
 # Mantle private-kfunc kernel-bundle validation progress
 
 - Date: 2026-07-15
-- Question: Can ChaosControl bind the exact Mantle KernelScript private-kfunc cohort to a scoped `kernel-bundle/vm-compat-smoke` receipt without promoting static or Mantle-only evidence to general safety?
-- Decision: **positive exact KVM cohort implemented, not archive-ready for the full change**. `chaoscontrol-evidence::kernel_bundle_validation` defines the pure profile validator and receipt projector for one exact Onix/Mantle cohort. The CLI now also builds a repo-owned private-kfunc initrd, injects the exact Mantle module/BPF/loader artifacts and required closures, boots the selected Onix-pinned `vmlinux` through `chaoscontrol-vmm::DeterministicVm`, verifies/attaches/detaches BPF, unloads the dotted module name with a repo-owned syscall helper, and emits a digest-bound exact KVM receipt. Positive and negative unit tests pass. The change stays active for remaining negative behavior fixtures and documentation.
+- Question: Can ChaosControl bind the exact Mantle KernelScript private-kfunc cohort to scoped positive and negative `kernel-bundle/vm-compat-smoke` evidence without promoting static, transcript, or runtime-smoke evidence?
+- Decision: **the selected ChaosControl KVM rail is implemented and validated**. The repo-owned initrd executes the exact positive module/BPF path and four selected guest failure scenarios under `chaoscontrol-vmm::DeterministicVm`; stale image identity is blocked before VMM creation. Expected and measured image identities, scenario, failure class, and exact negative match are receipt inputs. Transcript-only markers cannot pass. Broader evidence roles are denied by a pure guard.
 - Owner: ChaosControl kernel-bundle validation maintainers.
-- Next action: add stale digest, missing BTF/kfunc, verifier rejection, wrong attach target, cleanup failure, guard/non-claim fixtures, and reproduction docs before archive.
+- Next action: complete Cairn sync/archive after all focused and lifecycle gates are current.
 
 ## Exact identities
 
@@ -15,70 +15,38 @@ onix.bpf_pack_identity = onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e
 mantle.module_blake3 = 1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1
 mantle.bpf_object_blake3 = b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de
 chaoscontrol.profile_identity_blake3 = 216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589
-chaoscontrol.receipt_identity_blake3 = fb37d05d6ee328b05d8f1bdc80ae0d622dcdef590f0dbf7e2721bb3993e76119
-chaoscontrol.kvm_marker_pass_receipt_identity_blake3 = 3fa7cf844e3c815ab5d31adebce82072bc91b92c6f6985c263c47a9b1938c628
-chaoscontrol.kvm_blocked_input_receipt_identity_blake3 = 59f0b3425fe465a95b38456c0af9ba8abcacdcec6e14e67e0f2373677dc23f60
-chaoscontrol.exact_kvm_receipt_identity_blake3 = b0273764265f5beea526aa56acbf5f723a0d193af1e54626c5bf0062e4856cb0
 chaoscontrol.exact_kvm_kernel_image_blake3 = 223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7
-chaoscontrol.exact_kvm_initrd_image_blake3 = 9ac442589b7f9e35b610961e67e236461dab8150d5ec1c8139b8a43c9ae1a29a
+chaoscontrol.exact_kvm_initrd_image_blake3 = 48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8
+chaoscontrol.exact_kvm_receipt_identity_blake3 = 40f624ff0ff51e46bbab3813a4122ff5329be9019c1a4d73f44d11cb242daae8
+chaoscontrol.stale_digest_receipt_identity_blake3 = e1c33944d33527b4335e6d675157c5029808bc0e335fc19ed2fddbf68f70e952
+chaoscontrol.missing_kfunc_receipt_identity_blake3 = cfea5752758450bef4cdbbec306a6354958d25e740a5fc9889f4945f7d4ef605
+chaoscontrol.verifier_rejection_receipt_identity_blake3 = 1df978667e04174efad796a09db3866c790d0267b30c47df29d2aa4985cbd86d
+chaoscontrol.wrong_attach_target_receipt_identity_blake3 = b637120e3d449375c1b31bc70e744ea425e3915e8a7515d62b31f6a3cd138bd3
+chaoscontrol.cleanup_failure_receipt_identity_blake3 = bc36de1ea37a6d0e23df5561778f2291b356078e57e127a80b5c0365e526c166
 ```
 
-Committed evidence files:
+## Evidence boundary
 
-- `evidence/mantle-private-kfunc-onix-validation-2026-07-15.json`
-- `evidence/mantle-private-kfunc-profile-2026-07-15.json`
-- `evidence/mantle-private-kfunc-vm-compat-smoke-2026-07-15.json`
-- `evidence/mantle-private-kfunc-kvm-marker-pass-2026-07-15.json`
-- `evidence/mantle-private-kfunc-kvm-blocked-input-2026-07-15.json`
-- `evidence/kvm-rail-validation-2026-07-15.md`
-- `evidence/mantle-private-kfunc-initrd-summary-2026-07-15.json`
-- `evidence/mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json`
-- `evidence/post-exact-kvm-cairn-validation-2026-07-15.md`
+The authoritative session summary is `evidence/kvm-rail-validation-2026-07-15.md`. It links:
+
+- exact Onix validation and Mantle materialization fixtures;
+- initrd construction summary;
+- exact positive KVM receipt;
+- stale digest, missing kfunc, verifier rejection, wrong attach target, and cleanup failure receipts;
+- transcript-rejection and unavailable-input receipts;
+- focused test/clippy evidence; and
+- the reproduction guide at `docs/kernel-bundle-validation.md`.
 
 ## Focused validation
 
-Command:
-
-```console
-nix develop -c cargo fmt -p chaoscontrol-evidence
-nix develop -c cargo test -p chaoscontrol-evidence kernel_bundle_validation
-```
-
-Result (pueue task `20` after adding the KVM rail shell):
-
 ```text
-test kernel_bundle_validation::tests::cleanup_and_non_claim_gaps_cannot_pass ... ok
-test kernel_bundle_validation::tests::stale_or_role_confused_inputs_fail_before_receipt ... ok
-test kernel_bundle_validation::tests::exact_mantle_private_kfunc_profile_emits_scoped_receipt ... ok
-test kernel_bundle_validation::tests::raw_log_or_missing_cleanup_cannot_pass_kvm_rail ... ok
-test kernel_bundle_validation::tests::unavailable_kvm_is_blocked_not_passed ... ok
-test kernel_bundle_validation::tests::kvm_markers_emit_passed_rail_receipt ... ok
-
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+kernel_bundle_validation: 13 passed; 0 failed
+kernel_bundle_initrd: 4 passed; 0 failed
+focused chaoscontrol-evidence clippy: passed with -D warnings
 ```
 
-Focused initrd-builder tests also passed:
-
-```text
-running 4 tests
-test kernel_bundle_initrd::tests::init_script_rejects_empty_inputs ... ok
-test kernel_bundle_initrd::tests::init_script_contains_structured_private_kfunc_markers ... ok
-test kernel_bundle_initrd::tests::closure_roots_reject_relative_paths ... ok
-test kernel_bundle_initrd::tests::newc_writer_records_regular_files_dirs_and_symlinks ... ok
-
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
-```
-
-The repo-owned delete-module helper binary compiled and fails closed without a module name:
-
-```text
-0 tests, 0 benchmarks
-exit_status=1
-kernel-bundle-delete-module: usage: kernel-bundle-delete-module <module-name>
-```
-
-The exact KVM run produced `mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json` with `execution_mode = chaoscontrol-vmm-kvm`, status `passed`, and no issues. Post exact-KVM Cairn validation also passed; the tasks gate reported `task_done = 10`, `task_todo = 8`, `valid = true`, and `verdict = PASS` in `post-exact-kvm-cairn-validation-2026-07-15.md`.
+The negative fixture matrix also covers unsupported architecture/release, bounds, panic/no-readiness, module vermagic/signature/rejection/taint/unload classes, missing BTF/type/event classes, role/digest drift, raw-log-only input, cleanup gaps, and unavailable prerequisites.
 
 ## Non-claims
 
-This evidence does not claim universal bootability, module safety, eBPF safety, build correctness, snapshot replay, Onix lifecycle replay, physical readiness, production deployability, security, or release eligibility. The structured marker-pass receipt is not a real guest execution. The blocked-input receipt proves fail-closed shell behavior only. The exact selected KVM positive rail is implemented; negative behavior fixtures remain the product blocker.
+This evidence does not claim universal bootability, module safety, eBPF safety, kernel correctness, build correctness, snapshot replay, Onix lifecycle replay, physical readiness, production deployability, security, or release eligibility. The exact positive receipt is bounded compatibility smoke only. Failed and blocked receipts prove precise rejection behavior, not positive compatibility.

@@ -151,6 +151,16 @@ cargo run --bin boot -- <kernel-path> [initrd-path]
 cargo run --release --bin snapshot_demo -- <kernel-path> <initrd-path>
 ```
 
+## Kernel-bundle compatibility smoke
+
+ChaosControl has an opt-in, bounded KVM rail for one exact admitted Onix/Mantle
+kernel-bundle cohort. It builds a repo-owned initrd, verifies expected versus
+measured kernel/initrd BLAKE3 identities before launch, and records structured
+boot, module, BPF, and cleanup observations. Transcript-only markers cannot pass
+this behavior rail. See [the kernel-bundle validation runbook](docs/kernel-bundle-validation.md)
+for supported inputs, positive and negative scenarios, reproduction, retention,
+and non-claims.
+
 ## CLI Tools
 
 ### Quick Start (Nix)

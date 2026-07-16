@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "role": "kernel-bundle/vm-compat-smoke",
+  "campaign_id": "mantle-kernelscript-private-kfunc-2026-07-15",
+  "status": "blocked",
+  "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
+  "runner": "chaoscontrol-vmm-kvm-rail",
+  "execution_mode": "chaoscontrol-vmm-kvm",
+  "scenario": "stale-digest",
+  "expected_kernel_image_blake3": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "expected_initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
+  "kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+  "initrd_image_blake3": "48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
+  "kvm_available": true,
+  "loader_available": false,
+  "negative_fixture_matched": true,
+  "failure_class": "input-digest-mismatch:kernel:expected=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:actual=223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7:initrd-expected=48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8:initrd-actual=48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8",
+  "terminal_classes": {},
+  "observations": [],
+  "issues": [
+    "loader-unavailable: kernel, initrd, or guest loader input was unavailable",
+    "runner-failure: input-digest-mismatch:kernel:expected=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:actual=223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7:initrd-expected=48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8:initrd-actual=48bd470f32f96bc26d3d2599f1ab0dba4b3c2dac6eab658bcbce382e21d8c9e8"
+  ],
+  "bounds": {
+    "max_boot_seconds": 120,
+    "max_module_seconds": 120,
+    "max_bpf_seconds": 120,
+    "max_observations": 16
+  },
+  "non_claims": [
+    "not universal bootability",
+    "not module safety proof",
+    "not eBPF safety proof",
+    "not build correctness proof",
+    "not physical readiness"
+  ],
+  "receipt_identity_blake3": "e1c33944d33527b4335e6d675157c5029808bc0e335fc19ed2fddbf68f70e952"
+}

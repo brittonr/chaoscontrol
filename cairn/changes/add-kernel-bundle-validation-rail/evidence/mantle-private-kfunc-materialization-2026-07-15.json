@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "role": "mantle-kernelscript-materialization-fixture",
+  "status": "materialized",
+  "source_observation_blake3": "1f3c566a24981f3518709bc5fba1342f93c0dd4fbcc46d55193040f0a5170d05",
+  "kernel_build_identity": "onix:blake3:kernel-build:4ee8064c7daf33498bd61d85d573c28b43febf54926bfe1e58ef5df76637e0c2",
+  "module_pack_identity": "onix:blake3:module-pack:b06089102d69299754550d55ea23d40b3235b2be010242a2a62c6de1d3aafcef",
+  "bpf_pack_identity": "onix:blake3:bpf-pack:e63907102511d66cc006163e9e96e15b0e89e758a6843ab4d235faafc0eebb6a",
+  "objects": [
+    {
+      "role": "module-member",
+      "logical_path": "modules/private_kfunc.mod.ko",
+      "object_ref": "mantle://blake3/1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+      "blake3": "1a738476dabe13e3d8ae2c5b0435f7b7f2908a82fadcee136e5494f6a93a81e1",
+      "initrd_path": "/artifacts/private_kfunc.mod.ko"
+    },
+    {
+      "role": "bpf-object",
+      "logical_path": "bpf/private_kfunc.ebpf.o",
+      "object_ref": "mantle://blake3/b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+      "blake3": "b8cdd1315b4066c053a14034344a1b051f85fe2c965cffdc38d79d116ebb94de",
+      "initrd_path": "/artifacts/private_kfunc.ebpf.o"
+    },
+    {
+      "role": "userspace-loader",
+      "logical_path": "bin/private_kfunc",
+      "blake3": "87e46ac46caa731848d339c02bbeea7a3a667bc4f8a63bf9152c9f8ae01ad602",
+      "initrd_path": "/artifacts/private_kfunc"
+    }
+  ],
+  "non_claims": [
+    "fixture does not prove build correctness",
+    "fixture does not authorize guest or target mutation",
+    "object refs do not prove runtime compatibility"
+  ]
+}

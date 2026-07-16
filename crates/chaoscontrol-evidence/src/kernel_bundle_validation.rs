@@ -151,6 +151,9 @@ pub struct SmokeObservation {
 pub struct KernelBundleKvmRun {
     pub profile_identity_blake3: String,
     pub runner: String,
+    pub execution_mode: String,
+    pub kernel_image_blake3: Option<String>,
+    pub initrd_image_blake3: Option<String>,
     pub kvm_available: bool,
     pub loader_available: bool,
     pub max_exits: u64,
@@ -168,6 +171,9 @@ pub struct KernelBundleKvmRailReceipt {
     pub status: String,
     pub profile_identity_blake3: String,
     pub runner: String,
+    pub execution_mode: String,
+    pub kernel_image_blake3: Option<String>,
+    pub initrd_image_blake3: Option<String>,
     pub kvm_available: bool,
     pub loader_available: bool,
     pub terminal_classes: BTreeMap<String, String>,
@@ -320,6 +326,9 @@ pub fn kernel_bundle_kvm_rail_receipt(
         status,
         profile_identity_blake3,
         runner: run.runner.clone(),
+        execution_mode: run.execution_mode.clone(),
+        kernel_image_blake3: run.kernel_image_blake3.clone(),
+        initrd_image_blake3: run.initrd_image_blake3.clone(),
         kvm_available: run.kvm_available,
         loader_available: run.loader_available,
         terminal_classes,
@@ -344,8 +353,10 @@ pub fn extract_kvm_observations(serial_output: &str) -> Vec<SmokeObservation> {
         if observations.len() >= MAX_OBSERVATIONS {
             break;
         }
-        if let Some(observation) = parse_kvm_marker(line) {
-            observations.push(observation);
+        if let Some(marker_start) = line.find(KERNEL_BUNDLE_KVM_MARKER_PREFIX) {
+            if let Some(observation) = parse_kvm_marker(&line[marker_start..]) {
+                observations.push(observation);
+            }
         }
     }
     observations
@@ -358,6 +369,12 @@ pub fn sample_mantle_private_kfunc_kvm_markers() -> String {
         .map(render_kvm_marker)
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+pub fn expected_kernel_bundle_kvm_observations(
+    profile: &KernelBundleSmokeProfile,
+) -> Vec<SmokeObservation> {
+    expected_kvm_observations(profile)
 }
 
 fn kvm_run_issues(
@@ -381,6 +398,13 @@ fn kvm_run_issues(
         &mut issues,
         "profile-identity-mismatch: run profile identity differs from request",
     );
+    push_if(
+        run.execution_mode.is_empty(),
+        &mut issues,
+        "execution-mode-missing: KVM rail run did not declare its execution mode",
+    );
+    validate_optional_hex("kernel image", &run.kernel_image_blake3, &mut issues);
+    validate_optional_hex("initrd image", &run.initrd_image_blake3, &mut issues);
     push_if(
         run.max_exits < MIN_KVM_MAX_EXITS || run.max_exits > MAX_KVM_MAX_EXITS,
         &mut issues,
@@ -480,6 +504,7 @@ fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
     let fields = payload
         .split(';')
         .filter_map(|field| field.split_once('='))
+        .map(|(key, value)| (key, trim_marker_value(value)))
         .collect::<BTreeMap<_, _>>();
     let case_id = fields.get("case")?.to_string();
     let class = fields.get("class")?.to_string();
@@ -492,6 +517,13 @@ fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
         class,
         detail,
     })
+}
+
+fn trim_marker_value(value: &str) -> &str {
+    value
+        .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'))
+        .next()
+        .unwrap_or("")
 }
 
 fn render_kvm_marker(observation: &SmokeObservation) -> String {
@@ -775,6 +807,12 @@ fn validate_prefixed_hex(name: &str, value: &str, prefix: &str, issues: &mut Vec
     );
 }
 
+fn validate_optional_hex(name: &str, value: &Option<String>, issues: &mut Vec<String>) {
+    if let Some(value) = value {
+        validate_hex(name, value, issues);
+    }
+}
+
 fn validate_hex(name: &str, value: &str, issues: &mut Vec<String>) {
     push_if(
         !lower_hex(value),
@@ -877,6 +915,9 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: "serial-marker-transcript".to_string(),
+            kernel_image_blake3: None,
+            initrd_image_blake3: None,
             kvm_available: true,
             loader_available: true,
             max_exits: DEFAULT_KVM_MAX_EXITS,
@@ -905,6 +946,9 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: "chaoscontrol-vmm-kvm".to_string(),
+            kernel_image_blake3: None,
+            initrd_image_blake3: None,
             kvm_available: false,
             loader_available: true,
             max_exits: DEFAULT_KVM_MAX_EXITS,
@@ -934,6 +978,9 @@ mod tests {
         let run = KernelBundleKvmRun {
             profile_identity_blake3: profile_id,
             runner: "chaoscontrol-vmm".to_string(),
+            execution_mode: "serial-marker-transcript".to_string(),
+            kernel_image_blake3: None,
+            initrd_image_blake3: None,
             kvm_available: true,
             loader_available: true,
             max_exits: DEFAULT_KVM_MAX_EXITS,

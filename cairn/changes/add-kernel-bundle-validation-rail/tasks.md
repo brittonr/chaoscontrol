@@ -18,9 +18,12 @@
 
 ## Phase 3: Module and BPF behavior
 
-- [ ] [serial] Implement read-only ModulePack injection plus load/identity/observation/unload/cleanup case execution inside disposable guests. r[kernel_bundle_validation.modules]
-- [ ] [serial] Implement read-only BPF Pack injection plus byte/BTF/manifest verification, load/attach/trigger/observe/detach/cleanup case execution inside disposable guests. r[kernel_bundle_validation.bpf]
-- [ ] [parallel] Add positive fixture module and BPF cases with exact expected observations. r[kernel_bundle_validation.modules] r[kernel_bundle_validation.bpf] r[kernel_bundle_validation.verification]
+- [x] [serial] Implement read-only ModulePack injection plus load/identity/observation/unload/cleanup case execution inside disposable guests. r[kernel_bundle_validation.modules]
+  - Evidence: `kernel_bundle_initrd::write_private_kfunc_initrd` injects the exact Mantle module, the KVM run loaded and unloaded it, and `evidence/mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json` records module load/unload/cleanup observations.
+- [x] [serial] Implement read-only BPF Pack injection plus byte/BTF/manifest verification, load/attach/trigger/observe/detach/cleanup case execution inside disposable guests. r[kernel_bundle_validation.bpf]
+  - Evidence: the repo-owned initrd injects `private_kfunc.ebpf.o`, uses bpftool for verifier admission, runs the exact `private_kfunc` loader against `lo`, and records verify/attach/detach/cleanup in `evidence/mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json`.
+- [x] [parallel] Add positive fixture module and BPF cases with exact expected observations. r[kernel_bundle_validation.modules] r[kernel_bundle_validation.bpf] r[kernel_bundle_validation.verification]
+  - Evidence: `evidence/mantle-private-kfunc-exact-kvm-receipt-2026-07-15.json` has `status: passed`, `execution_mode: chaoscontrol-vmm-kvm`, digest-bound kernel/initrd inputs, and no issues.
 - [ ] [parallel] Add negative target mismatch, tampered member, vermagic/signature observation, module rejection/taint/unload failure, absent BTF, missing kfunc/type, verifier rejection, wrong attach target, missing event, and cleanup failure cases. r[kernel_bundle_validation.verification]
 
 ## Phase 4: Evidence and rails
@@ -30,7 +33,7 @@
 - [x] [parallel] Add the cheap default profile/fixture/adapter/protocol/non-claim wiring rail with guards against behavior-proof promotion. r[kernel_bundle_validation.rails]
   - Evidence: `cargo test -p chaoscontrol-evidence kernel_bundle_validation` passed with positive and negative tests for exact admission, role confusion, stale inputs, cleanup gaps, and non-claim gaps.
 - [ ] [serial] Add the dedicated KVM rail for selected boot, module, and BPF positive/negative cases; missing KVM or loaders must report blocked. r[kernel_bundle_validation.rails]
-  - Progress: the KVM shell and structured-marker receipt projection landed, with marker-pass and missing-loader blocked receipts in `evidence/kvm-rail-validation-2026-07-15.md`; exact selected boot/module/BPF execution inside a guest remains open.
+  - Progress: the KVM shell, structured-marker transcript classification, missing-loader blocked receipt, and exact digest-bound positive KVM run landed in `evidence/kvm-rail-validation-2026-07-15.md`; remaining negative behavior cases are still open.
 - [ ] [parallel] Add guards proving these receipts cannot satisfy snapshot replay, Onix lifecycle replay, physical readiness, build correctness, security, or release gates. r[kernel_bundle_validation.evidence] r[kernel_bundle_validation.verification]
 
 ## Phase 5: Documentation and closeout

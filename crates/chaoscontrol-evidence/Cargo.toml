@@ -76,3 +76,7 @@ path = "src/bin/check-consistency-fixtures.rs"
 [[bin]]
 name = "kernel-bundle-vm-compat-smoke"
 path = "src/bin/kernel-bundle-vm-compat-smoke.rs"
+
+[[bin]]
+name = "kernel-bundle-delete-module"
+path = "src/bin/kernel-bundle-delete-module.rs"

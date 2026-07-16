@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "output_path": "/tmp/chaos-kernel-bundle-exact/private-kfunc-initrd-v7.cpio",
+  "expected_kernel_release": "6.18.20",
+  "bpftool_guest_path": "/nix/store/rcy0axk6gaw5q6r3r631bnp6ap351jrg-bpftools-6.18/bin/bpftool",
+  "delete_module_helper_guest_path": "/bin/kernel-bundle-delete-module",
+  "entries_written": 7227,
+  "archive_bytes": 218849256,
+  "closure_roots": 55,
+  "artifact_files": [
+    "/nix/store/6cz7sqcq3mp7vnpz2nipcjx600b15fxv-mantle-kernelscript-production-artifacts/artifacts/private_kfunc.mod.ko",
+    "/nix/store/6cz7sqcq3mp7vnpz2nipcjx600b15fxv-mantle-kernelscript-production-artifacts/artifacts/private_kfunc.ebpf.o",
+    "/nix/store/6cz7sqcq3mp7vnpz2nipcjx600b15fxv-mantle-kernelscript-production-artifacts/artifacts/private_kfunc"
+  ]
+}

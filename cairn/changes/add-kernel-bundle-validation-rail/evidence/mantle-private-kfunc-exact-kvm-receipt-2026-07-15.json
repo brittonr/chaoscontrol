@@ -5,9 +5,9 @@
   "status": "passed",
   "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
   "runner": "chaoscontrol-vmm-kvm-rail",
-  "execution_mode": "serial-marker-transcript",
-  "kernel_image_blake3": null,
-  "initrd_image_blake3": null,
+  "execution_mode": "chaoscontrol-vmm-kvm",
+  "kernel_image_blake3": "223a6b61393b8956124a574d0fac00057fc45171dd7bb56a7711ca1a224de5d7",
+  "initrd_image_blake3": "9ac442589b7f9e35b610961e67e236461dab8150d5ec1c8139b8a43c9ae1a29a",
   "kvm_available": true,
   "loader_available": true,
   "terminal_classes": {
@@ -74,5 +74,5 @@
     "not build correctness proof",
     "not physical readiness"
   ],
-  "receipt_identity_blake3": "3fa7cf844e3c815ab5d31adebce82072bc91b92c6f6985c263c47a9b1938c628"
+  "receipt_identity_blake3": "b0273764265f5beea526aa56acbf5f723a0d193af1e54626c5bf0062e4856cb0"
 }

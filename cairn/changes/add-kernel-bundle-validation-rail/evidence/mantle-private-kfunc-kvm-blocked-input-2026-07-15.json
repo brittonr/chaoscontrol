@@ -5,13 +5,16 @@
   "status": "blocked",
   "profile_identity_blake3": "216bd1a6c5461209f340a9c4f4d00aacf5c2312679bb9cb5808d329c619fc589",
   "runner": "chaoscontrol-vmm-kvm-rail",
+  "execution_mode": "chaoscontrol-vmm-kvm",
+  "kernel_image_blake3": null,
+  "initrd_image_blake3": null,
   "kvm_available": true,
   "loader_available": false,
   "terminal_classes": {},
   "observations": [],
   "issues": [
     "loader-unavailable: kernel, initrd, or guest loader input was unavailable",
-    "runner-failure: missing kernel or initrd: kernel=/tmp/chaos-kernel-bundle-kvm-cli/missing-vmlinux initrd=/tmp/chaos-kernel-bundle-kvm-cli/missing-initrd.gz"
+    "runner-failure: missing kernel or initrd: kernel=/tmp/chaos-kernel-bundle-exact/missing-kernel initrd=/tmp/chaos-kernel-bundle-exact/missing-initrd"
   ],
   "bounds": {
     "max_boot_seconds": 120,
@@ -26,5 +29,5 @@
     "not build correctness proof",
     "not physical readiness"
   ],
-  "receipt_identity_blake3": "c9798576d1425d456dd6a544c0e2b6d332347ee608e7771c7de0ae2c719cadab"
+  "receipt_identity_blake3": "59f0b3425fe465a95b38456c0af9ba8abcacdcec6e14e67e0f2373677dc23f60"
 }

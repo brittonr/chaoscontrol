@@ -18,6 +18,7 @@ pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
 pub mod in_process_simulator;
+pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
@@ -70,8 +71,15 @@ pub use in_process_simulator::{
     VmReplayReceiptBridgeMetadata, WorkloadIdentity, DEFAULT_SIMULATOR_SCOPE,
     SIMULATOR_CONFIG_SCHEMA_VERSION, SIMULATOR_RECEIPT_SCHEMA_VERSION,
 };
+pub use kernel_bundle_initrd::{
+    private_kfunc_init_script, write_private_kfunc_initrd, PrivateKfuncInitrdRequest,
+    PrivateKfuncInitrdSummary, PRIVATE_KFUNC_BPFFS_PIN, PRIVATE_KFUNC_BPF_FILE,
+    PRIVATE_KFUNC_EXPECTED_KERNEL_RELEASE, PRIVATE_KFUNC_INITRD_SCHEMA_VERSION,
+    PRIVATE_KFUNC_LOADER_FILE, PRIVATE_KFUNC_MODULE_FILE,
+};
 pub use kernel_bundle_validation::{
-    extract_kvm_observations, kernel_bundle_kvm_rail_receipt, kernel_bundle_smoke_profile_identity,
+    expected_kernel_bundle_kvm_observations, extract_kvm_observations,
+    kernel_bundle_kvm_rail_receipt, kernel_bundle_smoke_profile_identity,
     kernel_bundle_smoke_receipt, sample_mantle_private_kfunc_kvm_markers,
     sample_mantle_private_kfunc_profile, sample_mantle_private_kfunc_receipt,
     validate_kernel_bundle_smoke_profile, BootCase, BpfCase, KernelBundleKvmRailReceipt,

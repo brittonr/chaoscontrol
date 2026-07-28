@@ -738,3 +738,7 @@ Run with `nix flake check` (requires `system-features = kvm` in
 ChaosControl uses an authority-aligned split. Guest protocols, SDKs, guest support crates and fixtures, and copied workload templates are `Apache-2.0`. Host fault, VMM, trace, exploration, dashboard, replay, and evidence crates are `AGPL-3.0-or-later`. Complete texts and the path map are in [LICENSES](LICENSES) and [docs/licensing.md](docs/licensing.md).
 
 An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workload through an AGPL controller does not automatically relicense unrelated workload source or output. Package metadata is outside deterministic VM, snapshot, replay, and evidence identity unless a versioned schema says otherwise. Earlier grants and third-party terms remain intact.
+
+## References
+
+- [antithesishq/antithesis-skills](https://github.com/antithesishq/antithesis-skills) — workflow-design prior art for staged agent research, workload onboarding, launch gates, and receipt-first triage. ChaosControl does not depend on Antithesis, Snouty, Docker Compose, Kubernetes, or hosted services.

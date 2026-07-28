@@ -1,6 +1,8 @@
-# ChaosControl Rust Workload Template
+# ChaosControl Rust workload template
 
-Copy this directory into a Rust service when you want a local-first ChaosControl harness before spending VM/replay budget. Start with the external harness path; enable the advanced in-process path only when the driver cannot observe important service invariants.
+Copy this directory into a Rust service to add a local ChaosControl harness.
+
+Start with the external harness. Use in-process instrumentation only when the driver cannot observe an important service invariant.
 
 You can copy the template manually or use the scaffold app, which also writes a `chaoscontrol-scaffold.json` manifest containing the exact local dry-run, report, assertion-quality, VM campaign, and promotion-boundary commands:
 
@@ -10,7 +12,11 @@ nix run .#scaffold-rust-workload -- ./chaos-workload my-service
 
 ## 1. Wire the SDK
 
-Set the `chaoscontrol-sdk` dependency in `Cargo.toml`. Assertion catalog macros also require `linkme` in the downstream crate because the registration attribute expands at the call site. Inside this repository the template uses a path dependency; downstream projects should use the pinned git/revision or registry source they have accepted.
+Set the `chaoscontrol-sdk` dependency in `Cargo.toml`.
+
+Assertion catalog macros also require `linkme` in the downstream crate. The registration attribute expands at the call site.
+
+This repository uses a path dependency. Downstream projects must use an accepted pinned revision or registry version.
 
 ## 2. Run the local instrumentation smoke
 
@@ -44,13 +50,15 @@ check-sdk-assertion-quality \
   --input /tmp/my-service.in-process.local-report.json
 ```
 
-The template service module tags these observations with `adoption_track = in-process-service`. Keep this opt-in: production/default builds should not require service-internal SDK calls.
+The template tags these observations with `adoption_track = in-process-service`.
+
+Keep this feature optional. Default and production builds must not require service-internal SDK calls.
 
 Move in-process when:
 
-- important invariants are invisible from public APIs;
-- bugs depend on internal state transitions or timing;
-- external harness coverage is too shallow to guide the next assertion.
+- Important invariants are not visible through public APIs.
+- Bugs depend on internal state transitions or timing.
+- External harness coverage cannot guide the next assertion.
 
 ## 4. Promote only after the local report is useful
 

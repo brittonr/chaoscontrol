@@ -461,6 +461,7 @@ dependencies = [
 name = "chaoscontrol-vmm"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
  "crc32fast",

@@ -25,6 +25,9 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
+/// Pure deterministic schedule transitions and evidence validation.
+pub mod core;
+
 /// Scheduling strategy for multi-vCPU VMs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SchedulingStrategy {

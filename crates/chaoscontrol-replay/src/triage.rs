@@ -244,7 +244,9 @@ fn event_vm_index(event: &RecordedEvent) -> Option<usize> {
 
 fn format_event(event: &RecordedEvent) -> String {
     match event {
-        RecordedEvent::FaultFired { fault, .. } => format!("Fault fired: {}", fault),
+        RecordedEvent::FaultFired { fault, .. } => {
+            format!("Fault selected (legacy projection): {}", fault)
+        }
         RecordedEvent::AssertionHit {
             assertion_id,
             location,
@@ -432,7 +434,7 @@ mod tests {
             fault: "Test".to_string(),
         };
         let formatted = format_event(&fault);
-        assert!(formatted.contains("Fault fired"));
+        assert!(formatted.contains("Fault selected (legacy projection)"));
         assert!(formatted.contains("Test"));
 
         let assertion = RecordedEvent::AssertionHit {

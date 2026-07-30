@@ -6,12 +6,16 @@
 
 use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
+use crate::outcomes::{
+    fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptId, FaultOutcomeLedger,
+    FaultRunId, FaultScheduleId, FaultStageKind, FaultTransitionError,
+};
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use std::collections::{BTreeMap, HashMap};
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -45,6 +49,19 @@ pub enum EngineError {
 
     #[snafu(display("Unknown command: {value:#x}"))]
     UnknownCommand { value: u8 },
+}
+
+/// Deterministic fault-selection failures.
+#[derive(Debug, Snafu)]
+pub enum FaultSelectionError {
+    #[snafu(display("fault run sequence is exhausted"))]
+    RunSequenceExhausted,
+
+    #[snafu(display("fault selection sequence overflowed"))]
+    SelectionSequenceOverflow,
+
+    #[snafu(display("fault outcome transition failed: {source}"))]
+    OutcomeTransition { source: FaultTransitionError },
 }
 
 /// Configuration for the fault engine.
@@ -82,7 +99,12 @@ pub struct EngineSnapshot {
     rng_word_pos: u128,
     oracle: crate::oracle::OracleSnapshot,
     schedule: crate::schedule::FaultScheduleSnapshot,
-    faults_injected: u64,
+    outcomes: FaultOutcomeLedger,
+    schedule_id: FaultScheduleId,
+    run_id: FaultRunId,
+    run_sequence: u64,
+    selection_sequence: u64,
+    run_exhausted: bool,
     setup_complete: bool,
     next_random_fault_time_ns: u64,
     /// Choice counter at snapshot time — restored so sequence IDs
@@ -127,7 +149,7 @@ pub struct EngineSnapshot {
 /// engine.handle_hypercall(&setup_page);
 ///
 /// // Check for due faults at virtual time 1ms
-/// let faults = engine.poll_faults(1_000_000);
+/// let faults = engine.poll_faults(1_000_000).unwrap();
 /// assert_eq!(faults.len(), 1);
 /// ```
 pub struct FaultEngine {
@@ -135,8 +157,18 @@ pub struct FaultEngine {
     rng: ChaCha20Rng,
     oracle: PropertyOracle,
     schedule: FaultSchedule,
-    /// Total faults injected across all runs.
-    faults_injected: u64,
+    /// Ordered stage ledger for selected fault attempts.
+    outcomes: FaultOutcomeLedger,
+    /// Identity of the current complete schedule.
+    schedule_id: FaultScheduleId,
+    /// Identity of the current engine run.
+    run_id: FaultRunId,
+    /// Monotonic run sequence used in `run_id`.
+    run_sequence: u64,
+    /// Monotonic selection position within the current run.
+    selection_sequence: u64,
+    /// True when another unique run identity cannot be created.
+    run_exhausted: bool,
     /// Whether the guest has signaled setup_complete.
     setup_complete: bool,
     /// Next time (virtual ns) to consider injecting a random fault.
@@ -161,6 +193,9 @@ impl FaultEngine {
     pub fn new(config: EngineConfig) -> Self {
         let rng = Self::rng_from_seed(config.seed);
         let schedule = config.schedule.clone().unwrap_or_default();
+        let schedule_id = schedule.identity();
+        let run_sequence = 0;
+        let run_id = fault_run_id(config.seed, run_sequence, schedule_id);
         let next_random_fault_time_ns = config.random_fault_interval_ns;
 
         Self {
@@ -168,7 +203,12 @@ impl FaultEngine {
             rng,
             oracle: PropertyOracle::new(),
             schedule,
-            faults_injected: 0,
+            outcomes: FaultOutcomeLedger::default(),
+            schedule_id,
+            run_id,
+            run_sequence,
+            selection_sequence: 0,
+            run_exhausted: false,
             setup_complete: false,
             next_random_fault_time_ns,
             choice_history: Vec::new(),
@@ -183,8 +223,20 @@ impl FaultEngine {
         self.oracle.begin_run();
         self.setup_complete = false;
         self.schedule.reset();
+        self.schedule_id = self.schedule.identity();
+        self.selection_sequence = 0;
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
+        match self.run_sequence.checked_add(1) {
+            Some(run_sequence) => {
+                self.run_sequence = run_sequence;
+                self.run_id = fault_run_id(self.config.seed, run_sequence, self.schedule_id);
+                self.run_exhausted = false;
+            }
+            None => {
+                self.run_exhausted = true;
+            }
+        }
     }
 
     /// End the current test run.
@@ -327,32 +379,70 @@ impl FaultEngine {
         }
     }
 
-    /// Poll for faults that should be injected at the given virtual time.
+    /// Select due fault attempts without claiming application or observation.
     ///
-    /// Returns all due faults.  Only injects faults after `setup_complete`
-    /// has been received (faults during setup would be confusing).
-    pub fn poll_faults(&mut self, current_time_ns: u64) -> Vec<Fault> {
+    /// r[impl chaoscontrol.fault_outcomes.accounting]
+    pub fn poll_fault_attempts(
+        &mut self,
+        current_time_ns: u64,
+    ) -> Result<Vec<FaultAttempt>, FaultSelectionError> {
         if !self.setup_complete {
-            return Vec::new();
+            return Ok(Vec::new());
+        }
+        if self.run_exhausted {
+            return RunSequenceExhaustedSnafu.fail();
         }
 
         let mut faults = Vec::new();
-
-        // Drain scheduled faults
-        for sf in self.schedule.drain_due(current_time_ns) {
-            faults.push(sf.fault);
+        for scheduled in self.schedule.drain_due(current_time_ns) {
+            faults.push(scheduled.fault);
         }
-
-        // Maybe generate a random fault
         if self.config.random_faults && current_time_ns >= self.next_random_fault_time_ns {
             if let Some(fault) = self.generate_random_fault() {
                 faults.push(fault);
             }
-            self.next_random_fault_time_ns = current_time_ns + self.config.random_fault_interval_ns;
+            self.next_random_fault_time_ns =
+                current_time_ns.saturating_add(self.config.random_fault_interval_ns);
         }
 
-        self.faults_injected += faults.len() as u64;
-        faults
+        let mut attempts = Vec::with_capacity(faults.len());
+        for fault in faults {
+            attempts.push(self.select_fault(fault, current_time_ns)?);
+        }
+        Ok(attempts)
+    }
+
+    /// Compatibility selector mapped exactly to the selected stage.
+    pub fn poll_faults(&mut self, current_time_ns: u64) -> Result<Vec<Fault>, FaultSelectionError> {
+        self.poll_fault_attempts(current_time_ns)
+            .map(|attempts| attempts.into_iter().map(|attempt| attempt.fault).collect())
+    }
+
+    fn select_fault(
+        &mut self,
+        fault: Fault,
+        selected_at_ns: u64,
+    ) -> Result<FaultAttempt, FaultSelectionError> {
+        let attempt = FaultAttempt::new(
+            self.run_id,
+            self.schedule_id,
+            self.selection_sequence,
+            selected_at_ns,
+            fault,
+        );
+        let next = transition_fault_outcome(
+            &self.outcomes,
+            Some(&attempt),
+            attempt.id,
+            FaultStageKind::Selected,
+        )
+        .context(OutcomeTransitionSnafu)?;
+        self.outcomes = next;
+        self.selection_sequence = self
+            .selection_sequence
+            .checked_add(1)
+            .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
+        Ok(attempt)
     }
 
     /// Whether the current run has an immediate assertion failure.
@@ -370,9 +460,25 @@ impl FaultEngine {
         &mut self.oracle
     }
 
-    /// Total faults injected across all runs.
+    /// Legacy alias mapped exactly to the selected-stage counter.
     pub fn faults_injected(&self) -> u64 {
-        self.faults_injected
+        self.outcomes.counters.selected
+    }
+
+    /// Return the authoritative ordered stage ledger.
+    pub fn fault_outcomes(&self) -> &FaultOutcomeLedger {
+        &self.outcomes
+    }
+
+    /// Record one validated stage from the imperative application shell.
+    pub fn record_fault_stage(
+        &mut self,
+        attempt_id: FaultAttemptId,
+        kind: FaultStageKind,
+    ) -> Result<(), FaultTransitionError> {
+        let next = transition_fault_outcome(&self.outcomes, None, attempt_id, kind)?;
+        self.outcomes = next;
+        Ok(())
     }
 
     /// Whether setup_complete has been received for the current run.
@@ -396,6 +502,9 @@ impl FaultEngine {
     /// Replace the fault schedule (for exploration branch mutations).
     pub fn set_schedule(&mut self, schedule: FaultSchedule) {
         self.schedule = schedule;
+        self.schedule_id = self.schedule.identity();
+        self.run_id = fault_run_id(self.config.seed, self.run_sequence, self.schedule_id);
+        self.selection_sequence = 0;
     }
 
     /// Snapshot the engine state.
@@ -406,7 +515,12 @@ impl FaultEngine {
             rng_word_pos: self.rng.get_word_pos(),
             oracle: self.oracle.snapshot(),
             schedule: self.schedule.snapshot(),
-            faults_injected: self.faults_injected,
+            outcomes: self.outcomes.clone(),
+            schedule_id: self.schedule_id,
+            run_id: self.run_id,
+            run_sequence: self.run_sequence,
+            selection_sequence: self.selection_sequence,
+            run_exhausted: self.run_exhausted,
             setup_complete: self.setup_complete,
             next_random_fault_time_ns: self.next_random_fault_time_ns,
             choice_count: self.choice_count,
@@ -420,7 +534,12 @@ impl FaultEngine {
         self.rng.set_word_pos(snapshot.rng_word_pos);
         self.oracle.restore(&snapshot.oracle);
         self.schedule.restore(&snapshot.schedule);
-        self.faults_injected = snapshot.faults_injected;
+        self.outcomes = snapshot.outcomes.clone();
+        self.schedule_id = snapshot.schedule_id;
+        self.run_id = snapshot.run_id;
+        self.run_sequence = snapshot.run_sequence;
+        self.selection_sequence = snapshot.selection_sequence;
+        self.run_exhausted = snapshot.run_exhausted;
         self.setup_complete = snapshot.setup_complete;
         self.next_random_fault_time_ns = snapshot.next_random_fault_time_ns;
         self.choice_count = snapshot.choice_count;
@@ -746,13 +865,13 @@ mod tests {
         engine.begin_run();
 
         // Before setup_complete: no faults
-        let faults = engine.poll_faults(1_000_000);
+        let faults = engine.poll_faults(1_000_000).unwrap();
         assert!(faults.is_empty());
 
-        // After setup_complete: faults fire
+        // After setup_complete: faults are selected.
         let page = make_page(CMD_LIFECYCLE_SETUP_COMPLETE, 0, 0);
         engine.handle_hypercall(&page);
-        let faults = engine.poll_faults(1_000_000);
+        let faults = engine.poll_faults(1_000_000).unwrap();
         assert_eq!(faults.len(), 1);
     }
 
@@ -770,14 +889,14 @@ mod tests {
         engine.begin_run();
         engine.setup_complete = true;
 
-        let faults = engine.poll_faults(500);
+        let faults = engine.poll_faults(500).unwrap();
         assert!(faults.is_empty());
 
-        let faults = engine.poll_faults(1500);
+        let faults = engine.poll_faults(1500).unwrap();
         assert_eq!(faults.len(), 1);
         assert_eq!(faults[0], Fault::NetworkHeal);
 
-        let faults = engine.poll_faults(3000);
+        let faults = engine.poll_faults(3000).unwrap();
         assert_eq!(faults.len(), 1);
         assert_eq!(faults[0], Fault::ProcessKill { target: 0 });
     }

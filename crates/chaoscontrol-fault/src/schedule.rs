@@ -130,8 +130,14 @@ impl FaultSchedule {
         }
     }
 
-    /// Restore schedule state from a snapshot.
+    /// Check whether a snapshot cursor is within this schedule.
+    pub fn snapshot_is_valid(&self, snapshot: &FaultScheduleSnapshot) -> bool {
+        snapshot.cursor <= self.faults.len()
+    }
+
+    /// Restore schedule state from a validated snapshot.
     pub fn restore(&mut self, snapshot: &FaultScheduleSnapshot) {
+        assert!(self.snapshot_is_valid(snapshot));
         self.cursor = snapshot.cursor;
     }
 }

@@ -1705,6 +1705,15 @@ impl DeterministicVm {
         (observations, overflowed)
     }
 
+    /// Restore a failed block observation batch in its original order.
+    pub fn requeue_block_fault_observations(
+        &mut self,
+        observations: Vec<chaoscontrol_fault::outcomes::FaultObservation>,
+        overflowed: u64,
+    ) -> bool {
+        self.with_block_device(|disk| disk.requeue_fault_observations(observations, overflowed))
+    }
+
     /// Return the configured vCPU count.
     pub fn vcpu_count(&self) -> usize {
         self.vcpus.len()
@@ -2103,9 +2112,25 @@ impl DeterministicVm {
         Ok((snap, dirty_count))
     }
 
+    /// Validate the fault evidence in a VM snapshot without changing live state.
+    pub fn validate_fault_engine_snapshot(
+        &self,
+        snapshot: &crate::snapshot::VmSnapshot,
+    ) -> Result<(), VmError> {
+        self.fault_engine
+            .validate_snapshot(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid fault-engine snapshot: {error}"),
+                }
+                .build()
+            })
+    }
+
     /// Restore VM state from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+        self.validate_fault_engine_snapshot(snapshot)?;
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
@@ -2136,7 +2161,14 @@ impl DeterministicVm {
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
 
         // Restore fault engine state
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid fault-engine snapshot: {error}"),
+                }
+                .build()
+            })?;
 
         // Restore coverage flag
         self.coverage_active = snapshot.coverage_active;
@@ -2257,6 +2289,8 @@ impl DeterministicVm {
     ) -> Result<(), VmError> {
         use crate::snapshot::SnapshotMemory;
 
+        self.validate_fault_engine_snapshot(snapshot)?;
+
         // Step 1: Revert previously-dirtied pages back to base values.
         if !self.last_dirty_page_indices.is_empty() {
             SnapshotMemory::revert_pages_from_base(
@@ -2324,7 +2358,14 @@ impl DeterministicVm {
         self.panic_match_state = 0;
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid fault-engine snapshot: {error}"),
+                }
+                .build()
+            })?;
         self.coverage_active = snapshot.coverage_active;
         self.scheduler.restore(&snapshot.scheduler_snapshot);
         self.active_vcpu = snapshot.active_vcpu;

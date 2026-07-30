@@ -17,8 +17,9 @@
 //! ~256 dirty-page clones (~1 MB) instead of a full 512 MB copy.
 
 use chaoscontrol_fault::outcomes::{
-    fault_operation_id, FaultAttemptId, FaultObservation, FaultObservationEffect,
-    FaultObservationSubsystem,
+    validate_pending_fault_effect, validate_pending_fault_observations, FaultAttemptId,
+    FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultOutcomeLedger,
+    FaultPlanEffect, FaultTransitionError,
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -61,6 +62,16 @@ pub enum BlockError {
     /// Failed to read a disk image file.
     #[snafu(display("failed to read disk image '{path}': {reason}"))]
     ImageRead { path: String, reason: String },
+
+    /// The evidence queue cannot retain all attributable effects.
+    #[snafu(display(
+        "block observation capacity exhausted: required {required}, available {available}"
+    ))]
+    ObservationCapacity { required: usize, available: usize },
+
+    /// The deterministic block operation sequence is exhausted.
+    #[snafu(display("block operation sequence exhausted"))]
+    OperationSequenceExhausted,
 }
 
 /// A fault that can be injected into the block device.
@@ -118,6 +129,109 @@ pub struct BlockSnapshot {
     fault_observations: VecDeque<FaultObservation>,
     operation_sequence: u64,
     observation_overflowed: u64,
+}
+
+impl BlockSnapshot {
+    /// Validate pending block mechanisms against an authoritative ledger.
+    pub fn validate_pending_faults(
+        &self,
+        ledger: &FaultOutcomeLedger,
+        target: u32,
+    ) -> Result<(), FaultTransitionError> {
+        if self.faults.len() != self.fault_attempt_ids.len()
+            || self.fault_observations.len() > MAX_PENDING_BLOCK_OBSERVATIONS
+            || self.observation_overflowed != 0
+        {
+            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
+        }
+        for (fault, attempt_id) in self.faults.iter().zip(&self.fault_attempt_ids) {
+            let attempt_id =
+                attempt_id.ok_or(FaultTransitionError::SnapshotPendingStateMismatch)?;
+            let effect = block_fault_effect(target, fault)?;
+            validate_pending_fault_effect(ledger, attempt_id, &effect)?;
+        }
+        validate_active_block_effect(
+            ledger,
+            self.slow_delay_ns != 0,
+            self.slow_attempt_id,
+            FaultPlanEffect::BlockSlow {
+                target,
+                delay_ns: self.slow_delay_ns,
+            },
+        )?;
+        validate_active_block_effect(
+            ledger,
+            self.fsync_lie,
+            self.fsync_lie_attempt_id,
+            FaultPlanEffect::BlockFsyncLie { target },
+        )?;
+        validate_active_block_effect(
+            ledger,
+            self.full,
+            self.full_attempt_id,
+            FaultPlanEffect::BlockFull { target },
+        )?;
+        if self
+            .fault_observations
+            .iter()
+            .any(|observation| observation.operation_sequence >= self.operation_sequence)
+        {
+            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
+        }
+        let observations = self.fault_observations.iter().cloned().collect::<Vec<_>>();
+        validate_pending_fault_observations(ledger, &observations)
+    }
+}
+
+fn block_fault_effect(
+    target: u32,
+    fault: &BlockFault,
+) -> Result<FaultPlanEffect, FaultTransitionError> {
+    let effect = match fault {
+        BlockFault::ReadError { offset } => FaultPlanEffect::BlockReadError {
+            target,
+            offset: *offset,
+        },
+        BlockFault::WriteError { offset } => FaultPlanEffect::BlockWriteError {
+            target,
+            offset: *offset,
+        },
+        BlockFault::TornWrite {
+            offset,
+            bytes_written,
+        } => FaultPlanEffect::BlockTornWrite {
+            target,
+            offset: *offset,
+            bytes_written: u64::try_from(*bytes_written)
+                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+        },
+        BlockFault::Corruption { offset, len } => FaultPlanEffect::BlockCorruption {
+            target,
+            offset: *offset,
+            len: u64::try_from(*len)
+                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+        },
+        BlockFault::PartialRead { offset, max_bytes } => FaultPlanEffect::BlockPartialRead {
+            target,
+            offset: *offset,
+            max_bytes: u64::try_from(*max_bytes)
+                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+        },
+    };
+    Ok(effect)
+}
+
+fn validate_active_block_effect(
+    ledger: &FaultOutcomeLedger,
+    active: bool,
+    attempt_id: Option<FaultAttemptId>,
+    effect: FaultPlanEffect,
+) -> Result<(), FaultTransitionError> {
+    match (active, attempt_id) {
+        (true, Some(attempt_id)) => validate_pending_fault_effect(ledger, attempt_id, &effect),
+        (false, None) => Ok(()),
+        _ => Err(FaultTransitionError::SnapshotPendingStateMismatch),
+    }
 }
 
 /// An in-memory block device with copy-on-write snapshots and deterministic
@@ -247,7 +361,8 @@ impl DeterministicBlock {
     pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<u64, BlockError> {
         let len = buf.len() as u64;
         self.check_bounds(offset, len)?;
-        let operation_sequence = self.begin_operation();
+        let observation_count = self.read_observation_count(offset, buf.len());
+        let operation_sequence = self.begin_operation(observation_count)?;
 
         // Check for an injected read fault at this offset.
         if let Some(idx) =
@@ -269,16 +384,19 @@ impl DeterministicBlock {
         if let Some(idx) = self
             .find_fault(|f| matches!(f, BlockFault::PartialRead { offset: o, .. } if *o == offset))
         {
-            let attempt_id = self.remove_fault_attempt(idx);
-            let fault = self.faults.remove(idx).unwrap();
-            if let BlockFault::PartialRead { max_bytes, .. } = fault {
-                let actual = max_bytes.min(buf.len());
+            let max_bytes = match self.faults.get(idx) {
+                Some(BlockFault::PartialRead { max_bytes, .. }) => *max_bytes,
+                _ => unreachable!(),
+            };
+            if max_bytes < buf.len() {
+                let attempt_id = self.remove_fault_attempt(idx);
+                self.faults.remove(idx).unwrap();
                 // Read the partial portion.
-                self.cow_read_3tier(offset as usize, &mut buf[..actual]);
+                self.cow_read_3tier(offset as usize, &mut buf[..max_bytes]);
                 // Zero the rest.
-                buf[actual..].fill(0);
+                buf[max_bytes..].fill(0);
                 self.stats.reads += 1;
-                self.stats.bytes_read += actual as u64;
+                self.stats.bytes_read += max_bytes as u64;
                 self.record_observation(
                     attempt_id,
                     operation_sequence,
@@ -303,7 +421,8 @@ impl DeterministicBlock {
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<u64, BlockError> {
         let len = data.len() as u64;
         self.check_bounds(offset, len)?;
-        let operation_sequence = self.begin_operation();
+        let observation_count = self.write_observation_count(offset, data.len());
+        let operation_sequence = self.begin_operation(observation_count)?;
         if self.full {
             self.record_observation(
                 self.full_attempt_id,
@@ -323,10 +442,11 @@ impl DeterministicBlock {
                 if *o == offset
             )
         }) {
-            let attempt_id = self.remove_fault_attempt(idx);
-            let fault = self.faults.remove(idx).unwrap();
+            let fault = self.faults.get(idx).cloned().unwrap();
             match fault {
                 BlockFault::WriteError { offset } => {
+                    let attempt_id = self.remove_fault_attempt(idx);
+                    self.faults.remove(idx).unwrap();
                     self.record_observation(
                         attempt_id,
                         operation_sequence,
@@ -337,32 +457,38 @@ impl DeterministicBlock {
                 BlockFault::TornWrite {
                     offset,
                     bytes_written,
-                } => {
-                    let actual = bytes_written.min(data.len());
-                    self.write_to_layer(offset as usize, &data[..actual]);
+                } if bytes_written < data.len() => {
+                    let attempt_id = self.remove_fault_attempt(idx);
+                    self.faults.remove(idx).unwrap();
+                    self.write_to_layer(offset as usize, &data[..bytes_written]);
                     self.stats.writes += 1;
-                    self.stats.bytes_written += actual as u64;
+                    self.stats.bytes_written += bytes_written as u64;
                     self.record_observation(
                         attempt_id,
                         operation_sequence,
                         FaultObservationEffect::BlockWriteTorn,
                     );
-                    self.record_fsync_lie_observation(operation_sequence, actual > 0);
+                    self.record_fsync_lie_observation(operation_sequence, bytes_written > 0);
                     return InjectedTornWriteSnafu {
                         offset,
-                        bytes_written: actual,
+                        bytes_written,
                     }
                     .fail();
                 }
                 BlockFault::Corruption {
                     offset: _,
                     len: corrupt_len,
-                } => {
-                    // Write the data normally, then overwrite with garbage.
+                } if corrupt_len > 0 && !data.is_empty() => {
+                    let attempt_id = self.remove_fault_attempt(idx);
+                    self.faults.remove(idx).unwrap();
+                    // Write the data normally, then replace a prefix with different bytes.
                     self.write_to_layer(offset as usize, data);
                     let corrupt_end = corrupt_len.min(data.len());
-                    let garbage = vec![0xFF; corrupt_end];
-                    self.write_to_layer(offset as usize, &garbage);
+                    let corrupted = data[..corrupt_end]
+                        .iter()
+                        .map(|byte| byte ^ u8::MAX)
+                        .collect::<Vec<_>>();
+                    self.write_to_layer(offset as usize, &corrupted);
                     self.stats.writes += 1;
                     self.stats.bytes_written += data.len() as u64;
                     self.record_observation(
@@ -370,10 +496,11 @@ impl DeterministicBlock {
                         operation_sequence,
                         FaultObservationEffect::BlockBytesCorrupted,
                     );
-                    self.record_fsync_lie_observation(operation_sequence, !data.is_empty());
+                    self.record_fsync_lie_observation(operation_sequence, true);
                     self.record_slow_observation(operation_sequence);
                     return Ok(self.slow_delay_ns);
                 }
+                BlockFault::TornWrite { .. } | BlockFault::Corruption { .. } => {}
                 _ => unreachable!(),
             }
         }
@@ -482,6 +609,32 @@ impl DeterministicBlock {
         (observations, overflowed)
     }
 
+    /// Restore a failed ledger batch to the front of the pending queue.
+    pub fn requeue_fault_observations(
+        &mut self,
+        observations: Vec<FaultObservation>,
+        overflowed: u64,
+    ) {
+        let restored_len = self
+            .fault_observations
+            .len()
+            .checked_add(observations.len())
+            .expect("block observation queue length overflow");
+        assert!(restored_len <= MAX_PENDING_BLOCK_OBSERVATIONS);
+        for observation in observations.into_iter().rev() {
+            self.fault_observations.push_front(observation);
+        }
+        self.observation_overflowed = self
+            .observation_overflowed
+            .checked_add(overflowed)
+            .expect("block observation overflow counter overflow");
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_observation_overflow_for_test(&mut self, overflowed: u64) {
+        self.observation_overflowed = overflowed;
+    }
+
     /// Capture a snapshot of the device (CoW state + faults + stats).
     ///
     /// Cost is proportional to the number of dirty pages, not the device
@@ -565,15 +718,81 @@ impl DeterministicBlock {
         data
     }
 
-    fn begin_operation(&mut self) -> u64 {
+    fn begin_operation(&mut self, observation_count: usize) -> Result<u64, BlockError> {
         let operation_sequence = self.operation_sequence;
-        match operation_sequence.checked_add(1) {
-            Some(next_sequence) => self.operation_sequence = next_sequence,
-            None => {
-                self.observation_overflowed = self.observation_overflowed.saturating_add(1);
+        let next_sequence = operation_sequence
+            .checked_add(1)
+            .ok_or(BlockError::OperationSequenceExhausted)?;
+        let available = MAX_PENDING_BLOCK_OBSERVATIONS
+            .checked_sub(self.fault_observations.len())
+            .ok_or(BlockError::ObservationCapacity {
+                required: observation_count,
+                available: 0,
+            })?;
+        if observation_count > available {
+            return Err(BlockError::ObservationCapacity {
+                required: observation_count,
+                available,
+            });
+        }
+        self.operation_sequence = next_sequence;
+        Ok(operation_sequence)
+    }
+
+    fn read_observation_count(&self, offset: u64, read_len: usize) -> usize {
+        if let Some(index) = self.find_fault(
+            |fault| matches!(fault, BlockFault::ReadError { offset: value } if *value == offset),
+        ) {
+            return usize::from(self.fault_attempt(index).is_some());
+        }
+        if let Some(index) = self.find_fault(
+            |fault| matches!(fault, BlockFault::PartialRead { offset: value, .. } if *value == offset),
+        ) {
+            if matches!(
+                self.faults.get(index),
+                Some(BlockFault::PartialRead { max_bytes, .. }) if *max_bytes < read_len
+            ) {
+                return usize::from(self.fault_attempt(index).is_some())
+                    + usize::from(self.slow_attempt_id.is_some());
             }
         }
-        operation_sequence
+        usize::from(self.slow_attempt_id.is_some())
+    }
+
+    fn write_observation_count(&self, offset: u64, write_len: usize) -> usize {
+        if self.full {
+            return usize::from(self.full_attempt_id.is_some());
+        }
+        if let Some(index) = self.find_fault(|fault| {
+            matches!(
+                fault,
+                BlockFault::WriteError { offset: value }
+                    | BlockFault::TornWrite { offset: value, .. }
+                    | BlockFault::Corruption { offset: value, .. }
+                    if *value == offset
+            )
+        }) {
+            let primary = usize::from(self.fault_attempt(index).is_some());
+            match self.faults.get(index) {
+                Some(BlockFault::WriteError { .. }) => return primary,
+                Some(BlockFault::TornWrite { bytes_written, .. }) if *bytes_written < write_len => {
+                    return primary
+                        + usize::from(*bytes_written > 0 && self.fsync_lie_attempt_id.is_some());
+                }
+                Some(BlockFault::Corruption { len, .. }) if *len > 0 && write_len > 0 => {
+                    return primary
+                        + usize::from(self.fsync_lie_attempt_id.is_some())
+                        + usize::from(self.slow_attempt_id.is_some());
+                }
+                _ => {}
+            }
+        }
+        usize::from(write_len > 0 && self.fsync_lie_attempt_id.is_some())
+            + usize::from(self.slow_attempt_id.is_some())
+    }
+
+    fn fault_attempt(&self, index: usize) -> Option<FaultAttemptId> {
+        self.fault_attempt_ids.get(index).copied().flatten()
     }
 
     fn record_observation(
@@ -585,19 +804,13 @@ impl DeterministicBlock {
         let Some(attempt_id) = attempt_id else {
             return;
         };
-        if self.fault_observations.len() >= MAX_PENDING_BLOCK_OBSERVATIONS {
-            self.observation_overflowed = self.observation_overflowed.saturating_add(1);
-            return;
-        }
-        self.fault_observations.push_back(FaultObservation {
+        assert!(self.fault_observations.len() < MAX_PENDING_BLOCK_OBSERVATIONS);
+        self.fault_observations.push_back(FaultObservation::new(
             attempt_id,
-            operation_id: fault_operation_id(
-                attempt_id,
-                FaultObservationSubsystem::Block,
-                operation_sequence,
-            ),
+            FaultObservationSubsystem::Block,
+            operation_sequence,
             effect,
-        });
+        ));
     }
 
     fn record_slow_observation(&mut self, operation_sequence: u64) {
@@ -837,7 +1050,7 @@ mod tests {
 
         let mut buf = [0u8; 8];
         blk.read(0, &mut buf).unwrap();
-        assert_eq!(&buf[..4], &[0xFF; 4]); // corrupted
+        assert_eq!(&buf[..4], &[0x55; 4]); // input bytes were changed
         assert_eq!(&buf[4..], &[0xAA; 4]); // rest intact
     }
 
@@ -1346,10 +1559,112 @@ mod tests {
     }
 
     #[test]
+    fn torn_write_stays_armed_until_it_writes_fewer_bytes_than_requested() {
+        const BLOCK_BYTES: usize = 4_096;
+        const TORN_BYTES: usize = 4;
+        const LONG_WRITE_BYTES: usize = 8;
+        let attempt_id = FaultAttemptId([0; 32]);
+        let mut disk = DeterministicBlock::new(BLOCK_BYTES);
+        disk.inject_fault_with_attempt(
+            BlockFault::TornWrite {
+                offset: 0,
+                bytes_written: TORN_BYTES,
+            },
+            attempt_id,
+        );
+
+        assert!(disk.write(0, &[0xAA; TORN_BYTES]).is_ok());
+        assert_eq!(disk.faults.len(), 1);
+        assert!(disk.drain_fault_observations().0.is_empty());
+
+        assert!(matches!(
+            disk.write(0, &[0xBB; LONG_WRITE_BYTES]),
+            Err(BlockError::InjectedTornWrite { .. })
+        ));
+        let (observations, overflowed) = disk.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert_eq!(disk.faults.len(), 0);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].effect,
+            FaultObservationEffect::BlockWriteTorn
+        );
+    }
+
+    #[test]
+    fn partial_read_stays_armed_for_equal_or_empty_reads() {
+        const BLOCK_BYTES: usize = 4_096;
+        const SHORT_READ_BYTES: usize = 4;
+        const LONG_READ_BYTES: usize = 8;
+        let attempt_id = FaultAttemptId([0; 32]);
+        let mut disk = DeterministicBlock::new(BLOCK_BYTES);
+        disk.write(0, &[0xAA; LONG_READ_BYTES]).unwrap();
+        disk.inject_fault_with_attempt(
+            BlockFault::PartialRead {
+                offset: 0,
+                max_bytes: SHORT_READ_BYTES,
+            },
+            attempt_id,
+        );
+
+        disk.read(0, &mut []).unwrap();
+        let mut equal = [0; SHORT_READ_BYTES];
+        disk.read(0, &mut equal).unwrap();
+        assert_eq!(equal, [0xAA; SHORT_READ_BYTES]);
+        assert_eq!(disk.faults.len(), 1);
+        assert!(disk.drain_fault_observations().0.is_empty());
+
+        let mut longer = [0xFF; LONG_READ_BYTES];
+        disk.read(0, &mut longer).unwrap();
+        let (observations, overflowed) = disk.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert_eq!(&longer[..SHORT_READ_BYTES], &[0xAA; SHORT_READ_BYTES]);
+        assert_eq!(&longer[SHORT_READ_BYTES..], &[0; SHORT_READ_BYTES]);
+        assert_eq!(disk.faults.len(), 0);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].effect,
+            FaultObservationEffect::BlockReadShortened
+        );
+    }
+
+    #[test]
+    fn corruption_stays_armed_for_empty_write_and_changes_nonempty_bytes() {
+        const BLOCK_BYTES: usize = 4_096;
+        const WRITE_BYTES: usize = 4;
+        let attempt_id = FaultAttemptId([0; 32]);
+        let mut disk = DeterministicBlock::new(BLOCK_BYTES);
+        disk.inject_fault_with_attempt(
+            BlockFault::Corruption {
+                offset: 0,
+                len: WRITE_BYTES,
+            },
+            attempt_id,
+        );
+
+        disk.write(0, &[]).unwrap();
+        assert_eq!(disk.faults.len(), 1);
+        assert!(disk.drain_fault_observations().0.is_empty());
+
+        disk.write(0, &[0xAA; WRITE_BYTES]).unwrap();
+        let (observations, overflowed) = disk.drain_fault_observations();
+        let mut actual = [0; WRITE_BYTES];
+        disk.read(0, &mut actual).unwrap();
+        assert_eq!(overflowed, 0);
+        assert_eq!(actual, [0x55; WRITE_BYTES]);
+        assert_eq!(disk.faults.len(), 0);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].effect,
+            FaultObservationEffect::BlockBytesCorrupted
+        );
+    }
+
+    #[test]
     fn armed_block_fault_is_observed_only_when_io_consumes_it() {
         // r[verify chaoscontrol.fault_outcomes.validation.observation]
         const BLOCK_BYTES: usize = 4_096;
-        let attempt_id = FaultAttemptId([7; 32]);
+        let attempt_id = FaultAttemptId([0; 32]);
         let mut block = DeterministicBlock::new(BLOCK_BYTES);
         block.inject_fault_with_attempt(BlockFault::ReadError { offset: 0 }, attempt_id);
 

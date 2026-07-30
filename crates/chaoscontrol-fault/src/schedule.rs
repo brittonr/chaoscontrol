@@ -5,6 +5,7 @@
 //! or generated randomly by the [`FaultEngine`](super::engine::FaultEngine).
 
 use crate::faults::Fault;
+use crate::outcomes::{fault_schedule_id, FaultScheduleId};
 
 /// A fault scheduled to fire at a specific virtual time.
 #[derive(Debug, Clone)]
@@ -92,6 +93,15 @@ impl FaultSchedule {
     /// Read-only access to the fault list.
     pub fn faults(&self) -> &[ScheduledFault] {
         &self.faults
+    }
+
+    /// Return the canonical BLAKE3 identity for the complete schedule.
+    pub fn identity(&self) -> FaultScheduleId {
+        fault_schedule_id(
+            self.faults
+                .iter()
+                .map(|entry| (entry.time_ns, entry.label.as_deref(), &entry.fault)),
+        )
     }
 
     /// Build a new schedule from a subset of faults (by index).

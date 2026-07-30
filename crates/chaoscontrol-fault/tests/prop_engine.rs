@@ -243,7 +243,7 @@ fn faults_never_fire_before_setup_complete() {
 
         for _ in 0..20 {
             let time = tc.u64(0, 100_000_000);
-            let faults = engine.poll_faults(time);
+            let faults = engine.poll_faults(time).unwrap();
             assert!(
                 faults.is_empty(),
                 "case {case}: faults fired at time {time} without setup_complete"

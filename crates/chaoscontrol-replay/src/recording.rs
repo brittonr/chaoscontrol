@@ -106,6 +106,8 @@ mod recorded_fault_schedule {
 }
 
 /// A recorded execution session.
+///
+/// r[impl chaoscontrol.fault_outcomes.compatibility]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Recording {
     /// Unique session ID.

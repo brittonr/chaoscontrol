@@ -2777,6 +2777,7 @@ mod tests {
 
     #[test]
     fn full_variant_matrix_has_a_supported_or_explicitly_unsupported_plan() {
+        // r[verify chaoscontrol.fault_outcomes.validation]
         // r[verify chaoscontrol.fault_outcomes.validation.variant_matrix]
         let cases = representative_faults();
         assert_eq!(cases.len(), FaultVariant::ALL.len());

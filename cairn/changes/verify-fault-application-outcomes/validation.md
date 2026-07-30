@@ -25,6 +25,8 @@ The focused replay suite passed 87 tests. The focused VMM library suite passed 4
 
 Positive tests cover supported fault variants and effect consumption. Negative tests cover unsupported capabilities, malformed transitions, bad targets and parameters, ledger capacity, snapshots, recordings, schedule provenance, random provenance, application failures, replay horizons, and checkpoint-prefix mismatches.
 
+The adapter registry and path tests cover r[chaoscontrol.fault_outcomes.effect_reachability] and r[chaoscontrol.fault_outcomes.application]. Operation-hook tests cover r[chaoscontrol.fault_outcomes.observation]. Replay and consumer tests cover r[chaoscontrol.fault_outcomes.compatibility]. The complete conformance run covers r[chaoscontrol.fault_outcomes.validation].
+
 ## Lifecycle checks
 
 The canonical policy was:
@@ -39,6 +41,8 @@ The following Cairn checks passed before sync:
 - tasks gate
 
 Direct validation without `--policy` failed because this repository does not contain `cairn-policy/generated/cairn-policy.json`. The canonical-policy checks are authoritative for this lifecycle package.
+
+Post-sync traceability found 16 referenced requirements out of 24 accepted requirements. All 16 `chaoscontrol.fault_outcomes.*` requirements have implementation or verification evidence. The repository-wide traceability and release-readiness verdicts remain false only because eight earlier `kernel_bundle_validation.*` requirements have no source markers.
 
 ## Known broad-rail failure
 

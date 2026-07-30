@@ -2244,6 +2244,7 @@ impl SimulationController {
             .map_err(fault_transition_vm_error)
     }
 
+    // r[impl chaoscontrol.fault_outcomes.observation]
     fn record_fault_observations(
         &mut self,
         observations: &[FaultObservation],
@@ -2369,6 +2370,8 @@ impl SimulationController {
         ))
     }
 
+    // r[impl chaoscontrol.fault_outcomes.effect_reachability]
+    // r[impl chaoscontrol.fault_outcomes.application]
     fn apply_fault_plan(
         &mut self,
         plan: &FaultPlan,

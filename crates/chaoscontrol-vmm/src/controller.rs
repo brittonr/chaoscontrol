@@ -53,6 +53,18 @@ fn bandwidth_serialization_ticks(packet_bytes: usize, bytes_per_second: u64) -> 
         .expect("packet timing must be admitted before application")
 }
 
+fn route_network_packet(
+    network: &mut NetworkFabric,
+    from: usize,
+    to: usize,
+    packet: Vec<u8>,
+    current_tick: u64,
+) -> Result<bool, VmError> {
+    network
+        .try_send_packet(from, to, packet, current_tick)
+        .map_err(|reason| VmError::NetworkPacketNonRunnable { from, to, reason })
+}
+
 fn checked_bandwidth_serialization_ticks(
     packet_bytes: usize,
     bytes_per_second: u64,
@@ -522,8 +534,9 @@ impl NetworkFabric {
         })
     }
 
-    /// Send a message from `from` to `to` at the current tick.
+    /// Compatibility wrapper for callers that treat every failure as `false`.
     ///
+    /// Production paths must use [`Self::try_send`] and preserve its error.
     /// Applies the full packet-level fault pipeline in order:
     /// 1. Partition check — drop if partitioned
     /// 2. Packet loss — drop with probability
@@ -734,8 +747,9 @@ impl NetworkFabric {
         true
     }
 
-    /// Send a raw packet (VM-to-VM bridging) through the fault pipeline.
+    /// Compatibility wrapper for raw packet callers that cannot return errors.
     ///
+    /// Production paths must use [`Self::try_send_packet`] and preserve its error.
     /// Applies the same fault injection logic as `send()` but for raw
     /// Ethernet frames from virtio-net TX queues. Packets are enqueued
     /// in `packet_in_flight` and delivered via `deliver_packets()`.
@@ -2047,7 +2061,7 @@ impl SimulationController {
         self.commit_pending_process_observations(observation_event_limit)?;
 
         // Bridge network packets between VMs (virtio-net TX → RX)
-        self.bridge_network_packets();
+        self.bridge_network_packets()?;
         let (network_observations, overflowed) = self.network.drain_fault_observations();
         if let Err(error) = self.record_fault_observations_with_event_limit(
             &network_observations,
@@ -3041,28 +3055,34 @@ impl SimulationController {
     /// 2. For each packet: broadcast to all other VMs (hub model)
     /// 3. Route through NetworkFabric for fault injection
     /// 4. Deliver arrived packets to destination VM RX queues
-    fn bridge_network_packets(&mut self) {
-        // Phase 1: Drain TX queues and enqueue into NetworkFabric
+    fn bridge_network_packets(&mut self) -> Result<(), VmError> {
+        // Phase 1: Drain TX queues and enqueue into NetworkFabric.
         for from_id in 0..self.vms.len() {
             let packets = self.vms[from_id].vm.drain_net_tx();
             for packet in packets {
-                // Broadcast to all other VMs (simple hub model)
+                // Broadcast to all other VMs (simple hub model).
                 for to_id in 0..self.vms.len() {
                     if to_id != from_id {
-                        self.network
-                            .send_packet(from_id, to_id, packet.clone(), self.tick);
+                        route_network_packet(
+                            &mut self.network,
+                            from_id,
+                            to_id,
+                            packet.clone(),
+                            self.tick,
+                        )?;
                     }
                 }
             }
         }
 
-        // Phase 2: Deliver packets that have arrived
+        // Phase 2: Deliver packets that have arrived.
         let delivered = self.network.deliver_packets(self.tick);
         for (vm_id, packet) in delivered {
             if let Some(slot) = self.vms.get_mut(vm_id) {
                 slot.vm.inject_net_rx(packet);
             }
         }
+        Ok(())
     }
 
     /// Snapshot all VMs and simulation state.
@@ -5543,9 +5563,16 @@ mod tests {
             std::iter::repeat_n(observation, MAX_PENDING_FAULT_OBSERVATIONS).collect();
         let stats_before = fabric.stats.clone();
 
-        let result = fabric.try_send(0, 1, vec![0xAA], 0);
+        let result = route_network_packet(&mut fabric, 0, 1, vec![0xAA], 0);
 
-        assert_eq!(result, Err(NetworkSendError::ObservationCapacity));
+        assert!(matches!(
+            result,
+            Err(VmError::NetworkPacketNonRunnable {
+                from: 0,
+                to: 1,
+                reason: NetworkSendError::ObservationCapacity,
+            })
+        ));
         assert_eq!(fabric.stats, stats_before);
         assert!(fabric.in_flight.is_empty());
         assert_eq!(

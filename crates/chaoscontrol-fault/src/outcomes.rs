@@ -68,6 +68,7 @@ impl_hex_display!(FaultOperationId);
 pub struct FaultAttempt {
     pub id: FaultAttemptId,
     pub run_id: FaultRunId,
+    pub run_sequence: u64,
     pub schedule_id: FaultScheduleId,
     pub selection_index: u64,
     pub selected_at_ns: u64,
@@ -77,6 +78,7 @@ pub struct FaultAttempt {
 impl FaultAttempt {
     pub fn new(
         run_id: FaultRunId,
+        run_sequence: u64,
         schedule_id: FaultScheduleId,
         selection_index: u64,
         selected_at_ns: u64,
@@ -86,6 +88,7 @@ impl FaultAttempt {
         Self {
             id,
             run_id,
+            run_sequence,
             schedule_id,
             selection_index,
             selected_at_ns,
@@ -583,10 +586,14 @@ pub enum FaultPlanEffect {
     },
     VirtualClockSkew {
         target: u32,
+        basis_tsc: u64,
+        offset_ns: i64,
         target_tsc: u64,
     },
     VirtualClockJump {
         target: u32,
+        basis_tsc: u64,
+        delta_ns: i64,
         target_tsc: u64,
     },
     IrqInjection {
@@ -980,15 +987,25 @@ fn plan_clock_fault(
     match fault {
         Fault::ClockSkew { target, offset_ns } => {
             let target = checked_running_target(*target, facts)?;
-            let current_tsc = facts.vms[target as usize].virtual_tsc;
-            let target_tsc = checked_signed_add(current_tsc, *offset_ns)?;
-            Ok(FaultPlanEffect::VirtualClockSkew { target, target_tsc })
+            let basis_tsc = facts.vms[target as usize].virtual_tsc;
+            let target_tsc = checked_signed_add(basis_tsc, *offset_ns)?;
+            Ok(FaultPlanEffect::VirtualClockSkew {
+                target,
+                basis_tsc,
+                offset_ns: *offset_ns,
+                target_tsc,
+            })
         }
         Fault::ClockJump { target, delta_ns } => {
             let target = checked_running_target(*target, facts)?;
-            let current_tsc = facts.vms[target as usize].virtual_tsc;
-            let target_tsc = checked_signed_add(current_tsc, *delta_ns)?;
-            Ok(FaultPlanEffect::VirtualClockJump { target, target_tsc })
+            let basis_tsc = facts.vms[target as usize].virtual_tsc;
+            let target_tsc = checked_signed_add(basis_tsc, *delta_ns)?;
+            Ok(FaultPlanEffect::VirtualClockJump {
+                target,
+                basis_tsc,
+                delta_ns: *delta_ns,
+                target_tsc,
+            })
         }
         Fault::ClockFreeze { .. } | Fault::ClockJitter { .. } => {
             Err(FaultRejectionReason::UnsupportedCapability {
@@ -1381,8 +1398,11 @@ pub enum FaultTransitionError {
     LedgerReplayMismatch,
     MissingSelectedAttempt,
     SnapshotRunIdentityMismatch,
+    SnapshotRunStateMismatch,
     SnapshotScheduleIdentityMismatch,
+    SnapshotScheduleCursorMismatch,
     SnapshotSelectionSequenceMismatch,
+    SnapshotPendingStateMismatch,
     DuplicateObservation,
     AttemptBoundExceeded,
     EventBoundExceeded,
@@ -1525,6 +1545,59 @@ pub fn preflight_fault_application_events_with_limit(
         .ok_or(FaultTransitionError::EventBoundExceeded)?;
     if final_count > event_limit {
         return Err(FaultTransitionError::EventBoundExceeded);
+    }
+    Ok(())
+}
+
+/// Validate that a pending effect exactly matches an applied attempt.
+pub fn validate_pending_fault_effect(
+    ledger: &FaultOutcomeLedger,
+    attempt_id: FaultAttemptId,
+    pending_effect: &FaultPlanEffect,
+) -> Result<(), FaultTransitionError> {
+    validate_ledger_bounds(ledger)?;
+    let state = ledger
+        .attempts
+        .get(&attempt_id)
+        .ok_or(FaultTransitionError::UnknownAttempt)?;
+    if state.stage != FaultAuthoritativeStage::Applied
+        && state.stage != FaultAuthoritativeStage::Observed
+    {
+        return Err(FaultTransitionError::InvalidTransition {
+            from: state.stage,
+            event: "pending effect",
+        });
+    }
+    let effect = state
+        .applicable_effect
+        .as_ref()
+        .ok_or(FaultTransitionError::ApplicableEffectMissing)?;
+    if effect != pending_effect {
+        return Err(FaultTransitionError::AppliedPlanMismatch);
+    }
+    Ok(())
+}
+
+/// Validate a pending observation batch without changing the supplied ledger.
+pub fn validate_pending_fault_observations(
+    ledger: &FaultOutcomeLedger,
+    observations: &[FaultObservation],
+) -> Result<(), FaultTransitionError> {
+    preflight_fault_observation_events_with_limit(
+        ledger,
+        observations.len(),
+        MAX_FAULT_OUTCOME_EVENTS,
+    )?;
+    let mut next = ledger.clone();
+    for observation in observations {
+        next = transition_fault_outcome(
+            &next,
+            None,
+            observation.attempt_id,
+            FaultStageKind::Observed {
+                observation: observation.clone(),
+            },
+        )?;
     }
     Ok(())
 }
@@ -1840,23 +1913,35 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
         (
             Fault::ClockSkew {
                 target: fault_target,
-                ..
+                offset_ns: fault_offset,
             },
             FaultPlanEffect::VirtualClockSkew {
                 target: planned_target,
-                ..
+                basis_tsc,
+                offset_ns,
+                target_tsc,
             },
-        )
-        | (
+        ) => {
+            target(*fault_target) == Some(*planned_target)
+                && fault_offset == offset_ns
+                && checked_signed_add(*basis_tsc, *offset_ns).ok() == Some(*target_tsc)
+        }
+        (
             Fault::ClockJump {
                 target: fault_target,
-                ..
+                delta_ns: fault_delta,
             },
             FaultPlanEffect::VirtualClockJump {
                 target: planned_target,
-                ..
+                basis_tsc,
+                delta_ns,
+                target_tsc,
             },
-        ) => target(*fault_target) == Some(*planned_target),
+        ) => {
+            target(*fault_target) == Some(*planned_target)
+                && fault_delta == delta_ns
+                && checked_signed_add(*basis_tsc, *delta_ns).ok() == Some(*target_tsc)
+        }
         (
             Fault::InjectInterrupt {
                 target: fault_target,
@@ -2205,7 +2290,14 @@ mod tests {
     fn attempt(fault: Fault) -> FaultAttempt {
         let schedule_id = fault_schedule_id([(TEST_SELECTED_AT_NS, None, &fault)]);
         let run_id = fault_run_id(TEST_SEED, TEST_SCHEDULE_SEQUENCE, schedule_id);
-        FaultAttempt::new(run_id, schedule_id, 0, TEST_SELECTED_AT_NS, fault)
+        FaultAttempt::new(
+            run_id,
+            TEST_SCHEDULE_SEQUENCE,
+            schedule_id,
+            0,
+            TEST_SELECTED_AT_NS,
+            fault,
+        )
     }
 
     fn select(
@@ -2329,6 +2421,7 @@ mod tests {
         let loss_run_id = fault_run_id(TEST_SEED, TEST_SCHEDULE_SEQUENCE, loss_schedule_id);
         let loss_attempt = FaultAttempt::new(
             loss_run_id,
+            TEST_SCHEDULE_SEQUENCE,
             loss_schedule_id,
             0,
             TEST_SELECTED_AT_NS,
@@ -2442,6 +2535,34 @@ mod tests {
         );
         assert_eq!(applied.counters.observed, 0);
         assert_eq!(applied.events.len(), 3);
+    }
+
+    #[test]
+    fn clock_plan_rejects_target_and_derivation_tampering() {
+        const CLOCK_OFFSET_NS: i64 = 100;
+        let clock_attempt = attempt(Fault::ClockSkew {
+            target: 0,
+            offset_ns: CLOCK_OFFSET_NS,
+        });
+        let selected = select(&FaultOutcomeLedger::default(), &clock_attempt).unwrap();
+        let mut effect =
+            plan_fault_application(&clock_attempt, &facts(), &FaultApplicationPolicy::default())
+                .unwrap()
+                .effect;
+        let FaultPlanEffect::VirtualClockSkew { target_tsc, .. } = &mut effect else {
+            panic!("clock skew planner returned the wrong effect");
+        };
+        *target_tsc = target_tsc.saturating_add(1);
+
+        let result = transition_fault_outcome(
+            &selected,
+            None,
+            clock_attempt.id,
+            FaultStageKind::Applicable { effect },
+        );
+
+        assert_eq!(result, Err(FaultTransitionError::ApplicablePlanMismatch));
+        assert_eq!(selected.events.len(), 1);
     }
 
     #[test]

@@ -7,9 +7,10 @@
 use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::outcomes::{
-    fault_run_id, transition_fault_outcome, validate_fault_outcome_ledger, FaultAttempt,
-    FaultAttemptId, FaultOutcomeLedger, FaultRunId, FaultScheduleId, FaultStageKind,
-    FaultTransitionError,
+    fault_run_id, preflight_fault_observation_events_with_limit, transition_fault_outcome,
+    validate_fault_outcome_ledger, FaultAttempt, FaultAttemptId, FaultObservation,
+    FaultOutcomeLedger, FaultRunId, FaultScheduleId, FaultStageKind, FaultTransitionError,
+    MAX_FAULT_OUTCOME_EVENTS,
 };
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
@@ -111,6 +112,13 @@ pub struct EngineSnapshot {
     /// Choice counter at snapshot time — restored so sequence IDs
     /// align with overrides set by the explorer.
     choice_count: u64,
+}
+
+impl EngineSnapshot {
+    /// Return the authoritative outcome ledger captured by this snapshot.
+    pub fn outcomes(&self) -> &FaultOutcomeLedger {
+        &self.outcomes
+    }
 }
 
 /// The central fault injection engine.
@@ -431,6 +439,7 @@ impl FaultEngine {
             .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
         let attempt = FaultAttempt::new(
             self.run_id,
+            self.run_sequence,
             self.schedule_id,
             selection_sequence,
             selected_at_ns,
@@ -484,6 +493,41 @@ impl FaultEngine {
         Ok(())
     }
 
+    /// Validate and commit one observation batch as one transaction.
+    pub fn record_fault_observations(
+        &mut self,
+        observations: &[FaultObservation],
+    ) -> Result<(), FaultTransitionError> {
+        self.record_fault_observations_with_limit(observations, MAX_FAULT_OUTCOME_EVENTS)
+    }
+
+    /// Test seam for deterministic observation-capacity failures.
+    #[doc(hidden)]
+    pub fn record_fault_observations_with_limit(
+        &mut self,
+        observations: &[FaultObservation],
+        event_limit: usize,
+    ) -> Result<(), FaultTransitionError> {
+        preflight_fault_observation_events_with_limit(
+            &self.outcomes,
+            observations.len(),
+            event_limit,
+        )?;
+        let mut next = self.outcomes.clone();
+        for observation in observations {
+            next = transition_fault_outcome(
+                &next,
+                None,
+                observation.attempt_id,
+                FaultStageKind::Observed {
+                    observation: observation.clone(),
+                },
+            )?;
+        }
+        self.outcomes = next;
+        Ok(())
+    }
+
     /// Whether setup_complete has been received for the current run.
     pub fn is_setup_complete(&self) -> bool {
         self.setup_complete
@@ -533,9 +577,10 @@ impl FaultEngine {
     /// Validate an untrusted engine snapshot without changing live state.
     pub fn validate_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
         validate_fault_outcome_ledger(&snapshot.outcomes)?;
-        let mut restored_schedule = self.schedule.clone();
-        restored_schedule.restore(&snapshot.schedule);
-        if restored_schedule.identity() != snapshot.schedule_id {
+        if !self.schedule.snapshot_is_valid(&snapshot.schedule) {
+            return Err(FaultTransitionError::SnapshotScheduleCursorMismatch);
+        }
+        if self.schedule.identity() != snapshot.schedule_id {
             return Err(FaultTransitionError::SnapshotScheduleIdentityMismatch);
         }
         if snapshot.run_id
@@ -547,26 +592,55 @@ impl FaultEngine {
         {
             return Err(FaultTransitionError::SnapshotRunIdentityMismatch);
         }
-        let mut current_indices = snapshot
-            .outcomes
-            .attempts
-            .values()
-            .filter(|state| {
-                state.attempt.run_id == snapshot.run_id
-                    && state.attempt.schedule_id == snapshot.schedule_id
-            })
-            .map(|state| state.attempt.selection_index)
-            .collect::<Vec<_>>();
-        current_indices.sort_unstable();
-        let index_count = u64::try_from(current_indices.len())
-            .map_err(|_| FaultTransitionError::SnapshotSelectionSequenceMismatch)?;
-        if index_count != snapshot.selection_sequence
-            || current_indices
+        if snapshot.run_exhausted && snapshot.run_sequence != u64::MAX {
+            return Err(FaultTransitionError::SnapshotRunStateMismatch);
+        }
+        let mut run_groups = BTreeMap::new();
+        for state in snapshot.outcomes.attempts.values() {
+            let attempt = &state.attempt;
+            if attempt.run_sequence > snapshot.run_sequence
+                || attempt.run_id
+                    != fault_run_id(self.config.seed, attempt.run_sequence, attempt.schedule_id)
+            {
+                return Err(FaultTransitionError::SnapshotRunIdentityMismatch);
+            }
+            let group = run_groups
+                .entry(attempt.run_sequence)
+                .or_insert_with(|| (attempt.run_id, attempt.schedule_id, Vec::new()));
+            if group.0 != attempt.run_id || group.1 != attempt.schedule_id {
+                return Err(FaultTransitionError::SnapshotRunStateMismatch);
+            }
+            group.2.push(attempt.selection_index);
+        }
+        for (run_sequence, (run_id, schedule_id, mut indices)) in run_groups {
+            indices.sort_unstable();
+            if indices
                 .iter()
                 .copied()
                 .enumerate()
                 .any(|(expected, actual)| u64::try_from(expected).ok() != Some(actual))
-        {
+            {
+                return Err(FaultTransitionError::SnapshotSelectionSequenceMismatch);
+            }
+            if run_sequence == snapshot.run_sequence
+                && (run_id != snapshot.run_id || schedule_id != snapshot.schedule_id)
+            {
+                return Err(FaultTransitionError::SnapshotRunStateMismatch);
+            }
+            if run_sequence == snapshot.run_sequence {
+                let index_count = u64::try_from(indices.len())
+                    .map_err(|_| FaultTransitionError::SnapshotSelectionSequenceMismatch)?;
+                if index_count != snapshot.selection_sequence {
+                    return Err(FaultTransitionError::SnapshotSelectionSequenceMismatch);
+                }
+            }
+        }
+        let current_run_exists = snapshot
+            .outcomes
+            .attempts
+            .values()
+            .any(|state| state.attempt.run_sequence == snapshot.run_sequence);
+        if !current_run_exists && snapshot.selection_sequence != 0 {
             return Err(FaultTransitionError::SnapshotSelectionSequenceMismatch);
         }
         Ok(())
@@ -1073,12 +1147,20 @@ mod tests {
         engine.begin_run();
         let first = FaultAttempt::new(
             engine.run_id,
+            engine.run_sequence,
             engine.schedule_id,
             0,
             0,
             Fault::ProcessKill { target: 0 },
         );
-        let second = FaultAttempt::new(engine.run_id, engine.schedule_id, 0, 1, Fault::NetworkHeal);
+        let second = FaultAttempt::new(
+            engine.run_id,
+            engine.run_sequence,
+            engine.schedule_id,
+            0,
+            1,
+            Fault::NetworkHeal,
+        );
         let ledger = transition_fault_outcome(
             &FaultOutcomeLedger::default(),
             Some(&first),

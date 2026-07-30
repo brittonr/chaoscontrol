@@ -522,11 +522,12 @@ fn register_overflow_slot(fd: RawFd, tid: libc::pid_t) -> io::Result<usize> {
 }
 
 fn release_overflow_slot(slot: usize) {
-    PMU_SLOT_IN_USE[slot].store(false, Ordering::Release);
     PMU_SLOT_FDS[slot].store(-1, Ordering::Relaxed);
     PMU_SLOT_TIDS[slot].store(0, Ordering::Relaxed);
     PMU_OVERFLOW_GENERATIONS[slot].store(0, Ordering::Relaxed);
     PMU_GENERATION_WRAPPED[slot].store(false, Ordering::Relaxed);
+    // Publish availability only after all old-owner fields are cleared.
+    PMU_SLOT_IN_USE[slot].store(false, Ordering::Release);
 }
 
 fn checked_slot_generation(slot: usize) -> io::Result<u64> {
@@ -616,6 +617,16 @@ mod tests {
     const TEST_OVERFLOW_PERIOD: u64 = 10_000;
     const FIRST_FAKE_FD: RawFd = 100;
     const SECOND_FAKE_FD: RawFd = 101;
+    const FIRST_FAKE_TID: libc::pid_t = 200;
+    const SECOND_FAKE_TID: libc::pid_t = 201;
+
+    fn slot_has_registration(slot: usize, fd: RawFd, tid: libc::pid_t) -> bool {
+        PMU_SLOT_IN_USE[slot].load(Ordering::Acquire)
+            && PMU_SLOT_FDS[slot].load(Ordering::Relaxed) == fd
+            && PMU_SLOT_TIDS[slot].load(Ordering::Relaxed) == tid
+            && PMU_OVERFLOW_GENERATIONS[slot].load(Ordering::Relaxed) == 0
+            && !PMU_GENERATION_WRAPPED[slot].load(Ordering::Relaxed)
+    }
 
     fn synthetic_siginfo(fd: RawFd) -> libc::siginfo_t {
         // SAFETY: the value is initialized before the test writes `si_fd`.
@@ -720,6 +731,47 @@ mod tests {
 
         assert_eq!(checked_slot_generation(slot).unwrap(), before);
         release_overflow_slot(slot);
+    }
+
+    #[test]
+    fn released_slot_reuse_preserves_new_owner_fields() {
+        let slot = register_overflow_slot(FIRST_FAKE_FD, FIRST_FAKE_TID).unwrap();
+        PMU_OVERFLOW_GENERATIONS[slot].store(1, Ordering::Relaxed);
+        PMU_GENERATION_WRAPPED[slot].store(true, Ordering::Relaxed);
+
+        release_overflow_slot(slot);
+        let reused_slot = register_overflow_slot(SECOND_FAKE_FD, SECOND_FAKE_TID).unwrap();
+
+        assert_eq!(reused_slot, slot);
+        assert!(slot_has_registration(
+            reused_slot,
+            SECOND_FAKE_FD,
+            SECOND_FAKE_TID
+        ));
+        release_overflow_slot(reused_slot);
+    }
+
+    #[test]
+    fn legacy_release_interleaving_is_detected_as_owner_overwrite() {
+        let slot = register_overflow_slot(FIRST_FAKE_FD, FIRST_FAKE_TID).unwrap();
+
+        // Model the rejected order: publish availability, acquire for a new
+        // owner, and then let the old owner clear fields late.
+        PMU_SLOT_IN_USE[slot].store(false, Ordering::Release);
+        let reused_slot = register_overflow_slot(SECOND_FAKE_FD, SECOND_FAKE_TID).unwrap();
+        assert_eq!(reused_slot, slot);
+        PMU_SLOT_FDS[slot].store(-1, Ordering::Relaxed);
+        PMU_SLOT_TIDS[slot].store(0, Ordering::Relaxed);
+        PMU_OVERFLOW_GENERATIONS[slot].store(0, Ordering::Relaxed);
+        PMU_GENERATION_WRAPPED[slot].store(false, Ordering::Relaxed);
+
+        assert!(PMU_SLOT_IN_USE[slot].load(Ordering::Acquire));
+        assert!(!slot_has_registration(
+            reused_slot,
+            SECOND_FAKE_FD,
+            SECOND_FAKE_TID
+        ));
+        release_overflow_slot(reused_slot);
     }
 
     #[test]

@@ -412,6 +412,15 @@ pub enum VmError {
     #[snafu(display("IO error"), context(false))]
     Io { source: io::Error },
 
+    #[snafu(display(
+        "Network packet made round non-runnable from VM {from} to VM {to}: {reason:?}"
+    ))]
+    NetworkPacketNonRunnable {
+        from: usize,
+        to: usize,
+        reason: crate::controller::NetworkSendError,
+    },
+
     #[snafu(display("Snapshot error: {message}"))]
     Snapshot { message: String },
 

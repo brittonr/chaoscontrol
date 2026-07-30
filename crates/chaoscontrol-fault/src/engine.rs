@@ -7,8 +7,9 @@
 use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::outcomes::{
-    fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptId, FaultOutcomeLedger,
-    FaultRunId, FaultScheduleId, FaultStageKind, FaultTransitionError,
+    fault_run_id, transition_fault_outcome, validate_fault_outcome_ledger, FaultAttempt,
+    FaultAttemptId, FaultOutcomeLedger, FaultRunId, FaultScheduleId, FaultStageKind,
+    FaultTransitionError,
 };
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
@@ -224,16 +225,17 @@ impl FaultEngine {
         self.setup_complete = false;
         self.schedule.reset();
         self.schedule_id = self.schedule.identity();
-        self.selection_sequence = 0;
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         match self.run_sequence.checked_add(1) {
             Some(run_sequence) => {
                 self.run_sequence = run_sequence;
+                self.selection_sequence = 0;
                 self.run_id = fault_run_id(self.config.seed, run_sequence, self.schedule_id);
                 self.run_exhausted = false;
             }
             None => {
+                self.run_id = fault_run_id(self.config.seed, self.run_sequence, self.schedule_id);
                 self.run_exhausted = true;
             }
         }
@@ -423,10 +425,14 @@ impl FaultEngine {
         fault: Fault,
         selected_at_ns: u64,
     ) -> Result<FaultAttempt, FaultSelectionError> {
+        let selection_sequence = self.selection_sequence;
+        let next_selection_sequence = selection_sequence
+            .checked_add(1)
+            .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
         let attempt = FaultAttempt::new(
             self.run_id,
             self.schedule_id,
-            self.selection_sequence,
+            selection_sequence,
             selected_at_ns,
             fault,
         );
@@ -438,10 +444,7 @@ impl FaultEngine {
         )
         .context(OutcomeTransitionSnafu)?;
         self.outcomes = next;
-        self.selection_sequence = self
-            .selection_sequence
-            .checked_add(1)
-            .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
+        self.selection_sequence = next_selection_sequence;
         Ok(attempt)
     }
 
@@ -527,13 +530,59 @@ impl FaultEngine {
         }
     }
 
-    /// Restore engine state from a snapshot.
-    pub fn restore(&mut self, snapshot: &EngineSnapshot) {
-        self.rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
-        self.rng.set_stream(snapshot.rng_stream);
-        self.rng.set_word_pos(snapshot.rng_word_pos);
+    /// Validate an untrusted engine snapshot without changing live state.
+    pub fn validate_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
+        validate_fault_outcome_ledger(&snapshot.outcomes)?;
+        let mut restored_schedule = self.schedule.clone();
+        restored_schedule.restore(&snapshot.schedule);
+        if restored_schedule.identity() != snapshot.schedule_id {
+            return Err(FaultTransitionError::SnapshotScheduleIdentityMismatch);
+        }
+        if snapshot.run_id
+            != fault_run_id(
+                self.config.seed,
+                snapshot.run_sequence,
+                snapshot.schedule_id,
+            )
+        {
+            return Err(FaultTransitionError::SnapshotRunIdentityMismatch);
+        }
+        let mut current_indices = snapshot
+            .outcomes
+            .attempts
+            .values()
+            .filter(|state| {
+                state.attempt.run_id == snapshot.run_id
+                    && state.attempt.schedule_id == snapshot.schedule_id
+            })
+            .map(|state| state.attempt.selection_index)
+            .collect::<Vec<_>>();
+        current_indices.sort_unstable();
+        let index_count = u64::try_from(current_indices.len())
+            .map_err(|_| FaultTransitionError::SnapshotSelectionSequenceMismatch)?;
+        if index_count != snapshot.selection_sequence
+            || current_indices
+                .iter()
+                .copied()
+                .enumerate()
+                .any(|(expected, actual)| u64::try_from(expected).ok() != Some(actual))
+        {
+            return Err(FaultTransitionError::SnapshotSelectionSequenceMismatch);
+        }
+        Ok(())
+    }
+
+    /// Validate and restore engine state from an untrusted snapshot.
+    pub fn restore(&mut self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
+        self.validate_snapshot(snapshot)?;
+        let mut restored_schedule = self.schedule.clone();
+        restored_schedule.restore(&snapshot.schedule);
+        let mut restored_rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
+        restored_rng.set_stream(snapshot.rng_stream);
+        restored_rng.set_word_pos(snapshot.rng_word_pos);
+        self.rng = restored_rng;
         self.oracle.restore(&snapshot.oracle);
-        self.schedule.restore(&snapshot.schedule);
+        self.schedule = restored_schedule;
         self.outcomes = snapshot.outcomes.clone();
         self.schedule_id = snapshot.schedule_id;
         self.run_id = snapshot.run_id;
@@ -547,6 +596,7 @@ impl FaultEngine {
         // random_overrides are NOT cleared — they're set externally
         // before each branch by the explorer.
         self.choice_history.clear();
+        Ok(())
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -876,6 +926,23 @@ mod tests {
     }
 
     #[test]
+    fn selection_sequence_overflow_does_not_commit_selected_attempt() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        engine.selection_sequence = u64::MAX;
+        let before = engine.fault_outcomes().clone();
+
+        let result = engine.select_fault(Fault::ProcessKill { target: 0 }, 0);
+
+        assert!(matches!(
+            result,
+            Err(FaultSelectionError::SelectionSequenceOverflow)
+        ));
+        assert_eq!(engine.fault_outcomes(), &before);
+        assert_eq!(engine.selection_sequence, u64::MAX);
+    }
+
+    #[test]
     fn scheduled_faults_fire_at_correct_time() {
         let schedule = FaultScheduleBuilder::new()
             .at_ns(1000, Fault::NetworkHeal)
@@ -902,6 +969,137 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_restore_preserves_attempts_and_stage_counters() {
+        // r[verify chaoscontrol.fault_outcomes.validation.replay]
+        use crate::outcomes::{
+            FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultStageKind,
+        };
+
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..Default::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        let attempts = engine.poll_fault_attempts(0).unwrap();
+        let attempt_id = attempts[0].id;
+        engine
+            .record_fault_stage(
+                attempt_id,
+                FaultStageKind::Applicable {
+                    effect: crate::outcomes::FaultPlanEffect::ProcessKill { target: 0 },
+                },
+            )
+            .unwrap();
+        engine
+            .record_fault_stage(
+                attempt_id,
+                FaultStageKind::Applied {
+                    effect: crate::outcomes::FaultPlanEffect::ProcessKill { target: 0 },
+                },
+            )
+            .unwrap();
+        let snapshot = engine.snapshot();
+        let expected = engine.fault_outcomes().clone();
+
+        engine
+            .record_fault_stage(
+                attempt_id,
+                FaultStageKind::Observed {
+                    observation: FaultObservation::new(
+                        attempt_id,
+                        FaultObservationSubsystem::Process,
+                        0,
+                        FaultObservationEffect::ProcessSkipped,
+                    ),
+                },
+            )
+            .unwrap();
+        assert_eq!(engine.fault_outcomes().events.len(), 4);
+        engine.restore(&snapshot).unwrap();
+
+        assert_eq!(engine.fault_outcomes(), &expected);
+        assert_eq!(engine.fault_outcomes().events.len(), 3);
+        assert_eq!(engine.fault_outcomes().counters.selected, 1);
+        assert_eq!(engine.fault_outcomes().counters.applied, 1);
+    }
+
+    #[test]
+    fn tampered_snapshot_ledger_is_rejected_without_replacing_live_state() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..Default::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine.poll_fault_attempts(0).unwrap();
+        let before = engine.fault_outcomes().clone();
+        let mut tampered = engine.snapshot();
+        tampered.outcomes.events[0].sequence = 1;
+
+        let result = engine.restore(&tampered);
+
+        assert_eq!(result, Err(FaultTransitionError::EventSequenceMismatch));
+        assert_eq!(engine.fault_outcomes(), &before);
+    }
+
+    #[test]
+    fn exhausted_snapshot_still_requires_derived_run_identity() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.run_sequence = u64::MAX - 1;
+        engine.begin_run();
+        engine.begin_run();
+        assert!(engine.run_exhausted);
+        let valid = engine.snapshot();
+        assert!(engine.validate_snapshot(&valid).is_ok());
+
+        let mut tampered = valid;
+        tampered.run_id = FaultRunId([0; 32]);
+        assert_eq!(
+            engine.validate_snapshot(&tampered),
+            Err(FaultTransitionError::SnapshotRunIdentityMismatch)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_duplicate_current_run_selection_indices() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        let first = FaultAttempt::new(
+            engine.run_id,
+            engine.schedule_id,
+            0,
+            0,
+            Fault::ProcessKill { target: 0 },
+        );
+        let second = FaultAttempt::new(engine.run_id, engine.schedule_id, 0, 1, Fault::NetworkHeal);
+        let ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&first),
+            first.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let ledger =
+            transition_fault_outcome(&ledger, Some(&second), second.id, FaultStageKind::Selected)
+                .unwrap();
+        let mut snapshot = engine.snapshot();
+        snapshot.outcomes = ledger;
+        snapshot.selection_sequence = 2;
+
+        assert_eq!(
+            engine.validate_snapshot(&snapshot),
+            Err(FaultTransitionError::SnapshotSelectionSequenceMismatch)
+        );
+    }
+
+    #[test]
     fn snapshot_restore_engine() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
@@ -917,7 +1115,7 @@ mod tests {
         assert_ne!(v1, v2);
 
         // Restore and verify same next value
-        engine.restore(&snap);
+        engine.restore(&snap).unwrap();
         engine.begin_run();
         let (v3, _) = engine.handle_hypercall(&page);
         assert_eq!(v2, v3);
@@ -1091,7 +1289,7 @@ mod tests {
         assert_eq!(engine.choice_count(), 3);
 
         // Restore → back to 2
-        engine.restore(&snap);
+        engine.restore(&snap).unwrap();
         assert_eq!(engine.choice_count(), 2);
 
         // History cleared on restore
@@ -1174,7 +1372,7 @@ mod tests {
 
         // Take snapshot and restore
         let snap = engine.snapshot();
-        engine.restore(&snap);
+        engine.restore(&snap).unwrap();
 
         // Override still active
         let page = make_page(CMD_RANDOM_GET, 0, 0);

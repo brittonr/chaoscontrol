@@ -601,6 +601,19 @@ impl DeterministicBlock {
         self.volatile.len()
     }
 
+    /// Return the maximum new attributed observations that this queue can retain.
+    pub fn central_observation_reservation(&self) -> usize {
+        let attributed_mechanism_active = self.fault_attempt_ids.iter().any(Option::is_some)
+            || self.slow_attempt_id.is_some()
+            || self.fsync_lie_attempt_id.is_some()
+            || self.full_attempt_id.is_some();
+        if attributed_mechanism_active {
+            MAX_PENDING_BLOCK_OBSERVATIONS - self.fault_observations.len()
+        } else {
+            0
+        }
+    }
+
     /// Drain bounded block observations and the overflow count.
     pub fn drain_fault_observations(&mut self) -> (Vec<FaultObservation>, u64) {
         let observations = self.fault_observations.drain(..).collect();
@@ -702,6 +715,11 @@ impl DeterministicBlock {
     /// Current I/O statistics.
     pub fn stats(&self) -> &BlockStats {
         &self.stats
+    }
+
+    /// Next deterministic operation sequence.
+    pub fn operation_sequence(&self) -> u64 {
+        self.operation_sequence
     }
 
     /// Flatten CoW layers into a contiguous byte vector.

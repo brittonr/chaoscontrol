@@ -90,7 +90,7 @@ impl WorkerPool {
                             };
 
                             let mut ctrl = SimulationController::new(sim_config)?;
-                            ctrl.set_schedule(FaultSchedule::new());
+                            ctrl.set_schedule(FaultSchedule::new())?;
                             ctrl.clear_all_coverage();
                             ctrl.run_until_setup_complete(config.bootstrap_budget)?;
 
@@ -314,8 +314,8 @@ fn run_single_branch(
         controller.apply_schedule_variant(variant);
     }
 
-    // Apply schedule
-    controller.set_schedule(schedule.clone());
+    // Apply the schedule in a new branch run.
+    controller.begin_counterfactual_fault_run(schedule.clone())?;
 
     // Clear coverage
     controller.clear_all_coverage();

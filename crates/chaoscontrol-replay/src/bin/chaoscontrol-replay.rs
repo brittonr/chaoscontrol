@@ -352,7 +352,7 @@ fn cmd_info(recording_path: PathBuf) -> Result<(), CliError> {
     }
 
     println!("\n=== Event Summary ===");
-    println!("Faults fired: {}", fault_count);
+    println!("Faults selected (legacy projection): {}", fault_count);
     println!("Assertions: {}", assertion_count);
     println!("Bugs detected: {}", bug_count);
     println!("VM status changes: {}", status_change_count);

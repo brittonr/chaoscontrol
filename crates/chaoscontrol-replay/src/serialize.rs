@@ -4,11 +4,10 @@ use crate::recording::{validate_recording, Recording};
 use crate::triage::TriageReport;
 use snafu::Snafu;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
-#[cfg(test)]
-use std::io::Read;
+pub const MAX_RECORDING_JSON_BYTES: usize = 16 * 1024 * 1024;
 
 /// Errors that can occur during serialization.
 #[derive(Debug, Snafu)]
@@ -19,6 +18,8 @@ pub enum SerializeError {
     Json { source: serde_json::Error },
     #[snafu(display("Invalid recording: {message}"))]
     InvalidRecording { message: String },
+    #[snafu(display("Recording JSON exceeds {limit} bytes"))]
+    RecordingTooLarge { limit: usize },
 }
 
 /// Save a recording to a JSON file.
@@ -39,8 +40,27 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
 /// Note: Loaded recordings will have empty checkpoints (no snapshots).
 /// Snapshots are recreated by replaying the simulation.
 pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.len() > MAX_RECORDING_JSON_BYTES as u64 {
+        return Err(SerializeError::RecordingTooLarge {
+            limit: MAX_RECORDING_JSON_BYTES,
+        });
+    }
     let file = File::open(path)?;
-    let recording = serde_json::from_reader(file)?;
+    let read_limit =
+        u64::try_from(MAX_RECORDING_JSON_BYTES).expect("recording byte bound fits u64") + 1;
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(metadata.len())
+            .unwrap_or(MAX_RECORDING_JSON_BYTES)
+            .min(MAX_RECORDING_JSON_BYTES),
+    );
+    file.take(read_limit).read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_RECORDING_JSON_BYTES {
+        return Err(SerializeError::RecordingTooLarge {
+            limit: MAX_RECORDING_JSON_BYTES,
+        });
+    }
+    let recording = serde_json::from_slice(&bytes)?;
     validate_recording(&recording).map_err(|error| SerializeError::InvalidRecording {
         message: format!("{error:?}"),
     })?;
@@ -149,7 +169,9 @@ mod tests {
     use crate::triage::{
         AssertionInfo, ReproductionInfo, Severity, TimelineEntry, VmStateSnapshot,
     };
-    use chaoscontrol_fault::outcomes::{FaultAttemptId, FaultStageEvent, FaultStageKind};
+    use chaoscontrol_fault::outcomes::{
+        fault_run_id, FaultAttemptId, FaultStageEvent, FaultStageKind,
+    };
     use chaoscontrol_fault::schedule::FaultSchedule;
     use tempfile::TempDir;
 
@@ -170,6 +192,8 @@ mod tests {
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),
             seed: 42,
+            fault_run_sequence: 1,
+            fault_run_id: fault_run_id(42, 1, FaultSchedule::new().identity()),
             events: vec![],
             fault_stage_events: vec![],
             fault_round_deltas: vec![],
@@ -250,6 +274,19 @@ mod tests {
         assert!(matches!(
             load_recording(&path),
             Err(SerializeError::InvalidRecording { .. })
+        ));
+    }
+
+    #[test]
+    fn load_rejects_oversized_recording_before_json_parse() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("oversized-recording.json");
+        let file = File::create(&path).unwrap();
+        file.set_len((MAX_RECORDING_JSON_BYTES as u64) + 1).unwrap();
+
+        assert!(matches!(
+            load_recording(&path),
+            Err(SerializeError::RecordingTooLarge { .. })
         ));
     }
 

@@ -8,7 +8,7 @@ use crate::faults::Fault;
 use crate::outcomes::{fault_schedule_id, FaultScheduleId};
 
 /// A fault scheduled to fire at a specific virtual time.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduledFault {
     /// Virtual time (nanoseconds) at which to inject this fault.
     pub time_ns: u64,
@@ -66,10 +66,18 @@ impl FaultSchedule {
     ///
     /// Advances the internal cursor past any returned faults.
     pub fn drain_due(&mut self, current_time_ns: u64) -> Vec<ScheduledFault> {
+        self.drain_due_indexed(current_time_ns)
+            .into_iter()
+            .map(|(_, fault)| fault)
+            .collect()
+    }
+
+    /// Get due faults with their authoritative canonical entry indices.
+    pub fn drain_due_indexed(&mut self, current_time_ns: u64) -> Vec<(usize, ScheduledFault)> {
         let mut due = Vec::new();
         while self.cursor < self.faults.len() && self.faults[self.cursor].time_ns <= current_time_ns
         {
-            due.push(self.faults[self.cursor].clone());
+            due.push((self.cursor, self.faults[self.cursor].clone()));
             self.cursor += 1;
         }
         due
@@ -93,6 +101,11 @@ impl FaultSchedule {
     /// Read-only access to the fault list.
     pub fn faults(&self) -> &[ScheduledFault] {
         &self.faults
+    }
+
+    /// Return one canonical entry by index.
+    pub fn entry(&self, index: usize) -> Option<&ScheduledFault> {
+        self.faults.get(index)
     }
 
     /// Return the canonical BLAKE3 identity for the complete schedule.
@@ -152,6 +165,18 @@ impl Default for FaultSchedule {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FaultScheduleSnapshot {
     cursor: usize,
+}
+
+impl FaultScheduleSnapshot {
+    /// Return the index of the next canonical schedule entry.
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_cursor(&mut self, cursor: usize) {
+        self.cursor = cursor;
+    }
 }
 
 /// Builder for constructing fault schedules declaratively.

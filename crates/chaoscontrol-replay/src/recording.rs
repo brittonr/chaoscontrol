@@ -3,12 +3,107 @@
 use crate::checkpoint::{Checkpoint, CheckpointStore};
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
-    validate_fault_outcome_ledger, FaultOutcomeLedger, FaultStageEvent, FaultStageKind,
-    FaultTransitionError, MAX_FAULT_OUTCOME_EVENTS, NANOSECONDS_PER_SIMULATION_TICK,
+    fault_run_id, validate_fault_outcome_ledger, FaultAttemptSource, FaultAttemptState,
+    FaultOutcomeLedger, FaultRunId, FaultStageCounters, FaultStageEvent, FaultStageKind,
+    FaultTransitionError, MAX_FAULT_ATTEMPTS, MAX_FAULT_OUTCOME_EVENTS,
+    NANOSECONDS_PER_SIMULATION_TICK,
 };
-use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use chaoscontrol_vmm::controller::{RoundResult, SimulationSnapshot};
 use serde::{Deserialize, Serialize};
+
+const MAX_RECORDED_SCHEDULE_FAULTS: usize = MAX_FAULT_ATTEMPTS;
+const INITIAL_SIMULATION_RUN_SEQUENCE: u64 = 1;
+
+mod recorded_fault_ledger {
+    use super::{
+        FaultAttemptState, FaultOutcomeLedger, FaultStageCounters, FaultStageEvent,
+        MAX_FAULT_ATTEMPTS,
+    };
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    #[derive(Serialize, Deserialize)]
+    struct WireFaultLedger {
+        attempts: Vec<FaultAttemptState>,
+        events: Vec<FaultStageEvent>,
+        counters: FaultStageCounters,
+    }
+
+    pub fn serialize<S>(ledger: &FaultOutcomeLedger, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        WireFaultLedger {
+            attempts: ledger.attempts.values().cloned().collect(),
+            events: ledger.events.clone(),
+            counters: ledger.counters,
+        }
+        .serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<FaultOutcomeLedger, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = WireFaultLedger::deserialize(deserializer)?;
+        if wire.attempts.len() > MAX_FAULT_ATTEMPTS {
+            return Err(serde::de::Error::custom(
+                "recorded fault ledger exceeds attempt bound",
+            ));
+        }
+        let mut attempts = BTreeMap::new();
+        for state in wire.attempts {
+            if attempts.insert(state.attempt.id, state).is_some() {
+                return Err(serde::de::Error::custom(
+                    "recorded fault ledger contains a duplicate attempt",
+                ));
+            }
+        }
+        Ok(FaultOutcomeLedger {
+            attempts,
+            events: wire.events,
+            counters: wire.counters,
+        })
+    }
+}
+
+mod recorded_fault_schedule {
+    use super::{FaultSchedule, ScheduledFault, MAX_RECORDED_SCHEDULE_FAULTS};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(schedule: &FaultSchedule, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        schedule.faults().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<FaultSchedule, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let entries = Vec::<ScheduledFault>::deserialize(deserializer)?;
+        if entries.len() > MAX_RECORDED_SCHEDULE_FAULTS {
+            return Err(serde::de::Error::custom(
+                "recorded fault schedule exceeds entry bound",
+            ));
+        }
+        if entries
+            .windows(2)
+            .any(|pair| pair[0].time_ns > pair[1].time_ns)
+        {
+            return Err(serde::de::Error::custom(
+                "recorded fault schedule is not canonically ordered",
+            ));
+        }
+        let mut schedule = FaultSchedule::new();
+        for entry in entries {
+            schedule.add(entry);
+        }
+        Ok(schedule)
+    }
+}
 
 /// A recorded execution session.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -22,11 +117,15 @@ pub struct Recording {
     /// Checkpoints taken during execution, ordered by tick.
     #[serde(skip)] // Snapshots too large for JSON
     pub checkpoints: CheckpointStore,
-    /// The fault schedule that was executed.
-    #[serde(skip)] // FaultSchedule doesn't implement Serialize
+    /// The complete canonical fault schedule that was executed.
+    #[serde(with = "recorded_fault_schedule")]
     pub schedule: FaultSchedule,
     /// Master seed.
     pub seed: u64,
+    /// Exact fault run sequence represented by this recording.
+    pub fault_run_sequence: u64,
+    /// Exact fault run identity represented by this recording.
+    pub fault_run_id: FaultRunId,
     /// Events that occurred. `FaultFired` is a projection of `Selected` only.
     pub events: Vec<RecordedEvent>,
     /// Canonical bounded fault-stage trace.
@@ -36,7 +135,7 @@ pub struct Recording {
     #[serde(default)]
     pub fault_round_deltas: Vec<FaultRoundTraceDelta>,
     /// Authoritative ledger that supplies the canonical trace.
-    #[serde(default)]
+    #[serde(default, with = "recorded_fault_ledger")]
     pub fault_outcome_ledger: FaultOutcomeLedger,
     /// Final oracle report.
     #[serde(skip)] // OracleReport doesn't implement Serialize
@@ -87,13 +186,24 @@ pub enum RecordingValidationError {
     InvalidRoundDelta,
     RoundDeltaMismatch,
     FaultFiredProjectionMismatch,
+    ScheduleBoundExceeded,
+    ScheduleNotCanonical,
+    RecordingRunIdentityMismatch,
+    AttemptScheduleMismatch,
+    AttemptRunMismatch,
+    AttemptSourceMismatch,
+    CheckpointRunMismatch,
+    CheckpointSnapshotMismatch,
+    EvidenceBeyondHorizon,
+    CheckpointOrderMismatch,
+    SelectedDeltaTickMismatch,
 }
 
 /// An event recorded during execution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RecordedEvent {
-    /// A fault was fired at this tick.
+    /// Legacy compatibility projection: a fault was selected at this tick.
     FaultFired { tick: u64, fault: String },
     /// An SDK assertion was hit.
     AssertionHit {
@@ -136,10 +246,20 @@ pub struct Recorder {
 impl Recorder {
     /// Create a new recorder.
     pub fn new(config: RecordingConfig, schedule: FaultSchedule, seed: u64) -> Self {
+        Self::new_for_run(config, schedule, seed, INITIAL_SIMULATION_RUN_SEQUENCE)
+    }
+
+    /// Create a recorder bound to one exact fault run.
+    pub fn new_for_run(
+        config: RecordingConfig,
+        schedule: FaultSchedule,
+        seed: u64,
+        fault_run_sequence: u64,
+    ) -> Self {
         let session_id = format!("rec_{}", uuid_like_id());
         let timestamp = unix_timestamp_secs();
-
         let next_checkpoint_tick = config.checkpoint_interval;
+        let fault_run_id = fault_run_id(seed, fault_run_sequence, schedule.identity());
 
         Self {
             next_checkpoint_tick,
@@ -151,6 +271,8 @@ impl Recorder {
                 checkpoints: CheckpointStore::new(),
                 schedule,
                 seed,
+                fault_run_sequence,
+                fault_run_id,
                 events: Vec::new(),
                 fault_stage_events: Vec::new(),
                 fault_round_deltas: Vec::new(),
@@ -223,6 +345,7 @@ impl Recorder {
         self.recording.fault_stage_events = ledger.events.clone();
         self.recording.fault_round_deltas = next.round_deltas;
         self.recording.fault_outcome_ledger = ledger.clone();
+        self.recording.total_ticks = self.recording.total_ticks.max(round.tick);
         Ok(())
     }
 
@@ -311,11 +434,119 @@ fn plan_recorded_round(
 }
 
 pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidationError> {
+    if recording
+        .events
+        .iter()
+        .any(|event| event_tick(event) > recording.total_ticks)
+    {
+        return Err(RecordingValidationError::EvidenceBeyondHorizon);
+    }
+    let mut prior_checkpoint = None;
+    for checkpoint in recording.checkpoints.all() {
+        if checkpoint.tick > recording.total_ticks
+            || checkpoint
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.tick > recording.total_ticks)
+            || checkpoint
+                .events_since_last
+                .iter()
+                .any(|event| event_tick(event) > recording.total_ticks)
+        {
+            return Err(RecordingValidationError::EvidenceBeyondHorizon);
+        }
+        if checkpoint
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.tick != checkpoint.tick)
+        {
+            return Err(RecordingValidationError::CheckpointSnapshotMismatch);
+        }
+        if prior_checkpoint.is_some_and(|(prior_id, prior_tick)| {
+            prior_id >= checkpoint.id || prior_tick >= checkpoint.tick
+        }) {
+            return Err(RecordingValidationError::CheckpointOrderMismatch);
+        }
+        prior_checkpoint = Some((checkpoint.id, checkpoint.tick));
+    }
+    if recording.schedule.total() > MAX_RECORDED_SCHEDULE_FAULTS {
+        return Err(RecordingValidationError::ScheduleBoundExceeded);
+    }
+    if recording
+        .schedule
+        .faults()
+        .windows(2)
+        .any(|pair| pair[0].time_ns > pair[1].time_ns)
+    {
+        return Err(RecordingValidationError::ScheduleNotCanonical);
+    }
     if recording.fault_stage_events.len() > MAX_FAULT_OUTCOME_EVENTS {
         return Err(RecordingValidationError::TraceBoundExceeded);
     }
     validate_fault_outcome_ledger(&recording.fault_outcome_ledger)
         .map_err(RecordingValidationError::InvalidLedger)?;
+    let schedule_id = recording.schedule.identity();
+    let expected_run_id = fault_run_id(recording.seed, recording.fault_run_sequence, schedule_id);
+    if recording.fault_run_id != expected_run_id {
+        return Err(RecordingValidationError::RecordingRunIdentityMismatch);
+    }
+    let mut scheduled_prefix = Vec::new();
+    for state in recording.fault_outcome_ledger.attempts.values() {
+        if state.attempt.schedule_id != schedule_id {
+            return Err(RecordingValidationError::AttemptScheduleMismatch);
+        }
+        if state.attempt.run_sequence != recording.fault_run_sequence
+            || state.attempt.run_id != recording.fault_run_id
+        {
+            return Err(RecordingValidationError::AttemptRunMismatch);
+        }
+        match state.attempt.source {
+            FaultAttemptSource::Direct => {
+                return Err(RecordingValidationError::AttemptSourceMismatch);
+            }
+            FaultAttemptSource::Scheduled {
+                entry_index,
+                scheduled_at_ns,
+            } => {
+                let entry_index = usize::try_from(entry_index)
+                    .map_err(|_| RecordingValidationError::AttemptSourceMismatch)?;
+                let entry = recording
+                    .schedule
+                    .entry(entry_index)
+                    .ok_or(RecordingValidationError::AttemptSourceMismatch)?;
+                if entry.time_ns != scheduled_at_ns
+                    || entry.fault != state.attempt.fault
+                    || state.attempt.selected_at_ns < scheduled_at_ns
+                {
+                    return Err(RecordingValidationError::AttemptSourceMismatch);
+                }
+                scheduled_prefix.push(entry_index);
+            }
+            FaultAttemptSource::Random => {
+                return Err(RecordingValidationError::AttemptSourceMismatch);
+            }
+        }
+    }
+    scheduled_prefix.sort_unstable();
+    if scheduled_prefix
+        .iter()
+        .copied()
+        .enumerate()
+        .any(|(expected, actual)| expected != actual)
+    {
+        return Err(RecordingValidationError::AttemptSourceMismatch);
+    }
+    for checkpoint in recording.checkpoints.all() {
+        if let Some(snapshot) = &checkpoint.snapshot {
+            let engine = &snapshot.fault_engine_snapshot;
+            if engine.schedule_id() != schedule_id
+                || engine.run_sequence() != recording.fault_run_sequence
+                || engine.run_id() != recording.fault_run_id
+            {
+                return Err(RecordingValidationError::CheckpointRunMismatch);
+            }
+        }
+    }
     if recording.fault_stage_events != recording.fault_outcome_ledger.events {
         return Err(RecordingValidationError::TraceLedgerMismatch);
     }
@@ -323,6 +554,9 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
     let mut expected_start = 0_u64;
     let mut prior_tick = None;
     for delta in &recording.fault_round_deltas {
+        if delta.tick > recording.total_ticks {
+            return Err(RecordingValidationError::EvidenceBeyondHorizon);
+        }
         if delta.event_start != expected_start
             || delta.event_start >= delta.event_end
             || usize::try_from(delta.event_end).map_or(true, |event_end| {
@@ -332,6 +566,24 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         {
             return Err(RecordingValidationError::InvalidRoundDelta);
         }
+        let event_start = usize::try_from(delta.event_start)
+            .map_err(|_| RecordingValidationError::InvalidRoundDelta)?;
+        let event_end = usize::try_from(delta.event_end)
+            .map_err(|_| RecordingValidationError::InvalidRoundDelta)?;
+        for event in &recording.fault_stage_events[event_start..event_end] {
+            if event.kind == FaultStageKind::Selected {
+                let state = recording
+                    .fault_outcome_ledger
+                    .attempts
+                    .get(&event.attempt_id)
+                    .ok_or(RecordingValidationError::TraceLedgerMismatch)?;
+                if state.attempt.selected_at_ns % NANOSECONDS_PER_SIMULATION_TICK != 0
+                    || state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK != delta.tick
+                {
+                    return Err(RecordingValidationError::SelectedDeltaTickMismatch);
+                }
+            }
+        }
         expected_start = delta.event_end;
         prior_tick = Some(delta.tick);
     }
@@ -339,13 +591,6 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         .map_err(|_| RecordingValidationError::TraceBoundExceeded)?;
     if expected_start != trace_len {
         return Err(RecordingValidationError::InvalidRoundDelta);
-    }
-
-    if recording.fault_stage_events.is_empty()
-        && recording.fault_round_deltas.is_empty()
-        && recording.fault_outcome_ledger.events.is_empty()
-    {
-        return Ok(());
     }
 
     let expected_fault_fired = recording
@@ -417,18 +662,27 @@ mod tests {
     use super::*;
     use chaoscontrol_fault::faults::Fault;
     use chaoscontrol_fault::outcomes::{
-        transition_fault_outcome, FaultAttempt, FaultRunId, FaultScheduleId,
+        transition_fault_outcome, FaultAttempt, FaultAttemptSource,
     };
 
-    fn selected_round(tick: u64) -> (RoundResult, FaultOutcomeLedger) {
+    fn selected_round(tick: u64) -> (FaultSchedule, RoundResult, FaultOutcomeLedger) {
+        const TEST_SEED: u64 = 42;
         let selected_at_ns = tick * NANOSECONDS_PER_SIMULATION_TICK;
-        let attempt = FaultAttempt::new(
-            FaultRunId([1; 32]),
-            0,
-            FaultScheduleId([2; 32]),
+        let fault = Fault::ProcessKill { target: 0 };
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(selected_at_ns, fault.clone()));
+        let schedule_id = schedule.identity();
+        let attempt = FaultAttempt::new_with_source(
+            fault_run_id(TEST_SEED, INITIAL_SIMULATION_RUN_SEQUENCE, schedule_id),
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            schedule_id,
             0,
             selected_at_ns,
-            Fault::ProcessKill { target: 0 },
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            fault,
         );
         let ledger = transition_fault_outcome(
             &FaultOutcomeLedger::default(),
@@ -445,7 +699,46 @@ mod tests {
             fault_outcomes: ledger.events.clone(),
             messages_delivered: 0,
         };
-        (round, ledger)
+        (schedule, round, ledger)
+    }
+
+    fn selected_recording(
+        schedule: FaultSchedule,
+        seed: u64,
+        attempts: &[FaultAttempt],
+    ) -> Recording {
+        let mut ledger = FaultOutcomeLedger::default();
+        for attempt in attempts {
+            ledger = transition_fault_outcome(
+                &ledger,
+                Some(attempt),
+                attempt.id,
+                FaultStageKind::Selected,
+            )
+            .unwrap();
+        }
+        let tick = attempts.first().map_or(0, |attempt| {
+            attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK
+        });
+        let round = RoundResult {
+            tick,
+            vms_running: 1,
+            vms_halted: 0,
+            faults_fired: attempts
+                .iter()
+                .map(|attempt| attempt.fault.clone())
+                .collect(),
+            fault_outcomes: ledger.events.clone(),
+            messages_delivered: 0,
+        };
+        let mut recorder = Recorder::new_for_run(
+            test_config(),
+            schedule,
+            seed,
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+        );
+        recorder.record_round(&round, &ledger).unwrap();
+        recorder.recording
     }
 
     fn test_config() -> RecordingConfig {
@@ -559,8 +852,8 @@ mod tests {
 
     #[test]
     fn recorder_persists_canonical_round_trace_and_selected_projection() {
-        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
-        let (round, ledger) = selected_round(1);
+        let (schedule, round, ledger) = selected_round(1);
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
 
         recorder.record_round(&round, &ledger).unwrap();
 
@@ -583,14 +876,213 @@ mod tests {
 
     #[test]
     fn tampered_recorded_trace_is_rejected() {
-        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
-        let (round, ledger) = selected_round(1);
+        let (schedule, round, ledger) = selected_round(1);
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
         recorder.record_round(&round, &ledger).unwrap();
         recorder.recording.fault_stage_events[0].sequence = 1;
 
         assert_eq!(
             validate_recording(&recorder.recording),
             Err(RecordingValidationError::TraceLedgerMismatch)
+        );
+    }
+
+    #[test]
+    fn legacy_fault_projection_without_selected_evidence_is_rejected() {
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        recorder.recording.total_ticks = 1;
+        recorder.recording.events.push(RecordedEvent::FaultFired {
+            tick: 1,
+            fault: "unverified".to_string(),
+        });
+
+        assert_eq!(
+            validate_recording(&recorder.recording),
+            Err(RecordingValidationError::FaultFiredProjectionMismatch)
+        );
+    }
+
+    #[test]
+    fn recording_rejects_mixed_and_recomputed_run_identities() {
+        const TEST_SEED: u64 = 42;
+        const SECOND_RUN_SEQUENCE: u64 = 2;
+        let selected_at_ns = NANOSECONDS_PER_SIMULATION_TICK;
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(
+            selected_at_ns,
+            Fault::ProcessKill { target: 0 },
+        ));
+        schedule.add(ScheduledFault::new(
+            selected_at_ns,
+            Fault::ProcessKill { target: 1 },
+        ));
+        let schedule_id = schedule.identity();
+        let first = FaultAttempt::new_with_source(
+            fault_run_id(TEST_SEED, INITIAL_SIMULATION_RUN_SEQUENCE, schedule_id),
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            schedule_id,
+            0,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            Fault::ProcessKill { target: 0 },
+        );
+        let second = FaultAttempt::new_with_source(
+            fault_run_id(TEST_SEED, SECOND_RUN_SEQUENCE, schedule_id),
+            SECOND_RUN_SEQUENCE,
+            schedule_id,
+            1,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 1,
+                scheduled_at_ns: selected_at_ns,
+            },
+            Fault::ProcessKill { target: 1 },
+        );
+        let mixed = selected_recording(schedule.clone(), TEST_SEED, &[first.clone(), second]);
+        assert_eq!(
+            validate_recording(&mixed),
+            Err(RecordingValidationError::AttemptRunMismatch)
+        );
+
+        let mut recomputed = selected_recording(schedule, TEST_SEED, &[first]);
+        recomputed.fault_run_sequence = SECOND_RUN_SEQUENCE;
+        recomputed.fault_run_id = fault_run_id(TEST_SEED, SECOND_RUN_SEQUENCE, schedule_id);
+        assert_eq!(
+            validate_recording(&recomputed),
+            Err(RecordingValidationError::AttemptRunMismatch)
+        );
+    }
+
+    #[test]
+    fn recording_rejects_impossible_random_attempt() {
+        const TEST_SEED: u64 = 42;
+        let schedule = FaultSchedule::new();
+        let schedule_id = schedule.identity();
+        let attempt = FaultAttempt::new_with_source(
+            fault_run_id(TEST_SEED, INITIAL_SIMULATION_RUN_SEQUENCE, schedule_id),
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            schedule_id,
+            0,
+            NANOSECONDS_PER_SIMULATION_TICK,
+            FaultAttemptSource::Random,
+            Fault::ProcessKill { target: 0 },
+        );
+        let recording = selected_recording(schedule, TEST_SEED, &[attempt]);
+
+        assert_eq!(
+            validate_recording(&recording),
+            Err(RecordingValidationError::AttemptSourceMismatch)
+        );
+    }
+
+    #[test]
+    fn recording_rejects_gapped_and_duplicate_scheduled_sources() {
+        const TEST_SEED: u64 = 42;
+        let selected_at_ns = NANOSECONDS_PER_SIMULATION_TICK;
+        let mut gap_schedule = FaultSchedule::new();
+        gap_schedule.add(ScheduledFault::new(
+            selected_at_ns,
+            Fault::ProcessKill { target: 0 },
+        ));
+        gap_schedule.add(ScheduledFault::new(
+            selected_at_ns,
+            Fault::ProcessKill { target: 1 },
+        ));
+        let gap_schedule_id = gap_schedule.identity();
+        let gap_attempt = FaultAttempt::new_with_source(
+            fault_run_id(TEST_SEED, INITIAL_SIMULATION_RUN_SEQUENCE, gap_schedule_id),
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            gap_schedule_id,
+            0,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 1,
+                scheduled_at_ns: selected_at_ns,
+            },
+            Fault::ProcessKill { target: 1 },
+        );
+        let gap = selected_recording(gap_schedule, TEST_SEED, &[gap_attempt]);
+        assert_eq!(
+            validate_recording(&gap),
+            Err(RecordingValidationError::AttemptSourceMismatch)
+        );
+
+        let mut duplicate_schedule = FaultSchedule::new();
+        duplicate_schedule.add(ScheduledFault::new(
+            selected_at_ns,
+            Fault::ProcessKill { target: 0 },
+        ));
+        let duplicate_schedule_id = duplicate_schedule.identity();
+        let duplicate_run_id = fault_run_id(
+            TEST_SEED,
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            duplicate_schedule_id,
+        );
+        let first = FaultAttempt::new_with_source(
+            duplicate_run_id,
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            duplicate_schedule_id,
+            0,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            Fault::ProcessKill { target: 0 },
+        );
+        let second = FaultAttempt::new_with_source(
+            duplicate_run_id,
+            INITIAL_SIMULATION_RUN_SEQUENCE,
+            duplicate_schedule_id,
+            1,
+            selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: selected_at_ns,
+            },
+            Fault::ProcessKill { target: 0 },
+        );
+        let duplicate = selected_recording(duplicate_schedule, TEST_SEED, &[first, second]);
+        assert_eq!(
+            validate_recording(&duplicate),
+            Err(RecordingValidationError::AttemptSourceMismatch)
+        );
+    }
+
+    #[test]
+    fn recording_rejects_evidence_beyond_horizon_and_checkpoint_aliases() {
+        let (schedule, round, ledger) = selected_round(1);
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
+        recorder.record_round(&round, &ledger).unwrap();
+        recorder.recording.total_ticks = 0;
+        assert_eq!(
+            validate_recording(&recorder.recording),
+            Err(RecordingValidationError::EvidenceBeyondHorizon)
+        );
+
+        let mut checkpoint_recording =
+            Recorder::new(test_config(), FaultSchedule::new(), 42).recording;
+        checkpoint_recording.total_ticks = 2;
+        checkpoint_recording.checkpoints.push(Checkpoint {
+            id: 0,
+            tick: 1,
+            snapshot: None,
+            serial_output: vec![],
+            events_since_last: vec![],
+        });
+        checkpoint_recording.checkpoints.push(Checkpoint {
+            id: 0,
+            tick: 2,
+            snapshot: None,
+            serial_output: vec![],
+            events_since_last: vec![],
+        });
+        assert_eq!(
+            validate_recording(&checkpoint_recording),
+            Err(RecordingValidationError::CheckpointOrderMismatch)
         );
     }
 

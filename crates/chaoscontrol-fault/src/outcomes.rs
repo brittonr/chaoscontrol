@@ -12,7 +12,7 @@ pub const PARTS_PER_MILLION_MAX: u32 = 1_000_000;
 pub const NANOSECONDS_PER_SIMULATION_TICK: u64 = 1_000_000;
 pub const MAX_FAULT_OUTCOME_EVENTS: usize = 65_536;
 pub const MAX_FAULT_ATTEMPTS: usize = 16_384;
-pub const MAX_OBSERVATIONS_PER_ATTEMPT: usize = 1_024;
+pub const MAX_OBSERVATIONS_PER_ATTEMPT: usize = MAX_FAULT_OUTCOME_EVENTS;
 pub const MAX_FAULT_VMS: usize = 256;
 pub const MAX_PARTITION_MEMBERS: usize = MAX_FAULT_VMS;
 pub const GENERAL_REGISTER_BIT_COUNT: u8 = 64;
@@ -63,6 +63,16 @@ impl_hex_display!(FaultRunId);
 impl_hex_display!(FaultAttemptId);
 impl_hex_display!(FaultOperationId);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultAttemptSource {
+    Direct,
+    Scheduled {
+        entry_index: u64,
+        scheduled_at_ns: u64,
+    },
+    Random,
+}
+
 /// One deterministic selection from a schedule or the seeded random source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FaultAttempt {
@@ -72,6 +82,7 @@ pub struct FaultAttempt {
     pub schedule_id: FaultScheduleId,
     pub selection_index: u64,
     pub selected_at_ns: u64,
+    pub source: FaultAttemptSource,
     pub fault: Fault,
 }
 
@@ -84,7 +95,34 @@ impl FaultAttempt {
         selected_at_ns: u64,
         fault: Fault,
     ) -> Self {
-        let id = fault_attempt_id(run_id, schedule_id, selection_index, selected_at_ns, &fault);
+        Self::new_with_source(
+            run_id,
+            run_sequence,
+            schedule_id,
+            selection_index,
+            selected_at_ns,
+            FaultAttemptSource::Direct,
+            fault,
+        )
+    }
+
+    pub fn new_with_source(
+        run_id: FaultRunId,
+        run_sequence: u64,
+        schedule_id: FaultScheduleId,
+        selection_index: u64,
+        selected_at_ns: u64,
+        source: FaultAttemptSource,
+        fault: Fault,
+    ) -> Self {
+        let id = fault_attempt_id(
+            run_id,
+            schedule_id,
+            selection_index,
+            selected_at_ns,
+            source,
+            &fault,
+        );
         Self {
             id,
             run_id,
@@ -92,6 +130,7 @@ impl FaultAttempt {
             schedule_id,
             selection_index,
             selected_at_ns,
+            source,
             fault,
         }
     }
@@ -103,6 +142,7 @@ impl FaultAttempt {
                 self.schedule_id,
                 self.selection_index,
                 self.selected_at_ns,
+                self.source,
                 &self.fault,
             )
     }
@@ -156,6 +196,7 @@ fn fault_attempt_id(
     schedule_id: FaultScheduleId,
     selection_index: u64,
     selected_at_ns: u64,
+    source: FaultAttemptSource,
     fault: &Fault,
 ) -> FaultAttemptId {
     let mut hasher = blake3::Hasher::new();
@@ -164,6 +205,22 @@ fn fault_attempt_id(
     hasher.update(&schedule_id.0);
     hasher.update(&selection_index.to_le_bytes());
     hasher.update(&selected_at_ns.to_le_bytes());
+    match source {
+        FaultAttemptSource::Direct => {
+            hasher.update(&[0]);
+        }
+        FaultAttemptSource::Scheduled {
+            entry_index,
+            scheduled_at_ns,
+        } => {
+            hasher.update(&[1]);
+            hasher.update(&entry_index.to_le_bytes());
+            hasher.update(&scheduled_at_ns.to_le_bytes());
+        }
+        FaultAttemptSource::Random => {
+            hasher.update(&[2]);
+        }
+    }
     hash_fault(&mut hasher, fault);
     FaultAttemptId(*hasher.finalize().as_bytes())
 }
@@ -444,6 +501,7 @@ pub struct VmFaultFacts {
     pub supports_irq: bool,
     pub supports_nmi: bool,
     pub virtual_tsc: u64,
+    pub tsc_khz: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -587,13 +645,17 @@ pub enum FaultPlanEffect {
     VirtualClockSkew {
         target: u32,
         basis_tsc: u64,
+        tsc_khz: u32,
         offset_ns: i64,
+        tsc_delta: i64,
         target_tsc: u64,
     },
     VirtualClockJump {
         target: u32,
         basis_tsc: u64,
+        tsc_khz: u32,
         delta_ns: i64,
+        tsc_delta: i64,
         target_tsc: u64,
     },
     IrqInjection {
@@ -702,6 +764,8 @@ pub enum FaultRejectionReason {
     InvalidRegisterBit { bit: u8 },
     InvalidRate { rate_ppm: u32 },
     ZeroDuration,
+    ZeroClockDelta,
+    ClockDeltaRoundsToZero { value_ns: i64, tsc_khz: u32 },
     DurationExceedsPolicy { value: u64, max: u64 },
     DurationRoundsToZero { value_ns: u64 },
     EmptyRange,
@@ -987,23 +1051,47 @@ fn plan_clock_fault(
     match fault {
         Fault::ClockSkew { target, offset_ns } => {
             let target = checked_running_target(*target, facts)?;
-            let basis_tsc = facts.vms[target as usize].virtual_tsc;
-            let target_tsc = checked_signed_add(basis_tsc, *offset_ns)?;
+            if *offset_ns == 0 {
+                return Err(FaultRejectionReason::ZeroClockDelta);
+            }
+            let vm = &facts.vms[target as usize];
+            let tsc_delta = checked_ns_to_tsc_delta(*offset_ns, vm.tsc_khz)?;
+            if tsc_delta == 0 {
+                return Err(FaultRejectionReason::ClockDeltaRoundsToZero {
+                    value_ns: *offset_ns,
+                    tsc_khz: vm.tsc_khz,
+                });
+            }
+            let target_tsc = checked_signed_add(vm.virtual_tsc, tsc_delta)?;
             Ok(FaultPlanEffect::VirtualClockSkew {
                 target,
-                basis_tsc,
+                basis_tsc: vm.virtual_tsc,
+                tsc_khz: vm.tsc_khz,
                 offset_ns: *offset_ns,
+                tsc_delta,
                 target_tsc,
             })
         }
         Fault::ClockJump { target, delta_ns } => {
             let target = checked_running_target(*target, facts)?;
-            let basis_tsc = facts.vms[target as usize].virtual_tsc;
-            let target_tsc = checked_signed_add(basis_tsc, *delta_ns)?;
+            if *delta_ns == 0 {
+                return Err(FaultRejectionReason::ZeroClockDelta);
+            }
+            let vm = &facts.vms[target as usize];
+            let tsc_delta = checked_ns_to_tsc_delta(*delta_ns, vm.tsc_khz)?;
+            if tsc_delta == 0 {
+                return Err(FaultRejectionReason::ClockDeltaRoundsToZero {
+                    value_ns: *delta_ns,
+                    tsc_khz: vm.tsc_khz,
+                });
+            }
+            let target_tsc = checked_signed_add(vm.virtual_tsc, tsc_delta)?;
             Ok(FaultPlanEffect::VirtualClockJump {
                 target,
-                basis_tsc,
+                basis_tsc: vm.virtual_tsc,
+                tsc_khz: vm.tsc_khz,
                 delta_ns: *delta_ns,
+                tsc_delta,
                 target_tsc,
             })
         }
@@ -1221,6 +1309,18 @@ fn checked_block_range(
     Ok(())
 }
 
+pub fn checked_ns_to_tsc_delta(delta_ns: i64, tsc_khz: u32) -> Result<i64, FaultRejectionReason> {
+    const NANOSECONDS_PER_MILLISECOND: i128 = 1_000_000;
+    if tsc_khz == 0 {
+        return Err(FaultRejectionReason::ArithmeticOverflow);
+    }
+    let scaled = i128::from(delta_ns)
+        .checked_mul(i128::from(tsc_khz))
+        .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+    i64::try_from(scaled / NANOSECONDS_PER_MILLISECOND)
+        .map_err(|_| FaultRejectionReason::ArithmeticOverflow)
+}
+
 fn checked_signed_add(value: u64, delta: i64) -> Result<u64, FaultRejectionReason> {
     if delta >= 0 {
         return value
@@ -1401,6 +1501,9 @@ pub enum FaultTransitionError {
     SnapshotRunStateMismatch,
     SnapshotScheduleIdentityMismatch,
     SnapshotScheduleCursorMismatch,
+    SnapshotAttemptSourceMismatch,
+    SnapshotRandomStateMismatch,
+    SnapshotRngStateMismatch,
     SnapshotSelectionSequenceMismatch,
     SnapshotPendingStateMismatch,
     DuplicateObservation,
@@ -1918,13 +2021,16 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
             FaultPlanEffect::VirtualClockSkew {
                 target: planned_target,
                 basis_tsc,
+                tsc_khz,
                 offset_ns,
+                tsc_delta,
                 target_tsc,
             },
         ) => {
             target(*fault_target) == Some(*planned_target)
                 && fault_offset == offset_ns
-                && checked_signed_add(*basis_tsc, *offset_ns).ok() == Some(*target_tsc)
+                && checked_ns_to_tsc_delta(*offset_ns, *tsc_khz).ok() == Some(*tsc_delta)
+                && checked_signed_add(*basis_tsc, *tsc_delta).ok() == Some(*target_tsc)
         }
         (
             Fault::ClockJump {
@@ -1934,13 +2040,16 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
             FaultPlanEffect::VirtualClockJump {
                 target: planned_target,
                 basis_tsc,
+                tsc_khz,
                 delta_ns,
+                tsc_delta,
                 target_tsc,
             },
         ) => {
             target(*fault_target) == Some(*planned_target)
                 && fault_delta == delta_ns
-                && checked_signed_add(*basis_tsc, *delta_ns).ok() == Some(*target_tsc)
+                && checked_ns_to_tsc_delta(*delta_ns, *tsc_khz).ok() == Some(*tsc_delta)
+                && checked_signed_add(*basis_tsc, *tsc_delta).ok() == Some(*target_tsc)
         }
         (
             Fault::InjectInterrupt {
@@ -2266,6 +2375,7 @@ mod tests {
     const TEST_SCHEDULE_SEQUENCE: u64 = 1;
     const TEST_SELECTED_AT_NS: u64 = NANOSECONDS_PER_SIMULATION_TICK;
     const TEST_BLOCK_SIZE_BYTES: u64 = 4_096;
+    const TEST_TSC_KHZ: u32 = 3_000_000;
 
     fn running_vm() -> VmFaultFacts {
         VmFaultFacts {
@@ -2276,6 +2386,7 @@ mod tests {
             supports_irq: true,
             supports_nmi: true,
             virtual_tsc: TEST_SELECTED_AT_NS,
+            tsc_khz: TEST_TSC_KHZ,
         }
     }
 
@@ -2538,30 +2649,108 @@ mod tests {
     }
 
     #[test]
+    fn clock_plan_converts_nanoseconds_with_vm_frequency() {
+        const ONE_MILLISECOND_NS: i64 = 1_000_000;
+        let clock_attempt = attempt(Fault::ClockSkew {
+            target: 0,
+            offset_ns: ONE_MILLISECOND_NS,
+        });
+
+        let plan =
+            plan_fault_application(&clock_attempt, &facts(), &FaultApplicationPolicy::default())
+                .unwrap();
+
+        assert_eq!(
+            plan.effect,
+            FaultPlanEffect::VirtualClockSkew {
+                target: 0,
+                basis_tsc: TEST_SELECTED_AT_NS,
+                tsc_khz: TEST_TSC_KHZ,
+                offset_ns: ONE_MILLISECOND_NS,
+                tsc_delta: i64::from(TEST_TSC_KHZ),
+                target_tsc: TEST_SELECTED_AT_NS + u64::from(TEST_TSC_KHZ),
+            }
+        );
+    }
+
+    #[test]
+    fn clock_plan_rejects_zero_and_sub_period_deltas() {
+        let zero_attempt = attempt(Fault::ClockSkew {
+            target: 0,
+            offset_ns: 0,
+        });
+        assert_eq!(
+            plan_fault_application(&zero_attempt, &facts(), &FaultApplicationPolicy::default(),),
+            Err(FaultRejectionReason::ZeroClockDelta)
+        );
+
+        const SUB_PERIOD_DELTA_NS: i64 = 1;
+        const LOW_TEST_TSC_KHZ: u32 = 1;
+        let sub_period_attempt = attempt(Fault::ClockJump {
+            target: 0,
+            delta_ns: SUB_PERIOD_DELTA_NS,
+        });
+        let mut low_frequency_facts = facts();
+        low_frequency_facts.vms[0].tsc_khz = LOW_TEST_TSC_KHZ;
+        assert_eq!(
+            plan_fault_application(
+                &sub_period_attempt,
+                &low_frequency_facts,
+                &FaultApplicationPolicy::default(),
+            ),
+            Err(FaultRejectionReason::ClockDeltaRoundsToZero {
+                value_ns: SUB_PERIOD_DELTA_NS,
+                tsc_khz: LOW_TEST_TSC_KHZ,
+            })
+        );
+    }
+
+    #[test]
     fn clock_plan_rejects_target_and_derivation_tampering() {
-        const CLOCK_OFFSET_NS: i64 = 100;
+        const CLOCK_OFFSET_NS: i64 = 1_000_000;
         let clock_attempt = attempt(Fault::ClockSkew {
             target: 0,
             offset_ns: CLOCK_OFFSET_NS,
         });
         let selected = select(&FaultOutcomeLedger::default(), &clock_attempt).unwrap();
-        let mut effect =
+        let effect =
             plan_fault_application(&clock_attempt, &facts(), &FaultApplicationPolicy::default())
                 .unwrap()
                 .effect;
-        let FaultPlanEffect::VirtualClockSkew { target_tsc, .. } = &mut effect else {
-            panic!("clock skew planner returned the wrong effect");
-        };
-        *target_tsc = target_tsc.saturating_add(1);
+        let mut tampered_effects = Vec::new();
+        for field in 0..5 {
+            let mut tampered = effect.clone();
+            let FaultPlanEffect::VirtualClockSkew {
+                basis_tsc,
+                tsc_khz,
+                offset_ns,
+                tsc_delta,
+                target_tsc,
+                ..
+            } = &mut tampered
+            else {
+                panic!("clock skew planner returned the wrong effect");
+            };
+            match field {
+                0 => *basis_tsc += 1,
+                1 => *tsc_khz += 1,
+                2 => *offset_ns += 1,
+                3 => *tsc_delta += 1,
+                4 => *target_tsc += 1,
+                _ => unreachable!(),
+            }
+            tampered_effects.push(tampered);
+        }
 
-        let result = transition_fault_outcome(
-            &selected,
-            None,
-            clock_attempt.id,
-            FaultStageKind::Applicable { effect },
-        );
-
-        assert_eq!(result, Err(FaultTransitionError::ApplicablePlanMismatch));
+        for tampered in tampered_effects {
+            let result = transition_fault_outcome(
+                &selected,
+                None,
+                clock_attempt.id,
+                FaultStageKind::Applicable { effect: tampered },
+            );
+            assert_eq!(result, Err(FaultTransitionError::ApplicablePlanMismatch));
+        }
         assert_eq!(selected.events.len(), 1);
     }
 
@@ -2719,6 +2908,7 @@ mod tests {
             second.schedule_id,
             second.selection_index,
             second.selected_at_ns,
+            second.source,
             &second.fault,
         );
 

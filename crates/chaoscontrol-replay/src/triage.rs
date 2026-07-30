@@ -301,6 +301,7 @@ mod tests {
     use super::*;
     use crate::checkpoint::CheckpointStore;
     use crate::recording::RecordingConfig;
+    use chaoscontrol_fault::outcomes::fault_run_id;
     use chaoscontrol_fault::schedule::FaultSchedule;
 
     fn test_recording() -> Recording {
@@ -320,6 +321,8 @@ mod tests {
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),
             seed: 42,
+            fault_run_sequence: 1,
+            fault_run_id: fault_run_id(42, 1, FaultSchedule::new().identity()),
             events: vec![],
             fault_stage_events: vec![],
             fault_round_deltas: vec![],

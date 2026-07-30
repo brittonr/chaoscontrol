@@ -25,3 +25,4 @@ dogfood-results/local-multi-hypervisor-kvm-smoke-*/
 target/
 __pycache__/
 */__pycache__/
+.pi/

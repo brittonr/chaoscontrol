@@ -7,6 +7,7 @@ license = "AGPL-3.0-or-later"
 description = "Host-side fault injection engine and property oracle for ChaosControl"
 
 [dependencies]
+blake3 = "1.8"
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 rand = "0.8"
 rand_chacha = { version = "0.3", features = ["serde1"] }

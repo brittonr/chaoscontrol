@@ -74,8 +74,78 @@ impl GpRegister {
     ];
 }
 
+/// Stable public fault-variant inventory for conformance checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FaultVariant {
+    NetworkPartition,
+    NetworkLatency,
+    PacketLoss,
+    PacketCorruption,
+    PacketReorder,
+    NetworkJitter,
+    NetworkBandwidth,
+    PacketDuplicate,
+    NetworkHeal,
+    DiskReadError,
+    DiskWriteError,
+    DiskTornWrite,
+    DiskCorruption,
+    DiskFull,
+    ProcessKill,
+    ProcessPause,
+    ProcessRestart,
+    ClockSkew,
+    ClockJump,
+    MemoryPressure,
+    InjectInterrupt,
+    InjectNmi,
+    DiskSlow,
+    DiskFsyncLie,
+    DiskFsyncFlush,
+    DiskPartialRead,
+    CpuBitflip,
+    CpuStall,
+    ClockFreeze,
+    ClockJitter,
+}
+
+impl FaultVariant {
+    pub const ALL: [Self; 30] = [
+        Self::NetworkPartition,
+        Self::NetworkLatency,
+        Self::PacketLoss,
+        Self::PacketCorruption,
+        Self::PacketReorder,
+        Self::NetworkJitter,
+        Self::NetworkBandwidth,
+        Self::PacketDuplicate,
+        Self::NetworkHeal,
+        Self::DiskReadError,
+        Self::DiskWriteError,
+        Self::DiskTornWrite,
+        Self::DiskCorruption,
+        Self::DiskFull,
+        Self::ProcessKill,
+        Self::ProcessPause,
+        Self::ProcessRestart,
+        Self::ClockSkew,
+        Self::ClockJump,
+        Self::MemoryPressure,
+        Self::InjectInterrupt,
+        Self::InjectNmi,
+        Self::DiskSlow,
+        Self::DiskFsyncLie,
+        Self::DiskFsyncFlush,
+        Self::DiskPartialRead,
+        Self::CpuBitflip,
+        Self::CpuStall,
+        Self::ClockFreeze,
+        Self::ClockJitter,
+    ];
+}
+
 /// A fault that can be injected into a running VM.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Fault {
     // ── Network faults ──────────────────────────────────────────
     /// Partition: drop all packets between two sets of VMs.
@@ -355,6 +425,42 @@ pub enum Fault {
 }
 
 impl Fault {
+    /// Return the stable public variant for exhaustive conformance checks.
+    pub fn variant(&self) -> FaultVariant {
+        match self {
+            Self::NetworkPartition { .. } => FaultVariant::NetworkPartition,
+            Self::NetworkLatency { .. } => FaultVariant::NetworkLatency,
+            Self::PacketLoss { .. } => FaultVariant::PacketLoss,
+            Self::PacketCorruption { .. } => FaultVariant::PacketCorruption,
+            Self::PacketReorder { .. } => FaultVariant::PacketReorder,
+            Self::NetworkJitter { .. } => FaultVariant::NetworkJitter,
+            Self::NetworkBandwidth { .. } => FaultVariant::NetworkBandwidth,
+            Self::PacketDuplicate { .. } => FaultVariant::PacketDuplicate,
+            Self::NetworkHeal => FaultVariant::NetworkHeal,
+            Self::DiskReadError { .. } => FaultVariant::DiskReadError,
+            Self::DiskWriteError { .. } => FaultVariant::DiskWriteError,
+            Self::DiskTornWrite { .. } => FaultVariant::DiskTornWrite,
+            Self::DiskCorruption { .. } => FaultVariant::DiskCorruption,
+            Self::DiskFull { .. } => FaultVariant::DiskFull,
+            Self::ProcessKill { .. } => FaultVariant::ProcessKill,
+            Self::ProcessPause { .. } => FaultVariant::ProcessPause,
+            Self::ProcessRestart { .. } => FaultVariant::ProcessRestart,
+            Self::ClockSkew { .. } => FaultVariant::ClockSkew,
+            Self::ClockJump { .. } => FaultVariant::ClockJump,
+            Self::MemoryPressure { .. } => FaultVariant::MemoryPressure,
+            Self::InjectInterrupt { .. } => FaultVariant::InjectInterrupt,
+            Self::InjectNmi { .. } => FaultVariant::InjectNmi,
+            Self::DiskSlow { .. } => FaultVariant::DiskSlow,
+            Self::DiskFsyncLie { .. } => FaultVariant::DiskFsyncLie,
+            Self::DiskFsyncFlush { .. } => FaultVariant::DiskFsyncFlush,
+            Self::DiskPartialRead { .. } => FaultVariant::DiskPartialRead,
+            Self::CpuBitflip { .. } => FaultVariant::CpuBitflip,
+            Self::CpuStall { .. } => FaultVariant::CpuStall,
+            Self::ClockFreeze { .. } => FaultVariant::ClockFreeze,
+            Self::ClockJitter { .. } => FaultVariant::ClockJitter,
+        }
+    }
+
     /// Get the target VM index, if this fault targets a specific VM.
     pub fn target(&self) -> Option<usize> {
         match self {
@@ -589,7 +695,7 @@ impl Fault {
 }
 
 /// Broad category for a fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FaultCategory {
     Network,
     Disk,

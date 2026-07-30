@@ -1,0 +1,1881 @@
+//! Deterministic fault planning and outcome accounting.
+//!
+//! This module is the functional core for fault application evidence. It does
+//! not access devices, KVM, files, clocks, processes, logs, or ambient state.
+
+use crate::faults::{Fault, FaultCategory, FaultVariant, GpRegister};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+
+pub const PARTS_PER_MILLION_MAX: u32 = 1_000_000;
+pub const NANOSECONDS_PER_SIMULATION_TICK: u64 = 1_000_000;
+pub const MAX_FAULT_OUTCOME_EVENTS: usize = 65_536;
+pub const MAX_FAULT_ATTEMPTS: usize = 16_384;
+pub const MAX_OBSERVATIONS_PER_ATTEMPT: usize = 1_024;
+pub const MAX_FAULT_VMS: usize = 256;
+pub const MAX_PARTITION_MEMBERS: usize = MAX_FAULT_VMS;
+pub const GENERAL_REGISTER_BIT_COUNT: u8 = 64;
+pub const MAX_STANDARD_IRQ_LINE: u32 = 23;
+pub const PROCESS_RESTART_DELAY_TICKS: u64 = 10;
+const SECONDS_PER_DAY: u64 = 86_400;
+const NANOSECONDS_PER_SECOND: u64 = 1_000_000_000;
+pub const DEFAULT_MAX_FAULT_DURATION_NS: u64 = SECONDS_PER_DAY * NANOSECONDS_PER_SECOND;
+pub const DEFAULT_MAX_FAULT_DURATION_TICKS: u64 =
+    DEFAULT_MAX_FAULT_DURATION_NS / NANOSECONDS_PER_SIMULATION_TICK;
+const FAULT_ATTEMPT_DOMAIN: &[u8] = b"chaoscontrol.fault-attempt.v1";
+const FAULT_RUN_DOMAIN: &[u8] = b"chaoscontrol.fault-run.v1";
+const FAULT_SCHEDULE_DOMAIN: &[u8] = b"chaoscontrol.fault-schedule.v1";
+const FAULT_OPERATION_DOMAIN: &[u8] = b"chaoscontrol.fault-operation.v1";
+const RANDOM_SCHEDULE_ENTRY_DOMAIN: &[u8] = b"random";
+
+/// Stable BLAKE3 identity for one schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct FaultScheduleId(pub [u8; 32]);
+
+/// Stable BLAKE3 identity for one engine run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct FaultRunId(pub [u8; 32]);
+
+/// Stable BLAKE3 identity for one selected fault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct FaultAttemptId(pub [u8; 32]);
+
+/// Stable BLAKE3 identity for one operation affected by a fault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct FaultOperationId(pub [u8; 32]);
+
+macro_rules! impl_hex_display {
+    ($type_name:ty) => {
+        impl fmt::Display for $type_name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for byte in self.0 {
+                    write!(formatter, "{byte:02x}")?;
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_hex_display!(FaultScheduleId);
+impl_hex_display!(FaultRunId);
+impl_hex_display!(FaultAttemptId);
+impl_hex_display!(FaultOperationId);
+
+/// One deterministic selection from a schedule or the seeded random source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultAttempt {
+    pub id: FaultAttemptId,
+    pub run_id: FaultRunId,
+    pub schedule_id: FaultScheduleId,
+    pub selection_index: u64,
+    pub selected_at_ns: u64,
+    pub fault: Fault,
+}
+
+impl FaultAttempt {
+    pub fn new(
+        run_id: FaultRunId,
+        schedule_id: FaultScheduleId,
+        selection_index: u64,
+        selected_at_ns: u64,
+        fault: Fault,
+    ) -> Self {
+        let id = fault_attempt_id(run_id, schedule_id, selection_index, selected_at_ns, &fault);
+        Self {
+            id,
+            run_id,
+            schedule_id,
+            selection_index,
+            selected_at_ns,
+            fault,
+        }
+    }
+
+    pub fn has_valid_identity(&self) -> bool {
+        self.id
+            == fault_attempt_id(
+                self.run_id,
+                self.schedule_id,
+                self.selection_index,
+                self.selected_at_ns,
+                &self.fault,
+            )
+    }
+}
+
+pub fn fault_schedule_id<'a>(
+    entries: impl IntoIterator<Item = (u64, Option<&'a str>, &'a Fault)>,
+) -> FaultScheduleId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FAULT_SCHEDULE_DOMAIN);
+    for (time_ns, label, fault) in entries {
+        hasher.update(&time_ns.to_le_bytes());
+        hash_optional_text(&mut hasher, label);
+        hash_fault(&mut hasher, fault);
+    }
+    FaultScheduleId(*hasher.finalize().as_bytes())
+}
+
+pub fn random_fault_schedule_id(seed: u64) -> FaultScheduleId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FAULT_SCHEDULE_DOMAIN);
+    hasher.update(RANDOM_SCHEDULE_ENTRY_DOMAIN);
+    hasher.update(&seed.to_le_bytes());
+    FaultScheduleId(*hasher.finalize().as_bytes())
+}
+
+pub fn fault_run_id(seed: u64, run_sequence: u64, schedule_id: FaultScheduleId) -> FaultRunId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FAULT_RUN_DOMAIN);
+    hasher.update(&seed.to_le_bytes());
+    hasher.update(&run_sequence.to_le_bytes());
+    hasher.update(&schedule_id.0);
+    FaultRunId(*hasher.finalize().as_bytes())
+}
+
+pub fn fault_operation_id(
+    attempt_id: FaultAttemptId,
+    subsystem: FaultObservationSubsystem,
+    operation_sequence: u64,
+) -> FaultOperationId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FAULT_OPERATION_DOMAIN);
+    hasher.update(&attempt_id.0);
+    hasher.update(&[subsystem as u8]);
+    hasher.update(&operation_sequence.to_le_bytes());
+    FaultOperationId(*hasher.finalize().as_bytes())
+}
+
+fn fault_attempt_id(
+    run_id: FaultRunId,
+    schedule_id: FaultScheduleId,
+    selection_index: u64,
+    selected_at_ns: u64,
+    fault: &Fault,
+) -> FaultAttemptId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(FAULT_ATTEMPT_DOMAIN);
+    hasher.update(&run_id.0);
+    hasher.update(&schedule_id.0);
+    hasher.update(&selection_index.to_le_bytes());
+    hasher.update(&selected_at_ns.to_le_bytes());
+    hash_fault(&mut hasher, fault);
+    FaultAttemptId(*hasher.finalize().as_bytes())
+}
+
+fn hash_optional_text(hasher: &mut blake3::Hasher, text: Option<&str>) {
+    match text {
+        Some(value) => {
+            hasher.update(&[1]);
+            hash_bytes(hasher, value.as_bytes());
+        }
+        None => {
+            hasher.update(&[0]);
+        }
+    }
+}
+
+fn hash_bytes(hasher: &mut blake3::Hasher, bytes: &[u8]) {
+    let length = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    hasher.update(&length.to_le_bytes());
+    hasher.update(bytes);
+}
+
+fn hash_usize(hasher: &mut blake3::Hasher, value: usize) {
+    let value_u64 = u64::try_from(value).unwrap_or(u64::MAX);
+    hasher.update(&value_u64.to_le_bytes());
+}
+
+fn hash_usize_slice(hasher: &mut blake3::Hasher, values: &[usize]) {
+    hash_usize(hasher, values.len());
+    for value in values {
+        hash_usize(hasher, *value);
+    }
+}
+
+fn hash_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    hash_bytes(hasher, fault.type_name().as_bytes());
+    match fault.category() {
+        FaultCategory::Network => hash_network_fault(hasher, fault),
+        FaultCategory::Disk => hash_disk_fault(hasher, fault),
+        FaultCategory::Process => hash_process_fault(hasher, fault),
+        FaultCategory::Clock => hash_clock_fault(hasher, fault),
+        FaultCategory::Resource => hash_resource_fault(hasher, fault),
+        FaultCategory::Interrupt => hash_interrupt_fault(hasher, fault),
+        FaultCategory::Cpu => hash_cpu_fault(hasher, fault),
+    }
+}
+
+fn hash_network_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::NetworkPartition { side_a, side_b } => {
+            hash_usize_slice(hasher, side_a);
+            hash_usize_slice(hasher, side_b);
+        }
+        Fault::NetworkLatency { target, latency_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&latency_ns.to_le_bytes());
+        }
+        Fault::PacketLoss { target, rate_ppm }
+        | Fault::PacketCorruption { target, rate_ppm }
+        | Fault::PacketDuplicate { target, rate_ppm } => {
+            hash_usize(hasher, *target);
+            hasher.update(&rate_ppm.to_le_bytes());
+        }
+        Fault::PacketReorder { target, window_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&window_ns.to_le_bytes());
+        }
+        Fault::NetworkJitter { target, jitter_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&jitter_ns.to_le_bytes());
+        }
+        Fault::NetworkBandwidth {
+            target,
+            bytes_per_sec,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&bytes_per_sec.to_le_bytes());
+        }
+        Fault::NetworkHeal => {}
+        _ => unreachable!("network category must contain a network fault"),
+    }
+}
+
+fn hash_disk_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::DiskReadError { target, offset } | Fault::DiskWriteError { target, offset } => {
+            hash_usize(hasher, *target);
+            hasher.update(&offset.to_le_bytes());
+        }
+        Fault::DiskTornWrite {
+            target,
+            offset,
+            bytes_written,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&offset.to_le_bytes());
+            hash_usize(hasher, *bytes_written);
+        }
+        Fault::DiskCorruption {
+            target,
+            offset,
+            len,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&offset.to_le_bytes());
+            hash_usize(hasher, *len);
+        }
+        Fault::DiskFull { target }
+        | Fault::DiskFsyncLie { target }
+        | Fault::DiskFsyncFlush { target } => hash_usize(hasher, *target),
+        Fault::DiskSlow { target, delay_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&delay_ns.to_le_bytes());
+        }
+        Fault::DiskPartialRead {
+            target,
+            offset,
+            max_bytes,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&offset.to_le_bytes());
+            hash_usize(hasher, *max_bytes);
+        }
+        _ => unreachable!("disk category must contain a disk fault"),
+    }
+}
+
+fn hash_process_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::ProcessKill { target } | Fault::ProcessRestart { target } => {
+            hash_usize(hasher, *target);
+        }
+        Fault::ProcessPause {
+            target,
+            duration_ns,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&duration_ns.to_le_bytes());
+        }
+        _ => unreachable!("process category must contain a process fault"),
+    }
+}
+
+fn hash_clock_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::ClockSkew { target, offset_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&offset_ns.to_le_bytes());
+        }
+        Fault::ClockJump { target, delta_ns } => {
+            hash_usize(hasher, *target);
+            hasher.update(&delta_ns.to_le_bytes());
+        }
+        Fault::ClockFreeze {
+            target,
+            duration_ticks,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&duration_ticks.to_le_bytes());
+        }
+        Fault::ClockJitter { target, bound_tsc } => {
+            hash_usize(hasher, *target);
+            hasher.update(&bound_tsc.to_le_bytes());
+        }
+        _ => unreachable!("clock category must contain a clock fault"),
+    }
+}
+
+fn hash_resource_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::MemoryPressure {
+            target,
+            limit_bytes,
+        } => {
+            hash_usize(hasher, *target);
+            hasher.update(&limit_bytes.to_le_bytes());
+        }
+        _ => unreachable!("resource category must contain a resource fault"),
+    }
+}
+
+fn hash_interrupt_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::InjectInterrupt { target, irq } => {
+            hash_usize(hasher, *target);
+            hasher.update(&irq.to_le_bytes());
+        }
+        Fault::InjectNmi { target, vcpu } => {
+            hash_usize(hasher, *target);
+            hash_usize(hasher, *vcpu);
+        }
+        _ => unreachable!("interrupt category must contain an interrupt fault"),
+    }
+}
+
+fn hash_cpu_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
+    match fault {
+        Fault::CpuBitflip {
+            target,
+            vcpu,
+            register,
+            bit,
+        } => {
+            hash_usize(hasher, *target);
+            hash_usize(hasher, *vcpu);
+            hasher.update(&[register_index(*register)]);
+            hasher.update(&[*bit]);
+        }
+        Fault::CpuStall {
+            target,
+            vcpu,
+            duration_ticks,
+        } => {
+            hash_usize(hasher, *target);
+            hash_usize(hasher, *vcpu);
+            hasher.update(&duration_ticks.to_le_bytes());
+        }
+        _ => unreachable!("CPU category must contain a CPU fault"),
+    }
+}
+
+fn register_index(register: GpRegister) -> u8 {
+    match register {
+        GpRegister::Rax => 0,
+        GpRegister::Rbx => 1,
+        GpRegister::Rcx => 2,
+        GpRegister::Rdx => 3,
+        GpRegister::Rsi => 4,
+        GpRegister::Rdi => 5,
+        GpRegister::Rbp => 6,
+        GpRegister::Rsp => 7,
+        GpRegister::R8 => 8,
+        GpRegister::R9 => 9,
+        GpRegister::R10 => 10,
+        GpRegister::R11 => 11,
+        GpRegister::R12 => 12,
+        GpRegister::R13 => 13,
+        GpRegister::R14 => 14,
+        GpRegister::R15 => 15,
+    }
+}
+
+/// Controller policy for applicability decisions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultApplicationPolicy {
+    pub rejection_is_fatal: bool,
+    pub max_duration_ns: u64,
+    pub max_duration_ticks: u64,
+    pub max_partition_members: u32,
+}
+
+impl Default for FaultApplicationPolicy {
+    fn default() -> Self {
+        Self {
+            rejection_is_fatal: false,
+            max_duration_ns: DEFAULT_MAX_FAULT_DURATION_NS,
+            max_duration_ticks: DEFAULT_MAX_FAULT_DURATION_TICKS,
+            max_partition_members: u32::try_from(MAX_PARTITION_MEMBERS).unwrap_or(u32::MAX),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultVmStatus {
+    Running,
+    Paused,
+    Crashed,
+    Restarting,
+    Resuming,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VmFaultFacts {
+    pub status: FaultVmStatus,
+    pub vcpu_count: u32,
+    pub block_device_size_bytes: Option<u64>,
+    pub has_initial_snapshot: bool,
+    pub supports_irq: bool,
+    pub supports_nmi: bool,
+    pub virtual_tsc: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultPlanningFacts {
+    pub current_tick: u64,
+    pub network_supported: bool,
+    pub vms: Vec<VmFaultFacts>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultEffectTiming {
+    Immediate,
+    Armed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultMechanism {
+    NetworkPartition,
+    NetworkLatency,
+    PacketLoss,
+    PacketCorruption,
+    PacketReorder,
+    NetworkJitter,
+    NetworkBandwidth,
+    PacketDuplicate,
+    NetworkHeal,
+    BlockReadError,
+    BlockWriteError,
+    BlockTornWrite,
+    BlockCorruption,
+    BlockFull,
+    ProcessKill,
+    ProcessPause,
+    ProcessRestart,
+    VirtualClockSkew,
+    VirtualClockJump,
+    IrqInjection,
+    NmiInjection,
+    BlockSlow,
+    BlockFsyncLie,
+    BlockFsyncFlush,
+    BlockPartialRead,
+    CpuRegisterBitflip,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultPlan {
+    pub attempt_id: FaultAttemptId,
+    pub effect: FaultPlanEffect,
+}
+
+impl FaultPlan {
+    pub fn mechanism(&self) -> FaultMechanism {
+        self.effect.mechanism()
+    }
+
+    pub fn timing(&self) -> FaultEffectTiming {
+        self.effect.timing()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultPlanEffect {
+    NetworkPartition {
+        side_a: Vec<u32>,
+        side_b: Vec<u32>,
+    },
+    NetworkLatency {
+        target: u32,
+        latency_ticks: u64,
+    },
+    PacketLoss {
+        target: u32,
+        rate_ppm: u32,
+    },
+    PacketCorruption {
+        target: u32,
+        rate_ppm: u32,
+    },
+    PacketReorder {
+        target: u32,
+        window_ticks: u64,
+    },
+    NetworkJitter {
+        target: u32,
+        jitter_ticks: u64,
+    },
+    NetworkBandwidth {
+        target: u32,
+        bytes_per_sec: u64,
+    },
+    PacketDuplicate {
+        target: u32,
+        rate_ppm: u32,
+    },
+    NetworkHeal,
+    BlockReadError {
+        target: u32,
+        offset: u64,
+    },
+    BlockWriteError {
+        target: u32,
+        offset: u64,
+    },
+    BlockTornWrite {
+        target: u32,
+        offset: u64,
+        bytes_written: u64,
+    },
+    BlockCorruption {
+        target: u32,
+        offset: u64,
+        len: u64,
+    },
+    BlockFull {
+        target: u32,
+    },
+    ProcessKill {
+        target: u32,
+    },
+    ProcessPause {
+        target: u32,
+        resume_at_tick: u64,
+    },
+    ProcessRestart {
+        target: u32,
+        restart_at_tick: u64,
+    },
+    VirtualClockSkew {
+        target: u32,
+        target_tsc: u64,
+    },
+    VirtualClockJump {
+        target: u32,
+        target_tsc: u64,
+    },
+    IrqInjection {
+        target: u32,
+        irq: u32,
+    },
+    NmiInjection {
+        target: u32,
+        vcpu: u32,
+    },
+    BlockSlow {
+        target: u32,
+        delay_ns: u64,
+    },
+    BlockFsyncLie {
+        target: u32,
+    },
+    BlockFsyncFlush {
+        target: u32,
+    },
+    BlockPartialRead {
+        target: u32,
+        offset: u64,
+        max_bytes: u64,
+    },
+    CpuRegisterBitflip {
+        target: u32,
+        vcpu: u32,
+        register: GpRegister,
+        bit: u8,
+    },
+}
+
+impl FaultPlanEffect {
+    pub fn mechanism(&self) -> FaultMechanism {
+        match self {
+            Self::NetworkPartition { .. } => FaultMechanism::NetworkPartition,
+            Self::NetworkLatency { .. } => FaultMechanism::NetworkLatency,
+            Self::PacketLoss { .. } => FaultMechanism::PacketLoss,
+            Self::PacketCorruption { .. } => FaultMechanism::PacketCorruption,
+            Self::PacketReorder { .. } => FaultMechanism::PacketReorder,
+            Self::NetworkJitter { .. } => FaultMechanism::NetworkJitter,
+            Self::NetworkBandwidth { .. } => FaultMechanism::NetworkBandwidth,
+            Self::PacketDuplicate { .. } => FaultMechanism::PacketDuplicate,
+            Self::NetworkHeal => FaultMechanism::NetworkHeal,
+            Self::BlockReadError { .. } => FaultMechanism::BlockReadError,
+            Self::BlockWriteError { .. } => FaultMechanism::BlockWriteError,
+            Self::BlockTornWrite { .. } => FaultMechanism::BlockTornWrite,
+            Self::BlockCorruption { .. } => FaultMechanism::BlockCorruption,
+            Self::BlockFull { .. } => FaultMechanism::BlockFull,
+            Self::ProcessKill { .. } => FaultMechanism::ProcessKill,
+            Self::ProcessPause { .. } => FaultMechanism::ProcessPause,
+            Self::ProcessRestart { .. } => FaultMechanism::ProcessRestart,
+            Self::VirtualClockSkew { .. } => FaultMechanism::VirtualClockSkew,
+            Self::VirtualClockJump { .. } => FaultMechanism::VirtualClockJump,
+            Self::IrqInjection { .. } => FaultMechanism::IrqInjection,
+            Self::NmiInjection { .. } => FaultMechanism::NmiInjection,
+            Self::BlockSlow { .. } => FaultMechanism::BlockSlow,
+            Self::BlockFsyncLie { .. } => FaultMechanism::BlockFsyncLie,
+            Self::BlockFsyncFlush { .. } => FaultMechanism::BlockFsyncFlush,
+            Self::BlockPartialRead { .. } => FaultMechanism::BlockPartialRead,
+            Self::CpuRegisterBitflip { .. } => FaultMechanism::CpuRegisterBitflip,
+        }
+    }
+
+    pub fn timing(&self) -> FaultEffectTiming {
+        match self {
+            Self::NetworkHeal
+            | Self::ProcessKill { .. }
+            | Self::ProcessRestart { .. }
+            | Self::VirtualClockSkew { .. }
+            | Self::VirtualClockJump { .. }
+            | Self::IrqInjection { .. }
+            | Self::NmiInjection { .. }
+            | Self::BlockFsyncFlush { .. }
+            | Self::CpuRegisterBitflip { .. } => FaultEffectTiming::Immediate,
+            _ => FaultEffectTiming::Armed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultRejectionReason {
+    TooManyVms { count: u64, max: u64 },
+    MissingVm { target: u64 },
+    VmNotRunning { target: u32, status: FaultVmStatus },
+    VmNotCrashed { target: u32, status: FaultVmStatus },
+    MissingInitialSnapshot { target: u32 },
+    MissingBlockDevice { target: u32 },
+    InvalidVcpu { target: u32, vcpu: u64, count: u32 },
+    InvalidRegisterBit { bit: u8 },
+    InvalidRate { rate_ppm: u32 },
+    ZeroDuration,
+    DurationExceedsPolicy { value: u64, max: u64 },
+    DurationRoundsToZero { value_ns: u64 },
+    EmptyRange,
+    RangeOverflow { offset: u64, len: u64 },
+    RangeOutOfBounds { offset: u64, len: u64, size: u64 },
+    EmptyPartitionSide,
+    TooManyPartitionMembers { count: u64, max: u32 },
+    DuplicatePartitionMember { target: u32 },
+    OverlappingPartitionMember { target: u32 },
+    InvalidIrq { irq: u32 },
+    ArithmeticOverflow,
+    UnsupportedCapability { variant: FaultVariant },
+}
+
+pub fn plan_fault_application(
+    attempt: &FaultAttempt,
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlan, FaultRejectionReason> {
+    validate_fact_bounds(facts)?;
+    let effect = match attempt.fault.category() {
+        FaultCategory::Network => plan_network_fault(&attempt.fault, facts, policy)?,
+        FaultCategory::Disk => plan_disk_fault(&attempt.fault, facts, policy)?,
+        FaultCategory::Process => plan_process_fault(&attempt.fault, facts, policy)?,
+        FaultCategory::Clock => plan_clock_fault(&attempt.fault, facts)?,
+        FaultCategory::Resource => plan_resource_fault(&attempt.fault)?,
+        FaultCategory::Interrupt => plan_interrupt_fault(&attempt.fault, facts)?,
+        FaultCategory::Cpu => plan_cpu_fault(&attempt.fault, facts)?,
+    };
+    Ok(FaultPlan {
+        attempt_id: attempt.id,
+        effect,
+    })
+}
+
+fn validate_fact_bounds(facts: &FaultPlanningFacts) -> Result<(), FaultRejectionReason> {
+    if facts.vms.len() > MAX_FAULT_VMS {
+        return Err(FaultRejectionReason::TooManyVms {
+            count: u64::try_from(facts.vms.len()).unwrap_or(u64::MAX),
+            max: u64::try_from(MAX_FAULT_VMS).unwrap_or(u64::MAX),
+        });
+    }
+    Ok(())
+}
+
+fn plan_network_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    if !facts.network_supported {
+        return Err(FaultRejectionReason::UnsupportedCapability {
+            variant: fault.variant(),
+        });
+    }
+    match fault {
+        Fault::NetworkPartition { side_a, side_b } => {
+            plan_network_partition(side_a, side_b, facts, policy)
+        }
+        Fault::NetworkLatency { target, latency_ns } => Ok(FaultPlanEffect::NetworkLatency {
+            target: checked_target(*target, facts)?,
+            latency_ticks: duration_ns_to_ticks(*latency_ns, policy, true)?,
+        }),
+        Fault::PacketLoss { target, rate_ppm } => Ok(FaultPlanEffect::PacketLoss {
+            target: checked_target(*target, facts)?,
+            rate_ppm: checked_rate(*rate_ppm)?,
+        }),
+        Fault::PacketCorruption { target, rate_ppm } => Ok(FaultPlanEffect::PacketCorruption {
+            target: checked_target(*target, facts)?,
+            rate_ppm: checked_rate(*rate_ppm)?,
+        }),
+        Fault::PacketReorder { target, window_ns } => Ok(FaultPlanEffect::PacketReorder {
+            target: checked_target(*target, facts)?,
+            window_ticks: duration_ns_to_ticks(*window_ns, policy, true)?,
+        }),
+        Fault::NetworkJitter { target, jitter_ns } => Ok(FaultPlanEffect::NetworkJitter {
+            target: checked_target(*target, facts)?,
+            jitter_ticks: duration_ns_to_ticks(*jitter_ns, policy, true)?,
+        }),
+        Fault::NetworkBandwidth {
+            target,
+            bytes_per_sec,
+        } => Ok(FaultPlanEffect::NetworkBandwidth {
+            target: checked_target(*target, facts)?,
+            bytes_per_sec: *bytes_per_sec,
+        }),
+        Fault::PacketDuplicate { target, rate_ppm } => Ok(FaultPlanEffect::PacketDuplicate {
+            target: checked_target(*target, facts)?,
+            rate_ppm: checked_rate(*rate_ppm)?,
+        }),
+        Fault::NetworkHeal => Ok(FaultPlanEffect::NetworkHeal),
+        _ => unreachable!("network planner must receive a network fault"),
+    }
+}
+
+fn plan_network_partition(
+    side_a: &[usize],
+    side_b: &[usize],
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    if side_a.is_empty() || side_b.is_empty() {
+        return Err(FaultRejectionReason::EmptyPartitionSide);
+    }
+    let member_count = side_a
+        .len()
+        .checked_add(side_b.len())
+        .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+    if member_count > policy.max_partition_members as usize {
+        return Err(FaultRejectionReason::TooManyPartitionMembers {
+            count: u64::try_from(member_count).unwrap_or(u64::MAX),
+            max: policy.max_partition_members,
+        });
+    }
+    let normalized_a = normalize_partition_side(side_a, facts)?;
+    let normalized_b = normalize_partition_side(side_b, facts)?;
+    for target in &normalized_a {
+        if normalized_b.binary_search(target).is_ok() {
+            return Err(FaultRejectionReason::OverlappingPartitionMember { target: *target });
+        }
+    }
+    Ok(FaultPlanEffect::NetworkPartition {
+        side_a: normalized_a,
+        side_b: normalized_b,
+    })
+}
+
+fn normalize_partition_side(
+    side: &[usize],
+    facts: &FaultPlanningFacts,
+) -> Result<Vec<u32>, FaultRejectionReason> {
+    let mut normalized = Vec::with_capacity(side.len());
+    for target in side {
+        normalized.push(checked_target(*target, facts)?);
+    }
+    normalized.sort_unstable();
+    for pair in normalized.windows(2) {
+        if pair[0] == pair[1] {
+            return Err(FaultRejectionReason::DuplicatePartitionMember { target: pair[0] });
+        }
+    }
+    Ok(normalized)
+}
+
+fn plan_disk_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::DiskReadError { target, offset } => {
+            let target = checked_block_target(*target, facts)?;
+            checked_block_range(target, *offset, 1, facts)?;
+            Ok(FaultPlanEffect::BlockReadError {
+                target,
+                offset: *offset,
+            })
+        }
+        Fault::DiskWriteError { target, offset } => {
+            let target = checked_block_target(*target, facts)?;
+            checked_block_range(target, *offset, 1, facts)?;
+            Ok(FaultPlanEffect::BlockWriteError {
+                target,
+                offset: *offset,
+            })
+        }
+        Fault::DiskTornWrite {
+            target,
+            offset,
+            bytes_written,
+        } => {
+            let target = checked_block_target(*target, facts)?;
+            let bytes_written = checked_nonzero_usize(*bytes_written)?;
+            checked_block_range(target, *offset, bytes_written, facts)?;
+            Ok(FaultPlanEffect::BlockTornWrite {
+                target,
+                offset: *offset,
+                bytes_written,
+            })
+        }
+        Fault::DiskCorruption {
+            target,
+            offset,
+            len,
+        } => {
+            let target = checked_block_target(*target, facts)?;
+            let len = checked_nonzero_usize(*len)?;
+            checked_block_range(target, *offset, len, facts)?;
+            Ok(FaultPlanEffect::BlockCorruption {
+                target,
+                offset: *offset,
+                len,
+            })
+        }
+        Fault::DiskFull { target } => Ok(FaultPlanEffect::BlockFull {
+            target: checked_block_target(*target, facts)?,
+        }),
+        Fault::DiskSlow { target, delay_ns } => {
+            checked_duration_ns(*delay_ns, policy, true)?;
+            Ok(FaultPlanEffect::BlockSlow {
+                target: checked_block_target(*target, facts)?,
+                delay_ns: *delay_ns,
+            })
+        }
+        Fault::DiskFsyncLie { target } => Ok(FaultPlanEffect::BlockFsyncLie {
+            target: checked_block_target(*target, facts)?,
+        }),
+        Fault::DiskFsyncFlush { target } => Ok(FaultPlanEffect::BlockFsyncFlush {
+            target: checked_block_target(*target, facts)?,
+        }),
+        Fault::DiskPartialRead {
+            target,
+            offset,
+            max_bytes,
+        } => {
+            let target = checked_block_target(*target, facts)?;
+            let max_bytes = checked_nonzero_usize(*max_bytes)?;
+            checked_block_range(target, *offset, max_bytes, facts)?;
+            Ok(FaultPlanEffect::BlockPartialRead {
+                target,
+                offset: *offset,
+                max_bytes,
+            })
+        }
+        _ => unreachable!("disk planner must receive a disk fault"),
+    }
+}
+
+fn plan_process_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::ProcessKill { target } => {
+            let target = checked_running_target(*target, facts)?;
+            Ok(FaultPlanEffect::ProcessKill { target })
+        }
+        Fault::ProcessPause {
+            target,
+            duration_ns,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            let duration_ticks = duration_ns_to_ticks(*duration_ns, policy, false)?;
+            let resume_at_tick = facts
+                .current_tick
+                .checked_add(duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::ProcessPause {
+                target,
+                resume_at_tick,
+            })
+        }
+        Fault::ProcessRestart { target } => {
+            let target = checked_target(*target, facts)?;
+            let vm = &facts.vms[target as usize];
+            if vm.status != FaultVmStatus::Crashed {
+                return Err(FaultRejectionReason::VmNotCrashed {
+                    target,
+                    status: vm.status,
+                });
+            }
+            if !vm.has_initial_snapshot {
+                return Err(FaultRejectionReason::MissingInitialSnapshot { target });
+            }
+            let restart_at_tick = facts
+                .current_tick
+                .checked_add(PROCESS_RESTART_DELAY_TICKS)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::ProcessRestart {
+                target,
+                restart_at_tick,
+            })
+        }
+        _ => unreachable!("process planner must receive a process fault"),
+    }
+}
+
+fn plan_clock_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::ClockSkew { target, offset_ns } => {
+            let target = checked_running_target(*target, facts)?;
+            let current_tsc = facts.vms[target as usize].virtual_tsc;
+            let target_tsc = checked_signed_add(current_tsc, *offset_ns)?;
+            Ok(FaultPlanEffect::VirtualClockSkew { target, target_tsc })
+        }
+        Fault::ClockJump { target, delta_ns } => {
+            let target = checked_running_target(*target, facts)?;
+            let current_tsc = facts.vms[target as usize].virtual_tsc;
+            let target_tsc = checked_signed_add(current_tsc, *delta_ns)?;
+            Ok(FaultPlanEffect::VirtualClockJump { target, target_tsc })
+        }
+        Fault::ClockFreeze { .. } | Fault::ClockJitter { .. } => {
+            Err(FaultRejectionReason::UnsupportedCapability {
+                variant: fault.variant(),
+            })
+        }
+        _ => unreachable!("clock planner must receive a clock fault"),
+    }
+}
+
+fn plan_resource_fault(fault: &Fault) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::MemoryPressure { .. } => Err(FaultRejectionReason::UnsupportedCapability {
+            variant: fault.variant(),
+        }),
+        _ => unreachable!("resource planner must receive a resource fault"),
+    }
+}
+
+fn plan_interrupt_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::InjectInterrupt { target, irq } => {
+            let target = checked_running_target(*target, facts)?;
+            if *irq > MAX_STANDARD_IRQ_LINE {
+                return Err(FaultRejectionReason::InvalidIrq { irq: *irq });
+            }
+            if !facts.vms[target as usize].supports_irq {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            Ok(FaultPlanEffect::IrqInjection { target, irq: *irq })
+        }
+        Fault::InjectNmi { target, vcpu } => {
+            let target = checked_running_target(*target, facts)?;
+            let vcpu = checked_vcpu(target, *vcpu, facts)?;
+            if !facts.vms[target as usize].supports_nmi {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            Ok(FaultPlanEffect::NmiInjection { target, vcpu })
+        }
+        _ => unreachable!("interrupt planner must receive an interrupt fault"),
+    }
+}
+
+fn plan_cpu_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
+    match fault {
+        Fault::CpuBitflip {
+            target,
+            vcpu,
+            register,
+            bit,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            let vcpu = checked_vcpu(target, *vcpu, facts)?;
+            if *bit >= GENERAL_REGISTER_BIT_COUNT {
+                return Err(FaultRejectionReason::InvalidRegisterBit { bit: *bit });
+            }
+            Ok(FaultPlanEffect::CpuRegisterBitflip {
+                target,
+                vcpu,
+                register: *register,
+                bit: *bit,
+            })
+        }
+        Fault::CpuStall { .. } => Err(FaultRejectionReason::UnsupportedCapability {
+            variant: fault.variant(),
+        }),
+        _ => unreachable!("CPU planner must receive a CPU fault"),
+    }
+}
+
+fn checked_target(target: usize, facts: &FaultPlanningFacts) -> Result<u32, FaultRejectionReason> {
+    if target >= facts.vms.len() {
+        return Err(FaultRejectionReason::MissingVm {
+            target: u64::try_from(target).unwrap_or(u64::MAX),
+        });
+    }
+    u32::try_from(target).map_err(|_| FaultRejectionReason::MissingVm {
+        target: u64::try_from(target).unwrap_or(u64::MAX),
+    })
+}
+
+fn checked_running_target(
+    target: usize,
+    facts: &FaultPlanningFacts,
+) -> Result<u32, FaultRejectionReason> {
+    let target = checked_target(target, facts)?;
+    let status = facts.vms[target as usize].status;
+    if status != FaultVmStatus::Running {
+        return Err(FaultRejectionReason::VmNotRunning { target, status });
+    }
+    Ok(target)
+}
+
+fn checked_block_target(
+    target: usize,
+    facts: &FaultPlanningFacts,
+) -> Result<u32, FaultRejectionReason> {
+    let target = checked_running_target(target, facts)?;
+    if facts.vms[target as usize].block_device_size_bytes.is_none() {
+        return Err(FaultRejectionReason::MissingBlockDevice { target });
+    }
+    Ok(target)
+}
+
+fn checked_vcpu(
+    target: u32,
+    vcpu: usize,
+    facts: &FaultPlanningFacts,
+) -> Result<u32, FaultRejectionReason> {
+    let count = facts.vms[target as usize].vcpu_count;
+    let vcpu_u64 = u64::try_from(vcpu).unwrap_or(u64::MAX);
+    if vcpu_u64 >= u64::from(count) {
+        return Err(FaultRejectionReason::InvalidVcpu {
+            target,
+            vcpu: vcpu_u64,
+            count,
+        });
+    }
+    u32::try_from(vcpu).map_err(|_| FaultRejectionReason::InvalidVcpu {
+        target,
+        vcpu: vcpu_u64,
+        count,
+    })
+}
+
+fn checked_rate(rate_ppm: u32) -> Result<u32, FaultRejectionReason> {
+    if rate_ppm > PARTS_PER_MILLION_MAX {
+        return Err(FaultRejectionReason::InvalidRate { rate_ppm });
+    }
+    Ok(rate_ppm)
+}
+
+fn checked_duration_ns(
+    value_ns: u64,
+    policy: &FaultApplicationPolicy,
+    zero_is_disable: bool,
+) -> Result<(), FaultRejectionReason> {
+    if value_ns == 0 {
+        if zero_is_disable {
+            return Ok(());
+        }
+        return Err(FaultRejectionReason::ZeroDuration);
+    }
+    if value_ns > policy.max_duration_ns {
+        return Err(FaultRejectionReason::DurationExceedsPolicy {
+            value: value_ns,
+            max: policy.max_duration_ns,
+        });
+    }
+    Ok(())
+}
+
+fn duration_ns_to_ticks(
+    value_ns: u64,
+    policy: &FaultApplicationPolicy,
+    zero_is_disable: bool,
+) -> Result<u64, FaultRejectionReason> {
+    checked_duration_ns(value_ns, policy, zero_is_disable)?;
+    if value_ns == 0 {
+        return Ok(0);
+    }
+    let adjusted = value_ns
+        .checked_add(NANOSECONDS_PER_SIMULATION_TICK - 1)
+        .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+    let ticks = adjusted / NANOSECONDS_PER_SIMULATION_TICK;
+    if ticks == 0 {
+        return Err(FaultRejectionReason::DurationRoundsToZero { value_ns });
+    }
+    if ticks > policy.max_duration_ticks {
+        return Err(FaultRejectionReason::DurationExceedsPolicy {
+            value: ticks,
+            max: policy.max_duration_ticks,
+        });
+    }
+    Ok(ticks)
+}
+
+fn checked_nonzero_usize(value: usize) -> Result<u64, FaultRejectionReason> {
+    if value == 0 {
+        return Err(FaultRejectionReason::EmptyRange);
+    }
+    u64::try_from(value).map_err(|_| FaultRejectionReason::ArithmeticOverflow)
+}
+
+fn checked_block_range(
+    target: u32,
+    offset: u64,
+    len: u64,
+    facts: &FaultPlanningFacts,
+) -> Result<(), FaultRejectionReason> {
+    if len == 0 {
+        return Err(FaultRejectionReason::EmptyRange);
+    }
+    let size = facts.vms[target as usize]
+        .block_device_size_bytes
+        .ok_or(FaultRejectionReason::MissingBlockDevice { target })?;
+    let end = offset
+        .checked_add(len)
+        .ok_or(FaultRejectionReason::RangeOverflow { offset, len })?;
+    if end > size {
+        return Err(FaultRejectionReason::RangeOutOfBounds { offset, len, size });
+    }
+    Ok(())
+}
+
+fn checked_signed_add(value: u64, delta: i64) -> Result<u64, FaultRejectionReason> {
+    if delta >= 0 {
+        return value
+            .checked_add(delta.unsigned_abs())
+            .ok_or(FaultRejectionReason::ArithmeticOverflow);
+    }
+    value
+        .checked_sub(delta.unsigned_abs())
+        .ok_or(FaultRejectionReason::ArithmeticOverflow)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultObservationSubsystem {
+    Network = 1,
+    Block = 2,
+    Scheduler = 3,
+    VirtualClock = 4,
+    Cpu = 5,
+    Process = 6,
+    Interrupt = 7,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultObservationEffect {
+    PacketDroppedByPartition,
+    PacketDroppedByLoss,
+    PacketCorrupted,
+    PacketDelayedByLatency,
+    PacketDelayedByJitter,
+    PacketDelayedByBandwidth,
+    PacketReordered,
+    PacketDuplicated,
+    BlockReadFailed,
+    BlockWriteFailed,
+    BlockWriteTorn,
+    BlockBytesCorrupted,
+    BlockReadShortened,
+    BlockWriteRejectedFull,
+    BlockOperationDelayed,
+    BlockWriteMadeVolatile,
+    ProcessSkipped,
+    ProcessRestarted,
+    VirtualClockChanged,
+    CpuRegisterChanged,
+    InterruptInjected,
+    NmiInjected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultObservation {
+    pub attempt_id: FaultAttemptId,
+    pub operation_id: FaultOperationId,
+    pub effect: FaultObservationEffect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultApplicationFailureDisposition {
+    RolledBack,
+    NonRunnable,
+    Indeterminate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultApplicationFailureReason {
+    BackendRejected,
+    DeviceDisappeared,
+    TargetStateChanged,
+    InternalInvariant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultStageKind {
+    Selected,
+    Applicable {
+        mechanism: FaultMechanism,
+        timing: FaultEffectTiming,
+    },
+    Rejected {
+        reason: FaultRejectionReason,
+    },
+    Applied {
+        mechanism: FaultMechanism,
+        timing: FaultEffectTiming,
+    },
+    ApplicationFailed {
+        reason: FaultApplicationFailureReason,
+        disposition: FaultApplicationFailureDisposition,
+    },
+    Observed {
+        observation: FaultObservation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultStageEvent {
+    pub sequence: u64,
+    pub attempt_id: FaultAttemptId,
+    pub kind: FaultStageKind,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultStageCounters {
+    pub selected: u64,
+    pub rejected: u64,
+    pub applied: u64,
+    pub application_failed: u64,
+    pub observed: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FaultAuthoritativeStage {
+    Selected,
+    Applicable,
+    Rejected,
+    Applied,
+    ApplicationFailed,
+    Observed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultAttemptState {
+    pub attempt: FaultAttempt,
+    pub stage: FaultAuthoritativeStage,
+    pub observed_operations: BTreeSet<FaultOperationId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultOutcomeLedger {
+    pub attempts: BTreeMap<FaultAttemptId, FaultAttemptState>,
+    pub events: Vec<FaultStageEvent>,
+    pub counters: FaultStageCounters,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FaultTransitionError {
+    AttemptIdentityMismatch,
+    DuplicateAttempt,
+    UnknownAttempt,
+    AttemptIdMismatch,
+    InvalidTransition {
+        from: FaultAuthoritativeStage,
+        event: &'static str,
+    },
+    DuplicateObservation,
+    AttemptBoundExceeded,
+    EventBoundExceeded,
+    ObservationBoundExceeded,
+    CounterOverflow,
+    EventSequenceOverflow,
+}
+
+impl fmt::Display for FaultTransitionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for FaultTransitionError {}
+
+/// Apply one stage event to an immutable ledger and return the next ledger.
+///
+/// r[impl chaoscontrol.fault_outcomes.stage_model]
+/// r[impl chaoscontrol.fault_outcomes.boundary]
+pub fn transition_fault_outcome(
+    ledger: &FaultOutcomeLedger,
+    attempt: Option<&FaultAttempt>,
+    attempt_id: FaultAttemptId,
+    kind: FaultStageKind,
+) -> Result<FaultOutcomeLedger, FaultTransitionError> {
+    validate_ledger_bounds(ledger)?;
+    let mut next = ledger.clone();
+    match &kind {
+        FaultStageKind::Selected => transition_selected(&mut next, attempt, attempt_id)?,
+        FaultStageKind::Applicable { .. } => {
+            transition_terminal(
+                &mut next,
+                attempt_id,
+                FaultAuthoritativeStage::Selected,
+                FaultAuthoritativeStage::Applicable,
+                "applicable",
+            )?;
+        }
+        FaultStageKind::Rejected { .. } => {
+            transition_terminal(
+                &mut next,
+                attempt_id,
+                FaultAuthoritativeStage::Selected,
+                FaultAuthoritativeStage::Rejected,
+                "rejected",
+            )?;
+            next.counters.rejected = checked_increment(next.counters.rejected)?;
+        }
+        FaultStageKind::Applied { .. } => {
+            transition_terminal(
+                &mut next,
+                attempt_id,
+                FaultAuthoritativeStage::Applicable,
+                FaultAuthoritativeStage::Applied,
+                "applied",
+            )?;
+            next.counters.applied = checked_increment(next.counters.applied)?;
+        }
+        FaultStageKind::ApplicationFailed { .. } => {
+            transition_terminal(
+                &mut next,
+                attempt_id,
+                FaultAuthoritativeStage::Applicable,
+                FaultAuthoritativeStage::ApplicationFailed,
+                "application-failed",
+            )?;
+            next.counters.application_failed = checked_increment(next.counters.application_failed)?;
+        }
+        FaultStageKind::Observed { observation } => {
+            transition_observed(&mut next, attempt_id, observation)?;
+            next.counters.observed = checked_increment(next.counters.observed)?;
+        }
+    }
+    push_stage_event(&mut next, attempt_id, kind)?;
+    validate_counter_invariants(&next)?;
+    Ok(next)
+}
+
+fn transition_selected(
+    ledger: &mut FaultOutcomeLedger,
+    attempt: Option<&FaultAttempt>,
+    attempt_id: FaultAttemptId,
+) -> Result<(), FaultTransitionError> {
+    let attempt = attempt.ok_or(FaultTransitionError::UnknownAttempt)?;
+    if attempt.id != attempt_id {
+        return Err(FaultTransitionError::AttemptIdMismatch);
+    }
+    if !attempt.has_valid_identity() {
+        return Err(FaultTransitionError::AttemptIdentityMismatch);
+    }
+    if ledger.attempts.contains_key(&attempt_id) {
+        return Err(FaultTransitionError::DuplicateAttempt);
+    }
+    if ledger.attempts.len() >= MAX_FAULT_ATTEMPTS {
+        return Err(FaultTransitionError::AttemptBoundExceeded);
+    }
+    ledger.attempts.insert(
+        attempt_id,
+        FaultAttemptState {
+            attempt: attempt.clone(),
+            stage: FaultAuthoritativeStage::Selected,
+            observed_operations: BTreeSet::new(),
+        },
+    );
+    ledger.counters.selected = checked_increment(ledger.counters.selected)?;
+    Ok(())
+}
+
+fn transition_terminal(
+    ledger: &mut FaultOutcomeLedger,
+    attempt_id: FaultAttemptId,
+    expected: FaultAuthoritativeStage,
+    next_stage: FaultAuthoritativeStage,
+    event: &'static str,
+) -> Result<(), FaultTransitionError> {
+    let state = ledger
+        .attempts
+        .get_mut(&attempt_id)
+        .ok_or(FaultTransitionError::UnknownAttempt)?;
+    if state.stage != expected {
+        return Err(FaultTransitionError::InvalidTransition {
+            from: state.stage,
+            event,
+        });
+    }
+    state.stage = next_stage;
+    Ok(())
+}
+
+fn transition_observed(
+    ledger: &mut FaultOutcomeLedger,
+    attempt_id: FaultAttemptId,
+    observation: &FaultObservation,
+) -> Result<(), FaultTransitionError> {
+    if observation.attempt_id != attempt_id {
+        return Err(FaultTransitionError::AttemptIdMismatch);
+    }
+    let state = ledger
+        .attempts
+        .get_mut(&attempt_id)
+        .ok_or(FaultTransitionError::UnknownAttempt)?;
+    if state.stage != FaultAuthoritativeStage::Applied
+        && state.stage != FaultAuthoritativeStage::Observed
+    {
+        return Err(FaultTransitionError::InvalidTransition {
+            from: state.stage,
+            event: "observed",
+        });
+    }
+    if state
+        .observed_operations
+        .contains(&observation.operation_id)
+    {
+        return Err(FaultTransitionError::DuplicateObservation);
+    }
+    if state.observed_operations.len() >= MAX_OBSERVATIONS_PER_ATTEMPT {
+        return Err(FaultTransitionError::ObservationBoundExceeded);
+    }
+    state.observed_operations.insert(observation.operation_id);
+    state.stage = FaultAuthoritativeStage::Observed;
+    Ok(())
+}
+
+fn push_stage_event(
+    ledger: &mut FaultOutcomeLedger,
+    attempt_id: FaultAttemptId,
+    kind: FaultStageKind,
+) -> Result<(), FaultTransitionError> {
+    if ledger.events.len() >= MAX_FAULT_OUTCOME_EVENTS {
+        return Err(FaultTransitionError::EventBoundExceeded);
+    }
+    let sequence = u64::try_from(ledger.events.len())
+        .map_err(|_| FaultTransitionError::EventSequenceOverflow)?;
+    ledger.events.push(FaultStageEvent {
+        sequence,
+        attempt_id,
+        kind,
+    });
+    Ok(())
+}
+
+fn validate_ledger_bounds(ledger: &FaultOutcomeLedger) -> Result<(), FaultTransitionError> {
+    if ledger.attempts.len() > MAX_FAULT_ATTEMPTS {
+        return Err(FaultTransitionError::AttemptBoundExceeded);
+    }
+    if ledger.events.len() > MAX_FAULT_OUTCOME_EVENTS {
+        return Err(FaultTransitionError::EventBoundExceeded);
+    }
+    Ok(())
+}
+
+fn validate_counter_invariants(ledger: &FaultOutcomeLedger) -> Result<(), FaultTransitionError> {
+    if ledger.counters.rejected > ledger.counters.selected {
+        return Err(FaultTransitionError::CounterOverflow);
+    }
+    if ledger.counters.applied > ledger.counters.selected {
+        return Err(FaultTransitionError::CounterOverflow);
+    }
+    if ledger.counters.application_failed > ledger.counters.selected {
+        return Err(FaultTransitionError::CounterOverflow);
+    }
+    Ok(())
+}
+
+fn checked_increment(value: u64) -> Result<u64, FaultTransitionError> {
+    value
+        .checked_add(1)
+        .ok_or(FaultTransitionError::CounterOverflow)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_SEED: u64 = 42;
+    const TEST_SCHEDULE_SEQUENCE: u64 = 1;
+    const TEST_SELECTED_AT_NS: u64 = NANOSECONDS_PER_SIMULATION_TICK;
+    const TEST_BLOCK_SIZE_BYTES: u64 = 4_096;
+
+    fn running_vm() -> VmFaultFacts {
+        VmFaultFacts {
+            status: FaultVmStatus::Running,
+            vcpu_count: 2,
+            block_device_size_bytes: Some(TEST_BLOCK_SIZE_BYTES),
+            has_initial_snapshot: true,
+            supports_irq: true,
+            supports_nmi: true,
+            virtual_tsc: TEST_SELECTED_AT_NS,
+        }
+    }
+
+    fn facts() -> FaultPlanningFacts {
+        FaultPlanningFacts {
+            current_tick: 1,
+            network_supported: true,
+            vms: vec![running_vm(), running_vm(), running_vm()],
+        }
+    }
+
+    fn attempt(fault: Fault) -> FaultAttempt {
+        let schedule_id = fault_schedule_id([(TEST_SELECTED_AT_NS, None, &fault)]);
+        let run_id = fault_run_id(TEST_SEED, TEST_SCHEDULE_SEQUENCE, schedule_id);
+        FaultAttempt::new(run_id, schedule_id, 0, TEST_SELECTED_AT_NS, fault)
+    }
+
+    fn select(
+        ledger: &FaultOutcomeLedger,
+        attempt: &FaultAttempt,
+    ) -> Result<FaultOutcomeLedger, FaultTransitionError> {
+        transition_fault_outcome(ledger, Some(attempt), attempt.id, FaultStageKind::Selected)
+    }
+
+    #[test]
+    fn attempt_identity_is_stable_and_parameter_sensitive() {
+        let first = attempt(Fault::ProcessKill { target: 0 });
+        let repeated = attempt(Fault::ProcessKill { target: 0 });
+        let changed = attempt(Fault::ProcessKill { target: 1 });
+        assert_eq!(first.id, repeated.id);
+        assert_ne!(first.id, changed.id);
+        assert!(first.has_valid_identity());
+        assert!(!first.id.to_string().is_empty());
+    }
+
+    #[test]
+    fn valid_transition_trace_updates_stage_specific_counters() {
+        // r[verify chaoscontrol.fault_outcomes.validation.core]
+        let attempt = attempt(Fault::ProcessKill { target: 0 });
+        let selected = select(&FaultOutcomeLedger::default(), &attempt).unwrap();
+        let applicable = transition_fault_outcome(
+            &selected,
+            None,
+            attempt.id,
+            FaultStageKind::Applicable {
+                mechanism: FaultMechanism::ProcessKill,
+                timing: FaultEffectTiming::Immediate,
+            },
+        )
+        .unwrap();
+        let applied = transition_fault_outcome(
+            &applicable,
+            None,
+            attempt.id,
+            FaultStageKind::Applied {
+                mechanism: FaultMechanism::ProcessKill,
+                timing: FaultEffectTiming::Immediate,
+            },
+        )
+        .unwrap();
+        let observation = FaultObservation {
+            attempt_id: attempt.id,
+            operation_id: fault_operation_id(attempt.id, FaultObservationSubsystem::Process, 0),
+            effect: FaultObservationEffect::ProcessSkipped,
+        };
+        let observed = transition_fault_outcome(
+            &applied,
+            None,
+            attempt.id,
+            FaultStageKind::Observed { observation },
+        )
+        .unwrap();
+        assert_eq!(observed.events.len(), 4);
+        assert_eq!(observed.counters.selected, 1);
+        assert_eq!(observed.counters.applied, 1);
+        assert_eq!(observed.counters.observed, 1);
+        assert_eq!(observed.counters.rejected, 0);
+        assert_eq!(observed.counters.application_failed, 0);
+    }
+
+    #[test]
+    fn invalid_transitions_leave_authoritative_state_unchanged() {
+        // r[verify chaoscontrol.fault_outcomes.validation.negative]
+        let attempt = attempt(Fault::ProcessKill { target: 0 });
+        let selected = select(&FaultOutcomeLedger::default(), &attempt).unwrap();
+        let duplicate = select(&selected, &attempt);
+        assert_eq!(duplicate, Err(FaultTransitionError::DuplicateAttempt));
+        assert_eq!(selected.counters.selected, 1);
+        assert_eq!(selected.events.len(), 1);
+
+        let out_of_order = transition_fault_outcome(
+            &selected,
+            None,
+            attempt.id,
+            FaultStageKind::Applied {
+                mechanism: FaultMechanism::ProcessKill,
+                timing: FaultEffectTiming::Immediate,
+            },
+        );
+        assert!(matches!(
+            out_of_order,
+            Err(FaultTransitionError::InvalidTransition { .. })
+        ));
+        assert_eq!(selected.counters.applied, 0);
+        assert_eq!(selected.events.len(), 1);
+    }
+
+    #[test]
+    fn stale_duplicate_and_counter_overflow_are_rejected() {
+        let attempt = attempt(Fault::ProcessKill { target: 0 });
+        let unknown = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            None,
+            attempt.id,
+            FaultStageKind::Applicable {
+                mechanism: FaultMechanism::ProcessKill,
+                timing: FaultEffectTiming::Immediate,
+            },
+        );
+        assert_eq!(unknown, Err(FaultTransitionError::UnknownAttempt));
+
+        let mut overflow = FaultOutcomeLedger::default();
+        overflow.counters.selected = u64::MAX;
+        let result = select(&overflow, &attempt);
+        assert_eq!(result, Err(FaultTransitionError::CounterOverflow));
+        assert_eq!(overflow.counters.selected, u64::MAX);
+        assert!(overflow.attempts.is_empty());
+    }
+
+    #[test]
+    fn full_variant_matrix_has_a_supported_or_explicitly_unsupported_plan() {
+        // r[verify chaoscontrol.fault_outcomes.validation.variant_matrix]
+        let cases = representative_faults();
+        assert_eq!(cases.len(), FaultVariant::ALL.len());
+        for fault in cases {
+            let variant = fault.variant();
+            let result = plan_fault_application(
+                &attempt(fault),
+                &facts(),
+                &FaultApplicationPolicy::default(),
+            );
+            if matches!(
+                variant,
+                FaultVariant::MemoryPressure
+                    | FaultVariant::CpuStall
+                    | FaultVariant::ClockFreeze
+                    | FaultVariant::ClockJitter
+                    | FaultVariant::ProcessRestart
+            ) {
+                assert!(matches!(
+                    result,
+                    Err(FaultRejectionReason::UnsupportedCapability { .. })
+                        | Err(FaultRejectionReason::VmNotCrashed { .. })
+                ));
+            } else {
+                assert!(result.is_ok(), "{variant:?}: {result:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_targets_parameters_ranges_and_capabilities_are_rejected() {
+        let policy = FaultApplicationPolicy::default();
+        let valid_facts = facts();
+        let missing_target = attempt(Fault::ProcessKill { target: 99 });
+        assert!(matches!(
+            plan_fault_application(&missing_target, &valid_facts, &policy),
+            Err(FaultRejectionReason::MissingVm { .. })
+        ));
+
+        let invalid_rate = attempt(Fault::PacketLoss {
+            target: 0,
+            rate_ppm: PARTS_PER_MILLION_MAX + 1,
+        });
+        assert!(matches!(
+            plan_fault_application(&invalid_rate, &valid_facts, &policy),
+            Err(FaultRejectionReason::InvalidRate { .. })
+        ));
+
+        let overflow = attempt(Fault::DiskCorruption {
+            target: 0,
+            offset: u64::MAX,
+            len: 2,
+        });
+        assert!(matches!(
+            plan_fault_application(&overflow, &valid_facts, &policy),
+            Err(FaultRejectionReason::RangeOverflow { .. })
+        ));
+
+        let invalid_bit = attempt(Fault::CpuBitflip {
+            target: 0,
+            vcpu: 0,
+            register: GpRegister::Rax,
+            bit: GENERAL_REGISTER_BIT_COUNT,
+        });
+        assert!(matches!(
+            plan_fault_application(&invalid_bit, &valid_facts, &policy),
+            Err(FaultRejectionReason::InvalidRegisterBit { .. })
+        ));
+
+        let unsupported = attempt(Fault::MemoryPressure {
+            target: 0,
+            limit_bytes: 1,
+        });
+        assert!(matches!(
+            plan_fault_application(&unsupported, &valid_facts, &policy),
+            Err(FaultRejectionReason::UnsupportedCapability { .. })
+        ));
+    }
+
+    #[test]
+    fn identical_facts_produce_identical_plans() {
+        // r[verify chaoscontrol.fault_outcomes.applicability]
+        let attempt = attempt(Fault::NetworkLatency {
+            target: 0,
+            latency_ns: NANOSECONDS_PER_SIMULATION_TICK,
+        });
+        let first = plan_fault_application(&attempt, &facts(), &FaultApplicationPolicy::default());
+        let second = plan_fault_application(&attempt, &facts(), &FaultApplicationPolicy::default());
+        assert_eq!(first, second);
+        assert!(first.is_ok());
+    }
+
+    fn representative_faults() -> Vec<Fault> {
+        vec![
+            Fault::NetworkPartition {
+                side_a: vec![0],
+                side_b: vec![1],
+            },
+            Fault::NetworkLatency {
+                target: 0,
+                latency_ns: NANOSECONDS_PER_SIMULATION_TICK,
+            },
+            Fault::PacketLoss {
+                target: 0,
+                rate_ppm: 1,
+            },
+            Fault::PacketCorruption {
+                target: 0,
+                rate_ppm: 1,
+            },
+            Fault::PacketReorder {
+                target: 0,
+                window_ns: NANOSECONDS_PER_SIMULATION_TICK,
+            },
+            Fault::NetworkJitter {
+                target: 0,
+                jitter_ns: NANOSECONDS_PER_SIMULATION_TICK,
+            },
+            Fault::NetworkBandwidth {
+                target: 0,
+                bytes_per_sec: 1,
+            },
+            Fault::PacketDuplicate {
+                target: 0,
+                rate_ppm: 1,
+            },
+            Fault::NetworkHeal,
+            Fault::DiskReadError {
+                target: 0,
+                offset: 0,
+            },
+            Fault::DiskWriteError {
+                target: 0,
+                offset: 0,
+            },
+            Fault::DiskTornWrite {
+                target: 0,
+                offset: 0,
+                bytes_written: 1,
+            },
+            Fault::DiskCorruption {
+                target: 0,
+                offset: 0,
+                len: 1,
+            },
+            Fault::DiskFull { target: 0 },
+            Fault::ProcessKill { target: 0 },
+            Fault::ProcessPause {
+                target: 0,
+                duration_ns: NANOSECONDS_PER_SIMULATION_TICK,
+            },
+            Fault::ProcessRestart { target: 0 },
+            Fault::ClockSkew {
+                target: 0,
+                offset_ns: 1,
+            },
+            Fault::ClockJump {
+                target: 0,
+                delta_ns: 1,
+            },
+            Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: 1,
+            },
+            Fault::InjectInterrupt { target: 0, irq: 1 },
+            Fault::InjectNmi { target: 0, vcpu: 0 },
+            Fault::DiskSlow {
+                target: 0,
+                delay_ns: 1,
+            },
+            Fault::DiskFsyncLie { target: 0 },
+            Fault::DiskFsyncFlush { target: 0 },
+            Fault::DiskPartialRead {
+                target: 0,
+                offset: 0,
+                max_bytes: 1,
+            },
+            Fault::CpuBitflip {
+                target: 0,
+                vcpu: 0,
+                register: GpRegister::Rax,
+                bit: 0,
+            },
+            Fault::CpuStall {
+                target: 0,
+                vcpu: 0,
+                duration_ticks: 1,
+            },
+            Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: 1,
+            },
+            Fault::ClockJitter {
+                target: 0,
+                bound_tsc: 1,
+            },
+        ]
+    }
+}

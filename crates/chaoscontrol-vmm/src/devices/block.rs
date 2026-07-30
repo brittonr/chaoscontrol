@@ -16,6 +16,10 @@
 //! For a 512 MB disk image where only 1 MB has been modified, a snapshot costs
 //! ~256 dirty-page clones (~1 MB) instead of a full 512 MB copy.
 
+use chaoscontrol_fault::outcomes::{
+    fault_operation_id, FaultAttemptId, FaultObservation, FaultObservationEffect,
+    FaultObservationSubsystem,
+};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::collections::{BTreeMap, VecDeque};
@@ -26,6 +30,7 @@ pub type DirtyOverlay = (BTreeMap<usize, Vec<u8>>, BTreeMap<usize, Vec<u8>>);
 
 /// Page size for copy-on-write tracking (4 KB, matching Linux page size).
 const PAGE_SIZE: usize = 4096;
+const MAX_PENDING_BLOCK_OBSERVATIONS: usize = 4_096;
 
 /// Errors returned by block device operations.
 #[derive(Clone, Debug, Snafu)]
@@ -102,9 +107,17 @@ pub struct BlockSnapshot {
     dirty: BTreeMap<usize, Vec<u8>>,
     volatile: BTreeMap<usize, Vec<u8>>,
     faults: VecDeque<BlockFault>,
+    fault_attempt_ids: VecDeque<Option<FaultAttemptId>>,
     stats: BlockStats,
     slow_delay_ns: u64,
+    slow_attempt_id: Option<FaultAttemptId>,
     fsync_lie: bool,
+    fsync_lie_attempt_id: Option<FaultAttemptId>,
+    full: bool,
+    full_attempt_id: Option<FaultAttemptId>,
+    fault_observations: VecDeque<FaultObservation>,
+    operation_sequence: u64,
+    observation_overflowed: u64,
 }
 
 /// An in-memory block device with copy-on-write snapshots and deterministic
@@ -132,12 +145,28 @@ pub struct DeterministicBlock {
     volatile: BTreeMap<usize, Vec<u8>>,
     /// Pending fault injection queue.
     faults: VecDeque<BlockFault>,
+    /// Attempt identities parallel to the pending fault queue.
+    fault_attempt_ids: VecDeque<Option<FaultAttemptId>>,
     /// I/O statistics.
     stats: BlockStats,
     /// Per-operation I/O delay in nanoseconds (0 = no delay).
     slow_delay_ns: u64,
+    /// Attempt that armed the slow-operation mechanism.
+    slow_attempt_id: Option<FaultAttemptId>,
     /// When true, writes go to the volatile buffer instead of durable storage.
     fsync_lie: bool,
+    /// Attempt that armed fsync-lie behavior.
+    fsync_lie_attempt_id: Option<FaultAttemptId>,
+    /// When true, all writes fail with an injected write error.
+    full: bool,
+    /// Attempt that armed disk-full behavior.
+    full_attempt_id: Option<FaultAttemptId>,
+    /// Bounded observations waiting for the controller ledger.
+    fault_observations: VecDeque<FaultObservation>,
+    /// Sequence for deterministic block-operation identities.
+    operation_sequence: u64,
+    /// Observations rejected because the bounded queue was full.
+    observation_overflowed: u64,
 }
 
 impl DeterministicBlock {
@@ -148,9 +177,17 @@ impl DeterministicBlock {
             dirty: BTreeMap::new(),
             volatile: BTreeMap::new(),
             faults: VecDeque::new(),
+            fault_attempt_ids: VecDeque::new(),
             stats: BlockStats::default(),
             slow_delay_ns: 0,
+            slow_attempt_id: None,
             fsync_lie: false,
+            fsync_lie_attempt_id: None,
+            full: false,
+            full_attempt_id: None,
+            fault_observations: VecDeque::with_capacity(MAX_PENDING_BLOCK_OBSERVATIONS),
+            operation_sequence: 0,
+            observation_overflowed: 0,
         }
     }
 
@@ -161,9 +198,17 @@ impl DeterministicBlock {
             dirty: BTreeMap::new(),
             volatile: BTreeMap::new(),
             faults: VecDeque::new(),
+            fault_attempt_ids: VecDeque::new(),
             stats: BlockStats::default(),
             slow_delay_ns: 0,
+            slow_attempt_id: None,
             fsync_lie: false,
+            fsync_lie_attempt_id: None,
+            full: false,
+            full_attempt_id: None,
+            fault_observations: VecDeque::with_capacity(MAX_PENDING_BLOCK_OBSERVATIONS),
+            operation_sequence: 0,
+            observation_overflowed: 0,
         }
     }
 
@@ -202,13 +247,20 @@ impl DeterministicBlock {
     pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<u64, BlockError> {
         let len = buf.len() as u64;
         self.check_bounds(offset, len)?;
+        let operation_sequence = self.begin_operation();
 
         // Check for an injected read fault at this offset.
         if let Some(idx) =
             self.find_fault(|f| matches!(f, BlockFault::ReadError { offset: o } if *o == offset))
         {
+            let attempt_id = self.remove_fault_attempt(idx);
             let fault = self.faults.remove(idx).unwrap();
             if let BlockFault::ReadError { offset } = fault {
+                self.record_observation(
+                    attempt_id,
+                    operation_sequence,
+                    FaultObservationEffect::BlockReadFailed,
+                );
                 return InjectedReadSnafu { offset }.fail();
             }
         }
@@ -217,6 +269,7 @@ impl DeterministicBlock {
         if let Some(idx) = self
             .find_fault(|f| matches!(f, BlockFault::PartialRead { offset: o, .. } if *o == offset))
         {
+            let attempt_id = self.remove_fault_attempt(idx);
             let fault = self.faults.remove(idx).unwrap();
             if let BlockFault::PartialRead { max_bytes, .. } = fault {
                 let actual = max_bytes.min(buf.len());
@@ -226,6 +279,12 @@ impl DeterministicBlock {
                 buf[actual..].fill(0);
                 self.stats.reads += 1;
                 self.stats.bytes_read += actual as u64;
+                self.record_observation(
+                    attempt_id,
+                    operation_sequence,
+                    FaultObservationEffect::BlockReadShortened,
+                );
+                self.record_slow_observation(operation_sequence);
                 return Ok(self.slow_delay_ns);
             }
         }
@@ -234,6 +293,7 @@ impl DeterministicBlock {
 
         self.stats.reads += 1;
         self.stats.bytes_read += len;
+        self.record_slow_observation(operation_sequence);
         Ok(self.slow_delay_ns)
     }
 
@@ -243,6 +303,15 @@ impl DeterministicBlock {
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<u64, BlockError> {
         let len = data.len() as u64;
         self.check_bounds(offset, len)?;
+        let operation_sequence = self.begin_operation();
+        if self.full {
+            self.record_observation(
+                self.full_attempt_id,
+                operation_sequence,
+                FaultObservationEffect::BlockWriteRejectedFull,
+            );
+            return InjectedWriteSnafu { offset }.fail();
+        }
 
         // Check for an injected write fault at this offset.
         if let Some(idx) = self.find_fault(|f| {
@@ -254,9 +323,15 @@ impl DeterministicBlock {
                 if *o == offset
             )
         }) {
+            let attempt_id = self.remove_fault_attempt(idx);
             let fault = self.faults.remove(idx).unwrap();
             match fault {
                 BlockFault::WriteError { offset } => {
+                    self.record_observation(
+                        attempt_id,
+                        operation_sequence,
+                        FaultObservationEffect::BlockWriteFailed,
+                    );
                     return InjectedWriteSnafu { offset }.fail();
                 }
                 BlockFault::TornWrite {
@@ -267,6 +342,12 @@ impl DeterministicBlock {
                     self.write_to_layer(offset as usize, &data[..actual]);
                     self.stats.writes += 1;
                     self.stats.bytes_written += actual as u64;
+                    self.record_observation(
+                        attempt_id,
+                        operation_sequence,
+                        FaultObservationEffect::BlockWriteTorn,
+                    );
+                    self.record_fsync_lie_observation(operation_sequence, actual > 0);
                     return InjectedTornWriteSnafu {
                         offset,
                         bytes_written: actual,
@@ -284,6 +365,13 @@ impl DeterministicBlock {
                     self.write_to_layer(offset as usize, &garbage);
                     self.stats.writes += 1;
                     self.stats.bytes_written += data.len() as u64;
+                    self.record_observation(
+                        attempt_id,
+                        operation_sequence,
+                        FaultObservationEffect::BlockBytesCorrupted,
+                    );
+                    self.record_fsync_lie_observation(operation_sequence, !data.is_empty());
+                    self.record_slow_observation(operation_sequence);
                     return Ok(self.slow_delay_ns);
                 }
                 _ => unreachable!(),
@@ -294,19 +382,50 @@ impl DeterministicBlock {
 
         self.stats.writes += 1;
         self.stats.bytes_written += len;
+        self.record_fsync_lie_observation(operation_sequence, !data.is_empty());
+        self.record_slow_observation(operation_sequence);
         Ok(self.slow_delay_ns)
     }
 
-    /// Enqueue a fault to be triggered on a future I/O operation.
-    ///
-    /// Faults are matched and consumed in FIFO order.
+    /// Enqueue a fault without evidence attribution.
     pub fn inject_fault(&mut self, fault: BlockFault) {
         self.faults.push_back(fault);
+        self.fault_attempt_ids.push_back(None);
     }
 
-    /// Set the per-I/O delay (nanoseconds). 0 = no delay.
+    /// Enqueue a fault bound to one selected attempt.
+    pub fn inject_fault_with_attempt(&mut self, fault: BlockFault, attempt_id: FaultAttemptId) {
+        self.faults.push_back(fault);
+        self.fault_attempt_ids.push_back(Some(attempt_id));
+    }
+
+    /// Set persistent disk-full behavior without evidence attribution.
+    pub fn set_full(&mut self, is_full: bool) {
+        self.full = is_full;
+        self.full_attempt_id = None;
+    }
+
+    /// Set persistent disk-full behavior for one selected attempt.
+    pub fn set_full_with_attempt(&mut self, is_full: bool, attempt_id: FaultAttemptId) {
+        self.full = is_full;
+        self.full_attempt_id = is_full.then_some(attempt_id);
+    }
+
+    /// Return whether persistent disk-full behavior is active.
+    pub fn is_full(&self) -> bool {
+        self.full
+    }
+
+    /// Set the per-I/O delay without evidence attribution.
     pub fn set_slow_delay_ns(&mut self, delay_ns: u64) {
         self.slow_delay_ns = delay_ns;
+        self.slow_attempt_id = None;
+    }
+
+    /// Set the per-I/O delay for one selected attempt.
+    pub fn set_slow_delay_with_attempt(&mut self, delay_ns: u64, attempt_id: FaultAttemptId) {
+        self.slow_delay_ns = delay_ns;
+        self.slow_attempt_id = (delay_ns > 0).then_some(attempt_id);
     }
 
     /// Current slow delay setting.
@@ -314,14 +433,22 @@ impl DeterministicBlock {
         self.slow_delay_ns
     }
 
-    /// Enable fsync-lie mode: subsequent writes go to a volatile buffer.
+    /// Enable fsync-lie mode without evidence attribution.
     pub fn enable_fsync_lie(&mut self) {
         self.fsync_lie = true;
+        self.fsync_lie_attempt_id = None;
+    }
+
+    /// Enable fsync-lie mode for one selected attempt.
+    pub fn enable_fsync_lie_with_attempt(&mut self, attempt_id: FaultAttemptId) {
+        self.fsync_lie = true;
+        self.fsync_lie_attempt_id = Some(attempt_id);
     }
 
     /// Disable fsync-lie mode. Does NOT flush pending volatile writes.
     pub fn disable_fsync_lie(&mut self) {
         self.fsync_lie = false;
+        self.fsync_lie_attempt_id = None;
     }
 
     /// Whether fsync-lie mode is currently active.
@@ -347,6 +474,14 @@ impl DeterministicBlock {
         self.volatile.len()
     }
 
+    /// Drain bounded block observations and the overflow count.
+    pub fn drain_fault_observations(&mut self) -> (Vec<FaultObservation>, u64) {
+        let observations = self.fault_observations.drain(..).collect();
+        let overflowed = self.observation_overflowed;
+        self.observation_overflowed = 0;
+        (observations, overflowed)
+    }
+
     /// Capture a snapshot of the device (CoW state + faults + stats).
     ///
     /// Cost is proportional to the number of dirty pages, not the device
@@ -357,9 +492,17 @@ impl DeterministicBlock {
             dirty: self.dirty.clone(),
             volatile: self.volatile.clone(),
             faults: self.faults.clone(),
+            fault_attempt_ids: self.fault_attempt_ids.clone(),
             stats: self.stats.clone(),
             slow_delay_ns: self.slow_delay_ns,
+            slow_attempt_id: self.slow_attempt_id,
             fsync_lie: self.fsync_lie,
+            fsync_lie_attempt_id: self.fsync_lie_attempt_id,
+            full: self.full,
+            full_attempt_id: self.full_attempt_id,
+            fault_observations: self.fault_observations.clone(),
+            operation_sequence: self.operation_sequence,
+            observation_overflowed: self.observation_overflowed,
         }
     }
 
@@ -372,9 +515,17 @@ impl DeterministicBlock {
             dirty: snapshot.dirty.clone(),
             volatile: snapshot.volatile.clone(),
             faults: snapshot.faults.clone(),
+            fault_attempt_ids: snapshot.fault_attempt_ids.clone(),
             stats: snapshot.stats.clone(),
             slow_delay_ns: snapshot.slow_delay_ns,
+            slow_attempt_id: snapshot.slow_attempt_id,
             fsync_lie: snapshot.fsync_lie,
+            fsync_lie_attempt_id: snapshot.fsync_lie_attempt_id,
+            full: snapshot.full,
+            full_attempt_id: snapshot.full_attempt_id,
+            fault_observations: snapshot.fault_observations.clone(),
+            operation_sequence: snapshot.operation_sequence,
+            observation_overflowed: snapshot.observation_overflowed,
         }
     }
 
@@ -412,6 +563,65 @@ impl DeterministicBlock {
             data[start..end].copy_from_slice(page_data);
         }
         data
+    }
+
+    fn begin_operation(&mut self) -> u64 {
+        let operation_sequence = self.operation_sequence;
+        match operation_sequence.checked_add(1) {
+            Some(next_sequence) => self.operation_sequence = next_sequence,
+            None => {
+                self.observation_overflowed = self.observation_overflowed.saturating_add(1);
+            }
+        }
+        operation_sequence
+    }
+
+    fn record_observation(
+        &mut self,
+        attempt_id: Option<FaultAttemptId>,
+        operation_sequence: u64,
+        effect: FaultObservationEffect,
+    ) {
+        let Some(attempt_id) = attempt_id else {
+            return;
+        };
+        if self.fault_observations.len() >= MAX_PENDING_BLOCK_OBSERVATIONS {
+            self.observation_overflowed = self.observation_overflowed.saturating_add(1);
+            return;
+        }
+        self.fault_observations.push_back(FaultObservation {
+            attempt_id,
+            operation_id: fault_operation_id(
+                attempt_id,
+                FaultObservationSubsystem::Block,
+                operation_sequence,
+            ),
+            effect,
+        });
+    }
+
+    fn record_slow_observation(&mut self, operation_sequence: u64) {
+        if self.slow_delay_ns > 0 {
+            self.record_observation(
+                self.slow_attempt_id,
+                operation_sequence,
+                FaultObservationEffect::BlockOperationDelayed,
+            );
+        }
+    }
+
+    fn record_fsync_lie_observation(&mut self, operation_sequence: u64, wrote_bytes: bool) {
+        if self.fsync_lie && wrote_bytes {
+            self.record_observation(
+                self.fsync_lie_attempt_id,
+                operation_sequence,
+                FaultObservationEffect::BlockWriteMadeVolatile,
+            );
+        }
+    }
+
+    fn remove_fault_attempt(&mut self, index: usize) -> Option<FaultAttemptId> {
+        self.fault_attempt_ids.remove(index).flatten()
     }
 
     // ── CoW internals ─────────────────────────────────────────────
@@ -1133,5 +1343,79 @@ mod tests {
         let (dirty, volatile) = blk.snapshot_dirty();
         assert!(dirty.is_empty());
         assert!(volatile.is_empty());
+    }
+
+    #[test]
+    fn armed_block_fault_is_observed_only_when_io_consumes_it() {
+        // r[verify chaoscontrol.fault_outcomes.validation.observation]
+        const BLOCK_BYTES: usize = 4_096;
+        let attempt_id = FaultAttemptId([7; 32]);
+        let mut block = DeterministicBlock::new(BLOCK_BYTES);
+        block.inject_fault_with_attempt(BlockFault::ReadError { offset: 0 }, attempt_id);
+
+        let (before, overflowed) = block.drain_fault_observations();
+        assert!(before.is_empty());
+        assert_eq!(overflowed, 0);
+
+        let mut buffer = [0u8; 8];
+        let result = block.read(0, &mut buffer);
+        assert!(matches!(result, Err(BlockError::InjectedReadError { .. })));
+        let (after, overflowed) = block.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].attempt_id, attempt_id);
+        assert_eq!(after[0].effect, FaultObservationEffect::BlockReadFailed);
+    }
+
+    #[test]
+    fn unmatched_block_fault_does_not_create_observation() {
+        const BLOCK_BYTES: usize = 4_096;
+        const OTHER_OFFSET: u64 = 512;
+        let attempt_id = FaultAttemptId([8; 32]);
+        let mut block = DeterministicBlock::new(BLOCK_BYTES);
+        block.inject_fault_with_attempt(
+            BlockFault::ReadError {
+                offset: OTHER_OFFSET,
+            },
+            attempt_id,
+        );
+
+        let mut buffer = [0u8; 8];
+        assert!(block.read(0, &mut buffer).is_ok());
+        let (observations, overflowed) = block.drain_fault_observations();
+        assert!(observations.is_empty());
+        assert_eq!(overflowed, 0);
+    }
+
+    #[test]
+    fn disk_full_and_snapshot_replay_preserve_attempt_observation() {
+        const BLOCK_BYTES: usize = 4_096;
+        let attempt_id = FaultAttemptId([9; 32]);
+        let mut block = DeterministicBlock::new(BLOCK_BYTES);
+        block.set_full_with_attempt(true, attempt_id);
+        let snapshot = block.snapshot();
+
+        let first_result = block.write(0, &[1]);
+        assert!(matches!(
+            first_result,
+            Err(BlockError::InjectedWriteError { .. })
+        ));
+        let (first, first_overflowed) = block.drain_fault_observations();
+
+        let mut replay = DeterministicBlock::restore(&snapshot);
+        let replay_result = replay.write(0, &[1]);
+        assert!(matches!(
+            replay_result,
+            Err(BlockError::InjectedWriteError { .. })
+        ));
+        let (second, second_overflowed) = replay.drain_fault_observations();
+
+        assert_eq!(first_overflowed, 0);
+        assert_eq!(second_overflowed, 0);
+        assert_eq!(first, second);
+        assert_eq!(
+            first[0].effect,
+            FaultObservationEffect::BlockWriteRejectedFull
+        );
     }
 }

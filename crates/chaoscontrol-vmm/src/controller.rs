@@ -10,6 +10,13 @@ use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
+use chaoscontrol_fault::outcomes::{
+    fault_operation_id, plan_fault_application, FaultApplicationFailureDisposition,
+    FaultApplicationFailureReason, FaultApplicationPolicy, FaultAttempt, FaultAttemptId,
+    FaultMechanism, FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultPlan,
+    FaultPlanEffect, FaultPlanningFacts, FaultStageEvent, FaultStageKind, FaultTransitionError,
+    FaultVmStatus, VmFaultFacts,
+};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use log::{debug, info, warn};
 use rand::RngCore;
@@ -17,6 +24,8 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+
+const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Configuration
@@ -111,6 +120,8 @@ pub struct VmSlot {
     pub clock_freeze: Option<(u64, u64)>,
     /// Per-exit TSC jitter bound (±bound). 0 = disabled.
     pub clock_jitter_bound: u64,
+    /// Attempt that armed the current process-status effect.
+    pub process_fault_attempt: Option<FaultAttemptId>,
 }
 
 /// Current status of a VM.
@@ -233,13 +244,21 @@ pub struct PacketInFlight {
 pub struct NetworkFabric {
     /// Active partition rules — (side_a, side_b) pairs.
     pub partitions: Vec<(Vec<usize>, Vec<usize>)>,
+    /// Attempt identity parallel to each partition rule.
+    pub partition_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM base latency in ticks (0 = no added latency).
     pub latency: Vec<u64>,
+    /// Per-VM attempt that armed latency.
+    pub latency_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM latency jitter in ticks (0 = no jitter).
     /// Each packet gets up to this much extra random delay on top of base latency.
     pub jitter: Vec<u64>,
+    /// Per-VM attempt that armed jitter.
+    pub jitter_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM bandwidth limit in bytes per second (0 = unlimited).
     pub bandwidth_bps: Vec<u64>,
+    /// Per-VM attempt that armed bandwidth limiting.
+    pub bandwidth_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM next-free tick for bandwidth serialization queuing.
     pub next_free_tick: Vec<u64>,
     /// Messages in flight (not yet delivered).
@@ -248,16 +267,30 @@ pub struct NetworkFabric {
     pub packet_in_flight: Vec<PacketInFlight>,
     /// Per-VM packet loss rate in parts per million (0 = no loss).
     pub loss_rate_ppm: Vec<u32>,
+    /// Per-VM attempt that armed packet loss.
+    pub loss_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM packet corruption rate in parts per million (0 = no corruption).
     pub corruption_rate_ppm: Vec<u32>,
+    /// Per-VM attempt that armed packet corruption.
+    pub corruption_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM reorder window in ticks (0 = no reordering).
     pub reorder_window: Vec<u64>,
+    /// Per-VM attempt that armed packet reordering.
+    pub reorder_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Per-VM packet duplication rate in parts per million (0 = no duplication).
     pub duplicate_rate_ppm: Vec<u32>,
+    /// Per-VM attempt that armed packet duplication.
+    pub duplicate_attempt_ids: Vec<Option<FaultAttemptId>>,
     /// Deterministic RNG for packet-level fault decisions.
     pub rng: ChaCha20Rng,
     /// Cumulative packet-level statistics.
     pub stats: NetworkStats,
+    /// Bounded observations waiting for the controller ledger.
+    pub fault_observations: VecDeque<FaultObservation>,
+    /// Next deterministic network operation sequence.
+    pub fault_observation_sequence: u64,
+    /// Observations rejected because the bounded queue was full.
+    pub fault_observation_overflowed: u64,
 }
 
 impl NetworkFabric {
@@ -269,18 +302,29 @@ impl NetworkFabric {
         rng_key[..8].copy_from_slice(&derived.to_le_bytes());
         Self {
             partitions: Vec::new(),
+            partition_attempt_ids: Vec::new(),
             latency: vec![0; num_vms],
+            latency_attempt_ids: vec![None; num_vms],
             jitter: vec![0; num_vms],
+            jitter_attempt_ids: vec![None; num_vms],
             bandwidth_bps: vec![0; num_vms],
+            bandwidth_attempt_ids: vec![None; num_vms],
             next_free_tick: vec![0; num_vms],
             in_flight: Vec::new(),
             packet_in_flight: Vec::new(),
             loss_rate_ppm: vec![0; num_vms],
+            loss_attempt_ids: vec![None; num_vms],
             corruption_rate_ppm: vec![0; num_vms],
+            corruption_attempt_ids: vec![None; num_vms],
             reorder_window: vec![0; num_vms],
+            reorder_attempt_ids: vec![None; num_vms],
             duplicate_rate_ppm: vec![0; num_vms],
+            duplicate_attempt_ids: vec![None; num_vms],
             rng: ChaCha20Rng::from_seed(rng_key),
             stats: NetworkStats::default(),
+            fault_observations: VecDeque::with_capacity(MAX_PENDING_FAULT_OBSERVATIONS),
+            fault_observation_sequence: 0,
+            fault_observation_overflowed: 0,
         }
     }
 
@@ -312,6 +356,13 @@ impl NetworkFabric {
     /// 6. Packet reorder — additional random shuffle within window
     /// 7. Packet duplication — clone with slightly offset delivery
     pub fn send(&mut self, from: usize, to: usize, data: Vec<u8>, current_tick: u64) -> bool {
+        let stats_before = self.stats.clone();
+        let delivered = self.send_inner(from, to, data, current_tick);
+        self.record_network_delta(from, to, &stats_before, delivered);
+        delivered
+    }
+
+    fn send_inner(&mut self, from: usize, to: usize, data: Vec<u8>, current_tick: u64) -> bool {
         self.stats.packets_sent += 1;
 
         // 1. Partition check
@@ -359,8 +410,10 @@ impl NetworkFabric {
                 *slot = tx_start + serialization_ticks;
             }
             bandwidth_delay_ticks = (tx_start + serialization_ticks).saturating_sub(current_tick);
-            self.stats.packets_bandwidth_delayed += 1;
-            self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
+            if bandwidth_delay_ticks > 0 {
+                self.stats.packets_bandwidth_delayed += 1;
+                self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
+            }
             debug!(
                 "Message from VM{} to VM{}: bandwidth delay {} ticks ({}B @ {}B/s)",
                 from,
@@ -477,6 +530,19 @@ impl NetworkFabric {
         data: Vec<u8>,
         current_tick: u64,
     ) -> bool {
+        let stats_before = self.stats.clone();
+        let delivered = self.send_packet_inner(from, to, data, current_tick);
+        self.record_network_delta(from, to, &stats_before, delivered);
+        delivered
+    }
+
+    fn send_packet_inner(
+        &mut self,
+        from: usize,
+        to: usize,
+        data: Vec<u8>,
+        current_tick: u64,
+    ) -> bool {
         self.stats.packets_sent += 1;
 
         // 1. Partition check
@@ -519,8 +585,10 @@ impl NetworkFabric {
                 *slot = tx_start + serialization_ticks;
             }
             bandwidth_delay_ticks = (tx_start + serialization_ticks).saturating_sub(current_tick);
-            self.stats.packets_bandwidth_delayed += 1;
-            self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
+            if bandwidth_delay_ticks > 0 {
+                self.stats.packets_bandwidth_delayed += 1;
+                self.stats.total_bandwidth_delay_ticks += bandwidth_delay_ticks;
+            }
             debug!(
                 "Packet from VM{} to VM{}: bandwidth delay {} ticks ({}B @ {}B/s)",
                 from,
@@ -622,6 +690,112 @@ impl NetworkFabric {
         true
     }
 
+    fn record_network_delta(
+        &mut self,
+        from: usize,
+        to: usize,
+        before: &NetworkStats,
+        delivered: bool,
+    ) {
+        if self.stats.packets_dropped_partition > before.packets_dropped_partition {
+            let attempt_id = self.partition_attempt(from, to);
+            self.record_fault_observation(
+                attempt_id,
+                FaultObservationEffect::PacketDroppedByPartition,
+            );
+        }
+        if self.stats.packets_dropped_loss > before.packets_dropped_loss {
+            let attempt_id =
+                Self::attempt_for_pair_u32(&self.loss_rate_ppm, &self.loss_attempt_ids, from, to);
+            self.record_fault_observation(attempt_id, FaultObservationEffect::PacketDroppedByLoss);
+        }
+        if delivered {
+            self.record_delivered_network_delta(from, to, before);
+        }
+    }
+
+    fn record_delivered_network_delta(&mut self, from: usize, to: usize, before: &NetworkStats) {
+        let latency_attempt =
+            Self::attempt_for_pair_u64(&self.latency, &self.latency_attempt_ids, from, to);
+        let latency_ticks = self
+            .latency
+            .get(from)
+            .copied()
+            .unwrap_or(0)
+            .max(self.latency.get(to).copied().unwrap_or(0));
+        if latency_ticks > 0 {
+            self.record_fault_observation(
+                latency_attempt,
+                FaultObservationEffect::PacketDelayedByLatency,
+            );
+        }
+        self.record_delivered_network_counter_deltas(from, to, before);
+    }
+
+    fn record_delivered_network_counter_deltas(
+        &mut self,
+        from: usize,
+        to: usize,
+        before: &NetworkStats,
+    ) {
+        if self.stats.packets_corrupted > before.packets_corrupted {
+            let attempt_id = Self::attempt_for_pair_u32(
+                &self.corruption_rate_ppm,
+                &self.corruption_attempt_ids,
+                from,
+                to,
+            );
+            self.record_fault_observation(attempt_id, FaultObservationEffect::PacketCorrupted);
+        }
+        if self.stats.packets_bandwidth_delayed > before.packets_bandwidth_delayed {
+            let attempt_id = Self::attempt_for_pair_u64(
+                &self.bandwidth_bps,
+                &self.bandwidth_attempt_ids,
+                from,
+                to,
+            );
+            self.record_fault_observation(
+                attempt_id,
+                FaultObservationEffect::PacketDelayedByBandwidth,
+            );
+        }
+        self.record_remaining_network_counter_deltas(from, to, before);
+    }
+
+    fn record_remaining_network_counter_deltas(
+        &mut self,
+        from: usize,
+        to: usize,
+        before: &NetworkStats,
+    ) {
+        if self.stats.packets_jittered > before.packets_jittered {
+            let attempt_id =
+                Self::attempt_for_pair_u64(&self.jitter, &self.jitter_attempt_ids, from, to);
+            self.record_fault_observation(
+                attempt_id,
+                FaultObservationEffect::PacketDelayedByJitter,
+            );
+        }
+        if self.stats.packets_reordered > before.packets_reordered {
+            let attempt_id = Self::attempt_for_pair_u64(
+                &self.reorder_window,
+                &self.reorder_attempt_ids,
+                from,
+                to,
+            );
+            self.record_fault_observation(attempt_id, FaultObservationEffect::PacketReordered);
+        }
+        if self.stats.packets_duplicated > before.packets_duplicated {
+            let attempt_id = Self::attempt_for_pair_u32(
+                &self.duplicate_rate_ppm,
+                &self.duplicate_attempt_ids,
+                from,
+                to,
+            );
+            self.record_fault_observation(attempt_id, FaultObservationEffect::PacketDuplicated);
+        }
+    }
+
     /// Deliver packets whose delivery tick has arrived.
     ///
     /// Returns `(vm_id, packet_data)` pairs for injection into VMs.
@@ -641,10 +815,96 @@ impl NetworkFabric {
         delivered
     }
 
-    /// Add a network partition between two sides.
-    fn add_partition(&mut self, side_a: Vec<usize>, side_b: Vec<usize>) {
+    fn record_fault_observation(
+        &mut self,
+        attempt_id: Option<FaultAttemptId>,
+        effect: FaultObservationEffect,
+    ) {
+        let Some(attempt_id) = attempt_id else {
+            return;
+        };
+        if self.fault_observations.len() >= MAX_PENDING_FAULT_OBSERVATIONS {
+            self.fault_observation_overflowed = self.fault_observation_overflowed.saturating_add(1);
+            return;
+        }
+        let operation_sequence = self.fault_observation_sequence;
+        let Some(next_sequence) = operation_sequence.checked_add(1) else {
+            self.fault_observation_overflowed = self.fault_observation_overflowed.saturating_add(1);
+            return;
+        };
+        self.fault_observation_sequence = next_sequence;
+        self.fault_observations.push_back(FaultObservation {
+            attempt_id,
+            operation_id: fault_operation_id(
+                attempt_id,
+                FaultObservationSubsystem::Network,
+                operation_sequence,
+            ),
+            effect,
+        });
+    }
+
+    fn drain_fault_observations(&mut self) -> (Vec<FaultObservation>, u64) {
+        let observations = self.fault_observations.drain(..).collect();
+        let overflowed = self.fault_observation_overflowed;
+        self.fault_observation_overflowed = 0;
+        (observations, overflowed)
+    }
+
+    fn partition_attempt(&self, from: usize, to: usize) -> Option<FaultAttemptId> {
+        for (index, (side_a, side_b)) in self.partitions.iter().enumerate() {
+            let is_separated = (side_a.contains(&from) && side_b.contains(&to))
+                || (side_b.contains(&from) && side_a.contains(&to));
+            if is_separated {
+                return self.partition_attempt_ids.get(index).copied().flatten();
+            }
+        }
+        None
+    }
+
+    fn attempt_for_pair_u64(
+        values: &[u64],
+        attempts: &[Option<FaultAttemptId>],
+        from: usize,
+        to: usize,
+    ) -> Option<FaultAttemptId> {
+        let from_value = values.get(from).copied().unwrap_or(0);
+        let to_value = values.get(to).copied().unwrap_or(0);
+        let selected = if from_value >= to_value { from } else { to };
+        attempts.get(selected).copied().flatten()
+    }
+
+    fn attempt_for_pair_u32(
+        values: &[u32],
+        attempts: &[Option<FaultAttemptId>],
+        from: usize,
+        to: usize,
+    ) -> Option<FaultAttemptId> {
+        let from_value = values.get(from).copied().unwrap_or(0);
+        let to_value = values.get(to).copied().unwrap_or(0);
+        let selected = if from_value >= to_value { from } else { to };
+        attempts.get(selected).copied().flatten()
+    }
+
+    /// Add a network partition between two sides without evidence attribution.
+    #[cfg(test)]
+    fn add_partition(&mut self, side_a: Vec<usize>, side_b: Vec<usize>) -> bool {
         info!("Network partition: {:?} | {:?}", side_a, side_b);
         self.partitions.push((side_a, side_b));
+        self.partition_attempt_ids.push(None);
+        true
+    }
+
+    fn arm_partition(
+        &mut self,
+        side_a: Vec<usize>,
+        side_b: Vec<usize>,
+        attempt_id: FaultAttemptId,
+    ) -> bool {
+        info!("Network partition: {:?} | {:?}", side_a, side_b);
+        self.partitions.push((side_a, side_b));
+        self.partition_attempt_ids.push(Some(attempt_id));
+        true
     }
 
     /// Clear all partitions and packet-level faults (heal network).
@@ -652,9 +912,10 @@ impl NetworkFabric {
     /// Resets: partitions, loss, corruption, reorder, jitter, bandwidth,
     /// and duplication rates.  Base latency is preserved (use
     /// `set_latency(target, 0)` to clear it explicitly).
-    fn clear_partitions(&mut self) {
+    fn clear_partitions(&mut self) -> bool {
         info!("Network healed: all partitions and packet faults removed");
         self.partitions.clear();
+        self.partition_attempt_ids.clear();
         for rate in &mut self.loss_rate_ppm {
             *rate = 0;
         }
@@ -676,61 +937,87 @@ impl NetworkFabric {
         for rate in &mut self.duplicate_rate_ppm {
             *rate = 0;
         }
+        self.latency_attempt_ids.fill(None);
+        self.jitter_attempt_ids.fill(None);
+        self.bandwidth_attempt_ids.fill(None);
+        self.loss_attempt_ids.fill(None);
+        self.corruption_attempt_ids.fill(None);
+        self.reorder_attempt_ids.fill(None);
+        self.duplicate_attempt_ids.fill(None);
         // Note: stats are NOT reset on heal — they are cumulative.
+        true
     }
 
     /// Set latency for a specific VM.
-    fn set_latency(&mut self, target: usize, latency_ns: u64) {
-        if target < self.latency.len() {
-            self.latency[target] = latency_ns;
-            debug!("VM{} latency set to {} ns", target, latency_ns);
-        }
+    fn set_latency(&mut self, target: usize, latency_ticks: u64) -> bool {
+        let Some(slot) = self.latency.get_mut(target) else {
+            return false;
+        };
+        *slot = latency_ticks;
+        self.latency_attempt_ids[target] = None;
+        debug!("VM{} latency set to {} ticks", target, latency_ticks);
+        true
     }
 
     /// Set packet loss rate for a specific VM.
-    fn set_loss_rate(&mut self, target: usize, rate_ppm: u32) {
-        if target < self.loss_rate_ppm.len() {
-            self.loss_rate_ppm[target] = rate_ppm;
-            debug!("VM{} packet loss set to {} ppm", target, rate_ppm);
-        }
+    fn set_loss_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        let Some(slot) = self.loss_rate_ppm.get_mut(target) else {
+            return false;
+        };
+        *slot = rate_ppm;
+        self.loss_attempt_ids[target] = None;
+        debug!("VM{} packet loss set to {} ppm", target, rate_ppm);
+        true
     }
 
     /// Set packet corruption rate for a specific VM.
-    fn set_corruption_rate(&mut self, target: usize, rate_ppm: u32) {
-        if target < self.corruption_rate_ppm.len() {
-            self.corruption_rate_ppm[target] = rate_ppm;
-            debug!("VM{} packet corruption set to {} ppm", target, rate_ppm);
-        }
+    fn set_corruption_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        let Some(slot) = self.corruption_rate_ppm.get_mut(target) else {
+            return false;
+        };
+        *slot = rate_ppm;
+        self.corruption_attempt_ids[target] = None;
+        debug!("VM{} packet corruption set to {} ppm", target, rate_ppm);
+        true
     }
 
     /// Set reorder window for a specific VM (in ticks).
-    fn set_reorder_window(&mut self, target: usize, window_ticks: u64) {
-        if target < self.reorder_window.len() {
-            self.reorder_window[target] = window_ticks;
-            debug!("VM{} reorder window set to {} ticks", target, window_ticks);
-        }
+    fn set_reorder_window(&mut self, target: usize, window_ticks: u64) -> bool {
+        let Some(slot) = self.reorder_window.get_mut(target) else {
+            return false;
+        };
+        *slot = window_ticks;
+        self.reorder_attempt_ids[target] = None;
+        debug!("VM{} reorder window set to {} ticks", target, window_ticks);
+        true
     }
 
     /// Set latency jitter for a specific VM (in ticks).
     ///
     /// Each packet to/from this VM receives up to `jitter_ticks` extra
     /// random delay on top of the base latency.
-    fn set_jitter(&mut self, target: usize, jitter_ticks: u64) {
-        if target < self.jitter.len() {
-            self.jitter[target] = jitter_ticks;
-            debug!("VM{} jitter set to {} ticks", target, jitter_ticks);
-        }
+    fn set_jitter(&mut self, target: usize, jitter_ticks: u64) -> bool {
+        let Some(slot) = self.jitter.get_mut(target) else {
+            return false;
+        };
+        *slot = jitter_ticks;
+        self.jitter_attempt_ids[target] = None;
+        debug!("VM{} jitter set to {} ticks", target, jitter_ticks);
+        true
     }
 
     /// Set bandwidth limit for a specific VM (bytes per second).
     ///
     /// Models serialization delay: a 1500-byte packet on a 1 MB/s link
     /// takes ~12 µs (0.012 ticks).  Set to 0 for unlimited.
-    fn set_bandwidth(&mut self, target: usize, bytes_per_sec: u64) {
-        if target < self.bandwidth_bps.len() {
-            self.bandwidth_bps[target] = bytes_per_sec;
-            debug!("VM{} bandwidth set to {} B/s", target, bytes_per_sec);
-        }
+    fn set_bandwidth(&mut self, target: usize, bytes_per_sec: u64) -> bool {
+        let Some(slot) = self.bandwidth_bps.get_mut(target) else {
+            return false;
+        };
+        *slot = bytes_per_sec;
+        self.bandwidth_attempt_ids[target] = None;
+        debug!("VM{} bandwidth set to {} B/s", target, bytes_per_sec);
+        true
     }
 
     /// Get a reference to the cumulative network statistics.
@@ -739,17 +1026,138 @@ impl NetworkFabric {
     }
 
     /// Set packet duplication rate for a specific VM (parts per million).
-    fn set_duplicate_rate(&mut self, target: usize, rate_ppm: u32) {
-        if target < self.duplicate_rate_ppm.len() {
-            self.duplicate_rate_ppm[target] = rate_ppm;
-            debug!("VM{} packet duplication set to {} ppm", target, rate_ppm);
+    fn set_duplicate_rate(&mut self, target: usize, rate_ppm: u32) -> bool {
+        let Some(slot) = self.duplicate_rate_ppm.get_mut(target) else {
+            return false;
+        };
+        *slot = rate_ppm;
+        self.duplicate_attempt_ids[target] = None;
+        debug!("VM{} packet duplication set to {} ppm", target, rate_ppm);
+        true
+    }
+
+    fn arm_latency(&mut self, target: usize, value: u64, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_latency(target, value);
+        if applied && value > 0 {
+            self.latency_attempt_ids[target] = Some(attempt_id);
         }
+        applied
+    }
+
+    fn arm_jitter(&mut self, target: usize, value: u64, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_jitter(target, value);
+        if applied && value > 0 {
+            self.jitter_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
+    }
+
+    fn arm_bandwidth(&mut self, target: usize, value: u64, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_bandwidth(target, value);
+        if applied && value > 0 {
+            self.bandwidth_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
+    }
+
+    fn arm_loss(&mut self, target: usize, value: u32, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_loss_rate(target, value);
+        if applied && value > 0 {
+            self.loss_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
+    }
+
+    fn arm_corruption(&mut self, target: usize, value: u32, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_corruption_rate(target, value);
+        if applied && value > 0 {
+            self.corruption_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
+    }
+
+    fn arm_reorder(&mut self, target: usize, value: u64, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_reorder_window(target, value);
+        if applied && value > 0 {
+            self.reorder_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
+    }
+
+    fn arm_duplicate(&mut self, target: usize, value: u32, attempt_id: FaultAttemptId) -> bool {
+        let applied = self.set_duplicate_rate(target, value);
+        if applied && value > 0 {
+            self.duplicate_attempt_ids[target] = Some(attempt_id);
+        }
+        applied
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Simulation Controller
 // ═══════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FaultApplicationError {
+    reason: FaultApplicationFailureReason,
+    disposition: FaultApplicationFailureDisposition,
+}
+
+fn fault_vm_status(status: VmStatus) -> FaultVmStatus {
+    match status {
+        VmStatus::Running => FaultVmStatus::Running,
+        VmStatus::Paused => FaultVmStatus::Paused,
+        VmStatus::Crashed => FaultVmStatus::Crashed,
+        VmStatus::Restarting { .. } => FaultVmStatus::Restarting,
+        VmStatus::Resuming { .. } => FaultVmStatus::Resuming,
+    }
+}
+
+fn fault_transition_vm_error(error: FaultTransitionError) -> VmError {
+    VmError::Snapshot {
+        message: format!("fault outcome transition failed: {error}"),
+    }
+}
+
+fn checked_usize(value: u32) -> Result<usize, FaultApplicationError> {
+    usize::try_from(value).map_err(|_| internal_application_error())
+}
+
+fn checked_usize_u64(value: u64) -> Result<usize, FaultApplicationError> {
+    usize::try_from(value).map_err(|_| internal_application_error())
+}
+
+fn u32_targets_to_usize(values: &[u32]) -> Result<Vec<usize>, FaultApplicationError> {
+    values.iter().copied().map(checked_usize).collect()
+}
+
+fn internal_application_error() -> FaultApplicationError {
+    FaultApplicationError {
+        reason: FaultApplicationFailureReason::InternalInvariant,
+        disposition: FaultApplicationFailureDisposition::RolledBack,
+    }
+}
+
+fn target_state_application_error() -> FaultApplicationError {
+    FaultApplicationError {
+        reason: FaultApplicationFailureReason::TargetStateChanged,
+        disposition: FaultApplicationFailureDisposition::RolledBack,
+    }
+}
+
+fn device_disappeared_application_error() -> FaultApplicationError {
+    FaultApplicationError {
+        reason: FaultApplicationFailureReason::DeviceDisappeared,
+        disposition: FaultApplicationFailureDisposition::RolledBack,
+    }
+}
+
+fn non_runnable_application_error() -> FaultApplicationError {
+    FaultApplicationError {
+        reason: FaultApplicationFailureReason::BackendRejected,
+        disposition: FaultApplicationFailureDisposition::NonRunnable,
+    }
+}
 
 /// The main simulation controller for multi-VM deterministic testing.
 pub struct SimulationController {
@@ -772,6 +1180,10 @@ pub struct SimulationController {
     /// Incremental snapshots reference this base and store only dirty
     /// pages.
     vm_memory_bases: Vec<Option<std::sync::Arc<Vec<u8>>>>,
+    /// Explicit policy for fault rejection behavior and parameter bounds.
+    fault_application_policy: FaultApplicationPolicy,
+    /// Deterministic sequence for operation identities emitted by the shell.
+    fault_operation_sequence: u64,
 }
 
 impl SimulationController {
@@ -846,6 +1258,7 @@ impl SimulationController {
                 vcpu_stall_until: std::collections::BTreeMap::new(),
                 clock_freeze: None,
                 clock_jitter_bound: 0,
+                process_fault_attempt: None,
             });
         }
 
@@ -860,6 +1273,8 @@ impl SimulationController {
             quantum: config.quantum,
             config,
             vm_memory_bases: vec![None; num_vms],
+            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_operation_sequence: 0,
         })
     }
 
@@ -974,6 +1389,10 @@ impl SimulationController {
     /// Execute one scheduling round: step each Running VM by `quantum` exits,
     /// advance the global clock, dispatch faults, deliver network messages.
     pub fn step_round(&mut self) -> Result<RoundResult, VmError> {
+        let outcome_event_start = self.fault_engine.fault_outcomes().events.len();
+        let mut pending_observation_effects = Vec::new();
+        let mut pending_block_observations = Vec::new();
+        let mut block_observation_overflowed = 0u64;
         let mut vms_running = 0;
         let mut vms_halted = 0;
 
@@ -1008,11 +1427,25 @@ impl SimulationController {
                 }
                 VmStatus::Paused | VmStatus::Crashed => {
                     vms_halted += 1;
+                    if let Some(attempt_id) = self.vms[i].process_fault_attempt.take() {
+                        pending_observation_effects.push((
+                            attempt_id,
+                            FaultObservationSubsystem::Process,
+                            FaultObservationEffect::ProcessSkipped,
+                        ));
+                    }
                 }
                 VmStatus::Restarting { restart_at_tick } => {
                     if self.tick >= restart_at_tick {
                         self.restart_vm(i)?;
                         vms_running += 1;
+                        if let Some(attempt_id) = self.vms[i].process_fault_attempt.take() {
+                            pending_observation_effects.push((
+                                attempt_id,
+                                FaultObservationSubsystem::Process,
+                                FaultObservationEffect::ProcessRestarted,
+                            ));
+                        }
                     } else {
                         vms_halted += 1;
                     }
@@ -1037,35 +1470,537 @@ impl SimulationController {
             }
         }
 
+        for slot in &mut self.vms {
+            let (observations, overflowed) = slot.vm.drain_block_fault_observations();
+            pending_block_observations.extend(observations);
+            block_observation_overflowed = block_observation_overflowed.saturating_add(overflowed);
+        }
+        if block_observation_overflowed > 0 {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "block fault observation queue overflowed by {block_observation_overflowed} records"
+                ),
+            });
+        }
+        for observation in pending_block_observations {
+            self.record_fault_observation(observation)?;
+        }
+        for (attempt_id, subsystem, effect) in pending_observation_effects {
+            let observation = self.make_shell_observation(attempt_id, subsystem, effect)?;
+            self.record_fault_observation(observation)?;
+        }
+
         // Bridge network packets between VMs (virtio-net TX → RX)
         self.bridge_network_packets();
+        let (network_observations, overflowed) = self.network.drain_fault_observations();
+        if overflowed > 0 {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "network fault observation queue overflowed by {overflowed} records"
+                ),
+            });
+        }
+        for observation in network_observations {
+            self.record_fault_observation(observation)?;
+        }
 
         // Advance global tick
         self.tick += 1;
 
-        // Poll and apply faults
-        let current_time_ns = self.tick * 1_000_000; // Convert ticks to nanoseconds
-        let faults = self.fault_engine.poll_faults(current_time_ns);
-        let faults_fired = faults.clone();
-
-        for fault in faults {
-            self.apply_fault(&fault)?;
+        // Poll and apply faults.
+        let current_time_ns = self
+            .tick
+            .saturating_mul(chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK);
+        let attempts = self
+            .fault_engine
+            .poll_fault_attempts(current_time_ns)
+            .map_err(|error| VmError::Snapshot {
+                message: format!("fault selection failed: {error}"),
+            })?;
+        let faults_fired = attempts
+            .iter()
+            .map(|attempt| attempt.fault.clone())
+            .collect();
+        for attempt in attempts {
+            self.handle_fault_attempt(&attempt)?;
         }
 
-        // Deliver pending network messages
+        // Deliver pending network messages.
         let messages_delivered = self.deliver_messages();
+        let fault_outcomes =
+            self.fault_engine.fault_outcomes().events[outcome_event_start..].to_vec();
 
         Ok(RoundResult {
             tick: self.tick,
             vms_running,
             vms_halted,
             faults_fired,
+            fault_outcomes,
             messages_delivered,
         })
     }
 
-    /// Apply a fault effect from the engine to the actual VMs.
+    fn handle_fault_attempt(&mut self, attempt: &FaultAttempt) -> Result<(), VmError> {
+        let facts = self.collect_fault_planning_facts()?;
+        let plan = match plan_fault_application(attempt, &facts, &self.fault_application_policy) {
+            Ok(plan) => plan,
+            Err(reason) => {
+                self.record_fault_stage(
+                    attempt.id,
+                    FaultStageKind::Rejected {
+                        reason: reason.clone(),
+                    },
+                )?;
+                if self.fault_application_policy.rejection_is_fatal {
+                    return Err(VmError::Snapshot {
+                        message: format!("fault rejected by fatal campaign policy: {reason:?}"),
+                    });
+                }
+                return Ok(());
+            }
+        };
+
+        self.record_fault_stage(
+            attempt.id,
+            FaultStageKind::Applicable {
+                mechanism: plan.mechanism(),
+                timing: plan.timing(),
+            },
+        )?;
+        match self.apply_fault_plan(&plan) {
+            Ok(observations) => self.record_applied_plan(&plan, observations),
+            Err(failure) => self.record_fault_stage(
+                attempt.id,
+                FaultStageKind::ApplicationFailed {
+                    reason: failure.reason,
+                    disposition: failure.disposition,
+                },
+            ),
+        }
+    }
+
+    fn collect_fault_planning_facts(&mut self) -> Result<FaultPlanningFacts, VmError> {
+        let mut vms = Vec::with_capacity(self.vms.len());
+        for slot in &mut self.vms {
+            let vcpu_count =
+                u32::try_from(slot.vm.vcpu_count()).map_err(|_| VmError::Snapshot {
+                    message: "vCPU count exceeds fault-planning bounds".to_string(),
+                })?;
+            vms.push(VmFaultFacts {
+                status: fault_vm_status(slot.status),
+                vcpu_count,
+                block_device_size_bytes: slot.vm.block_device_size_bytes(),
+                has_initial_snapshot: slot.initial_snapshot.is_some(),
+                supports_irq: true,
+                supports_nmi: true,
+                virtual_tsc: slot.vm.virtual_tsc(),
+            });
+        }
+        Ok(FaultPlanningFacts {
+            current_tick: self.tick,
+            network_supported: true,
+            vms,
+        })
+    }
+
+    fn record_applied_plan(
+        &mut self,
+        plan: &FaultPlan,
+        observations: Vec<FaultObservation>,
+    ) -> Result<(), VmError> {
+        self.record_fault_stage(
+            plan.attempt_id,
+            FaultStageKind::Applied {
+                mechanism: plan.mechanism(),
+                timing: plan.timing(),
+            },
+        )?;
+        for observation in observations {
+            self.record_fault_observation(observation)?;
+        }
+        Ok(())
+    }
+
+    fn record_fault_stage(
+        &mut self,
+        attempt_id: FaultAttemptId,
+        kind: FaultStageKind,
+    ) -> Result<(), VmError> {
+        self.fault_engine
+            .record_fault_stage(attempt_id, kind)
+            .map_err(fault_transition_vm_error)
+    }
+
+    fn record_fault_observation(&mut self, observation: FaultObservation) -> Result<(), VmError> {
+        self.record_fault_stage(
+            observation.attempt_id,
+            FaultStageKind::Observed { observation },
+        )
+    }
+
+    fn make_shell_observation(
+        &mut self,
+        attempt_id: FaultAttemptId,
+        subsystem: FaultObservationSubsystem,
+        effect: FaultObservationEffect,
+    ) -> Result<FaultObservation, VmError> {
+        let operation_sequence = self.fault_operation_sequence;
+        self.fault_operation_sequence =
+            operation_sequence
+                .checked_add(1)
+                .ok_or_else(|| VmError::Snapshot {
+                    message: "fault operation sequence overflowed".to_string(),
+                })?;
+        Ok(FaultObservation {
+            attempt_id,
+            operation_id: fault_operation_id(attempt_id, subsystem, operation_sequence),
+            effect,
+        })
+    }
+
+    fn apply_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        match plan.mechanism() {
+            FaultMechanism::NetworkPartition
+            | FaultMechanism::NetworkLatency
+            | FaultMechanism::PacketLoss
+            | FaultMechanism::PacketCorruption
+            | FaultMechanism::PacketReorder
+            | FaultMechanism::NetworkJitter
+            | FaultMechanism::NetworkBandwidth
+            | FaultMechanism::PacketDuplicate
+            | FaultMechanism::NetworkHeal => self.apply_network_fault_plan(plan),
+            FaultMechanism::BlockReadError
+            | FaultMechanism::BlockWriteError
+            | FaultMechanism::BlockTornWrite
+            | FaultMechanism::BlockCorruption
+            | FaultMechanism::BlockFull
+            | FaultMechanism::BlockSlow
+            | FaultMechanism::BlockFsyncLie
+            | FaultMechanism::BlockFsyncFlush
+            | FaultMechanism::BlockPartialRead => self.apply_block_fault_plan(plan),
+            FaultMechanism::ProcessKill
+            | FaultMechanism::ProcessPause
+            | FaultMechanism::ProcessRestart => self.apply_process_fault_plan(plan),
+            FaultMechanism::VirtualClockSkew | FaultMechanism::VirtualClockJump => {
+                self.apply_clock_fault_plan(plan)
+            }
+            FaultMechanism::IrqInjection | FaultMechanism::NmiInjection => {
+                self.apply_interrupt_fault_plan(plan)
+            }
+            FaultMechanism::CpuRegisterBitflip => self.apply_cpu_fault_plan(plan),
+        }
+    }
+
+    fn apply_network_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let applied = match &plan.effect {
+            FaultPlanEffect::NetworkPartition { side_a, side_b } => self.network.arm_partition(
+                u32_targets_to_usize(side_a)?,
+                u32_targets_to_usize(side_b)?,
+                plan.attempt_id,
+            ),
+            FaultPlanEffect::NetworkLatency {
+                target,
+                latency_ticks,
+            } => self
+                .network
+                .arm_latency(checked_usize(*target)?, *latency_ticks, plan.attempt_id),
+            FaultPlanEffect::PacketLoss { target, rate_ppm } => {
+                self.network
+                    .arm_loss(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
+            }
+            FaultPlanEffect::PacketCorruption { target, rate_ppm } => {
+                self.network
+                    .arm_corruption(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
+            }
+            FaultPlanEffect::PacketReorder {
+                target,
+                window_ticks,
+            } => self
+                .network
+                .arm_reorder(checked_usize(*target)?, *window_ticks, plan.attempt_id),
+            FaultPlanEffect::NetworkJitter {
+                target,
+                jitter_ticks,
+            } => self
+                .network
+                .arm_jitter(checked_usize(*target)?, *jitter_ticks, plan.attempt_id),
+            FaultPlanEffect::NetworkBandwidth {
+                target,
+                bytes_per_sec,
+            } => {
+                self.network
+                    .arm_bandwidth(checked_usize(*target)?, *bytes_per_sec, plan.attempt_id)
+            }
+            FaultPlanEffect::PacketDuplicate { target, rate_ppm } => {
+                self.network
+                    .arm_duplicate(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
+            }
+            FaultPlanEffect::NetworkHeal => self.network.clear_partitions(),
+            _ => return Err(internal_application_error()),
+        };
+        if !applied {
+            return Err(target_state_application_error());
+        }
+        Ok(Vec::new())
+    }
+
+    fn apply_block_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        use crate::devices::block::BlockFault;
+        let applied = match &plan.effect {
+            FaultPlanEffect::BlockReadError { target, offset } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::ReadError { offset: *offset },
+                    plan.attempt_id,
+                ),
+            FaultPlanEffect::BlockWriteError { target, offset } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::WriteError { offset: *offset },
+                    plan.attempt_id,
+                ),
+            FaultPlanEffect::BlockTornWrite {
+                target,
+                offset,
+                bytes_written,
+            } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::TornWrite {
+                        offset: *offset,
+                        bytes_written: checked_usize_u64(*bytes_written)?,
+                    },
+                    plan.attempt_id,
+                ),
+            FaultPlanEffect::BlockCorruption {
+                target,
+                offset,
+                len,
+            } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::Corruption {
+                        offset: *offset,
+                        len: checked_usize_u64(*len)?,
+                    },
+                    plan.attempt_id,
+                ),
+            FaultPlanEffect::BlockFull { target } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .set_disk_full_with_attempt(true, plan.attempt_id),
+            FaultPlanEffect::BlockSlow { target, delay_ns } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .set_disk_slow_delay_with_attempt(*delay_ns, plan.attempt_id),
+            FaultPlanEffect::BlockFsyncLie { target } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .enable_disk_fsync_lie_with_attempt(plan.attempt_id),
+            FaultPlanEffect::BlockFsyncFlush { target } => {
+                self.vm_slot_mut_checked(*target)?.vm.flush_disk_volatile()
+            }
+            FaultPlanEffect::BlockPartialRead {
+                target,
+                offset,
+                max_bytes,
+            } => self
+                .vm_slot_mut_checked(*target)?
+                .vm
+                .inject_disk_fault_with_attempt(
+                    BlockFault::PartialRead {
+                        offset: *offset,
+                        max_bytes: checked_usize_u64(*max_bytes)?,
+                    },
+                    plan.attempt_id,
+                ),
+            _ => return Err(internal_application_error()),
+        };
+        if !applied {
+            return Err(device_disappeared_application_error());
+        }
+        Ok(Vec::new())
+    }
+
+    fn apply_process_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        match &plan.effect {
+            FaultPlanEffect::ProcessKill { target } => {
+                let slot = self.vm_slot_mut_checked(*target)?;
+                slot.status = VmStatus::Crashed;
+                slot.process_fault_attempt = Some(plan.attempt_id);
+                slot.vm.discard_disk_volatile();
+            }
+            FaultPlanEffect::ProcessPause {
+                target,
+                resume_at_tick,
+            } => {
+                let slot = self.vm_slot_mut_checked(*target)?;
+                slot.status = VmStatus::Resuming {
+                    resume_at_tick: *resume_at_tick,
+                };
+                slot.process_fault_attempt = Some(plan.attempt_id);
+            }
+            FaultPlanEffect::ProcessRestart {
+                target,
+                restart_at_tick,
+            } => {
+                let slot = self.vm_slot_mut_checked(*target)?;
+                slot.status = VmStatus::Restarting {
+                    restart_at_tick: *restart_at_tick,
+                };
+                slot.process_fault_attempt = Some(plan.attempt_id);
+            }
+            _ => return Err(internal_application_error()),
+        }
+        Ok(Vec::new())
+    }
+
+    fn apply_clock_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let target = match &plan.effect {
+            FaultPlanEffect::VirtualClockSkew { target, target_tsc }
+            | FaultPlanEffect::VirtualClockJump { target, target_tsc } => {
+                self.vm_slot_mut_checked(*target)?
+                    .vm
+                    .virtual_tsc_mut()
+                    .set(*target_tsc);
+                *target
+            }
+            _ => return Err(internal_application_error()),
+        };
+        let observation = self
+            .make_shell_observation(
+                plan.attempt_id,
+                FaultObservationSubsystem::VirtualClock,
+                FaultObservationEffect::VirtualClockChanged,
+            )
+            .map_err(|_| internal_application_error())?;
+        debug!("VM{} virtual clock changed by fault", target);
+        Ok(vec![observation])
+    }
+
+    fn apply_interrupt_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let (subsystem, effect) = match &plan.effect {
+            FaultPlanEffect::IrqInjection { target, irq } => {
+                if self
+                    .vm_slot_mut_checked(*target)?
+                    .vm
+                    .inject_interrupt(*irq)
+                    .is_err()
+                {
+                    self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
+                    return Err(non_runnable_application_error());
+                }
+                (
+                    FaultObservationSubsystem::Interrupt,
+                    FaultObservationEffect::InterruptInjected,
+                )
+            }
+            FaultPlanEffect::NmiInjection { target, vcpu } => {
+                if self
+                    .vm_slot_mut_checked(*target)?
+                    .vm
+                    .inject_nmi(checked_usize(*vcpu)?)
+                    .is_err()
+                {
+                    self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
+                    return Err(non_runnable_application_error());
+                }
+                (
+                    FaultObservationSubsystem::Interrupt,
+                    FaultObservationEffect::NmiInjected,
+                )
+            }
+            _ => return Err(internal_application_error()),
+        };
+        let observation = self
+            .make_shell_observation(plan.attempt_id, subsystem, effect)
+            .map_err(|_| internal_application_error())?;
+        Ok(vec![observation])
+    }
+
+    fn apply_cpu_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        match &plan.effect {
+            FaultPlanEffect::CpuRegisterBitflip {
+                target,
+                vcpu,
+                register,
+                bit,
+            } => {
+                if self
+                    .vm_slot_mut_checked(*target)?
+                    .vm
+                    .bitflip_register(checked_usize(*vcpu)?, *register, *bit)
+                    .is_err()
+                {
+                    self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
+                    return Err(non_runnable_application_error());
+                }
+            }
+            _ => return Err(internal_application_error()),
+        }
+        let observation = self
+            .make_shell_observation(
+                plan.attempt_id,
+                FaultObservationSubsystem::Cpu,
+                FaultObservationEffect::CpuRegisterChanged,
+            )
+            .map_err(|_| internal_application_error())?;
+        Ok(vec![observation])
+    }
+
+    fn vm_slot_mut_checked(&mut self, target: u32) -> Result<&mut VmSlot, FaultApplicationError> {
+        let target = checked_usize(target)?;
+        self.vms
+            .get_mut(target)
+            .ok_or_else(target_state_application_error)
+    }
+
+    #[cfg(test)]
     fn apply_fault(&mut self, fault: &Fault) -> Result<(), VmError> {
+        let schedule = chaoscontrol_fault::schedule::FaultScheduleBuilder::new()
+            .at_ns(0, fault.clone())
+            .build();
+        self.fault_engine.set_schedule(schedule);
+        self.fault_engine.force_setup_complete();
+        let attempts =
+            self.fault_engine
+                .poll_fault_attempts(0)
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("fault selection failed: {error}"),
+                })?;
+        for attempt in attempts {
+            self.handle_fault_attempt(&attempt)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(any())]
+    fn legacy_apply_fault_removed(&mut self, fault: &Fault) -> Result<(), VmError> {
         info!("Applying fault at tick {}: {}", self.tick, fault);
 
         match fault {
@@ -1372,6 +2307,7 @@ impl SimulationController {
     }
 
     /// Schedule a VM restart at a future tick.
+    #[cfg(any())]
     fn schedule_restart(&mut self, target: usize, restart_at_tick: u64) -> Result<(), VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
             info!(
@@ -1384,6 +2320,7 @@ impl SimulationController {
     }
 
     /// Schedule a paused VM to resume at a future tick.
+    #[cfg(any())]
     fn schedule_resume(&mut self, target: usize, resume_at_tick: u64) -> Result<(), VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
             if slot.status == VmStatus::Paused {
@@ -1524,6 +2461,11 @@ impl SimulationController {
             .collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+        let process_fault_attempt = self
+            .vms
+            .iter()
+            .map(|slot| slot.process_fault_attempt)
+            .collect();
 
         Ok(SimulationSnapshot {
             tick: self.tick,
@@ -1533,6 +2475,8 @@ impl SimulationController {
             vcpu_stall_until,
             clock_freeze,
             clock_jitter_bound,
+            process_fault_attempt,
+            fault_operation_sequence: self.fault_operation_sequence,
         })
     }
 
@@ -1565,6 +2509,11 @@ impl SimulationController {
             .collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+        let process_fault_attempt = self
+            .vms
+            .iter()
+            .map(|slot| slot.process_fault_attempt)
+            .collect();
 
         let sim_snap = SimulationSnapshot {
             tick: self.tick,
@@ -1574,6 +2523,8 @@ impl SimulationController {
             vcpu_stall_until,
             clock_freeze,
             clock_jitter_bound,
+            process_fault_attempt,
+            fault_operation_sequence: self.fault_operation_sequence,
         };
 
         Ok((sim_snap, total_dirty))
@@ -1623,6 +2574,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_operation_sequence = snapshot.fault_operation_sequence;
 
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[i].vm.restore(vm_snap)?;
@@ -1635,6 +2587,8 @@ impl SimulationController {
             self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
             self.vms[i].clock_jitter_bound =
                 snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
+            self.vms[i].process_fault_attempt =
+                snapshot.process_fault_attempt.get(i).copied().flatten();
         }
 
         info!(
@@ -1664,6 +2618,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_operation_sequence = snapshot.fault_operation_sequence;
 
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             if let Some(base) = &self.vm_memory_bases[i] {
@@ -1680,6 +2635,8 @@ impl SimulationController {
             self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
             self.vms[i].clock_jitter_bound =
                 snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
+            self.vms[i].process_fault_attempt =
+                snapshot.process_fault_attempt.get(i).copied().flatten();
         }
 
         debug!("Incremental restore from snapshot at tick {}", self.tick);
@@ -1810,6 +2767,16 @@ impl SimulationController {
         self.fault_engine.set_schedule(schedule);
     }
 
+    /// Set the explicit campaign policy for rejected fault attempts.
+    pub fn set_fault_application_policy(&mut self, policy: FaultApplicationPolicy) {
+        self.fault_application_policy = policy;
+    }
+
+    /// Return the authoritative fault outcome ledger.
+    pub fn fault_outcomes(&self) -> &chaoscontrol_fault::outcomes::FaultOutcomeLedger {
+        self.fault_engine.fault_outcomes()
+    }
+
     /// Apply a [`ScheduleVariant`] to all VMs' vCPU schedulers.
     ///
     /// Each VM gets a domain-separated seed: `variant.scheduler_seed + vm_id`.
@@ -1909,8 +2876,10 @@ pub struct RoundResult {
     pub vms_running: usize,
     /// Number of VMs halted/paused/crashed.
     pub vms_halted: usize,
-    /// Faults that fired this round.
+    /// Legacy compatibility alias mapped exactly to selected faults.
     pub faults_fired: Vec<Fault>,
+    /// Ordered stage events produced during this round.
+    pub fault_outcomes: Vec<FaultStageEvent>,
     /// Number of network messages delivered this round.
     pub messages_delivered: usize,
 }
@@ -1945,6 +2914,10 @@ pub struct SimulationSnapshot {
     pub clock_freeze: Vec<Option<(u64, u64)>>,
     /// Per-VM clock jitter bound.
     pub clock_jitter_bound: Vec<u64>,
+    /// Per-VM pending process-effect attempt identity.
+    pub process_fault_attempt: Vec<Option<FaultAttemptId>>,
+    /// Next deterministic operation sequence for shell observations.
+    pub fault_operation_sequence: u64,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3246,5 +4219,57 @@ mod tests {
 
         assert_eq!(cloned.packet_in_flight.len(), 1);
         assert_eq!(cloned.packet_in_flight[0].data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn armed_network_fault_is_unobserved_until_packet_path_consumes_it() {
+        // r[verify chaoscontrol.fault_outcomes.validation.observation]
+        let attempt_id = FaultAttemptId([11; 32]);
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(fabric.arm_loss(0, 1_000_000, attempt_id));
+
+        let (before, overflowed) = fabric.drain_fault_observations();
+        assert!(before.is_empty());
+        assert_eq!(overflowed, 0);
+
+        assert!(!fabric.send(0, 1, vec![1], 0));
+        let (after, overflowed) = fabric.drain_fault_observations();
+        assert_eq!(overflowed, 0);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].attempt_id, attempt_id);
+        assert_eq!(after[0].effect, FaultObservationEffect::PacketDroppedByLoss);
+    }
+
+    #[test]
+    fn unrelated_network_operation_does_not_observe_armed_fault() {
+        let attempt_id = FaultAttemptId([12; 32]);
+        let mut fabric = NetworkFabric::new(3, 42);
+        assert!(fabric.arm_loss(0, 1_000_000, attempt_id));
+
+        assert!(fabric.send(1, 2, vec![1], 0));
+        let (observations, overflowed) = fabric.drain_fault_observations();
+        assert!(observations.is_empty());
+        assert_eq!(overflowed, 0);
+    }
+
+    #[test]
+    fn network_snapshot_replay_preserves_observation_identity_and_order() {
+        // r[verify chaoscontrol.fault_outcomes.validation.replay]
+        let attempt_id = FaultAttemptId([13; 32]);
+        let mut fabric = NetworkFabric::new(2, 42);
+        assert!(fabric.arm_corruption(0, 1_000_000, attempt_id));
+        let snapshot = fabric.clone();
+
+        assert!(fabric.send(0, 1, vec![0xAA], 0));
+        let (first, first_overflowed) = fabric.drain_fault_observations();
+
+        let mut replay = snapshot;
+        assert!(replay.send(0, 1, vec![0xAA], 0));
+        let (second, second_overflowed) = replay.drain_fault_observations();
+
+        assert_eq!(first_overflowed, 0);
+        assert_eq!(second_overflowed, 0);
+        assert_eq!(first, second);
+        assert_eq!(first[0].effect, FaultObservationEffect::PacketCorrupted);
     }
 }

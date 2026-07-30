@@ -284,8 +284,8 @@ impl Minimizer {
         controller.restore_all(snapshot)?;
         controller.reset_vm_statuses();
 
-        // Apply candidate schedule
-        controller.set_schedule(schedule);
+        // Apply candidate schedule in a new branch run.
+        controller.begin_counterfactual_fault_run(schedule)?;
         controller.clear_all_coverage();
 
         // Run
@@ -335,7 +335,7 @@ impl Minimizer {
 
     fn bootstrap(&mut self) -> Result<SimulationSnapshot, ExploreError> {
         let controller = self.controller.as_mut().unwrap();
-        controller.set_schedule(FaultSchedule::new());
+        controller.set_schedule(FaultSchedule::new())?;
         controller.clear_all_coverage();
         controller.run_until_setup_complete(self.config.bootstrap_budget)?;
 

@@ -975,7 +975,7 @@ impl Explorer {
 
         {
             let controller = self.controller.as_mut().unwrap();
-            controller.set_schedule(FaultSchedule::new());
+            controller.set_schedule(FaultSchedule::new())?;
             controller.clear_all_coverage();
 
             // Run until setup_complete or budget exhausted
@@ -1075,8 +1075,8 @@ impl Explorer {
                 controller.reset_vm_statuses();
             }
 
-            // Apply the mutated fault schedule
-            controller.set_schedule(schedule.clone());
+            // Apply the mutated fault schedule in a new branch run.
+            controller.begin_counterfactual_fault_run(schedule.clone())?;
 
             // Clear coverage bitmaps so we only see edges from THIS branch
             controller.clear_all_coverage();
@@ -1173,7 +1173,7 @@ impl Explorer {
                 controller.reset_vm_statuses();
             }
 
-            controller.set_schedule(schedule.clone());
+            controller.begin_counterfactual_fault_run(schedule.clone())?;
 
             // Set per-VM choice overrides
             for (vm_id, vm_overrides) in per_vm_overrides.iter().enumerate() {

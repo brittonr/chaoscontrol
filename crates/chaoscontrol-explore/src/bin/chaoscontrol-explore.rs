@@ -2357,7 +2357,10 @@ fn cmd_reproduce(
         std::process::exit(1);
     }
     controller.reset_vm_statuses();
-    controller.set_schedule(schedule);
+    if let Err(e) = controller.begin_counterfactual_fault_run(schedule) {
+        eprintln!("Error: counterfactual fault run failed: {}", e);
+        std::process::exit(1);
+    }
     controller.clear_all_coverage();
 
     eprintln!("Running {} ticks with fault schedule...", ticks);

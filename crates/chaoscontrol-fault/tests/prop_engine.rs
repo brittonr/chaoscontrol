@@ -246,7 +246,7 @@ fn faults_never_fire_before_setup_complete() {
             let faults = engine.poll_faults(time).unwrap();
             assert!(
                 faults.is_empty(),
-                "case {case}: faults fired at time {time} without setup_complete"
+                "case {case}: faults selected at time {time} without setup_complete"
             );
         }
     }

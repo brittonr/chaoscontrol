@@ -603,6 +603,30 @@ jitter, bandwidth, loss, corruption, reorder, duplication, heal), disk
 restart), clock (skew, jump), resource (memory pressure), interrupt
 (IRQ injection, NMI).
 
+Fault evidence uses six distinct stages:
+
+1. `Selected` means that the schedule or random source chose the fault.
+2. `Applicable` means that the pure planner accepted the fault and produced an exact effect plan.
+3. `Rejected` means that planning failed before an effect occurred.
+4. `Applied` means that the adapter completed an immediate effect or armed a reachable mechanism.
+5. `ApplicationFailed` means that the adapter did not complete the plan.
+6. `Observed` means that a real execution or data path consumed the effect.
+
+Selection does not prove application. Application does not prove workload impact.
+An armed mechanism can remain applied and unobserved.
+
+`faults_injected`, `faults_fired`, and `FaultFired` are legacy selected-only projections.
+New acceptance logic must use the stage ledger and counters.
+The default campaign policy records a rejection and continues.
+Set `rejection_is_fatal` to stop the campaign after a rejection.
+
+Memory pressure, CPU stall, clock freeze, and clock jitter currently return explicit unsupported-capability rejections.
+Other invalid targets, parameters, ranges, devices, and state transitions return typed rejection or application-failure records.
+
+Snapshots preserve the stage ledger, pending mechanisms, operation ordering, and exact attempt attribution.
+Exact replay rejects malformed, mixed-run, or out-of-horizon evidence.
+Counterfactual replay starts a new run group and retains valid prefix attribution.
+
 ### Run Loop
 
 The VM run loop handles exits and advances the virtual TSC deterministically:

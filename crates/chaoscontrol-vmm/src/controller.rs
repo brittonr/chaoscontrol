@@ -188,7 +188,7 @@ pub enum VmStatus {
     Running,
     /// VM is paused (ProcessPause fault active), will auto-resume.
     Paused,
-    /// VM has crashed (ProcessKill fault injected).
+    /// VM has crashed because a ProcessKill effect was applied.
     Crashed,
     /// Crashed VM will restart after this simulation tick.
     Restarting { restart_at_tick: u64 },

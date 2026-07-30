@@ -398,7 +398,7 @@ fn main() {
 
         // Network should be partitioned — we can check via the controller's internal state
         // The partition should block messages between VM0 and VM1
-        true // The fault fired if we got here without panicking
+        true // The partition effect was applied if this path completed.
     });
 
     // ═══════════════════════════════════════════════════════════════

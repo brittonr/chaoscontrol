@@ -134,22 +134,7 @@ mod tests {
     fn dummy_snapshot() -> SimulationSnapshot {
         use chaoscontrol_vmm::controller::NetworkFabric;
 
-        // Create a minimal network fabric manually since ::new is private
-        let network_state = NetworkFabric {
-            partitions: Vec::new(),
-            latency: vec![0, 0],
-            jitter: vec![0, 0],
-            bandwidth_bps: vec![0, 0],
-            next_free_tick: vec![0, 0],
-            in_flight: Vec::new(),
-            packet_in_flight: Vec::new(),
-            loss_rate_ppm: Vec::new(),
-            corruption_rate_ppm: Vec::new(),
-            reorder_window: Vec::new(),
-            duplicate_rate_ppm: Vec::new(),
-            rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
-            stats: Default::default(),
-        };
+        let network_state = NetworkFabric::new(2, 42);
 
         SimulationSnapshot {
             tick: 0,
@@ -159,6 +144,9 @@ mod tests {
             vcpu_stall_until: vec![],
             clock_freeze: vec![],
             clock_jitter_bound: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
         }
     }
 

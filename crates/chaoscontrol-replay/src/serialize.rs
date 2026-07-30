@@ -1,6 +1,6 @@
 //! Serialization for recordings and triage reports.
 
-use crate::recording::Recording;
+use crate::recording::{validate_recording, Recording};
 use crate::triage::TriageReport;
 use snafu::Snafu;
 use std::fs::File;
@@ -17,6 +17,8 @@ pub enum SerializeError {
     Io { source: std::io::Error },
     #[snafu(display("JSON error"), context(false))]
     Json { source: serde_json::Error },
+    #[snafu(display("Invalid recording: {message}"))]
+    InvalidRecording { message: String },
 }
 
 /// Save a recording to a JSON file.
@@ -24,6 +26,9 @@ pub enum SerializeError {
 /// Note: This saves only the metadata (config, schedule, seed, events).
 /// Snapshots are too large for JSON and are recreated during replay.
 pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), SerializeError> {
+    validate_recording(recording).map_err(|error| SerializeError::InvalidRecording {
+        message: format!("{error:?}"),
+    })?;
     let file = File::create(path)?;
     serde_json::to_writer_pretty(file, recording)?;
     Ok(())
@@ -36,6 +41,9 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
 pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
     let file = File::open(path)?;
     let recording = serde_json::from_reader(file)?;
+    validate_recording(&recording).map_err(|error| SerializeError::InvalidRecording {
+        message: format!("{error:?}"),
+    })?;
     Ok(recording)
 }
 
@@ -137,10 +145,11 @@ pub fn load_triage_json(path: &Path) -> Result<TriageReport, SerializeError> {
 mod tests {
     use super::*;
     use crate::checkpoint::CheckpointStore;
-    use crate::recording::{RecordedEvent, RecordingConfig};
+    use crate::recording::RecordingConfig;
     use crate::triage::{
         AssertionInfo, ReproductionInfo, Severity, TimelineEntry, VmStateSnapshot,
     };
+    use chaoscontrol_fault::outcomes::{FaultAttemptId, FaultStageEvent, FaultStageKind};
     use chaoscontrol_fault::schedule::FaultSchedule;
     use tempfile::TempDir;
 
@@ -161,10 +170,10 @@ mod tests {
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),
             seed: 42,
-            events: vec![RecordedEvent::FaultFired {
-                tick: 100,
-                fault: "Test".to_string(),
-            }],
+            events: vec![],
+            fault_stage_events: vec![],
+            fault_round_deltas: vec![],
+            fault_outcome_ledger: Default::default(),
             oracle_report: None,
             total_ticks: 5000,
         }
@@ -222,7 +231,26 @@ mod tests {
         assert_eq!(loaded.session_id, "test_session");
         assert_eq!(loaded.seed, 42);
         assert_eq!(loaded.total_ticks, 5000);
-        assert_eq!(loaded.events.len(), 1);
+        assert!(loaded.events.is_empty());
+    }
+
+    #[test]
+    fn load_rejects_trace_that_does_not_match_ledger() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("tampered-recording.json");
+        let mut recording = test_recording();
+        recording.fault_stage_events.push(FaultStageEvent {
+            sequence: 0,
+            attempt_id: FaultAttemptId([0; 32]),
+            kind: FaultStageKind::Selected,
+        });
+        let file = File::create(&path).unwrap();
+        serde_json::to_writer(file, &recording).unwrap();
+
+        assert!(matches!(
+            load_recording(&path),
+            Err(SerializeError::InvalidRecording { .. })
+        ));
     }
 
     #[test]

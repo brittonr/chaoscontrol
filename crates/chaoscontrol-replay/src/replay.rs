@@ -1,7 +1,8 @@
 //! Replay engine — restores and replays from recording.
 
-use crate::recording::{RecordedEvent, Recording, RecordingConfig};
+use crate::recording::{validate_recording, RecordedEvent, Recording, RecordingConfig};
 use chaoscontrol_fault::oracle::OracleReport;
+use chaoscontrol_fault::outcomes::FaultStageEvent;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{
     RoundResult, SimulationConfig, SimulationController, SimulationSnapshot,
@@ -190,6 +191,9 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         checkpoint_id: Option<u64>,
         ticks: u64,
     ) -> Result<ReplayResult, ReplayError> {
+        validate_recording(&self.recording).map_err(|error| ReplayError::InvalidState {
+            message: format!("invalid recorded fault trace: {error:?}"),
+        })?;
         let mut runner = R::create(
             &self.recording.config,
             self.recording.schedule.clone(),
@@ -229,6 +233,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
 
         let target_tick = start_tick + ticks;
         let mut events = Vec::new();
+        let mut fault_outcomes = Vec::new();
 
         while runner.tick() < target_tick {
             let result = runner.step_round().map_err(|e| {
@@ -237,6 +242,9 @@ impl<R: SimulationRunner> ReplayEngine<R> {
                 }
                 .build()
             })?;
+
+            validate_replayed_fault_round(&self.recording, result.tick, &result.fault_outcomes)?;
+            fault_outcomes.extend(result.fault_outcomes.iter().cloned());
 
             // Collect events that occurred this tick
             for event in &self.recording.events {
@@ -262,6 +270,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             oracle_report,
             serial_output,
             events,
+            fault_outcomes,
             final_snapshot,
         })
     }
@@ -308,6 +317,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
         let start_tick = checkpoint.tick;
         let target_tick = start_tick + ticks;
         let events = Vec::new(); // Events not collected in counterfactual replay
+        let mut fault_outcomes = Vec::new();
 
         while runner.tick() < target_tick {
             let result = runner.step_round().map_err(|e| {
@@ -316,6 +326,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
                 }
                 .build()
             })?;
+            fault_outcomes.extend(result.fault_outcomes.iter().cloned());
 
             if result.vms_running == 0 {
                 break;
@@ -334,6 +345,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             oracle_report,
             serial_output,
             events,
+            fault_outcomes,
             final_snapshot,
         })
     }
@@ -386,9 +398,11 @@ impl<R: SimulationRunner> ReplayEngine<R> {
 
         let start_tick = checkpoint.tick;
         let target_tick = start_tick + ticks;
+        let mut fault_outcomes = Vec::new();
 
         while runner.tick() < target_tick {
             let result = runner.step_round()?;
+            fault_outcomes.extend(result.fault_outcomes.iter().cloned());
             if result.vms_running == 0 {
                 break;
             }
@@ -406,6 +420,7 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             oracle_report,
             serial_output,
             events: Vec::new(),
+            fault_outcomes,
             final_snapshot,
         })
     }
@@ -414,6 +429,41 @@ impl<R: SimulationRunner> ReplayEngine<R> {
     pub fn recording(&self) -> &Recording {
         &self.recording
     }
+}
+
+fn validate_replayed_fault_round(
+    recording: &Recording,
+    tick: u64,
+    replayed: &[FaultStageEvent],
+) -> Result<(), ReplayError> {
+    if recording.fault_stage_events.is_empty()
+        && recording.fault_round_deltas.is_empty()
+        && recording.fault_outcome_ledger.events.is_empty()
+    {
+        return Ok(());
+    }
+    let expected = if let Some(delta) = recording
+        .fault_round_deltas
+        .iter()
+        .find(|delta| delta.tick == tick)
+    {
+        let start = usize::try_from(delta.event_start).map_err(|_| ReplayError::InvalidState {
+            message: "recorded fault-stage delta start exceeds platform bounds".to_string(),
+        })?;
+        let end = usize::try_from(delta.event_end).map_err(|_| ReplayError::InvalidState {
+            message: "recorded fault-stage delta end exceeds platform bounds".to_string(),
+        })?;
+        &recording.fault_stage_events[start..end]
+    } else {
+        &[]
+    };
+    if replayed != expected {
+        return InvalidStateSnafu {
+            message: format!("fault-stage trace mismatch at tick {tick}"),
+        }
+        .fail();
+    }
+    Ok(())
 }
 
 /// Memory modification for counterfactual replay.
@@ -436,8 +486,10 @@ pub struct ReplayResult {
     pub oracle_report: OracleReport,
     /// Serial output captured during replay.
     pub serial_output: Vec<String>,
-    /// Events that occurred during replay.
+    /// Recording events that occurred during replay.
     pub events: Vec<RecordedEvent>,
+    /// Ordered fault-stage events produced by replay execution.
+    pub fault_outcomes: Vec<FaultStageEvent>,
     /// Final snapshot (if available).
     pub final_snapshot: Option<SimulationSnapshot>,
 }
@@ -458,34 +510,63 @@ mod tests {
     use super::*;
     use crate::checkpoint::{Checkpoint, CheckpointStore};
 
+    use crate::recording::FaultRoundTraceDelta;
+    use chaoscontrol_fault::faults::Fault;
+    use chaoscontrol_fault::outcomes::{
+        transition_fault_outcome, FaultAttempt, FaultAttemptId, FaultOutcomeLedger, FaultRunId,
+        FaultScheduleId, FaultStageKind, NANOSECONDS_PER_SIMULATION_TICK,
+    };
     use chaoscontrol_vmm::controller::NetworkFabric;
-    use rand::SeedableRng;
+
+    fn mock_attempt(tick: u64) -> FaultAttempt {
+        FaultAttempt::new(
+            FaultRunId([1; 32]),
+            0,
+            FaultScheduleId([2; 32]),
+            tick - 1,
+            tick * NANOSECONDS_PER_SIMULATION_TICK,
+            Fault::ProcessKill { target: 0 },
+        )
+    }
 
     // Mock simulation runner for testing
     struct MockRunner {
         tick: u64,
         max_ticks: u64,
+        corrupt_trace: bool,
     }
 
     impl SimulationRunner for MockRunner {
         fn create(
             _config: &RecordingConfig,
             _schedule: FaultSchedule,
-            _seed: u64,
+            seed: u64,
         ) -> Result<Self, ReplayError> {
             Ok(Self {
                 tick: 0,
                 max_ticks: 1000,
+                corrupt_trace: seed == 43,
             })
         }
 
         fn step_round(&mut self) -> Result<RoundResult, ReplayError> {
             self.tick += 1;
+            let attempt = mock_attempt(self.tick);
+            let attempt_id = if self.corrupt_trace {
+                FaultAttemptId([9; 32])
+            } else {
+                attempt.id
+            };
             Ok(RoundResult {
                 tick: self.tick,
                 vms_running: if self.tick < self.max_ticks { 2 } else { 0 },
                 vms_halted: 0,
-                faults_fired: vec![],
+                faults_fired: vec![attempt.fault],
+                fault_outcomes: vec![FaultStageEvent {
+                    sequence: self.tick - 1,
+                    attempt_id,
+                    kind: FaultStageKind::Selected,
+                }],
                 messages_delivered: 0,
             })
         }
@@ -498,25 +579,14 @@ mod tests {
             Ok(SimulationSnapshot {
                 tick: self.tick,
                 vm_snapshots: vec![],
-                network_state: NetworkFabric {
-                    partitions: vec![],
-                    latency: vec![0; 2],
-                    jitter: vec![0; 2],
-                    bandwidth_bps: vec![0; 2],
-                    next_free_tick: vec![0; 2],
-                    in_flight: vec![],
-                    packet_in_flight: vec![],
-                    loss_rate_ppm: vec![],
-                    corruption_rate_ppm: vec![],
-                    reorder_window: vec![],
-                    duplicate_rate_ppm: vec![],
-                    rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
-                    stats: Default::default(),
-                },
+                network_state: NetworkFabric::new(2, 42),
                 fault_engine_snapshot: engine.snapshot(),
                 vcpu_stall_until: vec![],
                 clock_freeze: vec![],
                 clock_jitter_bound: vec![],
+                process_fault_attempt: vec![],
+                pending_process_observations: Default::default(),
+                fault_operation_sequence: 0,
             })
         }
 
@@ -622,25 +692,14 @@ mod tests {
             snapshot: Some(SimulationSnapshot {
                 tick: 500,
                 vm_snapshots: vec![],
-                network_state: NetworkFabric {
-                    partitions: vec![],
-                    latency: vec![0; 2],
-                    jitter: vec![0; 2],
-                    bandwidth_bps: vec![0; 2],
-                    next_free_tick: vec![0; 2],
-                    in_flight: vec![],
-                    packet_in_flight: vec![],
-                    loss_rate_ppm: vec![],
-                    corruption_rate_ppm: vec![],
-                    reorder_window: vec![],
-                    duplicate_rate_ppm: vec![],
-                    rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
-                    stats: Default::default(),
-                },
+                network_state: NetworkFabric::new(2, 42),
                 fault_engine_snapshot: engine.snapshot(),
                 vcpu_stall_until: vec![],
                 clock_freeze: vec![],
                 clock_jitter_bound: vec![],
+                process_fault_attempt: vec![],
+                pending_process_observations: Default::default(),
+                fault_operation_sequence: 0,
             }),
             serial_output: vec![],
             events_since_last: vec![],
@@ -663,9 +722,39 @@ mod tests {
             schedule: FaultSchedule::new(),
             seed: 42,
             events: vec![],
+            fault_stage_events: vec![],
+            fault_round_deltas: vec![],
+            fault_outcome_ledger: Default::default(),
             oracle_report: None,
             total_ticks: 1000,
         }
+    }
+
+    fn traced_recording(round_count: u64) -> Recording {
+        let mut recording = test_recording();
+        let mut ledger = FaultOutcomeLedger::default();
+        for tick in 1..=round_count {
+            let attempt = mock_attempt(tick);
+            ledger = transition_fault_outcome(
+                &ledger,
+                Some(&attempt),
+                attempt.id,
+                FaultStageKind::Selected,
+            )
+            .unwrap();
+            recording.fault_round_deltas.push(FaultRoundTraceDelta {
+                tick,
+                event_start: tick - 1,
+                event_end: tick,
+            });
+            recording.events.push(RecordedEvent::FaultFired {
+                tick,
+                fault: format!("{:?}", attempt.fault),
+            });
+        }
+        recording.fault_stage_events = ledger.events.clone();
+        recording.fault_outcome_ledger = ledger;
+        recording
     }
 
     #[test]
@@ -682,6 +771,36 @@ mod tests {
 
         let result = engine.replay_from(None, 100).unwrap();
         assert_eq!(result.ticks_executed, 100);
+        assert_eq!(result.fault_outcomes.len(), 100);
+        assert!(result
+            .fault_outcomes
+            .iter()
+            .all(|event| event.kind == FaultStageKind::Selected));
+
+        let repeated = engine.replay_from(None, 100).unwrap();
+        assert_eq!(result.fault_outcomes, repeated.fault_outcomes);
+    }
+
+    #[test]
+    fn replay_compares_exact_recorded_fault_trace() {
+        let recording = traced_recording(3);
+        let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording.clone());
+
+        let result = engine.replay_from(None, 3).unwrap();
+
+        assert_eq!(result.fault_outcomes, recording.fault_stage_events);
+    }
+
+    #[test]
+    fn replay_rejects_fault_trace_mismatch() {
+        let mut recording = traced_recording(3);
+        recording.seed = 43;
+        let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
+
+        assert!(matches!(
+            engine.replay_from(None, 3),
+            Err(ReplayError::InvalidState { .. })
+        ));
     }
 
     #[test]

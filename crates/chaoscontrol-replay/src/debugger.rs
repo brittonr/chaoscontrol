@@ -343,7 +343,6 @@ mod tests {
     use chaoscontrol_fault::oracle::OracleReport;
     use chaoscontrol_fault::schedule::FaultSchedule;
     use chaoscontrol_vmm::controller::{NetworkFabric, RoundResult, SimulationSnapshot};
-    use rand::SeedableRng;
 
     // Mock simulation runner for testing
     struct MockRunner {
@@ -366,6 +365,7 @@ mod tests {
                 vms_running: 2,
                 vms_halted: 0,
                 faults_fired: vec![],
+                fault_outcomes: vec![],
                 messages_delivered: 0,
             })
         }
@@ -378,25 +378,14 @@ mod tests {
             Ok(SimulationSnapshot {
                 tick: self.tick,
                 vm_snapshots: vec![],
-                network_state: NetworkFabric {
-                    partitions: vec![],
-                    latency: vec![0; 2],
-                    jitter: vec![0; 2],
-                    bandwidth_bps: vec![0; 2],
-                    next_free_tick: vec![0; 2],
-                    in_flight: vec![],
-                    packet_in_flight: vec![],
-                    loss_rate_ppm: vec![],
-                    corruption_rate_ppm: vec![],
-                    reorder_window: vec![],
-                    duplicate_rate_ppm: vec![],
-                    rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
-                    stats: Default::default(),
-                },
+                network_state: NetworkFabric::new(2, 42),
                 fault_engine_snapshot: engine.snapshot(),
                 vcpu_stall_until: vec![],
                 clock_freeze: vec![],
                 clock_jitter_bound: vec![],
+                process_fault_attempt: vec![],
+                pending_process_observations: Default::default(),
+                fault_operation_sequence: 0,
             })
         }
 
@@ -506,6 +495,9 @@ mod tests {
             checkpoints: CheckpointStore::new(),
             schedule: FaultSchedule::new(),
             seed: 42,
+            fault_stage_events: vec![],
+            fault_round_deltas: vec![],
+            fault_outcome_ledger: Default::default(),
             events: vec![
                 RecordedEvent::FaultFired {
                     tick: 50,

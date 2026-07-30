@@ -43,8 +43,8 @@ pub fn install_signal_handlers() {
         let mut sa: libc::sigaction = std::mem::zeroed();
         sa.sa_sigaction = signal_handler as *const () as usize;
         sa.sa_flags = libc::SA_SIGINFO;
-        // Block SIGALRM during our handler to avoid re-entrancy with
-        // the SMP preemption timer.
+        // Block SIGALRM during this handler to avoid re-entrancy with
+        // the single-vCPU operational watchdog.
         libc::sigemptyset(&mut sa.sa_mask);
         libc::sigaddset(&mut sa.sa_mask, libc::SIGALRM);
 

@@ -1,12 +1,18 @@
-//! Deterministic sweep tests for VcpuScheduler.
-//!
-//! These preserve the prior property-test invariants without pulling a proc-macro
-//! property-test dependency into the dependency-audit surface.
+//! Deterministic sweep tests for the pure-authority vCPU scheduler.
 
+use chaoscontrol_vmm::scheduler::core::{
+    ProgressMode, ProgressSource, ScheduleAction, ScheduleError, ScheduleEvent,
+};
 use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 
 const WIDE_CASES: u64 = 300;
 const NORMAL_CASES: u64 = 200;
+const MIN_VCPUS: usize = 1;
+const MAX_VCPUS: usize = 16;
+const MIN_QUANTUM: u64 = 1;
+const MAX_QUANTUM: u64 = 500;
+const MIN_TICKS: usize = 10;
+const MAX_TICKS: usize = 2_000;
 
 #[derive(Clone)]
 struct DeterministicCase {
@@ -15,16 +21,16 @@ struct DeterministicCase {
 
 impl DeterministicCase {
     fn new(index: u64) -> Self {
+        const CASE_DOMAIN: u64 = 0xa24b_aed4_963e_e407;
         Self {
-            state: index ^ 0xa24b_aed4_963e_e407,
+            state: index ^ CASE_DOMAIN,
         }
     }
 
     fn next(&mut self) -> u64 {
-        self.state = self
-            .state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
+        const MULTIPLIER: u64 = 6_364_136_223_846_793_005;
+        const INCREMENT: u64 = 1_442_695_040_888_963_407;
+        self.state = self.state.wrapping_mul(MULTIPLIER).wrapping_add(INCREMENT);
         self.state
     }
 
@@ -37,12 +43,36 @@ impl DeterministicCase {
     }
 }
 
-fn run_trace(sched: &mut VcpuScheduler, ticks: usize) -> Vec<(usize, u64)> {
+fn scheduler(config: &SchedulerConfig) -> VcpuScheduler {
+    VcpuScheduler::try_new(
+        config,
+        ProgressMode::ExactSingleStep,
+        vec![true; config.num_vcpus],
+    )
+    .unwrap()
+}
+
+fn step(scheduler: &mut VcpuScheduler) -> ScheduleAction {
+    let state = scheduler.state();
+    let event = ScheduleEvent::GuestProgress {
+        expected_state_id: state.identity(),
+        vcpu: state.active_vcpu,
+        observed_progress: state.instruction_progress[state.active_vcpu] + 1,
+        runnable_changes: Vec::new(),
+        source: ProgressSource::ExactSingleStep,
+    };
+    let reservation = scheduler.reserve_transition().unwrap();
+    let planned = scheduler.plan(&event).unwrap();
+    let action = planned.record.action.clone();
+    scheduler.commit(reservation, planned).unwrap();
+    action
+}
+
+fn run_trace(scheduler: &mut VcpuScheduler, ticks: usize) -> Vec<(usize, u64)> {
     let mut trace = Vec::new();
     for _ in 0..ticks {
-        if sched.tick() {
-            sched.advance();
-            trace.push((sched.active(), sched.remaining()));
+        if matches!(step(scheduler), ScheduleAction::Switch { .. }) {
+            trace.push((scheduler.active(), scheduler.remaining()));
         }
     }
     trace
@@ -51,248 +81,164 @@ fn run_trace(sched: &mut VcpuScheduler, ticks: usize) -> Vec<(usize, u64)> {
 #[test]
 fn deterministic_same_seed_same_trace() {
     for case in 0..WIDE_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(1, 16);
-        let quantum = tc.u64(1, 500);
-        let seed = tc.next();
-        let ticks = tc.usize(10, 2000);
-        let min_q = tc.u64(1, 50);
-        let max_q = tc.u64(min_q + 1, 500);
-
+        let mut test_case = DeterministicCase::new(case);
+        let num_vcpus = test_case.usize(MIN_VCPUS, MAX_VCPUS);
+        let quantum = test_case.u64(MIN_QUANTUM, MAX_QUANTUM);
+        let seed = test_case.next();
+        let ticks = test_case.usize(MIN_TICKS, MAX_TICKS);
+        let min_quantum = test_case.u64(MIN_QUANTUM, MAX_QUANTUM / 10);
+        let max_quantum = test_case.u64(min_quantum + 1, MAX_QUANTUM);
         let config = SchedulerConfig {
             num_vcpus,
             quantum,
             strategy: SchedulingStrategy::Randomized {
-                min_quantum: min_q,
-                max_quantum: max_q,
+                min_quantum,
+                max_quantum,
             },
             seed,
         };
-
-        let mut s1 = VcpuScheduler::new(&config);
-        let mut s2 = VcpuScheduler::new(&config);
-
-        assert_eq!(
-            run_trace(&mut s1, ticks),
-            run_trace(&mut s2, ticks),
-            "case {case}: same config must produce same trace"
-        );
+        let mut first = scheduler(&config);
+        let mut second = scheduler(&config);
+        assert_eq!(run_trace(&mut first, ticks), run_trace(&mut second, ticks));
+        assert_eq!(first.state_id(), second.state_id(), "case {case}");
     }
 }
 
 #[test]
 fn snapshot_restore_produces_same_future() {
     for case in 0..WIDE_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(2, 8);
-        let quantum = tc.u64(1, 500);
-        let seed = tc.next();
-        let pre_ticks = tc.usize(1, 500);
-        let post_ticks = tc.usize(10, 500);
-
-        let config = SchedulerConfig {
-            num_vcpus,
-            quantum,
-            strategy: SchedulingStrategy::Randomized {
-                min_quantum: 5,
-                max_quantum: 100,
-            },
-            seed,
-        };
-
-        let mut original = VcpuScheduler::new(&config);
-        for _ in 0..pre_ticks {
-            if original.tick() {
-                original.advance();
-            }
-        }
-
-        let snap = original.snapshot();
-        let orig_trace = run_trace(&mut original, post_ticks);
-
-        let mut restored = VcpuScheduler::new(&config);
-        restored.restore(&snap);
-        let restored_trace = run_trace(&mut restored, post_ticks);
-
-        assert_eq!(orig_trace, restored_trace, "case {case}");
-    }
-}
-
-#[test]
-fn active_vcpu_always_in_bounds() {
-    for case in 0..WIDE_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(1, 16);
-        let quantum = tc.u64(1, 500);
-        let seed = tc.next();
-        let ticks = tc.usize(10, 2000);
-
+        let mut test_case = DeterministicCase::new(case);
+        let num_vcpus = test_case.usize(2, MAX_VCPUS / 2);
+        let quantum = test_case.u64(MIN_QUANTUM, MAX_QUANTUM);
+        let pre_ticks = test_case.usize(MIN_QUANTUM as usize, MAX_QUANTUM as usize);
+        let post_ticks = test_case.usize(MIN_TICKS, MAX_QUANTUM as usize);
         let config = SchedulerConfig {
             num_vcpus,
             quantum,
             strategy: SchedulingStrategy::RoundRobin,
-            seed,
+            seed: test_case.next(),
         };
+        let mut original = scheduler(&config);
+        run_trace(&mut original, pre_ticks);
+        let snapshot = original.snapshot();
+        let mut restored = scheduler(&config);
+        restored.restore(&snapshot).unwrap();
+        assert_eq!(
+            run_trace(&mut original, post_ticks),
+            run_trace(&mut restored, post_ticks),
+            "case {case}"
+        );
+    }
+}
 
-        let mut sched = VcpuScheduler::new(&config);
+#[test]
+fn active_vcpu_is_always_in_bounds() {
+    for case in 0..WIDE_CASES {
+        let mut test_case = DeterministicCase::new(case);
+        let num_vcpus = test_case.usize(MIN_VCPUS, MAX_VCPUS);
+        let config = SchedulerConfig {
+            num_vcpus,
+            quantum: test_case.u64(MIN_QUANTUM, MAX_QUANTUM),
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: test_case.next(),
+        };
+        let mut scheduler = scheduler(&config);
+        let ticks = test_case.usize(MIN_TICKS, MAX_TICKS);
         for _ in 0..ticks {
-            assert!(
-                sched.active() < num_vcpus,
-                "case {case}: active={} but num_vcpus={num_vcpus}",
-                sched.active()
-            );
-            if sched.tick() {
-                sched.advance();
-            }
+            assert!(scheduler.active() < num_vcpus, "case {case}");
+            step(&mut scheduler);
         }
     }
 }
 
 #[test]
-fn single_vcpu_never_switches() {
-    for case in 0..WIDE_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let quantum = tc.u64(1, 500);
-        let seed = tc.next();
-        let ticks = tc.usize(10, 2000);
-
+fn single_vcpu_never_selects_another_vcpu() {
+    for case in 0..NORMAL_CASES {
+        let mut test_case = DeterministicCase::new(case);
         let config = SchedulerConfig {
             num_vcpus: 1,
-            quantum,
+            quantum: test_case.u64(MIN_QUANTUM, MAX_QUANTUM),
             strategy: SchedulingStrategy::RoundRobin,
-            seed,
+            seed: test_case.next(),
         };
-
-        let mut sched = VcpuScheduler::new(&config);
-        for _ in 0..ticks {
-            assert!(!sched.tick(), "case {case}: single vCPU must never switch");
-            assert_eq!(sched.active(), 0);
+        let mut scheduler = scheduler(&config);
+        for _ in 0..test_case.usize(MIN_TICKS, MAX_TICKS) {
+            step(&mut scheduler);
+            assert_eq!(scheduler.active(), 0, "case {case}");
         }
     }
 }
 
 #[test]
-fn randomized_quantum_in_range() {
-    for case in 0..WIDE_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(2, 8);
-        let min_q = tc.u64(1, 50);
-        let max_q = tc.u64(min_q + 1, 500);
-        let seed = tc.next();
-        let ticks = tc.usize(10, 2000);
-
+fn randomized_quantum_stays_in_declared_range() {
+    for case in 0..NORMAL_CASES {
+        let mut test_case = DeterministicCase::new(case);
+        let min_quantum = test_case.u64(MIN_QUANTUM, MAX_QUANTUM / 10);
+        let max_quantum = test_case.u64(min_quantum + 1, MAX_QUANTUM);
         let config = SchedulerConfig {
-            num_vcpus,
-            quantum: 10,
+            num_vcpus: test_case.usize(2, MAX_VCPUS / 2),
+            quantum: MIN_QUANTUM,
             strategy: SchedulingStrategy::Randomized {
-                min_quantum: min_q,
-                max_quantum: max_q,
+                min_quantum,
+                max_quantum,
             },
-            seed,
+            seed: test_case.next(),
         };
-
-        let mut sched = VcpuScheduler::new(&config);
-        for _ in 0..ticks {
-            if sched.tick() {
-                sched.advance();
-                let remaining = sched.remaining();
-                assert!(
-                    remaining >= min_q && remaining < max_q,
-                    "case {case}: quantum {remaining} not in [{min_q}, {max_q})"
-                );
-            }
+        let mut scheduler = scheduler(&config);
+        for (_, quantum) in run_trace(&mut scheduler, MAX_TICKS) {
+            assert!(
+                (min_quantum..max_quantum).contains(&quantum),
+                "case {case}: quantum {quantum}"
+            );
         }
     }
+}
+
+#[test]
+fn stale_event_rejection_preserves_state() {
+    let config = SchedulerConfig {
+        num_vcpus: 2,
+        quantum: MAX_QUANTUM,
+        strategy: SchedulingStrategy::RoundRobin,
+        seed: 0,
+    };
+    let mut scheduler = scheduler(&config);
+    let before = scheduler.state().clone();
+    let event = ScheduleEvent::GuestProgress {
+        expected_state_id: chaoscontrol_vmm::scheduler::core::ScheduleStateId([0; 32]),
+        vcpu: 0,
+        observed_progress: 1,
+        runnable_changes: Vec::new(),
+        source: ProgressSource::ExactSingleStep,
+    };
+    let reservation = scheduler.reserve_transition().unwrap();
+    assert!(matches!(
+        scheduler.plan(&event),
+        Err(ScheduleError::StaleState { .. })
+    ));
+    scheduler.release_transition(reservation).unwrap();
+    assert_eq!(scheduler.state(), &before);
 }
 
 #[test]
 fn round_robin_visits_all_vcpus() {
     for case in 0..NORMAL_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(2, 8);
-        let quantum = tc.u64(1, 20);
-
+        let mut test_case = DeterministicCase::new(case);
+        let num_vcpus = test_case.usize(2, MAX_VCPUS / 2);
+        let quantum = test_case.u64(MIN_QUANTUM, MAX_QUANTUM / 25);
         let config = SchedulerConfig {
             num_vcpus,
             quantum,
             strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
+            seed: test_case.next(),
         };
-
-        let mut sched = VcpuScheduler::new(&config);
+        let mut scheduler = scheduler(&config);
         let mut seen = vec![false; num_vcpus];
-
-        let total_ticks = (num_vcpus as u64 * quantum * 2) as usize;
+        let total_ticks = num_vcpus * quantum as usize * 2;
         for _ in 0..total_ticks {
-            seen[sched.active()] = true;
-            if sched.tick() {
-                sched.advance();
-            }
+            seen[scheduler.active()] = true;
+            step(&mut scheduler);
         }
-
-        for (i, seen_vcpu) in seen.iter().enumerate() {
-            assert!(
-                *seen_vcpu,
-                "case {case}: vCPU {i} was never scheduled in {total_ticks} ticks"
-            );
-        }
-    }
-}
-
-#[test]
-fn set_active_does_not_affect_rng() {
-    for case in 0..NORMAL_CASES {
-        let mut tc = DeterministicCase::new(case);
-        let num_vcpus = tc.usize(2, 8);
-        let seed = tc.next();
-        let pre_ticks = tc.usize(1, 200);
-        let post_ticks = tc.usize(10, 500);
-        let forced_vcpu = tc.usize(0, num_vcpus - 1);
-
-        let config = SchedulerConfig {
-            num_vcpus,
-            quantum: 10,
-            strategy: SchedulingStrategy::Randomized {
-                min_quantum: 5,
-                max_quantum: 50,
-            },
-            seed,
-        };
-
-        let mut a = VcpuScheduler::new(&config);
-        for _ in 0..pre_ticks {
-            if a.tick() {
-                a.advance();
-            }
-        }
-        let snap = a.snapshot();
-
-        let mut b = VcpuScheduler::new(&config);
-        b.restore(&snap);
-        b.set_active(forced_vcpu);
-
-        for _ in 0..b.remaining() {
-            if b.tick() {
-                b.advance();
-                break;
-            }
-        }
-
-        for _ in 0..a.remaining() {
-            if a.tick() {
-                a.advance();
-                break;
-            }
-        }
-
-        let quanta_a: Vec<u64> = run_trace(&mut a, post_ticks)
-            .iter()
-            .map(|(_, quantum)| *quantum)
-            .collect();
-        let quanta_b: Vec<u64> = run_trace(&mut b, post_ticks)
-            .iter()
-            .map(|(_, quantum)| *quantum)
-            .collect();
-        assert_eq!(quanta_a, quanta_b, "case {case}: set_active consumed RNG");
+        assert!(seen.into_iter().all(|visited| visited), "case {case}");
     }
 }

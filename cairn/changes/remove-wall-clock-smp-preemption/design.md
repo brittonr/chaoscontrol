@@ -42,6 +42,8 @@ Watchdog timeout facts are operational diagnostics and are excluded from determi
 
 The schedule state is snapshot-ready and restored by the VM snapshot owner; this package defines its semantics while `complete-vm-snapshot-state` owns whole-VM inventory and restore ordering.
 
+The VM permanently poisons execution after any post-entry evidence failure. It also poisons execution if exit handling or schedule-action application fails after the journal commit. A committed partial journal remains diagnostic-only.
+
 **Rationale:** Existing dlog interrupt records show that an interrupt occurred but do not prove why a vCPU changed.
 
 ### 6. Validate against host perturbation
@@ -49,6 +51,16 @@ The schedule state is snapshot-ready and restored by the VM snapshot owner; this
 **Choice:** Pure tests exhaust small schedule states and event sequences. Integration tests replay a spin-looping SMP fixture with injected spurious `EINTR`, varied watchdog cadence, host sleeps, CPU contention, and PMU-unavailable profiles. Accepted runs must produce identical vCPU transition traces and bounded guest observations; unavailable exact modes must fail before execution.
 
 **Rationale:** Repeating on an idle host alone does not exercise the source of the defect.
+
+### 7. Permanently poison a failed controller round
+
+**Choice:** The controller latches the first error after a round starts mutation. The latch records the round, starting tick, and original failure.
+
+All later execution, controller mutation, snapshot, restore, recording, and success-result paths fail before mutation. Partial VM journals remain diagnostic data only. The controller never emits a complete result for the failed round.
+
+Preflight failures remain retryable only when no round mutation occurred.
+
+**Rationale:** One VM can advance before a later VM loses exact evidence. Retrying that round would advance the earlier VM twice and corrupt global fault, network, or tick state.
 
 ## Risks / Trade-offs
 

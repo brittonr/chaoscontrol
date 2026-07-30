@@ -45,17 +45,17 @@ fn main() {
     for i in 0..runs {
         vm.restore(&snap).expect("restore");
         let counter = InstructionCounter::new().expect("PMU not available");
-        counter.reset_and_enable();
+        counter.reset_and_enable().expect("enable PMU counter");
 
         let mut cumulative: Vec<u64> = Vec::new();
         for _ in 0..measure_exits {
             let (exits, halted) = vm.run_bounded(1).expect("step");
-            cumulative.push(counter.read());
+            cumulative.push(counter.read().expect("read PMU counter"));
             if exits == 0 || halted {
                 break;
             }
         }
-        counter.disable();
+        counter.disable().expect("disable PMU counter");
 
         // Convert cumulative → per-exit deltas
         let mut per_exit = Vec::with_capacity(cumulative.len());

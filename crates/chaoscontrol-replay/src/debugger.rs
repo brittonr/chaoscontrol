@@ -420,6 +420,7 @@ mod tests {
                 faults_fired: vec![],
                 fault_outcomes: vec![],
                 messages_delivered: 0,
+                schedule_traces: Vec::new(),
             })
         }
 
@@ -558,6 +559,7 @@ mod tests {
             fault_stage_events: vec![],
             fault_round_deltas: vec![],
             fault_outcome_ledger: Default::default(),
+            schedule_rounds: vec![],
             events: vec![
                 RecordedEvent::AssertionHit {
                     tick: 100,

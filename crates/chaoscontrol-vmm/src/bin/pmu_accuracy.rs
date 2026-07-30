@@ -28,18 +28,18 @@ fn main() {
     vm.load_kernel(&args[1], Some(&args[2]))
         .expect("load kernel");
 
-    counter.reset_and_enable();
-    counter.disable();
+    counter.reset_and_enable().expect("enable PMU counter");
+    counter.disable().expect("disable PMU counter");
 
     let mut values = Vec::new();
     let mut total_steps = 0;
 
     // Record first 200 step counter values
     for _ in 0..200 {
-        counter.resume();
+        counter.resume().expect("resume PMU counter");
         let (_, halted) = vm.run_bounded(1).expect("run");
-        counter.disable();
-        let val = counter.read();
+        counter.disable().expect("disable PMU counter");
+        let val = counter.read().expect("read PMU counter");
         values.push(val);
         total_steps += 1;
         if halted {

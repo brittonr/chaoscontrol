@@ -29,11 +29,9 @@ pub struct BranchWork {
 /// on construction. Workers are reused across rounds — they restore
 /// from a shared snapshot for each branch instead of rebooting.
 ///
-/// **SIGALRM safety:** The SMP preemption timer (`ITIMER_REAL`) is
-/// process-wide and only armed by multi-vCPU VMs. Single-vCPU VMs
-/// (the default) never arm the timer, so parallel workers are safe.
-/// Multi-vCPU parallel exploration would need `timer_create` with
-/// `SIGEV_THREAD_ID` to target signals at specific threads.
+/// **Signal safety:** Deterministic SMP does not arm `SIGALRM`.
+/// Single-vCPU watchdog timers use `SIGEV_THREAD_ID` in parallel workers.
+/// Optional PMU overflow delivery uses `F_OWNER_TID` for the worker thread.
 pub struct WorkerPool {
     /// One controller per worker. Workers are indexed 0..num_workers.
     /// Using `Option` so we can `take()` controllers into threads.
@@ -210,7 +208,7 @@ impl WorkerPool {
                             // Initialize per-thread POSIX timers so the
                             // single-vCPU watchdog SIGALRM targets this
                             // thread, not the process.
-                            ctrl.init_thread_timers();
+                            ctrl.init_thread_timers()?;
 
                             // Set bases for incremental snapshots on this worker's controller.
                             if !bases.is_empty() {
@@ -311,7 +309,7 @@ fn run_single_branch(
 
     // Apply schedule variant (vCPU interleaving diversity)
     if let Some(variant) = schedule_variant {
-        controller.apply_schedule_variant(variant);
+        controller.apply_schedule_variant(variant)?;
     }
 
     // Apply the schedule in a new branch run.

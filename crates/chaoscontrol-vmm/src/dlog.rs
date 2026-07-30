@@ -55,6 +55,7 @@ pub enum DlogTag {
     RegisterDump = 20,
     MemoryHash = 21,
     TickMarker = 22,
+    ScheduleProgress = 23,
     Marker = 255,
 }
 
@@ -83,6 +84,7 @@ impl DlogTag {
             20 => Some(Self::RegisterDump),
             21 => Some(Self::MemoryHash),
             22 => Some(Self::TickMarker),
+            23 => Some(Self::ScheduleProgress),
             255 => Some(Self::Marker),
             _ => None,
         }
@@ -112,6 +114,7 @@ impl DlogTag {
             Self::RegisterDump => "RegDump",
             Self::MemoryHash => "MemHash",
             Self::TickMarker => "TickMarker",
+            Self::ScheduleProgress => "SchedProgress",
             Self::Marker => "Marker",
         }
     }
@@ -754,14 +757,15 @@ mod tests {
 
     #[test]
     fn tag_round_trip() {
+        const FIRST_UNASSIGNED_TAG: u8 = DlogTag::ScheduleProgress as u8 + 1;
         for val in [
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 255,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 255,
         ] {
             let tag = DlogTag::from_u8(val).unwrap();
             assert_eq!(tag as u8, val);
         }
         assert!(DlogTag::from_u8(0).is_none());
-        assert!(DlogTag::from_u8(23).is_none());
+        assert!(DlogTag::from_u8(FIRST_UNASSIGNED_TAG).is_none());
         assert!(DlogTag::from_u8(254).is_none());
     }
 

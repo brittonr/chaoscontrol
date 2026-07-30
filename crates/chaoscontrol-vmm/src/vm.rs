@@ -22,7 +22,15 @@ use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
 use crate::devices::virtio_mmio::VirtioMmioDevice;
 use crate::dlog::{DlogRecord, DlogTag, DlogWriter};
-use crate::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
+use crate::scheduler::core::{
+    canonical_runnable_changes, plan_execution_observation, validate_progress_capabilities,
+    ExactStepState, ExecutionProgressObservation, ProgressCapabilities, ProgressMode,
+    ScheduleAction, ScheduleError, ScheduleEvent, ScheduleReservation, ScheduleTrace,
+    ScheduleTransitionRecord, DEFAULT_SCHEDULE_JOURNAL_LIMIT, MAX_SCHEDULE_VCPUS,
+};
+use crate::scheduler::{
+    SchedulerConfig, SchedulingStrategy, VcpuScheduler, DEFAULT_SMP_INSTRUCTION_QUANTUM,
+};
 
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
@@ -38,7 +46,7 @@ use chaoscontrol_protocol::{
 use kvm_bindings::{
     kvm_clock_data, kvm_enable_cap, kvm_fpu, kvm_guest_debug, kvm_pit_config, kvm_regs,
     kvm_userspace_memory_region, KVM_GUESTDBG_ENABLE, KVM_GUESTDBG_SINGLESTEP,
-    KVM_MEM_LOG_DIRTY_PAGES, KVM_MP_STATE_HALTED, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
+    KVM_MEM_LOG_DIRTY_PAGES, KVM_MP_STATE_RUNNABLE, KVM_PIT_SPEAKER_DUMMY,
 };
 use kvm_ioctls::{Cap, Kvm, VcpuExit, VcpuFd, VmFd};
 use linux_loader::configurator::linux::LinuxBootConfigurator;
@@ -55,6 +63,15 @@ use chaoscontrol_fault::faults::GpRegister;
 /// and ownership transfers between threads happen only when the
 /// controller moves between the pool and scoped thread spawns.
 struct SendTimerId(libc::timer_t);
+
+impl Drop for SendTimerId {
+    fn drop(&mut self) {
+        // SAFETY: the wrapper uniquely owns a timer returned by `timer_create`.
+        unsafe {
+            libc::timer_delete(self.0);
+        }
+    }
+}
 
 // SAFETY: The timer is created per-thread and only accessed from the
 // owning thread. Transfer between threads is guarded by the scoped
@@ -179,9 +196,13 @@ const PIT_IRQ: u32 = 0;
 
 /// PIT oscillator frequency (Hz).
 const PIT_FREQ_HZ: u128 = 1_193_182;
+/// Effective PIT reload represented by a hardware count of zero.
+const PIT_ZERO_RELOAD: u64 = 65_536;
+/// Bootstrap processor index used by legacy PIC delivery.
+const BSP_VCPU_INDEX: usize = 0;
 
-/// Single-step margin for exact preemption (reserved for future use).
-const SINGLESTEP_MARGIN: u64 = 50;
+/// Single-vCPU operational watchdog interval in microseconds.
+const SINGLE_VCPU_WATCHDOG_MICROSECONDS: i64 = 100_000;
 
 /// KVM TSS address — must be set before create_irq_chip.
 /// Placed at the top of the 32-bit address space (3 pages needed by KVM).
@@ -240,6 +261,15 @@ pub struct VmConfig {
     /// Only meaningful when `num_vcpus > 1`. Controls how vCPU execution
     /// time is divided: fixed round-robin or randomized quantum.
     pub scheduling_strategy: SchedulingStrategy,
+    /// Declared deterministic SMP progress mode.
+    ///
+    /// PMU acceleration fails closed when guest-only instruction overflow is
+    /// unavailable. It never falls back to wall-clock preemption.
+    pub smp_progress_mode: ProgressMode,
+    /// Guest instructions in the initial and round-robin SMP quantum.
+    pub smp_instruction_quantum: u64,
+    /// Maximum canonical schedule records retained between evidence drains.
+    pub smp_schedule_journal_limit: usize,
     /// Kernel command line (NUL-terminated).
     pub cmdline: Vec<u8>,
     /// Optional path to a disk image file for the virtio-blk device.
@@ -301,6 +331,9 @@ impl Default for VmConfig {
             memory_size: 256 * 1024 * 1024,
             num_vcpus: 1,
             scheduling_strategy: SchedulingStrategy::RoundRobin,
+            smp_progress_mode: ProgressMode::ExactSingleStep,
+            smp_instruction_quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            smp_schedule_journal_limit: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
             cpu: CpuConfig {
                 // Hide KVM so guest doesn't use kvm-clock (reads host wall time).
                 // Set fixed family=6 (Intel) so kernel's native_calibrate_tsc()
@@ -355,6 +388,26 @@ impl Default for VmConfig {
 //  Error type
 // ═══════════════════════════════════════════════════════════════════════
 
+/// Post-entry stage that made exact schedule evidence unrecoverable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SchedulePoisonStage {
+    PmuDisable,
+    PmuGeneration,
+    PmuRead,
+    KvmRunResult,
+    ProgressPlanning,
+    JournalCommit,
+    ExitHandling,
+    ScheduleAction,
+}
+
+/// Permanent execution poison retained after possible unrecorded guest progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScheduleExecutionPoison {
+    pub stage: SchedulePoisonStage,
+    pub detail: String,
+}
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum VmError {
@@ -408,6 +461,38 @@ pub enum VmError {
 
     #[snafu(display("Failed to run vCPU"))]
     VcpuRun { source: kvm_ioctls::Error },
+
+    #[snafu(
+        display("Deterministic schedule rejected input: {source}"),
+        context(false)
+    )]
+    Schedule { source: ScheduleError },
+
+    #[snafu(display("Deterministic progress capability unavailable: {message}"))]
+    ProgressCapability { message: String },
+
+    #[snafu(display(
+        "Deterministic schedule execution is permanently poisoned at {stage:?}: {detail}"
+    ))]
+    ScheduleExecutionPoisoned {
+        stage: SchedulePoisonStage,
+        detail: String,
+    },
+
+    #[snafu(display(
+        "Simulation controller is permanently poisoned by failed round {round} at tick {tick}: {detail}"
+    ))]
+    ControllerRoundPoisoned {
+        round: u64,
+        tick: u64,
+        detail: String,
+    },
+
+    #[snafu(display("Host watchdog interrupted vCPU {vcpu}; this is not a guest crash verdict"))]
+    HostWatchdogTimeout { vcpu: usize },
+
+    #[snafu(display("KVM reported an internal error for vCPU {vcpu}"))]
+    KvmInternalError { vcpu: usize },
 
     #[snafu(display("IO error"), context(false))]
     Io { source: io::Error },
@@ -537,26 +622,19 @@ pub struct DeterministicVm {
 
     // Intra-VM vCPU scheduler (only meaningful when num_vcpus > 1)
     scheduler: VcpuScheduler,
+    /// Evidence slot held across an unrelated host interrupt retry.
+    pending_schedule_reservation: Option<ScheduleReservation>,
+    /// Permanent failure after KVM may have progressed without exact evidence.
+    schedule_execution_poison: Option<ScheduleExecutionPoison>,
+    /// HLT observations that KVM leaves encoded as runnable MP state.
+    hlt_latched_vcpus: Vec<bool>,
 
-    // Hardware instruction counter for deterministic SMP scheduling.
-    // In overflow mode: delivers SIGIO after `insn_quantum - SINGLESTEP_MARGIN`
-    // guest instructions. We then single-step the exact remainder.
+    /// Optional guest-only PMU overflow accelerator.
     instruction_counter: Option<crate::perf::InstructionCounter>,
-    /// Accumulated guest instructions for the current vCPU's turn.
-    insn_count: u64,
-    /// Instruction quantum: total guest instructions per vCPU turn.
-    #[allow(dead_code)]
-    insn_quantum: u64,
-
-    /// Single-step state for exact preemption.
-    /// When PMU overflow fires, we enable KVM single-stepping and count
-    /// down `singlestep_remaining` instructions to reach the exact quantum.
-    singlestep_remaining: u64,
+    /// Scheduler progress at the most recent PMU reset.
+    pmu_counter_base_progress: u64,
     /// Whether KVM guest debug single-step is currently active.
     singlestep_active: bool,
-    /// Consecutive SIGALRM exits without a real exit.
-    /// Used to detect spin-wait loops for liveness switches.
-    sigalrm_without_exit: u32,
 
     // Execution statistics
     exit_count: u64,
@@ -575,11 +653,6 @@ pub struct DeterministicVm {
     /// (`KVM_EXIT_HYPERCALL`). When `false`, falls back to port I/O
     /// (`outb(0x510)` → `KVM_EXIT_IO`).
     vmcall_enabled: bool,
-
-    /// Set after a signal-interrupted exit (EINTR/Intr). Causes the
-    /// next `step()` to skip `sync_tsc_to_guest()` so the TSC resync
-    /// doesn't happen at non-deterministic wall-clock times.
-    skip_tsc_sync: bool,
 
     /// Set when serial output contains "Kernel panic".
     /// Causes `step()` to return halted on the next iteration.
@@ -649,9 +722,44 @@ impl DeterministicVm {
         }
     }
 
-    /// Install a no-op SIGALRM handler so the preemption timer doesn't
-    /// kill the process. Called on first multi-vCPU VM creation and
-    /// by `init_thread_timer()` for single-vCPU watchdog timers.
+    fn mp_state_is_runnable(mp_state: u32) -> bool {
+        mp_state == KVM_MP_STATE_RUNNABLE
+    }
+
+    fn vcpu_fd_is_runnable(vcpu: usize, fd: &VcpuFd) -> Result<bool, VmError> {
+        let state = fd.get_mp_state().map_err(|error| VmError::Snapshot {
+            message: format!("failed to read vCPU {vcpu} MP state: {error}"),
+        })?;
+        Ok(Self::mp_state_is_runnable(state.mp_state))
+    }
+
+    fn set_vcpu_singlestep(fd: &VcpuFd, enabled: bool) -> Result<(), kvm_ioctls::Error> {
+        let control = if enabled {
+            KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP
+        } else {
+            0
+        };
+        fd.set_guest_debug(&kvm_guest_debug {
+            control,
+            pad: 0,
+            arch: Default::default(),
+        })
+    }
+
+    fn probe_exact_singlestep(vcpus: &[VcpuFd]) -> Result<(), VmError> {
+        for (vcpu, fd) in vcpus.iter().enumerate() {
+            Self::set_vcpu_singlestep(fd, true).map_err(|error| VmError::ProgressCapability {
+                message: format!("vCPU {vcpu} cannot enable exact single-step: {error}"),
+            })?;
+            Self::set_vcpu_singlestep(fd, false).map_err(|error| VmError::ProgressCapability {
+                message: format!("vCPU {vcpu} cannot disable exact single-step: {error}"),
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Install a no-op SIGALRM handler for the single-vCPU watchdog.
+    /// Deterministic SMP does not use this signal as a progress source.
     fn install_sigalrm_handler() {
         use std::sync::Once;
         static ONCE: Once = Once::new();
@@ -779,8 +887,12 @@ impl DeterministicVm {
         // Create vCPUs AFTER irqchip (so each gets an in-kernel LAPIC).
         // Only one vCPU runs at a time — deterministic serialized scheduling.
         let num_vcpus = config.num_vcpus.max(1);
-        if num_vcpus > 1 {
-            Self::install_sigalrm_handler();
+        if num_vcpus > MAX_SCHEDULE_VCPUS {
+            return Err(ScheduleError::TooManyVcpus {
+                found: num_vcpus,
+                limit: MAX_SCHEDULE_VCPUS,
+            }
+            .into());
         }
 
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
@@ -818,13 +930,13 @@ impl DeterministicVm {
         vm.register_irqfd(&serial_evt, SERIAL_IRQ)
             .context(CreateIrqChipSnafu)?;
 
-        // Create intra-VM vCPU scheduler
-        let scheduler = VcpuScheduler::new(&SchedulerConfig {
+        // Define the deterministic instruction schedule before any guest runs.
+        let scheduler_config = SchedulerConfig {
             num_vcpus,
-            quantum: 100, // exits per vCPU turn
+            quantum: config.smp_instruction_quantum,
             strategy: config.scheduling_strategy,
             seed: config.cpu.seed,
-        });
+        };
 
         // Create fault injection engine for SDK hypercalls
         let fault_engine = FaultEngine::new(EngineConfig {
@@ -873,53 +985,97 @@ impl DeterministicVm {
                 .unwrap_or_default(),
         );
 
-        // For SMP: PMU counting mode + SIGALRM + KVM single-step.
-        //
-        // Strategy: the PMU counts guest instructions (exclude_host=1).
-        // SIGALRM (500µs) breaks tight spin loops that have no real exits.
-        // At EVERY exit (real or SIGALRM), we read the counter. When it
-        // reaches `quantum - margin`, we enable KVM single-step and count
-        // down to the exact quantum boundary. Result: each vCPU runs
-        // exactly `quantum` guest instructions per turn (deterministic).
-        let insn_quantum = 500_000u64;
+        let initial_runnable = vcpus
+            .iter()
+            .enumerate()
+            .map(|(vcpu, fd)| Self::vcpu_fd_is_runnable(vcpu, fd))
+            .collect::<Result<Vec<_>, _>>()?;
+        let progress_mode = if num_vcpus > 1 {
+            config.smp_progress_mode
+        } else {
+            ProgressMode::ExactSingleStep
+        };
+        let scheduler = VcpuScheduler::try_new_with_journal_limit(
+            &scheduler_config,
+            progress_mode,
+            initial_runnable,
+            config.smp_schedule_journal_limit,
+        )?;
+        let active_vcpu = scheduler.active();
+
+        // Validate every selected execution capability before guest progress.
         let instruction_counter = if num_vcpus > 1 {
-            debug_assert!(
-                insn_quantum > SINGLESTEP_MARGIN,
-                "quantum must exceed single-step margin"
-            );
-            Self::install_sigalrm_handler();
-            match crate::perf::InstructionCounter::new() {
-                Ok(counter) => {
+            Self::probe_exact_singlestep(&vcpus)?;
+            match progress_mode {
+                ProgressMode::ExactSingleStep => {
+                    validate_progress_capabilities(
+                        progress_mode,
+                        ProgressCapabilities {
+                            exact_single_step: true,
+                            guest_instruction_pmu: false,
+                            pmu_overflow: false,
+                        },
+                    )?;
                     info!(
-                        "SMP preemption: PMU counting + single-step, quantum={}, margin={}",
-                        insn_quantum, SINGLESTEP_MARGIN
-                    );
-                    Some(counter)
-                }
-                Err(e) => {
-                    info!(
-                        "SMP preemption: falling back to SIGALRM only (no PMU: {})",
-                        e
+                        "SMP progress: exact KVM single-step, quantum={}",
+                        scheduler.remaining()
                     );
                     None
+                }
+                ProgressMode::PmuAccelerated { exact_step_margin } => {
+                    let overflow_period = scheduler
+                        .remaining()
+                        .checked_sub(exact_step_margin)
+                        .filter(|period| *period > 0)
+                        .ok_or_else(|| VmError::ProgressCapability {
+                            message: "PMU overflow period must be positive".to_string(),
+                        })?;
+                    let counter = crate::perf::InstructionCounter::with_overflow(overflow_period)
+                        .map_err(|error| VmError::ProgressCapability {
+                        message: format!(
+                            "guest-only instruction PMU overflow is unavailable: {error}"
+                        ),
+                    })?;
+                    validate_progress_capabilities(
+                        progress_mode,
+                        ProgressCapabilities {
+                            exact_single_step: true,
+                            guest_instruction_pmu: true,
+                            pmu_overflow: true,
+                        },
+                    )?;
+                    counter.reset_and_enable()?;
+                    counter.disable()?;
+                    info!(
+                        "SMP progress: guest-only PMU overflow + exact remainder, quantum={}, margin={}",
+                        scheduler.remaining(), exact_step_margin
+                    );
+                    // The capability probe is closed on this thread. The live
+                    // counter binds lazily to the thread that enters KVM.
+                    drop(counter);
+                    None
+                }
+                ProgressMode::LegacyWallClock => {
+                    validate_progress_capabilities(
+                        progress_mode,
+                        ProgressCapabilities {
+                            exact_single_step: true,
+                            guest_instruction_pmu: false,
+                            pmu_overflow: false,
+                        },
+                    )?;
+                    unreachable!("legacy wall-clock mode is rejected above")
                 }
             }
         } else {
             None
         };
 
-        // Reset the PMU counter for the initial vCPU (BSP).
-        // It starts paused; resume() happens just before each vcpu.run().
-        if let Some(ref counter) = instruction_counter {
-            counter.reset_and_enable();
-            counter.disable();
-        }
-
         Ok(Self {
             kvm,
             vm,
             vcpus,
-            active_vcpu: 0,
+            active_vcpu,
             memory,
             virtual_tsc,
             entropy,
@@ -927,14 +1083,14 @@ impl DeterministicVm {
             serial,
             serial_writer,
             scheduler,
+            pending_schedule_reservation: None,
+            schedule_execution_poison: None,
+            hlt_latched_vcpus: vec![false; num_vcpus],
             fault_engine,
             virtio_devices,
             instruction_counter,
-            insn_count: 0,
-            insn_quantum,
-            singlestep_remaining: 0,
+            pmu_counter_base_progress: 0,
             singlestep_active: false,
-            sigalrm_without_exit: 0,
             last_kvm_pit_mode: 0xFF, // impossible value forces first sync
             exit_count: 0,
             io_exit_count: 0,
@@ -944,7 +1100,6 @@ impl DeterministicVm {
             thread_timer: None,
             coverage_active: false,
             vmcall_enabled,
-            skip_tsc_sync: false,
             extra_cmdline: config.extra_cmdline.clone(),
             dirty_log_enabled: true,
             vm_id: config.vm_id,
@@ -1341,6 +1496,7 @@ impl DeterministicVm {
 
     /// Run the VM until it halts or shuts down.
     pub fn run(&mut self) -> Result<(), VmError> {
+        self.ensure_schedule_execution_healthy()?;
         // Reset time state as close to first vcpu.run() as possible
         self.reset_time_state()?;
         info!("Starting VM execution");
@@ -1362,6 +1518,7 @@ impl DeterministicVm {
     ///
     /// Returns the captured serial output since the call.
     pub fn run_until(&mut self, pattern: &str) -> Result<String, VmError> {
+        self.ensure_schedule_execution_healthy()?;
         if self.exit_count == 0 {
             self.reset_time_state()?;
         }
@@ -1383,6 +1540,7 @@ impl DeterministicVm {
     /// Returns `(exits_executed, halted)`.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn run_bounded(&mut self, max_exits: u64) -> Result<(u64, bool), VmError> {
+        self.ensure_schedule_execution_healthy()?;
         if self.exit_count == 0 {
             self.reset_time_state()?;
         }
@@ -1397,12 +1555,8 @@ impl DeterministicVm {
         /// single SDK call in that time, it's truly idle.
         const SDK_IDLE_THRESHOLD: u64 = 50_000;
 
-        // Track real exits via exit_count, NOT loop iterations.
-        // SIGALRM (VcpuExit::Intr) does not increment exit_count,
-        // so using a simple `for i in 0..max_exits` loop would
-        // consume a budget slot on each SIGALRM without producing
-        // a real exit — causing non-deterministic total exit counts
-        // in SMP mode where SIGALRM fires at wall-clock intervals.
+        // Track guest exits through `exit_count`, not loop iterations.
+        // Operational interrupts do not consume the deterministic exit budget.
         let start_exits = self.exit_count;
 
         loop {
@@ -1434,8 +1588,7 @@ impl DeterministicVm {
                 return Ok((self.exit_count - start_exits, true));
             }
         }
-        // Disarm preemption timer at end of bounded run so it doesn't
-        // fire on a future vcpu.run() call from a different VM.
+        // Disarm the single-vCPU watchdog after the bounded run.
         self.disarm_preemption_timer();
         Ok((self.exit_count - start_exits, false))
     }
@@ -1494,6 +1647,12 @@ impl DeterministicVm {
         self.active_vcpu
     }
 
+    /// Drain bounded canonical SMP progress evidence since the prior drain.
+    pub fn take_schedule_trace(&mut self) -> Result<ScheduleTrace, VmError> {
+        self.ensure_schedule_execution_healthy()?;
+        Ok(self.scheduler.drain_trace()?)
+    }
+
     /// Get the KVM MP state for each vCPU (for diagnostics).
     ///
     /// Returns `(vcpu_index, mp_state_u32)` for each vCPU.
@@ -1507,21 +1666,6 @@ impl DeterministicVm {
                 (i, state)
             })
             .collect()
-    }
-
-    /// Set the active vCPU index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index >= num_vcpus()`.
-    pub fn set_active_vcpu(&mut self, index: usize) {
-        assert!(
-            index < self.vcpus.len(),
-            "vCPU index {} out of range (have {})",
-            index,
-            self.vcpus.len(),
-        );
-        self.active_vcpu = index;
     }
 
     /// Get a reference to the guest memory manager.
@@ -1921,6 +2065,14 @@ impl DeterministicVm {
     pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
         use crate::snapshot::{CaptureParams, VirtioDeviceSnapshot};
 
+        self.ensure_schedule_execution_healthy()?;
+        if self.pending_schedule_reservation.is_some() {
+            return Err(VmError::Snapshot {
+                message: "cannot snapshot while a host-interrupt retry holds schedule evidence"
+                    .to_string(),
+            });
+        }
+
         // Snapshot virtio device state (block device data)
         let virtio_snapshots: Vec<VirtioDeviceSnapshot> = self
             .virtio_devices
@@ -1955,7 +2107,7 @@ impl DeterministicVm {
             virtio_snapshots,
             coverage_active: self.coverage_active,
             scheduler_snapshot: self.scheduler.snapshot(),
-            singlestep_remaining: self.singlestep_remaining,
+            hlt_latched_vcpus: self.hlt_latched_vcpus.clone(),
         };
 
         let result = crate::snapshot::VmSnapshot::capture(
@@ -1989,6 +2141,14 @@ impl DeterministicVm {
         base: &std::sync::Arc<Vec<u8>>,
     ) -> Result<(crate::snapshot::VmSnapshot, usize), VmError> {
         use crate::snapshot::{CaptureParams, SnapshotMemory, VirtioDeviceSnapshot};
+
+        self.ensure_schedule_execution_healthy()?;
+        if self.pending_schedule_reservation.is_some() {
+            return Err(VmError::Snapshot {
+                message: "cannot snapshot while a host-interrupt retry holds schedule evidence"
+                    .to_string(),
+            });
+        }
 
         let dirty_bitmap = self.get_dirty_bitmap()?;
         let memory = SnapshotMemory::from_dirty(base, &dirty_bitmap, self.memory.inner());
@@ -2027,7 +2187,7 @@ impl DeterministicVm {
             virtio_snapshots,
             coverage_active: self.coverage_active,
             scheduler_snapshot: self.scheduler.snapshot(),
-            singlestep_remaining: self.singlestep_remaining,
+            hlt_latched_vcpus: self.hlt_latched_vcpus.clone(),
         };
 
         // Build the VmSnapshot with overlay memory instead of full copy.
@@ -2115,9 +2275,8 @@ impl DeterministicVm {
             fault_engine_snapshot: params.fault_engine_snapshot,
             virtio_snapshots: params.virtio_snapshots,
             coverage_active: params.coverage_active,
-            active_vcpu: params.scheduler_snapshot.active,
             scheduler_snapshot: params.scheduler_snapshot,
-            singlestep_remaining: params.singlestep_remaining,
+            hlt_latched_vcpus: params.hlt_latched_vcpus,
         };
 
         info!(
@@ -2130,11 +2289,65 @@ impl DeterministicVm {
         Ok((snap, dirty_count))
     }
 
-    /// Validate the fault evidence in a VM snapshot without changing live state.
+    /// Validate all untrusted snapshot state before any restore effect.
     pub fn validate_fault_engine_snapshot(
         &self,
         snapshot: &crate::snapshot::VmSnapshot,
     ) -> Result<(), VmError> {
+        self.ensure_schedule_execution_healthy()?;
+        if self.pending_schedule_reservation.is_some() {
+            return Err(VmError::Snapshot {
+                message: "cannot restore while a host-interrupt retry holds schedule evidence"
+                    .to_string(),
+            });
+        }
+        if snapshot.vcpu_snapshots.len() != self.vcpus.len() {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "snapshot vCPU count {} differs from VM count {}",
+                    snapshot.vcpu_snapshots.len(),
+                    self.vcpus.len()
+                ),
+            });
+        }
+        snapshot
+            .memory
+            .validate_for_guest_size(self.memory.size())
+            .map_err(|message| VmError::Snapshot { message })?;
+        if snapshot.virtio_snapshots.len() != self.virtio_devices.len() {
+            return Err(VmError::Snapshot {
+                message: format!(
+                    "snapshot virtio count {} differs from VM count {}",
+                    snapshot.virtio_snapshots.len(),
+                    self.virtio_devices.len()
+                ),
+            });
+        }
+        for (index, (device_snapshot, device)) in snapshot
+            .virtio_snapshots
+            .iter()
+            .zip(&self.virtio_devices)
+            .enumerate()
+        {
+            if device_snapshot.device_id != device.backend().device_id() {
+                return Err(VmError::Snapshot {
+                    message: format!("snapshot virtio device {index} has the wrong device ID"),
+                });
+            }
+        }
+        self.scheduler
+            .validate_snapshot(&snapshot.scheduler_snapshot)?;
+        if snapshot.hlt_latched_vcpus.len() != self.vcpus.len()
+            || snapshot
+                .hlt_latched_vcpus
+                .iter()
+                .zip(&snapshot.scheduler_snapshot.state.runnable_vcpus)
+                .any(|(latched, runnable)| *latched && *runnable)
+        {
+            return Err(VmError::Snapshot {
+                message: "snapshot HLT latches conflict with scheduler state".to_string(),
+            });
+        }
         self.fault_engine
             .validate_snapshot(&snapshot.fault_engine_snapshot)
             .map_err(|error| {
@@ -2191,23 +2404,13 @@ impl DeterministicVm {
         // Restore coverage flag
         self.coverage_active = snapshot.coverage_active;
 
-        // Restore scheduler state and active vCPU
-        self.scheduler.restore(&snapshot.scheduler_snapshot);
-        self.active_vcpu = snapshot.active_vcpu;
-
-        // Restore single-step state. If the snapshot was taken during
-        // single-stepping, re-enable it. Otherwise, re-arm the PMU counter.
-        self.singlestep_remaining = snapshot.singlestep_remaining;
-        if self.singlestep_remaining > 0 && self.instruction_counter.is_some() {
-            self.singlestep_active = false; // clear so enable_singlestep works
-            self.enable_singlestep();
-        } else {
-            self.disable_singlestep();
-            if let Some(ref counter) = self.instruction_counter {
-                counter.reset_and_enable();
-                counter.disable(); // Paused; resume() before vcpu.run()
-            }
-        }
+        // Restore one exact scheduler state after all admission checks.
+        let previous_active_vcpu = self.active_vcpu;
+        self.disable_singlestep(previous_active_vcpu)?;
+        self.scheduler.restore(&snapshot.scheduler_snapshot)?;
+        self.hlt_latched_vcpus = Self::hlt_latches_from_snapshot(snapshot);
+        self.active_vcpu = self.scheduler.active();
+        self.configure_progress_source_for_current_turn()?;
 
         // Restore virtio device state (block device data)
         for (snap, dev) in snapshot
@@ -2254,33 +2457,9 @@ impl DeterministicVm {
         );
         self.dlog_flush();
 
-        // Reset host-side preemption state that is NOT part of the
-        // deterministic snapshot but affects scheduling decisions.
-        // Without this, SIGALRM-driven liveness switches from a
-        // prior run can leak non-determinism into the restored session.
-        self.sigalrm_without_exit = 0;
-        self.skip_tsc_sync = false;
-        self.insn_count = 0;
-
-        // Disarm the SIGALRM preemption timer and drain any pending
-        // signal so it doesn't fire at a non-deterministic phase
-        // relative to the first vcpu.run() after restore. The timer
-        // will be re-armed in the next step() call.
-        if self.vcpus.len() > 1 {
-            unsafe {
-                let zero = libc::itimerval {
-                    it_interval: libc::timeval {
-                        tv_sec: 0,
-                        tv_usec: 0,
-                    },
-                    it_value: libc::timeval {
-                        tv_sec: 0,
-                        tv_usec: 0,
-                    },
-                };
-                libc::setitimer(libc::ITIMER_REAL, &zero, std::ptr::null_mut());
-            }
-        }
+        // Wall-clock watchdog state is shell-owned and excluded from the
+        // deterministic snapshot. Ensure no stale single-vCPU timer remains.
+        self.disarm_preemption_timer();
 
         info!("VM restored from snapshot (BSP RIP={:#x})", snapshot.rip());
 
@@ -2385,20 +2564,12 @@ impl DeterministicVm {
                 .build()
             })?;
         self.coverage_active = snapshot.coverage_active;
-        self.scheduler.restore(&snapshot.scheduler_snapshot);
-        self.active_vcpu = snapshot.active_vcpu;
-
-        self.singlestep_remaining = snapshot.singlestep_remaining;
-        if self.singlestep_remaining > 0 && self.instruction_counter.is_some() {
-            self.singlestep_active = false;
-            self.enable_singlestep();
-        } else {
-            self.disable_singlestep();
-            if let Some(ref counter) = self.instruction_counter {
-                counter.reset_and_enable();
-                counter.disable();
-            }
-        }
+        let previous_active_vcpu = self.active_vcpu;
+        self.disable_singlestep(previous_active_vcpu)?;
+        self.scheduler.restore(&snapshot.scheduler_snapshot)?;
+        self.hlt_latched_vcpus = Self::hlt_latches_from_snapshot(snapshot);
+        self.active_vcpu = self.scheduler.active();
+        self.configure_progress_source_for_current_turn()?;
 
         for (snap, dev) in snapshot
             .virtio_snapshots
@@ -2441,25 +2612,7 @@ impl DeterministicVm {
         );
         self.dlog_flush();
 
-        self.sigalrm_without_exit = 0;
-        self.skip_tsc_sync = false;
-        self.insn_count = 0;
-
-        if self.vcpus.len() > 1 {
-            unsafe {
-                let zero = libc::itimerval {
-                    it_interval: libc::timeval {
-                        tv_sec: 0,
-                        tv_usec: 0,
-                    },
-                    it_value: libc::timeval {
-                        tv_sec: 0,
-                        tv_usec: 0,
-                    },
-                };
-                libc::setitimer(libc::ITIMER_REAL, &zero, std::ptr::null_mut());
-            }
-        }
+        self.disarm_preemption_timer();
 
         Ok(())
     }
@@ -2537,76 +2690,278 @@ impl DeterministicVm {
         Ok(())
     }
 
-    /// Check if vCPU should switch after a real VM exit.
-    ///
-    /// Only ticks the deterministic scheduler when running the scheduler's
-    /// intended vCPU (active_vcpu == scheduler.active()). During liveness
-    /// detours (SIGALRM-switched), exits are counted globally but don't
-    /// affect scheduler state, preserving deterministic interleaving.
-    #[inline]
-    fn maybe_switch_vcpu(&mut self) {
+    fn hlt_latches_from_snapshot(snapshot: &crate::snapshot::VmSnapshot) -> Vec<bool> {
+        snapshot.hlt_latched_vcpus.clone()
+    }
+
+    fn observe_runnable_vcpus(&self) -> Result<Vec<bool>, VmError> {
+        self.vcpus
+            .iter()
+            .enumerate()
+            .map(|(vcpu, fd)| {
+                let kvm_runnable = Self::vcpu_fd_is_runnable(vcpu, fd)?;
+                Ok(kvm_runnable && !self.hlt_latched_vcpus[vcpu])
+            })
+            .collect()
+    }
+
+    fn refresh_runnable_state(&mut self) -> Result<bool, VmError> {
         if self.vcpus.len() <= 1 {
-            return;
+            return Ok(false);
         }
-        // Real exit occurred — reset the spin-loop detection counter.
-        self.sigalrm_without_exit = 0;
+        let observed = self.observe_runnable_vcpus()?;
+        let changes =
+            canonical_runnable_changes(&self.scheduler.state().runnable_vcpus, &observed)?;
+        if changes.is_empty() {
+            return Ok(false);
+        }
 
-        // During a liveness detour (SIGALRM switched us to a different
-        // vCPU than the scheduler intended), don't tick the scheduler.
-        // The detour vCPU's exits are real (affect exit_count, vtsc) but
-        // invisible to the scheduler's quantum tracking.
-        if self.active_vcpu != self.scheduler.active() {
-            return;
+        let reservation = self.scheduler.reserve_transition()?;
+        let event = ScheduleEvent::RunnableObservation {
+            expected_state_id: self.scheduler.state_id(),
+            runnable_changes: changes,
+        };
+        let planned = self.scheduler.plan(&event)?;
+        let action = planned.record.action.clone();
+        let record = self.scheduler.commit(reservation, planned)?;
+        self.emit_schedule_record(&record);
+        let action_result = self.apply_schedule_action(&action);
+        self.finish_after_committed_progress(SchedulePoisonStage::ScheduleAction, action_result)
+    }
+
+    fn ensure_schedule_execution_healthy(&self) -> Result<(), VmError> {
+        if let Some(poison) = &self.schedule_execution_poison {
+            return Err(VmError::ScheduleExecutionPoisoned {
+                stage: poison.stage,
+                detail: poison.detail.clone(),
+            });
         }
-        if self.scheduler.tick() {
-            let prev = self.active_vcpu;
-            // Scheduler says switch. Use advance() for deterministic next vCPU.
-            let next = self.scheduler.advance();
-            // Find next RUNNABLE vCPU starting from scheduler's choice.
-            for offset in 0..self.vcpus.len() {
-                let candidate = (next + offset) % self.vcpus.len();
-                if self.vcpu_is_runnable(candidate) {
-                    self.active_vcpu = candidate;
-                    if candidate != next {
-                        self.scheduler.set_active(candidate);
-                    }
-                    self.dlog_emit(
-                        self.dlog_record(DlogTag::SchedulerSwitch)
-                            .with_data(&[prev as u8])
-                            .with_extra_u64(self.scheduler.quantum_remaining()),
-                    );
-                    return;
-                }
+        Ok(())
+    }
+
+    fn poison_after_possible_guest_progress(
+        &mut self,
+        reservation: Option<ScheduleReservation>,
+        stage: SchedulePoisonStage,
+        detail: impl Into<String>,
+    ) -> VmError {
+        debug_assert!(self.vcpus.len() > 1);
+        debug_assert!(reservation.is_some() || self.scheduler.reservation_outstanding());
+        debug_assert!(self.scheduler.reservation_outstanding());
+        let _consumed_reservation_token = reservation;
+        self.pending_schedule_reservation = None;
+        self.latch_schedule_execution_poison(stage, detail)
+    }
+
+    fn poison_after_committed_progress(
+        &mut self,
+        stage: SchedulePoisonStage,
+        detail: impl Into<String>,
+    ) -> VmError {
+        self.pending_schedule_reservation = None;
+        self.latch_schedule_execution_poison(stage, detail)
+    }
+
+    fn latch_schedule_execution_poison(
+        &mut self,
+        stage: SchedulePoisonStage,
+        detail: impl Into<String>,
+    ) -> VmError {
+        let poison = ScheduleExecutionPoison {
+            stage,
+            detail: detail.into(),
+        };
+        self.schedule_execution_poison = Some(poison.clone());
+        VmError::ScheduleExecutionPoisoned {
+            stage: poison.stage,
+            detail: poison.detail,
+        }
+    }
+
+    /// Return the permanent schedule poison, if execution lost exact evidence.
+    pub fn schedule_execution_poison(&self) -> Option<&ScheduleExecutionPoison> {
+        self.schedule_execution_poison.as_ref()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_controller_test_progress(&mut self) -> Result<(), VmError> {
+        let vcpu = self.scheduler.active();
+        let observed_progress = self.scheduler.state().instruction_progress[vcpu]
+            .checked_add(1)
+            .ok_or_else(|| VmError::Snapshot {
+                message: "test schedule progress exhausted".to_string(),
+            })?;
+        let reservation = self.scheduler.reserve_transition()?;
+        let event = ScheduleEvent::GuestProgress {
+            expected_state_id: self.scheduler.state_id(),
+            vcpu,
+            observed_progress,
+            runnable_changes: Vec::new(),
+            source: crate::scheduler::core::ProgressSource::ExactSingleStep,
+        };
+        let planned = self.scheduler.plan(&event)?;
+        self.scheduler.commit(reservation, planned)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_controller_test_poison(&mut self) -> Result<VmError, VmError> {
+        let reservation = self.scheduler.reserve_transition()?;
+        Ok(self.poison_after_possible_guest_progress(
+            Some(reservation),
+            SchedulePoisonStage::JournalCommit,
+            "injected VM poison after another VM advanced",
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn controller_test_schedule_sequence(&self) -> u64 {
+        self.scheduler.state().sequence
+    }
+
+    fn reserve_guest_progress(&mut self) -> Result<Option<ScheduleReservation>, VmError> {
+        if self.vcpus.len() <= 1 {
+            return Ok(None);
+        }
+        if let Some(reservation) = self.pending_schedule_reservation.take() {
+            return Ok(Some(reservation));
+        }
+        Ok(Some(self.scheduler.reserve_transition()?))
+    }
+
+    fn release_guest_progress(
+        &mut self,
+        reservation: Option<ScheduleReservation>,
+    ) -> Result<(), VmError> {
+        if let Some(reservation) = reservation {
+            self.scheduler.release_transition(reservation)?;
+        }
+        Ok(())
+    }
+
+    fn emit_schedule_record(&mut self, record: &ScheduleTransitionRecord) {
+        let tag = if matches!(record.action, ScheduleAction::Switch { .. }) {
+            DlogTag::SchedulerSwitch
+        } else {
+            DlogTag::ScheduleProgress
+        };
+        self.dlog_emit(
+            self.dlog_record(tag)
+                .with_data(&record.pre_state_id.0[..8])
+                .with_extra(&record.post_state_id.0[..8]),
+        );
+    }
+
+    fn finish_after_committed_progress<T>(
+        &mut self,
+        stage: SchedulePoisonStage,
+        result: Result<T, VmError>,
+    ) -> Result<T, VmError> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => Err(self.poison_after_committed_progress(stage, error.to_string())),
+        }
+    }
+
+    fn apply_schedule_action(&mut self, action: &ScheduleAction) -> Result<bool, VmError> {
+        match action {
+            ScheduleAction::Continue => Ok(false),
+            ScheduleAction::EnterExactStep { .. } => {
+                self.enable_singlestep(self.scheduler.active())?;
+                Ok(false)
             }
+            ScheduleAction::Switch { to_vcpu, .. } => {
+                self.disable_singlestep(self.active_vcpu)?;
+                self.active_vcpu = *to_vcpu;
+                self.configure_progress_source_for_current_turn()?;
+                Ok(false)
+            }
+            ScheduleAction::Halt => Ok(true),
         }
     }
 
-    /// Check if a vCPU is schedulable (via KVM_GET_MP_STATE).
-    ///
-    /// APs (secondary CPUs) start in UNINITIALIZED/INIT_RECEIVED state
-    /// and only become RUNNABLE after receiving a SIPI from the BSP.
-    /// HALTED means the vCPU executed HLT and is waiting for an interrupt —
-    /// it's still schedulable (our HLT handler injects the timer IRQ).
-    fn vcpu_is_runnable(&self, vcpu_idx: usize) -> bool {
-        // BSP (vCPU 0) is always runnable after setup
-        if vcpu_idx == 0 {
-            return true;
-        }
-        match self.vcpus[vcpu_idx].get_mp_state() {
-            Ok(mp) => mp.mp_state == KVM_MP_STATE_RUNNABLE || mp.mp_state == KVM_MP_STATE_HALTED,
-            Err(_) => false,
-        }
+    fn handle_hlt_exit(&mut self) -> Result<(bool, DlogRecord, Option<usize>), VmError> {
+        self.exit_count += 1;
+        self.exits_since_last_sdk += 1;
+        self.virtual_tsc.tick();
+
+        let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
+        let channel = &pit_state.channels[0];
+        let reload = if channel.count == 0 {
+            PIT_ZERO_RELOAD
+        } else {
+            u64::from(channel.count)
+        };
+
+        let (halted, wake_vcpu) = if channel.gate != 0 && reload > 0 {
+            const KILOHERTZ_TO_HERTZ: u128 = 1_000;
+            let tsc_khz = u128::from(self.virtual_tsc.tsc_khz());
+            let tsc_per_period =
+                (u128::from(reload) * tsc_khz * KILOHERTZ_TO_HERTZ).div_ceil(PIT_FREQ_HZ) as u64;
+            self.virtual_tsc
+                .advance_to(self.virtual_tsc.read() + tsc_per_period);
+            self.vm
+                .set_irq_line(PIT_IRQ, true)
+                .context(CreateIrqChipSnafu)?;
+            self.vm
+                .set_irq_line(PIT_IRQ, false)
+                .context(CreateIrqChipSnafu)?;
+            (false, Some(BSP_VCPU_INDEX))
+        } else {
+            info!(
+                "VM halted (exit_count={}, vtsc={})",
+                self.exit_count,
+                self.virtual_tsc.read()
+            );
+            (true, None)
+        };
+        let record = DlogRecord::new(
+            0,
+            self.virtual_tsc.read(),
+            self.exit_count,
+            0,
+            DlogTag::Hlt,
+            self.active_vcpu as u8,
+        );
+        Ok((halted, record, wake_vcpu))
     }
 
-    /// Arm a POSIX interval timer that fires SIGALRM after `us` microseconds.
+    fn record_explicit_vcpu_wake(&mut self, vcpu: usize) -> Result<bool, VmError> {
+        if vcpu >= self.vcpus.len() {
+            return Err(VmError::Snapshot {
+                message: format!("explicit wake names invalid vCPU {vcpu}"),
+            });
+        }
+        if !self.hlt_latched_vcpus[vcpu] {
+            return Ok(false);
+        }
+        let reservation = self.scheduler.reserve_transition()?;
+        let event = ScheduleEvent::RunnableObservation {
+            expected_state_id: self.scheduler.state_id(),
+            runnable_changes: vec![crate::scheduler::core::RunnableChange {
+                vcpu,
+                runnable: true,
+            }],
+        };
+        let planned = self.scheduler.plan(&event)?;
+        let action = planned.record.action.clone();
+        let record = self.scheduler.commit(reservation, planned)?;
+        self.hlt_latched_vcpus[vcpu] = false;
+        self.emit_schedule_record(&record);
+        self.apply_schedule_action(&action)
+    }
+
+    /// Arm the single-vCPU operational watchdog.
     ///
-    /// When the vCPU is in a tight spin loop (no VM exits), this signal
-    /// interrupts `vcpu.run()` causing `VcpuExit::Intr`, which lets us
-    /// switch to another vCPU. Essential for SMP — without it, the BSP
-    /// can monopolize execution while spin-waiting for an AP to come online.
+    /// A timeout can stop host execution. It cannot change deterministic SMP
+    /// state, virtual time, or any guest crash verdict.
     fn arm_preemption_timer(&self, us: i64) {
+        Self::set_preemption_timer(self.thread_timer.as_ref(), us);
+    }
+
+    fn set_preemption_timer(thread_timer: Option<&SendTimerId>, us: i64) {
         // Try thread-targeted timer first (works in parallel workers).
-        if let Some(ref tid) = self.thread_timer {
+        if let Some(tid) = thread_timer {
             let ts = libc::itimerspec {
                 it_interval: libc::timespec {
                     tv_sec: 0,
@@ -2646,164 +3001,353 @@ impl DeterministicVm {
         self.arm_preemption_timer(0);
     }
 
-    /// Create a per-thread POSIX timer that sends SIGALRM to this thread.
-    ///
-    /// Must be called from the thread that will call `vcpu.run()` (worker
-    /// thread for parallel execution). This replaces the process-wide
-    /// `ITIMER_REAL` approach, allowing multiple workers to each have
-    /// independent watchdog timers.
-    pub fn init_thread_timer(&mut self) {
-        // Ensure the no-op SIGALRM handler is installed before we start
-        // creating timers that deliver SIGALRM. Without this, the
-        // default SIGALRM disposition (terminate) kills the process.
-        Self::install_sigalrm_handler();
-
-        // SAFETY: timer_create with SIGEV_THREAD_ID targets the signal
-        // at a specific thread (the caller). This is Linux-specific.
-        unsafe {
-            let tid = libc::syscall(libc::SYS_gettid) as i32;
-            let mut sev: libc::sigevent = std::mem::zeroed();
-            sev.sigev_notify = libc::SIGEV_THREAD_ID;
-            sev.sigev_signo = libc::SIGALRM;
-            // sigev_notify_thread_id is in the union at sigev_value offset
-            // on Linux. The libc crate exposes it via the _tid field.
-            sev.sigev_notify_thread_id = tid;
-            let mut timer_id: libc::timer_t = std::ptr::null_mut();
-            let ret = libc::timer_create(libc::CLOCK_MONOTONIC, &mut sev, &mut timer_id);
-            if ret == 0 {
-                self.thread_timer = Some(SendTimerId(timer_id));
-            } else {
-                log::warn!(
-                    "timer_create failed (errno={}), falling back to ITIMER_REAL",
-                    *libc::__errno_location()
-                );
+    /// Bind host-local execution helpers to the current worker thread.
+    pub fn init_thread_timer(&mut self) -> Result<(), VmError> {
+        if self.vcpus.len() == 1 {
+            Self::install_sigalrm_handler();
+            // SAFETY: `SIGEV_THREAD_ID` targets the calling worker thread.
+            unsafe {
+                let tid = libc::syscall(libc::SYS_gettid) as i32;
+                let mut event: libc::sigevent = std::mem::zeroed();
+                event.sigev_notify = libc::SIGEV_THREAD_ID;
+                event.sigev_signo = libc::SIGALRM;
+                event.sigev_notify_thread_id = tid;
+                let mut timer_id: libc::timer_t = std::ptr::null_mut();
+                let result = libc::timer_create(libc::CLOCK_MONOTONIC, &mut event, &mut timer_id);
+                if result == 0 {
+                    self.thread_timer = Some(SendTimerId(timer_id));
+                } else {
+                    log::warn!(
+                        "timer_create failed (errno={}); single-vCPU watchdog uses ITIMER_REAL",
+                        *libc::__errno_location()
+                    );
+                }
             }
         }
+        if self.vcpus.len() > 1
+            && self.instruction_counter.is_none()
+            && matches!(
+                self.scheduler.progress_mode(),
+                ProgressMode::PmuAccelerated { .. }
+            )
+        {
+            self.configure_progress_source_for_current_turn()?;
+        }
+        Ok(())
     }
 
-    /// Enable KVM guest single-stepping on the active vCPU.
-    ///
-    /// Each guest instruction will cause `VcpuExit::Debug` instead of
-    /// executing normally. Used to count down the exact remainder after
-    /// PMU overflow to reach the quantum boundary precisely.
-    fn enable_singlestep(&mut self) {
-        debug_assert!(!self.singlestep_active, "single-step already active");
-        let dbg = kvm_guest_debug {
-            control: KVM_GUESTDBG_ENABLE | KVM_GUESTDBG_SINGLESTEP,
-            pad: 0,
-            arch: Default::default(),
-        };
-        if let Err(e) = self.vcpus[self.active_vcpu].set_guest_debug(&dbg) {
-            log::warn!(
-                "Failed to enable single-step on vCPU {}: {}",
-                self.active_vcpu,
-                e
-            );
-            return;
+    fn enable_singlestep(&mut self, vcpu: usize) -> Result<(), VmError> {
+        if self.singlestep_active {
+            return Ok(());
         }
+        Self::set_vcpu_singlestep(&self.vcpus[vcpu], true).map_err(|error| {
+            VmError::ProgressCapability {
+                message: format!("vCPU {vcpu} could not enable exact single-step: {error}"),
+            }
+        })?;
         self.singlestep_active = true;
+        Ok(())
     }
 
-    /// Disable KVM guest single-stepping on the active vCPU.
-    fn disable_singlestep(&mut self) {
+    fn disable_singlestep(&mut self, vcpu: usize) -> Result<(), VmError> {
         if !self.singlestep_active {
-            return;
+            return Ok(());
         }
-        let dbg = kvm_guest_debug {
-            control: 0,
-            pad: 0,
-            arch: Default::default(),
-        };
-        let _ = self.vcpus[self.active_vcpu].set_guest_debug(&dbg);
+        Self::set_vcpu_singlestep(&self.vcpus[vcpu], false).map_err(|error| {
+            VmError::ProgressCapability {
+                message: format!("vCPU {vcpu} could not disable exact single-step: {error}"),
+            }
+        })?;
         self.singlestep_active = false;
-        self.singlestep_remaining = 0;
+        Ok(())
     }
 
-    /// Switch to the next runnable vCPU after a quantum expires.
-    /// Disables single-stepping, resets instruction count, re-arms the PMU
-    /// counter for the new vCPU's turn.
-    #[allow(dead_code)]
-    fn switch_vcpu_at_quantum(&mut self) {
-        self.disable_singlestep();
-        self.insn_count = 0;
-
-        // Switch to next runnable vCPU
-        for offset in 1..self.vcpus.len() {
-            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
-            if self.vcpu_is_runnable(candidate) {
-                self.active_vcpu = candidate;
-                self.scheduler.set_active(candidate);
-                break;
+    fn configure_progress_source_for_current_turn(&mut self) -> Result<(), VmError> {
+        let active = self.scheduler.active();
+        let progress = self.scheduler.state().instruction_progress[active];
+        self.pmu_counter_base_progress = progress;
+        match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+            (ProgressMode::ExactSingleStep, ExactStepState::Inactive) => Ok(()),
+            (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { .. }) => {
+                self.enable_singlestep(active)
+            }
+            (ProgressMode::PmuAccelerated { exact_step_margin }, ExactStepState::Inactive) => {
+                self.disable_singlestep(active)?;
+                let overflow_period = self
+                    .scheduler
+                    .remaining()
+                    .checked_sub(exact_step_margin)
+                    .filter(|period| *period > 0)
+                    .ok_or_else(|| VmError::ProgressCapability {
+                        message: "PMU overflow period must be positive".to_string(),
+                    })?;
+                let counter = crate::perf::InstructionCounter::with_overflow(overflow_period)
+                    .map_err(|error| VmError::ProgressCapability {
+                        message: format!(
+                            "guest-only instruction PMU overflow became unavailable: {error}"
+                        ),
+                    })?;
+                counter.reset_and_enable()?;
+                counter.disable()?;
+                self.instruction_counter = Some(counter);
+                Ok(())
+            }
+            (ProgressMode::LegacyWallClock, _) => {
+                Err(ScheduleError::UnsupportedProgressMode.into())
+            }
+            (ProgressMode::ExactSingleStep, ExactStepState::Active { .. }) => {
+                Err(VmError::ProgressCapability {
+                    message: "exact single-step mode has invalid PMU remainder state".to_string(),
+                })
             }
         }
+    }
 
-        // Reset PMU counter for the new turn (but don't enable yet —
-        // we'll resume() just before vcpu.run() to avoid counting host code).
-        if let Some(ref counter) = self.instruction_counter {
-            counter.reset_and_enable();
-            counter.disable(); // Paused at 0; resume() before vcpu.run()
+    fn prepare_progress_source_for_run(&mut self, vcpu: usize) -> Result<Option<u64>, VmError> {
+        match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+            (ProgressMode::ExactSingleStep, ExactStepState::Inactive)
+            | (ProgressMode::PmuAccelerated { .. }, ExactStepState::Active { .. }) => {
+                self.enable_singlestep(vcpu)?;
+                Ok(None)
+            }
+            (ProgressMode::PmuAccelerated { .. }, ExactStepState::Inactive) => {
+                let counter = self.instruction_counter.as_ref().ok_or_else(|| {
+                    VmError::ProgressCapability {
+                        message: "PMU mode has no admitted instruction counter".to_string(),
+                    }
+                })?;
+                // Block and drain stale signals before this fd is armed.
+                let generation = counter.arm_overflow()?;
+                Ok(Some(generation))
+            }
+            (ProgressMode::LegacyWallClock, _) => {
+                Err(ScheduleError::UnsupportedProgressMode.into())
+            }
+            (ProgressMode::ExactSingleStep, ExactStepState::Active { .. }) => {
+                Err(VmError::ProgressCapability {
+                    message: "exact single-step mode has invalid PMU remainder state".to_string(),
+                })
+            }
         }
     }
 
     fn step(&mut self) -> Result<bool, VmError> {
-        if self.skip_tsc_sync {
-            self.skip_tsc_sync = false;
-        } else {
-            self.sync_and_suppress_pit()?;
-            self.sync_tsc_to_guest()?;
-        }
-
-        // Skip non-runnable vCPUs (APs waiting for SIPI).
-        // Try all vCPUs before giving up — if none are runnable, stick with BSP.
-        if self.vcpus.len() > 1 && !self.vcpu_is_runnable(self.active_vcpu) {
-            for offset in 1..self.vcpus.len() {
-                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
-                if self.vcpu_is_runnable(candidate) {
-                    self.active_vcpu = candidate;
-                    break;
-                }
-            }
-        }
+        self.ensure_schedule_execution_healthy()?;
+        self.sync_and_suppress_pit()?;
+        self.sync_tsc_to_guest()?;
 
         let num_vcpus = self.vcpus.len();
+        if self.pending_schedule_reservation.is_none() && self.refresh_runnable_state()? {
+            return Ok(true);
+        }
+        debug_assert_eq!(self.active_vcpu, self.scheduler.active());
+        if self.vcpus.len() > 1
+            && matches!(
+                self.scheduler.progress_mode(),
+                ProgressMode::PmuAccelerated { .. }
+            )
+            && self.instruction_counter.is_none()
+        {
+            self.configure_progress_source_for_current_turn()?;
+        }
+        let executed_vcpu = self.active_vcpu;
+        let mut reservation = self.reserve_guest_progress()?;
+        let pmu_generation_before_run = match self.prepare_progress_source_for_run(executed_vcpu) {
+            Ok(generation) => generation,
+            Err(error) => {
+                self.release_guest_progress(reservation.take())?;
+                return Err(error);
+            }
+        };
 
         // Post-match action flag: when a VMCALL exit is processed, we
-        // must handle the SDK hypercall AFTER the match arm closes
-        // (because HypercallExit holds a &mut ref into the vcpu's
-        // kvm_run struct, preventing &mut self calls within the arm).
+        // must handle the SDK hypercall after the KVM exit borrow closes.
         let mut vmcall_sdk_pending = false;
 
-        // For SMP: arm SIGALRM for spin-loop detection.
-        // Delay until after early boot (>200 exits) to avoid disturbing
-        // PIT channel 2 TSC calibration. SIGALRM interrupts cause RDTSC
-        // to jump (hardware TSC advances during host code), making the
-        // calibration result non-deterministic.
-        // Only do liveness switches when the vCPU appears stuck
-        // (2 consecutive SIGALRMs without real exits).
-        if num_vcpus > 1 {
-            // 10ms SIGALRM: fast enough for liveness (20ms to detect
-            // spin loops with threshold=2), slow enough to avoid
-            // disturbing PIT calibration (~2-5ms during early boot).
-            self.arm_preemption_timer(10_000);
-        } else if self.fault_engine.is_setup_complete() {
-            // Single-vCPU watchdog: 100ms timeout interrupts vcpu.run()
-            // if the guest enters a tight CPU loop (e.g., CpuBitflip
-            // corrupts RIP, kernel double-faults into a spin loop).
-            // Without this, vcpu.run() blocks indefinitely.
-            //
-            // Only armed after setup_complete to avoid disturbing PIT
-            // calibration during boot. Uses per-thread POSIX timer
-            // when available (safe for parallel workers) or falls back
-            // to process-wide ITIMER_REAL.
+        // SIGALRM is an operational watchdog only for single-vCPU runs.
+        // Deterministic SMP progress never arms a wall-clock timer.
+        if num_vcpus == 1 && self.fault_engine.is_setup_complete() {
             Self::install_sigalrm_handler();
-            self.arm_preemption_timer(100_000);
+            self.arm_preemption_timer(SINGLE_VCPU_WATCHDOG_MICROSECONDS);
         }
-        let run_result = self.vcpus[self.active_vcpu].run();
+        let run_result = self.vcpus[executed_vcpu].run();
+        if num_vcpus == 1 {
+            Self::set_preemption_timer(self.thread_timer.as_ref(), 0);
+        }
+        let pmu_overflow_attributed = if let Some(generation) = pmu_generation_before_run {
+            let disarm_result = self
+                .instruction_counter
+                .as_ref()
+                .ok_or_else(|| io::Error::other("PMU mode lost its admitted instruction counter"))
+                .and_then(|counter| counter.disarm_overflow(generation));
+            match disarm_result {
+                Ok(attributed) => attributed,
+                Err(error) => {
+                    let stage = if error.to_string().starts_with("PMU disable failed:") {
+                        SchedulePoisonStage::PmuDisable
+                    } else {
+                        SchedulePoisonStage::PmuGeneration
+                    };
+                    return Err(self.poison_after_possible_guest_progress(
+                        reservation.take(),
+                        stage,
+                        error.to_string(),
+                    ));
+                }
+            }
+        } else {
+            false
+        };
+
+        let interrupted = match &run_result {
+            Ok(VcpuExit::Intr) => true,
+            Err(error) => error.errno() == libc::EINTR,
+            Ok(_) => false,
+        };
+        let guest_progress_observed = matches!(
+            &run_result,
+            Ok(VcpuExit::IoIn(_, _))
+                | Ok(VcpuExit::IoOut(_, _))
+                | Ok(VcpuExit::Hlt)
+                | Ok(VcpuExit::Shutdown)
+                | Ok(VcpuExit::MmioRead(_, _))
+                | Ok(VcpuExit::MmioWrite(_, _))
+                | Ok(VcpuExit::Hypercall(_))
+                | Ok(VcpuExit::Debug(_))
+        );
+        let no_guest_progress = !interrupted && !guest_progress_observed;
+        if num_vcpus > 1 && no_guest_progress {
+            return Err(self.poison_after_possible_guest_progress(
+                reservation.take(),
+                SchedulePoisonStage::KvmRunResult,
+                "KVM returned without an exact retired-instruction boundary",
+            ));
+        }
+        let retired_hlt = matches!(&run_result, Ok(VcpuExit::Hlt));
+        let progress_observation = if num_vcpus <= 1 || no_guest_progress {
+            ExecutionProgressObservation::NoGuestProgress
+        } else if interrupted && !pmu_overflow_attributed {
+            ExecutionProgressObservation::HostInterrupt
+        } else if interrupted {
+            let read_result = self
+                .instruction_counter
+                .as_ref()
+                .ok_or_else(|| io::Error::other("attributed PMU overflow has no counter"))
+                .and_then(crate::perf::InstructionCounter::read);
+            let counter_value = match read_result {
+                Ok(value) => value,
+                Err(error) => {
+                    return Err(self.poison_after_possible_guest_progress(
+                        reservation.take(),
+                        SchedulePoisonStage::PmuRead,
+                        error.to_string(),
+                    ));
+                }
+            };
+            ExecutionProgressObservation::PmuInterrupt {
+                vcpu: executed_vcpu,
+                counter_base_progress: self.pmu_counter_base_progress,
+                counter_value,
+            }
+        } else {
+            match (self.scheduler.progress_mode(), self.scheduler.exact_step()) {
+                (ProgressMode::PmuAccelerated { .. }, ExactStepState::Inactive) => {
+                    let read_result = self
+                        .instruction_counter
+                        .as_ref()
+                        .ok_or_else(|| io::Error::other("PMU mode lost its admitted counter"))
+                        .and_then(crate::perf::InstructionCounter::read);
+                    let counter_value = match read_result {
+                        Ok(value) => value,
+                        Err(error) => {
+                            return Err(self.poison_after_possible_guest_progress(
+                                reservation.take(),
+                                SchedulePoisonStage::PmuRead,
+                                error.to_string(),
+                            ));
+                        }
+                    };
+                    if retired_hlt {
+                        ExecutionProgressObservation::PmuGuestHalt {
+                            vcpu: executed_vcpu,
+                            counter_base_progress: self.pmu_counter_base_progress,
+                            counter_value,
+                        }
+                    } else {
+                        ExecutionProgressObservation::PmuGuestExit {
+                            vcpu: executed_vcpu,
+                            counter_base_progress: self.pmu_counter_base_progress,
+                            counter_value,
+                        }
+                    }
+                }
+                _ if retired_hlt => ExecutionProgressObservation::ExactInstructionHalt {
+                    vcpu: executed_vcpu,
+                },
+                _ => ExecutionProgressObservation::ExactInstruction {
+                    vcpu: executed_vcpu,
+                },
+            }
+        };
+        let planned_transition = if num_vcpus <= 1 {
+            None
+        } else {
+            match plan_execution_observation(self.scheduler.state(), progress_observation) {
+                Ok(planned) => planned,
+                Err(error) => {
+                    return Err(self.poison_after_possible_guest_progress(
+                        reservation.take(),
+                        SchedulePoisonStage::ProgressPlanning,
+                        format!("{error:?}"),
+                    ));
+                }
+            }
+        };
+        let pending_schedule_record = match (reservation.take(), planned_transition) {
+            (Some(reservation), Some(planned)) => {
+                match self.scheduler.commit(reservation, planned) {
+                    Ok(record) => Some(record),
+                    Err(error) => {
+                        return Err(self.poison_after_possible_guest_progress(
+                            None,
+                            SchedulePoisonStage::JournalCommit,
+                            format!("{error:?}"),
+                        ));
+                    }
+                }
+            }
+            (Some(reservation), None)
+                if progress_observation == ExecutionProgressObservation::HostInterrupt =>
+            {
+                self.pending_schedule_reservation = Some(reservation);
+                None
+            }
+            (Some(reservation), None) => {
+                return Err(self.poison_after_possible_guest_progress(
+                    Some(reservation),
+                    SchedulePoisonStage::KvmRunResult,
+                    "post-KVM execution produced no committable evidence",
+                ));
+            }
+            (None, None) => None,
+            (None, Some(_)) => {
+                return Err(VmError::ProgressCapability {
+                    message: "single-vCPU execution produced an SMP transition".to_string(),
+                });
+            }
+        };
+        if num_vcpus > 1 && retired_hlt && pending_schedule_record.is_some() {
+            self.hlt_latched_vcpus[executed_vcpu] = true;
+        }
+        let pending_schedule_action = pending_schedule_record
+            .as_ref()
+            .map(|record| record.action.clone());
 
         // Deferred dlog record — built inside the match arm (copying
         // data out of the KVM exit struct), emitted after the match
-        // closes so there's no borrow conflict with self.vcpus.
+        // closes so there is no borrow conflict with `self.vcpus`.
         let mut pending_dlog: Option<DlogRecord> = None;
+        let mut pending_explicit_wake = None;
 
         let result = match run_result {
             Ok(VcpuExit::IoIn(port, data)) => {
@@ -2869,7 +3413,6 @@ impl DeterministicVm {
                         .with_data(&dbuf),
                     );
                 }
-                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::IoOut(port, data)) => {
@@ -2923,70 +3466,16 @@ impl DeterministicVm {
                 } else if DeterministicPit::handles_port(io_port) {
                     self.pit.write_port(io_port, io_byte, tsc);
                 }
-                self.maybe_switch_vcpu();
                 Ok(false)
             }
-            Ok(VcpuExit::Hlt) => {
-                self.exit_count += 1;
-                self.exits_since_last_sdk += 1;
-                self.virtual_tsc.tick();
-
-                // HLT = kernel idle loop waiting for next interrupt.
-                // Read KVM PIT state to find channel 0's reload value,
-                // then fast-forward virtual TSC by one PIT period and
-                // inject the interrupt deterministically.
-                let pit_state = self.vm.get_pit2().context(CreatePitSnafu)?;
-                let ch0 = &pit_state.channels[0];
-                let reload = if ch0.count == 0 {
-                    65536u64
-                } else {
-                    ch0.count as u64
-                };
-
-                if ch0.gate != 0 && reload > 0 {
-                    // Advance virtual TSC by one PIT period:
-                    // tsc_ticks = reload * tsc_freq / PIT_FREQ
-                    let tsc_khz = self.virtual_tsc.tsc_khz() as u128;
-                    let tsc_per_period =
-                        (reload as u128 * tsc_khz * 1000).div_ceil(PIT_FREQ_HZ) as u64;
-                    self.virtual_tsc
-                        .advance_to(self.virtual_tsc.read() + tsc_per_period);
-
-                    // Inject the timer interrupt deterministically
-                    self.vm
-                        .set_irq_line(PIT_IRQ, true)
-                        .context(CreateIrqChipSnafu)?;
-                    self.vm
-                        .set_irq_line(PIT_IRQ, false)
-                        .context(CreateIrqChipSnafu)?;
-
-                    pending_dlog = Some(DlogRecord::new(
-                        0,
-                        self.virtual_tsc.read(),
-                        self.exit_count,
-                        0,
-                        DlogTag::Hlt,
-                        self.active_vcpu as u8,
-                    ));
-                    self.maybe_switch_vcpu();
-                    Ok(false)
-                } else {
-                    pending_dlog = Some(DlogRecord::new(
-                        0,
-                        self.virtual_tsc.read(),
-                        self.exit_count,
-                        0,
-                        DlogTag::Hlt,
-                        self.active_vcpu as u8,
-                    ));
-                    info!(
-                        "VM halted (exit_count={}, vtsc={})",
-                        self.exit_count,
-                        self.virtual_tsc.read()
-                    );
-                    Ok(true)
+            Ok(VcpuExit::Hlt) => match self.handle_hlt_exit() {
+                Ok((halted, record, wake_vcpu)) => {
+                    pending_dlog = Some(record);
+                    pending_explicit_wake = wake_vcpu;
+                    Ok(halted)
                 }
-            }
+                Err(error) => Err(error),
+            },
             Ok(VcpuExit::Shutdown) => {
                 self.exit_count += 1;
                 self.panic_detected = true;
@@ -3084,7 +3573,6 @@ impl DeterministicVm {
                         .with_data(data),
                     );
                 }
-                self.maybe_switch_vcpu();
                 Ok(false)
             }
             Ok(VcpuExit::MmioWrite(addr, data)) => {
@@ -3092,23 +3580,27 @@ impl DeterministicVm {
                 self.exits_since_last_sdk += 1;
                 self.virtual_tsc.tick();
 
-                // Find the virtio device that handles this address
+                // Find the virtio device that handles this address.
+                let mut interrupt_error = None;
                 for dev in &mut self.virtio_devices {
                     if dev.handles(addr) {
                         let offset = addr - dev.base_addr();
                         dev.write(offset, data, self.memory.inner());
 
-                        // Process queues and raise interrupt if needed
+                        // Process queues and raise interrupt if needed.
                         if dev.process_queues(self.memory.inner()) {
                             let irq = dev.irq();
-                            let _ = self.vm.set_irq_line(irq, true);
-                            let _ = self.vm.set_irq_line(irq, false);
+                            if let Err(source) = self.vm.set_irq_line(irq, true) {
+                                interrupt_error = Some(VmError::CreateIrqChip { source });
+                            } else if let Err(source) = self.vm.set_irq_line(irq, false) {
+                                interrupt_error = Some(VmError::CreateIrqChip { source });
+                            }
                         }
                         break;
                     }
                 }
 
-                if self.dlog.is_some() {
+                if interrupt_error.is_none() && self.dlog.is_some() {
                     pending_dlog = Some(
                         DlogRecord::new(
                             0,
@@ -3122,60 +3614,22 @@ impl DeterministicVm {
                         .with_data(data),
                     );
                 }
-                self.maybe_switch_vcpu();
-                Ok(false)
+                match interrupt_error {
+                    Some(error) => Err(error),
+                    None => Ok(false),
+                }
             }
             Ok(VcpuExit::Intr) => {
-                // SIGALRM interrupted vcpu.run().
-                //
-                // For SMP: switch vCPU if this one appears stuck (consecutive
-                // SIGALRMs without any real exit). Normal code generates
-                // real exits between SIGALRMs, keeping the counter at 0.
-                // Spin-wait loops have no real exits, so the counter
-                // grows until it crosses the threshold → liveness switch.
-                //
-                // For single-vCPU: detect stuck VMs (tight CPU loops from
-                // fault injection, e.g. CpuBitflip corrupts RIP). After
-                // 5 consecutive SIGALRMs (~500ms at 100ms interval) with
-                // no real exits, treat the VM as crashed.
-                self.disarm_preemption_timer();
-                // Skip PIT/TSC sync on next step() — virtual time hasn't
-                // advanced, and skipping avoids disturbing in-progress
-                // PIT channel 2 calibration during early boot.
-                self.skip_tsc_sync = true;
-                self.sigalrm_without_exit += 1;
-                if num_vcpus > 1 {
-                    if self.sigalrm_without_exit >= 2 {
-                        for offset in 1..self.vcpus.len() {
-                            let candidate = (self.active_vcpu + offset) % self.vcpus.len();
-                            if self.vcpu_is_runnable(candidate) {
-                                self.active_vcpu = candidate;
-                                self.sigalrm_without_exit = 0;
-                                break;
-                            }
-                        }
-                    }
-                } else if self.sigalrm_without_exit >= 5 && self.fault_engine.is_setup_complete() {
-                    // Single-vCPU VM stuck in a tight loop with no exits
-                    // for ~500ms. Treat as crashed.
-                    log::warn!(
-                        "VM stuck: {} consecutive SIGALRMs without exit \
-                         (exit_count={}, vtsc={}), treating as crashed",
-                        self.sigalrm_without_exit,
-                        self.exit_count,
-                        self.virtual_tsc.read(),
-                    );
-                    self.panic_detected = true;
+                if num_vcpus == 1 {
+                    Err(VmError::HostWatchdogTimeout {
+                        vcpu: executed_vcpu,
+                    })
+                } else {
+                    // PMU overflow can produce an admitted deterministic
+                    // progress record. Any other interrupt is a host-owned
+                    // retry and changes no schedule, virtual time, or verdict.
+                    Ok(false)
                 }
-                pending_dlog = Some(DlogRecord::new(
-                    0,
-                    self.virtual_tsc.read(),
-                    self.exit_count,
-                    0,
-                    DlogTag::Intr,
-                    self.active_vcpu as u8,
-                ));
-                Ok(false)
             }
             Ok(VcpuExit::Hypercall(exit)) => {
                 // VMCALL from guest — the primary SDK transport.
@@ -3215,6 +3669,9 @@ impl DeterministicVm {
                 Ok(false)
             }
             Ok(VcpuExit::Debug(_debug)) => {
+                self.exit_count += 1;
+                self.exits_since_last_sdk += 1;
+                self.virtual_tsc.tick();
                 pending_dlog = Some(DlogRecord::new(
                     0,
                     self.virtual_tsc.read(),
@@ -3236,71 +3693,33 @@ impl DeterministicVm {
                 ));
                 Ok(false)
             }
-            Ok(VcpuExit::InternalError) => {
-                pending_dlog = Some(DlogRecord::new(
-                    0,
-                    self.virtual_tsc.read(),
-                    self.exit_count,
-                    0,
-                    DlogTag::InternalError,
-                    self.active_vcpu as u8,
-                ));
-                if self.vcpus.len() > 1 {
-                    log::warn!(
-                        "InternalError on vCPU {} — switching to next runnable vCPU",
-                        self.active_vcpu
-                    );
-                    for offset in 1..self.vcpus.len() {
-                        let candidate = (self.active_vcpu + offset) % self.vcpus.len();
-                        if candidate == 0 || self.vcpu_is_runnable(candidate) {
-                            self.active_vcpu = candidate;
-                            break;
-                        }
-                    }
-                    Ok(false)
-                } else {
-                    self.exit_count += 1;
-                    log::error!("KVM InternalError on vCPU 0 — stopping");
-                    Ok(true)
-                }
-            }
+            Ok(VcpuExit::InternalError) => Err(VmError::KvmInternalError {
+                vcpu: executed_vcpu,
+            }),
             Ok(exit) => {
                 self.exit_count += 1;
                 info!("Unhandled VM exit: {:?} — stopping", exit);
                 Ok(true)
             }
-            Err(e) => {
-                // EINTR from signal — same as VcpuExit::Intr
-                if e.errno() == libc::EINTR {
-                    self.disarm_preemption_timer();
-                    self.skip_tsc_sync = true;
-                    self.sigalrm_without_exit += 1;
-                    if self.vcpus.len() > 1 {
-                        if self.sigalrm_without_exit >= 2 {
-                            for offset in 1..self.vcpus.len() {
-                                let candidate = (self.active_vcpu + offset) % self.vcpus.len();
-                                if self.vcpu_is_runnable(candidate) {
-                                    self.active_vcpu = candidate;
-                                    self.sigalrm_without_exit = 0;
-                                    break;
-                                }
-                            }
-                        }
-                    } else if self.sigalrm_without_exit >= 5
-                        && self.fault_engine.is_setup_complete()
-                    {
-                        log::warn!(
-                            "VM stuck (EINTR): {} consecutive SIGALRMs, \
-                             treating as crashed",
-                            self.sigalrm_without_exit,
-                        );
-                        self.panic_detected = true;
-                        return Ok(true); // halt immediately
+            Err(error) => {
+                if error.errno() == libc::EINTR {
+                    if num_vcpus == 1 {
+                        Err(VmError::HostWatchdogTimeout {
+                            vcpu: executed_vcpu,
+                        })
+                    } else {
+                        Ok(false)
                     }
-                    return Ok(false);
+                } else {
+                    Err(VmError::VcpuRun { source: error })
                 }
-                Err(VmError::VcpuRun { source: e })
             }
+        };
+        let committed_smp_progress = num_vcpus > 1 && pending_schedule_record.is_some();
+        let exit_halted = if committed_smp_progress {
+            self.finish_after_committed_progress(SchedulePoisonStage::ExitHandling, result)?
+        } else {
+            result?
         };
 
         // ── Post-match phase ──────────────────────────────────
@@ -3367,7 +3786,24 @@ impl DeterministicVm {
         if vmcall_sdk_pending {
             self.handle_sdk_hypercall();
             self.dlog_emit(self.dlog_record(DlogTag::SdkHypercall));
-            self.maybe_switch_vcpu();
+        }
+
+        if let Some(record) = &pending_schedule_record {
+            self.emit_schedule_record(record);
+        }
+        let mut schedule_halted = if let Some(action) = &pending_schedule_action {
+            let action_result = self.apply_schedule_action(action);
+            self.finish_after_committed_progress(
+                SchedulePoisonStage::ScheduleAction,
+                action_result,
+            )?
+        } else {
+            false
+        };
+        if let Some(vcpu) = pending_explicit_wake {
+            let wake_result = self.record_explicit_vcpu_wake(vcpu);
+            self.finish_after_committed_progress(SchedulePoisonStage::ExitHandling, wake_result)?;
+            schedule_halted &= self.scheduler.state().halted;
         }
 
         // Serial panic detection: if the sliding window matched
@@ -3382,7 +3818,7 @@ impl DeterministicVm {
             return Ok(true);
         }
 
-        result
+        Ok(exit_halted || schedule_halted)
     }
 
     // ─── Guest memory / register access ────────────────────────
@@ -3682,9 +4118,7 @@ impl DeterministicVm {
 
 impl Drop for DeterministicVm {
     fn drop(&mut self) {
-        // Disarm the SIGALRM preemption timer to prevent stale signals
-        // from interfering with subsequent VMs in the same process
-        // (important for test suites that create many VMs sequentially).
+        // Disarm the single-vCPU watchdog before this VM is destroyed.
         self.disarm_preemption_timer();
         // Destroy per-thread POSIX timer if created.
         if let Some(tid) = self.thread_timer.take() {
@@ -3799,6 +4233,180 @@ mod tests {
     }
 
     // ─── Quick Win #3: Core pinning tests ───────────────────────
+
+    #[test]
+    fn post_kvm_poison_retains_reservation_and_blocks_all_evidence_paths() {
+        const TEST_MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        const POISONED_TSC_ADVANCE: u64 = 123;
+        let config = VmConfig {
+            memory_size: TEST_MEMORY_BYTES,
+            num_vcpus: 2,
+            ..VmConfig::default()
+        };
+        let mut vm = DeterministicVm::new(config).unwrap();
+        let snapshot = vm.snapshot().unwrap();
+        let tsc_target = vm.virtual_tsc.read().saturating_add(POISONED_TSC_ADVANCE);
+        vm.virtual_tsc.advance_to(tsc_target);
+        let poisoned_tsc = vm.virtual_tsc.read();
+        let state_before = vm.scheduler.state_id();
+        let reservation = vm.reserve_guest_progress().unwrap();
+        let error = vm.poison_after_possible_guest_progress(
+            reservation,
+            SchedulePoisonStage::PmuRead,
+            "injected post-KVM read failure",
+        );
+        assert!(matches!(
+            error,
+            VmError::ScheduleExecutionPoisoned {
+                stage: SchedulePoisonStage::PmuRead,
+                ..
+            }
+        ));
+        assert!(vm.scheduler.reservation_outstanding());
+        assert_eq!(vm.scheduler.state_id(), state_before);
+        assert!(vm.pending_schedule_reservation.is_none());
+        assert!(matches!(
+            vm.step(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.snapshot(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.restore(&snapshot),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.take_schedule_trace(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.run_bounded(1),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.run_until("unreachable"),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(matches!(
+            vm.run(),
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert_eq!(vm.virtual_tsc.read(), poisoned_tsc);
+    }
+
+    #[test]
+    fn committed_exit_and_schedule_action_failures_permanently_poison_execution() {
+        const TEST_MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        for stage in [
+            SchedulePoisonStage::ExitHandling,
+            SchedulePoisonStage::ScheduleAction,
+        ] {
+            let config = VmConfig {
+                memory_size: TEST_MEMORY_BYTES,
+                num_vcpus: 2,
+                ..VmConfig::default()
+            };
+            let mut vm = DeterministicVm::new(config).unwrap();
+            vm.inject_controller_test_progress().unwrap();
+            let committed_state = vm.scheduler.state_id();
+            let injected_result: Result<bool, VmError> = Err(VmError::Snapshot {
+                message: "injected post-commit failure".to_string(),
+            });
+
+            let error = vm.finish_after_committed_progress(stage, injected_result);
+
+            assert!(matches!(
+                error,
+                Err(VmError::ScheduleExecutionPoisoned {
+                    stage: observed_stage,
+                    ..
+                }) if observed_stage == stage
+            ));
+            assert_eq!(vm.scheduler.state_id(), committed_state);
+            assert!(!vm.scheduler.reservation_outstanding());
+            assert!(matches!(
+                vm.run_bounded(1),
+                Err(VmError::ScheduleExecutionPoisoned {
+                    stage: observed_stage,
+                    ..
+                }) if observed_stage == stage
+            ));
+            assert!(matches!(
+                vm.snapshot(),
+                Err(VmError::ScheduleExecutionPoisoned { .. })
+            ));
+            assert!(matches!(
+                vm.take_schedule_trace(),
+                Err(VmError::ScheduleExecutionPoisoned { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn hlt_latch_masks_kvm_runnable_state_until_explicit_wake() {
+        const TEST_MEMORY_BYTES: usize = 4 * 1024 * 1024;
+        const TEST_VCPU_COUNT: usize = 2;
+        let config = VmConfig {
+            memory_size: TEST_MEMORY_BYTES,
+            num_vcpus: TEST_VCPU_COUNT,
+            ..VmConfig::default()
+        };
+        let mut vm = DeterministicVm::new(config).unwrap();
+        let scheduler_config = SchedulerConfig {
+            num_vcpus: TEST_VCPU_COUNT,
+            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: 0,
+        };
+        vm.scheduler = VcpuScheduler::try_new(
+            &scheduler_config,
+            ProgressMode::ExactSingleStep,
+            vec![true; TEST_VCPU_COUNT],
+        )
+        .unwrap();
+        vm.active_vcpu = vm.scheduler.active();
+        let reservation = vm.scheduler.reserve_transition().unwrap();
+        let planned = plan_execution_observation(
+            vm.scheduler.state(),
+            ExecutionProgressObservation::ExactInstructionHalt { vcpu: 0 },
+        )
+        .unwrap()
+        .unwrap();
+        vm.scheduler.commit(reservation, planned).unwrap();
+        vm.hlt_latched_vcpus[0] = true;
+
+        let observed_before_wake = vm.observe_runnable_vcpus().unwrap();
+        assert!(!observed_before_wake[0]);
+        assert!(!vm.scheduler.state().runnable_vcpus[0]);
+        let snapshot = vm.snapshot().unwrap();
+        assert!(DeterministicVm::hlt_latches_from_snapshot(&snapshot)[0]);
+        vm.validate_fault_engine_snapshot(&snapshot).unwrap();
+        let mut malformed_snapshot = snapshot.clone();
+        malformed_snapshot.hlt_latched_vcpus.clear();
+        assert!(matches!(
+            vm.validate_fault_engine_snapshot(&malformed_snapshot),
+            Err(VmError::Snapshot { .. })
+        ));
+
+        vm.record_explicit_vcpu_wake(0).unwrap();
+
+        assert!(!vm.hlt_latched_vcpus[0]);
+        assert!(vm.scheduler.state().runnable_vcpus[0]);
+        assert_eq!(vm.scheduler.state().instruction_progress[0], 1);
+        assert!(vm.observe_runnable_vcpus().unwrap()[0]);
+    }
+
+    #[test]
+    fn deterministic_smp_defaults_are_exact_and_bounded() {
+        let config = VmConfig::default();
+        assert_eq!(config.smp_progress_mode, ProgressMode::ExactSingleStep);
+        assert_eq!(
+            config.smp_schedule_journal_limit,
+            DEFAULT_SCHEDULE_JOURNAL_LIMIT
+        );
+    }
 
     #[test]
     fn test_core_affinity_default_none() {

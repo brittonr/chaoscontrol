@@ -157,6 +157,14 @@ pub enum ScheduleEvent {
         /// Exact deterministic source for `observed_progress`.
         source: ProgressSource,
     },
+    /// Replay-stable runnable-set observation made before guest execution.
+    RunnableObservation {
+        /// Identity the producer observed before it created this event.
+        expected_state_id: ScheduleStateId,
+        /// Sorted changes from the prior runnable set.
+        #[serde(deserialize_with = "deserialize_bounded_runnable_changes")]
+        runnable_changes: Vec<RunnableChange>,
+    },
     /// Host-owned event. The transition always rejects this input.
     HostEvent {
         /// Identity the producer observed before it created this event.
@@ -170,6 +178,9 @@ impl ScheduleEvent {
     fn expected_state_id(&self) -> ScheduleStateId {
         match self {
             Self::GuestProgress {
+                expected_state_id, ..
+            }
+            | Self::RunnableObservation {
                 expected_state_id, ..
             }
             | Self::HostEvent {
@@ -254,6 +265,46 @@ pub struct PlannedScheduleTransition {
     pub record: ScheduleTransitionRecord,
 }
 
+/// Replay-stable or host-owned result observed after one `KVM_RUN`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionProgressObservation {
+    /// One instruction completed at an exact KVM single-step boundary.
+    ExactInstruction { vcpu: usize },
+    /// One HLT instruction retired and made the active vCPU non-runnable.
+    ExactInstructionHalt { vcpu: usize },
+    /// Guest-only PMU count after a replay-stable guest exit.
+    PmuGuestExit {
+        /// vCPU that ran.
+        vcpu: usize,
+        /// Schedule progress when the PMU was reset.
+        counter_base_progress: u64,
+        /// PMU count since that reset.
+        counter_value: u64,
+    },
+    /// Guest-only PMU count through a retired HLT instruction.
+    PmuGuestHalt {
+        /// vCPU that retired HLT.
+        vcpu: usize,
+        /// Schedule progress when the PMU was reset.
+        counter_base_progress: u64,
+        /// PMU count since that reset.
+        counter_value: u64,
+    },
+    /// Guest-only PMU count after an interrupt of unknown host origin.
+    PmuInterrupt {
+        /// vCPU that ran.
+        vcpu: usize,
+        /// Schedule progress when the PMU was reset.
+        counter_base_progress: u64,
+        /// PMU count since that reset.
+        counter_value: u64,
+    },
+    /// Host interruption with no accepted deterministic boundary.
+    HostInterrupt,
+    /// KVM returned without evidence of a retired guest instruction.
+    NoGuestProgress,
+}
+
 /// Opaque reservation for one preflighted journal slot.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ScheduleReservation {
@@ -292,6 +343,8 @@ pub enum ScheduleError {
     ImpossibleExactProgress { expected: u64, observed: u64 },
     /// Progress passed the declared exact boundary.
     ProgressOvershoot { boundary: u64, observed: u64 },
+    /// An attributed PMU overflow arrived before its guarded boundary.
+    PrematurePmuOverflow { guard: u64, observed: u64 },
     /// The event source does not match the declared mode and exact-step state.
     ProgressSourceMismatch,
     /// A host-owned input attempted to enter the deterministic core.
@@ -308,6 +361,8 @@ pub enum ScheduleError {
     TransitionMismatch { field: &'static str },
     /// Adjacent evidence records do not form one state chain.
     TraceDiscontinuity { index: usize },
+    /// A requested journal limit exceeds the public hard maximum.
+    JournalLimitExceeded { requested: usize, maximum: usize },
     /// A bounded evidence journal has no remaining capacity.
     JournalCapacityExceeded { limit: usize },
     /// The journal could not reserve memory before guest execution.
@@ -327,13 +382,31 @@ impl fmt::Display for ScheduleError {
 impl std::error::Error for ScheduleError {}
 
 impl ScheduleState {
-    /// Build validated initial state from scheduler configuration.
+    /// Build validated initial state with all configured vCPUs runnable.
     pub fn new(
         config: &SchedulerConfig,
         progress_mode: ProgressMode,
     ) -> Result<Self, ScheduleError> {
         validate_configuration(config, progress_mode)?;
+        Self::new_with_runnable(config, progress_mode, vec![true; config.num_vcpus])
+    }
+
+    /// Build validated initial state from a replay-stable runnable observation.
+    pub fn new_with_runnable(
+        config: &SchedulerConfig,
+        progress_mode: ProgressMode,
+        runnable_vcpus: Vec<bool>,
+    ) -> Result<Self, ScheduleError> {
+        validate_configuration(config, progress_mode)?;
         let num_vcpus = config.num_vcpus;
+        if runnable_vcpus.len() != num_vcpus {
+            return Err(ScheduleError::StateLengthMismatch);
+        }
+        let active_vcpu = runnable_vcpus.iter().position(|runnable| *runnable).ok_or(
+            ScheduleError::InvalidConfiguration {
+                reason: "initial state requires one runnable vCPU",
+            },
+        )?;
         let mut rng_seed = [0u8; 32];
         let derived_seed = config.seed.wrapping_add(SCHEDULER_SEED_DOMAIN);
         let seed_bytes = derived_seed.to_le_bytes();
@@ -342,8 +415,8 @@ impl ScheduleState {
         let state = Self {
             schema_version: SCHEDULE_STATE_SCHEMA_VERSION,
             num_vcpus,
-            active_vcpu: 0,
-            runnable_vcpus: vec![true; num_vcpus],
+            active_vcpu,
+            runnable_vcpus,
             instruction_progress: vec![0; num_vcpus],
             quantum_boundary: config.quantum,
             quantum: config.quantum,
@@ -363,6 +436,63 @@ impl ScheduleState {
     pub fn identity(&self) -> ScheduleStateId {
         schedule_state_identity(self)
     }
+}
+
+/// Return canonical sorted changes between two bounded runnable observations.
+pub fn canonical_runnable_changes(
+    current: &[bool],
+    observed: &[bool],
+) -> Result<Vec<RunnableChange>, ScheduleError> {
+    if current.len() != observed.len() {
+        return Err(ScheduleError::StateLengthMismatch);
+    }
+    if observed.len() > MAX_SCHEDULE_VCPUS {
+        return Err(ScheduleError::TooManyVcpus {
+            found: observed.len(),
+            limit: MAX_SCHEDULE_VCPUS,
+        });
+    }
+    Ok(current
+        .iter()
+        .zip(observed)
+        .enumerate()
+        .filter_map(|(vcpu, (before, after))| {
+            (*before != *after).then_some(RunnableChange {
+                vcpu,
+                runnable: *after,
+            })
+        })
+        .collect())
+}
+
+/// Purely apply an explicit seeded scheduling-policy variant.
+pub fn reconfigure_policy(
+    state: &ScheduleState,
+    config: &SchedulerConfig,
+) -> Result<ScheduleState, ScheduleError> {
+    validate_state(state)?;
+    validate_configuration(config, state.progress_mode)?;
+    if config.num_vcpus != state.num_vcpus {
+        return Err(ScheduleError::InvalidConfiguration {
+            reason: "policy variant cannot change the vCPU count",
+        });
+    }
+
+    let mut configured = ScheduleState::new_with_runnable(
+        config,
+        state.progress_mode,
+        state.runnable_vcpus.clone(),
+    )?;
+    configured.active_vcpu = state.active_vcpu;
+    configured.instruction_progress = state.instruction_progress.clone();
+    configured.quantum_boundary = configured.instruction_progress[configured.active_vcpu]
+        .checked_add(config.quantum)
+        .ok_or(ScheduleError::CounterOverflow {
+            counter: "variant quantum boundary",
+        })?;
+    configured.sequence = state.sequence;
+    validate_state(&configured)?;
+    Ok(configured)
 }
 
 /// Validate a requested progress mode against shell-probed capabilities.
@@ -514,6 +644,45 @@ pub fn transition(
     }
 
     let mut next_state = state.clone();
+    if let ScheduleEvent::RunnableObservation {
+        runnable_changes, ..
+    } = event
+    {
+        if runnable_changes.is_empty() {
+            return Err(ScheduleError::TransitionMismatch {
+                field: "runnable observation has no changes",
+            });
+        }
+        apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
+        next_state.sequence =
+            state
+                .sequence
+                .checked_add(1)
+                .ok_or(ScheduleError::CounterOverflow {
+                    counter: "schedule transition sequence",
+                })?;
+        let action = if next_state.runnable_vcpus[state.active_vcpu] {
+            ScheduleAction::Continue
+        } else {
+            let active_progress = state.instruction_progress[state.active_vcpu];
+            finish_turn(
+                &mut next_state,
+                state.active_vcpu,
+                active_progress,
+                SwitchReason::ActiveVcpuBlocked,
+            )?
+        };
+        validate_state(&next_state)?;
+        let post_state_id = next_state.identity();
+        let record = ScheduleTransitionRecord {
+            pre_state_id,
+            event: event.clone(),
+            action,
+            post_state_id,
+        };
+        return Ok(PlannedScheduleTransition { next_state, record });
+    }
+
     let (vcpu, observed_progress, runnable_changes, source) = match event {
         ScheduleEvent::GuestProgress {
             vcpu,
@@ -522,6 +691,9 @@ pub fn transition(
             source,
             ..
         } => (*vcpu, *observed_progress, runnable_changes, *source),
+        ScheduleEvent::RunnableObservation { .. } => {
+            unreachable!("runnable observations return above")
+        }
         ScheduleEvent::HostEvent { .. } => unreachable!("host events return above"),
     };
 
@@ -588,6 +760,155 @@ pub fn transition(
         post_state_id,
     };
     Ok(PlannedScheduleTransition { next_state, record })
+}
+
+/// Plan deterministic progress from one bounded execution observation.
+pub fn plan_execution_observation(
+    state: &ScheduleState,
+    observation: ExecutionProgressObservation,
+) -> Result<Option<PlannedScheduleTransition>, ScheduleError> {
+    validate_state(state)?;
+    match observation {
+        ExecutionProgressObservation::HostInterrupt
+        | ExecutionProgressObservation::NoGuestProgress => Ok(None),
+        ExecutionProgressObservation::ExactInstruction { vcpu } => {
+            plan_exact_observation(state, vcpu, false).map(Some)
+        }
+        ExecutionProgressObservation::ExactInstructionHalt { vcpu } => {
+            plan_exact_observation(state, vcpu, true).map(Some)
+        }
+        ExecutionProgressObservation::PmuGuestExit {
+            vcpu,
+            counter_base_progress,
+            counter_value,
+        } => plan_pmu_observation(
+            state,
+            vcpu,
+            counter_base_progress,
+            counter_value,
+            false,
+            false,
+        ),
+        ExecutionProgressObservation::PmuGuestHalt {
+            vcpu,
+            counter_base_progress,
+            counter_value,
+        } => plan_pmu_observation(
+            state,
+            vcpu,
+            counter_base_progress,
+            counter_value,
+            false,
+            true,
+        ),
+        ExecutionProgressObservation::PmuInterrupt {
+            vcpu,
+            counter_base_progress,
+            counter_value,
+        } => plan_pmu_observation(
+            state,
+            vcpu,
+            counter_base_progress,
+            counter_value,
+            true,
+            false,
+        ),
+    }
+}
+
+fn plan_exact_observation(
+    state: &ScheduleState,
+    vcpu: usize,
+    halted: bool,
+) -> Result<PlannedScheduleTransition, ScheduleError> {
+    if !matches!(
+        (state.progress_mode, state.exact_step),
+        (ProgressMode::ExactSingleStep, ExactStepState::Inactive)
+            | (
+                ProgressMode::PmuAccelerated { .. },
+                ExactStepState::Active { .. }
+            )
+    ) {
+        return Err(ScheduleError::ProgressSourceMismatch);
+    }
+    let current =
+        state
+            .instruction_progress
+            .get(vcpu)
+            .copied()
+            .ok_or(ScheduleError::InvalidVcpu {
+                vcpu,
+                num_vcpus: state.num_vcpus,
+            })?;
+    let observed_progress = current
+        .checked_add(1)
+        .ok_or(ScheduleError::CounterOverflow {
+            counter: "exact guest instruction progress",
+        })?;
+    let runnable_changes = halted
+        .then_some(RunnableChange {
+            vcpu,
+            runnable: false,
+        })
+        .into_iter()
+        .collect();
+    let event = ScheduleEvent::GuestProgress {
+        expected_state_id: state.identity(),
+        vcpu,
+        observed_progress,
+        runnable_changes,
+        source: ProgressSource::ExactSingleStep,
+    };
+    transition(state, &event)
+}
+
+fn plan_pmu_observation(
+    state: &ScheduleState,
+    vcpu: usize,
+    counter_base_progress: u64,
+    counter_value: u64,
+    interrupted: bool,
+    halted: bool,
+) -> Result<Option<PlannedScheduleTransition>, ScheduleError> {
+    let ProgressMode::PmuAccelerated { exact_step_margin } = state.progress_mode else {
+        return Err(ScheduleError::ProgressSourceMismatch);
+    };
+    if state.exact_step != ExactStepState::Inactive {
+        return Err(ScheduleError::ProgressSourceMismatch);
+    }
+    let observed_progress =
+        counter_base_progress
+            .checked_add(counter_value)
+            .ok_or(ScheduleError::CounterOverflow {
+                counter: "PMU guest instruction progress",
+            })?;
+    let guarded_boundary = state
+        .quantum_boundary
+        .checked_sub(exact_step_margin)
+        .ok_or(ScheduleError::CounterOverflow {
+            counter: "PMU guarded boundary",
+        })?;
+    if interrupted && observed_progress < guarded_boundary {
+        return Err(ScheduleError::PrematurePmuOverflow {
+            guard: guarded_boundary,
+            observed: observed_progress,
+        });
+    }
+    let runnable_changes = halted
+        .then_some(RunnableChange {
+            vcpu,
+            runnable: false,
+        })
+        .into_iter()
+        .collect();
+    let event = ScheduleEvent::GuestProgress {
+        expected_state_id: state.identity(),
+        vcpu,
+        observed_progress,
+        runnable_changes,
+        source: ProgressSource::GuestInstructionPmu,
+    };
+    transition(state, &event).map(Some)
 }
 
 /// Validate an untrusted compact record and return its recomputed post-state.
@@ -662,6 +983,12 @@ impl ScheduleJournal {
     /// Create an empty journal from an already validated initial state.
     pub fn new(initial_state: ScheduleState, limit: usize) -> Result<Self, ScheduleError> {
         validate_state(&initial_state)?;
+        if limit > DEFAULT_SCHEDULE_JOURNAL_LIMIT {
+            return Err(ScheduleError::JournalLimitExceeded {
+                requested: limit,
+                maximum: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+            });
+        }
         Ok(Self {
             limit,
             initial_state: initial_state.clone(),
@@ -723,6 +1050,11 @@ impl ScheduleJournal {
     /// Return committed records.
     pub fn records(&self) -> &[ScheduleTransitionRecord] {
         &self.records
+    }
+
+    /// True when the shell holds a preflight slot across a retry.
+    pub fn reservation_outstanding(&self) -> bool {
+        self.reservation.is_some()
     }
 
     /// Drain a complete trace. No reservation can be outstanding.
@@ -1402,6 +1734,41 @@ mod tests {
     }
 
     #[test]
+    fn journal_rejects_a_limit_above_the_public_maximum() {
+        assert_eq!(
+            ScheduleJournal::new(exact_state(), usize::MAX),
+            Err(ScheduleError::JournalLimitExceeded {
+                requested: usize::MAX,
+                maximum: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+            })
+        );
+    }
+
+    #[test]
+    fn host_interrupt_retry_keeps_the_same_reserved_slot() {
+        let state = exact_state();
+        let mut journal = ScheduleJournal::new(state.clone(), JOURNAL_LIMIT).unwrap();
+        let reservation = journal.reserve().unwrap();
+        assert_eq!(
+            plan_execution_observation(&state, ExecutionProgressObservation::HostInterrupt,)
+                .unwrap(),
+            None
+        );
+        assert!(journal.reservation_outstanding());
+        assert!(journal.records().is_empty());
+
+        let planned = plan_execution_observation(
+            &state,
+            ExecutionProgressObservation::ExactInstruction { vcpu: 0 },
+        )
+        .unwrap()
+        .unwrap();
+        journal.commit(reservation, planned.record).unwrap();
+        assert!(!journal.reservation_outstanding());
+        assert_eq!(journal.state().instruction_progress[0], 1);
+    }
+
+    #[test]
     fn no_progress_shell_failure_releases_reservation() {
         let state = exact_state();
         let mut journal = ScheduleJournal::new(state, JOURNAL_LIMIT).unwrap();
@@ -1458,6 +1825,122 @@ mod tests {
             Err(ScheduleError::TraceDiscontinuity { .. })
                 | Err(ScheduleError::IdentityMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn arbitrary_host_interrupts_cannot_change_progress_or_selection() {
+        let exact = exact_state();
+        for _ in 0..QUANTUM {
+            assert_eq!(
+                plan_execution_observation(&exact, ExecutionProgressObservation::HostInterrupt,)
+                    .unwrap(),
+                None
+            );
+        }
+        assert_eq!(exact.active_vcpu, 0);
+        assert_eq!(exact.instruction_progress, vec![0; VCPU_COUNT]);
+
+        let pmu = ScheduleState::new(
+            &config(),
+            ProgressMode::PmuAccelerated {
+                exact_step_margin: PMU_MARGIN,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            plan_execution_observation(&pmu, ExecutionProgressObservation::HostInterrupt,).unwrap(),
+            None
+        );
+        let below_guard = PMU_MARGIN - 1;
+        assert!(matches!(
+            plan_execution_observation(
+                &pmu,
+                ExecutionProgressObservation::PmuInterrupt {
+                    vcpu: 0,
+                    counter_base_progress: 0,
+                    counter_value: below_guard,
+                },
+            ),
+            Err(ScheduleError::PrematurePmuOverflow { .. })
+        ));
+        assert_eq!(pmu.active_vcpu, 0);
+        assert_eq!(pmu.sequence, 0);
+    }
+
+    #[test]
+    fn retired_hlt_advances_once_and_blocks_before_another_run() {
+        let state = exact_state();
+        let first_halt = plan_execution_observation(
+            &state,
+            ExecutionProgressObservation::ExactInstructionHalt { vcpu: 0 },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(first_halt.next_state.instruction_progress[0], 1);
+        assert!(!first_halt.next_state.runnable_vcpus[0]);
+        assert_eq!(first_halt.next_state.active_vcpu, 1);
+        assert!(matches!(
+            first_halt.record.action,
+            ScheduleAction::Switch {
+                reason: SwitchReason::ActiveVcpuBlocked,
+                ..
+            }
+        ));
+        assert!(matches!(
+            plan_execution_observation(
+                &first_halt.next_state,
+                ExecutionProgressObservation::ExactInstructionHalt { vcpu: 0 },
+            ),
+            Err(ScheduleError::TransitionMismatch { .. })
+        ));
+
+        let second_halt = plan_execution_observation(
+            &first_halt.next_state,
+            ExecutionProgressObservation::ExactInstructionHalt { vcpu: 1 },
+        )
+        .unwrap()
+        .unwrap();
+        assert!(second_halt.next_state.halted);
+        assert_eq!(second_halt.record.action, ScheduleAction::Halt);
+
+        let wake = transition(
+            &second_halt.next_state,
+            &ScheduleEvent::RunnableObservation {
+                expected_state_id: second_halt.next_state.identity(),
+                runnable_changes: vec![RunnableChange {
+                    vcpu: 0,
+                    runnable: true,
+                }],
+            },
+        )
+        .unwrap();
+        assert!(!wake.next_state.halted);
+        assert_eq!(wake.next_state.active_vcpu, 0);
+    }
+
+    #[test]
+    fn no_exit_progress_switches_at_the_exact_instruction_boundary() {
+        let mut state = exact_state();
+        for instruction in 1..=QUANTUM {
+            let planned = plan_execution_observation(
+                &state,
+                ExecutionProgressObservation::ExactInstruction {
+                    vcpu: state.active_vcpu,
+                },
+            )
+            .unwrap()
+            .unwrap();
+            if instruction < QUANTUM {
+                assert_eq!(planned.record.action, ScheduleAction::Continue);
+            } else {
+                assert!(matches!(
+                    planned.record.action,
+                    ScheduleAction::Switch { .. }
+                ));
+            }
+            state = planned.next_state;
+        }
+        assert_eq!(state.active_vcpu, 1);
     }
 
     #[test]

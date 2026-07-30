@@ -1,81 +1,59 @@
-//! Quick test: does PMU overflow deliver SIGIO?
-use std::sync::atomic::{AtomicU64, Ordering};
+//! Manual PMU overflow-attribution smoke test.
 
-static SIGIO_COUNT: AtomicU64 = AtomicU64::new(0);
+use chaoscontrol_vmm::perf::InstructionCounter;
 
-extern "C" fn sigio_handler(_sig: libc::c_int) {
-    SIGIO_COUNT.fetch_add(1, Ordering::Relaxed);
-}
+const OVERFLOW_PERIOD: u64 = 100_000;
+const BUSY_ITERATIONS: u64 = 10_000_000;
+const GATED_ITERATIONS: usize = 10;
+const GATED_BUSY_ITERATIONS: u64 = 500_000;
 
 fn main() {
-    unsafe {
-        let mut sa: libc::sigaction = std::mem::zeroed();
-        sa.sa_sigaction = sigio_handler as *const () as usize;
-        sa.sa_flags = 0;
-        libc::sigaction(libc::SIGIO, &sa, std::ptr::null_mut());
-    }
-
-    let period: u64 = 100_000;
-
-    // Test without exclude_host first
-    use chaoscontrol_vmm::perf::InstructionCounter;
-
-    println!("=== Testing PMU overflow (period={}) ===", period);
-
-    match InstructionCounter::with_overflow(period) {
+    println!("=== Testing attributed PMU overflow (period={OVERFLOW_PERIOD}) ===");
+    match InstructionCounter::with_overflow(OVERFLOW_PERIOD) {
         Ok(counter) => {
-            SIGIO_COUNT.store(0, Ordering::Relaxed);
-            counter.reset_and_enable();
-
-            // Busy loop
-            let mut x: u64 = 0;
-            for i in 0..10_000_000u64 {
-                x = x.wrapping_add(i);
+            let generation = counter
+                .overflow_generation()
+                .expect("read overflow generation");
+            counter.reset_and_enable().expect("enable PMU counter");
+            let mut value = 0u64;
+            for index in 0..BUSY_ITERATIONS {
+                value = value.wrapping_add(index);
             }
-
-            counter.disable();
-            let sigs = SIGIO_COUNT.load(Ordering::Relaxed);
-            let count = counter.read();
-            println!("SIGIO count: {} (expected ~{})", sigs, 10_000_000 / period);
-            println!("Counter value: {} (x={})", count, x);
-            if sigs == 0 {
-                println!("❌ No SIGIO delivered — overflow not working!");
-            } else {
-                println!("✅ SIGIO working");
-            }
+            counter.disable().expect("disable PMU counter");
+            let count = counter.read().expect("read PMU counter");
+            let overflowed = counter
+                .overflow_since(generation)
+                .expect("read overflow attribution");
+            println!("overflow attributed: {overflowed}");
+            println!("counter value: {count} (value={value})");
         }
-        Err(e) => println!("PMU not available: {}", e),
+        Err(error) => println!("PMU not available: {error}"),
     }
 
-    // Also test with resume/disable gating
-    match InstructionCounter::with_overflow(period) {
+    match InstructionCounter::with_overflow(OVERFLOW_PERIOD) {
         Ok(counter) => {
-            SIGIO_COUNT.store(0, Ordering::Relaxed);
-            counter.reset_and_enable();
-            counter.disable(); // Pause
-
-            // Resume, do work, disable — like vcpu.run() gating
-            for _ in 0..10 {
-                counter.resume();
-                let mut x: u64 = 0;
-                for i in 0..500_000u64 {
-                    x = x.wrapping_add(i);
+            let generation = counter
+                .overflow_generation()
+                .expect("read overflow generation");
+            counter.reset_and_enable().expect("enable PMU counter");
+            counter.disable().expect("pause PMU counter");
+            for _ in 0..GATED_ITERATIONS {
+                counter.resume().expect("resume PMU counter");
+                let mut value = 0u64;
+                for index in 0..GATED_BUSY_ITERATIONS {
+                    value = value.wrapping_add(index);
                 }
-                counter.disable();
-                let _ = x;
+                counter.disable().expect("pause PMU counter");
+                std::hint::black_box(value);
             }
-
-            let sigs = SIGIO_COUNT.load(Ordering::Relaxed);
-            let count = counter.read();
-            println!("\n=== Gated mode (resume/disable per iteration) ===");
-            println!("SIGIO count: {} (expected ~{})", sigs, 5_000_000 / period);
-            println!("Counter value: {}", count);
-            if sigs == 0 {
-                println!("❌ No SIGIO in gated mode!");
-            } else {
-                println!("✅ Gated mode working");
-            }
+            let count = counter.read().expect("read PMU counter");
+            let overflowed = counter
+                .overflow_since(generation)
+                .expect("read overflow attribution");
+            println!("\n=== Gated mode ===");
+            println!("overflow attributed: {overflowed}");
+            println!("counter value: {count}");
         }
-        Err(e) => println!("PMU not available: {}", e),
+        Err(error) => println!("PMU not available: {error}"),
     }
 }

@@ -12,11 +12,13 @@ A wall-clock watchdog can protect operator liveness, but it cannot be an input t
 - Fail closed when the requested deterministic progress source is unavailable instead of silently falling back to wall-clock preemption.
 - Keep host watchdogs as an operational abort mechanism with an explicit non-deterministic timeout classification that cannot satisfy deterministic replay evidence.
 - Persist and trace the complete deterministic scheduler/progress state needed to resume at the same boundary.
-- Add spurious-interrupt, host-delay, PMU-unavailable, spin-loop, snapshot-resume, and repeated-run schedule tests.
+- Permanently poison a VM after any post-entry evidence or post-commit handling failure.
+- Permanently poison a controller after any round fails following mutation, and reject all later execution, mutation, evidence, and success paths.
+- Add spurious-interrupt, host-delay, PMU-unavailable, spin-loop, snapshot-resume, failed-round, and repeated-run schedule tests.
 
 ## Impact
 
-- **Files**: `crates/chaoscontrol-vmm/src/vm.rs`, `perf.rs`, scheduler/progress state, dlog schedule records, VM configuration, snapshot-state adapters, and SMP tests.
+- **Files**: `crates/chaoscontrol-vmm/src/vm.rs`, `controller.rs`, `perf.rs`, scheduler/progress state, dlog schedule records, replay recording, snapshot-state adapters, and SMP tests.
 - **Compatibility**: deterministic SMP startup will return a capability error when no approved progress source is available; it will not continue in timer-only mode.
 - **Performance**: a portable exact progress source may be slower than wall-clock liveness switching; accelerated modes remain opt-in until they preserve exact boundaries.
 - **Reliability**: host watchdog expiration stops the run without fabricating a guest crash, schedule choice, or replay-success result.

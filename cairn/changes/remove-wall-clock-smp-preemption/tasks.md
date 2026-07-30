@@ -15,14 +15,18 @@
 
 - [ ] [serial] Make `SIGALRM`, `VcpuExit::Intr`, and `EINTR` retry or return an operational watchdog timeout without changing deterministic schedule, virtual time, or guest verdict state. r[chaoscontrol.deterministic_smp.watchdog]
 - [ ] [serial] Emit canonical progress and switch records with pre/post BLAKE3 schedule-state identities and no wall-clock fields in deterministic identity. r[chaoscontrol.deterministic_smp.schedule_evidence]
+- [ ] [serial] Permanently poison VM execution after post-entry evidence, exit-handling, or schedule-action failure. r[chaoscontrol.deterministic_smp.vm_poison]
 - [ ] [serial] Expose complete schedule/progress state to the VM snapshot adapter without taking ownership of whole-VM payloads or replay artifact references. r[chaoscontrol.deterministic_smp.snapshot_state]
+- [ ] [serial] Latch controller poison after any failed round mutation and block later execution, mutation, snapshot, restore, recording, and success paths. r[chaoscontrol.deterministic_smp.controller_poison]
 
 ## Phase 4: Regression evidence
 
 - [ ] [parallel] Add spurious-interrupt tests proving arbitrary `Intr` and `EINTR` sequences cannot change vCPU selection or deterministic counters. r[chaoscontrol.deterministic_smp.validation.spurious_interrupts]
 - [ ] [parallel] Add PMU-unavailable and PMU-overshoot tests proving deterministic startup or execution fails closed without timer-only fallback. r[chaoscontrol.deterministic_smp.capability_policy]
+- [ ] [parallel] Add negative post-commit exit-handling and schedule-action tests proving permanent VM poison. r[chaoscontrol.deterministic_smp.validation.vm_poison]
 - [ ] [parallel] Add no-exit spin-loop tests proving switching occurs only at the declared deterministic progress boundary. r[chaoscontrol.deterministic_smp.validation.spin_loop]
 - [ ] [serial] Add repeated KVM runs under injected host delay, watchdog-cadence variation, and CPU contention and compare canonical transition traces and bounded guest observations. r[chaoscontrol.deterministic_smp.validation.host_perturbation]
 - [ ] [serial] Add snapshot/resume tests at partial quantum and exact-step boundaries in coordination with `complete-vm-snapshot-state`. r[chaoscontrol.deterministic_smp.validation.snapshot]
+- [ ] [serial] Add a multi-VM failed-round test proving retry cannot advance an earlier VM, tick, fault state, or network state. r[chaoscontrol.deterministic_smp.validation.controller_poison]
 - [ ] [serial] Document progress modes, capability failures, watchdog non-claims, and bounded portability. r[chaoscontrol.deterministic_smp.capability_policy] r[chaoscontrol.deterministic_smp.watchdog]
 - [ ] [serial] Run focused scheduler/perf/KVM tests, workspace tests, determinism comparison tests, Cairn validation, and proposal/design/tasks gates before sync or archive. r[chaoscontrol.deterministic_smp.validation]

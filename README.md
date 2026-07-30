@@ -21,6 +21,39 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
 - **SMP support**: Multi-vCPU VMs with serialized execution (Antithesis-style),
   deterministic round-robin or randomized scheduling
 
+### Deterministic SMP Progress
+
+ChaosControl uses `ProgressMode::ExactSingleStep` for SMP by default. KVM guest debug returns control after each guest instruction.
+The scheduler switches vCPUs only at the declared instruction quantum.
+
+`ProgressMode::PmuAccelerated` is an explicit opt-in mode. It uses a guest-only instruction counter, then single-steps the exact remainder.
+Startup fails if the PMU, overflow delivery, or exact single-step capability is unavailable. The VMM does not use timer-only fallback.
+PMU overflow signals target the execution thread with `F_SETOWN_EX` and `F_OWNER_TID`.
+
+`SIGALRM`, unrelated `VcpuExit::Intr`, and unrelated `EINTR` have no scheduling authority.
+A watchdog timeout is an operational result. It does not prove a guest crash, deadlock, or deterministic replay result.
+
+`VmConfig::smp_schedule_journal_limit` sets the in-memory evidence bound. The value cannot exceed `DEFAULT_SCHEDULE_JOURNAL_LIMIT`.
+Each accepted record contains canonical pre-state and post-state BLAKE3 identities.
+Recordings preserve these traces by VM and simulation tick. Exact replay rejects missing, forged, reordered, or divergent traces.
+
+The VM becomes permanently poisoned if guest progress can occur without exact evidence or post-commit exit handling fails.
+A failed controller round also creates a permanent controller poison after mutation starts.
+The controller then rejects execution, mutation, snapshots, restores, recording output, and success results.
+Partial VM journals remain available only as diagnostics. The controller never publishes the failed round as complete.
+
+`KVM_EXIT_HLT` leaves the userspace MP state runnable on the tested KVM host.
+ChaosControl therefore keeps a replay-stable HLT latch and clears it only after an explicit deterministic wake.
+
+The portable claim is bounded to KVM hosts that support exact guest debug single-step.
+PMU acceleration has a narrower, host-specific capability profile.
+
+Run the focused KVM evidence test with:
+
+```bash
+nix develop -c cargo test -p chaoscontrol-vmm --test deterministic_smp_kvm
+```
+
 ### VM Infrastructure
 - **x86_64 boot**: Full long mode setup with GDT, identity-mapped page
   tables (1 GB via 2 MB pages), and Linux boot protocol support

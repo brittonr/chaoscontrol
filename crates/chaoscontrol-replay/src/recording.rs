@@ -9,11 +9,17 @@ use chaoscontrol_fault::outcomes::{
     NANOSECONDS_PER_SIMULATION_TICK,
 };
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
-use chaoscontrol_vmm::controller::{RoundResult, SimulationSnapshot};
+use chaoscontrol_vmm::controller::{RoundResult, SimulationSnapshot, VmScheduleTrace};
+use chaoscontrol_vmm::scheduler::core::{
+    validate_transition_trace, ScheduleStateId, DEFAULT_SCHEDULE_JOURNAL_LIMIT, MAX_SCHEDULE_VCPUS,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 const MAX_RECORDED_SCHEDULE_FAULTS: usize = MAX_FAULT_ATTEMPTS;
 const INITIAL_SIMULATION_RUN_SEQUENCE: u64 = 1;
+const MAX_RECORDED_SCHEDULE_ROUNDS: usize = DEFAULT_SCHEDULE_JOURNAL_LIMIT;
+const MAX_RECORDED_SCHEDULE_RECORDS: usize = DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 
 mod recorded_fault_ledger {
     use super::{
@@ -105,6 +111,104 @@ mod recorded_fault_schedule {
     }
 }
 
+mod recorded_schedule_rounds {
+    use super::{RecordedScheduleRound, MAX_RECORDED_SCHEDULE_ROUNDS, MAX_SCHEDULE_VCPUS};
+    use serde::de::{SeqAccess, Visitor};
+    use serde::{Deserializer, Serialize, Serializer};
+    use std::fmt;
+
+    pub fn serialize<S>(rounds: &[RecordedScheduleRound], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        rounds.serialize(serializer)
+    }
+
+    pub fn deserialize_traces<'de, D>(
+        deserializer: D,
+    ) -> Result<Vec<super::VmScheduleTrace>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct TraceVisitor;
+        impl<'de> Visitor<'de> for TraceVisitor {
+            type Value = Vec<super::VmScheduleTrace>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(formatter, "at most {MAX_SCHEDULE_VCPUS} VM schedule traces")
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let hint = sequence.size_hint().unwrap_or(0);
+                if hint > MAX_SCHEDULE_VCPUS {
+                    return Err(serde::de::Error::custom(
+                        "recorded VM schedule trace count exceeds bound",
+                    ));
+                }
+                let mut traces = Vec::with_capacity(hint);
+                while let Some(trace) = sequence.next_element::<super::VmScheduleTrace>()? {
+                    if traces.len() >= MAX_SCHEDULE_VCPUS {
+                        return Err(serde::de::Error::custom(
+                            "recorded VM schedule trace count exceeds bound",
+                        ));
+                    }
+                    traces.push(trace);
+                }
+                Ok(traces)
+            }
+        }
+        deserializer.deserialize_seq(TraceVisitor)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<RecordedScheduleRound>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RoundVisitor;
+        impl<'de> Visitor<'de> for RoundVisitor {
+            type Value = Vec<RecordedScheduleRound>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(
+                    formatter,
+                    "at most {MAX_RECORDED_SCHEDULE_ROUNDS} recorded schedule rounds"
+                )
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let hint = sequence.size_hint().unwrap_or(0);
+                if hint > MAX_RECORDED_SCHEDULE_ROUNDS {
+                    return Err(serde::de::Error::custom(
+                        "recorded schedule round count exceeds bound",
+                    ));
+                }
+                let mut rounds: Vec<RecordedScheduleRound> = Vec::with_capacity(hint);
+                while let Some(round) = sequence.next_element::<RecordedScheduleRound>()? {
+                    if rounds.len() >= MAX_RECORDED_SCHEDULE_ROUNDS {
+                        return Err(serde::de::Error::custom(
+                            "recorded schedule round count exceeds bound",
+                        ));
+                    }
+                    if round.traces.len() > MAX_SCHEDULE_VCPUS {
+                        return Err(serde::de::Error::custom(
+                            "recorded VM schedule trace count exceeds bound",
+                        ));
+                    }
+                    rounds.push(round);
+                }
+                Ok(rounds)
+            }
+        }
+        deserializer.deserialize_seq(RoundVisitor)
+    }
+}
+
 /// A recorded execution session.
 ///
 /// r[impl chaoscontrol.fault_outcomes.compatibility]
@@ -139,6 +243,9 @@ pub struct Recording {
     /// Authoritative ledger that supplies the canonical trace.
     #[serde(default, with = "recorded_fault_ledger")]
     pub fault_outcome_ledger: FaultOutcomeLedger,
+    /// Bounded exact SMP traces grouped by simulation round.
+    #[serde(default, with = "recorded_schedule_rounds")]
+    pub schedule_rounds: Vec<RecordedScheduleRound>,
     /// Final oracle report.
     #[serde(skip)] // OracleReport doesn't implement Serialize
     pub oracle_report: Option<OracleReport>,
@@ -180,6 +287,16 @@ pub struct FaultRoundTraceDelta {
     pub event_end: u64,
 }
 
+/// Non-empty exact SMP traces emitted during one simulation round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordedScheduleRound {
+    /// Simulation tick that produced the traces.
+    pub tick: u64,
+    /// Canonically ordered VM traces for this tick.
+    #[serde(deserialize_with = "recorded_schedule_rounds::deserialize_traces")]
+    pub traces: Vec<VmScheduleTrace>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordingValidationError {
     TraceBoundExceeded,
@@ -199,6 +316,10 @@ pub enum RecordingValidationError {
     EvidenceBeyondHorizon,
     CheckpointOrderMismatch,
     SelectedDeltaTickMismatch,
+    ScheduleTraceBoundExceeded,
+    InvalidScheduleRound,
+    InvalidScheduleTrace,
+    ScheduleTraceDiscontinuity,
 }
 
 /// An event recorded during execution.
@@ -279,6 +400,7 @@ impl Recorder {
                 fault_stage_events: Vec::new(),
                 fault_round_deltas: Vec::new(),
                 fault_outcome_ledger: FaultOutcomeLedger::default(),
+                schedule_rounds: Vec::new(),
                 oracle_report: None,
                 total_ticks: 0,
             },
@@ -347,6 +469,9 @@ impl Recorder {
         self.recording.fault_stage_events = ledger.events.clone();
         self.recording.fault_round_deltas = next.round_deltas;
         self.recording.fault_outcome_ledger = ledger.clone();
+        if let Some(schedule_round) = next.schedule_round {
+            self.recording.schedule_rounds.push(schedule_round);
+        }
         self.recording.total_ticks = self.recording.total_ticks.max(round.tick);
         Ok(())
     }
@@ -367,6 +492,7 @@ impl Recorder {
 struct PlannedRecordedRound {
     fault_fired: Vec<RecordedEvent>,
     round_deltas: Vec<FaultRoundTraceDelta>,
+    schedule_round: Option<RecordedScheduleRound>,
 }
 
 fn plan_recorded_round(
@@ -429,10 +555,86 @@ fn plan_recorded_round(
                 .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
         });
     }
+    let schedule_round = plan_schedule_round(recording, round)?;
     Ok(PlannedRecordedRound {
         fault_fired,
         round_deltas,
+        schedule_round,
     })
+}
+
+fn plan_schedule_round(
+    recording: &Recording,
+    round: &RoundResult,
+) -> Result<Option<RecordedScheduleRound>, RecordingValidationError> {
+    if round.schedule_traces.is_empty() {
+        return Ok(None);
+    }
+    if recording
+        .schedule_rounds
+        .last()
+        .is_some_and(|prior| prior.tick >= round.tick)
+    {
+        return Err(RecordingValidationError::InvalidScheduleRound);
+    }
+    let existing_records = recording
+        .schedule_rounds
+        .iter()
+        .flat_map(|recorded_round| &recorded_round.traces)
+        .try_fold(0usize, |count, vm_trace| {
+            count.checked_add(vm_trace.trace.records.len())
+        })
+        .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?;
+    let new_records = round
+        .schedule_traces
+        .iter()
+        .try_fold(0usize, |count, vm_trace| {
+            count.checked_add(vm_trace.trace.records.len())
+        })
+        .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?;
+    if existing_records
+        .checked_add(new_records)
+        .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?
+        > MAX_RECORDED_SCHEDULE_RECORDS
+    {
+        return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
+    }
+
+    let mut prior_ids: BTreeMap<usize, ScheduleStateId> = BTreeMap::new();
+    for recorded_round in &recording.schedule_rounds {
+        for vm_trace in &recorded_round.traces {
+            let final_state =
+                validate_transition_trace(&vm_trace.trace, DEFAULT_SCHEDULE_JOURNAL_LIMIT)
+                    .map_err(|_| RecordingValidationError::InvalidScheduleTrace)?;
+            prior_ids.insert(vm_trace.vm_index, final_state.identity());
+        }
+    }
+
+    let mut prior_vm = None;
+    for vm_trace in &round.schedule_traces {
+        if vm_trace.vm_index >= recording.config.num_vms
+            || prior_vm.is_some_and(|prior| prior >= vm_trace.vm_index)
+            || vm_trace.trace.records.is_empty()
+        {
+            return Err(RecordingValidationError::InvalidScheduleRound);
+        }
+        let final_state =
+            validate_transition_trace(&vm_trace.trace, DEFAULT_SCHEDULE_JOURNAL_LIMIT)
+                .map_err(|_| RecordingValidationError::InvalidScheduleTrace)?;
+        if prior_ids
+            .get(&vm_trace.vm_index)
+            .is_some_and(|prior| *prior != vm_trace.trace.initial_state_id)
+        {
+            return Err(RecordingValidationError::ScheduleTraceDiscontinuity);
+        }
+        prior_ids.insert(vm_trace.vm_index, final_state.identity());
+        prior_vm = Some(vm_trace.vm_index);
+    }
+
+    Ok(Some(RecordedScheduleRound {
+        tick: round.tick,
+        traces: round.schedule_traces.clone(),
+    }))
 }
 
 pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidationError> {
@@ -595,6 +797,50 @@ pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidati
         return Err(RecordingValidationError::InvalidRoundDelta);
     }
 
+    if recording.schedule_rounds.len() > MAX_RECORDED_SCHEDULE_ROUNDS {
+        return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
+    }
+    let mut schedule_record_count = 0usize;
+    let mut prior_schedule_tick = None;
+    let mut prior_schedule_ids: BTreeMap<usize, ScheduleStateId> = BTreeMap::new();
+    for schedule_round in &recording.schedule_rounds {
+        if schedule_round.tick > recording.total_ticks
+            || prior_schedule_tick.is_some_and(|tick| tick >= schedule_round.tick)
+            || schedule_round.traces.is_empty()
+            || schedule_round.traces.len() > recording.config.num_vms
+            || schedule_round.traces.len() > MAX_SCHEDULE_VCPUS
+        {
+            return Err(RecordingValidationError::InvalidScheduleRound);
+        }
+        let mut prior_vm = None;
+        for vm_trace in &schedule_round.traces {
+            if vm_trace.vm_index >= recording.config.num_vms
+                || prior_vm.is_some_and(|vm| vm >= vm_trace.vm_index)
+                || vm_trace.trace.records.is_empty()
+            {
+                return Err(RecordingValidationError::InvalidScheduleRound);
+            }
+            schedule_record_count = schedule_record_count
+                .checked_add(vm_trace.trace.records.len())
+                .ok_or(RecordingValidationError::ScheduleTraceBoundExceeded)?;
+            if schedule_record_count > MAX_RECORDED_SCHEDULE_RECORDS {
+                return Err(RecordingValidationError::ScheduleTraceBoundExceeded);
+            }
+            let final_state =
+                validate_transition_trace(&vm_trace.trace, DEFAULT_SCHEDULE_JOURNAL_LIMIT)
+                    .map_err(|_| RecordingValidationError::InvalidScheduleTrace)?;
+            if prior_schedule_ids
+                .get(&vm_trace.vm_index)
+                .is_some_and(|prior| *prior != vm_trace.trace.initial_state_id)
+            {
+                return Err(RecordingValidationError::ScheduleTraceDiscontinuity);
+            }
+            prior_schedule_ids.insert(vm_trace.vm_index, final_state.identity());
+            prior_vm = Some(vm_trace.vm_index);
+        }
+        prior_schedule_tick = Some(schedule_round.tick);
+    }
+
     let expected_fault_fired = recording
         .fault_outcome_ledger
         .events
@@ -666,6 +912,41 @@ mod tests {
     use chaoscontrol_fault::outcomes::{
         transition_fault_outcome, FaultAttempt, FaultAttemptSource,
     };
+    use chaoscontrol_vmm::scheduler::core::{
+        plan_execution_observation, ExecutionProgressObservation, ProgressMode, ScheduleTrace,
+    };
+    use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy};
+
+    const TEST_VCPU_COUNT: usize = 2;
+    const TEST_INSTRUCTION_QUANTUM: u64 = 2;
+
+    fn one_step_vm_trace(vm_index: usize) -> VmScheduleTrace {
+        let config = SchedulerConfig {
+            num_vcpus: TEST_VCPU_COUNT,
+            quantum: TEST_INSTRUCTION_QUANTUM,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: 42,
+        };
+        let initial_state = chaoscontrol_vmm::scheduler::core::ScheduleState::new(
+            &config,
+            ProgressMode::ExactSingleStep,
+        )
+        .unwrap();
+        let planned = plan_execution_observation(
+            &initial_state,
+            ExecutionProgressObservation::ExactInstruction { vcpu: 0 },
+        )
+        .unwrap()
+        .unwrap();
+        VmScheduleTrace {
+            vm_index,
+            trace: ScheduleTrace {
+                initial_state_id: initial_state.identity(),
+                initial_state,
+                records: vec![planned.record],
+            },
+        }
+    }
 
     fn selected_round(tick: u64) -> (FaultSchedule, RoundResult, FaultOutcomeLedger) {
         const TEST_SEED: u64 = 42;
@@ -700,6 +981,7 @@ mod tests {
             faults_fired: vec![attempt.fault],
             fault_outcomes: ledger.events.clone(),
             messages_delivered: 0,
+            schedule_traces: Vec::new(),
         };
         (schedule, round, ledger)
     }
@@ -732,6 +1014,7 @@ mod tests {
                 .collect(),
             fault_outcomes: ledger.events.clone(),
             messages_delivered: 0,
+            schedule_traces: Vec::new(),
         };
         let mut recorder = Recorder::new_for_run(
             test_config(),
@@ -874,6 +1157,61 @@ mod tests {
             [RecordedEvent::FaultFired { tick: 1, .. }]
         ));
         validate_recording(&recorder.recording).unwrap();
+    }
+
+    #[test]
+    fn recorder_persists_and_validates_exact_schedule_trace() {
+        let (schedule, mut round, ledger) = selected_round(1);
+        round.schedule_traces.push(one_step_vm_trace(0));
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
+
+        recorder.record_round(&round, &ledger).unwrap();
+
+        assert_eq!(recorder.recording.schedule_rounds.len(), 1);
+        assert_eq!(
+            recorder.recording.schedule_rounds[0].traces,
+            round.schedule_traces
+        );
+        validate_recording(&recorder.recording).unwrap();
+    }
+
+    #[test]
+    fn forged_schedule_trace_is_rejected_before_recording_mutation() {
+        let (schedule, mut round, ledger) = selected_round(1);
+        let mut forged = one_step_vm_trace(0);
+        forged.trace.records[0].post_state_id.0[0] ^= 1;
+        round.schedule_traces.push(forged);
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
+
+        assert_eq!(
+            recorder.record_round(&round, &ledger),
+            Err(RecordingValidationError::InvalidScheduleTrace)
+        );
+        assert!(recorder.recording.schedule_rounds.is_empty());
+        assert!(recorder.recording.fault_stage_events.is_empty());
+    }
+
+    #[test]
+    fn schedule_trace_chain_discontinuity_is_rejected() {
+        let (schedule, mut first_round, first_ledger) = selected_round(1);
+        first_round.schedule_traces.push(one_step_vm_trace(0));
+        let mut recorder = Recorder::new(test_config(), schedule, 42);
+        recorder.record_round(&first_round, &first_ledger).unwrap();
+
+        let second_round = RoundResult {
+            tick: 2,
+            vms_running: 1,
+            vms_halted: 0,
+            faults_fired: Vec::new(),
+            fault_outcomes: Vec::new(),
+            messages_delivered: 0,
+            schedule_traces: vec![one_step_vm_trace(0)],
+        };
+        let second_ledger = first_ledger.clone();
+        assert_eq!(
+            recorder.record_round(&second_round, &second_ledger),
+            Err(RecordingValidationError::ScheduleTraceDiscontinuity)
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //! in a single deterministic simulation, handling fault injection, network
 //! routing, and deterministic scheduling.
 
+use crate::scheduler::core::ScheduleTrace;
 use crate::scheduler::ScheduleVariant;
 use crate::snapshot::VmSnapshot;
 use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
@@ -1581,6 +1582,17 @@ fn non_runnable_application_error() -> FaultApplicationError {
     }
 }
 
+/// Permanent controller-level failure after a round starts mutating state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControllerRoundPoison {
+    /// One-based round that failed.
+    pub round: u64,
+    /// Tick observed before the failed round completed.
+    pub tick: u64,
+    /// Original failure retained for diagnostics.
+    pub detail: String,
+}
+
 /// The main simulation controller for multi-VM deterministic testing.
 pub struct SimulationController {
     /// VM slots.
@@ -1594,7 +1606,7 @@ pub struct SimulationController {
     /// Exits per VM per round.
     quantum: u64,
     /// Simulation config (for VM restarts).
-    pub config: SimulationConfig,
+    config: SimulationConfig,
     /// Per-VM base memory for incremental snapshots.
     ///
     /// Set after the bootstrap snapshot. Each `Arc<Vec<u8>>` is the
@@ -1608,6 +1620,8 @@ pub struct SimulationController {
     fault_operation_sequence: u64,
     /// Process observations retained until their ledger batch commits.
     pending_process_observations: VecDeque<(usize, FaultObservation)>,
+    /// Permanent latch after a round fails once mutation has started.
+    round_poison: Option<ControllerRoundPoison>,
 }
 
 fn validate_network_attempts_u64(
@@ -1716,6 +1730,78 @@ fn validate_process_snapshot_effect(
 }
 
 impl SimulationController {
+    fn controller_round_poison_error(&self) -> Option<VmError> {
+        self.round_poison
+            .as_ref()
+            .map(|poison| VmError::ControllerRoundPoisoned {
+                round: poison.round,
+                tick: poison.tick,
+                detail: poison.detail.clone(),
+            })
+    }
+
+    fn ensure_controller_healthy(&self) -> Result<(), VmError> {
+        if let Some(error) = self.controller_round_poison_error() {
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn assert_controller_healthy(&self) {
+        if let Some(error) = self.controller_round_poison_error() {
+            panic!("{error}");
+        }
+    }
+
+    fn latch_round_failure_at(&mut self, round: u64, tick: u64, error: &VmError) {
+        if self.round_poison.is_none() {
+            self.round_poison = Some(ControllerRoundPoison {
+                round,
+                tick,
+                detail: error.to_string(),
+            });
+        }
+    }
+
+    fn finish_round_mutation<T>(
+        &mut self,
+        round: u64,
+        starting_tick: u64,
+        mutation_started: bool,
+        result: Result<T, VmError>,
+    ) -> Result<T, VmError> {
+        if mutation_started {
+            if let Err(error) = &result {
+                self.latch_round_failure_at(round, starting_tick, error);
+            }
+        }
+        result
+    }
+
+    fn ensure_round_can_start(&mut self) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
+        let poisoned_vm = self.vms.iter().enumerate().find_map(|(vm_index, slot)| {
+            slot.vm
+                .schedule_execution_poison()
+                .map(|poison| (vm_index, poison.clone()))
+        });
+        if let Some((vm_index, poison)) = poisoned_vm {
+            let error = VmError::ScheduleExecutionPoisoned {
+                stage: poison.stage,
+                detail: format!("VM {vm_index}: {}", poison.detail),
+            };
+            let round = self.tick.saturating_add(1);
+            self.latch_round_failure_at(round, self.tick, &error);
+            return self.ensure_controller_healthy();
+        }
+        Ok(())
+    }
+
+    /// Return the permanent failed-round latch for diagnostics.
+    pub fn round_poison(&self) -> Option<&ControllerRoundPoison> {
+        self.round_poison.as_ref()
+    }
+
     /// Create a new simulation with N VMs.
     pub fn new(config: SimulationConfig) -> Result<Self, VmError> {
         info!(
@@ -1805,12 +1891,14 @@ impl SimulationController {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            round_poison: None,
         })
     }
 
     /// Run the simulation for up to `num_ticks` scheduling rounds.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, VmError> {
+        self.ensure_round_can_start()?;
         let stop_at = self.tick + num_ticks;
         info!(
             "Running simulation for {} ticks (tick {}→{})",
@@ -1839,6 +1927,7 @@ impl SimulationController {
         }
 
         // Merge oracle reports from all VMs into a combined report.
+        self.ensure_controller_healthy()?;
         let oracle_report = self.merged_oracle_report();
         let vm_exit_counts = self.vms.iter().map(|slot| slot.vm.exit_count()).collect();
 
@@ -1861,6 +1950,7 @@ impl SimulationController {
         &mut self,
         max_ticks: u64,
     ) -> Result<SimulationResult, VmError> {
+        self.ensure_round_can_start()?;
         let stop_at = self.tick + max_ticks;
         info!(
             "Bootstrap: running until setup_complete (max {} ticks, tick {}→{})",
@@ -1906,6 +1996,7 @@ impl SimulationController {
             );
         }
 
+        self.ensure_controller_healthy()?;
         let oracle_report = self.merged_oracle_report();
         let vm_exit_counts = self.vms.iter().map(|slot| slot.vm.exit_count()).collect();
 
@@ -1928,6 +2019,8 @@ impl SimulationController {
         &mut self,
         observation_event_limit: usize,
     ) -> Result<RoundResult, VmError> {
+        self.ensure_round_can_start()?;
+        let starting_tick = self.tick;
         let next_tick = self.tick.checked_add(1).ok_or_else(|| VmError::Snapshot {
             message: "simulation tick exhausted".to_string(),
         })?;
@@ -1936,146 +2029,109 @@ impl SimulationController {
             .ok_or_else(|| VmError::Snapshot {
                 message: "simulation time exhausted".to_string(),
             })?;
-        self.commit_pending_process_observations(observation_event_limit)?;
-        self.commit_pending_block_observations(observation_event_limit)?;
-        self.commit_pending_network_observations(observation_event_limit)?;
-        let process_reservation = self
+        let had_pending_process_observations = !self.pending_process_observations.is_empty();
+        let had_pending_block_observations = self
             .vms
-            .iter()
-            .filter(|slot| {
-                slot.process_fault_attempt.is_some_and(|attempt_id| {
-                    self.fault_engine
-                        .fault_outcomes()
-                        .attempts
-                        .get(&attempt_id)
-                        .is_some_and(|state| state.stage == FaultAuthoritativeStage::Applied)
+            .iter_mut()
+            .any(|slot| slot.vm.block_fault_observation_reservation() != 0);
+        let had_pending_network_observations = self.network.central_observation_reservation() != 0;
+        let mut round_mutation_started = false;
+        let round_result = (|| -> Result<RoundResult, VmError> {
+            self.commit_pending_process_observations(observation_event_limit)?;
+            round_mutation_started |= had_pending_process_observations;
+            self.commit_pending_block_observations(observation_event_limit)?;
+            round_mutation_started |= had_pending_block_observations;
+            self.commit_pending_network_observations(observation_event_limit)?;
+            round_mutation_started |= had_pending_network_observations;
+            let process_reservation = self
+                .vms
+                .iter()
+                .filter(|slot| {
+                    slot.process_fault_attempt.is_some_and(|attempt_id| {
+                        self.fault_engine
+                            .fault_outcomes()
+                            .attempts
+                            .get(&attempt_id)
+                            .is_some_and(|state| state.stage == FaultAuthoritativeStage::Applied)
+                    })
                 })
-            })
-            .count();
-        let block_reservation = self.vms.iter_mut().try_fold(0_usize, |total, slot| {
-            total
-                .checked_add(slot.vm.block_fault_observation_reservation())
+                .count();
+            let block_reservation = self.vms.iter_mut().try_fold(0_usize, |total, slot| {
+                total
+                    .checked_add(slot.vm.block_fault_observation_reservation())
+                    .ok_or_else(|| VmError::Snapshot {
+                        message: "block observation reservation overflow".to_string(),
+                    })
+            })?;
+            let network_reservation = self.network.central_observation_reservation();
+            let central_reservation = process_reservation
+                .checked_add(block_reservation)
+                .and_then(|total| total.checked_add(network_reservation))
                 .ok_or_else(|| VmError::Snapshot {
-                    message: "block observation reservation overflow".to_string(),
-                })
-        })?;
-        let network_reservation = self.network.central_observation_reservation();
-        let central_reservation = process_reservation
-            .checked_add(block_reservation)
-            .and_then(|total| total.checked_add(network_reservation))
-            .ok_or_else(|| VmError::Snapshot {
-                message: "central observation reservation overflow".to_string(),
-            })?;
-        preflight_fault_observation_events_with_limit(
-            self.fault_engine.fault_outcomes(),
-            central_reservation,
-            observation_event_limit,
-        )
-        .map_err(fault_transition_vm_error)?;
-        let process_queue_final = self
-            .pending_process_observations
-            .len()
-            .checked_add(process_reservation)
-            .ok_or_else(|| VmError::Snapshot {
-                message: "process observation queue length overflow".to_string(),
-            })?;
-        if process_queue_final > MAX_PENDING_PROCESS_OBSERVATIONS {
-            return Err(VmError::Snapshot {
-                message: "process observation queue capacity exhausted".to_string(),
-            });
-        }
-        let reserved_sequences =
-            u64::try_from(process_reservation).map_err(|_| VmError::Snapshot {
-                message: "process observation reservation exceeds sequence bounds".to_string(),
-            })?;
-        self.fault_operation_sequence
-            .checked_add(reserved_sequences)
-            .ok_or_else(|| VmError::Snapshot {
-                message: "fault operation sequence exhausted".to_string(),
-            })?;
-        let outcome_event_start = self.fault_engine.fault_outcomes().events.len();
-        let mut vms_running = 0;
-        let mut vms_halted = 0;
+                    message: "central observation reservation overflow".to_string(),
+                })?;
+            preflight_fault_observation_events_with_limit(
+                self.fault_engine.fault_outcomes(),
+                central_reservation,
+                observation_event_limit,
+            )
+            .map_err(fault_transition_vm_error)?;
+            let process_queue_final = self
+                .pending_process_observations
+                .len()
+                .checked_add(process_reservation)
+                .ok_or_else(|| VmError::Snapshot {
+                    message: "process observation queue length overflow".to_string(),
+                })?;
+            if process_queue_final > MAX_PENDING_PROCESS_OBSERVATIONS {
+                return Err(VmError::Snapshot {
+                    message: "process observation queue capacity exhausted".to_string(),
+                });
+            }
+            let reserved_sequences =
+                u64::try_from(process_reservation).map_err(|_| VmError::Snapshot {
+                    message: "process observation reservation exceeds sequence bounds".to_string(),
+                })?;
+            self.fault_operation_sequence
+                .checked_add(reserved_sequences)
+                .ok_or_else(|| VmError::Snapshot {
+                    message: "fault operation sequence exhausted".to_string(),
+                })?;
+            let outcome_event_start = self.fault_engine.fault_outcomes().events.len();
+            let mut vms_running = 0;
+            let mut vms_halted = 0;
+            round_mutation_started = true;
 
-        // Emit tick markers into each VM's dlog (for cross-VM correlation).
-        for i in 0..self.vms.len() {
-            self.vms[i].vm.dlog_tick_marker(self.tick);
-        }
+            // Emit tick markers into each VM's dlog (for cross-VM correlation).
+            for i in 0..self.vms.len() {
+                self.vms[i].vm.dlog_tick_marker(self.tick);
+            }
 
-        // Expire stalls and clock freezes, clean up expired entries.
-        for slot in &mut self.vms {
-            slot.vcpu_stall_until
-                .retain(|_, expires| *expires > self.tick);
-            if let Some((_, expires)) = slot.clock_freeze {
-                if self.tick >= expires {
-                    slot.clock_freeze = None;
+            // Expire stalls and clock freezes, clean up expired entries.
+            for slot in &mut self.vms {
+                slot.vcpu_stall_until
+                    .retain(|_, expires| *expires > self.tick);
+                if let Some((_, expires)) = slot.clock_freeze {
+                    if self.tick >= expires {
+                        slot.clock_freeze = None;
+                    }
                 }
             }
-        }
 
-        // Step each VM by quantum exits (round-robin)
-        for i in 0..self.vms.len() {
-            match self.vms[i].status {
-                VmStatus::Running => {
-                    let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
-                    if halted {
-                        self.vms[i].status = VmStatus::Paused; // Treat halt as pause
-                        vms_halted += 1;
-                    } else {
-                        vms_running += 1;
-                    }
-                    debug!("VM{} executed {} exits", i, exits);
-                }
-                VmStatus::Paused | VmStatus::Crashed => {
-                    vms_halted += 1;
-                    if let Some(attempt_id) = self.vms[i].process_fault_attempt {
-                        if self.process_observation_is_pending(attempt_id) {
-                            self.queue_process_observation(
-                                i,
-                                attempt_id,
-                                FaultObservationEffect::ProcessSkipped,
-                            )?;
-                        }
-                    }
-                }
-                VmStatus::Restarting { restart_at_tick } => {
-                    if self.tick >= restart_at_tick {
-                        let pending_observation = self.vms[i]
-                            .process_fault_attempt
-                            .map(|attempt_id| {
-                                self.make_shell_observation(
-                                    attempt_id,
-                                    FaultObservationSubsystem::Process,
-                                    FaultObservationEffect::ProcessRestarted,
-                                )
-                                .map(|observation| (i, observation))
-                            })
-                            .transpose()?;
-                        self.restart_vm(i)?;
-                        vms_running += 1;
-                        if let Some(pending_observation) = pending_observation {
-                            self.pending_process_observations
-                                .push_back(pending_observation);
-                        }
-                    } else {
-                        vms_halted += 1;
-                    }
-                }
-                VmStatus::Resuming { resume_at_tick } => {
-                    if self.tick >= resume_at_tick {
-                        info!("VM{} resuming from pause at tick {}", i, self.tick);
-                        self.vms[i].status = VmStatus::Running;
-                        self.vms[i].process_fault_attempt = None;
-                        // Run the resumed VM for this round's quantum
+            // Step each VM by quantum exits (round-robin)
+            for i in 0..self.vms.len() {
+                match self.vms[i].status {
+                    VmStatus::Running => {
                         let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
                         if halted {
-                            self.vms[i].status = VmStatus::Paused;
+                            self.vms[i].status = VmStatus::Paused; // Treat halt as pause
                             vms_halted += 1;
                         } else {
                             vms_running += 1;
                         }
-                        debug!("VM{} resumed, executed {} exits", i, exits);
-                    } else {
+                        debug!("VM{} executed {} exits", i, exits);
+                    }
+                    VmStatus::Paused | VmStatus::Crashed => {
                         vms_halted += 1;
                         if let Some(attempt_id) = self.vms[i].process_fault_attempt {
                             if self.process_observation_is_pending(attempt_id) {
@@ -2087,48 +2143,112 @@ impl SimulationController {
                             }
                         }
                     }
+                    VmStatus::Restarting { restart_at_tick } => {
+                        if self.tick >= restart_at_tick {
+                            let pending_observation = self.vms[i]
+                                .process_fault_attempt
+                                .map(|attempt_id| {
+                                    self.make_shell_observation(
+                                        attempt_id,
+                                        FaultObservationSubsystem::Process,
+                                        FaultObservationEffect::ProcessRestarted,
+                                    )
+                                    .map(|observation| (i, observation))
+                                })
+                                .transpose()?;
+                            self.restart_vm(i)?;
+                            vms_running += 1;
+                            if let Some(pending_observation) = pending_observation {
+                                self.pending_process_observations
+                                    .push_back(pending_observation);
+                            }
+                        } else {
+                            vms_halted += 1;
+                        }
+                    }
+                    VmStatus::Resuming { resume_at_tick } => {
+                        if self.tick >= resume_at_tick {
+                            info!("VM{} resuming from pause at tick {}", i, self.tick);
+                            self.vms[i].status = VmStatus::Running;
+                            self.vms[i].process_fault_attempt = None;
+                            // Run the resumed VM for this round's quantum
+                            let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
+                            if halted {
+                                self.vms[i].status = VmStatus::Paused;
+                                vms_halted += 1;
+                            } else {
+                                vms_running += 1;
+                            }
+                            debug!("VM{} resumed, executed {} exits", i, exits);
+                        } else {
+                            vms_halted += 1;
+                            if let Some(attempt_id) = self.vms[i].process_fault_attempt {
+                                if self.process_observation_is_pending(attempt_id) {
+                                    self.queue_process_observation(
+                                        i,
+                                        attempt_id,
+                                        FaultObservationEffect::ProcessSkipped,
+                                    )?;
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
 
-        self.commit_pending_block_observations(observation_event_limit)?;
-        self.commit_pending_process_observations(observation_event_limit)?;
+            self.commit_pending_block_observations(observation_event_limit)?;
+            self.commit_pending_process_observations(observation_event_limit)?;
 
-        // Bridge network packets between VMs (virtio-net TX → RX)
-        self.bridge_network_packets()?;
-        self.commit_pending_network_observations(observation_event_limit)?;
+            // Bridge network packets between VMs (virtio-net TX → RX)
+            self.bridge_network_packets()?;
+            self.commit_pending_network_observations(observation_event_limit)?;
 
-        // Advance global tick after every checked round effect.
-        self.tick = next_tick;
+            // Advance global tick after every checked round effect.
+            self.tick = next_tick;
 
-        // Poll and apply faults.
-        let attempts = self
-            .fault_engine
-            .poll_fault_attempts(current_time_ns)
-            .map_err(|error| VmError::Snapshot {
-                message: format!("fault selection failed: {error}"),
-            })?;
-        let faults_fired = attempts
-            .iter()
-            .map(|attempt| attempt.fault.clone())
-            .collect();
-        for attempt in attempts {
-            self.handle_fault_attempt(&attempt)?;
-        }
+            // Poll and apply faults.
+            let attempts = self
+                .fault_engine
+                .poll_fault_attempts(current_time_ns)
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("fault selection failed: {error}"),
+                })?;
+            let faults_fired = attempts
+                .iter()
+                .map(|attempt| attempt.fault.clone())
+                .collect();
+            for attempt in attempts {
+                self.handle_fault_attempt(&attempt)?;
+            }
 
-        // Deliver pending network messages.
-        let messages_delivered = self.deliver_messages();
-        let fault_outcomes =
-            self.fault_engine.fault_outcomes().events[outcome_event_start..].to_vec();
+            // Deliver pending network messages.
+            let messages_delivered = self.deliver_messages();
+            let fault_outcomes =
+                self.fault_engine.fault_outcomes().events[outcome_event_start..].to_vec();
+            let mut schedule_traces = Vec::new();
+            for (vm_index, slot) in self.vms.iter_mut().enumerate() {
+                let trace = slot.vm.take_schedule_trace()?;
+                if !trace.records.is_empty() {
+                    schedule_traces.push(VmScheduleTrace { vm_index, trace });
+                }
+            }
 
-        Ok(RoundResult {
-            tick: self.tick,
-            vms_running,
-            vms_halted,
-            faults_fired,
-            fault_outcomes,
-            messages_delivered,
-        })
+            Ok(RoundResult {
+                tick: self.tick,
+                vms_running,
+                vms_halted,
+                faults_fired,
+                fault_outcomes,
+                messages_delivered,
+                schedule_traces,
+            })
+        })();
+        self.finish_round_mutation(
+            next_tick,
+            starting_tick,
+            round_mutation_started,
+            round_result,
+        )
     }
 
     fn handle_fault_attempt(&mut self, attempt: &FaultAttempt) -> Result<(), VmError> {
@@ -3211,6 +3331,7 @@ impl SimulationController {
     /// Snapshot all VMs and simulation state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
+        self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
 
         for slot in &self.vms {
@@ -3252,6 +3373,7 @@ impl SimulationController {
     /// Returns the snapshot and total dirty pages across all VMs.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_all_incremental(&self) -> Result<(SimulationSnapshot, usize), VmError> {
+        self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
         let mut total_dirty = 0usize;
 
@@ -3302,19 +3424,21 @@ impl SimulationController {
     /// Each entry is an `Arc<Vec<u8>>` that overlay snapshots will
     /// reference.
     pub fn set_memory_bases(&mut self, bases: Vec<std::sync::Arc<Vec<u8>>>) {
+        self.assert_controller_healthy();
         self.vm_memory_bases = bases.into_iter().map(Some).collect();
     }
 
     /// Initialize per-thread POSIX timers on all VMs.
     ///
     /// Must be called from the worker thread that will run this controller.
-    /// Creates `timer_create` + `SIGEV_THREAD_ID` timers so that SIGALRM
-    /// targets this specific thread, allowing parallel workers to each
-    /// have independent watchdog timers.
-    pub fn init_thread_timers(&mut self) {
+    /// Creates thread-targeted `SIGALRM` timers for single-vCPU watchdogs.
+    /// It also rebinds optional PMU overflow delivery to this worker thread.
+    pub fn init_thread_timers(&mut self) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         for slot in &mut self.vms {
-            slot.vm.init_thread_timer();
+            slot.vm.init_thread_timer()?;
         }
+        Ok(())
     }
 
     /// Extract the base memory from a full snapshot for use with
@@ -3330,6 +3454,7 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         if snapshot.vm_snapshots.len() != self.vms.len() {
             return SnapshotSnafu {
                 message: "Snapshot VM count mismatch",
@@ -3492,6 +3617,7 @@ impl SimulationController {
         &mut self,
         snapshot: &SimulationSnapshot,
     ) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         if snapshot.vm_snapshots.len() != self.vms.len() {
             return SnapshotSnafu {
                 message: "Snapshot VM count mismatch",
@@ -3541,6 +3667,7 @@ impl SimulationController {
 
     /// Get the oracle report (merged from all VMs).
     pub fn report(&self) -> OracleReport {
+        self.assert_controller_healthy();
         self.merged_oracle_report()
     }
 
@@ -3596,6 +3723,11 @@ impl SimulationController {
         combined
     }
 
+    /// Get the immutable simulation configuration.
+    pub fn config(&self) -> &SimulationConfig {
+        &self.config
+    }
+
     /// Get current simulation tick.
     pub fn tick(&self) -> u64 {
         self.tick
@@ -3613,6 +3745,7 @@ impl SimulationController {
 
     /// Get a mutable reference to a specific VM slot.
     pub fn vm_slot_mut(&mut self, index: usize) -> Option<&mut VmSlot> {
+        self.assert_controller_healthy();
         self.vms.get_mut(index)
     }
 
@@ -3620,6 +3753,7 @@ impl SimulationController {
     ///
     /// Call this before each branch run in the exploration loop.
     pub fn clear_all_coverage(&self) {
+        self.assert_controller_healthy();
         for slot in &self.vms {
             slot.vm.clear_coverage_bitmap();
         }
@@ -3630,6 +3764,7 @@ impl SimulationController {
     /// Use this in integration tests where the guest doesn't use the
     /// ChaosControl SDK but you still want scheduled faults to fire.
     pub fn force_setup_complete(&mut self) {
+        self.assert_controller_healthy();
         self.fault_engine.force_setup_complete();
     }
 
@@ -3640,6 +3775,7 @@ impl SimulationController {
 
     /// Get a mutable reference to a VM by index.
     pub fn vm_mut(&mut self, index: usize) -> &mut DeterministicVm {
+        self.assert_controller_healthy();
         &mut self.vms[index].vm
     }
 
@@ -3650,6 +3786,7 @@ impl SimulationController {
 
     /// Get a mutable reference to the network fabric.
     pub fn network_mut(&mut self) -> &mut NetworkFabric {
+        self.assert_controller_healthy();
         &mut self.network
     }
 
@@ -3660,6 +3797,7 @@ impl SimulationController {
 
     /// Replace the fault schedule (used by the explorer between branches).
     pub fn set_schedule(&mut self, schedule: FaultSchedule) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         self.fault_engine
             .set_schedule(schedule)
             .map_err(|error| VmError::Snapshot {
@@ -3669,6 +3807,7 @@ impl SimulationController {
 
     /// Start one exact clean fault run for deterministic replay.
     pub fn start_fault_run_at(&mut self, schedule: FaultSchedule, run_sequence: u64) {
+        self.assert_controller_healthy();
         self.fault_engine
             .rebind_fresh_run_at(schedule, run_sequence);
     }
@@ -3678,6 +3817,7 @@ impl SimulationController {
         &mut self,
         schedule: FaultSchedule,
     ) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         self.fault_engine
             .begin_counterfactual_run(schedule)
             .map_err(|error| VmError::Snapshot {
@@ -3687,6 +3827,7 @@ impl SimulationController {
 
     /// Set the explicit campaign policy for rejected fault attempts.
     pub fn set_fault_application_policy(&mut self, policy: FaultApplicationPolicy) {
+        self.assert_controller_healthy();
         self.fault_application_policy = policy;
     }
 
@@ -3701,15 +3842,17 @@ impl SimulationController {
     /// Strategy and quantum overrides apply uniformly to all VMs.
     /// Call this after `restore_all()` and before `run()` to vary the
     /// interleaving for a specific branch.
-    pub fn apply_schedule_variant(&mut self, variant: &ScheduleVariant) {
+    pub fn apply_schedule_variant(&mut self, variant: &ScheduleVariant) -> Result<(), VmError> {
+        self.ensure_controller_healthy()?;
         for (i, slot) in self.vms.iter_mut().enumerate() {
             let per_vm = ScheduleVariant {
                 scheduler_seed: variant.scheduler_seed.wrapping_add(i as u64),
                 strategy_override: variant.strategy_override,
                 quantum_override: variant.quantum_override,
             };
-            slot.vm.scheduler_mut().apply_variant(&per_vm);
+            slot.vm.scheduler_mut().apply_variant(&per_vm)?;
         }
+        Ok(())
     }
 
     /// Collect the schedule fingerprint from all VMs.
@@ -3732,6 +3875,7 @@ impl SimulationController {
     /// snapshot's tick. Called implicitly by `restore_all`, but
     /// exposed for manual control.
     pub fn reset_vm_statuses(&mut self) {
+        self.assert_controller_healthy();
         for slot in &mut self.vms {
             slot.status = VmStatus::Running;
         }
@@ -3746,6 +3890,7 @@ impl SimulationController {
     pub fn drain_choice_histories(
         &mut self,
     ) -> Vec<(usize, Vec<chaoscontrol_fault::engine::ChoiceRecord>)> {
+        self.assert_controller_healthy();
         self.vms
             .iter_mut()
             .enumerate()
@@ -3768,6 +3913,7 @@ impl SimulationController {
         vm_id: usize,
         overrides: std::collections::BTreeMap<u64, u64>,
     ) {
+        self.assert_controller_healthy();
         if let Some(slot) = self.vms.get_mut(vm_id) {
             slot.vm.fault_engine_mut().set_random_overrides(overrides);
         }
@@ -3775,6 +3921,7 @@ impl SimulationController {
 
     /// Clear random choice overrides for all VMs.
     pub fn clear_all_choice_overrides(&mut self) {
+        self.assert_controller_healthy();
         for slot in &mut self.vms {
             slot.vm.fault_engine_mut().clear_random_overrides();
         }
@@ -3784,6 +3931,15 @@ impl SimulationController {
 // ═══════════════════════════════════════════════════════════════════════
 //  Result types
 // ═══════════════════════════════════════════════════════════════════════
+
+/// Canonical schedule trace emitted by one VM during one round.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct VmScheduleTrace {
+    /// Stable VM index in the simulation controller.
+    pub vm_index: usize,
+    /// Independently verifiable bounded trace.
+    pub trace: ScheduleTrace,
+}
 
 /// Result of a single scheduling round.
 #[derive(Debug)]
@@ -3800,6 +3956,8 @@ pub struct RoundResult {
     pub fault_outcomes: Vec<FaultStageEvent>,
     /// Number of network messages delivered this round.
     pub messages_delivered: usize,
+    /// Canonical deterministic SMP traces emitted during this round.
+    pub schedule_traces: Vec<VmScheduleTrace>,
 }
 
 /// Final result of a simulation run.
@@ -3892,6 +4050,52 @@ mod tests {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
+            round_poison: None,
+        }
+    }
+
+    fn deterministic_smp_test_controller() -> SimulationController {
+        const VM_COUNT: usize = 2;
+        const VCPU_COUNT: usize = 2;
+        let config = SimulationConfig {
+            num_vms: VM_COUNT,
+            kernel_path: dummy_kernel_path(),
+            ..Default::default()
+        };
+        let mut vms = Vec::with_capacity(VM_COUNT);
+        for vm_id in 0..VM_COUNT {
+            let vm_config = VmConfig {
+                num_vcpus: VCPU_COUNT,
+                vm_id,
+                ..Default::default()
+            };
+            let vm = DeterministicVm::new(vm_config).expect("create deterministic SMP test VM");
+            vms.push(VmSlot {
+                vm,
+                status: VmStatus::Running,
+                inbox: VecDeque::new(),
+                disk_faults: DiskFaultFlags::default(),
+                tsc_skew: 0,
+                memory_limit_bytes: None,
+                initial_snapshot: None,
+                vcpu_stall_until: std::collections::BTreeMap::new(),
+                clock_freeze: None,
+                clock_jitter_bound: 0,
+                process_fault_attempt: None,
+            });
+        }
+        SimulationController {
+            vms,
+            fault_engine: FaultEngine::new(EngineConfig::default()),
+            network: NetworkFabric::new(VM_COUNT, config.seed),
+            tick: 0,
+            quantum: config.quantum,
+            config,
+            vm_memory_bases: vec![None; VM_COUNT],
+            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_operation_sequence: 0,
+            pending_process_observations: VecDeque::new(),
+            round_poison: None,
         }
     }
 
@@ -3916,6 +4120,80 @@ mod tests {
             .find(|state| state.attempt.fault.variant() == variant)
             .map(|state| state.attempt.id)
             .expect("fault attempt must exist")
+    }
+
+    #[test]
+    fn failed_multi_vm_round_latches_before_retry_or_evidence_publication() {
+        let mut controller = deterministic_smp_test_controller();
+        let snapshot = controller
+            .snapshot_all()
+            .expect("snapshot healthy controller");
+        let tick_before = controller.tick;
+        let fault_sequence_before = controller.fault_operation_sequence;
+        let fault_ledger_before = controller.fault_outcomes().clone();
+        let network_before =
+            serde_json::to_vec(&controller.network).expect("serialize initial network state");
+        let vm0_sequence_before = controller.vms[0].vm.controller_test_schedule_sequence();
+
+        let failed_round = (|| -> Result<RoundResult, VmError> {
+            controller.vms[0].vm.inject_controller_test_progress()?;
+            let vm1_poison = controller.vms[1].vm.inject_controller_test_poison()?;
+            Err(vm1_poison)
+        })();
+        let first_error = controller.finish_round_mutation(
+            controller.tick.saturating_add(1),
+            controller.tick,
+            true,
+            failed_round,
+        );
+
+        assert!(matches!(
+            first_error,
+            Err(VmError::ScheduleExecutionPoisoned { .. })
+        ));
+        assert!(controller.round_poison().is_some());
+        let vm0_sequence_after_failure = controller.vms[0].vm.controller_test_schedule_sequence();
+        assert_eq!(vm0_sequence_after_failure, vm0_sequence_before + 1);
+        assert!(controller.vms[1].vm.scheduler().reservation_outstanding());
+        assert_eq!(controller.tick, tick_before);
+        assert_eq!(controller.fault_operation_sequence, fault_sequence_before);
+        assert_eq!(controller.fault_outcomes(), &fault_ledger_before);
+        assert_eq!(
+            serde_json::to_vec(&controller.network).expect("serialize failed-round network state"),
+            network_before
+        );
+
+        assert!(matches!(
+            controller.step_round(),
+            Err(VmError::ControllerRoundPoisoned { .. })
+        ));
+        assert_eq!(
+            controller.vms[0].vm.controller_test_schedule_sequence(),
+            vm0_sequence_after_failure
+        );
+        assert_eq!(controller.tick, tick_before);
+        assert_eq!(controller.fault_operation_sequence, fault_sequence_before);
+        assert_eq!(controller.fault_outcomes(), &fault_ledger_before);
+        assert_eq!(
+            serde_json::to_vec(&controller.network).expect("serialize retry network state"),
+            network_before
+        );
+        assert!(matches!(
+            controller.snapshot_all(),
+            Err(VmError::ControllerRoundPoisoned { .. })
+        ));
+        assert!(matches!(
+            controller.restore_all(&snapshot),
+            Err(VmError::ControllerRoundPoisoned { .. })
+        ));
+        assert!(matches!(
+            controller.set_schedule(FaultScheduleBuilder::new().build()),
+            Err(VmError::ControllerRoundPoisoned { .. })
+        ));
+        assert!(matches!(
+            controller.run(0),
+            Err(VmError::ControllerRoundPoisoned { .. })
+        ));
     }
 
     #[test]
@@ -5305,6 +5583,7 @@ mod tests {
         assert_eq!(controller.network.fault_observations, pending_before);
         assert_eq!(controller.network.fault_observation_overflowed, 0);
 
+        controller.vms[0].status = VmStatus::Paused;
         controller.step_round().unwrap();
         assert!(controller.network.fault_observations.is_empty());
         assert_eq!(controller.fault_outcomes().counters.observed, 1);

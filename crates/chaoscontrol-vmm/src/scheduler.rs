@@ -1,44 +1,40 @@
-//! Deterministic vCPU scheduler for SMP virtual machines.
+//! Deterministic serialized vCPU scheduler.
 //!
-//! When a VM has multiple vCPUs, only one runs at a time (serialized
-//! execution, Antithesis-style). The [`VcpuScheduler`] decides which
-//! vCPU runs and for how many exits before switching.
-//!
-//! # Scheduling model
-//!
-//! The scheduler assigns each vCPU a **quantum** — the number of VM exits
-//! it may execute before the next vCPU gets a turn. The quantum can be:
-//!
-//! - **Fixed**: every vCPU gets the same number of exits (round-robin).
-//! - **Randomized**: each quantum is drawn from a seeded PRNG, exploring
-//!   different interleaving patterns across runs.
-//!
-//! Because the scheduler is seeded, the exact sequence of (vCPU, quantum)
-//! pairs is deterministic for a given seed, making execution reproducible.
-//!
-//! # Single-vCPU mode
-//!
-//! When `num_vcpus == 1`, the scheduler is a no-op: it always returns
-//! vCPU 0 with no switching overhead.
+//! Multi-vCPU guests run one vCPU at a time. Guest-instruction progress,
+//! replay-stable runnable state, seeded policy state, and exact boundaries are
+//! owned by the pure [`core`] transition. The KVM shell reserves evidence
+//! capacity before guest execution and applies a planned action only after the
+//! transition record is validated and committed.
 
-use rand::RngCore;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
 
 /// Pure deterministic schedule transitions and evidence validation.
 pub mod core;
 
+use core::{
+    reconfigure_policy, transition, validate_state, ExactStepState, PlannedScheduleTransition,
+    ProgressMode, ScheduleError, ScheduleEvent, ScheduleJournal, ScheduleReservation,
+    ScheduleState, ScheduleStateId, ScheduleTrace, ScheduleTransitionRecord,
+    DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+};
+
+/// Scheduler snapshot schema version.
+pub const SCHEDULER_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
+/// Default instruction quantum for deterministic SMP.
+pub const DEFAULT_SMP_INSTRUCTION_QUANTUM: u64 = 500_000;
+/// Default exact single-step margin for PMU acceleration.
+pub const DEFAULT_PMU_EXACT_STEP_MARGIN: u64 = 50;
+
 /// Scheduling strategy for multi-vCPU VMs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SchedulingStrategy {
-    /// Fixed round-robin: each vCPU gets exactly `quantum` exits.
+    /// Fixed round-robin: each vCPU gets exactly `quantum` instructions.
     RoundRobin,
-    /// Randomized quantum: each turn draws a random quantum in
-    /// `[min_quantum, max_quantum]` from the seeded PRNG.
+    /// Each turn draws a seeded quantum in `[min_quantum, max_quantum)`.
     Randomized {
-        /// Minimum exits per vCPU turn.
+        /// Minimum guest instructions per vCPU turn.
         min_quantum: u64,
-        /// Maximum exits per vCPU turn.
+        /// Exclusive maximum guest instructions per vCPU turn.
         max_quantum: u64,
     },
 }
@@ -48,11 +44,11 @@ pub enum SchedulingStrategy {
 pub struct SchedulerConfig {
     /// Number of vCPUs to schedule.
     pub num_vcpus: usize,
-    /// Default quantum (exits per vCPU turn) for RoundRobin mode.
+    /// Default guest-instruction quantum.
     pub quantum: u64,
     /// Scheduling strategy.
     pub strategy: SchedulingStrategy,
-    /// Seed for the scheduling PRNG.
+    /// Seed for deterministic policy choices.
     pub seed: u64,
 }
 
@@ -60,657 +56,432 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             num_vcpus: 1,
-            quantum: 100,
+            quantum: DEFAULT_SMP_INSTRUCTION_QUANTUM,
             strategy: SchedulingStrategy::RoundRobin,
             seed: 0,
         }
     }
 }
 
-/// Deterministic vCPU scheduler.
-///
-/// Tracks the current vCPU, remaining exits in its quantum, and the
-/// scheduling state needed for round-robin or randomized switching.
-#[derive(Debug, Clone)]
+/// Deterministic scheduler shell around the pure transition core.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VcpuScheduler {
-    /// Number of vCPUs.
-    num_vcpus: usize,
-    /// Index of the currently active vCPU.
-    active: usize,
-    /// Exits remaining in the current vCPU's quantum.
-    remaining: u64,
-    /// Default quantum for RoundRobin.
-    quantum: u64,
-    /// Strategy.
-    strategy: SchedulingStrategy,
-    /// PRNG for randomized scheduling.
-    rng: ChaCha20Rng,
-    /// Rolling hash of (active_vcpu, quantum) transitions.
-    ///
-    /// Updated on each `advance()` call. Stays 0 when `num_vcpus == 1`
-    /// because `advance()` is never called. Used by the explorer to
-    /// distinguish branches that took different interleaving paths.
-    fingerprint: u64,
+    admitted_num_vcpus: usize,
+    admitted_progress_mode: ProgressMode,
+    admitted_journal_limit: usize,
+    journal: ScheduleJournal,
 }
 
 impl VcpuScheduler {
-    /// Create a new scheduler from configuration.
-    pub fn new(config: &SchedulerConfig) -> Self {
-        let mut rng_key = [0u8; 32];
-        // Domain-separated seed for scheduler RNG
-        let derived = config.seed.wrapping_add(0x5343_4845_4430); // "SCHED0"
-        rng_key[..8].copy_from_slice(&derived.to_le_bytes());
-        let rng = ChaCha20Rng::from_seed(rng_key);
-
-        let quantum = config.quantum.max(1);
-        Self {
-            num_vcpus: config.num_vcpus.max(1),
-            active: 0,
-            remaining: quantum,
-            quantum,
-            strategy: config.strategy,
-            rng,
-            fingerprint: 0,
-        }
+    /// Create a scheduler after bounded configuration and initial-state checks.
+    pub fn try_new(
+        config: &SchedulerConfig,
+        progress_mode: ProgressMode,
+        runnable_vcpus: Vec<bool>,
+    ) -> Result<Self, ScheduleError> {
+        Self::try_new_with_journal_limit(
+            config,
+            progress_mode,
+            runnable_vcpus,
+            DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+        )
     }
 
-    /// Get the currently active vCPU index.
-    #[inline]
-    /// Exits remaining in the current vCPU's quantum.
-    pub fn quantum_remaining(&self) -> u64 {
-        self.remaining
+    /// Create a scheduler with an explicit bounded evidence journal.
+    pub fn try_new_with_journal_limit(
+        config: &SchedulerConfig,
+        progress_mode: ProgressMode,
+        runnable_vcpus: Vec<bool>,
+        journal_limit: usize,
+    ) -> Result<Self, ScheduleError> {
+        let state = ScheduleState::new_with_runnable(config, progress_mode, runnable_vcpus)?;
+        let journal = ScheduleJournal::new(state, journal_limit)?;
+        Ok(Self {
+            admitted_num_vcpus: config.num_vcpus,
+            admitted_progress_mode: progress_mode,
+            admitted_journal_limit: journal_limit,
+            journal,
+        })
     }
 
+    /// Current complete deterministic schedule state.
+    pub fn state(&self) -> &ScheduleState {
+        self.journal.state()
+    }
+
+    /// Current BLAKE3 schedule-state identity.
+    pub fn state_id(&self) -> ScheduleStateId {
+        self.state().identity()
+    }
+
+    /// Currently selected vCPU.
     pub fn active(&self) -> usize {
-        self.active
+        self.state().active_vcpu
     }
 
-    /// Get the number of vCPUs.
-    #[inline]
+    /// Number of admitted vCPUs.
     pub fn num_vcpus(&self) -> usize {
-        self.num_vcpus
+        self.admitted_num_vcpus
     }
 
-    /// Called after each VM exit. Returns `true` if the active vCPU
-    /// should switch (quantum exhausted).
-    ///
-    /// When `true` is returned, the caller should call [`advance`](Self::advance)
-    /// to move to the next vCPU.
-    #[inline]
-    pub fn tick(&mut self) -> bool {
-        if self.num_vcpus <= 1 {
-            return false; // Single vCPU — never switch
-        }
-        self.remaining = self.remaining.saturating_sub(1);
-        self.remaining == 0
+    /// Declared deterministic progress mode.
+    pub fn progress_mode(&self) -> ProgressMode {
+        self.admitted_progress_mode
     }
 
-    /// Advance to the next vCPU in the schedule.
-    ///
-    /// Returns the new active vCPU index. Updates the rolling
-    /// fingerprint with the new (active, quantum) transition.
-    pub fn advance(&mut self) -> usize {
-        if self.num_vcpus <= 1 {
-            return 0;
-        }
-
-        // Move to next vCPU (round-robin)
-        self.active = (self.active + 1) % self.num_vcpus;
-
-        // Assign quantum for the new turn
-        self.remaining = match self.strategy {
-            SchedulingStrategy::RoundRobin => self.quantum,
-            SchedulingStrategy::Randomized {
-                min_quantum,
-                max_quantum,
-            } => {
-                let range = max_quantum.saturating_sub(min_quantum).max(1);
-                let random = self.rng.next_u64() % range;
-                min_quantum + random
-            }
-        };
-
-        // Rolling hash: mix in the new (vCPU, quantum) transition.
-        self.fingerprint = self.fingerprint.wrapping_mul(0x517c_c1b7_2722_0a95)
-            ^ (self.active as u64)
-            ^ self.remaining;
-
-        self.active
-    }
-
-    /// Reset the scheduler to its initial state (vCPU 0, full quantum).
-    pub fn reset(&mut self) {
-        self.active = 0;
-        self.remaining = self.quantum;
-        self.fingerprint = 0;
-    }
-
-    /// Re-seed the scheduler from a [`ScheduleVariant`].
-    ///
-    /// Resets the RNG to a fresh state derived from the variant's seed,
-    /// optionally overrides the strategy and quantum, resets the
-    /// fingerprint to 0, and resets to vCPU 0 with a fresh quantum.
-    pub fn apply_variant(&mut self, variant: &ScheduleVariant) {
-        let mut rng_key = [0u8; 32];
-        let derived = variant.scheduler_seed.wrapping_add(0x5343_4845_4430);
-        rng_key[..8].copy_from_slice(&derived.to_le_bytes());
-        self.rng = ChaCha20Rng::from_seed(rng_key);
-
-        if let Some(strategy) = variant.strategy_override {
-            self.strategy = strategy;
-        }
-        if let Some(quantum) = variant.quantum_override {
-            self.quantum = quantum.max(1);
-        }
-
-        self.active = 0;
-        self.remaining = self.quantum;
-        self.fingerprint = 0;
-    }
-
-    /// Force the scheduler to a specific vCPU with a fresh quantum.
-    ///
-    /// Used by the SIGALRM preemption handler to switch vCPUs outside
-    /// the normal quantum-based scheduling. Does NOT consume RNG state
-    /// to avoid non-determinism from wall-clock timer jitter.
-    pub fn set_active(&mut self, vcpu: usize) {
-        debug_assert!(vcpu < self.num_vcpus, "vCPU index out of bounds");
-        self.active = vcpu;
-        self.remaining = self.quantum;
-    }
-
-    /// Get remaining exits in the current quantum.
-    #[inline]
+    /// Instructions remaining before the active vCPU's exact boundary.
     pub fn remaining(&self) -> u64 {
-        self.remaining
+        self.state().quantum_boundary - self.state().instruction_progress[self.active()]
     }
 
-    /// Get the rolling interleaving fingerprint.
-    ///
-    /// A hash of all (vCPU, quantum) transitions since creation or
-    /// last restore. Always 0 for single-vCPU schedulers.
-    #[inline]
+    /// Current exact-step state.
+    pub fn exact_step(&self) -> ExactStepState {
+        self.state().exact_step
+    }
+
+    /// True when guest execution owns a journal reservation.
+    pub fn reservation_outstanding(&self) -> bool {
+        self.journal.reservation_outstanding()
+    }
+
+    /// Reserve evidence storage before `KVM_RUN` or guest-debug execution.
+    pub fn reserve_transition(&mut self) -> Result<ScheduleReservation, ScheduleError> {
+        self.journal.reserve()
+    }
+
+    /// Release a preflight slot after a shell failure with no guest progress.
+    pub fn release_transition(
+        &mut self,
+        reservation: ScheduleReservation,
+    ) -> Result<(), ScheduleError> {
+        self.journal.release(reservation)
+    }
+
+    /// Compute a transition without changing scheduler or shell state.
+    pub fn plan(&self, event: &ScheduleEvent) -> Result<PlannedScheduleTransition, ScheduleError> {
+        transition(self.state(), event)
+    }
+
+    /// Commit a validated transition into its preflighted evidence slot.
+    pub fn commit(
+        &mut self,
+        reservation: ScheduleReservation,
+        planned: PlannedScheduleTransition,
+    ) -> Result<ScheduleTransitionRecord, ScheduleError> {
+        if planned.record.pre_state_id != self.journal.state().identity() {
+            return Err(ScheduleError::StaleState {
+                expected: planned.record.pre_state_id,
+                actual: self.journal.state().identity(),
+            });
+        }
+        let record = planned.record;
+        self.journal.commit(reservation, record.clone())?;
+        Ok(record)
+    }
+
+    /// Drain committed evidence as one independently verifiable trace.
+    pub fn drain_trace(&mut self) -> Result<ScheduleTrace, ScheduleError> {
+        self.journal.drain()
+    }
+
+    /// Return a compact legacy branch fingerprint derived from BLAKE3 state.
     pub fn fingerprint(&self) -> u64 {
-        self.fingerprint
+        const FINGERPRINT_BYTES: usize = 8;
+        let identity = self.state_id();
+        let mut prefix = [0u8; FINGERPRINT_BYTES];
+        prefix.copy_from_slice(&identity.0[..FINGERPRINT_BYTES]);
+        u64::from_le_bytes(prefix)
     }
 
-    /// Produce a serialisable snapshot.
+    /// Produce an exact serializable scheduler snapshot.
     pub fn snapshot(&self) -> SchedulerSnapshot {
         SchedulerSnapshot {
-            active: self.active,
-            remaining: self.remaining,
-            rng_seed: self.rng.get_seed(),
-            rng_word_pos: self.rng.get_word_pos(),
-            fingerprint: self.fingerprint,
+            schema_version: SCHEDULER_SNAPSHOT_SCHEMA_VERSION,
+            state: self.state().clone(),
+            state_id: self.state_id(),
         }
     }
 
-    /// Restore from a snapshot, keeping the config (strategy, quantum, num_vcpus).
-    pub fn restore(&mut self, snap: &SchedulerSnapshot) {
-        self.active = snap.active;
-        self.remaining = snap.remaining;
-        self.rng = ChaCha20Rng::from_seed(snap.rng_seed);
-        self.rng.set_word_pos(snap.rng_word_pos);
-        self.fingerprint = snap.fingerprint;
+    /// Validate an untrusted snapshot against this VM's admitted profile.
+    pub fn validate_snapshot(&self, snapshot: &SchedulerSnapshot) -> Result<(), ScheduleError> {
+        snapshot.validate()?;
+        if snapshot.state.num_vcpus != self.admitted_num_vcpus {
+            return Err(ScheduleError::InvalidConfiguration {
+                reason: "snapshot vCPU count differs from the VM profile",
+            });
+        }
+        if snapshot.state.progress_mode != self.admitted_progress_mode {
+            return Err(ScheduleError::InvalidConfiguration {
+                reason: "snapshot progress mode differs from the VM profile",
+            });
+        }
+        Ok(())
+    }
+
+    /// Restore exact state only after complete validation succeeds.
+    pub fn restore(&mut self, snapshot: &SchedulerSnapshot) -> Result<(), ScheduleError> {
+        self.validate_snapshot(snapshot)?;
+        let candidate = ScheduleJournal::new(snapshot.state.clone(), self.admitted_journal_limit)?;
+        self.journal = candidate;
+        Ok(())
+    }
+
+    /// Apply an explicit seeded policy variant through the pure core.
+    pub fn apply_variant(&mut self, variant: &ScheduleVariant) -> Result<(), ScheduleError> {
+        let state = self.state();
+        let config = SchedulerConfig {
+            num_vcpus: self.admitted_num_vcpus,
+            quantum: variant.quantum_override.unwrap_or(state.quantum),
+            strategy: variant.strategy_override.unwrap_or(state.strategy),
+            seed: variant.scheduler_seed,
+        };
+        let configured = reconfigure_policy(state, &config)?;
+        self.journal = ScheduleJournal::new(configured, self.admitted_journal_limit)?;
+        Ok(())
     }
 }
 
-/// Serialisable scheduler state.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// Exact serialized scheduler state and identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SchedulerSnapshot {
-    /// Active vCPU index.
-    pub active: usize,
-    /// Remaining exits in current quantum.
-    pub remaining: u64,
-    /// ChaCha20 RNG seed.
-    pub rng_seed: [u8; 32],
-    /// ChaCha20 RNG stream position (word offset).
-    pub rng_word_pos: u128,
-    /// Rolling interleaving fingerprint at snapshot time.
-    pub fingerprint: u64,
+    /// Snapshot schema version.
+    pub schema_version: u16,
+    /// Complete deterministic schedule state.
+    pub state: ScheduleState,
+    /// BLAKE3 identity of `state`.
+    pub state_id: ScheduleStateId,
+}
+
+impl SchedulerSnapshot {
+    /// Validate an untrusted snapshot without changing live state.
+    pub fn validate(&self) -> Result<(), ScheduleError> {
+        if self.schema_version != SCHEDULER_SNAPSHOT_SCHEMA_VERSION {
+            return Err(ScheduleError::UnsupportedSchema {
+                found: self.schema_version,
+            });
+        }
+        validate_state(&self.state)?;
+        let actual = self.state.identity();
+        if actual != self.state_id {
+            return Err(ScheduleError::IdentityMismatch {
+                field: "scheduler snapshot state_id",
+                expected: self.state_id,
+                actual,
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Per-branch scheduling overrides for schedule diversity exploration.
-///
-/// Applied after snapshot restore to vary the vCPU interleaving across
-/// branches. Each field is optional — `None` means "keep the default."
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScheduleVariant {
     /// Scheduler RNG seed for this branch.
     pub scheduler_seed: u64,
     /// Override the scheduling strategy.
     pub strategy_override: Option<SchedulingStrategy>,
-    /// Override the quantum (exits per vCPU turn).
+    /// Override the guest-instruction quantum.
     pub quantum_override: Option<u64>,
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Tests
-// ═══════════════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scheduler::core::{ProgressSource, ScheduleAction};
 
-    #[test]
-    fn single_vcpu_never_switches() {
-        let config = SchedulerConfig {
-            num_vcpus: 1,
-            quantum: 10,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
+    const VCPU_COUNT: usize = 2;
+    const QUANTUM: u64 = 3;
+    const TEST_SEED: u64 = 42;
 
-        // 100 ticks — should never switch
-        for _ in 0..100 {
-            assert!(!sched.tick());
-            assert_eq!(sched.active(), 0);
-        }
-    }
-
-    #[test]
-    fn round_robin_switches_after_quantum() {
-        let config = SchedulerConfig {
-            num_vcpus: 3,
-            quantum: 5,
+    fn config() -> SchedulerConfig {
+        SchedulerConfig {
+            num_vcpus: VCPU_COUNT,
+            quantum: QUANTUM,
             strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-        assert_eq!(sched.active(), 0);
-
-        // Tick 5 times — should switch
-        for i in 0..4 {
-            assert!(!sched.tick(), "tick {} should not switch", i);
-        }
-        assert!(sched.tick(), "tick 4 (5th) should switch");
-
-        let next = sched.advance();
-        assert_eq!(next, 1);
-        assert_eq!(sched.active(), 1);
-
-        // Another 5 ticks → switch to vCPU 2
-        for _ in 0..4 {
-            assert!(!sched.tick());
-        }
-        assert!(sched.tick());
-        let next = sched.advance();
-        assert_eq!(next, 2);
-
-        // Another 5 → wrap to vCPU 0
-        for _ in 0..4 {
-            assert!(!sched.tick());
-        }
-        assert!(sched.tick());
-        let next = sched.advance();
-        assert_eq!(next, 0);
-    }
-
-    #[test]
-    fn randomized_produces_variable_quanta() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            strategy: SchedulingStrategy::Randomized {
-                min_quantum: 10,
-                max_quantum: 100,
-            },
-            seed: 42,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-
-        // Exhaust first quantum (fixed at config.quantum for initial turn)
-        let first_remaining = sched.remaining();
-        for _ in 0..first_remaining {
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-
-        // Collect quanta for several turns
-        let mut quanta = Vec::new();
-        for _ in 0..20 {
-            quanta.push(sched.remaining());
-            for _ in 0..sched.remaining() {
-                if sched.tick() {
-                    sched.advance();
-                    break;
-                }
-            }
-        }
-
-        // Should have variation (not all the same)
-        let all_same = quanta.iter().all(|&q| q == quanta[0]);
-        assert!(!all_same, "Randomized quanta should vary: {:?}", quanta);
-
-        // All in range
-        for &q in &quanta {
-            assert!(
-                (10..100).contains(&q),
-                "Quantum {} out of range [10, 100)",
-                q
-            );
+            seed: TEST_SEED,
         }
     }
 
-    #[test]
-    fn deterministic_with_same_seed() {
-        let run = |seed: u64| -> Vec<(usize, u64)> {
-            let config = SchedulerConfig {
-                num_vcpus: 4,
-                quantum: 10,
-                strategy: SchedulingStrategy::Randomized {
-                    min_quantum: 5,
-                    max_quantum: 50,
-                },
-                seed,
-            };
-            let mut sched = VcpuScheduler::new(&config);
-            let mut trace = Vec::new();
+    fn scheduler() -> VcpuScheduler {
+        VcpuScheduler::try_new(
+            &config(),
+            ProgressMode::ExactSingleStep,
+            vec![true; VCPU_COUNT],
+        )
+        .unwrap()
+    }
 
-            for _ in 0..200 {
-                if sched.tick() {
-                    sched.advance();
-                    trace.push((sched.active(), sched.remaining()));
-                }
-            }
-            trace
-        };
+    fn progress_event(scheduler: &VcpuScheduler) -> ScheduleEvent {
+        let state = scheduler.state();
+        ScheduleEvent::GuestProgress {
+            expected_state_id: state.identity(),
+            vcpu: state.active_vcpu,
+            observed_progress: state.instruction_progress[state.active_vcpu] + 1,
+            runnable_changes: Vec::new(),
+            source: ProgressSource::ExactSingleStep,
+        }
+    }
 
-        let r1 = run(42);
-        let r2 = run(42);
-        let r3 = run(99);
-
-        assert_eq!(r1, r2, "Same seed must produce same schedule");
-        assert_ne!(r1, r3, "Different seeds should differ");
+    fn commit_progress(scheduler: &mut VcpuScheduler) -> ScheduleAction {
+        let reservation = scheduler.reserve_transition().unwrap();
+        let planned = scheduler.plan(&progress_event(scheduler)).unwrap();
+        let action = planned.record.action.clone();
+        scheduler.commit(reservation, planned).unwrap();
+        action
     }
 
     #[test]
-    fn snapshot_restore_preserves_state() {
-        let config = SchedulerConfig {
-            num_vcpus: 3,
-            quantum: 10,
-            strategy: SchedulingStrategy::Randomized {
-                min_quantum: 5,
-                max_quantum: 30,
-            },
-            seed: 42,
-        };
-        let mut sched = VcpuScheduler::new(&config);
-
-        // Advance some
-        for _ in 0..50 {
-            if sched.tick() {
-                sched.advance();
+    fn wrapper_switches_only_after_exact_quantum() {
+        let mut scheduler = scheduler();
+        assert_eq!(commit_progress(&mut scheduler), ScheduleAction::Continue);
+        assert_eq!(commit_progress(&mut scheduler), ScheduleAction::Continue);
+        assert!(matches!(
+            commit_progress(&mut scheduler),
+            ScheduleAction::Switch {
+                from_vcpu: 0,
+                to_vcpu: 1,
+                ..
             }
-        }
-
-        let snap = sched.snapshot();
-
-        // Continue original
-        let mut post_snap_trace = Vec::new();
-        for _ in 0..100 {
-            if sched.tick() {
-                sched.advance();
-                post_snap_trace.push((sched.active(), sched.remaining()));
-            }
-        }
-
-        // Restore and replay
-        let mut restored = VcpuScheduler::new(&config);
-        restored.restore(&snap);
-        let mut restored_trace = Vec::new();
-        for _ in 0..100 {
-            if restored.tick() {
-                restored.advance();
-                restored_trace.push((restored.active(), restored.remaining()));
-            }
-        }
-
-        assert_eq!(post_snap_trace, restored_trace);
+        ));
+        assert_eq!(scheduler.active(), 1);
     }
 
     #[test]
-    fn reset_returns_to_initial() {
-        let config = SchedulerConfig {
-            num_vcpus: 4,
-            quantum: 20,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
+    fn snapshot_restore_preserves_identity_and_future() {
+        let mut original = scheduler();
+        commit_progress(&mut original);
+        let snapshot = original.snapshot();
+        let expected_identity = original.state_id();
 
-        // Advance
-        for _ in 0..50 {
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-        assert_ne!(sched.active(), 0);
-
-        sched.reset();
-        assert_eq!(sched.active(), 0);
-        assert_eq!(sched.remaining(), 20);
-    }
-
-    #[test]
-    fn two_vcpus_alternates() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 3,
-            strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-        let mut trace = Vec::new();
-
-        for _ in 0..18 {
-            trace.push(sched.active());
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-
-        // 3 exits per vCPU: [0,0,0, 1,1,1, 0,0,0, 1,1,1, ...]
+        let mut restored = scheduler();
+        restored.restore(&snapshot).unwrap();
+        assert_eq!(restored.state_id(), expected_identity);
         assert_eq!(
-            trace,
-            vec![0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1]
+            commit_progress(&mut original),
+            commit_progress(&mut restored)
         );
+        assert_eq!(original.state_id(), restored.state_id());
     }
 
-    // ── Fingerprint tests ──────────────────────────────────────────
-
     #[test]
-    fn fingerprint_zero_for_single_vcpu() {
-        let config = SchedulerConfig {
-            num_vcpus: 1,
-            quantum: 10,
-            ..Default::default()
+    fn snapshot_restore_preserves_pmu_exact_remainder_future() {
+        let progress_mode = ProgressMode::PmuAccelerated {
+            exact_step_margin: 1,
         };
-        let mut sched = VcpuScheduler::new(&config);
-        assert_eq!(sched.fingerprint(), 0);
-
-        for _ in 0..100 {
-            sched.tick();
-        }
-        // advance() never called → fingerprint stays 0
-        assert_eq!(sched.fingerprint(), 0);
-    }
-
-    #[test]
-    fn fingerprint_nonzero_for_smp() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 5,
-            strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-
-        // Run past one quantum boundary
-        for _ in 0..5 {
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-        assert_ne!(sched.fingerprint(), 0);
-    }
-
-    #[test]
-    fn fingerprint_deterministic_same_seed() {
-        let run = |seed: u64| -> u64 {
-            let config = SchedulerConfig {
-                num_vcpus: 3,
-                quantum: 10,
-                strategy: SchedulingStrategy::Randomized {
-                    min_quantum: 5,
-                    max_quantum: 30,
-                },
-                seed,
-            };
-            let mut sched = VcpuScheduler::new(&config);
-            for _ in 0..200 {
-                if sched.tick() {
-                    sched.advance();
-                }
-            }
-            sched.fingerprint()
-        };
-
-        assert_eq!(run(42), run(42), "same seed must produce same fingerprint");
-        assert_ne!(run(42), run(99), "different seeds should differ");
-    }
-
-    #[test]
-    fn fingerprint_survives_snapshot_restore() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 5,
-            strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-
-        for _ in 0..30 {
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-        let fp_before = sched.fingerprint();
-        let snap = sched.snapshot();
-
-        let mut restored = VcpuScheduler::new(&config);
-        restored.restore(&snap);
-        assert_eq!(restored.fingerprint(), fp_before);
-    }
-
-    // ── ScheduleVariant tests ──────────────────────────────────────
-
-    #[test]
-    fn apply_variant_reseeds_rng() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 10,
-            strategy: SchedulingStrategy::Randomized {
-                min_quantum: 5,
-                max_quantum: 30,
+        let mut original =
+            VcpuScheduler::try_new(&config(), progress_mode, vec![true; VCPU_COUNT]).unwrap();
+        let reservation = original.reserve_transition().unwrap();
+        let planned = core::plan_execution_observation(
+            original.state(),
+            core::ExecutionProgressObservation::PmuInterrupt {
+                vcpu: 0,
+                counter_base_progress: 0,
+                counter_value: QUANTUM - 1,
             },
-            seed: 1,
-        };
-
-        let mut s1 = VcpuScheduler::new(&config);
-        let mut s2 = VcpuScheduler::new(&config);
-
-        s1.apply_variant(&ScheduleVariant {
-            scheduler_seed: 100,
-            ..Default::default()
-        });
-        s2.apply_variant(&ScheduleVariant {
-            scheduler_seed: 200,
-            ..Default::default()
-        });
-
-        // Different seeds → different first quantum after advance
-        let trace = |s: &mut VcpuScheduler| -> Vec<u64> {
-            let mut v = Vec::new();
-            for _ in 0..20 {
-                if s.tick() {
-                    s.advance();
-                    v.push(s.remaining());
-                }
-            }
-            v
-        };
-        assert_ne!(trace(&mut s1), trace(&mut s2));
-    }
-
-    #[test]
-    fn apply_variant_overrides_quantum() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 100,
-            strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-        sched.apply_variant(&ScheduleVariant {
-            scheduler_seed: 42,
-            quantum_override: Some(7),
-            ..Default::default()
-        });
-        assert_eq!(sched.remaining(), 7);
-    }
-
-    #[test]
-    fn apply_variant_overrides_strategy() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 10,
-            strategy: SchedulingStrategy::RoundRobin,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-        sched.apply_variant(&ScheduleVariant {
-            scheduler_seed: 42,
-            strategy_override: Some(SchedulingStrategy::Randomized {
-                min_quantum: 5,
-                max_quantum: 50,
-            }),
-            ..Default::default()
-        });
-
-        // Exhaust first quantum, advance should use randomized
-        for _ in 0..10 {
-            sched.tick();
-        }
-        sched.advance();
-        // Randomized quantum won't be exactly 10 (with high probability)
-        let q = sched.remaining();
-        assert!(
-            (5..50).contains(&q),
-            "expected randomized quantum, got {}",
-            q
+        )
+        .unwrap()
+        .unwrap();
+        original.commit(reservation, planned).unwrap();
+        assert_eq!(
+            original.exact_step(),
+            ExactStepState::Active { remaining: 1 }
         );
+        let snapshot = original.snapshot();
+
+        let mut restored =
+            VcpuScheduler::try_new(&config(), progress_mode, vec![true; VCPU_COUNT]).unwrap();
+        restored.restore(&snapshot).unwrap();
+        assert_eq!(
+            commit_progress(&mut original),
+            commit_progress(&mut restored)
+        );
+        assert_eq!(original.state_id(), restored.state_id());
     }
 
     #[test]
-    fn apply_variant_resets_fingerprint() {
-        let config = SchedulerConfig {
-            num_vcpus: 2,
-            quantum: 5,
-            ..Default::default()
-        };
-        let mut sched = VcpuScheduler::new(&config);
-        for _ in 0..20 {
-            if sched.tick() {
-                sched.advance();
-            }
-        }
-        assert_ne!(sched.fingerprint(), 0);
+    fn forged_snapshot_is_rejected_without_mutation() {
+        let mut scheduler = scheduler();
+        commit_progress(&mut scheduler);
+        let before = scheduler.clone();
+        let mut forged = scheduler.snapshot();
+        forged.state.quantum_boundary += 1;
 
-        sched.apply_variant(&ScheduleVariant {
-            scheduler_seed: 99,
-            ..Default::default()
-        });
-        assert_eq!(sched.fingerprint(), 0);
+        assert!(matches!(
+            scheduler.restore(&forged),
+            Err(ScheduleError::IdentityMismatch { .. })
+        ));
+        assert_eq!(scheduler, before);
+    }
+
+    #[test]
+    fn policy_variant_is_seeded_and_preserves_active_vcpu() {
+        let mut first = scheduler();
+        let mut second = scheduler();
+        let variant = ScheduleVariant {
+            scheduler_seed: TEST_SEED,
+            strategy_override: Some(SchedulingStrategy::Randomized {
+                min_quantum: 1,
+                max_quantum: QUANTUM + 1,
+            }),
+            quantum_override: None,
+        };
+        first.apply_variant(&variant).unwrap();
+        second.apply_variant(&variant).unwrap();
+        assert_eq!(first.state_id(), second.state_id());
+        assert_eq!(first.active(), 0);
+    }
+
+    #[test]
+    fn explicit_journal_bound_is_enforced_and_preserved_on_restore() {
+        let mut bounded = VcpuScheduler::try_new_with_journal_limit(
+            &config(),
+            ProgressMode::ExactSingleStep,
+            vec![true; VCPU_COUNT],
+            1,
+        )
+        .unwrap();
+        commit_progress(&mut bounded);
+        assert!(matches!(
+            bounded.reserve_transition(),
+            Err(ScheduleError::JournalCapacityExceeded { limit: 1 })
+        ));
+
+        let snapshot = bounded.snapshot();
+        bounded.restore(&snapshot).unwrap();
+        commit_progress(&mut bounded);
+        assert!(matches!(
+            bounded.reserve_transition(),
+            Err(ScheduleError::JournalCapacityExceeded { limit: 1 })
+        ));
+    }
+
+    #[test]
+    fn excessive_explicit_journal_bound_is_rejected() {
+        assert!(matches!(
+            VcpuScheduler::try_new_with_journal_limit(
+                &config(),
+                ProgressMode::ExactSingleStep,
+                vec![true; VCPU_COUNT],
+                DEFAULT_SCHEDULE_JOURNAL_LIMIT + 1,
+            ),
+            Err(ScheduleError::JournalLimitExceeded { .. })
+        ));
+    }
+
+    #[test]
+    fn mismatched_progress_profile_snapshot_is_rejected() {
+        let exact = scheduler();
+        let pmu = VcpuScheduler::try_new(
+            &config(),
+            ProgressMode::PmuAccelerated {
+                exact_step_margin: 1,
+            },
+            vec![true; VCPU_COUNT],
+        )
+        .unwrap();
+        assert!(matches!(
+            exact.validate_snapshot(&pmu.snapshot()),
+            Err(ScheduleError::InvalidConfiguration { .. })
+        ));
     }
 }

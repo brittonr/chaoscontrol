@@ -3,6 +3,7 @@
 use crate::devices::block::BlockSnapshot;
 use crate::devices::entropy::EntropySnapshot;
 use crate::devices::pit::PitSnapshot;
+use crate::scheduler::core::MAX_SCHEDULE_VCPUS;
 use crate::scheduler::SchedulerSnapshot;
 use chaoscontrol_fault::engine::EngineSnapshot;
 use kvm_bindings::{
@@ -196,6 +197,27 @@ impl SnapshotMemory {
         }
     }
 
+    /// Validate memory geometry before any guest-memory write.
+    pub fn validate_for_guest_size(&self, guest_size: usize) -> Result<(), String> {
+        if self.memory_size() != guest_size {
+            return Err(format!(
+                "snapshot memory size {} differs from guest size {guest_size}",
+                self.memory_size()
+            ));
+        }
+        if let Self::Overlay { dirty_pages, .. } = self {
+            let total_pages = guest_size.div_ceil(PAGE_SIZE);
+            for page in dirty_pages.keys() {
+                if *page >= total_pages {
+                    return Err(format!(
+                        "snapshot dirty page {page} exceeds guest page count {total_pages}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Write this snapshot's memory to guest physical memory.
     ///
     /// For `Full`, writes the entire region. For `Overlay`, writes only
@@ -269,7 +291,7 @@ pub struct CaptureParams {
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
     pub scheduler_snapshot: SchedulerSnapshot,
-    pub singlestep_remaining: u64,
+    pub hlt_latched_vcpus: Vec<bool>,
 }
 
 /// Per-vCPU register state for snapshot/restore.
@@ -420,6 +442,48 @@ impl From<SerialStateSerde> for vm_superio::SerialState {
     }
 }
 
+fn deserialize_bounded_hlt_latches<'de, D>(deserializer: D) -> Result<Vec<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct HltLatchVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for HltLatchVisitor {
+        type Value = Vec<bool>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                formatter,
+                "at most {MAX_SCHEDULE_VCPUS} vCPU HLT latch values"
+            )
+        }
+
+        fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let hinted = sequence.size_hint().unwrap_or(0);
+            if hinted > MAX_SCHEDULE_VCPUS {
+                return Err(serde::de::Error::custom(
+                    "snapshot HLT latch bound exceeded",
+                ));
+            }
+            let mut latches = Vec::with_capacity(hinted);
+            while let Some(latched) = sequence.next_element()? {
+                if latches.len() >= MAX_SCHEDULE_VCPUS {
+                    return Err(serde::de::Error::custom(
+                        "snapshot HLT latch bound exceeded",
+                    ));
+                }
+                latches.push(latched);
+            }
+            Ok(latches)
+        }
+    }
+
+    deserializer.deserialize_seq(HltLatchVisitor)
+}
+
 #[derive(Serialize, Deserialize)]
 struct VmSnapshotSerde {
     vcpu_snapshots: Vec<VcpuSnapshot>,
@@ -440,9 +504,9 @@ struct VmSnapshotSerde {
     fault_engine_snapshot: EngineSnapshot,
     virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     coverage_active: bool,
-    active_vcpu: usize,
     scheduler_snapshot: SchedulerSnapshot,
-    singlestep_remaining: u64,
+    #[serde(default, deserialize_with = "deserialize_bounded_hlt_latches")]
+    hlt_latched_vcpus: Vec<bool>,
 }
 
 impl From<&VmSnapshot> for VmSnapshotSerde {
@@ -466,9 +530,8 @@ impl From<&VmSnapshot> for VmSnapshotSerde {
             fault_engine_snapshot: snapshot.fault_engine_snapshot.clone(),
             virtio_snapshots: snapshot.virtio_snapshots.clone(),
             coverage_active: snapshot.coverage_active,
-            active_vcpu: snapshot.active_vcpu,
             scheduler_snapshot: snapshot.scheduler_snapshot.clone(),
-            singlestep_remaining: snapshot.singlestep_remaining,
+            hlt_latched_vcpus: snapshot.hlt_latched_vcpus.clone(),
         }
     }
 }
@@ -496,9 +559,8 @@ impl TryFrom<VmSnapshotSerde> for VmSnapshot {
             fault_engine_snapshot: value.fault_engine_snapshot,
             virtio_snapshots: value.virtio_snapshots,
             coverage_active: value.coverage_active,
-            active_vcpu: value.active_vcpu,
             scheduler_snapshot: value.scheduler_snapshot,
-            singlestep_remaining: value.singlestep_remaining,
+            hlt_latched_vcpus: value.hlt_latched_vcpus,
         })
     }
 }
@@ -590,14 +652,10 @@ pub struct VmSnapshot {
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
 
-    /// Index of the active vCPU at snapshot time.
-    pub active_vcpu: usize,
-
-    /// vCPU scheduler state.
+    /// Complete vCPU scheduler and exact-progress state.
     pub scheduler_snapshot: SchedulerSnapshot,
-
-    /// Single-step remaining count (for exact SMP preemption).
-    pub singlestep_remaining: u64,
+    /// Userspace HLT latches required because KVM leaves MP state runnable.
+    pub hlt_latched_vcpus: Vec<bool>,
 }
 
 impl VmSnapshot {
@@ -676,9 +734,8 @@ impl VmSnapshot {
             fault_engine_snapshot: params.fault_engine_snapshot,
             virtio_snapshots: params.virtio_snapshots,
             coverage_active: params.coverage_active,
-            active_vcpu: params.scheduler_snapshot.active,
             scheduler_snapshot: params.scheduler_snapshot,
-            singlestep_remaining: params.singlestep_remaining,
+            hlt_latched_vcpus: params.hlt_latched_vcpus,
         })
     }
 
@@ -796,6 +853,26 @@ mod tests {
 
     fn make_base(size: usize) -> Vec<u8> {
         (0..size).map(|i| (i % 256) as u8).collect()
+    }
+
+    fn decode_hlt_latches(values: &[bool]) -> Result<Vec<bool>, serde_json::Error> {
+        let encoded = serde_json::to_string(values)?;
+        let mut deserializer = serde_json::Deserializer::from_str(&encoded);
+        deserialize_bounded_hlt_latches(&mut deserializer)
+    }
+
+    #[test]
+    fn hlt_latch_decode_accepts_the_public_vcpu_bound() {
+        let values = vec![false; MAX_SCHEDULE_VCPUS];
+        assert_eq!(decode_hlt_latches(&values).unwrap(), values);
+    }
+
+    #[test]
+    fn hlt_latch_decode_rejects_before_allocating_beyond_the_public_bound() {
+        const EXCESS_LATCH_COUNT: usize = MAX_SCHEDULE_VCPUS + 1;
+        let values = vec![false; EXCESS_LATCH_COUNT];
+        let error = decode_hlt_latches(&values).unwrap_err();
+        assert!(error.to_string().contains("HLT latch bound exceeded"));
     }
 
     #[test]

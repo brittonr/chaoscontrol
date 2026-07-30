@@ -8,7 +8,7 @@ use chaoscontrol_fault::outcomes::{
 };
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{
-    RoundResult, SimulationConfig, SimulationController, SimulationSnapshot,
+    RoundResult, SimulationConfig, SimulationController, SimulationSnapshot, VmScheduleTrace,
 };
 pub use chaoscontrol_vmm::registers::{RegisterModification, RegisterState};
 use chaoscontrol_vmm::vm::VmError;
@@ -258,6 +258,11 @@ impl<R: SimulationRunner> ReplayEngine<R> {
             })?;
 
             validate_replayed_fault_round(&self.recording, result.tick, &result.fault_outcomes)?;
+            validate_replayed_schedule_round(
+                &self.recording,
+                result.tick,
+                &result.schedule_traces,
+            )?;
             fault_outcomes.extend(result.fault_outcomes.iter().cloned());
 
             // Collect events that occurred this tick
@@ -598,6 +603,25 @@ pub(crate) fn validate_replayed_fault_interval(
     Ok(())
 }
 
+pub(crate) fn validate_replayed_schedule_round(
+    recording: &Recording,
+    tick: u64,
+    replayed: &[VmScheduleTrace],
+) -> Result<(), ReplayError> {
+    let expected = recording
+        .schedule_rounds
+        .iter()
+        .find(|round| round.tick == tick)
+        .map_or(&[][..], |round| round.traces.as_slice());
+    if replayed != expected {
+        return InvalidStateSnafu {
+            message: format!("deterministic SMP schedule trace mismatch at tick {tick}"),
+        }
+        .fail();
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_replayed_fault_round(
     recording: &Recording,
     tick: u64,
@@ -671,7 +695,7 @@ mod tests {
     use super::*;
     use crate::checkpoint::{Checkpoint, CheckpointStore};
 
-    use crate::recording::FaultRoundTraceDelta;
+    use crate::recording::{FaultRoundTraceDelta, RecordedScheduleRound};
     use chaoscontrol_fault::faults::Fault;
     use chaoscontrol_fault::outcomes::{
         fault_run_id, transition_fault_outcome, FaultAttempt, FaultAttemptId, FaultAttemptSource,
@@ -679,6 +703,39 @@ mod tests {
         NANOSECONDS_PER_SIMULATION_TICK,
     };
     use chaoscontrol_vmm::controller::NetworkFabric;
+    use chaoscontrol_vmm::scheduler::core::{
+        plan_execution_observation, ExecutionProgressObservation, ProgressMode, ScheduleState,
+        ScheduleTrace,
+    };
+    use chaoscontrol_vmm::scheduler::{SchedulerConfig, SchedulingStrategy};
+
+    const SHORT_REPLAY_QUANTUM: u64 = 45;
+    const CORRUPT_FAULT_TRACE_QUANTUM: u64 = 43;
+    const DIVERGENT_SCHEDULE_TRACE_QUANTUM: u64 = 47;
+
+    fn one_step_schedule_trace() -> VmScheduleTrace {
+        let config = SchedulerConfig {
+            num_vcpus: 2,
+            quantum: 2,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: 42,
+        };
+        let initial_state = ScheduleState::new(&config, ProgressMode::ExactSingleStep).unwrap();
+        let planned = plan_execution_observation(
+            &initial_state,
+            ExecutionProgressObservation::ExactInstruction { vcpu: 0 },
+        )
+        .unwrap()
+        .unwrap();
+        VmScheduleTrace {
+            vm_index: 0,
+            trace: ScheduleTrace {
+                initial_state_id: initial_state.identity(),
+                initial_state,
+                records: vec![planned.record],
+            },
+        }
+    }
 
     fn mock_attempt(tick: u64, seed: u64, schedule_id: FaultScheduleId) -> FaultAttempt {
         FaultAttempt::new_with_source(
@@ -716,6 +773,7 @@ mod tests {
         tick: u64,
         max_ticks: u64,
         corrupt_trace: bool,
+        emit_schedule_trace: bool,
         applied_trace: bool,
         scheduled_fault_count: usize,
         run_start_tick: u64,
@@ -733,8 +791,13 @@ mod tests {
         ) -> Result<Self, ReplayError> {
             Ok(Self {
                 tick: 0,
-                max_ticks: if config.quantum == 45 { 1 } else { 1000 },
-                corrupt_trace: config.quantum == 43,
+                max_ticks: if config.quantum == SHORT_REPLAY_QUANTUM {
+                    1
+                } else {
+                    1000
+                },
+                corrupt_trace: config.quantum == CORRUPT_FAULT_TRACE_QUANTUM,
+                emit_schedule_trace: config.quantum == DIVERGENT_SCHEDULE_TRACE_QUANTUM,
                 applied_trace: seed == 46,
                 scheduled_fault_count: schedule.total(),
                 run_start_tick: 0,
@@ -820,6 +883,11 @@ mod tests {
                 },
                 fault_outcomes,
                 messages_delivered: 0,
+                schedule_traces: if self.emit_schedule_trace && self.tick == 1 {
+                    vec![one_step_schedule_trace()]
+                } else {
+                    Vec::new()
+                },
             })
         }
 
@@ -992,6 +1060,7 @@ mod tests {
             fault_stage_events: vec![],
             fault_round_deltas: vec![],
             fault_outcome_ledger: Default::default(),
+            schedule_rounds: vec![],
             oracle_report: None,
             total_ticks: 1000,
         }
@@ -1123,9 +1192,54 @@ mod tests {
     }
 
     #[test]
+    fn exact_replay_rejects_schedule_trace_divergence() {
+        let mut recording = test_recording();
+        let trace = one_step_schedule_trace();
+        recording.schedule_rounds.push(RecordedScheduleRound {
+            tick: 1,
+            traces: vec![trace.clone()],
+        });
+        validate_recording(&recording).unwrap();
+        validate_replayed_schedule_round(&recording, 1, &[trace]).unwrap();
+
+        assert!(matches!(
+            validate_replayed_schedule_round(&recording, 1, &[]),
+            Err(ReplayError::InvalidState { .. })
+        ));
+    }
+
+    #[test]
+    fn exact_replay_path_rejects_live_schedule_trace_divergence() {
+        let mut recording = test_recording();
+        recording.config.quantum = DIVERGENT_SCHEDULE_TRACE_QUANTUM;
+        let engine = ReplayEngine::<MockRunner>::new(recording);
+
+        assert!(matches!(
+            engine.replay_from(None, 1),
+            Err(ReplayError::InvalidState { .. })
+        ));
+    }
+
+    #[test]
+    fn exact_replay_rejects_forged_recording_before_runner_creation() {
+        let mut recording = test_recording();
+        let mut trace = one_step_schedule_trace();
+        trace.trace.records[0].post_state_id.0[0] ^= 1;
+        recording.schedule_rounds.push(RecordedScheduleRound {
+            tick: 1,
+            traces: vec![trace],
+        });
+
+        assert!(matches!(
+            validate_recording(&recording),
+            Err(crate::recording::RecordingValidationError::InvalidScheduleTrace)
+        ));
+    }
+
+    #[test]
     fn replay_rejects_fault_trace_mismatch() {
         let mut recording = traced_recording(3);
-        recording.config.quantum = 43;
+        recording.config.quantum = CORRUPT_FAULT_TRACE_QUANTUM;
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
 
         assert!(matches!(
@@ -1170,7 +1284,7 @@ mod tests {
     #[test]
     fn replay_rejects_halt_before_later_recorded_delta() {
         let mut recording = traced_recording(3);
-        recording.config.quantum = 45;
+        recording.config.quantum = SHORT_REPLAY_QUANTUM;
         let engine: ReplayEngine<MockRunner> = ReplayEngine::new(recording);
 
         assert!(matches!(

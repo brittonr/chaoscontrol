@@ -89,6 +89,18 @@ r[chaoscontrol.deterministic_smp.schedule_evidence] Each deterministic progress 
 - THEN the record MUST be sufficient to recompute and verify the transition from canonical state
 - AND wall-clock timestamps and signal counts MUST NOT contribute to deterministic state identity.
 
+### Requirement: Post-entry failures permanently poison the VM
+
+r[chaoscontrol.deterministic_smp.vm_poison] After `KVM_RUN` can change guest state, any evidence, exit-handling, or schedule-action failure MUST permanently poison VM execution before returning.
+
+#### Scenario: Exit handling fails after journal commit
+
+r[chaoscontrol.deterministic_smp.validation.vm_poison]
+- GIVEN an SMP instruction transition is committed to the bounded journal
+- WHEN HLT handling, interrupt injection, or schedule-action application fails
+- THEN the VM MUST retain the committed journal as diagnostic evidence
+- AND every later execution, snapshot, restore, trace-drain, and success path MUST fail before mutation.
+
 ### Requirement: Complete schedule progress is snapshot-ready
 
 r[chaoscontrol.deterministic_smp.snapshot_state] The scheduling owner MUST expose all active-vCPU, runnable-set, policy, seeded-choice, per-vCPU progress, quantum, and exact-step state required for whole-VM snapshot capture and restore.
@@ -100,9 +112,29 @@ r[chaoscontrol.deterministic_smp.validation.snapshot]
 - WHEN the complete VM snapshot owner restores that state
 - THEN the next schedule transition MUST match uninterrupted execution at the same boundary.
 
+### Requirement: Failed multi-VM rounds poison the controller
+
+r[chaoscontrol.deterministic_smp.controller_poison] If a VM schedule poison or another error occurs after round mutation starts, the controller MUST permanently latch the failed round before returning.
+
+#### Scenario: A later VM poisons after an earlier VM advances
+
+r[chaoscontrol.deterministic_smp.validation.controller_poison]
+- GIVEN VM0 records deterministic progress and VM1 then poisons during the same controller round
+- WHEN the caller retries execution or requests a mutation, snapshot, restore, recording, or success result
+- THEN the controller MUST reject the request before mutation
+- AND VM0 progress, simulation tick, fault state, and network state MUST NOT advance again
+- AND partial VM journals MUST remain diagnostic-only
+- AND the failed round MUST NOT be published as complete.
+
+#### Scenario: Preflight fails before mutation
+
+- GIVEN a round preflight rejects bounded input before any round mutation
+- WHEN the caller corrects that input and retries
+- THEN the controller MAY retry without a permanent poison.
+
 ### Requirement: Deterministic SMP validation perturbs the host
 
-r[chaoscontrol.deterministic_smp.validation] The change MUST test pure schedule transitions, exact spin-loop preemption, unavailable and overshooting progress sources, spurious interrupts, snapshot boundaries, and repeated KVM execution under varied host delay and contention.
+r[chaoscontrol.deterministic_smp.validation] The change MUST test pure schedule transitions, exact spin-loop preemption, unavailable and overshooting progress sources, spurious interrupts, snapshot boundaries, failed multi-VM rounds, and repeated KVM execution under varied host delay and contention.
 
 #### Scenario: Host timing is perturbed
 

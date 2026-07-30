@@ -1,10 +1,10 @@
-# Deterministic SMP Scheduling Specification
+# Deterministic Smp Scheduling Specification
 
 ## Purpose
 
-Select and resume ChaosControl vCPUs only at replay-stable execution boundaries while keeping host wall-clock watchdogs outside guest scheduling and verdict authority.
+Defines the `deterministic-smp-scheduling` capability.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: One pure state machine owns vCPU selection
 

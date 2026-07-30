@@ -321,6 +321,9 @@ mod tests {
             schedule: FaultSchedule::new(),
             seed: 42,
             events: vec![],
+            fault_stage_events: vec![],
+            fault_round_deltas: vec![],
+            fault_outcome_ledger: Default::default(),
             oracle_report: None,
             total_ticks: 5000,
         };

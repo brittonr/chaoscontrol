@@ -2,8 +2,12 @@
 
 use crate::checkpoint::{Checkpoint, CheckpointStore};
 use chaoscontrol_fault::oracle::OracleReport;
+use chaoscontrol_fault::outcomes::{
+    validate_fault_outcome_ledger, FaultOutcomeLedger, FaultStageEvent, FaultStageKind,
+    FaultTransitionError, MAX_FAULT_OUTCOME_EVENTS, NANOSECONDS_PER_SIMULATION_TICK,
+};
 use chaoscontrol_fault::schedule::FaultSchedule;
-use chaoscontrol_vmm::controller::SimulationSnapshot;
+use chaoscontrol_vmm::controller::{RoundResult, SimulationSnapshot};
 use serde::{Deserialize, Serialize};
 
 /// A recorded execution session.
@@ -23,8 +27,17 @@ pub struct Recording {
     pub schedule: FaultSchedule,
     /// Master seed.
     pub seed: u64,
-    /// Events that occurred (faults fired, assertions hit, etc).
+    /// Events that occurred. `FaultFired` is a projection of `Selected` only.
     pub events: Vec<RecordedEvent>,
+    /// Canonical bounded fault-stage trace.
+    #[serde(default)]
+    pub fault_stage_events: Vec<FaultStageEvent>,
+    /// Non-empty per-round slices of the canonical fault-stage trace.
+    #[serde(default)]
+    pub fault_round_deltas: Vec<FaultRoundTraceDelta>,
+    /// Authoritative ledger that supplies the canonical trace.
+    #[serde(default)]
+    pub fault_outcome_ledger: FaultOutcomeLedger,
     /// Final oracle report.
     #[serde(skip)] // OracleReport doesn't implement Serialize
     pub oracle_report: Option<OracleReport>,
@@ -58,8 +71,26 @@ fn default_disk_image_path() -> Option<String> {
     None
 }
 
+/// A non-empty trace slice produced by one simulation round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FaultRoundTraceDelta {
+    pub tick: u64,
+    pub event_start: u64,
+    pub event_end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecordingValidationError {
+    TraceBoundExceeded,
+    InvalidLedger(FaultTransitionError),
+    TraceLedgerMismatch,
+    InvalidRoundDelta,
+    RoundDeltaMismatch,
+    FaultFiredProjectionMismatch,
+}
+
 /// An event recorded during execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RecordedEvent {
     /// A fault was fired at this tick.
@@ -121,6 +152,9 @@ impl Recorder {
                 schedule,
                 seed,
                 events: Vec::new(),
+                fault_stage_events: Vec::new(),
+                fault_round_deltas: Vec::new(),
+                fault_outcome_ledger: FaultOutcomeLedger::default(),
                 oracle_report: None,
                 total_ticks: 0,
             },
@@ -172,9 +206,24 @@ impl Recorder {
         }
     }
 
-    /// Record an event.
+    /// Record a non-fault event.
     pub fn record_event(&mut self, event: RecordedEvent) {
+        assert!(!matches!(event, RecordedEvent::FaultFired { .. }));
         self.recording.events.push(event);
+    }
+
+    /// Record the exact stage delta from one completed round.
+    pub fn record_round(
+        &mut self,
+        round: &RoundResult,
+        ledger: &FaultOutcomeLedger,
+    ) -> Result<(), RecordingValidationError> {
+        let next = plan_recorded_round(&self.recording, round, ledger)?;
+        self.recording.events.extend(next.fault_fired);
+        self.recording.fault_stage_events = ledger.events.clone();
+        self.recording.fault_round_deltas = next.round_deltas;
+        self.recording.fault_outcome_ledger = ledger.clone();
+        Ok(())
     }
 
     /// Finalize the recording.
@@ -187,6 +236,145 @@ impl Recorder {
     pub fn recording(&self) -> &Recording {
         &self.recording
     }
+}
+
+#[derive(Debug)]
+struct PlannedRecordedRound {
+    fault_fired: Vec<RecordedEvent>,
+    round_deltas: Vec<FaultRoundTraceDelta>,
+}
+
+fn plan_recorded_round(
+    recording: &Recording,
+    round: &RoundResult,
+    ledger: &FaultOutcomeLedger,
+) -> Result<PlannedRecordedRound, RecordingValidationError> {
+    validate_recording(recording)?;
+    validate_fault_outcome_ledger(ledger).map_err(RecordingValidationError::InvalidLedger)?;
+    let event_start = recording.fault_stage_events.len();
+    let event_end = event_start
+        .checked_add(round.fault_outcomes.len())
+        .ok_or(RecordingValidationError::TraceBoundExceeded)?;
+    if event_end > MAX_FAULT_OUTCOME_EVENTS {
+        return Err(RecordingValidationError::TraceBoundExceeded);
+    }
+    if ledger.events.get(..event_start) != Some(recording.fault_stage_events.as_slice())
+        || ledger.events.get(event_start..event_end) != Some(round.fault_outcomes.as_slice())
+        || event_end != ledger.events.len()
+    {
+        return Err(RecordingValidationError::RoundDeltaMismatch);
+    }
+
+    let mut selected_faults = Vec::new();
+    let mut fault_fired = Vec::new();
+    for event in &round.fault_outcomes {
+        if event.kind == FaultStageKind::Selected {
+            let state = ledger
+                .attempts
+                .get(&event.attempt_id)
+                .ok_or(RecordingValidationError::RoundDeltaMismatch)?;
+            let selected_tick = state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            if selected_tick != round.tick {
+                return Err(RecordingValidationError::RoundDeltaMismatch);
+            }
+            selected_faults.push(state.attempt.fault.clone());
+            fault_fired.push(RecordedEvent::FaultFired {
+                tick: round.tick,
+                fault: format!("{:?}", state.attempt.fault),
+            });
+        }
+    }
+    if selected_faults != round.faults_fired {
+        return Err(RecordingValidationError::FaultFiredProjectionMismatch);
+    }
+
+    let mut round_deltas = recording.fault_round_deltas.clone();
+    if event_start != event_end {
+        if round_deltas
+            .last()
+            .is_some_and(|delta| delta.tick >= round.tick)
+        {
+            return Err(RecordingValidationError::InvalidRoundDelta);
+        }
+        round_deltas.push(FaultRoundTraceDelta {
+            tick: round.tick,
+            event_start: u64::try_from(event_start)
+                .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
+            event_end: u64::try_from(event_end)
+                .map_err(|_| RecordingValidationError::TraceBoundExceeded)?,
+        });
+    }
+    Ok(PlannedRecordedRound {
+        fault_fired,
+        round_deltas,
+    })
+}
+
+pub fn validate_recording(recording: &Recording) -> Result<(), RecordingValidationError> {
+    if recording.fault_stage_events.len() > MAX_FAULT_OUTCOME_EVENTS {
+        return Err(RecordingValidationError::TraceBoundExceeded);
+    }
+    validate_fault_outcome_ledger(&recording.fault_outcome_ledger)
+        .map_err(RecordingValidationError::InvalidLedger)?;
+    if recording.fault_stage_events != recording.fault_outcome_ledger.events {
+        return Err(RecordingValidationError::TraceLedgerMismatch);
+    }
+
+    let mut expected_start = 0_u64;
+    let mut prior_tick = None;
+    for delta in &recording.fault_round_deltas {
+        if delta.event_start != expected_start
+            || delta.event_start >= delta.event_end
+            || usize::try_from(delta.event_end).map_or(true, |event_end| {
+                event_end > recording.fault_stage_events.len()
+            })
+            || prior_tick.is_some_and(|tick| tick >= delta.tick)
+        {
+            return Err(RecordingValidationError::InvalidRoundDelta);
+        }
+        expected_start = delta.event_end;
+        prior_tick = Some(delta.tick);
+    }
+    let trace_len = u64::try_from(recording.fault_stage_events.len())
+        .map_err(|_| RecordingValidationError::TraceBoundExceeded)?;
+    if expected_start != trace_len {
+        return Err(RecordingValidationError::InvalidRoundDelta);
+    }
+
+    if recording.fault_stage_events.is_empty()
+        && recording.fault_round_deltas.is_empty()
+        && recording.fault_outcome_ledger.events.is_empty()
+    {
+        return Ok(());
+    }
+
+    let expected_fault_fired = recording
+        .fault_outcome_ledger
+        .events
+        .iter()
+        .filter(|event| event.kind == FaultStageKind::Selected)
+        .map(|event| {
+            let state = recording
+                .fault_outcome_ledger
+                .attempts
+                .get(&event.attempt_id)
+                .ok_or(RecordingValidationError::TraceLedgerMismatch)?;
+            Ok(RecordedEvent::FaultFired {
+                tick: state.attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK,
+                fault: format!("{:?}", state.attempt.fault),
+            })
+        })
+        .collect::<Result<Vec<_>, RecordingValidationError>>()?;
+    let recorded_fault_fired = recording
+        .events
+        .iter()
+        .filter(|event| matches!(event, RecordedEvent::FaultFired { .. }))
+        .cloned()
+        .collect::<Vec<_>>();
+    if recorded_fault_fired != expected_fault_fired {
+        return Err(RecordingValidationError::FaultFiredProjectionMismatch);
+    }
+    Ok(())
 }
 
 /// Helper to extract tick from any event.
@@ -227,7 +415,38 @@ fn uuid_like_id() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
+    use chaoscontrol_fault::faults::Fault;
+    use chaoscontrol_fault::outcomes::{
+        transition_fault_outcome, FaultAttempt, FaultRunId, FaultScheduleId,
+    };
+
+    fn selected_round(tick: u64) -> (RoundResult, FaultOutcomeLedger) {
+        let selected_at_ns = tick * NANOSECONDS_PER_SIMULATION_TICK;
+        let attempt = FaultAttempt::new(
+            FaultRunId([1; 32]),
+            0,
+            FaultScheduleId([2; 32]),
+            0,
+            selected_at_ns,
+            Fault::ProcessKill { target: 0 },
+        );
+        let ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&attempt),
+            attempt.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let round = RoundResult {
+            tick,
+            vms_running: 1,
+            vms_halted: 0,
+            faults_fired: vec![attempt.fault],
+            fault_outcomes: ledger.events.clone(),
+            messages_delivered: 0,
+        };
+        (round, ledger)
+    }
 
     fn test_config() -> RecordingConfig {
         RecordingConfig {
@@ -254,25 +473,14 @@ mod tests {
         SimulationSnapshot {
             tick: 0,
             vm_snapshots: vec![],
-            network_state: NetworkFabric {
-                partitions: vec![],
-                latency: vec![],
-                jitter: vec![],
-                bandwidth_bps: vec![],
-                next_free_tick: vec![],
-                in_flight: vec![],
-                packet_in_flight: vec![],
-                loss_rate_ppm: vec![],
-                corruption_rate_ppm: vec![],
-                reorder_window: vec![],
-                duplicate_rate_ppm: vec![],
-                rng: rand_chacha::ChaCha20Rng::seed_from_u64(42),
-                stats: Default::default(),
-            },
+            network_state: NetworkFabric::new(0, 42),
             fault_engine_snapshot: engine.snapshot(),
             vcpu_stall_until: vec![],
             clock_freeze: vec![],
             clock_jitter_bound: vec![],
+            process_fault_attempt: vec![],
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
         }
     }
 
@@ -340,12 +548,60 @@ mod tests {
         let schedule = FaultSchedule::new();
         let mut recorder = Recorder::new(config, schedule, 42);
 
-        recorder.record_event(RecordedEvent::FaultFired {
+        recorder.record_event(RecordedEvent::SerialOutput {
             tick: 100,
-            fault: "NetworkPartition".to_string(),
+            vm_index: 0,
+            data: "ready".to_string(),
         });
 
         assert_eq!(recorder.recording.events.len(), 1);
+    }
+
+    #[test]
+    fn recorder_persists_canonical_round_trace_and_selected_projection() {
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        let (round, ledger) = selected_round(1);
+
+        recorder.record_round(&round, &ledger).unwrap();
+
+        assert_eq!(recorder.recording.fault_stage_events, ledger.events);
+        assert_eq!(recorder.recording.fault_outcome_ledger, ledger);
+        assert_eq!(
+            recorder.recording.fault_round_deltas,
+            vec![FaultRoundTraceDelta {
+                tick: 1,
+                event_start: 0,
+                event_end: 1,
+            }]
+        );
+        assert!(matches!(
+            recorder.recording.events.as_slice(),
+            [RecordedEvent::FaultFired { tick: 1, .. }]
+        ));
+        validate_recording(&recorder.recording).unwrap();
+    }
+
+    #[test]
+    fn tampered_recorded_trace_is_rejected() {
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        let (round, ledger) = selected_round(1);
+        recorder.record_round(&round, &ledger).unwrap();
+        recorder.recording.fault_stage_events[0].sequence = 1;
+
+        assert_eq!(
+            validate_recording(&recorder.recording),
+            Err(RecordingValidationError::TraceLedgerMismatch)
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn direct_fault_fired_recording_is_rejected() {
+        let mut recorder = Recorder::new(test_config(), FaultSchedule::new(), 42);
+        recorder.record_event(RecordedEvent::FaultFired {
+            tick: 1,
+            fault: "not authoritative".to_string(),
+        });
     }
 
     #[test]
@@ -402,17 +658,20 @@ mod tests {
         let mut recorder = Recorder::new(config, schedule, 42);
 
         // Add events at various ticks
-        recorder.record_event(RecordedEvent::FaultFired {
+        recorder.record_event(RecordedEvent::SerialOutput {
             tick: 100,
-            fault: "f1".to_string(),
+            vm_index: 0,
+            data: "first".to_string(),
         });
-        recorder.record_event(RecordedEvent::FaultFired {
+        recorder.record_event(RecordedEvent::SerialOutput {
             tick: 500,
-            fault: "f2".to_string(),
+            vm_index: 0,
+            data: "second".to_string(),
         });
-        recorder.record_event(RecordedEvent::FaultFired {
+        recorder.record_event(RecordedEvent::SerialOutput {
             tick: 1500,
-            fault: "f3".to_string(),
+            vm_index: 0,
+            data: "third".to_string(),
         });
 
         // Take checkpoint at 1000

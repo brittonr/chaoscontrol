@@ -1700,6 +1700,15 @@ impl DeterministicVm {
         self.with_block_device(|disk| disk.restore_dirty(overlay))
     }
 
+    /// Return the central-ledger reservation for active block mechanisms.
+    pub fn block_fault_observation_reservation(&mut self) -> usize {
+        let mut reservation = 0;
+        self.with_block_device(|disk| {
+            reservation = disk.central_observation_reservation();
+        });
+        reservation
+    }
+
     /// Drain block-path observations from all block backends.
     pub fn drain_block_fault_observations(
         &mut self,

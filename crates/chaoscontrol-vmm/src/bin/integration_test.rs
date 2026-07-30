@@ -1885,7 +1885,7 @@ fn main() {
         };
         let mut ctrl = SimulationController::new(sim_config).expect("create controller");
         ctrl.force_setup_complete();
-        ctrl.set_schedule(schedule);
+        ctrl.set_schedule(schedule).expect("set fault schedule");
 
         // Run for enough ticks to fire all 3 faults (at 2ms, 4ms, 6ms)
         let _result = ctrl.run(10).expect("run with interrupt faults");

@@ -8,9 +8,9 @@ use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::outcomes::{
     fault_run_id, preflight_fault_observation_events_with_limit, transition_fault_outcome,
-    validate_fault_outcome_ledger, FaultAttempt, FaultAttemptId, FaultObservation,
-    FaultOutcomeLedger, FaultRunId, FaultScheduleId, FaultStageKind, FaultTransitionError,
-    MAX_FAULT_OUTCOME_EVENTS,
+    validate_fault_outcome_ledger, FaultAttempt, FaultAttemptId, FaultAttemptSource,
+    FaultObservation, FaultOutcomeLedger, FaultRunId, FaultScheduleId, FaultStageKind,
+    FaultTransitionError, MAX_FAULT_ATTEMPTS, MAX_FAULT_OUTCOME_EVENTS,
 };
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::*;
@@ -62,6 +62,12 @@ pub enum FaultSelectionError {
     #[snafu(display("fault selection sequence overflowed"))]
     SelectionSequenceOverflow,
 
+    #[snafu(display("scheduled fault entry index exceeds identity bounds"))]
+    ScheduleEntryIndexOverflow,
+
+    #[snafu(display("same-run schedule replacement follows fault selection"))]
+    ScheduleMutationAfterSelection,
+
     #[snafu(display("fault outcome transition failed: {source}"))]
     OutcomeTransition { source: FaultTransitionError },
 }
@@ -93,6 +99,46 @@ impl Default for EngineConfig {
     }
 }
 
+fn preflight_selection_batch(
+    outcomes: &FaultOutcomeLedger,
+    selection_sequence: u64,
+    batch_count: usize,
+    attempt_limit: usize,
+    event_limit: usize,
+) -> Result<(), FaultSelectionError> {
+    let next_attempt_count = outcomes.attempts.len().checked_add(batch_count).ok_or(
+        FaultSelectionError::OutcomeTransition {
+            source: FaultTransitionError::AttemptBoundExceeded,
+        },
+    )?;
+    if next_attempt_count > attempt_limit {
+        return Err(FaultSelectionError::OutcomeTransition {
+            source: FaultTransitionError::AttemptBoundExceeded,
+        });
+    }
+    let next_event_count = outcomes.events.len().checked_add(batch_count).ok_or(
+        FaultSelectionError::OutcomeTransition {
+            source: FaultTransitionError::EventBoundExceeded,
+        },
+    )?;
+    if next_event_count > event_limit {
+        return Err(FaultSelectionError::OutcomeTransition {
+            source: FaultTransitionError::EventBoundExceeded,
+        });
+    }
+    let batch_count =
+        u64::try_from(batch_count).map_err(|_| FaultSelectionError::SelectionSequenceOverflow)?;
+    selection_sequence
+        .checked_add(batch_count)
+        .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
+    outcomes.counters.selected.checked_add(batch_count).ok_or(
+        FaultSelectionError::OutcomeTransition {
+            source: FaultTransitionError::CounterOverflow,
+        },
+    )?;
+    Ok(())
+}
+
 /// Snapshot of the engine state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EngineSnapshot {
@@ -118,6 +164,27 @@ impl EngineSnapshot {
     /// Return the authoritative outcome ledger captured by this snapshot.
     pub fn outcomes(&self) -> &FaultOutcomeLedger {
         &self.outcomes
+    }
+
+    /// Return the canonical schedule identity captured by this snapshot.
+    pub fn schedule_id(&self) -> FaultScheduleId {
+        self.schedule_id
+    }
+
+    /// Return the exact fault run identity captured by this snapshot.
+    pub fn run_id(&self) -> FaultRunId {
+        self.run_id
+    }
+
+    /// Return the exact fault run sequence captured by this snapshot.
+    pub fn run_sequence(&self) -> u64 {
+        self.run_sequence
+    }
+
+    /// Test seam for invalid untrusted-ledger fixtures.
+    #[doc(hidden)]
+    pub fn replace_outcomes_for_validation_test(&mut self, outcomes: FaultOutcomeLedger) {
+        self.outcomes = outcomes;
     }
 }
 
@@ -247,6 +314,49 @@ impl FaultEngine {
                 self.run_exhausted = true;
             }
         }
+    }
+
+    /// Start one exact run with a clean outcome ledger and canonical schedule.
+    pub fn start_fresh_run_at(&mut self, schedule: FaultSchedule, run_sequence: u64) {
+        self.oracle.begin_run();
+        self.rebind_fresh_run_at(schedule, run_sequence);
+    }
+
+    /// Rebind a controller run that already started its property oracle.
+    pub fn rebind_fresh_run_at(&mut self, schedule: FaultSchedule, run_sequence: u64) {
+        self.schedule = schedule;
+        self.schedule.reset();
+        self.outcomes = FaultOutcomeLedger::default();
+        self.schedule_id = self.schedule.identity();
+        self.run_sequence = run_sequence;
+        self.run_id = fault_run_id(self.config.seed, run_sequence, self.schedule_id);
+        self.selection_sequence = 0;
+        self.run_exhausted = false;
+        self.setup_complete = false;
+        self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
+        self.choice_history.clear();
+    }
+
+    /// Start a clean counterfactual run after the current bounded run.
+    pub fn begin_counterfactual_run(
+        &mut self,
+        schedule: FaultSchedule,
+    ) -> Result<(), FaultSelectionError> {
+        let run_sequence = self
+            .run_sequence
+            .checked_add(1)
+            .ok_or(FaultSelectionError::RunSequenceExhausted)?;
+        self.oracle.begin_run();
+        self.schedule = schedule;
+        self.schedule.reset();
+        self.schedule_id = self.schedule.identity();
+        self.run_sequence = run_sequence;
+        self.run_id = fault_run_id(self.config.seed, run_sequence, self.schedule_id);
+        self.selection_sequence = 0;
+        self.run_exhausted = false;
+        self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
+        self.choice_history.clear();
+        Ok(())
     }
 
     /// End the current test run.
@@ -396,6 +506,21 @@ impl FaultEngine {
         &mut self,
         current_time_ns: u64,
     ) -> Result<Vec<FaultAttempt>, FaultSelectionError> {
+        self.poll_fault_attempts_with_limits(
+            current_time_ns,
+            MAX_FAULT_ATTEMPTS,
+            MAX_FAULT_OUTCOME_EVENTS,
+        )
+    }
+
+    /// Test seam for atomic fault-selection batch admission.
+    #[doc(hidden)]
+    pub fn poll_fault_attempts_with_limits(
+        &mut self,
+        current_time_ns: u64,
+        attempt_limit: usize,
+        event_limit: usize,
+    ) -> Result<Vec<FaultAttempt>, FaultSelectionError> {
         if !self.setup_complete {
             return Ok(Vec::new());
         }
@@ -403,21 +528,75 @@ impl FaultEngine {
             return RunSequenceExhaustedSnafu.fail();
         }
 
-        let mut faults = Vec::new();
-        for scheduled in self.schedule.drain_due(current_time_ns) {
-            faults.push(scheduled.fault);
-        }
-        if self.config.random_faults && current_time_ns >= self.next_random_fault_time_ns {
-            if let Some(fault) = self.generate_random_fault() {
-                faults.push(fault);
-            }
-            self.next_random_fault_time_ns =
-                current_time_ns.saturating_add(self.config.random_fault_interval_ns);
+        let mut next_schedule = self.schedule.clone();
+        let mut selections = Vec::new();
+        for (entry_index, scheduled) in next_schedule.drain_due_indexed(current_time_ns) {
+            let entry_index = u64::try_from(entry_index)
+                .map_err(|_| FaultSelectionError::ScheduleEntryIndexOverflow)?;
+            selections.push((
+                FaultAttemptSource::Scheduled {
+                    entry_index,
+                    scheduled_at_ns: scheduled.time_ns,
+                },
+                scheduled.fault,
+            ));
         }
 
-        let mut attempts = Vec::with_capacity(faults.len());
-        for fault in faults {
-            attempts.push(self.select_fault(fault, current_time_ns)?);
+        let random_is_due =
+            self.config.random_faults && current_time_ns >= self.next_random_fault_time_ns;
+        let random_selection_count = usize::from(random_is_due && self.config.num_vms > 0);
+        let batch_count = selections
+            .len()
+            .checked_add(random_selection_count)
+            .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
+        preflight_selection_batch(
+            &self.outcomes,
+            self.selection_sequence,
+            batch_count,
+            attempt_limit,
+            event_limit,
+        )?;
+
+        let mut next_rng = self.rng.clone();
+        if random_is_due {
+            if let Some(fault) = Self::generate_random_fault(&mut next_rng, self.config.num_vms) {
+                selections.push((FaultAttemptSource::Random, fault));
+            }
+        }
+
+        let mut next_outcomes = self.outcomes.clone();
+        let mut next_selection_sequence = self.selection_sequence;
+        let mut attempts = Vec::with_capacity(selections.len());
+        for (source, fault) in selections {
+            let attempt = FaultAttempt::new_with_source(
+                self.run_id,
+                self.run_sequence,
+                self.schedule_id,
+                next_selection_sequence,
+                current_time_ns,
+                source,
+                fault,
+            );
+            next_outcomes = transition_fault_outcome(
+                &next_outcomes,
+                Some(&attempt),
+                attempt.id,
+                FaultStageKind::Selected,
+            )
+            .context(OutcomeTransitionSnafu)?;
+            next_selection_sequence = next_selection_sequence
+                .checked_add(1)
+                .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
+            attempts.push(attempt);
+        }
+
+        self.schedule = next_schedule;
+        self.rng = next_rng;
+        self.outcomes = next_outcomes;
+        self.selection_sequence = next_selection_sequence;
+        if random_is_due {
+            self.next_random_fault_time_ns =
+                current_time_ns.saturating_add(self.config.random_fault_interval_ns);
         }
         Ok(attempts)
     }
@@ -428,21 +607,33 @@ impl FaultEngine {
             .map(|attempts| attempts.into_iter().map(|attempt| attempt.fault).collect())
     }
 
+    #[cfg(test)]
     fn select_fault(
         &mut self,
         fault: Fault,
         selected_at_ns: u64,
     ) -> Result<FaultAttempt, FaultSelectionError> {
+        self.select_fault_from_source(fault, selected_at_ns, FaultAttemptSource::Direct)
+    }
+
+    #[cfg(test)]
+    fn select_fault_from_source(
+        &mut self,
+        fault: Fault,
+        selected_at_ns: u64,
+        source: FaultAttemptSource,
+    ) -> Result<FaultAttempt, FaultSelectionError> {
         let selection_sequence = self.selection_sequence;
         let next_selection_sequence = selection_sequence
             .checked_add(1)
             .ok_or(FaultSelectionError::SelectionSequenceOverflow)?;
-        let attempt = FaultAttempt::new(
+        let attempt = FaultAttempt::new_with_source(
             self.run_id,
             self.run_sequence,
             self.schedule_id,
             selection_sequence,
             selected_at_ns,
+            source,
             fault,
         );
         let next = transition_fault_outcome(
@@ -546,12 +737,21 @@ impl FaultEngine {
         self.setup_complete = false;
     }
 
-    /// Replace the fault schedule (for exploration branch mutations).
-    pub fn set_schedule(&mut self, schedule: FaultSchedule) {
+    /// Replace the schedule before the current run selects any fault.
+    pub fn set_schedule(&mut self, schedule: FaultSchedule) -> Result<(), FaultSelectionError> {
+        if self.selection_sequence != 0
+            || self
+                .outcomes
+                .attempts
+                .values()
+                .any(|state| state.attempt.run_sequence == self.run_sequence)
+        {
+            return Err(FaultSelectionError::ScheduleMutationAfterSelection);
+        }
         self.schedule = schedule;
         self.schedule_id = self.schedule.identity();
         self.run_id = fault_run_id(self.config.seed, self.run_sequence, self.schedule_id);
-        self.selection_sequence = 0;
+        Ok(())
     }
 
     /// Snapshot the engine state.
@@ -577,11 +777,80 @@ impl FaultEngine {
     /// Validate an untrusted engine snapshot without changing live state.
     pub fn validate_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
         validate_fault_outcome_ledger(&snapshot.outcomes)?;
+        let canonical_rng = Self::rng_from_seed(self.config.seed);
+        if snapshot.rng_seed != canonical_rng.get_seed()
+            || snapshot.rng_stream != canonical_rng.get_stream()
+        {
+            return Err(FaultTransitionError::SnapshotRngStateMismatch);
+        }
         if !self.schedule.snapshot_is_valid(&snapshot.schedule) {
             return Err(FaultTransitionError::SnapshotScheduleCursorMismatch);
         }
         if self.schedule.identity() != snapshot.schedule_id {
             return Err(FaultTransitionError::SnapshotScheduleIdentityMismatch);
+        }
+        let mut scheduled_prefix = Vec::new();
+        let mut last_random_selection_ns = None;
+        for state in snapshot.outcomes.attempts.values() {
+            let attempt = &state.attempt;
+            if attempt.run_sequence != snapshot.run_sequence {
+                continue;
+            }
+            match attempt.source {
+                FaultAttemptSource::Direct => {
+                    return Err(FaultTransitionError::SnapshotAttemptSourceMismatch);
+                }
+                FaultAttemptSource::Scheduled {
+                    entry_index,
+                    scheduled_at_ns,
+                } => {
+                    let entry_index = usize::try_from(entry_index)
+                        .map_err(|_| FaultTransitionError::SnapshotAttemptSourceMismatch)?;
+                    let entry = self
+                        .schedule
+                        .entry(entry_index)
+                        .ok_or(FaultTransitionError::SnapshotAttemptSourceMismatch)?;
+                    if attempt.schedule_id != snapshot.schedule_id
+                        || entry.time_ns != scheduled_at_ns
+                        || entry.fault != attempt.fault
+                        || attempt.selected_at_ns < scheduled_at_ns
+                    {
+                        return Err(FaultTransitionError::SnapshotAttemptSourceMismatch);
+                    }
+                    scheduled_prefix.push(entry_index);
+                }
+                FaultAttemptSource::Random => {
+                    if !self.config.random_faults {
+                        return Err(FaultTransitionError::SnapshotRandomStateMismatch);
+                    }
+                    last_random_selection_ns = Some(
+                        last_random_selection_ns.map_or(attempt.selected_at_ns, |prior: u64| {
+                            prior.max(attempt.selected_at_ns)
+                        }),
+                    );
+                }
+            }
+        }
+        if self.config.random_faults && self.config.num_vms > 0 {
+            let expected_random_time = last_random_selection_ns.map_or(
+                self.config.random_fault_interval_ns,
+                |selected_at_ns| {
+                    selected_at_ns.saturating_add(self.config.random_fault_interval_ns)
+                },
+            );
+            if snapshot.next_random_fault_time_ns != expected_random_time {
+                return Err(FaultTransitionError::SnapshotRandomStateMismatch);
+            }
+        }
+        scheduled_prefix.sort_unstable();
+        if scheduled_prefix.len() != snapshot.schedule.cursor()
+            || scheduled_prefix
+                .iter()
+                .copied()
+                .enumerate()
+                .any(|(expected, actual)| expected != actual)
+        {
+            return Err(FaultTransitionError::SnapshotScheduleCursorMismatch);
         }
         if snapshot.run_id
             != fault_run_id(
@@ -750,59 +1019,59 @@ impl FaultEngine {
             .unwrap_or_else(|| (String::new(), b"{}".to_vec()))
     }
 
-    fn generate_random_fault(&mut self) -> Option<Fault> {
-        if self.config.num_vms == 0 {
+    fn generate_random_fault(rng: &mut ChaCha20Rng, num_vms: usize) -> Option<Fault> {
+        if num_vms == 0 {
             return None;
         }
 
-        let target = (self.rng.next_u64() as usize) % self.config.num_vms;
-        let fault_type = self.rng.next_u64() % 20;
+        let target = (rng.next_u64() as usize) % num_vms;
+        let fault_type = rng.next_u64() % 20;
 
         Some(match fault_type {
             0 => Fault::ProcessKill { target },
             1 => Fault::ProcessPause {
                 target,
-                duration_ns: (self.rng.next_u64() % 5_000_000_000) + 100_000_000,
+                duration_ns: (rng.next_u64() % 5_000_000_000) + 100_000_000,
             },
             2 => {
                 // Network partition: target vs everyone else
                 let side_a = vec![target];
-                let side_b = (0..self.config.num_vms).filter(|&i| i != target).collect();
+                let side_b = (0..num_vms).filter(|&i| i != target).collect();
                 Fault::NetworkPartition { side_a, side_b }
             }
             3 => Fault::NetworkHeal,
             4 => Fault::PacketLoss {
                 target,
-                rate_ppm: ((self.rng.next_u64() % 500_000) + 10_000) as u32,
+                rate_ppm: ((rng.next_u64() % 500_000) + 10_000) as u32,
             },
             5 => Fault::DiskWriteError {
                 target,
-                offset: self.rng.next_u64() % (1024 * 1024),
+                offset: rng.next_u64() % (1024 * 1024),
             },
             6 => Fault::DiskTornWrite {
                 target,
-                offset: self.rng.next_u64() % (1024 * 1024),
-                bytes_written: ((self.rng.next_u64() % 511) + 1) as usize,
+                offset: rng.next_u64() % (1024 * 1024),
+                bytes_written: ((rng.next_u64() % 511) + 1) as usize,
             },
             7 => Fault::ClockSkew {
                 target,
-                offset_ns: (self.rng.next_u64() % 10_000_000_000) as i64 - 5_000_000_000,
+                offset_ns: (rng.next_u64() % 10_000_000_000) as i64 - 5_000_000_000,
             },
             8 => Fault::NetworkJitter {
                 target,
-                jitter_ns: (self.rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
+                jitter_ns: (rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
             },
             9 => Fault::NetworkBandwidth {
                 target,
-                bytes_per_sec: (self.rng.next_u64() % 10_000_000) + 100_000, // 100 KB/s–10 MB/s
+                bytes_per_sec: (rng.next_u64() % 10_000_000) + 100_000, // 100 KB/s–10 MB/s
             },
             10 => Fault::PacketDuplicate {
                 target,
-                rate_ppm: ((self.rng.next_u64() % 200_000) + 10_000) as u32, // 1–21 %
+                rate_ppm: ((rng.next_u64() % 200_000) + 10_000) as u32, // 1–21 %
             },
             11 => Fault::InjectInterrupt {
                 target,
-                irq: (self.rng.next_u64() % 8) as u32, // 0-7: PIT, serial, virtio
+                irq: (rng.next_u64() % 8) as u32, // 0-7: PIT, serial, virtio
             },
             12 => Fault::InjectNmi {
                 target,
@@ -810,32 +1079,32 @@ impl FaultEngine {
             },
             13 => Fault::DiskSlow {
                 target,
-                delay_ns: (self.rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
+                delay_ns: (rng.next_u64() % 50_000_000) + 1_000_000, // 1–51 ms
             },
             14 => Fault::DiskFsyncLie { target },
             15 => Fault::DiskPartialRead {
                 target,
-                offset: self.rng.next_u64() % (1024 * 1024),
-                max_bytes: ((self.rng.next_u64() % 4095) + 1) as usize,
+                offset: rng.next_u64() % (1024 * 1024),
+                max_bytes: ((rng.next_u64() % 4095) + 1) as usize,
             },
             16 => Fault::CpuBitflip {
                 target,
                 vcpu: 0,
-                register: GpRegister::ALL[(self.rng.next_u64() % 16) as usize],
-                bit: (self.rng.next_u64() % 64) as u8,
+                register: GpRegister::ALL[(rng.next_u64() % 16) as usize],
+                bit: (rng.next_u64() % 64) as u8,
             },
             17 => Fault::CpuStall {
                 target,
                 vcpu: 0,
-                duration_ticks: (self.rng.next_u64() % 200) + 1,
+                duration_ticks: (rng.next_u64() % 200) + 1,
             },
             18 => Fault::ClockFreeze {
                 target,
-                duration_ticks: (self.rng.next_u64() % 500) + 10,
+                duration_ticks: (rng.next_u64() % 500) + 10,
             },
             19 => Fault::ClockJitter {
                 target,
-                bound_tsc: (self.rng.next_u64() % 5000) + 100,
+                bound_tsc: (rng.next_u64() % 5000) + 100,
             },
             _ => unreachable!(),
         })
@@ -1143,22 +1412,28 @@ mod tests {
 
     #[test]
     fn snapshot_rejects_duplicate_current_run_selection_indices() {
-        let mut engine = FaultEngine::new(EngineConfig::default());
+        let mut engine = FaultEngine::new(EngineConfig {
+            num_vms: 0,
+            random_faults: true,
+            ..EngineConfig::default()
+        });
         engine.begin_run();
-        let first = FaultAttempt::new(
+        let first = FaultAttempt::new_with_source(
             engine.run_id,
             engine.run_sequence,
             engine.schedule_id,
             0,
             0,
+            FaultAttemptSource::Random,
             Fault::ProcessKill { target: 0 },
         );
-        let second = FaultAttempt::new(
+        let second = FaultAttempt::new_with_source(
             engine.run_id,
             engine.run_sequence,
             engine.schedule_id,
             0,
             1,
+            FaultAttemptSource::Random,
             Fault::NetworkHeal,
         );
         let ledger = transition_fault_outcome(
@@ -1179,6 +1454,326 @@ mod tests {
             engine.validate_snapshot(&snapshot),
             Err(FaultTransitionError::SnapshotSelectionSequenceMismatch)
         );
+    }
+
+    #[test]
+    fn scheduled_source_binds_cursor_and_setup_boundary() {
+        const SCHEDULED_AT_NS: u64 = 10;
+        const POLLED_AT_NS: u64 = 20;
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(SCHEDULED_AT_NS, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        assert!(engine.poll_fault_attempts(POLLED_AT_NS).unwrap().is_empty());
+        engine.force_setup_complete();
+
+        let attempts = engine.poll_fault_attempts(POLLED_AT_NS).unwrap();
+
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(
+            attempts[0].source,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: SCHEDULED_AT_NS,
+            }
+        );
+        assert_eq!(attempts[0].selected_at_ns, POLLED_AT_NS);
+        assert!(engine.validate_snapshot(&engine.snapshot()).is_ok());
+    }
+
+    #[test]
+    fn snapshot_rejects_cursor_forward_backward_and_direct_source_tampering() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        let attempt = engine.poll_fault_attempts(0).unwrap().remove(0);
+        let valid = engine.snapshot();
+
+        let mut backward = valid.clone();
+        backward.schedule.set_cursor(0);
+        assert_eq!(
+            engine.validate_snapshot(&backward),
+            Err(FaultTransitionError::SnapshotScheduleCursorMismatch)
+        );
+
+        let mut forward = valid.clone();
+        forward.schedule.set_cursor(2);
+        assert_eq!(
+            engine.validate_snapshot(&forward),
+            Err(FaultTransitionError::SnapshotScheduleCursorMismatch)
+        );
+
+        let wrong_source_time = FaultAttempt::new_with_source(
+            attempt.run_id,
+            attempt.run_sequence,
+            attempt.schedule_id,
+            attempt.selection_index,
+            attempt.selected_at_ns,
+            FaultAttemptSource::Scheduled {
+                entry_index: 0,
+                scheduled_at_ns: attempt.selected_at_ns.saturating_add(1),
+            },
+            attempt.fault.clone(),
+        );
+        let wrong_time_ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&wrong_source_time),
+            wrong_source_time.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let mut wrong_time_snapshot = valid.clone();
+        wrong_time_snapshot.outcomes = wrong_time_ledger;
+        assert_eq!(
+            engine.validate_snapshot(&wrong_time_snapshot),
+            Err(FaultTransitionError::SnapshotAttemptSourceMismatch)
+        );
+
+        let wrong_fault = FaultAttempt::new_with_source(
+            attempt.run_id,
+            attempt.run_sequence,
+            attempt.schedule_id,
+            attempt.selection_index,
+            attempt.selected_at_ns,
+            attempt.source,
+            Fault::NetworkHeal,
+        );
+        let wrong_fault_ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&wrong_fault),
+            wrong_fault.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let mut wrong_fault_snapshot = valid.clone();
+        wrong_fault_snapshot.outcomes = wrong_fault_ledger;
+        assert_eq!(
+            engine.validate_snapshot(&wrong_fault_snapshot),
+            Err(FaultTransitionError::SnapshotAttemptSourceMismatch)
+        );
+
+        let direct = FaultAttempt::new_with_source(
+            attempt.run_id,
+            attempt.run_sequence,
+            attempt.schedule_id,
+            attempt.selection_index,
+            attempt.selected_at_ns,
+            FaultAttemptSource::Direct,
+            attempt.fault,
+        );
+        let direct_ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&direct),
+            direct.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let mut direct_snapshot = valid;
+        direct_snapshot.schedule.set_cursor(0);
+        direct_snapshot.outcomes = direct_ledger;
+        assert_eq!(
+            engine.validate_snapshot(&direct_snapshot),
+            Err(FaultTransitionError::SnapshotAttemptSourceMismatch)
+        );
+    }
+
+    #[test]
+    fn random_snapshot_timer_seed_and_stream_are_bound() {
+        const RANDOM_INTERVAL_NS: u64 = 10;
+        let mut engine = FaultEngine::new(EngineConfig {
+            random_faults: true,
+            random_fault_interval_ns: RANDOM_INTERVAL_NS,
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        let valid_initial = engine.snapshot();
+        assert!(engine.validate_snapshot(&valid_initial).is_ok());
+
+        let mut timer_backward = valid_initial.clone();
+        timer_backward.next_random_fault_time_ns = RANDOM_INTERVAL_NS - 1;
+        assert_eq!(
+            engine.validate_snapshot(&timer_backward),
+            Err(FaultTransitionError::SnapshotRandomStateMismatch)
+        );
+        let mut timer_forward = valid_initial.clone();
+        timer_forward.next_random_fault_time_ns = RANDOM_INTERVAL_NS + 1;
+        assert_eq!(
+            engine.validate_snapshot(&timer_forward),
+            Err(FaultTransitionError::SnapshotRandomStateMismatch)
+        );
+        let mut seed_tamper = valid_initial.clone();
+        seed_tamper.rng_seed[0] ^= 1;
+        assert_eq!(
+            engine.validate_snapshot(&seed_tamper),
+            Err(FaultTransitionError::SnapshotRngStateMismatch)
+        );
+        let mut stream_tamper = valid_initial;
+        stream_tamper.rng_stream = stream_tamper.rng_stream.saturating_add(1);
+        assert_eq!(
+            engine.validate_snapshot(&stream_tamper),
+            Err(FaultTransitionError::SnapshotRngStateMismatch)
+        );
+
+        engine.force_setup_complete();
+        let attempts = engine.poll_fault_attempts(RANDOM_INTERVAL_NS).unwrap();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].source, FaultAttemptSource::Random);
+        let valid_selected = engine.snapshot();
+        assert!(engine.validate_snapshot(&valid_selected).is_ok());
+        let mut selected_timer_backward = valid_selected.clone();
+        selected_timer_backward.next_random_fault_time_ns =
+            RANDOM_INTERVAL_NS.saturating_mul(2).saturating_sub(1);
+        assert_eq!(
+            engine.validate_snapshot(&selected_timer_backward),
+            Err(FaultTransitionError::SnapshotRandomStateMismatch)
+        );
+        let mut selected_timer_forward = valid_selected;
+        selected_timer_forward.next_random_fault_time_ns =
+            RANDOM_INTERVAL_NS.saturating_mul(2).saturating_add(1);
+        assert_eq!(
+            engine.validate_snapshot(&selected_timer_forward),
+            Err(FaultTransitionError::SnapshotRandomStateMismatch)
+        );
+    }
+
+    #[test]
+    fn snapshot_rejects_random_source_when_random_faults_are_disabled() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        let attempt = FaultAttempt::new_with_source(
+            engine.run_id,
+            engine.run_sequence,
+            engine.schedule_id,
+            0,
+            0,
+            FaultAttemptSource::Random,
+            Fault::ProcessKill { target: 0 },
+        );
+        let ledger = transition_fault_outcome(
+            &FaultOutcomeLedger::default(),
+            Some(&attempt),
+            attempt.id,
+            FaultStageKind::Selected,
+        )
+        .unwrap();
+        let mut snapshot = engine.snapshot();
+        snapshot.outcomes = ledger;
+        snapshot.selection_sequence = 1;
+
+        assert_eq!(
+            engine.validate_snapshot(&snapshot),
+            Err(FaultTransitionError::SnapshotRandomStateMismatch)
+        );
+    }
+
+    #[test]
+    fn low_capacity_multi_due_selection_is_atomic() {
+        const DUE_FAULT_COUNT: usize = 2;
+        const REJECTING_EVENT_LIMIT: usize = 1;
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .at_ns(0, Fault::NetworkHeal)
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            random_faults: true,
+            random_fault_interval_ns: 0,
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        let before = engine.snapshot();
+
+        let result =
+            engine.poll_fault_attempts_with_limits(0, MAX_FAULT_ATTEMPTS, REJECTING_EVENT_LIMIT);
+
+        assert!(matches!(
+            result,
+            Err(FaultSelectionError::OutcomeTransition {
+                source: FaultTransitionError::EventBoundExceeded
+            })
+        ));
+        let after = engine.snapshot();
+        assert_eq!(after.schedule.cursor(), before.schedule.cursor());
+        assert_eq!(after.rng_word_pos, before.rng_word_pos);
+        assert_eq!(after.outcomes, before.outcomes);
+        assert_eq!(after.selection_sequence, before.selection_sequence);
+        assert_eq!(
+            after.next_random_fault_time_ns,
+            before.next_random_fault_time_ns
+        );
+
+        let attempts = engine.poll_fault_attempts(0).unwrap();
+        assert_eq!(attempts.len(), DUE_FAULT_COUNT + 1);
+        assert_eq!(engine.snapshot().schedule.cursor(), DUE_FAULT_COUNT);
+        assert_eq!(engine.fault_outcomes().attempts.len(), attempts.len());
+    }
+
+    #[test]
+    fn replay_run_rebinding_does_not_double_start_the_oracle() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        let before = engine.oracle().report().total_runs;
+
+        engine.rebind_fresh_run_at(FaultSchedule::new(), 1);
+
+        assert_eq!(engine.oracle().report().total_runs, before);
+    }
+
+    #[test]
+    fn counterfactual_run_preserves_setup_and_selects_due_fault() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.begin_run();
+        engine.force_setup_complete();
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+
+        engine.begin_counterfactual_run(schedule).unwrap();
+        let attempts = engine.poll_fault_attempts(0).unwrap();
+
+        assert!(engine.is_setup_complete());
+        assert_eq!(attempts.len(), 1);
+        assert!(matches!(
+            attempts[0].source,
+            FaultAttemptSource::Scheduled { entry_index: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn same_run_schedule_replacement_is_rejected_after_selection() {
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(0, Fault::ProcessKill { target: 0 })
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        engine.force_setup_complete();
+        engine.poll_fault_attempts(0).unwrap();
+        let before = engine.snapshot();
+
+        let result = engine.set_schedule(FaultSchedule::new());
+
+        assert!(matches!(
+            result,
+            Err(FaultSelectionError::ScheduleMutationAfterSelection)
+        ));
+        let after = engine.snapshot();
+        assert_eq!(after.schedule_id, before.schedule_id);
+        assert_eq!(after.run_id, before.run_id);
+        assert_eq!(after.outcomes, before.outcomes);
     }
 
     #[test]

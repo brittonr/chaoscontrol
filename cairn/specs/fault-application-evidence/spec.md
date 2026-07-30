@@ -1,10 +1,10 @@
-# Fault Application Evidence Specification Delta
+# Fault Application Evidence Specification
 
 ## Purpose
 
-Report fault selection, validation, successful application, failure, and guest-visible observation as distinct deterministic stages.
+Defines the `fault-application-evidence` capability.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Fault attempts have explicit stage semantics
 

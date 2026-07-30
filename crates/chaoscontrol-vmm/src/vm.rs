@@ -1597,41 +1597,74 @@ impl DeterministicVm {
     /// Returns `true` if the block device was found and the fault was injected,
     /// `false` if no block device exists.
     pub fn inject_disk_fault(&mut self, fault: crate::devices::block::BlockFault) -> bool {
-        // Block device has device_id == 2
-        for device in &mut self.virtio_devices {
-            if device.backend().device_id() == 2 {
-                // Downcast to VirtioBlock
-                if let Some(virtio_block) = device
-                    .backend_mut()
-                    .as_any_mut()
-                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>(
-                ) {
-                    virtio_block.disk_mut().inject_fault(fault);
-                    return true;
-                }
-            }
-        }
-        false
+        self.with_block_device(|disk| disk.inject_fault(fault))
+    }
+
+    /// Inject a block fault bound to one selected attempt.
+    pub fn inject_disk_fault_with_attempt(
+        &mut self,
+        fault: crate::devices::block::BlockFault,
+        attempt_id: chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) -> bool {
+        self.with_block_device(|disk| disk.inject_fault_with_attempt(fault, attempt_id))
+    }
+
+    /// Return the block-device size when the VM has a block backend.
+    pub fn block_device_size_bytes(&mut self) -> Option<u64> {
+        let mut size_bytes = None;
+        self.with_block_device(|disk| size_bytes = Some(disk.size()));
+        size_bytes
+    }
+
+    /// Set persistent disk-full behavior.
+    pub fn set_disk_full(&mut self, is_full: bool) -> bool {
+        self.with_block_device(|disk| disk.set_full(is_full))
+    }
+
+    /// Set persistent disk-full behavior for one selected attempt.
+    pub fn set_disk_full_with_attempt(
+        &mut self,
+        is_full: bool,
+        attempt_id: chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) -> bool {
+        self.with_block_device(|disk| disk.set_full_with_attempt(is_full, attempt_id))
     }
 
     /// Set per-I/O delay on the block device (DiskSlow fault).
-    pub fn set_disk_slow_delay(&mut self, delay_ns: u64) {
-        self.with_block_device(|disk| disk.set_slow_delay_ns(delay_ns));
+    pub fn set_disk_slow_delay(&mut self, delay_ns: u64) -> bool {
+        self.with_block_device(|disk| disk.set_slow_delay_ns(delay_ns))
+    }
+
+    /// Set per-I/O delay for one selected attempt.
+    pub fn set_disk_slow_delay_with_attempt(
+        &mut self,
+        delay_ns: u64,
+        attempt_id: chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) -> bool {
+        self.with_block_device(|disk| disk.set_slow_delay_with_attempt(delay_ns, attempt_id))
     }
 
     /// Enable fsync-lie mode on the block device.
-    pub fn enable_disk_fsync_lie(&mut self) {
-        self.with_block_device(|disk| disk.enable_fsync_lie());
+    pub fn enable_disk_fsync_lie(&mut self) -> bool {
+        self.with_block_device(|disk| disk.enable_fsync_lie())
+    }
+
+    /// Enable fsync-lie mode for one selected attempt.
+    pub fn enable_disk_fsync_lie_with_attempt(
+        &mut self,
+        attempt_id: chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) -> bool {
+        self.with_block_device(|disk| disk.enable_fsync_lie_with_attempt(attempt_id))
     }
 
     /// Flush volatile writes on the block device (DiskFsyncFlush).
-    pub fn flush_disk_volatile(&mut self) {
-        self.with_block_device(|disk| disk.flush_volatile());
+    pub fn flush_disk_volatile(&mut self) -> bool {
+        self.with_block_device(|disk| disk.flush_volatile())
     }
 
     /// Discard volatile writes on the block device (crash semantics).
-    pub fn discard_disk_volatile(&mut self) {
-        self.with_block_device(|disk| disk.discard_volatile());
+    pub fn discard_disk_volatile(&mut self) -> bool {
+        self.with_block_device(|disk| disk.discard_volatile())
     }
 
     /// Snapshot the block device's dirty + volatile pages for preservation
@@ -1654,15 +1687,34 @@ impl DeterministicVm {
     }
 
     /// Restore dirty + volatile pages into the block device after a restart.
-    pub fn restore_block_dirty(&mut self, overlay: crate::devices::block::DirtyOverlay) {
-        self.with_block_device(|disk| disk.restore_dirty(overlay));
+    pub fn restore_block_dirty(&mut self, overlay: crate::devices::block::DirtyOverlay) -> bool {
+        self.with_block_device(|disk| disk.restore_dirty(overlay))
+    }
+
+    /// Drain block-path observations from all block backends.
+    pub fn drain_block_fault_observations(
+        &mut self,
+    ) -> (Vec<chaoscontrol_fault::outcomes::FaultObservation>, u64) {
+        let mut observations = Vec::new();
+        let mut overflowed = 0u64;
+        self.with_block_device(|disk| {
+            let (drained, dropped) = disk.drain_fault_observations();
+            observations = drained;
+            overflowed = dropped;
+        });
+        (observations, overflowed)
+    }
+
+    /// Return the configured vCPU count.
+    pub fn vcpu_count(&self) -> usize {
+        self.vcpus.len()
     }
 
     /// Helper: run a closure on the virtio-blk disk, if present.
     fn with_block_device(
         &mut self,
         f: impl FnOnce(&mut crate::devices::block::DeterministicBlock),
-    ) {
+    ) -> bool {
         for device in &mut self.virtio_devices {
             if device.backend().device_id() == 2 {
                 if let Some(virtio_block) = device
@@ -1671,10 +1723,11 @@ impl DeterministicVm {
                     .downcast_mut::<crate::devices::virtio_block::VirtioBlock>(
                 ) {
                     f(virtio_block.disk_mut());
-                    return;
+                    return true;
                 }
             }
         }
+        false
     }
 
     /// Flip a single bit in a vCPU's general-purpose register.
@@ -1693,8 +1746,11 @@ impl DeterministicVm {
                 ),
             });
         }
-        if bit >= 64 {
-            return Ok(()); // silently ignore out-of-range bits
+        const GENERAL_REGISTER_BIT_COUNT: u8 = 64;
+        if bit >= GENERAL_REGISTER_BIT_COUNT {
+            return Err(VmError::Snapshot {
+                message: format!("bitflip: bit {bit} is out of range"),
+            });
         }
         let vcpu = &self.vcpus[vcpu_idx];
         let mut regs = vcpu.get_regs().context(GetRegistersSnafu)?;
@@ -1823,8 +1879,9 @@ impl DeterministicVm {
         } else {
             let err = io::Error::last_os_error();
             if err.raw_os_error() == Some(libc::ENOTTY) {
-                log::warn!("KVM_NMI not supported on this kernel — skipping");
-                return Ok(()); // Graceful degradation
+                return Err(VmError::Snapshot {
+                    message: "KVM_NMI is not supported on this kernel".to_string(),
+                });
             }
             Err(VmError::Io { source: err })
         }

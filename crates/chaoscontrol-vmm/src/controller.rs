@@ -2016,6 +2016,7 @@ impl SimulationController {
                     if self.tick >= resume_at_tick {
                         info!("VM{} resuming from pause at tick {}", i, self.tick);
                         self.vms[i].status = VmStatus::Running;
+                        self.vms[i].process_fault_attempt = None;
                         // Run the resumed VM for this round's quantum
                         let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
                         if halted {
@@ -2259,7 +2260,10 @@ impl SimulationController {
             .collect::<Vec<_>>();
         self.record_fault_observations_with_event_limit(&observations, event_limit)?;
         for (vm_index, observation) in self.pending_process_observations.drain(..) {
-            if self.vms[vm_index].process_fault_attempt == Some(observation.attempt_id) {
+            let active_pause = matches!(self.vms[vm_index].status, VmStatus::Resuming { .. });
+            if !active_pause
+                && self.vms[vm_index].process_fault_attempt == Some(observation.attempt_id)
+            {
                 self.vms[vm_index].process_fault_attempt = None;
             }
         }
@@ -5498,6 +5502,77 @@ mod tests {
                 }
             )
         }));
+    }
+
+    #[test]
+    fn mid_pause_snapshot_restores_after_process_skip_observation() {
+        const PAUSE_TICKS: u64 = 3;
+        const PAUSE_DURATION_NS: u64 =
+            PAUSE_TICKS * chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK;
+        let mut controller = adapter_test_controller();
+        controller.network = NetworkFabric::new(1, controller.config.seed);
+        controller
+            .apply_fault(&Fault::ProcessPause {
+                target: 0,
+                duration_ns: PAUSE_DURATION_NS,
+            })
+            .unwrap();
+        let attempt_id = attempt_id_for(&controller, FaultVariant::ProcessPause);
+        controller.step_round().unwrap();
+        assert_eq!(controller.fault_outcomes().counters.observed, 1);
+
+        let snapshot = controller.snapshot_all().unwrap();
+        assert_eq!(snapshot.process_fault_attempt[0], Some(attempt_id));
+        assert!(matches!(
+            snapshot.vm_snapshots[0].1,
+            VmStatus::Resuming { .. }
+        ));
+        controller.vms[0].status = VmStatus::Running;
+        controller.vms[0].process_fault_attempt = None;
+
+        controller.restore_all(&snapshot).unwrap();
+
+        assert_eq!(controller.vms[0].process_fault_attempt, Some(attempt_id));
+        assert_eq!(controller.vms[0].status, snapshot.vm_snapshots[0].1);
+    }
+
+    #[test]
+    fn pause_snapshot_rejects_wrong_target_and_deadline() {
+        const PAUSE_TICKS: u64 = 3;
+        const PAUSE_DURATION_NS: u64 =
+            PAUSE_TICKS * chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK;
+        const WRONG_TARGET: u32 = 1;
+        let mut controller = adapter_test_controller();
+        controller.network = NetworkFabric::new(1, controller.config.seed);
+        controller
+            .apply_fault(&Fault::ProcessPause {
+                target: 0,
+                duration_ns: PAUSE_DURATION_NS,
+            })
+            .unwrap();
+        let attempt_id = attempt_id_for(&controller, FaultVariant::ProcessPause);
+        controller.step_round().unwrap();
+        let snapshot = controller.snapshot_all().unwrap();
+        let VmStatus::Resuming { resume_at_tick } = snapshot.vm_snapshots[0].1 else {
+            panic!("pause snapshot must remain active");
+        };
+
+        assert!(validate_process_snapshot_effect(
+            snapshot.fault_engine_snapshot.outcomes(),
+            WRONG_TARGET,
+            VmStatus::Resuming { resume_at_tick },
+            Some(attempt_id),
+            false,
+        )
+        .is_err());
+
+        let mut wrong_deadline = snapshot.clone();
+        wrong_deadline.vm_snapshots[0].1 = VmStatus::Resuming {
+            resume_at_tick: resume_at_tick + 1,
+        };
+        let status_before = controller.vms[0].status;
+        assert!(controller.restore_all(&wrong_deadline).is_err());
+        assert_eq!(controller.vms[0].status, status_before);
     }
 
     #[test]

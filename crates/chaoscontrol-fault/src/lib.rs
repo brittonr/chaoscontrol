@@ -21,5 +21,6 @@
 pub mod engine;
 pub mod faults;
 pub mod oracle;
+pub mod outcomes;
 pub mod scenario;
 pub mod schedule;

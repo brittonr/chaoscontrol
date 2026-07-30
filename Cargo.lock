@@ -339,6 +339,7 @@ dependencies = [
 name = "chaoscontrol-fault"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "chaoscontrol-protocol",
  "rand",
  "rand_chacha",

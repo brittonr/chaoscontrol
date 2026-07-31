@@ -82,6 +82,7 @@ impl Default for EngineConfig {
 
 /// Snapshot of the engine state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EngineSnapshot {
     rng_seed: [u8; 32],
     rng_stream: u64,
@@ -94,6 +95,12 @@ pub struct EngineSnapshot {
     /// Choice counter at snapshot time — restored so sequence IDs
     /// align with overrides set by the explorer.
     choice_count: u64,
+}
+
+pub fn validate_engine_snapshot(
+    snapshot: &EngineSnapshot,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    crate::oracle_validation::validate_oracle_snapshot(&snapshot.oracle)
 }
 
 /// The central fault injection engine.
@@ -319,6 +326,13 @@ impl FaultEngine {
             Ok(frame) => frame,
             Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
         };
+        if frame
+            .descriptor
+            .compatibility_id
+            .is_some_and(|compatibility_id| compatibility_id != page.id)
+        {
+            return self.catalog_failure(CatalogConflict::CompatibilityAliasConflict);
+        }
         let result = match self.catalog_builder.as_mut() {
             Some(builder) => builder.insert_with_fingerprint(frame.descriptor, frame.fingerprint),
             None => return self.catalog_failure(CatalogConflict::CatalogIncomplete),
@@ -339,9 +353,19 @@ impl FaultEngine {
             Ok(token) => token,
             Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
         };
-        let Some(builder) = self.catalog_builder.take() else {
+        let Some(builder) = self.catalog_builder.as_ref() else {
             return self.catalog_failure(CatalogConflict::CatalogIncomplete);
         };
+        let completed_count = page.id as usize;
+        if completed_count != builder.expected_frames()
+            || completed_count != builder.received_frames()
+        {
+            return self.catalog_failure(CatalogConflict::UnexpectedDescriptorCount);
+        }
+        let builder = self
+            .catalog_builder
+            .take()
+            .expect("catalog builder was checked");
         match builder
             .complete(token)
             .and_then(|catalog| self.oracle.activate_catalog(catalog))
@@ -390,7 +414,7 @@ impl FaultEngine {
         };
         if self
             .oracle
-            .record_bound_event(&event, condition, details)
+            .record_bound_event_with_compatibility(&event, page.id, condition, details)
             .is_err()
         {
             return (0, STATUS_ASSERTION_EVENT_REJECTED);
@@ -568,11 +592,15 @@ impl FaultEngine {
     }
 
     /// Restore engine state from a snapshot.
-    pub fn restore(&mut self, snapshot: &EngineSnapshot) {
+    pub fn restore(
+        &mut self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), crate::oracle_validation::OracleValidationError> {
+        validate_engine_snapshot(snapshot)?;
         self.rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
         self.rng.set_stream(snapshot.rng_stream);
         self.rng.set_word_pos(snapshot.rng_word_pos);
-        self.oracle.restore(&snapshot.oracle);
+        self.oracle.restore(&snapshot.oracle)?;
         self.schedule.restore(&snapshot.schedule);
         self.faults_injected = snapshot.faults_injected;
         self.setup_complete = snapshot.setup_complete;
@@ -582,6 +610,7 @@ impl FaultEngine {
         // random_overrides are NOT cleared — they're set externally
         // before each branch by the explorer.
         self.choice_history.clear();
+        Ok(())
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -953,7 +982,7 @@ mod tests {
         assert_ne!(v1, v2);
 
         // Restore and verify same next value
-        engine.restore(&snap);
+        engine.restore(&snap).expect("restore engine");
         engine.begin_run();
         let (v3, _) = engine.handle_hypercall(&page);
         assert_eq!(v2, v3);
@@ -1129,7 +1158,7 @@ mod tests {
         assert_eq!(engine.choice_count(), 3);
 
         // Restore → back to 2
-        engine.restore(&snap);
+        engine.restore(&snap).expect("restore engine");
         assert_eq!(engine.choice_count(), 2);
 
         // History cleared on restore
@@ -1212,7 +1241,7 @@ mod tests {
 
         // Take snapshot and restore
         let snap = engine.snapshot();
-        engine.restore(&snap);
+        engine.restore(&snap).expect("restore engine");
 
         // Override still active
         let page = make_page(CMD_RANDOM_GET, 0, 0);

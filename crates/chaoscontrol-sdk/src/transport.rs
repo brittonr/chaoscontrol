@@ -101,6 +101,7 @@ pub(crate) fn hypercall_bound_assertion(
         chaoscontrol_protocol::CMD_ASSERT_UNREACHABLE => AssertionKind::Unreachable,
         _ => return (0, chaoscontrol_protocol::STATUS_ERROR),
     };
+    let wire_id = identity.compatibility_id.unwrap_or(id);
     let frame = EventFrame {
         catalog_token: identity.catalog_token,
         fingerprint: identity.fingerprint,
@@ -112,9 +113,9 @@ pub(crate) fn hypercall_bound_assertion(
         return (0, chaoscontrol_protocol::STATUS_ASSERTION_LIMIT_EXCEEDED);
     };
     if crate::internal::vm_page_ptr().is_some() {
-        return hypercall_raw(command, flags, id, &payload[..length]);
+        return hypercall_raw(command, flags, wire_id, &payload[..length]);
     }
-    dispatch_local_bound(command, flags, id, message, json_details, identity);
+    dispatch_local_bound(command, flags, wire_id, message, json_details, identity);
     (0, 0)
 }
 

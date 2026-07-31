@@ -117,7 +117,7 @@ fn snapshot_restore_continues_sequence() {
             orig_vals.push(v);
         }
 
-        engine.restore(&snap);
+        engine.restore(&snap).expect("restore engine");
         let mut restored_vals = Vec::new();
         for _ in 0..post_calls {
             let (v, _) = engine.handle_hypercall(&page);

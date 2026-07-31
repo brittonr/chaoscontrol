@@ -49,6 +49,7 @@ pub enum CatalogConflict {
     CatalogIncomplete,
     CatalogTokenMismatch,
     Descriptor(IdentityError),
+    EmptyCatalog,
     FingerprintCollision,
     GuestConflict,
     KindConflict,
@@ -93,6 +94,9 @@ pub struct CatalogBuilder {
 
 impl CatalogBuilder {
     pub fn begin(expected_frames: usize) -> Result<Self, CatalogConflict> {
+        if expected_frames == 0 {
+            return Err(CatalogConflict::EmptyCatalog);
+        }
         if expected_frames > MAX_ASSERTION_CATALOG_ENTRIES {
             return Err(CatalogConflict::CardinalityOverflow);
         }

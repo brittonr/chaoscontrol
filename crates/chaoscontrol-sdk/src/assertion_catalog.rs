@@ -20,6 +20,7 @@ use std::sync::OnceLock;
 pub(crate) struct BoundIdentity {
     pub catalog_token: AssertionFingerprint,
     pub fingerprint: AssertionFingerprint,
+    pub compatibility_id: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -85,6 +86,7 @@ pub(crate) fn resolve_compatibility(
     Some(BoundIdentity {
         catalog_token: accepted.token,
         fingerprint: first.fingerprint,
+        compatibility_id: first.descriptor.compatibility_id,
     })
 }
 
@@ -112,6 +114,7 @@ pub(crate) fn resolve_stable(
     Some(BoundIdentity {
         catalog_token: accepted.token,
         fingerprint: first.fingerprint,
+        compatibility_id: first.descriptor.compatibility_id,
     })
 }
 

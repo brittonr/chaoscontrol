@@ -15,8 +15,8 @@
 //! | `unreachable`| Point was never reached in any run             |
 
 use chaoscontrol_protocol::assertion_catalog::{
-    AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent, CatalogConflict,
-    CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
+    validate_accepted_catalog, AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent,
+    CatalogConflict, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
 pub use chaoscontrol_protocol::assertion_identity::AssertionKind;
@@ -49,7 +49,8 @@ where
 }
 
 /// Records for a single assertion site across all runs.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssertionRecord {
     /// Human-readable assertion message.
     pub message: String,
@@ -248,7 +249,8 @@ pub struct PropertyOracle {
 }
 
 /// An event recorded by the oracle.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OracleEvent {
     /// Run in which this event occurred.
     pub run_id: u32,
@@ -267,7 +269,8 @@ fn pending_catalog_status() -> CatalogValidationStatus {
 }
 
 /// Report produced by the oracle after all runs.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OracleReport {
     /// Diagnostic-only legacy records.
     pub assertions: BTreeMap<u32, AssertionRecord>,
@@ -374,30 +377,46 @@ impl PropertyOracle {
 
     /// End the current run and finalize per-run counters.
     pub fn end_run(&mut self) {
-        if let Some(run) = self.current_run.take() {
-            // Update runs_hit and runs_satisfied for each assertion
-            for &id in &run.hit_ids {
-                if let Some(record) = self.assertions.get_mut(&id) {
-                    record.runs_hit += 1;
+        let Some(run) = self.current_run.as_ref() else {
+            return;
+        };
+        let Some(total_runs) = self.total_runs.checked_add(1) else {
+            self.mark_identity_conflict(CatalogConflict::CounterOverflow);
+            return;
+        };
+        let legacy_updates =
+            match prepare_run_updates(&self.assertions, &run.hit_ids, &run.satisfied_ids) {
+                Ok(updates) => updates,
+                Err(conflict) => {
+                    self.mark_identity_conflict(conflict);
+                    return;
                 }
+            };
+        let strict_updates = match prepare_run_updates(
+            &self.structured_assertions,
+            &run.strict_hit_ids,
+            &run.strict_satisfied_ids,
+        ) {
+            Ok(updates) => updates,
+            Err(conflict) => {
+                self.mark_identity_conflict(conflict);
+                return;
             }
-            for &id in &run.satisfied_ids {
-                if let Some(record) = self.assertions.get_mut(&id) {
-                    record.runs_satisfied += 1;
-                }
+        };
+        for (id, runs_hit, runs_satisfied) in legacy_updates {
+            if let Some(record) = self.assertions.get_mut(&id) {
+                record.runs_hit = runs_hit;
+                record.runs_satisfied = runs_satisfied;
             }
-            for fingerprint in &run.strict_hit_ids {
-                if let Some(record) = self.structured_assertions.get_mut(fingerprint) {
-                    record.runs_hit += 1;
-                }
-            }
-            for fingerprint in &run.strict_satisfied_ids {
-                if let Some(record) = self.structured_assertions.get_mut(fingerprint) {
-                    record.runs_satisfied += 1;
-                }
-            }
-            self.total_runs += 1;
         }
+        for (fingerprint, runs_hit, runs_satisfied) in strict_updates {
+            if let Some(record) = self.structured_assertions.get_mut(&fingerprint) {
+                record.runs_hit = runs_hit;
+                record.runs_satisfied = runs_satisfied;
+            }
+        }
+        self.total_runs = total_runs;
+        self.current_run = None;
     }
 
     /// Whether the current run has had an immediate failure.
@@ -418,6 +437,10 @@ impl PropertyOracle {
     // ── Catalog registration ────────────────────────────────────
 
     pub fn activate_catalog(&mut self, catalog: AcceptedCatalog) -> Result<(), CatalogConflict> {
+        if let Err(conflict) = validate_accepted_catalog(&catalog) {
+            self.mark_identity_conflict(conflict.clone());
+            return Err(conflict);
+        }
         if self.catalog_status == CatalogValidationStatus::FatalConflict {
             return Err(CatalogConflict::PostConflict);
         }
@@ -443,19 +466,17 @@ impl PropertyOracle {
     }
 
     pub fn mark_identity_conflict(&mut self, conflict: CatalogConflict) {
-        const MAX_IDENTITY_CONFLICTS: usize = 64;
         self.catalog_status = CatalogValidationStatus::FatalConflict;
-        if self.identity_conflicts.len() < MAX_IDENTITY_CONFLICTS {
+        if self.identity_conflicts.len() < crate::oracle_validation::MAX_IDENTITY_CONFLICTS {
             self.identity_conflicts.push(format!("{conflict:?}"));
         }
     }
 
     pub fn mark_legacy_ambiguous(&mut self, diagnostic: &str) {
-        const MAX_IDENTITY_CONFLICTS: usize = 64;
         if self.catalog_status != CatalogValidationStatus::FatalConflict {
             self.catalog_status = CatalogValidationStatus::LegacyAmbiguous;
         }
-        if self.identity_conflicts.len() < MAX_IDENTITY_CONFLICTS {
+        if self.identity_conflicts.len() < crate::oracle_validation::MAX_IDENTITY_CONFLICTS {
             self.identity_conflicts.push(diagnostic.to_string());
         }
     }
@@ -466,6 +487,26 @@ impl PropertyOracle {
         condition: bool,
         details: Option<&[u8]>,
     ) -> Result<bool, CatalogConflict> {
+        self.record_bound_event_core(event, None, condition, details)
+    }
+
+    pub fn record_bound_event_with_compatibility(
+        &mut self,
+        event: &BoundAssertionEvent,
+        compatibility_id: u32,
+        condition: bool,
+        details: Option<&[u8]>,
+    ) -> Result<bool, CatalogConflict> {
+        self.record_bound_event_core(event, Some(compatibility_id), condition, details)
+    }
+
+    fn record_bound_event_core(
+        &mut self,
+        event: &BoundAssertionEvent,
+        compatibility_id: Option<u32>,
+        condition: bool,
+        details: Option<&[u8]>,
+    ) -> Result<bool, CatalogConflict> {
         let admitted = match self
             .accepted_catalog
             .as_ref()
@@ -473,67 +514,94 @@ impl PropertyOracle {
             .and_then(|catalog| catalog.resolve_event(event))
         {
             Ok(assertion) => assertion.clone(),
-            Err(conflict) => {
-                self.mark_identity_conflict(conflict.clone());
-                return Err(conflict);
-            }
+            Err(conflict) => return self.reject_bound_event(conflict),
         };
+        if compatibility_id.is_some() && admitted.descriptor.compatibility_id != compatibility_id {
+            return self.reject_bound_event(CatalogConflict::CompatibilityAliasConflict);
+        }
+        if details.is_some_and(|value| {
+            value.len()
+                > chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_EVENT_DETAILS_BYTES
+        }) {
+            return self.reject_bound_event(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::assertion_identity::IdentityError::FieldTooLong(
+                    "event_details",
+                ),
+            ));
+        }
         let run_id = self.current_run_id();
-        let Some(record) = self.structured_assertions.get_mut(&event.fingerprint) else {
-            self.mark_identity_conflict(CatalogConflict::UnknownFingerprint);
-            return Err(CatalogConflict::UnknownFingerprint);
+        let Some(record) = self.structured_assertions.get(&event.fingerprint) else {
+            return self.reject_bound_event(CatalogConflict::UnknownFingerprint);
         };
         if record.identity.as_ref() != Some(&admitted) {
-            self.mark_identity_conflict(CatalogConflict::FingerprintCollision);
-            return Err(CatalogConflict::FingerprintCollision);
+            return self.reject_bound_event(CatalogConflict::FingerprintCollision);
         }
-        record.hit_count = record
-            .hit_count
-            .checked_add(1)
-            .ok_or(CatalogConflict::CounterOverflow)?;
         let satisfied = match admitted.descriptor.kind {
             AssertionKind::Always | AssertionKind::Sometimes => condition,
             AssertionKind::Reachable => true,
             AssertionKind::Unreachable => false,
         };
-        if satisfied {
-            record.true_count = record
-                .true_count
-                .checked_add(1)
-                .ok_or(CatalogConflict::CounterOverflow)?;
+        let Some(hit_count) = record.hit_count.checked_add(1) else {
+            return self.reject_bound_event(CatalogConflict::CounterOverflow);
+        };
+        let true_count = if satisfied {
+            match record.true_count.checked_add(1) {
+                Some(count) => count,
+                None => return self.reject_bound_event(CatalogConflict::CounterOverflow),
+            }
         } else {
-            record.false_count = record
-                .false_count
-                .checked_add(1)
-                .ok_or(CatalogConflict::CounterOverflow)?;
-            if record.first_failure_run.is_none()
-                && matches!(
-                    admitted.descriptor.kind,
-                    AssertionKind::Always | AssertionKind::Unreachable
-                )
-            {
-                record.first_failure_run = Some(run_id);
+            record.true_count
+        };
+        let false_count = if satisfied {
+            record.false_count
+        } else {
+            match record.false_count.checked_add(1) {
+                Some(count) => count,
+                None => return self.reject_bound_event(CatalogConflict::CounterOverflow),
             }
-            if let Some(value) = details {
-                record.last_failure_details = Some(value.to_vec());
-            }
-        }
+        };
+        let immediate_failure = !satisfied
+            && matches!(
+                admitted.descriptor.kind,
+                AssertionKind::Always | AssertionKind::Unreachable
+            );
+        let first_failure_run = if immediate_failure && record.first_failure_run.is_none() {
+            Some(run_id)
+        } else {
+            record.first_failure_run
+        };
+        let last_failure_details = if !satisfied {
+            details
+                .map(|value| value.to_vec())
+                .or_else(|| record.last_failure_details.clone())
+        } else {
+            record.last_failure_details.clone()
+        };
+        let record = self
+            .structured_assertions
+            .get_mut(&event.fingerprint)
+            .expect("record was validated before mutation");
+        record.hit_count = hit_count;
+        record.true_count = true_count;
+        record.false_count = false_count;
+        record.first_failure_run = first_failure_run;
+        record.last_failure_details = last_failure_details;
         if let Some(run) = &mut self.current_run {
             run.strict_hit_ids.insert(event.fingerprint);
             if satisfied {
                 run.strict_satisfied_ids.insert(event.fingerprint);
             }
-            if !satisfied
-                && matches!(
-                    admitted.descriptor.kind,
-                    AssertionKind::Always | AssertionKind::Unreachable
-                )
-            {
+            if immediate_failure {
                 let id = admitted.descriptor.compatibility_id.unwrap_or_default();
                 run.immediate_failure = Some((id, admitted.descriptor.message.clone()));
             }
         }
         Ok(satisfied)
+    }
+
+    fn reject_bound_event<T>(&mut self, conflict: CatalogConflict) -> Result<T, CatalogConflict> {
+        self.mark_identity_conflict(conflict.clone());
+        Err(conflict)
     }
 
     /// Register an assertion site from the compile-time catalog.
@@ -772,16 +840,12 @@ impl PropertyOracle {
                 Verdict::Unexercised => unexercised += 1,
             }
         }
-        let collision_safe_evidence = self.catalog_status == CatalogValidationStatus::Accepted
-            && self.assertions.is_empty()
-            && self.identity_conflicts.is_empty();
-
-        OracleReport {
+        let mut report = OracleReport {
             assertions: self.assertions.clone(),
             structured_assertions: self.structured_assertions.clone(),
             catalog_status: self.catalog_status,
             identity_conflicts: self.identity_conflicts.clone(),
-            collision_safe_evidence,
+            collision_safe_evidence: false,
             total_runs: self.total_runs,
             passed,
             failed,
@@ -791,7 +855,10 @@ impl PropertyOracle {
                 .len()
                 .saturating_add(self.structured_assertions.len()),
             events: self.events.clone(),
-        }
+        };
+        report.collision_safe_evidence =
+            crate::oracle_validation::validate_strict_oracle_report(&report).is_ok();
+        report
     }
 
     /// Get a reference to all assertion records.
@@ -827,17 +894,12 @@ impl PropertyOracle {
         }
     }
 
-    /// Restore oracle state from a snapshot.
-    pub fn restore(&mut self, snapshot: &OracleSnapshot) {
-        if snapshot
-            .assertions
-            .len()
-            .saturating_add(snapshot.structured_assertions.len())
-            > MAX_ASSERTION_CATALOG_ENTRIES
-        {
-            self.mark_identity_conflict(CatalogConflict::CardinalityOverflow);
-            return;
-        }
+    /// Restore oracle state from a validated snapshot.
+    pub fn restore(
+        &mut self,
+        snapshot: &OracleSnapshot,
+    ) -> Result<(), crate::oracle_validation::OracleValidationError> {
+        crate::oracle_validation::validate_oracle_snapshot(snapshot)?;
         self.assertions = snapshot.assertions.clone();
         self.structured_assertions = snapshot.structured_assertions.clone();
         self.accepted_catalog = snapshot.accepted_catalog.clone();
@@ -846,6 +908,7 @@ impl PropertyOracle {
         self.total_runs = snapshot.total_runs;
         self.events = snapshot.events.clone();
         self.current_run = None;
+        Ok(())
     }
 
     // ── Internal ────────────────────────────────────────────────
@@ -887,6 +950,38 @@ impl PropertyOracle {
     }
 }
 
+fn prepare_run_updates<K: Copy + Ord>(
+    records: &BTreeMap<K, AssertionRecord>,
+    hit: &BTreeSet<K>,
+    satisfied: &BTreeSet<K>,
+) -> Result<Vec<(K, u32, u32)>, CatalogConflict> {
+    let keys = hit.union(satisfied).copied().collect::<Vec<_>>();
+    let mut updates = Vec::with_capacity(keys.len());
+    for key in keys {
+        let record = records
+            .get(&key)
+            .ok_or(CatalogConflict::UnknownFingerprint)?;
+        let runs_hit = if hit.contains(&key) {
+            record
+                .runs_hit
+                .checked_add(1)
+                .ok_or(CatalogConflict::CounterOverflow)?
+        } else {
+            record.runs_hit
+        };
+        let runs_satisfied = if satisfied.contains(&key) {
+            record
+                .runs_satisfied
+                .checked_add(1)
+                .ok_or(CatalogConflict::CounterOverflow)?
+        } else {
+            record.runs_satisfied
+        };
+        updates.push((key, runs_hit, runs_satisfied));
+    }
+    Ok(updates)
+}
+
 impl Default for PropertyOracle {
     fn default() -> Self {
         Self::new()
@@ -895,18 +990,19 @@ impl Default for PropertyOracle {
 
 /// Snapshot of a [`PropertyOracle`].
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OracleSnapshot {
-    assertions: BTreeMap<u32, AssertionRecord>,
+    pub(crate) assertions: BTreeMap<u32, AssertionRecord>,
     #[serde(default)]
-    structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
+    pub(crate) structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
     #[serde(default)]
-    accepted_catalog: Option<AcceptedCatalog>,
+    pub(crate) accepted_catalog: Option<AcceptedCatalog>,
     #[serde(default = "pending_catalog_status")]
-    catalog_status: CatalogValidationStatus,
+    pub(crate) catalog_status: CatalogValidationStatus,
     #[serde(default)]
-    identity_conflicts: Vec<String>,
-    total_runs: u32,
-    events: Vec<OracleEvent>,
+    pub(crate) identity_conflicts: Vec<String>,
+    pub(crate) total_runs: u32,
+    pub(crate) events: Vec<OracleEvent>,
 }
 
 #[cfg(test)]
@@ -1217,7 +1313,7 @@ mod tests {
         assert_eq!(oracle.report().assertions[&1].verdict(), Verdict::Failed);
 
         // Restore
-        oracle.restore(&snap);
+        oracle.restore(&snap).expect("restore oracle");
         assert_eq!(oracle.report().assertions[&1].verdict(), Verdict::Passed);
         assert_eq!(oracle.total_runs(), 1);
     }
@@ -1260,5 +1356,20 @@ mod tests {
             Some(b"{\"x\":2}".as_slice()),
         );
         oracle.end_run();
+    }
+
+    #[test]
+    fn strict_run_counter_overflow_has_no_partial_update() {
+        let mut record = AssertionRecord::new("strict".to_string(), AssertionKind::Always);
+        record.runs_hit = u32::MAX;
+        let records = BTreeMap::from([(AssertionFingerprint::ZERO, record)]);
+        let hit = BTreeSet::from([AssertionFingerprint::ZERO]);
+        let satisfied = BTreeSet::new();
+
+        assert_eq!(
+            prepare_run_updates(&records, &hit, &satisfied),
+            Err(CatalogConflict::CounterOverflow)
+        );
+        assert_eq!(records[&AssertionFingerprint::ZERO].runs_hit, u32::MAX);
     }
 }

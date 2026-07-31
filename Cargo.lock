@@ -299,6 +299,7 @@ name = "chaoscontrol-evidence"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "chaoscontrol-protocol",
  "chaoscontrol-vmm",
  "serde",
  "serde_json",

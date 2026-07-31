@@ -355,13 +355,8 @@ mod tests {
         let recorder = Recorder::new(config, schedule, 42);
 
         let oracle_report = OracleReport {
-            assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: vec![],
+            ..OracleReport::empty()
         };
 
         let recording = recorder.finish(oracle_report);

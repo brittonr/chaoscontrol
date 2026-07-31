@@ -1271,16 +1271,19 @@ impl Explorer {
         score = (score - depth_penalty).max(0.1);
 
         // Bonus for assertion diversity
-        let assertion_count = result.oracle_report.assertions.len();
+        let assertion_count = result.oracle_report.catalog_size;
         score += assertion_count as f64;
 
         score
     }
 
-    /// Compute dedup key from assertion ID and sorted fault type names.
-    fn compute_dedup_key(assertion_id: u64, schedule: &FaultSchedule) -> u64 {
+    /// Compute a dedup key from structured assertion identity and fault types.
+    fn compute_dedup_key(
+        assertion_fingerprint: chaoscontrol_protocol::assertion_identity::AssertionFingerprint,
+        schedule: &FaultSchedule,
+    ) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        assertion_id.hash(&mut hasher);
+        assertion_fingerprint.hash(&mut hasher);
 
         // Collect unique fault type names, sorted
         let mut type_names: Vec<&str> = schedule
@@ -1307,14 +1310,19 @@ impl Explorer {
         replay_parent_depth: u32,
     ) -> Vec<BugReport> {
         let mut bugs = Vec::new();
+        if !result.oracle_report.collision_safe_evidence {
+            return bugs;
+        }
 
-        // Check oracle for failed assertions
-        for (assertion_id, record) in &result.oracle_report.assertions {
+        for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
             if matches!(
                 record.verdict(),
                 chaoscontrol_fault::oracle::Verdict::Failed
             ) {
-                let dedup_key = Self::compute_dedup_key(*assertion_id as u64, schedule);
+                let Some(assertion_id) = record.compatibility_id else {
+                    continue;
+                };
+                let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule);
 
                 // Skip if we've already seen this (assertion, fault_types) pair
                 if self.seen_dedup_keys.contains(&dedup_key) {
@@ -1328,7 +1336,7 @@ impl Explorer {
 
                 let bug = BugReport {
                     bug_id: 0, // Will be assigned by corpus
-                    assertion_id: *assertion_id as u64,
+                    assertion_id: assertion_id as u64,
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: replay_snapshot.cloned(),
@@ -1344,7 +1352,7 @@ impl Explorer {
                 // Emit BugFound event for dashboard.
                 self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
                     bug_index: self.all_bugs().len() + bugs.len(),
-                    assertion_id: *assertion_id as u64,
+                    assertion_id: assertion_id as u64,
                     assertion_message: record.message.clone(),
                     round: self.rounds_completed,
                     tick: result.total_ticks,
@@ -1506,9 +1514,11 @@ impl Explorer {
     fn assertion_coverage(&self, oracle: &OracleReport) -> CoverageBitmap {
         let mut bitmap = CoverageBitmap::new();
 
-        // Map each assertion ID to a bitmap index
-        for assertion_id in oracle.assertions.keys() {
-            let index = (*assertion_id as usize) % crate::coverage::MAP_SIZE;
+        use std::hash::{Hash, Hasher};
+        for (assertion_key, _) in oracle.all_records() {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            assertion_key.hash(&mut hasher);
+            let index = hasher.finish() as usize % crate::coverage::MAP_SIZE;
             bitmap.record_hit(index);
         }
 
@@ -1525,7 +1535,7 @@ impl Explorer {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        for (assertion_id, record) in &oracle.assertions {
+        for (assertion_id, record) in oracle.all_records() {
             // Bucket the hit count: 0, 1, 2-3, 4-7, 8-15, 16-31, 32+
             let hit_bucket = match record.hit_count {
                 0 => 0u8,
@@ -1559,10 +1569,13 @@ impl Explorer {
             // Also hash true/false ratio bucket for always/sometimes assertions.
             // This gives finer-grained signal: "50% true" vs "90% true" are different.
             if record.hit_count > 0 {
-                let ratio_bucket = (record.true_count * 8 / record.hit_count) as u8; // 0..8
+                const RATIO_BUCKET_COUNT: u128 = 8;
+                const RATIO_DOMAIN: u64 = 0xA55E;
+                let ratio_bucket = (u128::from(record.true_count) * RATIO_BUCKET_COUNT
+                    / u128::from(record.hit_count)) as u8;
                 let mut hasher2 = DefaultHasher::new();
                 assertion_id.hash(&mut hasher2);
-                0xA55Eu64.hash(&mut hasher2); // domain separator
+                RATIO_DOMAIN.hash(&mut hasher2);
                 ratio_bucket.hash(&mut hasher2);
                 let index2 = (hasher2.finish() as usize % assertion_region_size)
                     + crate::coverage::CODE_REGION_END;
@@ -1695,58 +1708,43 @@ impl Explorer {
         let Some(controller) = &self.controller else {
             return (AssertionStats::default(), Vec::new());
         };
-
-        // Merge per-assertion records across all VMs.
-        // Same assertion ID may appear in multiple VMs (e.g. catalog entries);
-        // sum their counts so verdicts reflect the full exploration.
-        let mut merged: BTreeMap<u32, chaoscontrol_fault::oracle::AssertionRecord> =
-            BTreeMap::new();
-
-        for i in 0..controller.num_vms() {
-            let report = controller.vm(i).fault_engine().oracle().report();
-            for (id, record) in &report.assertions {
-                if let Some(existing) = merged.get_mut(id) {
-                    existing.hit_count += record.hit_count;
-                    existing.true_count += record.true_count;
-                    existing.false_count += record.false_count;
-                    // Keep the highest runs_hit / runs_satisfied across VMs
-                    existing.runs_hit = existing.runs_hit.max(record.runs_hit);
-                    existing.runs_satisfied = existing.runs_satisfied.max(record.runs_satisfied);
-                    // Preserve first failure
-                    if existing.first_failure_run.is_none() {
-                        existing.first_failure_run = record.first_failure_run;
-                    }
-                    // Keep most recent failure details
-                    if record.last_failure_details.is_some() {
-                        existing.last_failure_details = record.last_failure_details.clone();
-                    }
-                } else {
-                    merged.insert(*id, record.clone());
-                }
-            }
-        }
-
-        // Build stats + detail
-        let mut passed = 0usize;
-        let mut failed = 0usize;
-        let mut unexercised = 0usize;
-        let mut details = Vec::with_capacity(merged.len());
-
-        for (id, record) in &merged {
+        let report = controller.report();
+        let mut passed = 0_usize;
+        let mut failed = 0_usize;
+        let mut unexercised = 0_usize;
+        let mut details = Vec::with_capacity(report.catalog_size);
+        for (_, record) in report.all_records() {
             let verdict = record.verdict();
             match verdict {
                 Verdict::Passed => passed += 1,
                 Verdict::Failed => failed += 1,
                 Verdict::Unexercised => unexercised += 1,
             }
-
             let failure_details = record
                 .last_failure_details
                 .as_ref()
-                .and_then(|bytes| std::str::from_utf8(bytes).ok().map(|s| s.to_string()));
-
+                .and_then(|bytes| std::str::from_utf8(bytes).ok().map(str::to_string));
+            let identity = record.identity.as_ref().map(|admitted| {
+                let descriptor = &admitted.descriptor;
+                AssertionIdentityDetail {
+                    identity_version: descriptor.identity_version,
+                    namespace: descriptor.namespace.clone(),
+                    logical_key: descriptor.logical_key.clone(),
+                    fingerprint: admitted.fingerprint.to_hex(),
+                    canonical_descriptor: encode_hex(&admitted.canonical_bytes),
+                    catalog_tokens: record
+                        .catalog_tokens
+                        .iter()
+                        .map(|token| token.to_hex())
+                        .collect(),
+                    source_file: descriptor.source_file.clone(),
+                    source_line: descriptor.source_line,
+                    source_column: descriptor.source_column,
+                }
+            });
             details.push(AssertionDetail {
-                id: *id,
+                id: record.compatibility_id.unwrap_or_default(),
+                identity,
                 message: record.message.clone(),
                 kind: format!("{:?}", record.kind).to_lowercase(),
                 guest: record.guest.clone(),
@@ -1758,28 +1756,33 @@ impl Explorer {
                 last_failure_details: failure_details,
             });
         }
-
-        // Sort: failed first, then unexercised, then passed
-        details.sort_by(|a, b| {
-            let order = |v: &str| -> u8 {
-                match v {
-                    "failed" => 0,
-                    "unexercised" => 1,
-                    _ => 2,
-                }
+        details.sort_by(|left, right| {
+            let order = |verdict: &str| match verdict {
+                "failed" => 0_u8,
+                "unexercised" => 1_u8,
+                _ => 2_u8,
             };
-            order(&a.verdict)
-                .cmp(&order(&b.verdict))
-                .then(a.id.cmp(&b.id))
+            let left_fingerprint = left
+                .identity
+                .as_ref()
+                .map(|identity| identity.fingerprint.as_str())
+                .unwrap_or("");
+            let right_fingerprint = right
+                .identity
+                .as_ref()
+                .map(|identity| identity.fingerprint.as_str())
+                .unwrap_or("");
+            order(&left.verdict)
+                .cmp(&order(&right.verdict))
+                .then(left_fingerprint.cmp(right_fingerprint))
+                .then(left.id.cmp(&right.id))
         });
-
         let stats = AssertionStats {
-            catalog_size: merged.len(),
+            catalog_size: details.len(),
             passed,
             failed,
             unexercised,
         };
-
         (stats, details)
     }
 
@@ -2209,11 +2212,28 @@ pub struct AssertionStats {
     pub unexercised: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssertionIdentityDetail {
+    pub identity_version: u8,
+    pub namespace: String,
+    pub logical_key: chaoscontrol_protocol::assertion_identity::AssertionLogicalKey,
+    pub fingerprint: String,
+    pub canonical_descriptor: String,
+    pub catalog_tokens: Vec<String>,
+    pub source_file: String,
+    pub source_line: u32,
+    pub source_column: u32,
+}
+
 /// Per-assertion detail for the exploration report.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AssertionDetail {
     /// Assertion ID (FNV-1a hash of location).
     pub id: u32,
+    /// Collision-safe identity. None means diagnostic legacy input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<AssertionIdentityDetail>,
     /// Human-readable message.
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
@@ -2235,6 +2255,15 @@ pub struct AssertionDetail {
     /// JSON details from the most recent failure (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_failure_details: Option<String>,
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    use core::fmt::Write;
+    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 fn default_uncategorized_string() -> String {
@@ -2313,13 +2342,8 @@ mod tests {
         let mut result = BranchResult {
             coverage: CoverageBitmap::new(),
             oracle_report: OracleReport {
-                assertions: std::collections::BTreeMap::new(),
                 total_runs: 1,
-                passed: 0,
-                failed: 0,
-                unexercised: 0,
-                catalog_size: 0,
-                events: Vec::new(),
+                ..OracleReport::empty()
             },
             schedule: FaultSchedule::new(),
             exit_counts: vec![100],
@@ -2347,13 +2371,8 @@ mod tests {
         let explorer = Explorer::new(config);
 
         let mut oracle = OracleReport {
-            assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: Vec::new(),
+            ..OracleReport::empty()
         };
 
         oracle.assertions.insert(
@@ -2370,6 +2389,10 @@ mod tests {
                 last_failure_details: None,
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(10),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2381,13 +2404,8 @@ mod tests {
 
     fn make_oracle_report() -> OracleReport {
         OracleReport {
-            assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: Vec::new(),
+            ..OracleReport::empty()
         }
     }
 
@@ -2510,6 +2528,10 @@ mod tests {
                 last_failure_details: Some(b"{\"term\":3}".to_vec()),
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2528,6 +2550,10 @@ mod tests {
                 last_failure_details: Some(b"{\"term\":5}".to_vec()),
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2558,6 +2584,10 @@ mod tests {
                 last_failure_details: None,
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 

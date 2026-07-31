@@ -243,9 +243,12 @@ fn cmd_replay(
 
     if result.oracle_report.failed > 0 {
         println!("\n⚠️  FAILURES DETECTED:");
-        for (id, info) in &result.oracle_report.assertions {
+        for (identity, info) in result.oracle_report.all_records() {
             if info.verdict() == chaoscontrol_fault::oracle::Verdict::Failed {
-                println!("  - Assertion {} ({:?}): {}", id, info.kind, info.message);
+                println!(
+                    "  - Assertion {identity:?} ({:?}): {}",
+                    info.kind, info.message
+                );
             }
         }
     }

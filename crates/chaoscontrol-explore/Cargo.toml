@@ -17,7 +17,7 @@ profiling = ["dep:tracing", "chaoscontrol-vmm/profiling"]
 [dependencies]
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
-chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 log = "0.4"
 snafu = "0.8"
 rand = { version = "0.8", features = ["small_rng"] }

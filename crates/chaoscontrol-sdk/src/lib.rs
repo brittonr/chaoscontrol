@@ -53,6 +53,10 @@
 #![cfg_attr(not(feature = "full"), no_std)]
 
 pub mod assert;
+#[cfg(feature = "full")]
+mod assertion_catalog;
+#[cfg(feature = "full")]
+mod bounded_json;
 pub mod coverage;
 #[cfg(feature = "full")]
 pub mod details;

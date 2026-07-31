@@ -100,9 +100,20 @@ impl AssertionKind {
 /// `ASSERTION_CATALOG` distributed slice.  At initialization, the SDK
 /// sends all catalog entries to the VMM so the oracle can distinguish
 /// "never hit" from "never registered."
+#[derive(Clone, Copy)]
+pub enum CatalogLogicalKey {
+    Automatic(&'static str),
+    Stable(&'static str),
+    LegacyU32(u32),
+}
+
 pub struct CatalogEntry {
-    /// Unique assertion ID (FNV-1a hash of location string).
+    /// Compatibility ID retained for diagnostics and migration.
     pub id: u32,
+    /// Versioned catalog namespace.
+    pub namespace: &'static str,
+    /// Authoritative logical key.
+    pub logical_key: CatalogLogicalKey,
     /// Human-readable assertion message.
     pub message: &'static str,
     /// Kind of assertion: one of `CATALOG_KIND_*` constants.
@@ -111,6 +122,8 @@ pub struct CatalogEntry {
     pub file: &'static str,
     /// Source line where the assertion macro was invoked.
     pub line: u32,
+    /// Source column where the assertion macro was invoked.
+    pub column: u32,
     /// Guest name for density reporting. Empty means legacy/unspecified.
     pub guest: &'static str,
     /// Density category (`invariant`, `branch`, `operation`, `recovery`).
@@ -136,24 +149,7 @@ pub static ASSERTION_CATALOG: [CatalogEntry];
 /// assertion site — including ones that are never reached.
 #[cfg(feature = "full")]
 pub(crate) fn emit_catalog() {
-    for entry in ASSERTION_CATALOG.iter() {
-        let kind_byte = entry.kind;
-        // Encode location as JSON details: {"file":"foo.rs","line":42}
-        let details = serde_json::json!({
-            "file": entry.file,
-            "line": entry.line,
-            "guest": if entry.guest.is_empty() { "uncategorized" } else { entry.guest },
-            "category": if entry.category.is_empty() { "uncategorized" } else { entry.category },
-        });
-        let json_bytes = serde_json::to_vec(&details).unwrap_or_else(|_| b"{}".to_vec());
-        transport::hypercall(
-            CMD_ASSERT_CATALOG,
-            kind_byte,
-            entry.id,
-            entry.message,
-            &json_bytes,
-        );
-    }
+    crate::assertion_catalog::emit_catalog();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -182,8 +178,8 @@ pub const fn location_id(location: &str) -> u32 {
 
 /// Serialize details to JSON bytes. Only available with `full` feature.
 #[cfg(feature = "full")]
-fn to_json_bytes(details: &serde_json::Value) -> Vec<u8> {
-    serde_json::to_vec(details).unwrap_or_else(|_| b"{}".to_vec())
+fn to_json_bytes(details: &serde_json::Value) -> Option<Vec<u8>> {
+    crate::bounded_json::assertion_details(details).ok()
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -215,9 +211,7 @@ pub fn always(cond: bool, message: &str, details: &serde_json::Value) {
 /// Like [`always`] but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn always_with_id(cond: bool, id: u32, message: &str, details: &serde_json::Value) {
-    let flags = if cond { 0x01 } else { 0x00 };
-    let json_bytes = to_json_bytes(details);
-    transport::hypercall(CMD_ASSERT_ALWAYS, flags, id, message, &json_bytes);
+    emit_compatibility_assertion(AssertionKind::Always, cond, id, message, details);
 }
 
 /// Assert that `cond` is true **at least once** across all runs.
@@ -236,9 +230,7 @@ pub fn sometimes(cond: bool, message: &str, details: &serde_json::Value) {
 /// Like [`sometimes`] but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn sometimes_with_id(cond: bool, id: u32, message: &str, details: &serde_json::Value) {
-    let flags = if cond { 0x01 } else { 0x00 };
-    let json_bytes = to_json_bytes(details);
-    transport::hypercall(CMD_ASSERT_SOMETIMES, flags, id, message, &json_bytes);
+    emit_compatibility_assertion(AssertionKind::Sometimes, cond, id, message, details);
 }
 
 /// Assert that this code point is **reached at least once** across runs.
@@ -251,8 +243,7 @@ pub fn reachable(message: &str, details: &serde_json::Value) {
 /// Like [`reachable`] but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn reachable_with_id(id: u32, message: &str, details: &serde_json::Value) {
-    let json_bytes = to_json_bytes(details);
-    transport::hypercall(CMD_ASSERT_REACHABLE, 0x01, id, message, &json_bytes);
+    emit_compatibility_assertion(AssertionKind::Reachable, true, id, message, details);
 }
 
 /// Assert that this code point is **never reached** in any run.
@@ -265,8 +256,7 @@ pub fn unreachable(message: &str, details: &serde_json::Value) {
 /// Like `unreachable()` but with an explicit assertion ID.
 #[cfg(feature = "full")]
 pub fn unreachable_with_id(id: u32, message: &str, details: &serde_json::Value) {
-    let json_bytes = to_json_bytes(details);
-    transport::hypercall(CMD_ASSERT_UNREACHABLE, 0x00, id, message, &json_bytes);
+    emit_compatibility_assertion(AssertionKind::Unreachable, false, id, message, details);
 }
 
 /// Assert `always` when true, `unreachable` when false.
@@ -352,20 +342,72 @@ pub fn assert_raw_with_id(
     message: &str,
     details: &serde_json::Value,
 ) {
-    let command = kind.to_command();
-    let flags = match kind {
-        AssertionKind::Always | AssertionKind::Sometimes => {
-            if cond {
-                0x01
-            } else {
-                0x00
-            }
-        }
-        AssertionKind::Reachable => 0x01,
-        AssertionKind::Unreachable => 0x00,
+    emit_compatibility_assertion(kind, cond, id, message, details);
+}
+
+#[cfg(feature = "full")]
+pub fn assert_raw_with_key(
+    kind: AssertionKind,
+    cond: bool,
+    namespace: &str,
+    key: &str,
+    message: &str,
+    details: &serde_json::Value,
+) {
+    let flags = assertion_flags(kind, cond);
+    let Some(json_bytes) = to_json_bytes(details) else {
+        transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
+        return;
     };
-    let json_bytes = to_json_bytes(details);
-    transport::hypercall(command, flags, id, message, &json_bytes);
+    let Some(identity) = crate::assertion_catalog::resolve_stable(namespace, key, kind, message)
+    else {
+        transport::hypercall(kind.to_command(), flags, 0, message, &json_bytes);
+        return;
+    };
+    transport::hypercall_bound_assertion(
+        kind.to_command(),
+        flags,
+        0,
+        message,
+        &json_bytes,
+        identity,
+    );
+}
+
+#[cfg(feature = "full")]
+fn emit_compatibility_assertion(
+    kind: AssertionKind,
+    cond: bool,
+    id: u32,
+    message: &str,
+    details: &serde_json::Value,
+) {
+    let flags = assertion_flags(kind, cond);
+    let Some(json_bytes) = to_json_bytes(details) else {
+        transport::hypercall_raw(kind.to_command(), flags, id, &[]);
+        return;
+    };
+    let Some(identity) = crate::assertion_catalog::resolve_compatibility(id, kind, message) else {
+        transport::hypercall(kind.to_command(), flags, id, message, &json_bytes);
+        return;
+    };
+    transport::hypercall_bound_assertion(
+        kind.to_command(),
+        flags,
+        id,
+        message,
+        &json_bytes,
+        identity,
+    );
+}
+
+#[cfg(feature = "full")]
+fn assertion_flags(kind: AssertionKind, condition: bool) -> u8 {
+    match kind {
+        AssertionKind::Always | AssertionKind::Sometimes => u8::from(condition),
+        AssertionKind::Reachable => 1,
+        AssertionKind::Unreachable => 0,
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -399,6 +441,16 @@ pub fn assert_raw_with_id(
     _kind: AssertionKind,
     _cond: bool,
     _id: u32,
+    _message: &str,
+    _details: &(),
+) {
+}
+#[cfg(not(feature = "full"))]
+pub fn assert_raw_with_key(
+    _kind: AssertionKind,
+    _cond: bool,
+    _namespace: &str,
+    _key: &str,
     _message: &str,
     _details: &(),
 ) {
@@ -569,26 +621,77 @@ macro_rules! __cc_register_catalog {
             #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
                 id: $id,
+                namespace: concat!(
+                    "build:",
+                    env!("CARGO_PKG_NAME"),
+                    ":",
+                    env!("CARGO_PKG_VERSION")
+                ),
+                logical_key: $crate::assert::CatalogLogicalKey::Automatic(concat!(
+                    file!(),
+                    ":",
+                    line!(),
+                    ":",
+                    column!(),
+                    ":",
+                    $msg
+                )),
                 message: $msg,
                 kind: $kind,
                 file: file!(),
                 line: line!(),
+                column: column!(),
                 guest: $guest,
                 category: $category,
             };
         };
     };
     ($id:expr, $msg:expr, $kind:expr) => {
+        $crate::__cc_register_catalog!($id, $msg, $kind, "uncategorized", "uncategorized");
+    };
+}
+
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_legacy_catalog {
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {
         const _: () = {
             #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
             static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
                 id: $id,
+                namespace: concat!("legacy:", env!("CARGO_PKG_NAME")),
+                logical_key: $crate::assert::CatalogLogicalKey::LegacyU32($id),
                 message: $msg,
                 kind: $kind,
                 file: file!(),
                 line: line!(),
-                guest: "uncategorized",
-                category: "uncategorized",
+                column: column!(),
+                guest: $guest,
+                category: $category,
+            };
+        };
+    };
+}
+
+#[cfg(feature = "full")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_stable_catalog {
+    ($namespace:expr, $key:expr, $id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {
+        const _: () = {
+            #[linkme::distributed_slice($crate::assert::ASSERTION_CATALOG)]
+            static _CATALOG_ENTRY: $crate::assert::CatalogEntry = $crate::assert::CatalogEntry {
+                id: $id,
+                namespace: $namespace,
+                logical_key: $crate::assert::CatalogLogicalKey::Stable($key),
+                message: $msg,
+                kind: $kind,
+                file: file!(),
+                line: line!(),
+                column: column!(),
+                guest: $guest,
+                category: $category,
             };
         };
     };
@@ -602,12 +705,26 @@ macro_rules! __cc_register_catalog {
     ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {};
 }
 
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_legacy_catalog {
+    ($id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {};
+}
+
+#[cfg(not(feature = "full"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cc_register_stable_catalog {
+    ($namespace:expr, $key:expr, $id:expr, $msg:expr, $kind:expr, $guest:expr, $category:expr) => {};
+}
+
 /// Categorized assert-always with an explicit stable assertion ID.
 #[macro_export]
 macro_rules! cc_assert_always_category_with_id {
     ($guest:expr, $category:expr, $id:expr, $cond:expr, $msg:expr $(,)?) => {{
         const _ID: u32 = $id;
-        $crate::__cc_register_catalog!(
+        $crate::__cc_register_legacy_catalog!(
             _ID,
             $msg,
             $crate::assert::CATALOG_KIND_ALWAYS,
@@ -619,7 +736,7 @@ macro_rules! cc_assert_always_category_with_id {
     }};
     ($guest:expr, $category:expr, $id:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
         const _ID: u32 = $id;
-        $crate::__cc_register_catalog!(
+        $crate::__cc_register_legacy_catalog!(
             _ID,
             $msg,
             $crate::assert::CATALOG_KIND_ALWAYS,
@@ -627,6 +744,51 @@ macro_rules! cc_assert_always_category_with_id {
             $category
         );
         $crate::assert::always_with_id($cond, _ID, $msg, $details);
+    }};
+}
+
+#[macro_export]
+macro_rules! cc_assert_always_stable {
+    ($namespace:expr, $key:expr, $guest:expr, $category:expr, $cond:expr, $msg:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!($namespace, ":", $key));
+        $crate::__cc_register_stable_catalog!(
+            $namespace,
+            $key,
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        let __cc_details = $crate::__cc_empty_json!();
+        $crate::assert::assert_raw_with_key(
+            $crate::assert::AssertionKind::Always,
+            $cond,
+            $namespace,
+            $key,
+            $msg,
+            &__cc_details,
+        );
+    }};
+    ($namespace:expr, $key:expr, $guest:expr, $category:expr, $cond:expr, $msg:expr, $details:expr $(,)?) => {{
+        const _ID: u32 = $crate::assert::location_id(concat!($namespace, ":", $key));
+        $crate::__cc_register_stable_catalog!(
+            $namespace,
+            $key,
+            _ID,
+            $msg,
+            $crate::assert::CATALOG_KIND_ALWAYS,
+            $guest,
+            $category
+        );
+        $crate::assert::assert_raw_with_key(
+            $crate::assert::AssertionKind::Always,
+            $cond,
+            $namespace,
+            $key,
+            $msg,
+            $details,
+        );
     }};
 }
 

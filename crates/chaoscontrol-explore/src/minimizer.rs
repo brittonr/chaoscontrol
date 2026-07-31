@@ -293,9 +293,12 @@ impl Minimizer {
 
         // Check if the same assertion failed
         let report = controller.report();
-        let triggered = report.assertions.iter().any(|(id, record)| {
-            *id == self.bug.assertion_id as u32 && matches!(record.verdict(), Verdict::Failed)
-        });
+        let assertion_id = self.bug.assertion_id as u32;
+        let triggered = report
+            .record_for_compatibility_id(assertion_id)
+            .ok()
+            .flatten()
+            .is_some_and(|record| matches!(record.verdict(), Verdict::Failed));
 
         debug!(
             "  candidate {} ({} faults): {}",

@@ -15,7 +15,7 @@ pub const MAX_ASSERTION_EVENT_DETAILS_BYTES: usize = 2048;
 
 pub const ASSERTION_DESCRIPTOR_DOMAIN: &[u8] = b"chaoscontrol.assertion-descriptor.v1\0";
 const FINGERPRINT_DOMAIN: &[u8] = b"chaoscontrol.assertion-fingerprint.v1\0";
-const FIELD_COUNT: u8 = 9;
+const FIELD_COUNT: u8 = 10;
 const KNOWN_CATEGORIES: &[&str] = &[
     "uncategorized",
     "invariant",
@@ -101,6 +101,7 @@ pub struct AssertionDescriptor {
     pub identity_version: u8,
     pub namespace: String,
     pub logical_key: AssertionLogicalKey,
+    pub compatibility_id: Option<u32>,
     pub kind: AssertionKind,
     pub message: String,
     pub source_file: String,
@@ -172,6 +173,14 @@ impl AssertionDescriptor {
         write_field(&mut output, 7, &self.source_column.to_le_bytes())?;
         write_field(&mut output, 8, self.guest.as_bytes())?;
         write_field(&mut output, 9, self.category.as_bytes())?;
+        let compatibility_id = self.compatibility_id.map(u32::to_le_bytes);
+        write_field(
+            &mut output,
+            10,
+            compatibility_id
+                .as_ref()
+                .map_or(&[], |bytes| bytes.as_slice()),
+        )?;
         if output.len() > MAX_ASSERTION_CANONICAL_BYTES {
             return Err(IdentityError::FieldTooLong("canonical_descriptor"));
         }

@@ -23,6 +23,9 @@ pub mod kernel_bundle_validation;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
+mod sdk_local_catalog;
+mod sdk_local_event;
+mod sdk_local_identity;
 pub mod sdk_local_report;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,

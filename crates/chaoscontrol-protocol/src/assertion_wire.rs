@@ -9,7 +9,11 @@ use crate::assertion_identity::{
 pub const ASSERTION_WIRE_VERSION: u8 = 1;
 pub const CATALOG_BEGIN_PAYLOAD_BYTES: usize = 2;
 pub const CATALOG_COMPLETE_PAYLOAD_BYTES: usize = 1 + ASSERTION_FINGERPRINT_BYTES;
-pub const EVENT_BINDING_BYTES: usize = 1 + ASSERTION_FINGERPRINT_BYTES * 2;
+const WIRE_VERSION_OFFSET: usize = 0;
+const EVENT_CATALOG_TOKEN_OFFSET: usize = WIRE_VERSION_OFFSET + 1;
+const EVENT_FINGERPRINT_OFFSET: usize = EVENT_CATALOG_TOKEN_OFFSET + ASSERTION_FINGERPRINT_BYTES;
+pub const EVENT_KIND_OFFSET: usize = EVENT_FINGERPRINT_OFFSET + ASSERTION_FINGERPRINT_BYTES;
+pub const EVENT_BINDING_BYTES: usize = EVENT_KIND_OFFSET + 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DescriptorFrame {
@@ -107,24 +111,29 @@ pub fn encode_event_frame(frame: &EventFrame, output: &mut [u8]) -> Result<usize
     if required > output.len() {
         return Err(IdentityError::FieldTooLong("event_frame"));
     }
-    output[0] = ASSERTION_WIRE_VERSION;
-    output[1..33].copy_from_slice(&frame.catalog_token.0);
-    output[33..65].copy_from_slice(&frame.fingerprint.0);
-    output[65..required].copy_from_slice(&frame.details);
+    output[WIRE_VERSION_OFFSET] = ASSERTION_WIRE_VERSION;
+    output[EVENT_CATALOG_TOKEN_OFFSET..EVENT_FINGERPRINT_OFFSET]
+        .copy_from_slice(&frame.catalog_token.0);
+    output[EVENT_FINGERPRINT_OFFSET..EVENT_KIND_OFFSET].copy_from_slice(&frame.fingerprint.0);
+    output[EVENT_KIND_OFFSET] = frame.kind as u8;
+    output[EVENT_BINDING_BYTES..required].copy_from_slice(&frame.details);
     Ok(required)
 }
 
 pub fn decode_event_frame(input: &[u8], kind: AssertionKind) -> Result<EventFrame, IdentityError> {
     if input.len() < EVENT_BINDING_BYTES
         || input.len() > EVENT_BINDING_BYTES + MAX_ASSERTION_EVENT_DETAILS_BYTES
-        || input[0] != ASSERTION_WIRE_VERSION
+        || input[WIRE_VERSION_OFFSET] != ASSERTION_WIRE_VERSION
     {
         return Err(IdentityError::MalformedCanonical);
     }
     let mut catalog_token = [0_u8; ASSERTION_FINGERPRINT_BYTES];
     let mut fingerprint = [0_u8; ASSERTION_FINGERPRINT_BYTES];
-    catalog_token.copy_from_slice(&input[1..33]);
-    fingerprint.copy_from_slice(&input[33..65]);
+    catalog_token.copy_from_slice(&input[EVENT_CATALOG_TOKEN_OFFSET..EVENT_FINGERPRINT_OFFSET]);
+    fingerprint.copy_from_slice(&input[EVENT_FINGERPRINT_OFFSET..EVENT_KIND_OFFSET]);
+    if input[EVENT_KIND_OFFSET] != kind as u8 {
+        return Err(IdentityError::InvalidKind);
+    }
     Ok(EventFrame {
         catalog_token: AssertionFingerprint(catalog_token),
         fingerprint: AssertionFingerprint(fingerprint),
@@ -134,7 +143,7 @@ pub fn decode_event_frame(input: &[u8], kind: AssertionKind) -> Result<EventFram
 }
 
 fn decode_canonical_descriptor(input: &[u8]) -> Result<AssertionDescriptor, IdentityError> {
-    const FIELD_COUNT: u8 = 9;
+    const FIELD_COUNT: u8 = 10;
     if input.len() > MAX_ASSERTION_CANONICAL_BYTES
         || !input.starts_with(ASSERTION_DESCRIPTOR_DOMAIN)
     {
@@ -170,6 +179,7 @@ fn decode_canonical_descriptor(input: &[u8]) -> Result<AssertionDescriptor, Iden
     let source_column = take_u32(input, &mut cursor, 7)?;
     let guest = take_string(input, &mut cursor, 8, MAX_ASSERTION_GUEST_BYTES)?;
     let category = take_string(input, &mut cursor, 9, MAX_ASSERTION_CATEGORY_BYTES)?;
+    let compatibility_id = take_optional_u32(input, &mut cursor, 10)?;
     if cursor != input.len() {
         return Err(IdentityError::MalformedCanonical);
     }
@@ -177,6 +187,7 @@ fn decode_canonical_descriptor(input: &[u8]) -> Result<AssertionDescriptor, Iden
         identity_version: version,
         namespace,
         logical_key,
+        compatibility_id,
         kind,
         message,
         source_file,
@@ -225,6 +236,25 @@ fn decode_string(input: &[u8], maximum: usize) -> Result<String, IdentityError> 
         return Err(IdentityError::MalformedCanonical);
     }
     String::from_utf8(input.to_vec()).map_err(|_| IdentityError::MalformedCanonical)
+}
+
+fn take_optional_u32(
+    input: &[u8],
+    cursor: &mut usize,
+    tag: u8,
+) -> Result<Option<u32>, IdentityError> {
+    let bytes = take_field(input, cursor, tag, 4)?;
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    if bytes.len() != 4 {
+        return Err(IdentityError::MalformedCanonical);
+    }
+    Ok(Some(u32::from_le_bytes(
+        bytes
+            .try_into()
+            .map_err(|_| IdentityError::MalformedCanonical)?,
+    )))
 }
 
 fn take_u32(input: &[u8], cursor: &mut usize, tag: u8) -> Result<u32, IdentityError> {

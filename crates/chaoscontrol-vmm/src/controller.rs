@@ -10,6 +10,7 @@ use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
+use chaoscontrol_fault::report_merge::{merge_oracle_reports, rejected_merge_report};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use log::{debug, info, warn};
 use rand::RngCore;
@@ -1697,50 +1698,23 @@ impl SimulationController {
     /// assertions from that VM's guest.  We merge them so the
     /// exploration sees a unified view of all assertion violations.
     fn merged_oracle_report(&self) -> OracleReport {
-        // Start with the first VM's report, then merge others.
-        let mut combined = if let Some(first) = self.vms.first() {
-            first.vm.fault_engine().oracle().report()
+        let mut reports = Vec::with_capacity(self.vms.len().max(1));
+        if self.vms.is_empty() {
+            reports.push((0, self.fault_engine.oracle().report()));
         } else {
-            return self.fault_engine.oracle().report();
-        };
-
-        for slot in self.vms.iter().skip(1) {
-            let report = slot.vm.fault_engine().oracle().report();
-            // Merge assertion records: a failure in ANY VM is a failure.
-            for (id, record) in &report.assertions {
-                combined
-                    .assertions
-                    .entry(*id)
-                    .and_modify(|existing| {
-                        existing.hit_count += record.hit_count;
-                        existing.true_count += record.true_count;
-                        existing.false_count += record.false_count;
-                        existing.runs_hit += record.runs_hit;
-                        existing.runs_satisfied += record.runs_satisfied;
-                        if existing.first_failure_run.is_none() {
-                            existing.first_failure_run = record.first_failure_run;
-                        }
-                    })
-                    .or_insert_with(|| record.clone());
-            }
-            combined.total_runs = combined.total_runs.max(report.total_runs);
-            combined.events.extend(report.events.iter().cloned());
-        }
-
-        // Recompute pass/fail/unexercised counts after merge.
-        combined.passed = 0;
-        combined.failed = 0;
-        combined.unexercised = 0;
-        for record in combined.assertions.values() {
-            match record.verdict() {
-                chaoscontrol_fault::oracle::Verdict::Passed => combined.passed += 1,
-                chaoscontrol_fault::oracle::Verdict::Failed => combined.failed += 1,
-                chaoscontrol_fault::oracle::Verdict::Unexercised => combined.unexercised += 1,
+            for (index, slot) in self.vms.iter().enumerate() {
+                let Ok(vm_instance) = u32::try_from(index) else {
+                    return rejected_merge_report(
+                        chaoscontrol_fault::report_merge::ReportMergeConflict::CardinalityOverflow,
+                    );
+                };
+                reports.push((vm_instance, slot.vm.fault_engine().oracle().report()));
             }
         }
-        combined.catalog_size = combined.assertions.len();
-
-        combined
+        match merge_oracle_reports(&reports) {
+            Ok(report) => report,
+            Err(conflict) => rejected_merge_report(conflict),
+        }
     }
 
     /// Get current simulation tick.

@@ -18,6 +18,12 @@ struct AssertionSite {
     success_count: u64,
     failure_count: u64,
     adoption_tracks: Vec<String>,
+    identity_version: Option<u8>,
+    namespace: Option<String>,
+    logical_key: Option<Value>,
+    fingerprint: Option<String>,
+    catalog_token: Option<String>,
+    guest: Option<String>,
 }
 
 pub fn summarize_sdk_local_report(
@@ -25,6 +31,14 @@ pub fn summarize_sdk_local_report(
     evidence_class: &str,
 ) -> EvidenceResult<Value> {
     let input_path = input_path.as_ref();
+    let metadata = std::fs::metadata(input_path)
+        .map_err(|err| EvidenceError::new(format!("{}: {err}", input_path.display())))?;
+    if metadata.len() > crate::sdk_local_identity::MAX_SDK_JSONL_BYTES {
+        return Err(EvidenceError::new(format!(
+            "{}: SDK JSONL exceeds the input byte limit",
+            input_path.display()
+        )));
+    }
     let text = std::fs::read_to_string(input_path)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", input_path.display())))?;
     summarize_sdk_local_jsonl(&text, evidence_class, Some(input_path))
@@ -35,8 +49,38 @@ pub fn summarize_sdk_local_jsonl(
     evidence_class: &str,
     input_path: Option<&Path>,
 ) -> EvidenceResult<Value> {
+    let identity = crate::sdk_local_identity::validate_local_identity_stream(content)?;
     let mut lifecycle: BTreeMap<String, u64> = BTreeMap::new();
-    let mut catalog: BTreeMap<String, AssertionSite> = BTreeMap::new();
+    let mut catalog: BTreeMap<String, AssertionSite> = identity
+        .catalog
+        .values()
+        .map(|resolved| {
+            let descriptor = &resolved.descriptor;
+            (
+                resolved.key.clone(),
+                AssertionSite {
+                    id: descriptor
+                        .compatibility_id
+                        .map(|value| format!("{value:08x}"))
+                        .unwrap_or_else(|| resolved.key.clone()),
+                    message: descriptor.message.clone(),
+                    assert_type: descriptor_assert_type(descriptor.kind).to_string(),
+                    category: descriptor.category.clone(),
+                    observed: false,
+                    observed_hits: 0,
+                    success_count: 0,
+                    failure_count: 0,
+                    adoption_tracks: Vec::new(),
+                    identity_version: Some(descriptor.identity_version),
+                    namespace: Some(descriptor.namespace.clone()),
+                    logical_key: serde_json::to_value(&descriptor.logical_key).ok(),
+                    fingerprint: Some(resolved.fingerprint.to_hex()),
+                    catalog_token: Some(resolved.catalog_token.to_hex()),
+                    guest: Some(descriptor.guest.clone()),
+                },
+            )
+        })
+        .collect();
     let mut exercised: BTreeSet<String> = BTreeSet::new();
     let mut sometimes_success: BTreeSet<String> = BTreeSet::new();
     let mut reachable_hit: BTreeSet<String> = BTreeSet::new();
@@ -70,7 +114,11 @@ pub fn summarize_sdk_local_jsonl(
                     line_idx + 1
                 ))
             })?;
-            let assertion_id = value_to_string(assertion.get("id"), "unknown");
+            let compatibility_id = value_to_string(assertion.get("id"), "unknown");
+            let resolved = identity.events.get(&line_idx);
+            let assertion_id = resolved
+                .map(|identity| identity.key.clone())
+                .unwrap_or_else(|| compatibility_id.clone());
             let details = assertion.get("details").and_then(Value::as_object);
             let track = details.and_then(details_track);
             if let Some(track) = &track {
@@ -79,18 +127,37 @@ pub fn summarize_sdk_local_jsonl(
             let site = catalog
                 .entry(assertion_id.clone())
                 .or_insert_with(|| AssertionSite {
-                    id: assertion_id.clone(),
-                    message: value_to_string(assertion.get("message"), "<unnamed>"),
-                    assert_type: value_to_string(assertion.get("assert_type"), "unknown"),
-                    category: details
-                        .and_then(|details| details.get("category"))
-                        .map(|value| value_to_string(Some(value), "uncategorized"))
-                        .unwrap_or_else(|| "uncategorized".to_string()),
+                    id: compatibility_id,
+                    message: resolved.map_or_else(
+                        || value_to_string(assertion.get("message"), "<unnamed>"),
+                        |identity| identity.descriptor.message.clone(),
+                    ),
+                    assert_type: resolved.map_or_else(
+                        || value_to_string(assertion.get("assert_type"), "unknown"),
+                        |identity| descriptor_assert_type(identity.descriptor.kind).to_string(),
+                    ),
+                    category: resolved.map_or_else(
+                        || {
+                            details
+                                .and_then(|details| details.get("category"))
+                                .map(|value| value_to_string(Some(value), "uncategorized"))
+                                .unwrap_or_else(|| "uncategorized".to_string())
+                        },
+                        |identity| identity.descriptor.category.clone(),
+                    ),
                     observed: false,
                     observed_hits: 0,
                     success_count: 0,
                     failure_count: 0,
                     adoption_tracks: Vec::new(),
+                    identity_version: resolved.map(|identity| identity.descriptor.identity_version),
+                    namespace: resolved.map(|identity| identity.descriptor.namespace.clone()),
+                    logical_key: resolved.and_then(|identity| {
+                        serde_json::to_value(&identity.descriptor.logical_key).ok()
+                    }),
+                    fingerprint: resolved.map(|identity| identity.fingerprint.to_hex()),
+                    catalog_token: resolved.map(|identity| identity.catalog_token.to_hex()),
+                    guest: resolved.map(|identity| identity.descriptor.guest.clone()),
                 });
             if let Some(track) = track {
                 if !site.adoption_tracks.contains(&track) {
@@ -171,6 +238,9 @@ pub fn summarize_sdk_local_jsonl(
     if !setup_complete {
         gaps.push("missing setup_complete lifecycle event".to_string());
     }
+    if identity.legacy_ambiguous {
+        gaps.push("legacy-ambiguous assertion identity cannot satisfy strict evidence".to_string());
+    }
     if uncategorized > 0 {
         gaps.push(format!("{uncategorized} uncategorized assertion(s)"));
     }
@@ -204,6 +274,18 @@ pub fn summarize_sdk_local_jsonl(
     report.insert(
         "cataloged_assertions".to_string(),
         Value::from(catalog.len() as u64),
+    );
+    report.insert(
+        "catalog_status".to_string(),
+        Value::String(catalog_status_string(identity.catalog_status).to_string()),
+    );
+    report.insert(
+        "collision_safe_evidence".to_string(),
+        Value::Bool(
+            identity.catalog_status
+                == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+                && !identity.legacy_ambiguous,
+        ),
     );
     report.insert(
         "evidence_class".to_string(),
@@ -246,7 +328,7 @@ pub fn summarize_sdk_local_jsonl(
     report.insert("replay_evidence".to_string(), Value::Bool(false));
     report.insert(
         "schema".to_string(),
-        Value::String("chaoscontrol.sdk.local_report.v1".to_string()),
+        Value::String("chaoscontrol.sdk.local_report.v2".to_string()),
     );
     report.insert("setup_complete".to_string(), Value::Bool(setup_complete));
     report.insert(
@@ -335,6 +417,16 @@ pub fn check_sdk_assertion_quality_report(report: &Value) -> EvidenceResult<Asse
         .as_object()
         .ok_or_else(|| EvidenceError::new("SDK local report must be a JSON object"))?;
     let mut blockers = Vec::new();
+    if object
+        .get("collision_safe_evidence")
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
+        blockers.push(
+            "assertion identity is not collision-safe; emit and complete a strict catalog"
+                .to_string(),
+        );
+    }
     if object.get("setup_complete").and_then(Value::as_bool) != Some(true) {
         blockers.push("missing setup_complete lifecycle event; call WorkloadHarness::setup_complete after service setup".to_string());
     }
@@ -414,11 +506,27 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
         )));
     }
 
-    let credible = summarize_sdk_local_jsonl(
+    let mut credible = summarize_sdk_local_jsonl(
         "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"sometimes\",\"condition\":true,\"hit\":true,\"must_hit\":true,\"id\":\"1\",\"message\":\"write succeeds\",\"display_type\":\"sometimes\",\"details\":{\"category\":\"operation\",\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"reachability\",\"condition\":true,\"hit\":true,\"must_hit\":true,\"id\":\"2\",\"message\":\"read branch\",\"display_type\":\"reachability\",\"details\":{\"category\":\"branch\",\"adoption_track\":\"external-harness\"}}}\n",
         DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
         None,
     )?;
+    let legacy_gate = check_sdk_assertion_quality_report(&credible)?;
+    if legacy_gate.passed
+        || !legacy_gate
+            .blockers
+            .iter()
+            .any(|blocker| blocker.contains("not collision-safe"))
+    {
+        return Err(EvidenceError::new(format!(
+            "legacy credible fixture must remain diagnostic, got {:?}",
+            legacy_gate
+        )));
+    }
+    credible
+        .as_object_mut()
+        .ok_or_else(|| EvidenceError::new("credible fixture report must be an object"))?
+        .insert("collision_safe_evidence".to_string(), Value::Bool(true));
     let credible_gate = check_sdk_assertion_quality_report(&credible)?;
     if !credible_gate.passed
         || credible_gate.to_json().get("replay_evidence") != Some(&Value::Bool(false))
@@ -499,10 +607,60 @@ fn assertion_site_value(site: &AssertionSite) -> Value {
     value.insert("failure_count".to_string(), Value::from(site.failure_count));
     value.insert("id".to_string(), Value::String(site.id.clone()));
     value.insert("message".to_string(), Value::String(site.message.clone()));
+    if let Some(identity_version) = site.identity_version {
+        value.insert(
+            "identity_version".to_string(),
+            Value::from(identity_version),
+        );
+    }
+    if let Some(namespace) = &site.namespace {
+        value.insert("namespace".to_string(), Value::String(namespace.clone()));
+    }
+    if let Some(logical_key) = &site.logical_key {
+        value.insert("logical_key".to_string(), logical_key.clone());
+    }
+    if let Some(fingerprint) = &site.fingerprint {
+        value.insert(
+            "fingerprint".to_string(),
+            Value::String(fingerprint.clone()),
+        );
+    }
+    if let Some(catalog_token) = &site.catalog_token {
+        value.insert(
+            "catalog_token".to_string(),
+            Value::String(catalog_token.clone()),
+        );
+    }
+    if let Some(guest) = &site.guest {
+        value.insert("guest".to_string(), Value::String(guest.clone()));
+    }
     value.insert("observed".to_string(), Value::Bool(site.observed));
     value.insert("observed_hits".to_string(), Value::from(site.observed_hits));
     value.insert("success_count".to_string(), Value::from(site.success_count));
     Value::Object(value)
+}
+
+fn descriptor_assert_type(
+    kind: chaoscontrol_protocol::assertion_identity::AssertionKind,
+) -> &'static str {
+    use chaoscontrol_protocol::assertion_identity::AssertionKind;
+    match kind {
+        AssertionKind::Always => "always",
+        AssertionKind::Sometimes => "sometimes",
+        AssertionKind::Reachable | AssertionKind::Unreachable => "reachability",
+    }
+}
+
+fn catalog_status_string(
+    status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+) -> &'static str {
+    use chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus;
+    match status {
+        CatalogValidationStatus::Pending => "pending",
+        CatalogValidationStatus::Accepted => "accepted",
+        CatalogValidationStatus::FatalConflict => "fatal-conflict",
+        CatalogValidationStatus::LegacyAmbiguous => "legacy-ambiguous",
+    }
 }
 
 fn count_map_value(values: &BTreeMap<String, u64>) -> Value {

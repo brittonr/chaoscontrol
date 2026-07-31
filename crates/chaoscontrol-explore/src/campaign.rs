@@ -72,6 +72,12 @@ pub struct CampaignReport {
     pub assertion_details: Vec<AssertionDetail>,
     /// Merged assertion stats.
     pub assertion_stats: AssertionStats,
+    /// Fatal identity conflicts found during report aggregation.
+    #[serde(default)]
+    pub assertion_identity_conflicts: Vec<String>,
+    /// True only when every merged assertion retained strict identity.
+    #[serde(default)]
+    pub collision_safe_assertion_evidence: bool,
     /// Wall-clock time for the entire campaign.
     pub wall_clock_seconds: f64,
     /// Seeds that panicked or returned errors.
@@ -407,8 +413,10 @@ pub fn aggregate_reports(
     // Bug dedup: dedup_key → CampaignBug
     let mut bug_map: BTreeMap<u64, CampaignBug> = BTreeMap::new();
 
-    // Assertion merge: id → merged detail
-    let mut assertion_map: BTreeMap<u32, AssertionDetail> = BTreeMap::new();
+    // Assertion merge: structured fingerprint or explicit legacy quarantine key.
+    let mut assertion_map: BTreeMap<String, AssertionDetail> = BTreeMap::new();
+    let mut assertion_identity_conflicts = Vec::new();
+    let mut rejected_assertion_keys = std::collections::BTreeSet::new();
 
     for (seed, report, elapsed) in &seed_reports {
         seeds_run.push(*seed);
@@ -449,22 +457,19 @@ pub fn aggregate_reports(
             }
         }
 
-        // Merge assertion details.
         for detail in &report.assertion_details {
-            if let Some(existing) = assertion_map.get_mut(&detail.id) {
-                existing.hit_count += detail.hit_count;
-                existing.true_count += detail.true_count;
-                existing.false_count += detail.false_count;
-                // Worst verdict wins: failed > unexercised > passed.
-                if verdict_rank(&detail.verdict) < verdict_rank(&existing.verdict) {
-                    existing.verdict = detail.verdict.clone();
-                }
-                // Keep latest failure details.
-                if detail.last_failure_details.is_some() {
-                    existing.last_failure_details = detail.last_failure_details.clone();
+            let key = assertion_detail_key(detail);
+            if rejected_assertion_keys.contains(&key) {
+                continue;
+            }
+            if let Some(existing) = assertion_map.get_mut(&key) {
+                if let Err(error) = merge_assertion_detail(existing, detail) {
+                    assertion_map.remove(&key);
+                    rejected_assertion_keys.insert(key.clone());
+                    assertion_identity_conflicts.push(format!("{key}: {error}"));
                 }
             } else {
-                assertion_map.insert(detail.id, detail.clone());
+                assertion_map.insert(key, detail.clone());
             }
         }
     }
@@ -504,6 +509,11 @@ pub fn aggregate_reports(
         .first()
         .and_then(|(_, r, _)| r.scenario_config.clone());
 
+    let collision_safe_assertion_evidence = assertion_identity_conflicts.is_empty()
+        && assertion_details
+            .iter()
+            .all(|detail| detail.identity.is_some());
+
     CampaignReport {
         seeds_run,
         seeds_with_bugs,
@@ -513,10 +523,53 @@ pub fn aggregate_reports(
         per_seed,
         assertion_details,
         assertion_stats,
+        assertion_identity_conflicts,
+        collision_safe_assertion_evidence,
         wall_clock_seconds,
         failed_seeds: Vec::new(),
         scenario_config,
     }
+}
+
+fn assertion_detail_key(detail: &AssertionDetail) -> String {
+    detail.identity.as_ref().map_or_else(
+        || format!("legacy-ambiguous:{:08x}", detail.id),
+        |identity| identity.fingerprint.clone(),
+    )
+}
+
+fn merge_assertion_detail(
+    existing: &mut AssertionDetail,
+    candidate: &AssertionDetail,
+) -> Result<(), &'static str> {
+    if existing.identity != candidate.identity
+        || existing.id != candidate.id
+        || existing.message != candidate.message
+        || existing.kind != candidate.kind
+        || existing.guest != candidate.guest
+        || existing.category != candidate.category
+    {
+        return Err("descriptor metadata conflict");
+    }
+    existing.hit_count = existing
+        .hit_count
+        .checked_add(candidate.hit_count)
+        .ok_or("hit count overflow")?;
+    existing.true_count = existing
+        .true_count
+        .checked_add(candidate.true_count)
+        .ok_or("true count overflow")?;
+    existing.false_count = existing
+        .false_count
+        .checked_add(candidate.false_count)
+        .ok_or("false count overflow")?;
+    if verdict_rank(&candidate.verdict) < verdict_rank(&existing.verdict) {
+        existing.verdict = candidate.verdict.clone();
+    }
+    if candidate.last_failure_details.is_some() {
+        existing.last_failure_details = candidate.last_failure_details.clone();
+    }
+    Ok(())
 }
 
 /// Extract a human-readable message from a panic payload.
@@ -658,6 +711,7 @@ mod tests {
     fn make_detail(id: u32, verdict: &str, hits: u64, t: u64, f: u64) -> AssertionDetail {
         AssertionDetail {
             id,
+            identity: None,
             message: format!("assertion_{}", id),
             kind: "always".to_string(),
             guest: "uncategorized".to_string(),
@@ -760,6 +814,8 @@ mod tests {
             ],
             assertion_details: Vec::new(),
             assertion_stats: AssertionStats::default(),
+            assertion_identity_conflicts: Vec::new(),
+            collision_safe_assertion_evidence: true,
             wall_clock_seconds: 25.0,
             failed_seeds: Vec::new(),
             scenario_config: None,

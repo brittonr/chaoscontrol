@@ -1104,6 +1104,7 @@ mod tests {
         let details = vec![
             AssertionDetail {
                 id: 100,
+                identity: None,
                 message: "election safety".into(),
                 kind: "always".into(),
                 guest: "raft".into(),
@@ -1116,6 +1117,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 200,
+                identity: None,
                 message: "log matching".into(),
                 kind: "always".into(),
                 guest: "raft".into(),
@@ -1128,6 +1130,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 300,
+                identity: None,
                 message: "value committed".into(),
                 kind: "sometimes".into(),
                 guest: "redb".into(),
@@ -1140,6 +1143,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 400,
+                identity: None,
                 message: "split brain".into(),
                 kind: "unreachable".into(),
                 guest: "raft".into(),
@@ -1208,6 +1212,7 @@ mod tests {
 
         let detail = AssertionDetail {
             id: 42,
+            identity: None,
             message: "safety property".into(),
             kind: "always".into(),
             guest: "raft".into(),
@@ -1352,6 +1357,7 @@ mod tests {
             assertion_details: vec![
                 AssertionDetail {
                     id: 100,
+                    identity: None,
                     message: "leader completeness".into(),
                     kind: "always".into(),
                     guest: "raft".into(),
@@ -1364,6 +1370,7 @@ mod tests {
                 },
                 AssertionDetail {
                     id: 200,
+                    identity: None,
                     message: "election safety".into(),
                     kind: "always".into(),
                     guest: "raft".into(),
@@ -1381,6 +1388,8 @@ mod tests {
                 failed: 1,
                 unexercised: 0,
             },
+            assertion_identity_conflicts: Vec::new(),
+            collision_safe_assertion_evidence: false,
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
@@ -1421,6 +1430,8 @@ mod tests {
             per_seed: Vec::new(),
             assertion_details: Vec::new(),
             assertion_stats: Default::default(),
+            assertion_identity_conflicts: Vec::new(),
+            collision_safe_assertion_evidence: true,
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),
             scenario_config: None,

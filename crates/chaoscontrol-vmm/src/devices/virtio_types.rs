@@ -38,6 +38,8 @@ impl Default for VirtioLimits {
 pub enum TransportViolation {
     MmioWidth { actual: usize },
     QueueSelection { selected: u32, available: usize },
+    FeatureSelector { selected: u32 },
+    FeaturesAfterAcceptance,
     QueueSizeWhileReady,
     QueueAddressWhileReady,
     ReadyValue { value: u32 },

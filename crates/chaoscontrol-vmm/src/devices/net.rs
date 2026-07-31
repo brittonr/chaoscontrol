@@ -88,6 +88,11 @@ impl DeterministicNet {
         !self.rx_queue.is_empty()
     }
 
+    /// Borrow the next RX packet without consuming it.
+    pub fn peek_rx(&self) -> Option<&[u8]> {
+        self.rx_queue.front().map(Vec::as_slice)
+    }
+
     /// Dequeue the next packet from the RX queue (oldest first).
     ///
     /// Returns `None` if the queue is empty.
@@ -95,11 +100,29 @@ impl DeterministicNet {
         self.rx_queue.pop_front()
     }
 
-    /// Record a packet transmitted by the guest (guest → harness).
-    pub fn enqueue_tx(&mut self, data: Vec<u8>) {
-        self.stats.tx_bytes += data.len() as u64;
-        self.stats.tx_packets += 1;
+    /// Record a packet transmitted by the guest with fallible queue growth.
+    pub fn try_enqueue_tx(&mut self, data: Vec<u8>) -> Result<(), Vec<u8>> {
+        let Ok(length) = u64::try_from(data.len()) else {
+            return Err(data);
+        };
+        let Some(tx_bytes) = self.stats.tx_bytes.checked_add(length) else {
+            return Err(data);
+        };
+        let Some(tx_packets) = self.stats.tx_packets.checked_add(1) else {
+            return Err(data);
+        };
+        if self.tx_queue.try_reserve(1).is_err() {
+            return Err(data);
+        }
+        self.stats.tx_bytes = tx_bytes;
+        self.stats.tx_packets = tx_packets;
         self.tx_queue.push_back(data);
+        Ok(())
+    }
+
+    /// Record a host-controlled packet transmitted by the guest.
+    pub fn enqueue_tx(&mut self, data: Vec<u8>) {
+        let _ = self.try_enqueue_tx(data);
     }
 
     /// Drain all packets transmitted by the guest, returning them in order.

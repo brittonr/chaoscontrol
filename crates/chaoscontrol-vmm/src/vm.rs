@@ -20,7 +20,7 @@ use crate::acpi;
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
-use crate::devices::virtio_mmio::VirtioMmioDevice;
+use crate::devices::virtio_mmio::{MmioWriteEffect, VirtioMmioDevice};
 use crate::dlog::{DlogRecord, DlogTag, DlogWriter};
 use crate::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 
@@ -2980,13 +2980,15 @@ impl DeterministicVm {
                 for dev in &mut self.virtio_devices {
                     if dev.handles(addr) {
                         let offset = addr - dev.base_addr();
-                        dev.write(offset, data, self.memory.inner());
+                        let effect = dev.write(offset, data, self.memory.inner());
 
-                        // Process queues and raise interrupt if needed
-                        if dev.process_queues(self.memory.inner()) {
-                            let irq = dev.irq();
-                            let _ = self.vm.set_irq_line(irq, true);
-                            let _ = self.vm.set_irq_line(irq, false);
+                        // Process only the queue named by a validated notification.
+                        if let Ok(MmioWriteEffect::NotifyQueue(queue_index)) = effect {
+                            if dev.process_queue(queue_index, self.memory.inner()) {
+                                let irq = dev.irq();
+                                let _ = self.vm.set_irq_line(irq, true);
+                                let _ = self.vm.set_irq_line(irq, false);
+                            }
                         }
                         break;
                     }

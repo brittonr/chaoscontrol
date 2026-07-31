@@ -507,6 +507,7 @@ mod tests {
 
         let details = vec![AssertionDetail {
             id: 99,
+            identity: None,
             message: "test assertion".to_string(),
             kind: "always".to_string(),
             guest: "uncategorized".to_string(),

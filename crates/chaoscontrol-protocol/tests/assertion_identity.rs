@@ -16,7 +16,6 @@ use chaoscontrol_protocol::PAYLOAD_MAX;
 const SOURCE_LINE: u32 = 41;
 const SOURCE_COLUMN: u32 = 9;
 const LEGACY_ID: u32 = 77;
-const OTHER_LEGACY_ID: u32 = 78;
 const EVENT_DETAILS: &[u8] = br#"{"term":3}"#;
 
 fn descriptor(key: AssertionLogicalKey) -> AssertionDescriptor {
@@ -24,6 +23,7 @@ fn descriptor(key: AssertionLogicalKey) -> AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,
         namespace: "build:raft-guest:v1".to_string(),
         logical_key: key,
+        compatibility_id: Some(LEGACY_ID),
         kind: AssertionKind::Always,
         message: "leader is unique".to_string(),
         source_file: "src/raft/assertions.rs".to_string(),
@@ -150,14 +150,28 @@ fn legacy_alias_conflict_is_fatal_but_namespaces_stay_distinct() {
         Err(CatalogConflict::LegacyAliasConflict)
     );
 
-    let mut other = descriptor(AssertionLogicalKey::LegacyU32 {
-        id: OTHER_LEGACY_ID,
-    });
+    let mut other = descriptor(AssertionLogicalKey::LegacyU32 { id: LEGACY_ID });
     other.namespace = "build:redb-guest:v1".to_string();
     other.guest = "redb".to_string();
     let mut separate = CatalogBuilder::begin(2).expect("catalog begin");
     separate.insert(first).expect("first namespace");
     separate.insert(other).expect("other namespace");
+}
+
+#[test]
+fn automatic_compatibility_alias_collision_is_fatal() {
+    let first = automatic();
+    let mut second = first.clone();
+    second.logical_key = AssertionLogicalKey::Automatic {
+        source_site: "src/raft/other.rs:1:1".to_string(),
+    };
+    second.message = "different automatic assertion".to_string();
+    let mut builder = CatalogBuilder::begin(2).expect("catalog begin");
+    builder.insert(first).expect("first automatic descriptor");
+    assert_eq!(
+        builder.insert(second),
+        Err(CatalogConflict::CompatibilityAliasConflict)
+    );
 }
 
 #[test]

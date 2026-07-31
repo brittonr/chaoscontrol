@@ -21,5 +21,6 @@
 pub mod engine;
 pub mod faults;
 pub mod oracle;
+pub mod report_merge;
 pub mod scenario;
 pub mod schedule;

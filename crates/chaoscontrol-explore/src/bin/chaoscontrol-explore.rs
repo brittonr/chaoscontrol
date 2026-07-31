@@ -2374,23 +2374,24 @@ fn cmd_reproduce(
     eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!();
 
-    // Check assertion results across all VMs
-    let mut target_failed = false;
-    let mut all_assertions = Vec::new();
-
-    for i in 0..controller.num_vms() {
-        let oracle = controller.vm(i).fault_engine().oracle();
-        for (id, record) in oracle.assertions() {
-            let verdict = record.verdict();
-            if *id == target_assertion as u32 && verdict == Verdict::Failed {
-                target_failed = true;
-            }
-            // Deduplicate by id
-            if !all_assertions.iter().any(|(aid, _, _, _)| aid == id) {
-                all_assertions.push((*id, record.message.clone(), record.kind, verdict));
-            }
-        }
-    }
+    let report = controller.report();
+    let target_failed = report.collision_safe_evidence
+        && report
+            .record_for_compatibility_id(target_assertion as u32)
+            .ok()
+            .flatten()
+            .is_some_and(|record| record.verdict() == Verdict::Failed);
+    let all_assertions = report
+        .all_records()
+        .map(|(identity, record)| {
+            (
+                format!("{identity:?}"),
+                record.message.clone(),
+                record.kind,
+                record.verdict(),
+            )
+        })
+        .collect::<Vec<_>>();
 
     let diagnostic = if target_failed {
         let message = format!("BUG REPRODUCED — assertion {} failed", target_assertion);

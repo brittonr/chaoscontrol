@@ -7,6 +7,12 @@
 use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::schedule::FaultSchedule;
+use chaoscontrol_protocol::assertion_catalog::{
+    BoundAssertionEvent, CatalogBuilder, CatalogConflict,
+};
+use chaoscontrol_protocol::assertion_wire::{
+    decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame, decode_event_frame,
+};
 use chaoscontrol_protocol::*;
 use rand::RngCore;
 use rand::SeedableRng;
@@ -154,6 +160,10 @@ pub struct FaultEngine {
     /// Last-reported guidance distance per assertion ID.
     /// Written by `CMD_GUIDANCE` hypercalls, read by the explorer.
     guidance_values: HashMap<u32, f64>,
+    /// Pending strict assertion catalog. It becomes authoritative only at completion.
+    catalog_builder: Option<CatalogBuilder>,
+    /// Explicit diagnostic compatibility switch for legacy u32 streams.
+    diagnostic_legacy_assertions: bool,
 }
 
 impl FaultEngine {
@@ -175,6 +185,8 @@ impl FaultEngine {
             random_overrides: BTreeMap::new(),
             choice_count: 0,
             guidance_values: HashMap::new(),
+            catalog_builder: None,
+            diagnostic_legacy_assertions: false,
         }
     }
 
@@ -198,69 +210,14 @@ impl FaultEngine {
     /// the result and status to write back.
     pub fn handle_hypercall(&mut self, page: &HypercallPage) -> (u64, u8) {
         match page.command {
-            CMD_ASSERT_CATALOG => {
-                let kind = page.flags;
-                let message = self.decode_message(page);
-                let oracle_kind = match kind {
-                    0 => AssertionKind::Always,
-                    1 => AssertionKind::Sometimes,
-                    2 => AssertionKind::Reachable,
-                    3 => AssertionKind::Unreachable,
-                    _ => AssertionKind::Always,
-                };
-                let details: serde_json::Value =
-                    serde_json::from_slice(&page.payload).unwrap_or_default();
-                let guest = details
-                    .get("guest")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("uncategorized");
-                let category = details
-                    .get("category")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("uncategorized");
-                self.oracle.register_catalog_entry_with_metadata(
-                    page.id,
-                    oracle_kind,
-                    &message,
-                    guest,
-                    category,
-                );
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_ALWAYS => {
-                let cond = page.condition();
-                let (message, details) = self.decode_message_and_details(page);
-                let details_ref = if cond { None } else { Some(details.as_slice()) };
-                self.oracle
-                    .record_always_with_details(page.id, cond, &message, details_ref);
-                if cond {
-                    (0, STATUS_OK)
-                } else {
-                    (0, STATUS_ASSERTION_FAILED)
-                }
-            }
-            CMD_ASSERT_SOMETIMES => {
-                let cond = page.condition();
-                let (message, details) = self.decode_message_and_details(page);
-                let details_ref = if cond { None } else { Some(details.as_slice()) };
-                self.oracle
-                    .record_sometimes_with_details(page.id, cond, &message, details_ref);
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_REACHABLE => {
-                let message = self.decode_message(page);
-                self.oracle.record_reachable(page.id, &message);
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_UNREACHABLE => {
-                let (message, details) = self.decode_message_and_details(page);
-                self.oracle.record_unreachable_with_details(
-                    page.id,
-                    &message,
-                    Some(details.as_slice()),
-                );
-                (0, STATUS_UNREACHABLE_REACHED)
-            }
+            CMD_ASSERT_CATALOG_BEGIN => self.handle_catalog_begin(page),
+            CMD_ASSERT_CATALOG_DESCRIPTOR => self.handle_catalog_descriptor(page),
+            CMD_ASSERT_CATALOG_COMPLETE => self.handle_catalog_complete(page),
+            CMD_ASSERT_CATALOG_LEGACY => self.handle_legacy_catalog(page),
+            CMD_ASSERT_ALWAYS => self.handle_assertion_event(page, AssertionKind::Always),
+            CMD_ASSERT_SOMETIMES => self.handle_assertion_event(page, AssertionKind::Sometimes),
+            CMD_ASSERT_REACHABLE => self.handle_assertion_event(page, AssertionKind::Reachable),
+            CMD_ASSERT_UNREACHABLE => self.handle_assertion_event(page, AssertionKind::Unreachable),
             CMD_LIFECYCLE_SETUP_COMPLETE => {
                 self.setup_complete = true;
                 self.oracle.record_setup_complete();
@@ -325,6 +282,203 @@ impl FaultEngine {
                 (0, STATUS_ERROR)
             }
         }
+    }
+
+    fn handle_catalog_begin(&mut self, page: &HypercallPage) -> (u64, u8) {
+        if self.catalog_builder.is_some()
+            || self.oracle.catalog_status()
+                != chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending
+        {
+            return self.catalog_failure(CatalogConflict::AlreadyBegun);
+        }
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+            ));
+        };
+        if let Err(error) = decode_catalog_begin(payload) {
+            return self.catalog_failure(CatalogConflict::Descriptor(error));
+        }
+        let expected = page.id as usize;
+        match CatalogBuilder::begin(expected) {
+            Ok(builder) => {
+                self.catalog_builder = Some(builder);
+                (0, STATUS_OK)
+            }
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_catalog_descriptor(&mut self, page: &HypercallPage) -> (u64, u8) {
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+            ));
+        };
+        let frame = match decode_descriptor_frame(payload) {
+            Ok(frame) => frame,
+            Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
+        };
+        let result = match self.catalog_builder.as_mut() {
+            Some(builder) => builder.insert_with_fingerprint(frame.descriptor, frame.fingerprint),
+            None => return self.catalog_failure(CatalogConflict::CatalogIncomplete),
+        };
+        match result {
+            Ok(_) => (0, STATUS_OK),
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_catalog_complete(&mut self, page: &HypercallPage) -> (u64, u8) {
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+            ));
+        };
+        let token = match decode_catalog_complete(payload) {
+            Ok(token) => token,
+            Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
+        };
+        let Some(builder) = self.catalog_builder.take() else {
+            return self.catalog_failure(CatalogConflict::CatalogIncomplete);
+        };
+        match builder
+            .complete(token)
+            .and_then(|catalog| self.oracle.activate_catalog(catalog))
+        {
+            Ok(()) => (0, STATUS_OK),
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_assertion_event(&mut self, page: &HypercallPage, kind: AssertionKind) -> (u64, u8) {
+        if self.oracle.catalog_status()
+            != chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+        {
+            if self.diagnostic_legacy_assertions {
+                return self.handle_legacy_assertion_event(page, kind);
+            }
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::CatalogIncomplete);
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        }
+        let Ok(payload) = self.page_payload(page) else {
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::Descriptor(
+                    chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+                ));
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        };
+        let frame = match decode_event_frame(payload, kind) {
+            Ok(frame) => frame,
+            Err(error) => {
+                self.oracle
+                    .mark_identity_conflict(CatalogConflict::Descriptor(error));
+                return (0, STATUS_ASSERTION_EVENT_REJECTED);
+            }
+        };
+        let event = BoundAssertionEvent {
+            catalog_token: frame.catalog_token,
+            fingerprint: frame.fingerprint,
+            kind: frame.kind,
+        };
+        let condition = page.condition();
+        let details = if condition {
+            None
+        } else {
+            Some(frame.details.as_slice())
+        };
+        if self
+            .oracle
+            .record_bound_event(&event, condition, details)
+            .is_err()
+        {
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        }
+        match kind {
+            AssertionKind::Always if !condition => (0, STATUS_ASSERTION_FAILED),
+            AssertionKind::Unreachable => (0, STATUS_UNREACHABLE_REACHED),
+            _ => (0, STATUS_OK),
+        }
+    }
+
+    fn handle_legacy_catalog(&mut self, page: &HypercallPage) -> (u64, u8) {
+        if !self.diagnostic_legacy_assertions {
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::LegacyAliasConflict);
+            return (0, STATUS_ASSERTION_IDENTITY_CONFLICT);
+        }
+        let kind = match page.flags {
+            0 => AssertionKind::Always,
+            1 => AssertionKind::Sometimes,
+            2 => AssertionKind::Reachable,
+            3 => AssertionKind::Unreachable,
+            _ => {
+                self.oracle
+                    .mark_identity_conflict(CatalogConflict::KindConflict);
+                return (0, STATUS_ASSERTION_IDENTITY_CONFLICT);
+            }
+        };
+        let message = self.decode_message(page);
+        self.oracle.register_catalog_entry(page.id, kind, &message);
+        (0, STATUS_ASSERTION_EVENT_REJECTED)
+    }
+
+    fn handle_legacy_assertion_event(
+        &mut self,
+        page: &HypercallPage,
+        kind: AssertionKind,
+    ) -> (u64, u8) {
+        let (message, details) = self.decode_message_and_details(page);
+        let condition = page.condition();
+        match kind {
+            AssertionKind::Always => {
+                self.oracle.record_always_with_details(
+                    page.id,
+                    condition,
+                    &message,
+                    (!condition).then_some(details.as_slice()),
+                );
+            }
+            AssertionKind::Sometimes => self.oracle.record_sometimes_with_details(
+                page.id,
+                condition,
+                &message,
+                (!condition).then_some(details.as_slice()),
+            ),
+            AssertionKind::Reachable => self.oracle.record_reachable(page.id, &message),
+            AssertionKind::Unreachable => {
+                self.oracle.record_unreachable_with_details(
+                    page.id,
+                    &message,
+                    Some(details.as_slice()),
+                );
+            }
+        }
+        (0, STATUS_ASSERTION_EVENT_REJECTED)
+    }
+
+    fn catalog_failure(&mut self, conflict: CatalogConflict) -> (u64, u8) {
+        let status = if conflict == CatalogConflict::CardinalityOverflow {
+            STATUS_ASSERTION_LIMIT_EXCEEDED
+        } else {
+            STATUS_ASSERTION_IDENTITY_CONFLICT
+        };
+        self.catalog_builder = None;
+        self.oracle.mark_identity_conflict(conflict);
+        (0, status)
+    }
+
+    fn page_payload<'a>(&self, page: &'a HypercallPage) -> Result<&'a [u8], EngineError> {
+        let payload_length = page.payload_len as usize;
+        if payload_length > PAYLOAD_MAX {
+            return Err(EngineError::PayloadDecode);
+        }
+        Ok(&page.payload[..payload_length])
+    }
+
+    pub fn enable_legacy_assertion_diagnostics(&mut self) {
+        self.diagnostic_legacy_assertions = true;
     }
 
     /// Poll for faults that should be injected at the given virtual time.
@@ -627,46 +781,47 @@ mod tests {
     }
 
     #[test]
-    fn handle_assert_always_true() {
+    fn strict_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "test", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_OK);
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
         assert!(!engine.has_assertion_failure());
+        assert!(!engine.oracle().report().collision_safe_evidence);
     }
 
     #[test]
-    fn handle_assert_always_false() {
+    fn strict_false_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x00, 1, "bad", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_ASSERTION_FAILED);
-        assert!(engine.has_assertion_failure());
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
+        assert!(!engine.has_assertion_failure());
     }
 
     #[test]
-    fn handle_assert_sometimes() {
+    fn strict_sometimes_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 1, "rare", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_OK); // sometimes(false) is not an immediate failure
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
     }
 
     #[test]
-    fn handle_assert_unreachable() {
+    fn strict_unreachable_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_UNREACHABLE, 0x00, 1, "impossible", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_UNREACHABLE_REACHED);
-        assert!(engine.has_assertion_failure());
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
+        assert!(!engine.has_assertion_failure());
     }
 
     #[test]
@@ -807,6 +962,7 @@ mod tests {
     #[test]
     fn cross_run_oracle_report() {
         let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.enable_legacy_assertion_diagnostics();
 
         // Run 0: always=true, sometimes=false
         engine.begin_run();
@@ -827,6 +983,7 @@ mod tests {
         assert_eq!(report.total_runs, 2);
         assert_eq!(report.passed, 2); // both pass cross-run
         assert_eq!(report.failed, 0);
+        assert!(!report.collision_safe_evidence);
     }
 
     #[test]

@@ -60,6 +60,64 @@ pub(crate) fn hypercall(
     }
 }
 
+#[cfg(feature = "full")]
+pub(crate) fn hypercall_raw(command: u8, flags: u8, id: u32, payload: &[u8]) -> (u64, u8) {
+    if payload.len() > chaoscontrol_protocol::PAYLOAD_MAX {
+        return (0, chaoscontrol_protocol::STATUS_ASSERTION_LIMIT_EXCEEDED);
+    }
+    if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        unsafe {
+            let page = &mut *page_ptr;
+            page.command = command;
+            page.flags = flags;
+            page.id = id;
+            page.payload_len = payload.len() as u16;
+            page.result = 0;
+            page.status = 0;
+            page.payload[..payload.len()].copy_from_slice(payload);
+            crate::internal::vm_trigger();
+            return (page.result, page.status);
+        }
+    }
+    dispatch_local_raw(command, flags, id, payload);
+    (0, 0)
+}
+
+#[cfg(feature = "full")]
+pub(crate) fn hypercall_bound_assertion(
+    command: u8,
+    flags: u8,
+    id: u32,
+    message: &str,
+    json_details: &[u8],
+    identity: crate::assertion_catalog::BoundIdentity,
+) -> (u64, u8) {
+    use chaoscontrol_protocol::assertion_identity::AssertionKind;
+    use chaoscontrol_protocol::assertion_wire::{encode_event_frame, EventFrame};
+    let kind = match command {
+        chaoscontrol_protocol::CMD_ASSERT_ALWAYS => AssertionKind::Always,
+        chaoscontrol_protocol::CMD_ASSERT_SOMETIMES => AssertionKind::Sometimes,
+        chaoscontrol_protocol::CMD_ASSERT_REACHABLE => AssertionKind::Reachable,
+        chaoscontrol_protocol::CMD_ASSERT_UNREACHABLE => AssertionKind::Unreachable,
+        _ => return (0, chaoscontrol_protocol::STATUS_ERROR),
+    };
+    let frame = EventFrame {
+        catalog_token: identity.catalog_token,
+        fingerprint: identity.fingerprint,
+        kind,
+        details: json_details.to_vec(),
+    };
+    let mut payload = [0_u8; chaoscontrol_protocol::PAYLOAD_MAX];
+    let Ok(length) = encode_event_frame(&frame, &mut payload) else {
+        return (0, chaoscontrol_protocol::STATUS_ASSERTION_LIMIT_EXCEEDED);
+    };
+    if crate::internal::vm_page_ptr().is_some() {
+        return hypercall_raw(command, flags, id, &payload[..length]);
+    }
+    dispatch_local_bound(command, flags, id, message, json_details, identity);
+    (0, 0)
+}
+
 /// Issue a minimal hypercall (no payload) and return the result.
 #[cfg(feature = "full")]
 pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
@@ -168,6 +226,117 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
         }
         _ => {}
     }
+}
+
+#[cfg(feature = "full")]
+fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
+    use chaoscontrol_protocol::assertion_wire::{
+        decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame,
+    };
+    use chaoscontrol_protocol::*;
+    let value = match command {
+        CMD_ASSERT_CATALOG_BEGIN => serde_json::json!({
+            "chaoscontrol_assertion_catalog": {
+                "record": "begin",
+                "catalog_version": 1,
+                "expected_descriptors": id,
+                "valid": decode_catalog_begin(payload).is_ok()
+            }
+        }),
+        CMD_ASSERT_CATALOG_DESCRIPTOR => match decode_descriptor_frame(payload) {
+            Ok(frame) => serde_json::json!({
+                "chaoscontrol_assertion_catalog": {
+                    "record": "descriptor",
+                    "fingerprint": frame.fingerprint,
+                    "descriptor": frame.descriptor,
+                    "canonical_descriptor": encode_hex(&frame.canonical_bytes)
+                }
+            }),
+            Err(error) => serde_json::json!({
+                "chaoscontrol_assertion_catalog": {
+                    "record": "conflict",
+                    "error": error.to_string()
+                }
+            }),
+        },
+        CMD_ASSERT_CATALOG_COMPLETE => match decode_catalog_complete(payload) {
+            Ok(token) => serde_json::json!({
+                "chaoscontrol_assertion_catalog": {
+                    "record": "complete",
+                    "catalog_version": 1,
+                    "descriptor_count": id,
+                    "catalog_token": token
+                }
+            }),
+            Err(error) => serde_json::json!({
+                "chaoscontrol_assertion_catalog": {
+                    "record": "conflict",
+                    "error": error.to_string()
+                }
+            }),
+        },
+        CMD_ASSERT_ALWAYS
+        | CMD_ASSERT_SOMETIMES
+        | CMD_ASSERT_REACHABLE
+        | CMD_ASSERT_UNREACHABLE => serde_json::json!({
+            "chaoscontrol_assertion_quarantine": {
+                "classification": "legacy-ambiguous",
+                "command": command,
+                "flags": flags,
+                "compatibility_id": id
+            }
+        }),
+        _ => return,
+    };
+    crate::internal::local_emit_value(&value);
+}
+
+#[cfg(feature = "full")]
+fn dispatch_local_bound(
+    command: u8,
+    flags: u8,
+    id: u32,
+    message: &str,
+    json_details: &[u8],
+    identity: crate::assertion_catalog::BoundIdentity,
+) {
+    use chaoscontrol_protocol::*;
+    let (assert_type, condition) = match command {
+        CMD_ASSERT_ALWAYS => ("always", flags & 1 != 0),
+        CMD_ASSERT_SOMETIMES => ("sometimes", flags & 1 != 0),
+        CMD_ASSERT_REACHABLE => ("reachability", true),
+        CMD_ASSERT_UNREACHABLE => ("reachability", false),
+        _ => return,
+    };
+    let details = serde_json::from_slice::<serde_json::Value>(json_details)
+        .unwrap_or_else(|_| serde_json::json!({}));
+    let value = serde_json::json!({
+        "antithesis_assert": {
+            "assert_type": assert_type,
+            "condition": condition,
+            "hit": true,
+            "must_hit": matches!(assert_type, "sometimes" | "reachability"),
+            "id": format!("{id:08x}"),
+            "message": message,
+            "display_type": assert_type,
+            "details": details,
+            "identity_version": 1,
+            "catalog_token": identity.catalog_token,
+            "assertion_fingerprint": identity.fingerprint,
+            "catalog_status": "accepted"
+        }
+    });
+    crate::internal::local_emit_value(&value);
+}
+
+#[cfg(feature = "full")]
+fn encode_hex(input: &[u8]) -> String {
+    use core::fmt::Write;
+    let mut output = String::with_capacity(input.len().saturating_mul(2));
+    for byte in input {
+        let _ = write!(&mut output, "{byte:02x}");
+    }
+    output
 }
 
 // ═══════════════════════════════════════════════════════════════════════

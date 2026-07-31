@@ -40,6 +40,7 @@ pub struct AcceptedCatalog {
 pub enum CatalogConflict {
     AlreadyBegun,
     CardinalityOverflow,
+    CounterOverflow,
     CatalogIncomplete,
     CatalogTokenMismatch,
     Descriptor(IdentityError),
@@ -54,6 +55,7 @@ pub enum CatalogConflict {
     PostConflict,
     SourceConflict,
     CategoryConflict,
+    CompatibilityAliasConflict,
     UnexpectedDescriptorCount,
     UnknownFingerprint,
     EventCatalogMismatch,
@@ -80,6 +82,7 @@ pub struct CatalogBuilder {
     completed: bool,
     conflict: Option<CatalogConflict>,
     by_logical_key: BTreeMap<(String, AssertionLogicalKey), AdmittedAssertion>,
+    by_compatibility_id: BTreeMap<(String, u32), AdmittedAssertion>,
     by_fingerprint: BTreeMap<AssertionFingerprint, AdmittedAssertion>,
 }
 
@@ -94,6 +97,7 @@ impl CatalogBuilder {
             completed: false,
             conflict: None,
             by_logical_key: BTreeMap::new(),
+            by_compatibility_id: BTreeMap::new(),
             by_fingerprint: BTreeMap::new(),
         })
     }
@@ -149,6 +153,25 @@ impl CatalogBuilder {
                 return self.fail(CatalogConflict::FingerprintCollision);
             }
         }
+        if let Some(compatibility_id) = descriptor.compatibility_id {
+            let alias_key = (descriptor.namespace.clone(), compatibility_id);
+            if let Some(existing) = self.by_compatibility_id.get(&alias_key) {
+                if existing.canonical_bytes != canonical_bytes {
+                    let conflict = if matches!(
+                        descriptor.logical_key,
+                        AssertionLogicalKey::LegacyU32 { .. }
+                    ) || matches!(
+                        existing.descriptor.logical_key,
+                        AssertionLogicalKey::LegacyU32 { .. }
+                    ) {
+                        CatalogConflict::LegacyAliasConflict
+                    } else {
+                        CatalogConflict::CompatibilityAliasConflict
+                    };
+                    return self.fail(conflict);
+                }
+            }
+        }
         if self.by_fingerprint.len() >= MAX_ASSERTION_CATALOG_ENTRIES {
             return self.fail(CatalogConflict::CardinalityOverflow);
         }
@@ -158,6 +181,10 @@ impl CatalogBuilder {
             canonical_bytes,
         };
         self.by_logical_key.insert(logical_key, admitted.clone());
+        if let Some(compatibility_id) = admitted.descriptor.compatibility_id {
+            let alias_key = (admitted.descriptor.namespace.clone(), compatibility_id);
+            self.by_compatibility_id.insert(alias_key, admitted.clone());
+        }
         self.by_fingerprint.insert(fingerprint, admitted);
         Ok(CatalogInsert::Inserted)
     }

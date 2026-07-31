@@ -14,8 +14,14 @@
 //! | `reachable`  | Point was reached at least once, in any run   |
 //! | `unreachable`| Point was never reached in any run             |
 
+use chaoscontrol_protocol::assertion_catalog::{
+    AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent, CatalogConflict,
+    CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
+};
+use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
+pub use chaoscontrol_protocol::assertion_identity::AssertionKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn serialize_json_value<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -67,15 +73,18 @@ pub struct AssertionRecord {
     pub guest: String,
     /// Density category for assertion exercise reporting.
     pub category: String,
-}
-
-/// The kind of assertion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum AssertionKind {
-    Always,
-    Sometimes,
-    Reachable,
-    Unreachable,
+    /// Structured descriptor binding for strict records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<AdmittedAssertion>,
+    /// Compatibility ID retained for existing CLI filters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility_id: Option<u32>,
+    /// Catalog tokens that admitted this exact descriptor.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub catalog_tokens: BTreeSet<AssertionFingerprint>,
+    /// VM instances that contributed to an aggregated record.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub vm_instances: BTreeSet<u32>,
 }
 
 impl AssertionRecord {
@@ -92,6 +101,31 @@ impl AssertionRecord {
             last_failure_details: None,
             guest: "uncategorized".to_string(),
             category: "uncategorized".to_string(),
+            identity: None,
+            compatibility_id: None,
+            catalog_tokens: BTreeSet::new(),
+            vm_instances: BTreeSet::new(),
+        }
+    }
+
+    fn from_admitted(assertion: &AdmittedAssertion, catalog_token: AssertionFingerprint) -> Self {
+        let descriptor = &assertion.descriptor;
+        Self {
+            message: descriptor.message.clone(),
+            kind: descriptor.kind,
+            hit_count: 0,
+            true_count: 0,
+            false_count: 0,
+            runs_hit: 0,
+            runs_satisfied: 0,
+            first_failure_run: None,
+            last_failure_details: None,
+            guest: descriptor.guest.clone(),
+            category: descriptor.category.clone(),
+            identity: Some(assertion.clone()),
+            compatibility_id: descriptor.compatibility_id,
+            catalog_tokens: BTreeSet::from([catalog_token]),
+            vm_instances: BTreeSet::new(),
         }
     }
 
@@ -134,6 +168,12 @@ impl AssertionRecord {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AssertionRecordKey {
+    Legacy(u32),
+    Structured(AssertionFingerprint),
+}
+
 /// Final verdict for an assertion after all runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Verdict {
@@ -154,7 +194,11 @@ struct RunState {
     /// Assertion IDs that were hit during this run.
     hit_ids: std::collections::BTreeSet<u32>,
     /// Assertion IDs that had condition=true during this run.
-    satisfied_ids: std::collections::BTreeSet<u32>,
+    satisfied_ids: BTreeSet<u32>,
+    /// Strict assertion fingerprints that were hit during this run.
+    strict_hit_ids: BTreeSet<AssertionFingerprint>,
+    /// Strict fingerprints that were satisfied during this run.
+    strict_satisfied_ids: BTreeSet<AssertionFingerprint>,
     /// Whether setup_complete was received.
     setup_complete: bool,
     /// Whether this run had an immediate failure (always=false, unreachable hit).
@@ -185,8 +229,16 @@ struct RunState {
 /// ```
 #[derive(Debug, Clone)]
 pub struct PropertyOracle {
-    /// Per-assertion records keyed by assertion ID.
+    /// Diagnostic-only legacy records keyed by compatibility ID.
     assertions: BTreeMap<u32, AssertionRecord>,
+    /// Authoritative records keyed by the full descriptor fingerprint.
+    structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
+    /// Accepted catalog used to resolve strict runtime events.
+    accepted_catalog: Option<AcceptedCatalog>,
+    /// Current assertion identity state.
+    catalog_status: CatalogValidationStatus,
+    /// Fatal identity diagnostics. Any entry makes evidence ineligible.
+    identity_conflicts: Vec<String>,
     /// Current run state (None if between runs).
     current_run: Option<RunState>,
     /// Total number of completed runs.
@@ -210,11 +262,27 @@ pub struct OracleEvent {
     pub details: serde_json::Value,
 }
 
+fn pending_catalog_status() -> CatalogValidationStatus {
+    CatalogValidationStatus::Pending
+}
+
 /// Report produced by the oracle after all runs.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OracleReport {
-    /// Per-assertion records.
+    /// Diagnostic-only legacy records.
     pub assertions: BTreeMap<u32, AssertionRecord>,
+    /// Collision-safe assertion records.
+    #[serde(default)]
+    pub structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
+    /// Catalog state at report creation.
+    #[serde(default = "pending_catalog_status")]
+    pub catalog_status: CatalogValidationStatus,
+    /// Fatal assertion identity diagnostics.
+    #[serde(default)]
+    pub identity_conflicts: Vec<String>,
+    /// True only when all records bind to one accepted strict catalog.
+    #[serde(default)]
+    pub collision_safe_evidence: bool,
     /// Total number of runs.
     pub total_runs: u32,
     /// Number of assertions that passed.
@@ -229,11 +297,61 @@ pub struct OracleReport {
     pub events: Vec<OracleEvent>,
 }
 
+impl OracleReport {
+    pub fn empty() -> Self {
+        Self {
+            assertions: BTreeMap::new(),
+            structured_assertions: BTreeMap::new(),
+            catalog_status: CatalogValidationStatus::Pending,
+            identity_conflicts: Vec::new(),
+            collision_safe_evidence: false,
+            total_runs: 0,
+            passed: 0,
+            failed: 0,
+            unexercised: 0,
+            catalog_size: 0,
+            events: Vec::new(),
+        }
+    }
+
+    pub fn all_records(&self) -> impl Iterator<Item = (AssertionRecordKey, &AssertionRecord)> {
+        self.assertions
+            .iter()
+            .map(|(id, record)| (AssertionRecordKey::Legacy(*id), record))
+            .chain(
+                self.structured_assertions
+                    .iter()
+                    .map(|(fingerprint, record)| {
+                        (AssertionRecordKey::Structured(*fingerprint), record)
+                    }),
+            )
+    }
+
+    pub fn record_for_compatibility_id(
+        &self,
+        compatibility_id: u32,
+    ) -> Result<Option<&AssertionRecord>, CatalogConflict> {
+        let mut records = self
+            .all_records()
+            .map(|(_, record)| record)
+            .filter(|record| record.compatibility_id == Some(compatibility_id));
+        let first = records.next();
+        if records.next().is_some() {
+            return Err(CatalogConflict::CompatibilityAliasConflict);
+        }
+        Ok(first)
+    }
+}
+
 impl PropertyOracle {
     /// Create a new oracle with no recorded state.
     pub fn new() -> Self {
         Self {
             assertions: BTreeMap::new(),
+            structured_assertions: BTreeMap::new(),
+            accepted_catalog: None,
+            catalog_status: CatalogValidationStatus::Pending,
+            identity_conflicts: Vec::new(),
             current_run: None,
             total_runs: 0,
             events: Vec::new(),
@@ -245,8 +363,10 @@ impl PropertyOracle {
         let run_id = self.total_runs;
         self.current_run = Some(RunState {
             run_id,
-            hit_ids: std::collections::BTreeSet::new(),
-            satisfied_ids: std::collections::BTreeSet::new(),
+            hit_ids: BTreeSet::new(),
+            satisfied_ids: BTreeSet::new(),
+            strict_hit_ids: BTreeSet::new(),
+            strict_satisfied_ids: BTreeSet::new(),
             setup_complete: false,
             immediate_failure: None,
         });
@@ -263,6 +383,16 @@ impl PropertyOracle {
             }
             for &id in &run.satisfied_ids {
                 if let Some(record) = self.assertions.get_mut(&id) {
+                    record.runs_satisfied += 1;
+                }
+            }
+            for fingerprint in &run.strict_hit_ids {
+                if let Some(record) = self.structured_assertions.get_mut(fingerprint) {
+                    record.runs_hit += 1;
+                }
+            }
+            for fingerprint in &run.strict_satisfied_ids {
+                if let Some(record) = self.structured_assertions.get_mut(fingerprint) {
                     record.runs_satisfied += 1;
                 }
             }
@@ -286,6 +416,125 @@ impl PropertyOracle {
     }
 
     // ── Catalog registration ────────────────────────────────────
+
+    pub fn activate_catalog(&mut self, catalog: AcceptedCatalog) -> Result<(), CatalogConflict> {
+        if self.catalog_status == CatalogValidationStatus::FatalConflict {
+            return Err(CatalogConflict::PostConflict);
+        }
+        if self.accepted_catalog.is_some() {
+            self.mark_identity_conflict(CatalogConflict::AlreadyBegun);
+            return Err(CatalogConflict::AlreadyBegun);
+        }
+        if catalog.assertions.len() > MAX_ASSERTION_CATALOG_ENTRIES {
+            self.mark_identity_conflict(CatalogConflict::CardinalityOverflow);
+            return Err(CatalogConflict::CardinalityOverflow);
+        }
+        let mut records = BTreeMap::new();
+        for (fingerprint, assertion) in &catalog.assertions {
+            records.insert(
+                *fingerprint,
+                AssertionRecord::from_admitted(assertion, catalog.token),
+            );
+        }
+        self.structured_assertions = records;
+        self.catalog_status = CatalogValidationStatus::Accepted;
+        self.accepted_catalog = Some(catalog);
+        Ok(())
+    }
+
+    pub fn mark_identity_conflict(&mut self, conflict: CatalogConflict) {
+        const MAX_IDENTITY_CONFLICTS: usize = 64;
+        self.catalog_status = CatalogValidationStatus::FatalConflict;
+        if self.identity_conflicts.len() < MAX_IDENTITY_CONFLICTS {
+            self.identity_conflicts.push(format!("{conflict:?}"));
+        }
+    }
+
+    pub fn mark_legacy_ambiguous(&mut self, diagnostic: &str) {
+        const MAX_IDENTITY_CONFLICTS: usize = 64;
+        if self.catalog_status != CatalogValidationStatus::FatalConflict {
+            self.catalog_status = CatalogValidationStatus::LegacyAmbiguous;
+        }
+        if self.identity_conflicts.len() < MAX_IDENTITY_CONFLICTS {
+            self.identity_conflicts.push(diagnostic.to_string());
+        }
+    }
+
+    pub fn record_bound_event(
+        &mut self,
+        event: &BoundAssertionEvent,
+        condition: bool,
+        details: Option<&[u8]>,
+    ) -> Result<bool, CatalogConflict> {
+        let admitted = match self
+            .accepted_catalog
+            .as_ref()
+            .ok_or(CatalogConflict::CatalogIncomplete)
+            .and_then(|catalog| catalog.resolve_event(event))
+        {
+            Ok(assertion) => assertion.clone(),
+            Err(conflict) => {
+                self.mark_identity_conflict(conflict.clone());
+                return Err(conflict);
+            }
+        };
+        let run_id = self.current_run_id();
+        let Some(record) = self.structured_assertions.get_mut(&event.fingerprint) else {
+            self.mark_identity_conflict(CatalogConflict::UnknownFingerprint);
+            return Err(CatalogConflict::UnknownFingerprint);
+        };
+        if record.identity.as_ref() != Some(&admitted) {
+            self.mark_identity_conflict(CatalogConflict::FingerprintCollision);
+            return Err(CatalogConflict::FingerprintCollision);
+        }
+        record.hit_count = record
+            .hit_count
+            .checked_add(1)
+            .ok_or(CatalogConflict::CounterOverflow)?;
+        let satisfied = match admitted.descriptor.kind {
+            AssertionKind::Always | AssertionKind::Sometimes => condition,
+            AssertionKind::Reachable => true,
+            AssertionKind::Unreachable => false,
+        };
+        if satisfied {
+            record.true_count = record
+                .true_count
+                .checked_add(1)
+                .ok_or(CatalogConflict::CounterOverflow)?;
+        } else {
+            record.false_count = record
+                .false_count
+                .checked_add(1)
+                .ok_or(CatalogConflict::CounterOverflow)?;
+            if record.first_failure_run.is_none()
+                && matches!(
+                    admitted.descriptor.kind,
+                    AssertionKind::Always | AssertionKind::Unreachable
+                )
+            {
+                record.first_failure_run = Some(run_id);
+            }
+            if let Some(value) = details {
+                record.last_failure_details = Some(value.to_vec());
+            }
+        }
+        if let Some(run) = &mut self.current_run {
+            run.strict_hit_ids.insert(event.fingerprint);
+            if satisfied {
+                run.strict_satisfied_ids.insert(event.fingerprint);
+            }
+            if !satisfied
+                && matches!(
+                    admitted.descriptor.kind,
+                    AssertionKind::Always | AssertionKind::Unreachable
+                )
+            {
+                let id = admitted.descriptor.compatibility_id.unwrap_or_default();
+                run.immediate_failure = Some((id, admitted.descriptor.message.clone()));
+            }
+        }
+        Ok(satisfied)
+    }
 
     /// Register an assertion site from the compile-time catalog.
     ///
@@ -314,22 +563,29 @@ impl PropertyOracle {
         guest: &str,
         category: &str,
     ) {
-        let record = self
-            .assertions
-            .entry(id)
-            .or_insert_with(|| AssertionRecord::new(message.to_string(), kind));
-        record.guest = if guest.is_empty() {
+        let normalized_guest = if guest.is_empty() {
             "uncategorized"
         } else {
             guest
-        }
-        .to_string();
-        record.category = if category.is_empty() {
+        };
+        let normalized_category = if category.is_empty() {
             "uncategorized"
         } else {
             category
+        };
+        let Ok(record) = self.legacy_record_mut(id, kind, message) else {
+            return;
+        };
+        if record.guest != "uncategorized" && record.guest != normalized_guest {
+            self.mark_identity_conflict(CatalogConflict::GuestConflict);
+            return;
         }
-        .to_string();
+        if record.category != "uncategorized" && record.category != normalized_category {
+            self.mark_identity_conflict(CatalogConflict::CategoryConflict);
+            return;
+        }
+        record.guest = normalized_guest.to_string();
+        record.category = normalized_category.to_string();
     }
 
     /// Number of registered assertion sites (from catalog + runtime).
@@ -358,12 +614,11 @@ impl PropertyOracle {
         details: Option<&[u8]>,
     ) -> bool {
         let run_id = self.current_run_id();
-        let record = self
-            .assertions
-            .entry(id)
-            .or_insert_with(|| AssertionRecord::new(message.to_string(), AssertionKind::Always));
+        let Ok(record) = self.legacy_record_mut(id, AssertionKind::Always, message) else {
+            return false;
+        };
 
-        record.hit_count += 1;
+        record.hit_count = record.hit_count.saturating_add(1);
         if condition {
             record.true_count += 1;
         } else {
@@ -403,12 +658,11 @@ impl PropertyOracle {
         message: &str,
         details: Option<&[u8]>,
     ) {
-        let record = self
-            .assertions
-            .entry(id)
-            .or_insert_with(|| AssertionRecord::new(message.to_string(), AssertionKind::Sometimes));
+        let Ok(record) = self.legacy_record_mut(id, AssertionKind::Sometimes, message) else {
+            return;
+        };
 
-        record.hit_count += 1;
+        record.hit_count = record.hit_count.saturating_add(1);
         if condition {
             record.true_count += 1;
         } else {
@@ -428,12 +682,11 @@ impl PropertyOracle {
 
     /// Record an `assert_reachable` evaluation.
     pub fn record_reachable(&mut self, id: u32, message: &str) {
-        let record = self
-            .assertions
-            .entry(id)
-            .or_insert_with(|| AssertionRecord::new(message.to_string(), AssertionKind::Reachable));
+        let Ok(record) = self.legacy_record_mut(id, AssertionKind::Reachable, message) else {
+            return;
+        };
 
-        record.hit_count += 1;
+        record.hit_count = record.hit_count.saturating_add(1);
         record.true_count += 1;
 
         if let Some(run) = &mut self.current_run {
@@ -457,11 +710,11 @@ impl PropertyOracle {
         details: Option<&[u8]>,
     ) -> bool {
         let run_id = self.current_run_id();
-        let record = self.assertions.entry(id).or_insert_with(|| {
-            AssertionRecord::new(message.to_string(), AssertionKind::Unreachable)
-        });
+        let Ok(record) = self.legacy_record_mut(id, AssertionKind::Unreachable, message) else {
+            return false;
+        };
 
-        record.hit_count += 1;
+        record.hit_count = record.hit_count.saturating_add(1);
         record.false_count += 1;
         if record.first_failure_run.is_none() {
             record.first_failure_run = Some(run_id);
@@ -508,21 +761,35 @@ impl PropertyOracle {
         let mut failed = 0;
         let mut unexercised = 0;
 
-        for record in self.assertions.values() {
+        for record in self
+            .assertions
+            .values()
+            .chain(self.structured_assertions.values())
+        {
             match record.verdict() {
                 Verdict::Passed => passed += 1,
                 Verdict::Failed => failed += 1,
                 Verdict::Unexercised => unexercised += 1,
             }
         }
+        let collision_safe_evidence = self.catalog_status == CatalogValidationStatus::Accepted
+            && self.assertions.is_empty()
+            && self.identity_conflicts.is_empty();
 
         OracleReport {
             assertions: self.assertions.clone(),
+            structured_assertions: self.structured_assertions.clone(),
+            catalog_status: self.catalog_status,
+            identity_conflicts: self.identity_conflicts.clone(),
+            collision_safe_evidence,
             total_runs: self.total_runs,
             passed,
             failed,
             unexercised,
-            catalog_size: self.assertions.len(),
+            catalog_size: self
+                .assertions
+                .len()
+                .saturating_add(self.structured_assertions.len()),
             events: self.events.clone(),
         }
     }
@@ -530,6 +797,14 @@ impl PropertyOracle {
     /// Get a reference to all assertion records.
     pub fn assertions(&self) -> &BTreeMap<u32, AssertionRecord> {
         &self.assertions
+    }
+
+    pub fn structured_assertions(&self) -> &BTreeMap<AssertionFingerprint, AssertionRecord> {
+        &self.structured_assertions
+    }
+
+    pub fn catalog_status(&self) -> CatalogValidationStatus {
+        self.catalog_status
     }
 
     /// Total number of completed runs.
@@ -543,6 +818,10 @@ impl PropertyOracle {
     pub fn snapshot(&self) -> OracleSnapshot {
         OracleSnapshot {
             assertions: self.assertions.clone(),
+            structured_assertions: self.structured_assertions.clone(),
+            accepted_catalog: self.accepted_catalog.clone(),
+            catalog_status: self.catalog_status,
+            identity_conflicts: self.identity_conflicts.clone(),
             total_runs: self.total_runs,
             events: self.events.clone(),
         }
@@ -550,13 +829,56 @@ impl PropertyOracle {
 
     /// Restore oracle state from a snapshot.
     pub fn restore(&mut self, snapshot: &OracleSnapshot) {
+        if snapshot
+            .assertions
+            .len()
+            .saturating_add(snapshot.structured_assertions.len())
+            > MAX_ASSERTION_CATALOG_ENTRIES
+        {
+            self.mark_identity_conflict(CatalogConflict::CardinalityOverflow);
+            return;
+        }
         self.assertions = snapshot.assertions.clone();
+        self.structured_assertions = snapshot.structured_assertions.clone();
+        self.accepted_catalog = snapshot.accepted_catalog.clone();
+        self.catalog_status = snapshot.catalog_status;
+        self.identity_conflicts = snapshot.identity_conflicts.clone();
         self.total_runs = snapshot.total_runs;
         self.events = snapshot.events.clone();
         self.current_run = None;
     }
 
     // ── Internal ────────────────────────────────────────────────
+
+    fn legacy_record_mut(
+        &mut self,
+        id: u32,
+        kind: AssertionKind,
+        message: &str,
+    ) -> Result<&mut AssertionRecord, CatalogConflict> {
+        self.mark_legacy_ambiguous("legacy u32 assertion input is diagnostic only");
+        if let Some(existing) = self.assertions.get(&id) {
+            if existing.kind != kind {
+                self.mark_identity_conflict(CatalogConflict::KindConflict);
+                return Err(CatalogConflict::KindConflict);
+            }
+            if existing.message != message {
+                self.mark_identity_conflict(CatalogConflict::MessageConflict);
+                return Err(CatalogConflict::MessageConflict);
+            }
+        } else {
+            if self.assertions.len() >= MAX_ASSERTION_CATALOG_ENTRIES {
+                self.mark_identity_conflict(CatalogConflict::CardinalityOverflow);
+                return Err(CatalogConflict::CardinalityOverflow);
+            }
+            let mut record = AssertionRecord::new(message.to_string(), kind);
+            record.compatibility_id = Some(id);
+            self.assertions.insert(id, record);
+        }
+        self.assertions
+            .get_mut(&id)
+            .ok_or(CatalogConflict::UnknownFingerprint)
+    }
 
     fn current_run_id(&self) -> u32 {
         self.current_run
@@ -575,6 +897,14 @@ impl Default for PropertyOracle {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OracleSnapshot {
     assertions: BTreeMap<u32, AssertionRecord>,
+    #[serde(default)]
+    structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
+    #[serde(default)]
+    accepted_catalog: Option<AcceptedCatalog>,
+    #[serde(default = "pending_catalog_status")]
+    catalog_status: CatalogValidationStatus,
+    #[serde(default)]
+    identity_conflicts: Vec<String>,
     total_runs: u32,
     events: Vec<OracleEvent>,
 }

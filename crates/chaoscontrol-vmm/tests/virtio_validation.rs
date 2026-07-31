@@ -43,7 +43,7 @@ fn raw_queue() -> RawQueueConfig {
 fn compliant_queue_and_wrapped_progress_validate() {
     let config = validate_queue_config(raw_queue(), QUEUE_SIZE, &memory(), VirtioLimits::default())
         .expect("valid queue");
-    assert_eq!(config.size, QUEUE_SIZE);
+    assert_eq!(config.size(), QUEUE_SIZE);
     assert_eq!(validate_available_delta(u16::MAX, 0, QUEUE_SIZE), Ok(1));
 }
 

@@ -6,6 +6,8 @@ pub const MAX_GUEST_MEMORY_REGIONS: usize = 16;
 pub const DEFAULT_MAX_AGGREGATE_BYTES: u64 = 2 * 1024 * 1024;
 pub const DEFAULT_MAX_BLOCK_TRANSFER_BYTES: u64 = 1024 * 1024;
 pub const DEFAULT_MAX_NET_FRAME_BYTES: u64 = 64 * 1024;
+pub const DEFAULT_MAX_NET_TX_PACKETS: usize = 256;
+pub const DEFAULT_MAX_NET_TX_BYTES: u64 = 4 * 1024 * 1024;
 pub const DEFAULT_MAX_ENTROPY_TRANSFER_BYTES: u64 = 64 * 1024;
 pub const DEFAULT_SCRATCH_BYTES: usize = 16 * 1024;
 
@@ -16,6 +18,8 @@ pub struct VirtioLimits {
     pub max_aggregate_bytes: u64,
     pub max_block_transfer_bytes: u64,
     pub max_net_frame_bytes: u64,
+    pub max_net_tx_packets: usize,
+    pub max_net_tx_bytes: u64,
     pub max_entropy_transfer_bytes: u64,
     pub scratch_bytes: usize,
 }
@@ -28,6 +32,8 @@ impl Default for VirtioLimits {
             max_aggregate_bytes: DEFAULT_MAX_AGGREGATE_BYTES,
             max_block_transfer_bytes: DEFAULT_MAX_BLOCK_TRANSFER_BYTES,
             max_net_frame_bytes: DEFAULT_MAX_NET_FRAME_BYTES,
+            max_net_tx_packets: DEFAULT_MAX_NET_TX_PACKETS,
+            max_net_tx_bytes: DEFAULT_MAX_NET_TX_BYTES,
             max_entropy_transfer_bytes: DEFAULT_MAX_ENTROPY_TRANSFER_BYTES,
             scratch_bytes: DEFAULT_SCRATCH_BYTES,
         }
@@ -37,6 +43,7 @@ impl Default for VirtioLimits {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransportViolation {
     MmioWidth { actual: usize },
+    MmioAddress { address: u64 },
     QueueSelection { selected: u32, available: usize },
     FeatureSelector { selected: u32 },
     FeaturesAfterAcceptance,
@@ -102,6 +109,8 @@ pub enum RequestViolation {
 pub enum ResourceViolation {
     ScratchLimit { requested: usize, maximum: usize },
     Allocation { requested: usize },
+    RetainedPacketLimit { requested: usize, maximum: usize },
+    RetainedByteLimit { requested: u64, maximum: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,16 +125,54 @@ pub enum VirtioFailure {
     BackendRead,
     BackendWrite,
     UsedRingWrite,
+    InterruptDelivery { irq: u32, asserted: bool },
+    CompletionState,
     BackendQueue,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UsedWriteFailurePoint {
+    BeforeIndex,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LastRequestLiveOutcome {
+    Completed {
+        head_index: u16,
+        written_length: u32,
+    },
+    Rejected {
+        head_index: u16,
+        written_length: u32,
+        failure: VirtioFailure,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ValidatedQueueLiveConfig {
+    pub size: u16,
+    pub descriptor_address: u64,
+    pub driver_address: u64,
+    pub device_address: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PendingCompletionLiveState {
+    pub head_index: u16,
+    pub written_length: u32,
+    pub backend_started: bool,
+    pub effects_started: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueueLiveState {
-    pub size: Option<u16>,
+    pub config: Option<ValidatedQueueLiveConfig>,
     pub ready: bool,
     pub last_avail_idx: u16,
     pub next_used_idx: u16,
-    pub failed: bool,
+    pub failure: Option<VirtioFailure>,
+    pub pending_completion: Option<PendingCompletionLiveState>,
+    pub last_request_outcome: Option<LastRequestLiveOutcome>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

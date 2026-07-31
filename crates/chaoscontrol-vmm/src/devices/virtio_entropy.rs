@@ -15,6 +15,7 @@ const MINIMUM_SCRATCH_BYTES: usize = 1;
 pub struct VirtioEntropy {
     entropy: DeterministicEntropy,
     allocator: Box<dyn BoundedBufferAllocator>,
+    fail_after_entropy_commit: bool,
 }
 
 impl VirtioEntropy {
@@ -26,7 +27,11 @@ impl VirtioEntropy {
         entropy: DeterministicEntropy,
         allocator: Box<dyn BoundedBufferAllocator>,
     ) -> Self {
-        Self { entropy, allocator }
+        Self {
+            entropy,
+            allocator,
+            fail_after_entropy_commit: false,
+        }
     }
 
     pub fn entropy(&self) -> &DeterministicEntropy {
@@ -35,6 +40,10 @@ impl VirtioEntropy {
 
     pub fn entropy_mut(&mut self) -> &mut DeterministicEntropy {
         &mut self.entropy
+    }
+
+    pub fn inject_failure_after_entropy_commit(&mut self) {
+        self.fail_after_entropy_commit = true;
     }
 
     fn process_one(
@@ -48,6 +57,10 @@ impl VirtioEntropy {
         let plan = plan_entropy_request(&available.chain, queue.limits())
             .map_err(VirtioFailure::Request)?;
         let mut scratch = self.allocate_scratch(plan.transfer_bytes, queue)?;
+        let used_length =
+            u32::try_from(plan.transfer_bytes).map_err(|_| VirtioFailure::BackendWrite)?;
+        queue.stage_completion(available.head_index, used_length)?;
+        queue.mark_backend_started()?;
         let mut candidate_entropy = self.entropy.clone();
         fill_guest_transactionally(
             mem,
@@ -56,8 +69,9 @@ impl VirtioEntropy {
             &mut candidate_entropy,
         )?;
         self.entropy = candidate_entropy;
-        let used_length =
-            u32::try_from(plan.transfer_bytes).map_err(|_| VirtioFailure::BackendWrite)?;
+        if std::mem::take(&mut self.fail_after_entropy_commit) {
+            return Err(VirtioFailure::BackendWrite);
+        }
         queue.complete(mem, available.head_index, used_length)?;
         Ok(true)
     }

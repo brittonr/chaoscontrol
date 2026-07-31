@@ -418,8 +418,36 @@ pub enum VmError {
     #[snafu(display("Disk image error: {message}"))]
     DiskImage { message: String },
 
+    #[snafu(display("Failed to deliver virtio IRQ {irq} at asserted={asserted}"))]
+    VirtioInterrupt {
+        irq: u32,
+        asserted: bool,
+        source: kvm_ioctls::Error,
+    },
+
     #[snafu(display("Failed to get dirty page log"))]
     GetDirtyLog { source: kvm_ioctls::Error },
+}
+
+const VIRTIO_IRQ_LEVELS: [bool; 2] = [true, false];
+
+fn deliver_virtio_interrupt_with(
+    device: &mut VirtioMmioDevice,
+    queue_index: usize,
+    mut set_irq_line: impl FnMut(u32, bool) -> Result<(), kvm_ioctls::Error>,
+) -> Result<(), VmError> {
+    let irq = device.irq();
+    for asserted in VIRTIO_IRQ_LEVELS {
+        if let Err(source) = set_irq_line(irq, asserted) {
+            device.record_interrupt_failure(queue_index, irq, asserted);
+            return Err(VmError::VirtioInterrupt {
+                irq,
+                asserted,
+                source,
+            });
+        }
+    }
+    Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2979,15 +3007,17 @@ impl DeterministicVm {
                 // Find the virtio device that handles this address
                 for dev in &mut self.virtio_devices {
                     if dev.handles(addr) {
-                        let offset = addr - dev.base_addr();
-                        let effect = dev.write(offset, data, self.memory.inner());
+                        let effect = dev.write_at(addr, data, self.memory.inner());
 
                         // Process only the queue named by a validated notification.
                         if let Ok(MmioWriteEffect::NotifyQueue(queue_index)) = effect {
                             if dev.process_queue(queue_index, self.memory.inner()) {
-                                let irq = dev.irq();
-                                let _ = self.vm.set_irq_line(irq, true);
-                                let _ = self.vm.set_irq_line(irq, false);
+                                let vm = &self.vm;
+                                deliver_virtio_interrupt_with(
+                                    dev,
+                                    queue_index,
+                                    |irq, asserted| vm.set_irq_line(irq, asserted),
+                                )?;
                             }
                         }
                         break;
@@ -3585,6 +3615,7 @@ impl Drop for DeterministicVm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::devices::virtio_types::VirtioFailure;
 
     #[test]
     fn test_vm_config_default() {
@@ -3592,6 +3623,58 @@ mod tests {
         assert_eq!(config.memory_size, 256 * 1024 * 1024);
         assert_eq!(config.num_vcpus, 1);
         assert_eq!(config.cpu.tsc_khz, 3_000_000);
+    }
+
+    #[test]
+    fn virtio_interrupt_delivery_asserts_then_deasserts() {
+        let entropy = crate::devices::entropy::DeterministicEntropy::new(0);
+        let backend = crate::devices::virtio_entropy::VirtioEntropy::new(entropy);
+        let mut device =
+            VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, Box::new(backend));
+        let mut levels = [false; VIRTIO_IRQ_LEVELS.len()];
+        let mut calls = 0usize;
+        deliver_virtio_interrupt_with(&mut device, 0, |_irq, asserted| {
+            levels[calls] = asserted;
+            calls += 1;
+            Ok(())
+        })
+        .expect("interrupt delivery");
+        assert_eq!(levels, VIRTIO_IRQ_LEVELS);
+        assert!(device.live_state().failure.is_none());
+    }
+
+    #[test]
+    fn virtio_interrupt_failures_poison_state_and_return_error() {
+        for failed_level in VIRTIO_IRQ_LEVELS {
+            let entropy = crate::devices::entropy::DeterministicEntropy::new(0);
+            let backend = crate::devices::virtio_entropy::VirtioEntropy::new(entropy);
+            let mut device =
+                VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, Box::new(backend));
+            let error = deliver_virtio_interrupt_with(&mut device, 0, |_irq, asserted| {
+                if asserted == failed_level {
+                    Err(kvm_ioctls::Error::new(libc::EIO))
+                } else {
+                    Ok(())
+                }
+            })
+            .expect_err("interrupt failure");
+            assert!(matches!(
+                error,
+                VmError::VirtioInterrupt {
+                    irq: VIRTIO_MMIO_IRQ_2,
+                    asserted,
+                    ..
+                } if asserted == failed_level
+            ));
+            assert_eq!(
+                device.live_state().failure,
+                Some(VirtioFailure::InterruptDelivery {
+                    irq: VIRTIO_MMIO_IRQ_2,
+                    asserted: failed_level,
+                })
+            );
+            assert!(device.live_state().queues[0].failure.is_some());
+        }
     }
 
     #[test]

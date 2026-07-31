@@ -1320,6 +1320,16 @@
               }
             );
 
+            # A tiny malicious guest must reach the production MMIO path without crashing the VMM.
+            virtio-malicious-guest-kvm-smoke = craneLib.cargoTest (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoExtraArgs = "-p chaoscontrol-vmm --test virtio_kvm_smoke -- --ignored";
+                requiredSystemFeatures = [ "kvm" ];
+              }
+            );
+
             # Keep optional profiling instrumentation compiling.
             profiling = craneLib.cargoClippy (
               commonArgs

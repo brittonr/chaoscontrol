@@ -4,11 +4,13 @@ use chaoscontrol_vmm::devices::block::{BlockFault, DeterministicBlock};
 use chaoscontrol_vmm::devices::virtio_block::VirtioBlock;
 use chaoscontrol_vmm::devices::virtio_buffer::RejectingBufferAllocator;
 use chaoscontrol_vmm::devices::virtio_chain::{VirtqDesc, VIRTQ_DESC_F_NEXT, VIRTQ_DESC_F_WRITE};
-use chaoscontrol_vmm::devices::virtio_mmio::VirtioMmioDevice;
+use chaoscontrol_vmm::devices::virtio_mmio::{VirtioMmioDevice, VIRTIO_MMIO_CONFIG};
 use chaoscontrol_vmm::devices::virtio_request::{
     BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_OUT,
 };
-use chaoscontrol_vmm::devices::virtio_types::{ResourceViolation, VirtioFailure};
+use chaoscontrol_vmm::devices::virtio_types::{
+    LastRequestLiveOutcome, ResourceViolation, UsedWriteFailurePoint, VirtioFailure,
+};
 use virtio_support::*;
 use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
 
@@ -20,6 +22,11 @@ const HEADER_SECTOR_OFFSET: u64 = 8;
 const STATUS_OK: u8 = 0;
 const STATUS_IOERR: u8 = 1;
 const FIRST_AVAILABLE_INDEX: u16 = 1;
+const SECOND_AVAILABLE_INDEX: u16 = 2;
+const CAPACITY_FIELD_BYTES: usize = 8;
+const WIDE_CONFIG_BYTES: usize = 12;
+const CONFIG_CROSS_BOUNDARY_OFFSET: u64 = 7;
+const INITIAL_CONFIG_BYTE: u8 = 0xA5;
 
 fn block_device(block: VirtioBlock) -> VirtioMmioDevice {
     VirtioMmioDevice::new(DEVICE_BASE, DEVICE_IRQ, Box::new(block))
@@ -82,6 +89,29 @@ fn block_backend(device: &VirtioMmioDevice) -> &VirtioBlock {
 }
 
 #[test]
+fn block_config_reads_zero_bytes_past_capacity() {
+    let device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));
+    let expected_sectors = u64::try_from(DISK_BYTES).expect("disk bytes") / BLOCK_SECTOR_BYTES;
+    let mut wide = [INITIAL_CONFIG_BYTE; WIDE_CONFIG_BYTES];
+    device.read(VIRTIO_MMIO_CONFIG, &mut wide);
+    assert_eq!(
+        &wide[..CAPACITY_FIELD_BYTES],
+        &expected_sectors.to_le_bytes()
+    );
+    assert_eq!(
+        &wide[CAPACITY_FIELD_BYTES..],
+        &[0; WIDE_CONFIG_BYTES - CAPACITY_FIELD_BYTES]
+    );
+
+    let mut crossing = [INITIAL_CONFIG_BYTE; CAPACITY_FIELD_BYTES];
+    device.read(
+        VIRTIO_MMIO_CONFIG + CONFIG_CROSS_BOUNDARY_OFFSET,
+        &mut crossing,
+    );
+    assert_eq!(crossing, [0; CAPACITY_FIELD_BYTES]);
+}
+
+#[test]
 fn valid_write_commits_backend_used_cursor_and_interrupt() {
     let mem = memory();
     let mut device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));
@@ -110,7 +140,7 @@ fn valid_write_commits_backend_used_cursor_and_interrupt() {
 }
 
 #[test]
-fn wrong_direction_gets_error_completion_without_disk_mutation() {
+fn wrong_direction_retains_typed_outcome_then_allows_valid_request() {
     let mem = memory();
     let mut device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));
     configure(&mut device, &mem);
@@ -124,6 +154,49 @@ fn wrong_direction_gets_error_completion_without_disk_mutation() {
         STATUS_IOERR
     );
     assert_eq!(used_index(&mem), FIRST_AVAILABLE_INDEX);
+    assert!(device.live_state().failure.is_none());
+    assert!(matches!(
+        device.live_state().queues[0].last_request_outcome,
+        Some(LastRequestLiveOutcome::Rejected { .. })
+    ));
+
+    write_request(&mem, 0, 0);
+    publish_head_at(&mem, FIRST_AVAILABLE_INDEX, 0, SECOND_AVAILABLE_INDEX);
+    assert!(notify(&mut device, &mem, 0));
+    assert_eq!(block_backend(&device).disk().stats().writes, 1);
+    assert_eq!(used_index(&mem), SECOND_AVAILABLE_INDEX);
+    assert!(matches!(
+        device.live_state().queues[0].last_request_outcome,
+        Some(LastRequestLiveOutcome::Completed { .. })
+    ));
+}
+
+#[test]
+fn ioerr_outcome_survives_used_ring_publication_failure() {
+    let mem = memory();
+    let mut device = block_device(VirtioBlock::new(DeterministicBlock::new(DISK_BYTES)));
+    configure(&mut device, &mem);
+    write_request(&mem, VIRTQ_DESC_F_WRITE, 0);
+    device
+        .inject_used_write_failure(0, UsedWriteFailurePoint::BeforeIndex)
+        .expect("used-ring failure");
+
+    assert!(!notify(&mut device, &mem, 0));
+    assert_eq!(used_index(&mem), 0);
+    let queue = &device.live_state().queues[0];
+    assert_eq!(queue.failure, Some(VirtioFailure::UsedRingWrite));
+    assert!(matches!(
+        queue.last_request_outcome,
+        Some(LastRequestLiveOutcome::Rejected { .. })
+    ));
+    assert!(queue
+        .pending_completion
+        .is_some_and(|pending| { !pending.backend_started && pending.effects_started }));
+    assert_eq!(
+        mem.read_obj::<u8>(GuestAddress(STATUS_ADDRESS))
+            .expect("status"),
+        STATUS_IOERR
+    );
 }
 
 #[test]
@@ -148,7 +221,8 @@ fn descriptor_cycle_stops_without_cursor_backend_or_interrupt() {
     assert_eq!(used_index(&mem), 0);
     assert_eq!(device.live_state().queues[0].last_avail_idx, 0);
     assert!(!device.interrupt_pending());
-    assert!(device.live_state().queues[0].failed);
+    assert!(device.live_state().queues[0].failure.is_some());
+    assert!(device.live_state().queues[0].pending_completion.is_none());
 }
 
 #[test]
@@ -192,6 +266,10 @@ fn backend_failure_has_no_cursor_or_successful_completion() {
         device.live_state().failure,
         Some(VirtioFailure::BackendWrite)
     );
+    let pending = device.live_state().queues[0]
+        .pending_completion
+        .expect("backend-started pending completion");
+    assert!(pending.backend_started);
 }
 
 #[test]

@@ -2,8 +2,9 @@
 
 use super::virtio_chain::{plan_descriptor_chain, DescriptorChainPlan, VirtqDesc};
 use super::virtio_types::{
-    QueueLiveState, QueueViolation, TransportViolation, VirtioFailure, VirtioLimits,
-    VirtioLiveState, MAX_GUEST_MEMORY_REGIONS, MAX_QUEUE_SIZE, MAX_QUEUE_SIZE_USIZE,
+    LastRequestLiveOutcome, PendingCompletionLiveState, QueueLiveState, QueueViolation,
+    TransportViolation, UsedWriteFailurePoint, ValidatedQueueLiveConfig, VirtioFailure,
+    VirtioLimits, VirtioLiveState, MAX_GUEST_MEMORY_REGIONS, MAX_QUEUE_SIZE, MAX_QUEUE_SIZE_USIZE,
 };
 use super::virtio_validation::{
     available_element_address, descriptor_address, used_element_address, validate_available_delta,
@@ -76,6 +77,9 @@ pub struct VirtQueue {
     last_avail_idx: u16,
     next_used_idx: u16,
     failure: Option<VirtioFailure>,
+    pending_completion: Option<PendingCompletionLiveState>,
+    last_request_outcome: Option<LastRequestLiveOutcome>,
+    used_write_failure: Option<UsedWriteFailurePoint>,
 }
 
 impl VirtQueue {
@@ -93,6 +97,9 @@ impl VirtQueue {
             last_avail_idx: 0,
             next_used_idx: 0,
             failure: None,
+            pending_completion: None,
+            last_request_outcome: None,
+            used_write_failure: None,
         }
     }
 
@@ -103,7 +110,7 @@ impl VirtQueue {
     pub fn size(&self) -> u16 {
         self.validated.map_or_else(
             || u16::try_from(self.raw.size).unwrap_or(0),
-            |config| config.size,
+            ValidatedQueueConfig::size,
         )
     }
 
@@ -161,20 +168,24 @@ impl VirtQueue {
         self.last_avail_idx = 0;
         self.next_used_idx = 0;
         self.failure = None;
+        self.pending_completion = None;
+        self.last_request_outcome = None;
+        self.used_write_failure = None;
         Ok(())
     }
 
     pub fn plan_next(&self, mem: &GuestMemoryMmap) -> Result<Option<PlannedAvail>, VirtioFailure> {
         let config = self.config()?;
+        let queue_size = config.size();
         let available_index_address = config
-            .available
-            .start
+            .available_range()
+            .start()
             .checked_add(AVAILABLE_INDEX_OFFSET)
             .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
         let available_index = mem
             .read_obj(GuestAddress(available_index_address))
             .map_err(|_| VirtioFailure::GuestMemoryRead)?;
-        let delta = validate_available_delta(self.last_avail_idx, available_index, config.size)
+        let delta = validate_available_delta(self.last_avail_idx, available_index, queue_size)
             .map_err(VirtioFailure::Queue)?;
         if delta == 0 {
             return Ok(None);
@@ -184,23 +195,59 @@ impl VirtQueue {
         let head_index: u16 = mem
             .read_obj(GuestAddress(head_address))
             .map_err(|_| VirtioFailure::GuestMemoryRead)?;
-        if head_index >= config.size {
+        if head_index >= queue_size {
             return Err(VirtioFailure::Queue(QueueViolation::AvailableHead {
                 head: head_index,
-                capacity: config.size,
+                capacity: queue_size,
             }));
         }
         let descriptors = self.read_descriptor_table(mem, config)?;
         let (regions, count) = guest_memory_regions(mem)?;
         let chain = plan_descriptor_chain(
-            &descriptors[..usize::from(config.size)],
+            &descriptors[..usize::from(queue_size)],
             head_index,
-            config.size,
+            queue_size,
             &regions[..count],
             self.limits,
         )
         .map_err(VirtioFailure::Descriptor)?;
         Ok(Some(PlannedAvail { head_index, chain }))
+    }
+
+    pub fn stage_completion(
+        &mut self,
+        head_index: u16,
+        written_length: u32,
+    ) -> Result<(), VirtioFailure> {
+        if self.pending_completion.is_some() {
+            return Err(VirtioFailure::CompletionState);
+        }
+        self.pending_completion = Some(PendingCompletionLiveState {
+            head_index,
+            written_length,
+            backend_started: false,
+            effects_started: false,
+        });
+        Ok(())
+    }
+
+    pub fn mark_backend_started(&mut self) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .as_mut()
+            .ok_or(VirtioFailure::CompletionState)?;
+        pending.backend_started = true;
+        pending.effects_started = true;
+        Ok(())
+    }
+
+    pub fn mark_effects_started(&mut self) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .as_mut()
+            .ok_or(VirtioFailure::CompletionState)?;
+        pending.effects_started = true;
+        Ok(())
     }
 
     pub fn complete(
@@ -209,6 +256,45 @@ impl VirtQueue {
         head_index: u16,
         written_length: u32,
     ) -> Result<(), VirtioFailure> {
+        self.publish_completion(mem, head_index, written_length)?;
+        self.last_request_outcome = Some(LastRequestLiveOutcome::Completed {
+            head_index,
+            written_length,
+        });
+        Ok(())
+    }
+
+    pub fn complete_rejected(
+        &mut self,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        written_length: u32,
+        failure: VirtioFailure,
+    ) -> Result<(), VirtioFailure> {
+        self.last_request_outcome = Some(LastRequestLiveOutcome::Rejected {
+            head_index,
+            written_length,
+            failure,
+        });
+        self.publish_completion(mem, head_index, written_length)
+    }
+
+    pub fn inject_used_write_failure(&mut self, point: UsedWriteFailurePoint) {
+        self.used_write_failure = Some(point);
+    }
+
+    fn publish_completion(
+        &mut self,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        written_length: u32,
+    ) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .ok_or(VirtioFailure::CompletionState)?;
+        if pending.head_index != head_index || pending.written_length != written_length {
+            return Err(VirtioFailure::CompletionState);
+        }
         let config = self.config()?;
         let element_address =
             used_element_address(config, self.next_used_idx).ok_or(VirtioFailure::UsedRingWrite)?;
@@ -216,19 +302,24 @@ impl VirtQueue {
             .checked_add(USED_LENGTH_OFFSET)
             .ok_or(VirtioFailure::UsedRingWrite)?;
         let used_index_address = config
-            .used
-            .start
+            .used_range()
+            .start()
             .checked_add(USED_INDEX_OFFSET)
             .ok_or(VirtioFailure::UsedRingWrite)?;
         let next_used_index = self.next_used_idx.wrapping_add(1);
+        self.mark_effects_started()?;
         mem.write_obj(u32::from(head_index), GuestAddress(element_address))
             .map_err(|_| VirtioFailure::UsedRingWrite)?;
         mem.write_obj(written_length, GuestAddress(length_address))
             .map_err(|_| VirtioFailure::UsedRingWrite)?;
+        if self.used_write_failure.take() == Some(UsedWriteFailurePoint::BeforeIndex) {
+            return Err(VirtioFailure::UsedRingWrite);
+        }
         mem.write_obj(next_used_index, GuestAddress(used_index_address))
             .map_err(|_| VirtioFailure::UsedRingWrite)?;
         self.last_avail_idx = self.last_avail_idx.wrapping_add(1);
         self.next_used_idx = next_used_index;
+        self.pending_completion = None;
         Ok(())
     }
 
@@ -237,12 +328,20 @@ impl VirtQueue {
     }
 
     pub fn live_state(&self) -> QueueLiveState {
+        let config = self.validated.map(|config| ValidatedQueueLiveConfig {
+            size: config.size(),
+            descriptor_address: config.descriptor_range().start(),
+            driver_address: config.available_range().start(),
+            device_address: config.used_range().start(),
+        });
         QueueLiveState {
-            size: self.validated.map(|config| config.size),
+            config,
             ready: self.is_ready(),
             last_avail_idx: self.last_avail_idx,
             next_used_idx: self.next_used_idx,
-            failed: self.failure.is_some(),
+            failure: self.failure.clone(),
+            pending_completion: self.pending_completion,
+            last_request_outcome: self.last_request_outcome.clone(),
         }
     }
 
@@ -269,7 +368,7 @@ impl VirtQueue {
         config: ValidatedQueueConfig,
     ) -> Result<[VirtqDesc; MAX_QUEUE_SIZE_USIZE], VirtioFailure> {
         let mut descriptors = [VirtqDesc::default(); MAX_QUEUE_SIZE_USIZE];
-        for index in 0..config.size {
+        for index in 0..config.size() {
             let address = descriptor_address(config, index)
                 .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
             descriptors[usize::from(index)] = VirtqDesc {
@@ -313,13 +412,23 @@ pub struct VirtioMmioDevice {
     queue_sel: u32,
     backend: Box<dyn VirtioBackend>,
     failure: Option<VirtioFailure>,
+    limits: VirtioLimits,
 }
 
 impl VirtioMmioDevice {
     pub fn new(base_addr: u64, irq: u32, backend: Box<dyn VirtioBackend>) -> Self {
+        Self::with_limits(base_addr, irq, backend, VirtioLimits::default())
+    }
+
+    pub fn with_limits(
+        base_addr: u64,
+        irq: u32,
+        backend: Box<dyn VirtioBackend>,
+        limits: VirtioLimits,
+    ) -> Self {
         let device_features = backend.device_features() | VIRTIO_F_VERSION_1;
         let queues = (0..backend.num_queues())
-            .map(|_| VirtQueue::new(MAX_QUEUE_SIZE))
+            .map(|_| VirtQueue::with_limits(MAX_QUEUE_SIZE, limits))
             .collect();
         Self {
             base_addr,
@@ -335,6 +444,7 @@ impl VirtioMmioDevice {
             queue_sel: 0,
             backend,
             failure: None,
+            limits,
         }
     }
 
@@ -360,6 +470,27 @@ impl VirtioMmioDevice {
         &mut *self.backend
     }
 
+    pub fn inject_used_write_failure(
+        &mut self,
+        queue_index: usize,
+        point: UsedWriteFailurePoint,
+    ) -> Result<(), VirtioFailure> {
+        let queue = self
+            .queues
+            .get_mut(queue_index)
+            .ok_or(VirtioFailure::BackendQueue)?;
+        queue.inject_used_write_failure(point);
+        Ok(())
+    }
+
+    pub fn record_interrupt_failure(&mut self, queue_index: usize, irq: u32, asserted: bool) {
+        let failure = VirtioFailure::InterruptDelivery { irq, asserted };
+        if let Some(queue) = self.queues.get_mut(queue_index) {
+            queue.mark_failed(failure.clone());
+        }
+        self.record_failure(failure);
+    }
+
     pub fn live_state(&self) -> VirtioLiveState {
         VirtioLiveState {
             status: self.status,
@@ -370,6 +501,7 @@ impl VirtioMmioDevice {
     }
 
     pub fn read(&self, offset: u64, data: &mut [u8]) {
+        data.fill(0);
         let value = match offset {
             VIRTIO_MMIO_MAGIC_VALUE => MAGIC,
             VIRTIO_MMIO_VERSION => VERSION,
@@ -394,6 +526,25 @@ impl VirtioMmioDevice {
         let bytes = value.to_le_bytes();
         let copy_length = data.len().min(MMIO_REGISTER_BYTES);
         data[..copy_length].copy_from_slice(&bytes[..copy_length]);
+    }
+
+    pub fn write_at(
+        &mut self,
+        address: u64,
+        data: &[u8],
+        mem: &GuestMemoryMmap,
+    ) -> Result<MmioWriteEffect, VirtioFailure> {
+        let offset = address
+            .checked_sub(self.base_addr)
+            .ok_or(VirtioFailure::Transport(TransportViolation::MmioAddress {
+                address,
+            }))?;
+        if offset >= VIRTIO_MMIO_DEVICE_SIZE {
+            return Err(VirtioFailure::Transport(TransportViolation::MmioAddress {
+                address,
+            }));
+        }
+        self.write(offset, data, mem)
     }
 
     pub fn write(
@@ -640,7 +791,7 @@ impl VirtioMmioDevice {
         self.queue_sel = 0;
         self.failure = None;
         for queue in &mut self.queues {
-            *queue = VirtQueue::new(MAX_QUEUE_SIZE);
+            *queue = VirtQueue::with_limits(MAX_QUEUE_SIZE, self.limits);
         }
     }
 }

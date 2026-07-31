@@ -1,6 +1,6 @@
 //! Bounded virtio-net RX and TX shells over deterministic queues.
 
-use super::net::DeterministicNet;
+use super::net::{DeterministicNet, NetQueueError};
 use super::virtio_buffer::{BoundedBufferAllocator, HostBufferAllocator};
 use super::virtio_chain::DescriptorChainPlan;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
@@ -64,9 +64,19 @@ impl VirtioNet {
             .zeroed(packet_bytes, maximum)
             .map_err(VirtioFailure::Resource)?;
         read_tx_packet(mem, &available.chain, &mut packet)?;
+        let limits = queue.limits();
         self.net
-            .try_enqueue_tx(packet)
-            .map_err(|_| VirtioFailure::BackendWrite)?;
+            .validate_tx_retention(
+                packet_bytes,
+                limits.max_net_tx_packets,
+                limits.max_net_tx_bytes,
+            )
+            .map_err(|error| map_queue_error(error, packet_bytes))?;
+        queue.stage_completion(available.head_index, EMPTY_USED_BYTES)?;
+        queue.mark_backend_started()?;
+        self.net
+            .try_enqueue_tx_bounded(packet, limits.max_net_tx_packets, limits.max_net_tx_bytes)
+            .map_err(|error| map_queue_error(error, packet_bytes))?;
         queue.complete(mem, available.head_index, EMPTY_USED_BYTES)?;
         Ok(true)
     }
@@ -90,10 +100,13 @@ impl VirtioNet {
             queue.limits(),
         )
         .map_err(VirtioFailure::Request)?;
+        queue.stage_completion(available.head_index, plan.used_bytes)?;
+        queue.mark_effects_started()?;
         write_rx_packet(mem, &available.chain, packet)?;
-        queue.complete(mem, available.head_index, plan.used_bytes)?;
+        queue.mark_backend_started()?;
         let removed = self.net.pop_rx().ok_or(VirtioFailure::BackendQueue)?;
         debug_assert_eq!(removed.len(), packet_bytes as usize);
+        queue.complete(mem, available.head_index, plan.used_bytes)?;
         Ok(true)
     }
 }
@@ -135,13 +148,12 @@ impl VirtioBackend for VirtioNet {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
+        data.fill(0);
         if offset < MAC_BYTES as u64 {
             let start = usize::try_from(offset).unwrap_or(MAC_BYTES);
             let end = start.saturating_add(data.len()).min(MAC_BYTES);
             let copy_length = end.saturating_sub(start);
             data[..copy_length].copy_from_slice(&self.net.mac()[start..end]);
-        } else {
-            data.fill(0);
         }
     }
 
@@ -153,6 +165,21 @@ impl VirtioBackend for VirtioNet {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+fn map_queue_error(error: NetQueueError, packet_bytes: usize) -> VirtioFailure {
+    match error {
+        NetQueueError::PacketLimit { requested, maximum } => {
+            VirtioFailure::Resource(ResourceViolation::RetainedPacketLimit { requested, maximum })
+        }
+        NetQueueError::ByteLimit { requested, maximum } => {
+            VirtioFailure::Resource(ResourceViolation::RetainedByteLimit { requested, maximum })
+        }
+        NetQueueError::Allocation => VirtioFailure::Resource(ResourceViolation::Allocation {
+            requested: packet_bytes,
+        }),
+        NetQueueError::Arithmetic | NetQueueError::PostCommit => VirtioFailure::BackendWrite,
     }
 }
 

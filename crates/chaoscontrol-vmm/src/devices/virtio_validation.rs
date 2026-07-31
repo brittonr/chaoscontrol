@@ -1,6 +1,11 @@
 //! Pure queue geometry, memory containment, progress, and status validation.
 
-use super::virtio_types::{QueueViolation, TransportViolation, VirtioLimits};
+pub use super::virtio_status::{
+    validate_status_transition, VIRTIO_F_VERSION_1, VIRTIO_STATUS_ACKNOWLEDGE,
+    VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_DRIVER, VIRTIO_STATUS_DRIVER_OK,
+    VIRTIO_STATUS_FAILED, VIRTIO_STATUS_FEATURES_OK,
+};
+use super::virtio_types::{QueueViolation, VirtioLimits};
 
 pub const DESCRIPTOR_BYTES: u64 = 16;
 pub const DESCRIPTOR_ALIGNMENT: u64 = 16;
@@ -10,37 +15,29 @@ pub const AVAILABLE_ALIGNMENT: u64 = 2;
 pub const USED_HEADER_BYTES: u64 = 4;
 pub const USED_ELEMENT_BYTES: u64 = 8;
 pub const USED_ALIGNMENT: u64 = 4;
-pub const VIRTIO_STATUS_ACKNOWLEDGE: u32 = 1;
-pub const VIRTIO_STATUS_DRIVER: u32 = 2;
-pub const VIRTIO_STATUS_DRIVER_OK: u32 = 4;
-pub const VIRTIO_STATUS_FEATURES_OK: u32 = 8;
-pub const VIRTIO_STATUS_DEVICE_NEEDS_RESET: u32 = 64;
-pub const VIRTIO_STATUS_FAILED: u32 = 128;
-pub const VIRTIO_F_VERSION_1: u64 = 1 << 32;
-const DRIVER_STATUS_BITS: u32 = VIRTIO_STATUS_ACKNOWLEDGE
-    | VIRTIO_STATUS_DRIVER
-    | VIRTIO_STATUS_DRIVER_OK
-    | VIRTIO_STATUS_FEATURES_OK
-    | VIRTIO_STATUS_FAILED;
-const STATUS_ACKNOWLEDGE_DRIVER: u32 = VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER;
-const STATUS_FEATURES_ACCEPTED: u32 = STATUS_ACKNOWLEDGE_DRIVER | VIRTIO_STATUS_FEATURES_OK;
-const STATUS_DRIVER_ACTIVE: u32 = STATUS_FEATURES_ACCEPTED | VIRTIO_STATUS_DRIVER_OK;
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MemoryRegion {
     pub start: u64,
     pub length: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CheckedRange {
-    pub start: u64,
-    pub end: u64,
+    start: u64,
+    end: u64,
 }
 
 impl CheckedRange {
+    pub fn start(self) -> u64 {
+        self.start
+    }
+
+    pub fn end(self) -> u64 {
+        self.end
+    }
+
     pub fn length(self) -> u64 {
-        self.end - self.start
+        self.end.saturating_sub(self.start)
     }
 }
 
@@ -54,10 +51,28 @@ pub struct RawQueueConfig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ValidatedQueueConfig {
-    pub size: u16,
-    pub descriptors: CheckedRange,
-    pub available: CheckedRange,
-    pub used: CheckedRange,
+    size: u16,
+    descriptors: CheckedRange,
+    available: CheckedRange,
+    used: CheckedRange,
+}
+
+impl ValidatedQueueConfig {
+    pub fn size(self) -> u16 {
+        self.size
+    }
+
+    pub fn descriptor_range(self) -> CheckedRange {
+        self.descriptors
+    }
+
+    pub fn available_range(self) -> CheckedRange {
+        self.available
+    }
+
+    pub fn used_range(self) -> CheckedRange {
+        self.used
+    }
 }
 
 pub fn checked_range(start: u64, length: u64) -> Result<CheckedRange, QueueViolation> {
@@ -205,46 +220,6 @@ pub fn used_element_address(config: ValidatedQueueConfig, index: u16) -> Option<
     )
 }
 
-pub fn validate_status_transition(
-    current: u32,
-    next: u32,
-    offered_features: u64,
-    driver_features: u64,
-) -> Result<(), TransportViolation> {
-    if next == 0 {
-        return Ok(());
-    }
-    let current_without_failure = current & !VIRTIO_STATUS_FAILED;
-    let next_without_failure = next & !VIRTIO_STATUS_FAILED;
-    let legal_progress = next_without_failure == current_without_failure
-        || matches!(
-            (current_without_failure, next_without_failure),
-            (0, VIRTIO_STATUS_ACKNOWLEDGE)
-                | (VIRTIO_STATUS_ACKNOWLEDGE, STATUS_ACKNOWLEDGE_DRIVER)
-                | (STATUS_ACKNOWLEDGE_DRIVER, STATUS_FEATURES_ACCEPTED)
-                | (STATUS_FEATURES_ACCEPTED, STATUS_DRIVER_ACTIVE)
-        );
-    if current & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
-        || next & !DRIVER_STATUS_BITS != 0
-        || next & current != current
-        || !legal_progress
-    {
-        return Err(TransportViolation::StatusTransition { current, next });
-    }
-    if next & VIRTIO_STATUS_FEATURES_OK != 0 {
-        if driver_features & !offered_features != 0 {
-            return Err(TransportViolation::UnsupportedFeatures {
-                requested: driver_features,
-                offered: offered_features,
-            });
-        }
-        if driver_features & VIRTIO_F_VERSION_1 == 0 {
-            return Err(TransportViolation::ModernFeatureMissing);
-        }
-    }
-    Ok(())
-}
-
 fn require_alignment(address: u64, alignment: u64) -> Result<(), QueueViolation> {
     if !address.is_multiple_of(alignment) {
         return Err(QueueViolation::AddressMisaligned { address, alignment });
@@ -274,4 +249,24 @@ fn element_address(base: u64, index: u16, size: u16, width: u64, header: u64) ->
         .checked_mul(width)
         .and_then(|offset| header.checked_add(offset))
         .and_then(|offset| base.checked_add(offset))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn impossible_private_ranges_and_configs_remain_bounded() {
+        let reversed = CheckedRange { start: 2, end: 1 };
+        assert_eq!(reversed.length(), 0);
+        let empty = checked_range(0, 0).expect("empty range");
+        let forged = ValidatedQueueConfig {
+            size: 0,
+            descriptors: empty,
+            available: empty,
+            used: empty,
+        };
+        assert_eq!(available_element_address(forged, 0), None);
+        assert_eq!(used_element_address(forged, 0), None);
+    }
 }

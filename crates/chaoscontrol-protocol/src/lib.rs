@@ -21,6 +21,13 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "std")]
+pub mod assertion_catalog;
+#[cfg(feature = "std")]
+pub mod assertion_identity;
+#[cfg(feature = "std")]
+pub mod assertion_wire;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Addresses and ports
 // ═══════════════════════════════════════════════════════════════════════
@@ -115,11 +122,23 @@ pub const CMD_ASSERT_REACHABLE: u8 = 0x03;
 /// Assertion: this point must never be reached in any run.
 pub const CMD_ASSERT_UNREACHABLE: u8 = 0x04;
 
-/// Assertion catalog registration (emitted at init for every assertion site).
-pub const CMD_ASSERT_CATALOG: u8 = 0x05;
+/// Legacy assertion catalog registration. Strict mode quarantines this record.
+pub const CMD_ASSERT_CATALOG_LEGACY: u8 = 0x05;
+
+/// Compatibility name for the legacy catalog command.
+pub const CMD_ASSERT_CATALOG: u8 = CMD_ASSERT_CATALOG_LEGACY;
+
+/// Begin a versioned bounded assertion catalog.
+pub const CMD_ASSERT_CATALOG_BEGIN: u8 = 0x06;
 
 /// Guidance data (numeric/boolean distance-to-violation hints).
 pub const CMD_GUIDANCE: u8 = 0x07;
+
+/// Add one canonical descriptor to the pending assertion catalog.
+pub const CMD_ASSERT_CATALOG_DESCRIPTOR: u8 = 0x08;
+
+/// Complete and activate the pending assertion catalog.
+pub const CMD_ASSERT_CATALOG_COMPLETE: u8 = 0x09;
 
 /// Lifecycle: workload setup is complete, testing begins.
 pub const CMD_LIFECYCLE_SETUP_COMPLETE: u8 = 0x10;
@@ -151,6 +170,15 @@ pub const STATUS_ASSERTION_FAILED: u8 = 0x02;
 
 /// An `assert_unreachable` was reached — test fails.
 pub const STATUS_UNREACHABLE_REACHED: u8 = 0x03;
+
+/// A catalog or descriptor conflict made assertion evidence ineligible.
+pub const STATUS_ASSERTION_IDENTITY_CONFLICT: u8 = 0x04;
+
+/// A runtime assertion event did not bind to the active catalog.
+pub const STATUS_ASSERTION_EVENT_REJECTED: u8 = 0x05;
+
+/// An assertion boundary exceeded a configured field or cardinality limit.
+pub const STATUS_ASSERTION_LIMIT_EXCEEDED: u8 = 0x06;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Hypercall page layout

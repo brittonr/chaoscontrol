@@ -71,7 +71,8 @@ fn every_admission_conflict_poisons_builder() {
         Err(CatalogConflict::PostConflict)
     );
 
-    let mut overflow = CatalogBuilder::begin(0).expect("empty catalog");
+    let mut overflow = CatalogBuilder::begin(1).expect("bounded catalog");
+    overflow.insert(descriptor()).expect("first descriptor");
     assert_eq!(
         overflow.insert(descriptor()),
         Err(CatalogConflict::UnexpectedDescriptorCount)

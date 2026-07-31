@@ -21,6 +21,7 @@ const SOURCE_COLUMN: u32 = 7;
 const TRUE_FLAG: u8 = 1;
 const FALSE_FLAG: u8 = 0;
 const EVENT_DETAILS: &[u8] = br#"{"node":1}"#;
+const SPOOFED_ID: u32 = COMPATIBILITY_ID + 1;
 
 fn descriptor() -> AssertionDescriptor {
     AssertionDescriptor {
@@ -137,7 +138,7 @@ fn accepted_catalog_binds_event_and_snapshot_state() {
         Verdict::Passed
     );
 
-    engine.restore(&snapshot);
+    engine.restore(&snapshot).expect("restore snapshot");
     let restored = engine.oracle().report();
     assert!(restored.collision_safe_evidence);
     assert_eq!(restored.structured_assertions[&fingerprint].hit_count, 1);
@@ -208,6 +209,50 @@ fn catalog_metadata_conflict_is_fatal_before_runtime() {
         STATUS_ASSERTION_IDENTITY_CONFLICT
     );
     assert!(!engine.oracle().report().collision_safe_evidence);
+}
+
+#[test]
+fn redundant_transport_identity_fields_must_match() {
+    let value = descriptor();
+    let mut descriptor_spoof = FaultEngine::new(EngineConfig::default());
+    assert_eq!(
+        descriptor_spoof.handle_hypercall(&begin_page(1)).1,
+        STATUS_OK
+    );
+    let mut wrong_descriptor_id = descriptor_page(&value);
+    wrong_descriptor_id.id = SPOOFED_ID;
+    assert_eq!(
+        descriptor_spoof.handle_hypercall(&wrong_descriptor_id).1,
+        STATUS_ASSERTION_IDENTITY_CONFLICT
+    );
+
+    let mut completion_spoof = FaultEngine::new(EngineConfig::default());
+    assert_eq!(
+        completion_spoof.handle_hypercall(&begin_page(1)).1,
+        STATUS_OK
+    );
+    assert_eq!(
+        completion_spoof
+            .handle_hypercall(&descriptor_page(&value))
+            .1,
+        STATUS_OK
+    );
+    let mut wrong_completion_count = complete_page(&value);
+    wrong_completion_count.id = SPOOFED_ID;
+    assert_eq!(
+        completion_spoof.handle_hypercall(&wrong_completion_count).1,
+        STATUS_ASSERTION_IDENTITY_CONFLICT
+    );
+
+    let mut event_spoof = FaultEngine::new(EngineConfig::default());
+    let token = admit(&mut event_spoof, &value);
+    let mut wrong_event_id = event_page(&value, token, true);
+    wrong_event_id.id = SPOOFED_ID;
+    assert_eq!(
+        event_spoof.handle_hypercall(&wrong_event_id).1,
+        STATUS_ASSERTION_EVENT_REJECTED
+    );
+    assert!(!event_spoof.oracle().report().collision_safe_evidence);
 }
 
 #[test]

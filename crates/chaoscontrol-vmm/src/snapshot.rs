@@ -601,6 +601,12 @@ pub struct VmSnapshot {
 }
 
 impl VmSnapshot {
+    pub fn validate_assertion_identity(
+        &self,
+    ) -> Result<(), chaoscontrol_fault::oracle_validation::OracleValidationError> {
+        chaoscontrol_fault::engine::validate_engine_snapshot(&self.fault_engine_snapshot)
+    }
+
     /// Convenience accessor: RIP of vCPU 0 (BSP).
     pub fn rip(&self) -> u64 {
         self.vcpu_snapshots[0].regs.rip

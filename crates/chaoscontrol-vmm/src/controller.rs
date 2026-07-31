@@ -1614,16 +1614,20 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
-        if snapshot.vm_snapshots.len() != self.vms.len() {
-            return SnapshotSnafu {
-                message: "Snapshot VM count mismatch",
-            }
-            .fail();
-        }
+        snapshot
+            .validate_assertion_identity(self.vms.len())
+            .map_err(|message| SnapshotSnafu { message }.build())?;
 
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid assertion snapshot: {error:?}"),
+                }
+                .build()
+            })?;
 
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[i].vm.restore(vm_snap)?;
@@ -1655,16 +1659,20 @@ impl SimulationController {
         &mut self,
         snapshot: &SimulationSnapshot,
     ) -> Result<(), VmError> {
-        if snapshot.vm_snapshots.len() != self.vms.len() {
-            return SnapshotSnafu {
-                message: "Snapshot VM count mismatch",
-            }
-            .fail();
-        }
+        snapshot
+            .validate_assertion_identity(self.vms.len())
+            .map_err(|message| SnapshotSnafu { message }.build())?;
 
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid assertion snapshot: {error:?}"),
+                }
+                .build()
+            })?;
 
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             if let Some(base) = &self.vm_memory_bases[i] {
@@ -1904,6 +1912,7 @@ pub struct SimulationResult {
 
 /// Complete snapshot of simulation state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SimulationSnapshot {
     /// Global tick counter.
     pub tick: u64,
@@ -1919,6 +1928,22 @@ pub struct SimulationSnapshot {
     pub clock_freeze: Vec<Option<(u64, u64)>>,
     /// Per-VM clock jitter bound.
     pub clock_jitter_bound: Vec<u64>,
+}
+
+impl SimulationSnapshot {
+    pub fn validate_assertion_identity(&self, expected_vms: usize) -> Result<(), String> {
+        if self.vm_snapshots.len() != expected_vms {
+            return Err("Snapshot VM count mismatch".to_string());
+        }
+        chaoscontrol_fault::engine::validate_engine_snapshot(&self.fault_engine_snapshot)
+            .map_err(|error| format!("invalid controller assertion snapshot: {error:?}"))?;
+        for (index, (snapshot, _)) in self.vm_snapshots.iter().enumerate() {
+            snapshot
+                .validate_assertion_identity()
+                .map_err(|error| format!("invalid VM {index} assertion snapshot: {error:?}"))?;
+        }
+        Ok(())
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1942,6 +1967,51 @@ mod tests {
         assert_eq!(config.num_vms, 2);
         assert_eq!(config.seed, 42);
         assert_eq!(config.quantum, 100);
+    }
+
+    #[test]
+    fn forged_assertion_snapshot_leaves_controller_state_unchanged() {
+        const ORIGINAL_TICK: u64 = 17;
+        const FORGED_TICK: u64 = 99;
+        const ORIGINAL_SEED: u64 = 41;
+        const FORGED_SEED: u64 = 43;
+        let mut config = SimulationConfig::default();
+        config.num_vms = 0;
+        config.seed = ORIGINAL_SEED;
+        let mut controller = SimulationController {
+            vms: Vec::new(),
+            fault_engine: FaultEngine::new(EngineConfig::default()),
+            network: NetworkFabric::new(0, ORIGINAL_SEED),
+            tick: ORIGINAL_TICK,
+            quantum: config.quantum,
+            config,
+            vm_memory_bases: Vec::new(),
+        };
+        let mut engine_value =
+            serde_json::to_value(controller.fault_engine.snapshot()).expect("engine snapshot");
+        engine_value["oracle"]["catalog_status"] = serde_json::json!("accepted");
+        let forged_engine =
+            serde_json::from_value(engine_value).expect("forged engine snapshot shape");
+        let snapshot = SimulationSnapshot {
+            tick: FORGED_TICK,
+            vm_snapshots: Vec::new(),
+            network_state: NetworkFabric::new(0, FORGED_SEED),
+            fault_engine_snapshot: forged_engine,
+            vcpu_stall_until: Vec::new(),
+            clock_freeze: Vec::new(),
+            clock_jitter_bound: Vec::new(),
+        };
+        let network_before =
+            serde_json::to_value(&controller.network).expect("network before restore");
+        let report_before = controller.fault_engine.oracle().report();
+
+        assert!(controller.restore_all(&snapshot).is_err());
+        assert_eq!(controller.tick, ORIGINAL_TICK);
+        assert_eq!(
+            serde_json::to_value(&controller.network).expect("network after restore"),
+            network_before
+        );
+        assert_eq!(controller.fault_engine.oracle().report(), report_before);
     }
 
     #[test]

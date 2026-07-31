@@ -2077,6 +2077,12 @@ impl DeterministicVm {
     /// Restore VM state from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+        snapshot.validate_assertion_identity().map_err(|error| {
+            SnapshotSnafu {
+                message: format!("invalid assertion snapshot: {error:?}"),
+            }
+            .build()
+        })?;
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
@@ -2106,8 +2112,15 @@ impl DeterministicVm {
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
 
-        // Restore fault engine state
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        // Restore fault engine state. The lower layer validates again.
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid assertion snapshot: {error:?}"),
+                }
+                .build()
+            })?;
 
         // Restore coverage flag
         self.coverage_active = snapshot.coverage_active;
@@ -2228,6 +2241,13 @@ impl DeterministicVm {
     ) -> Result<(), VmError> {
         use crate::snapshot::SnapshotMemory;
 
+        snapshot.validate_assertion_identity().map_err(|error| {
+            SnapshotSnafu {
+                message: format!("invalid assertion snapshot: {error:?}"),
+            }
+            .build()
+        })?;
+
         // Step 1: Revert previously-dirtied pages back to base values.
         if !self.last_dirty_page_indices.is_empty() {
             SnapshotMemory::revert_pages_from_base(
@@ -2295,7 +2315,14 @@ impl DeterministicVm {
         self.panic_match_state = 0;
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
-        self.fault_engine.restore(&snapshot.fault_engine_snapshot);
+        self.fault_engine
+            .restore(&snapshot.fault_engine_snapshot)
+            .map_err(|error| {
+                SnapshotSnafu {
+                    message: format!("invalid assertion snapshot: {error:?}"),
+                }
+                .build()
+            })?;
         self.coverage_active = snapshot.coverage_active;
         self.scheduler.restore(&snapshot.scheduler_snapshot);
         self.active_vcpu = snapshot.active_vcpu;

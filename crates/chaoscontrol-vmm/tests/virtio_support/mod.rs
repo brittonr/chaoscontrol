@@ -19,6 +19,7 @@ pub const HEADER_ADDRESS: u64 = 0x4000;
 pub const DATA_ADDRESS: u64 = 0x5000;
 pub const STATUS_ADDRESS: u64 = 0x6000;
 pub const SECOND_DATA_ADDRESS: u64 = 0x7000;
+pub const THIRD_DATA_ADDRESS: u64 = 0x8000;
 pub const DEVICE_BASE: u64 = 0xD000_0000;
 pub const DEVICE_IRQ: u32 = 5;
 const STATUS_ACKNOWLEDGE: u32 = 1;
@@ -32,6 +33,7 @@ const DESCRIPTOR_FLAGS_OFFSET: u64 = 12;
 const DESCRIPTOR_NEXT_OFFSET: u64 = 14;
 const AVAILABLE_INDEX_ADDRESS: u64 = AVAILABLE_ADDRESS + 2;
 const AVAILABLE_RING_ADDRESS: u64 = AVAILABLE_ADDRESS + 4;
+const AVAILABLE_RING_ELEMENT_BYTES: u64 = 2;
 const USED_INDEX_ADDRESS: u64 = USED_ADDRESS + 2;
 
 pub fn memory() -> GuestMemoryMmap {
@@ -99,7 +101,12 @@ pub fn finish_driver(device: &mut VirtioMmioDevice, mem: &GuestMemoryMmap) {
 }
 
 pub fn publish_head(mem: &GuestMemoryMmap, head: u16, available_index: u16) {
-    mem.write_obj(head, GuestAddress(AVAILABLE_RING_ADDRESS))
+    publish_head_at(mem, 0, head, available_index);
+}
+
+pub fn publish_head_at(mem: &GuestMemoryMmap, slot: u16, head: u16, available_index: u16) {
+    let slot_offset = u64::from(slot) * AVAILABLE_RING_ELEMENT_BYTES;
+    mem.write_obj(head, GuestAddress(AVAILABLE_RING_ADDRESS + slot_offset))
         .expect("available head");
     mem.write_obj(available_index, GuestAddress(AVAILABLE_INDEX_ADDRESS))
         .expect("available index");

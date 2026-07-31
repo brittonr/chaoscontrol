@@ -5,7 +5,17 @@
 //! The test harness injects packets into the RX queue and drains the TX
 //! queue to observe what the guest sends.
 
+use super::virtio_types::{DEFAULT_MAX_NET_TX_BYTES, DEFAULT_MAX_NET_TX_PACKETS};
 use std::collections::VecDeque;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetQueueError {
+    PacketLimit { requested: usize, maximum: usize },
+    ByteLimit { requested: u64, maximum: u64 },
+    Arithmetic,
+    Allocation,
+    PostCommit,
+}
 
 /// Per-direction packet and byte counters.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -53,8 +63,12 @@ pub struct DeterministicNet {
     rx_queue: VecDeque<Vec<u8>>,
     /// Packets transmitted by the guest.
     tx_queue: VecDeque<Vec<u8>>,
+    /// Bytes retained in `tx_queue` and not yet drained by the host.
+    tx_queued_bytes: u64,
     /// Cumulative statistics.
     stats: NetStats,
+    /// Live-only injection for a failure after queue processing starts.
+    fail_after_next_tx_enqueue: bool,
 }
 
 impl DeterministicNet {
@@ -64,7 +78,9 @@ impl DeterministicNet {
             mac,
             rx_queue: VecDeque::new(),
             tx_queue: VecDeque::new(),
+            tx_queued_bytes: 0,
             stats: NetStats::default(),
+            fail_after_next_tx_enqueue: false,
         }
     }
 
@@ -100,33 +116,99 @@ impl DeterministicNet {
         self.rx_queue.pop_front()
     }
 
-    /// Record a packet transmitted by the guest with fallible queue growth.
-    pub fn try_enqueue_tx(&mut self, data: Vec<u8>) -> Result<(), Vec<u8>> {
-        let Ok(length) = u64::try_from(data.len()) else {
-            return Err(data);
-        };
-        let Some(tx_bytes) = self.stats.tx_bytes.checked_add(length) else {
-            return Err(data);
-        };
-        let Some(tx_packets) = self.stats.tx_packets.checked_add(1) else {
-            return Err(data);
-        };
+    pub fn validate_tx_retention(
+        &self,
+        packet_bytes: usize,
+        max_packets: usize,
+        max_bytes: u64,
+    ) -> Result<(), NetQueueError> {
+        self.tx_retention_values(packet_bytes, max_packets, max_bytes)
+            .map(|_| ())
+    }
+
+    /// Record a packet only when the retained queue stays within both limits.
+    pub fn try_enqueue_tx_bounded(
+        &mut self,
+        data: Vec<u8>,
+        max_packets: usize,
+        max_bytes: u64,
+    ) -> Result<(), NetQueueError> {
+        let (requested_bytes, tx_bytes, tx_packets) =
+            self.tx_retention_values(data.len(), max_packets, max_bytes)?;
         if self.tx_queue.try_reserve(1).is_err() {
-            return Err(data);
+            return Err(NetQueueError::Allocation);
         }
         self.stats.tx_bytes = tx_bytes;
         self.stats.tx_packets = tx_packets;
+        self.tx_queued_bytes = requested_bytes;
         self.tx_queue.push_back(data);
+        if std::mem::take(&mut self.fail_after_next_tx_enqueue) {
+            return Err(NetQueueError::PostCommit);
+        }
         Ok(())
     }
 
-    /// Record a host-controlled packet transmitted by the guest.
-    pub fn enqueue_tx(&mut self, data: Vec<u8>) {
-        let _ = self.try_enqueue_tx(data);
+    fn tx_retention_values(
+        &self,
+        packet_bytes: usize,
+        max_packets: usize,
+        max_bytes: u64,
+    ) -> Result<(u64, u64, u64), NetQueueError> {
+        let requested_packets = self
+            .tx_queue
+            .len()
+            .checked_add(1)
+            .ok_or(NetQueueError::Arithmetic)?;
+        if requested_packets > max_packets {
+            return Err(NetQueueError::PacketLimit {
+                requested: requested_packets,
+                maximum: max_packets,
+            });
+        }
+        let length = u64::try_from(packet_bytes).map_err(|_| NetQueueError::Arithmetic)?;
+        let requested_bytes = self
+            .tx_queued_bytes
+            .checked_add(length)
+            .ok_or(NetQueueError::Arithmetic)?;
+        if requested_bytes > max_bytes {
+            return Err(NetQueueError::ByteLimit {
+                requested: requested_bytes,
+                maximum: max_bytes,
+            });
+        }
+        let tx_bytes = self
+            .stats
+            .tx_bytes
+            .checked_add(length)
+            .ok_or(NetQueueError::Arithmetic)?;
+        let tx_packets = self
+            .stats
+            .tx_packets
+            .checked_add(1)
+            .ok_or(NetQueueError::Arithmetic)?;
+        Ok((requested_bytes, tx_bytes, tx_packets))
+    }
+
+    pub fn inject_failure_after_next_tx_enqueue(&mut self) {
+        self.fail_after_next_tx_enqueue = true;
+    }
+
+    /// Record a host-controlled packet with the default retained limits.
+    pub fn enqueue_tx(&mut self, data: Vec<u8>) -> Result<(), NetQueueError> {
+        self.try_enqueue_tx_bounded(data, DEFAULT_MAX_NET_TX_PACKETS, DEFAULT_MAX_NET_TX_BYTES)
+    }
+
+    pub fn tx_queued_packets(&self) -> usize {
+        self.tx_queue.len()
+    }
+
+    pub fn tx_queued_bytes(&self) -> u64 {
+        self.tx_queued_bytes
     }
 
     /// Drain all packets transmitted by the guest, returning them in order.
     pub fn drain_tx(&mut self) -> Vec<Vec<u8>> {
+        self.tx_queued_bytes = 0;
         self.tx_queue.drain(..).collect()
     }
 
@@ -151,9 +233,18 @@ impl DeterministicNet {
             mac: snapshot.mac,
             rx_queue: snapshot.rx_queue.clone(),
             tx_queue: snapshot.tx_queue.clone(),
+            tx_queued_bytes: retained_bytes(&snapshot.tx_queue),
             stats: snapshot.stats.clone(),
+            fail_after_next_tx_enqueue: false,
         }
     }
+}
+
+fn retained_bytes(queue: &VecDeque<Vec<u8>>) -> u64 {
+    queue.iter().fold(0u64, |total, packet| {
+        let length = u64::try_from(packet.len()).unwrap_or(u64::MAX);
+        total.saturating_add(length)
+    })
 }
 
 #[cfg(test)]
@@ -186,8 +277,8 @@ mod tests {
     #[test]
     fn enqueue_and_drain_tx() {
         let mut net = DeterministicNet::new(TEST_MAC);
-        net.enqueue_tx(vec![10, 20]);
-        net.enqueue_tx(vec![30]);
+        net.enqueue_tx(vec![10, 20]).expect("first TX packet");
+        net.enqueue_tx(vec![30]).expect("second TX packet");
 
         let packets = net.drain_tx();
         assert_eq!(packets.len(), 2);
@@ -199,11 +290,26 @@ mod tests {
     }
 
     #[test]
+    fn enqueue_tx_reports_default_packet_limit() {
+        let mut net = DeterministicNet::new(TEST_MAC);
+        for _ in 0..DEFAULT_MAX_NET_TX_PACKETS {
+            net.enqueue_tx(Vec::new()).expect("packet within limit");
+        }
+        assert_eq!(
+            net.enqueue_tx(Vec::new()),
+            Err(NetQueueError::PacketLimit {
+                requested: DEFAULT_MAX_NET_TX_PACKETS + 1,
+                maximum: DEFAULT_MAX_NET_TX_PACKETS,
+            })
+        );
+    }
+
+    #[test]
     fn stats_tracking() {
         let mut net = DeterministicNet::new(TEST_MAC);
         net.inject_packet(vec![0; 100]);
         net.inject_packet(vec![0; 50]);
-        net.enqueue_tx(vec![0; 200]);
+        net.enqueue_tx(vec![0; 200]).expect("TX packet");
 
         let s = net.stats();
         assert_eq!(s.rx_packets, 2);
@@ -216,7 +322,7 @@ mod tests {
     fn snapshot_restore_preserves_state() {
         let mut net = DeterministicNet::new(TEST_MAC);
         net.inject_packet(vec![1, 2, 3]);
-        net.enqueue_tx(vec![4, 5, 6]);
+        net.enqueue_tx(vec![4, 5, 6]).expect("TX packet");
 
         let snap = net.snapshot();
 

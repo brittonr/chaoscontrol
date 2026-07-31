@@ -5,7 +5,7 @@ use chaoscontrol_vmm::devices::net::DeterministicNet;
 use chaoscontrol_vmm::devices::virtio_buffer::RejectingBufferAllocator;
 use chaoscontrol_vmm::devices::virtio_chain::{VirtqDesc, VIRTQ_DESC_F_NEXT, VIRTQ_DESC_F_WRITE};
 use chaoscontrol_vmm::devices::virtio_entropy::VirtioEntropy;
-use chaoscontrol_vmm::devices::virtio_mmio::VirtioMmioDevice;
+use chaoscontrol_vmm::devices::virtio_mmio::{VirtioMmioDevice, VIRTIO_MMIO_CONFIG};
 use chaoscontrol_vmm::devices::virtio_net::VirtioNet;
 use chaoscontrol_vmm::devices::virtio_request::NET_HEADER_BYTES;
 use chaoscontrol_vmm::devices::virtio_types::{ResourceViolation, VirtioFailure, VirtioLimits};
@@ -20,6 +20,10 @@ const NET_QUEUE_TX: u32 = 1;
 const NET_PAYLOAD_BYTES: usize = 64;
 const NET_PAYLOAD_BYTES_U32: u32 = 64;
 const TEST_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 1];
+const MAC_LAST_BYTE_OFFSET: u64 = 5;
+const MAC_LAST_BYTE_INDEX: usize = 5;
+const WIDE_CONFIG_BYTES: usize = 4;
+const INITIAL_CONFIG_BYTE: u8 = 0xA5;
 
 fn configure(device: &mut VirtioMmioDevice, mem: &vm_memory::GuestMemoryMmap, queue: u32) {
     negotiate_features(device, mem);
@@ -55,6 +59,15 @@ fn entropy_descriptor(mem: &vm_memory::GuestMemoryMmap, flags: u16) {
         },
     );
     publish_head(mem, 0, FIRST_AVAILABLE_INDEX);
+}
+
+#[test]
+fn net_config_cross_boundary_read_zeroes_tail() {
+    let net = VirtioNet::new(DeterministicNet::new(TEST_MAC));
+    let device = VirtioMmioDevice::new(DEVICE_BASE, DEVICE_IRQ, Box::new(net));
+    let mut output = [INITIAL_CONFIG_BYTE; WIDE_CONFIG_BYTES];
+    device.read(VIRTIO_MMIO_CONFIG + MAC_LAST_BYTE_OFFSET, &mut output);
+    assert_eq!(output, [TEST_MAC[MAC_LAST_BYTE_INDEX], 0, 0, 0]);
 }
 
 #[test]

@@ -56,8 +56,8 @@ fn generated_guest_inputs_never_panic_or_escape_limits() {
                 device_address: corpus.next(),
             };
             if let Ok(config) = validate_queue_config(raw, MAX_QUEUE_SIZE, &memory, limits) {
-                assert!(config.size > 0);
-                assert!(config.size <= limits.max_queue_size);
+                assert!(config.size() > 0);
+                assert!(config.size() <= limits.max_queue_size);
                 assert!(available_element_address(config, corpus.next_u16()).is_some());
                 assert!(used_element_address(config, corpus.next_u16()).is_some());
             }
@@ -96,17 +96,4 @@ fn generated_guest_inputs_never_panic_or_escape_limits() {
         }));
         assert!(outcome.is_ok(), "generated case {seed} panicked");
     }
-}
-
-#[test]
-fn zero_sized_forged_validated_config_does_not_panic() {
-    use chaoscontrol_vmm::devices::virtio_validation::{CheckedRange, ValidatedQueueConfig};
-    let forged = ValidatedQueueConfig {
-        size: 0,
-        descriptors: CheckedRange::default(),
-        available: CheckedRange::default(),
-        used: CheckedRange::default(),
-    };
-    assert_eq!(available_element_address(forged, 0), None);
-    assert_eq!(used_element_address(forged, 0), None);
 }

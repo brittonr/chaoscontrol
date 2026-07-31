@@ -78,17 +78,9 @@ impl VirtioBlock {
             };
         let data = block_data_buffers(&available.chain)?;
         let mut scratch = self.allocate_scratch(plan.transfer_bytes, queue)?;
-        match plan.operation {
-            BlockOperation::Write => {
-                preflight_guest_reads(mem, data, &mut scratch)?;
-                transfer_guest_to_disk(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?;
-            }
-            BlockOperation::Read => {
-                transfer_disk_to_guest(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?
-            }
+        if plan.operation == BlockOperation::Write {
+            preflight_guest_reads(mem, data, &mut scratch)?;
         }
-        mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
-            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
         let used_length = match plan.operation {
             BlockOperation::Read => u32::try_from(
                 plan.transfer_bytes
@@ -98,6 +90,18 @@ impl VirtioBlock {
             .map_err(|_| VirtioFailure::BackendRead)?,
             BlockOperation::Write => STATUS_USED_BYTES,
         };
+        queue.stage_completion(available.head_index, used_length)?;
+        queue.mark_backend_started()?;
+        match plan.operation {
+            BlockOperation::Write => {
+                transfer_guest_to_disk(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?;
+            }
+            BlockOperation::Read => {
+                transfer_disk_to_guest(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?
+            }
+        }
+        mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
+            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
         queue.complete(mem, available.head_index, used_length)?;
         Ok(true)
     }
@@ -112,9 +116,11 @@ impl VirtioBlock {
         let Some(status_address) = validated_block_status(&available.chain) else {
             return Err(failure);
         };
+        queue.stage_completion(available.head_index, STATUS_USED_BYTES)?;
+        queue.mark_effects_started()?;
         mem.write_obj(VIRTIO_BLK_S_IOERR, GuestAddress(status_address))
             .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
-        queue.complete(mem, available.head_index, STATUS_USED_BYTES)?;
+        queue.complete_rejected(mem, available.head_index, STATUS_USED_BYTES, failure)?;
         Ok(true)
     }
 
@@ -175,14 +181,13 @@ impl VirtioBackend for VirtioBlock {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
+        data.fill(0);
         if offset < CAPACITY_FIELD_BYTES as u64 {
             let bytes = self.num_sectors.to_le_bytes();
             let start = usize::try_from(offset).unwrap_or(CAPACITY_FIELD_BYTES);
             let end = start.saturating_add(data.len()).min(CAPACITY_FIELD_BYTES);
             let copy_length = end.saturating_sub(start);
             data[..copy_length].copy_from_slice(&bytes[start..end]);
-        } else {
-            data.fill(0);
         }
     }
 

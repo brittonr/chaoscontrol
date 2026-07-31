@@ -1,9 +1,9 @@
 mod virtio_support;
 
 use chaoscontrol_vmm::devices::virtio_mmio::{
-    VirtQueue, VirtioBackend, VirtioMmioDevice, VIRTIO_MMIO_QUEUE_DESC_LOW,
-    VIRTIO_MMIO_QUEUE_DEVICE_LOW, VIRTIO_MMIO_QUEUE_DRIVER_LOW, VIRTIO_MMIO_QUEUE_NUM,
-    VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_SEL,
+    VirtQueue, VirtioBackend, VirtioMmioDevice, VIRTIO_MMIO_MAGIC_VALUE,
+    VIRTIO_MMIO_QUEUE_DESC_LOW, VIRTIO_MMIO_QUEUE_DEVICE_LOW, VIRTIO_MMIO_QUEUE_DRIVER_LOW,
+    VIRTIO_MMIO_QUEUE_NUM, VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_SEL,
 };
 use chaoscontrol_vmm::devices::virtio_types::{
     QueueViolation, TransportViolation, VirtioFailure, MAX_QUEUE_SIZE,
@@ -17,6 +17,11 @@ const DUMMY_DEVICE_ID: u32 = 99;
 const ONE_QUEUE: usize = 1;
 const NON_POWER_OF_TWO_QUEUE: u32 = 3;
 const TRUNCATED_QUEUE: u32 = u16::MAX as u32 + 1;
+const MAGIC_VALUE: u32 = 0x7472_6976;
+const WIDE_READ_BYTES: usize = 8;
+const MMIO_REGISTER_BYTES: usize = 4;
+const INITIAL_READ_BYTE: u8 = 0xA5;
+const UNKNOWN_REGISTER: u64 = 0x06C;
 
 struct DummyBackend {
     calls: Arc<AtomicUsize>,
@@ -74,12 +79,32 @@ fn compliant_linux_sequence_activates_exact_queue() {
     finish_driver(&mut device, &mem);
 
     let state = device.live_state();
-    assert_eq!(state.queues[0].size, Some(QUEUE_SIZE));
+    assert_eq!(
+        state.queues[0].config.map(|config| config.size),
+        Some(QUEUE_SIZE)
+    );
     assert!(state.queues[0].ready);
-    assert!(!state.queues[0].failed);
+    assert!(state.queues[0].failure.is_none());
+    assert!(state.queues[0].pending_completion.is_none());
     assert!(!device.interrupt_pending());
     assert!(!device.process_queues(&mem));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn mmio_reads_zero_wide_and_unknown_bytes() {
+    let device = device(Arc::new(AtomicUsize::new(0)));
+    let mut wide = [INITIAL_READ_BYTE; WIDE_READ_BYTES];
+    device.read(VIRTIO_MMIO_MAGIC_VALUE, &mut wide);
+    assert_eq!(&wide[..MMIO_REGISTER_BYTES], &MAGIC_VALUE.to_le_bytes());
+    assert_eq!(
+        &wide[MMIO_REGISTER_BYTES..],
+        &[0; WIDE_READ_BYTES - MMIO_REGISTER_BYTES]
+    );
+
+    wide.fill(INITIAL_READ_BYTE);
+    device.read(UNKNOWN_REGISTER, &mut wide);
+    assert_eq!(wide, [0; WIDE_READ_BYTES]);
 }
 
 #[test]

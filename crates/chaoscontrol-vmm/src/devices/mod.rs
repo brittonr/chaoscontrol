@@ -17,5 +17,6 @@ pub mod virtio_entropy;
 pub mod virtio_mmio;
 pub mod virtio_net;
 pub mod virtio_request;
+pub mod virtio_status;
 pub mod virtio_types;
 pub mod virtio_validation;

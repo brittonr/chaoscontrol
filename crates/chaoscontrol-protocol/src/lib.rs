@@ -24,6 +24,8 @@
 #[cfg(feature = "std")]
 pub mod assertion_catalog;
 #[cfg(feature = "std")]
+mod assertion_catalog_validation;
+#[cfg(feature = "std")]
 pub mod assertion_identity;
 #[cfg(feature = "std")]
 pub mod assertion_wire;

@@ -1,3 +1,5 @@
+use crate::assertion_catalog_validation::classify_descriptor_conflict;
+pub use crate::assertion_catalog_validation::validate_accepted_catalog;
 use crate::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
     MAX_ASSERTION_CANONICAL_BYTES,
@@ -39,7 +41,10 @@ pub struct AcceptedCatalog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CatalogConflict {
     AlreadyBegun,
+    CanonicalMismatch,
     CardinalityOverflow,
+    CatalogStatusMismatch,
+    CatalogVersionMismatch,
     CounterOverflow,
     CatalogIncomplete,
     CatalogTokenMismatch,
@@ -106,9 +111,10 @@ impl CatalogBuilder {
         &mut self,
         descriptor: AssertionDescriptor,
     ) -> Result<CatalogInsert, CatalogConflict> {
-        let fingerprint = descriptor
-            .fingerprint()
-            .map_err(CatalogConflict::Descriptor)?;
+        let fingerprint = match descriptor.fingerprint() {
+            Ok(fingerprint) => fingerprint,
+            Err(error) => return self.fail(CatalogConflict::Descriptor(error)),
+        };
         self.insert_with_fingerprint(descriptor, fingerprint)
     }
 
@@ -123,16 +129,17 @@ impl CatalogBuilder {
         if self.conflict.is_some() {
             return Err(CatalogConflict::PostConflict);
         }
-        self.received_frames = self
-            .received_frames
-            .checked_add(1)
-            .ok_or(CatalogConflict::CardinalityOverflow)?;
+        self.received_frames = match self.received_frames.checked_add(1) {
+            Some(count) => count,
+            None => return self.fail(CatalogConflict::CounterOverflow),
+        };
         if self.received_frames > self.expected_frames {
             return self.fail(CatalogConflict::UnexpectedDescriptorCount);
         }
-        let canonical_bytes = descriptor
-            .canonical_bytes()
-            .map_err(CatalogConflict::Descriptor)?;
+        let canonical_bytes = match descriptor.canonical_bytes() {
+            Ok(canonical) => canonical,
+            Err(error) => return self.fail(CatalogConflict::Descriptor(error)),
+        };
         if canonical_bytes.len() > MAX_ASSERTION_CANONICAL_BYTES {
             return self.fail(CatalogConflict::Descriptor(IdentityError::FieldTooLong(
                 "canonical_descriptor",
@@ -215,6 +222,14 @@ impl CatalogBuilder {
         })
     }
 
+    pub fn expected_frames(&self) -> usize {
+        self.expected_frames
+    }
+
+    pub fn received_frames(&self) -> usize {
+        self.received_frames
+    }
+
     fn fail<T>(&mut self, conflict: CatalogConflict) -> Result<T, CatalogConflict> {
         self.conflict = Some(conflict.clone());
         Err(conflict)
@@ -269,35 +284,4 @@ pub fn token_for_descriptors(
     }
     let token = catalog_token(&builder.by_fingerprint);
     Ok(token)
-}
-
-fn classify_descriptor_conflict(
-    existing: &AssertionDescriptor,
-    candidate: &AssertionDescriptor,
-) -> CatalogConflict {
-    if matches!(existing.logical_key, AssertionLogicalKey::LegacyU32 { .. }) {
-        return CatalogConflict::LegacyAliasConflict;
-    }
-    if existing.namespace != candidate.namespace {
-        return CatalogConflict::NamespaceConflict;
-    }
-    if existing.kind != candidate.kind {
-        return CatalogConflict::KindConflict;
-    }
-    if existing.message != candidate.message {
-        return CatalogConflict::MessageConflict;
-    }
-    if existing.source_file != candidate.source_file
-        || existing.source_line != candidate.source_line
-        || existing.source_column != candidate.source_column
-    {
-        return CatalogConflict::SourceConflict;
-    }
-    if existing.guest != candidate.guest {
-        return CatalogConflict::GuestConflict;
-    }
-    if existing.category != candidate.category {
-        return CatalogConflict::CategoryConflict;
-    }
-    CatalogConflict::LogicalKeyConflict
 }

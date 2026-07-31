@@ -45,11 +45,13 @@ pub use crate::{
     cc_assert_always_ok,
     cc_assert_always_or_unreachable,
     cc_assert_always_some,
+    cc_assert_always_stable,
     // Implication
     cc_assert_implies,
     cc_assert_raw,
     cc_assert_reachable,
     cc_assert_reachable_category,
+    cc_assert_reachable_stable,
     cc_assert_sometimes,
     cc_assert_sometimes_category,
     // Sometimes comparisons
@@ -62,7 +64,9 @@ pub use crate::{
     cc_assert_sometimes_ne,
     cc_assert_sometimes_ok,
     cc_assert_sometimes_some,
+    cc_assert_sometimes_stable,
     cc_assert_unreachable,
+    cc_assert_unreachable_stable,
 };
 
 // ── Guidance ─────────────────────────────────────────────────────────

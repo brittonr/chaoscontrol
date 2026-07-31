@@ -331,10 +331,11 @@ fn dispatch_local_bound(
 
 #[cfg(feature = "full")]
 fn encode_hex(input: &[u8]) -> String {
-    use core::fmt::Write;
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut output = String::with_capacity(input.len().saturating_mul(2));
     for byte in input {
-        let _ = write!(&mut output, "{byte:02x}");
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
     }
     output
 }

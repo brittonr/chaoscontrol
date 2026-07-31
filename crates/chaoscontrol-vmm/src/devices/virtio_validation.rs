@@ -22,6 +22,9 @@ const DRIVER_STATUS_BITS: u32 = VIRTIO_STATUS_ACKNOWLEDGE
     | VIRTIO_STATUS_DRIVER_OK
     | VIRTIO_STATUS_FEATURES_OK
     | VIRTIO_STATUS_FAILED;
+const STATUS_ACKNOWLEDGE_DRIVER: u32 = VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER;
+const STATUS_FEATURES_ACCEPTED: u32 = STATUS_ACKNOWLEDGE_DRIVER | VIRTIO_STATUS_FEATURES_OK;
+const STATUS_DRIVER_ACTIVE: u32 = STATUS_FEATURES_ACCEPTED | VIRTIO_STATUS_DRIVER_OK;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MemoryRegion {
@@ -211,12 +214,20 @@ pub fn validate_status_transition(
     if next == 0 {
         return Ok(());
     }
+    let current_without_failure = current & !VIRTIO_STATUS_FAILED;
+    let next_without_failure = next & !VIRTIO_STATUS_FAILED;
+    let legal_progress = next_without_failure == current_without_failure
+        || matches!(
+            (current_without_failure, next_without_failure),
+            (0, VIRTIO_STATUS_ACKNOWLEDGE)
+                | (VIRTIO_STATUS_ACKNOWLEDGE, STATUS_ACKNOWLEDGE_DRIVER)
+                | (STATUS_ACKNOWLEDGE_DRIVER, STATUS_FEATURES_ACCEPTED)
+                | (STATUS_FEATURES_ACCEPTED, STATUS_DRIVER_ACTIVE)
+        );
     if current & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
         || next & !DRIVER_STATUS_BITS != 0
         || next & current != current
-        || next & VIRTIO_STATUS_DRIVER != 0 && next & VIRTIO_STATUS_ACKNOWLEDGE == 0
-        || next & VIRTIO_STATUS_FEATURES_OK != 0 && next & VIRTIO_STATUS_DRIVER == 0
-        || next & VIRTIO_STATUS_DRIVER_OK != 0 && next & VIRTIO_STATUS_FEATURES_OK == 0
+        || !legal_progress
     {
         return Err(TransportViolation::StatusTransition { current, next });
     }
@@ -235,7 +246,7 @@ pub fn validate_status_transition(
 }
 
 fn require_alignment(address: u64, alignment: u64) -> Result<(), QueueViolation> {
-    if address % alignment != 0 {
+    if !address.is_multiple_of(alignment) {
         return Err(QueueViolation::AddressMisaligned { address, alignment });
     }
     Ok(())

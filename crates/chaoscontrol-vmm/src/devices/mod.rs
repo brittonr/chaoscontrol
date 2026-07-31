@@ -10,6 +10,7 @@ pub mod net;
 pub mod pit;
 pub mod serial;
 pub mod virtio_block;
+mod virtio_block_io;
 pub mod virtio_buffer;
 pub mod virtio_chain;
 pub mod virtio_entropy;

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Validate and bound all guest-controlled virtio MMIO queue and descriptor inputs before host arithmetic, allocation, cursor movement, backend mutation, or completion.
+Defines the `virtio-guest-input-safety` capability.
 
 ## Requirements
 

@@ -126,6 +126,8 @@ nix develop -c cargo test -p chaoscontrol-vmm \
 nix build .#checks.x86_64-linux.virtio-malicious-guest-kvm-smoke --no-link -L
 ```
 
+r[verify chaoscontrol.virtio_safety.validation] The focused, workspace, KVM, and Nix rails cover the declared validation scope.
+r[verify chaoscontrol.virtio_safety.validation.core] The pure validation tests cover valid and malformed queue, descriptor, progress, and request inputs.
 r[verify chaoscontrol.virtio_safety.validation.positive] The production-path tests include valid block, network, and entropy requests.
 r[verify chaoscontrol.virtio_safety.validation.negative] The negative tests assert no early cursor, backend, entropy, used-ring, or interrupt change.
 They also cover block, network TX, network RX, entropy, used-ring, and KVM interrupt failures after effects start.

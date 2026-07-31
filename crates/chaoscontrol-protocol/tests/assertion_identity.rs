@@ -118,7 +118,10 @@ fn logical_key_metadata_conflicts_are_typed() {
         ("source", {
             let mut value = base.clone();
             value.source_line = SOURCE_LINE + 1;
-            (value, CatalogConflict::SourceConflict)
+            (
+                value,
+                CatalogConflict::Descriptor(IdentityError::InvalidAutomaticSourceSite),
+            )
         }),
         ("guest", {
             let mut value = base.clone();
@@ -165,6 +168,9 @@ fn automatic_compatibility_alias_collision_is_fatal() {
     second.logical_key = AssertionLogicalKey::Automatic {
         source_site: "src/raft/other.rs:1:1".to_string(),
     };
+    second.source_file = "src/raft/other.rs".to_string();
+    second.source_line = 1;
+    second.source_column = 1;
     second.message = "different automatic assertion".to_string();
     let mut builder = CatalogBuilder::begin(2).expect("catalog begin");
     builder.insert(first).expect("first automatic descriptor");

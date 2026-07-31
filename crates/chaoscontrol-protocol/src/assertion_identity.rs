@@ -16,14 +16,6 @@ pub const MAX_ASSERTION_EVENT_DETAILS_BYTES: usize = 2048;
 pub const ASSERTION_DESCRIPTOR_DOMAIN: &[u8] = b"chaoscontrol.assertion-descriptor.v1\0";
 const FINGERPRINT_DOMAIN: &[u8] = b"chaoscontrol.assertion-fingerprint.v1\0";
 const FIELD_COUNT: u8 = 10;
-const KNOWN_CATEGORIES: &[&str] = &[
-    "uncategorized",
-    "invariant",
-    "branch",
-    "operation",
-    "recovery",
-];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AssertionFingerprint(pub [u8; ASSERTION_FINGERPRINT_BYTES]);
 
@@ -115,11 +107,14 @@ pub struct AssertionDescriptor {
 pub enum IdentityError {
     EmptyField(&'static str),
     FieldTooLong(&'static str),
+    InvalidAutomaticSourceSite,
     InvalidCharacter(&'static str),
     InvalidCategory,
     InvalidFingerprint,
     InvalidKind,
+    InvalidLegacyAlias,
     InvalidPath,
+    InvalidSourcePosition,
     InvalidVersion,
     MalformedCanonical,
 }
@@ -145,16 +140,29 @@ impl AssertionDescriptor {
             AssertionLogicalKey::Stable { key } => {
                 validate_text("key", key, MAX_ASSERTION_KEY_BYTES)?;
             }
-            AssertionLogicalKey::LegacyU32 { .. } => {}
+            AssertionLogicalKey::LegacyU32 { id } => {
+                if self.compatibility_id != Some(*id) {
+                    return Err(IdentityError::InvalidLegacyAlias);
+                }
+            }
         }
         validate_text("message", &self.message, MAX_ASSERTION_MESSAGE_BYTES)?;
         validate_text("source_file", &self.source_file, MAX_ASSERTION_SOURCE_BYTES)?;
         validate_source_path(&self.source_file)?;
-        validate_text("guest", &self.guest, MAX_ASSERTION_GUEST_BYTES)?;
-        validate_text("category", &self.category, MAX_ASSERTION_CATEGORY_BYTES)?;
-        if !KNOWN_CATEGORIES.contains(&self.category.as_str()) {
-            return Err(IdentityError::InvalidCategory);
+        if self.source_line == 0 || self.source_column == 0 {
+            return Err(IdentityError::InvalidSourcePosition);
         }
+        if let AssertionLogicalKey::Automatic { source_site } = &self.logical_key {
+            let expected = format!(
+                "{}:{}:{}",
+                self.source_file, self.source_line, self.source_column
+            );
+            if source_site != &expected {
+                return Err(IdentityError::InvalidAutomaticSourceSite);
+            }
+        }
+        validate_text("guest", &self.guest, MAX_ASSERTION_GUEST_BYTES)?;
+        validate_category(&self.category)?;
         Ok(())
     }
 
@@ -230,6 +238,17 @@ fn write_field(output: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), Identi
     output.push(tag);
     output.extend_from_slice(&length.to_le_bytes());
     output.extend_from_slice(value);
+    Ok(())
+}
+
+fn validate_category(value: &str) -> Result<(), IdentityError> {
+    validate_text("category", value, MAX_ASSERTION_CATEGORY_BYTES)?;
+    let normalized = value
+        .bytes()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if !normalized || value.starts_with('-') || value.ends_with('-') {
+        return Err(IdentityError::InvalidCategory);
+    }
     Ok(())
 }
 

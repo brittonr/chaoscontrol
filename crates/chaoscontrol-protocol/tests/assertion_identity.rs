@@ -1,10 +1,14 @@
+#![cfg(feature = "std")]
+
 use chaoscontrol_protocol::assertion_catalog::{
-    token_for_descriptors, BoundAssertionEvent, CatalogBuilder, CatalogConflict, CatalogInsert,
-    MAX_ASSERTION_CATALOG_ENTRIES,
+    token_for_descriptors, validate_legacy_descriptors, BoundAssertionEvent, CatalogBuilder,
+    CatalogConflict, CatalogInsert, MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use chaoscontrol_protocol::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
     ASSERTION_DESCRIPTOR_DOMAIN, ASSERTION_FINGERPRINT_BYTES, ASSERTION_IDENTITY_VERSION,
+    ASSERTION_KIND_ALWAYS_DISCRIMINANT, ASSERTION_KIND_REACHABLE_DISCRIMINANT,
+    ASSERTION_KIND_SOMETIMES_DISCRIMINANT, ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
     MAX_ASSERTION_MESSAGE_BYTES,
 };
 use chaoscontrol_protocol::assertion_wire::{
@@ -38,6 +42,25 @@ fn automatic() -> AssertionDescriptor {
     descriptor(AssertionLogicalKey::Automatic {
         source_site: "src/raft/assertions.rs:41:9".to_string(),
     })
+}
+
+#[test]
+fn assertion_kind_discriminants_are_stable() {
+    const EXPECTED_ALWAYS: u8 = 0;
+    const EXPECTED_SOMETIMES: u8 = 1;
+    const EXPECTED_REACHABLE: u8 = 2;
+    const EXPECTED_UNREACHABLE: u8 = 3;
+    assert_eq!(ASSERTION_KIND_ALWAYS_DISCRIMINANT, EXPECTED_ALWAYS);
+    assert_eq!(ASSERTION_KIND_SOMETIMES_DISCRIMINANT, EXPECTED_SOMETIMES);
+    assert_eq!(ASSERTION_KIND_REACHABLE_DISCRIMINANT, EXPECTED_REACHABLE);
+    assert_eq!(
+        ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
+        EXPECTED_UNREACHABLE
+    );
+    assert_eq!(AssertionKind::Always as u8, EXPECTED_ALWAYS);
+    assert_eq!(AssertionKind::Sometimes as u8, EXPECTED_SOMETIMES);
+    assert_eq!(AssertionKind::Reachable as u8, EXPECTED_REACHABLE);
+    assert_eq!(AssertionKind::Unreachable as u8, EXPECTED_UNREACHABLE);
 }
 
 #[test]
@@ -142,23 +165,25 @@ fn logical_key_metadata_conflicts_are_typed() {
 }
 
 #[test]
-fn legacy_alias_conflict_is_fatal_but_namespaces_stay_distinct() {
+fn legacy_alias_conflict_is_diagnostic_and_never_admitted() {
     let first = descriptor(AssertionLogicalKey::LegacyU32 { id: LEGACY_ID });
     let mut conflict = first.clone();
     conflict.message = "different legacy assertion".to_string();
-    let mut builder = CatalogBuilder::begin(2).expect("catalog begin");
-    builder.insert(first.clone()).expect("legacy descriptor");
     assert_eq!(
-        builder.insert(conflict),
+        validate_legacy_descriptors(&[first.clone(), conflict]),
         Err(CatalogConflict::LegacyAliasConflict)
     );
 
     let mut other = descriptor(AssertionLogicalKey::LegacyU32 { id: LEGACY_ID });
     other.namespace = "build:redb-guest:v1".to_string();
     other.guest = "redb".to_string();
-    let mut separate = CatalogBuilder::begin(2).expect("catalog begin");
-    separate.insert(first).expect("first namespace");
-    separate.insert(other).expect("other namespace");
+    validate_legacy_descriptors(&[first.clone(), other]).expect("separate diagnostic namespaces");
+
+    let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
+    assert_eq!(
+        builder.insert(first),
+        Err(CatalogConflict::LegacyIdentityForbidden)
+    );
 }
 
 #[test]
@@ -217,6 +242,21 @@ fn events_require_the_accepted_token_fingerprint_and_kind() {
         catalog.resolve_event(&unknown),
         Err(CatalogConflict::UnknownFingerprint)
     );
+}
+
+#[test]
+fn compatibility_id_none_serializes_as_missing_and_rejects_explicit_null() {
+    let mut value = automatic();
+    value.compatibility_id = None;
+    let json = serde_json::to_value(&value).expect("descriptor JSON");
+    assert!(json.get("compatibility_id").is_none());
+    let decoded: AssertionDescriptor =
+        serde_json::from_value(json.clone()).expect("missing alias decodes as None");
+    assert_eq!(decoded.compatibility_id, None);
+
+    let mut null = json;
+    null["compatibility_id"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<AssertionDescriptor>(null).is_err());
 }
 
 #[test]

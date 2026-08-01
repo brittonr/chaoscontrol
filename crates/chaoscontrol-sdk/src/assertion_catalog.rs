@@ -26,13 +26,16 @@ pub(crate) struct BoundIdentity {
 #[derive(Debug)]
 struct SdkCatalog {
     descriptors: Vec<AssertionDescriptor>,
-    accepted: Result<AcceptedCatalog, CatalogConflict>,
+    accepted: Result<Option<AcceptedCatalog>, CatalogConflict>,
 }
 
 static SDK_CATALOG: OnceLock<SdkCatalog> = OnceLock::new();
 
 pub(crate) fn emit_catalog() {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
+    if catalog.descriptors.is_empty() {
+        return;
+    }
     let descriptor_count = u32::try_from(catalog.descriptors.len()).unwrap_or(u32::MAX);
     let mut payload = [0_u8; PAYLOAD_MAX];
     if let Ok(length) = encode_catalog_begin(&mut payload) {
@@ -56,6 +59,8 @@ pub(crate) fn emit_catalog() {
     let token = catalog
         .accepted
         .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
         .map_or(AssertionFingerprint::ZERO, |accepted| accepted.token);
     if let Ok(length) = encode_catalog_complete(token, &mut payload) {
         transport::hypercall_raw(
@@ -73,7 +78,7 @@ pub(crate) fn resolve_compatibility(
     message: &str,
 ) -> Option<BoundIdentity> {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
-    let accepted = catalog.accepted.as_ref().ok()?;
+    let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
     let mut matches = accepted.assertions.values().filter(|assertion| {
         assertion.descriptor.compatibility_id == Some(id)
             && assertion.descriptor.kind == protocol_kind(kind)
@@ -97,7 +102,7 @@ pub(crate) fn resolve_stable(
     message: &str,
 ) -> Option<BoundIdentity> {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
-    let accepted = catalog.accepted.as_ref().ok()?;
+    let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
     let logical_key = AssertionLogicalKey::Stable {
         key: key.to_string(),
     };
@@ -137,7 +142,11 @@ fn build_catalog() -> SdkCatalog {
             }
         }
     }
-    let accepted = accept_descriptors(&descriptors);
+    let accepted = if descriptors.is_empty() {
+        Ok(None)
+    } else {
+        accept_descriptors(&descriptors).map(Some)
+    };
     SdkCatalog {
         descriptors,
         accepted,
@@ -178,7 +187,6 @@ fn descriptor_from_entry(entry: &CatalogEntry) -> Result<AssertionDescriptor, Ca
         CatalogLogicalKey::Stable(key) => AssertionLogicalKey::Stable {
             key: key.to_string(),
         },
-        CatalogLogicalKey::LegacyU32(id) => AssertionLogicalKey::LegacyU32 { id },
     };
     let descriptor = AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,

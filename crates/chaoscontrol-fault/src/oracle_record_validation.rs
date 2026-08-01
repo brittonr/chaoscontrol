@@ -8,7 +8,7 @@ pub(crate) fn validate_legacy_records(
     total_runs: u32,
 ) -> Result<(), OracleValidationError> {
     for (id, record) in records {
-        validate_record(record, total_runs)?;
+        validate_final_record(record, total_runs)?;
         if record.identity.is_some()
             || record.compatibility_id != Some(*id)
             || !record.catalog_tokens.is_empty()
@@ -20,7 +20,41 @@ pub(crate) fn validate_legacy_records(
     Ok(())
 }
 
-pub(crate) fn validate_record(
+pub(crate) fn validate_final_record(
+    record: &AssertionRecord,
+    total_runs: u32,
+) -> Result<(), OracleValidationError> {
+    validate_record_counters(record, total_runs)?;
+    if record
+        .first_failure_run
+        .is_some_and(|run| run >= total_runs)
+        || (record.hit_count > 0 && record.runs_hit == 0)
+        || (record.true_count > 0 && record.runs_satisfied == 0)
+    {
+        return Err(OracleValidationError::Counter);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_active_record(
+    record: &AssertionRecord,
+    total_runs: u32,
+    hit_in_active_run: bool,
+    satisfied_in_active_run: bool,
+) -> Result<(), OracleValidationError> {
+    validate_record_counters(record, total_runs)?;
+    if record
+        .first_failure_run
+        .is_some_and(|run| run == total_runs && !hit_in_active_run)
+        || (record.hit_count > 0 && record.runs_hit == 0 && !hit_in_active_run)
+        || (record.true_count > 0 && record.runs_satisfied == 0 && !satisfied_in_active_run)
+    {
+        return Err(OracleValidationError::Counter);
+    }
+    Ok(())
+}
+
+fn validate_record_counters(
     record: &AssertionRecord,
     total_runs: u32,
 ) -> Result<(), OracleValidationError> {

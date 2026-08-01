@@ -1,7 +1,12 @@
+#![cfg(feature = "std")]
+
 use chaoscontrol_protocol::assertion_catalog::{
-    token_for_descriptors, validate_accepted_catalog, CatalogBuilder, CatalogConflict,
+    catalog_token, token_for_descriptors, validate_accepted_catalog, validate_legacy_descriptors,
+    AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent, CatalogBuilder, CatalogConflict,
     CatalogValidationStatus, ASSERTION_CATALOG_VERSION,
 };
+use std::collections::BTreeMap;
+
 use chaoscontrol_protocol::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
     ASSERTION_FINGERPRINT_BYTES, ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_MESSAGE_BYTES,
@@ -29,6 +34,13 @@ fn descriptor() -> AssertionDescriptor {
         guest: "guest".to_string(),
         category: "invariant".to_string(),
     }
+}
+
+fn legacy_descriptor() -> AssertionDescriptor {
+    let mut legacy = descriptor();
+    legacy.namespace = "legacy:guest".to_string();
+    legacy.logical_key = AssertionLogicalKey::LegacyU32 { id: LEGACY_ID };
+    legacy
 }
 
 fn accepted_catalog() -> chaoscontrol_protocol::assertion_catalog::AcceptedCatalog {
@@ -102,6 +114,21 @@ fn fingerprint_collision_poisons_builder() {
     assert_eq!(
         builder.insert(descriptor()),
         Err(CatalogConflict::PostConflict)
+    );
+}
+
+#[test]
+fn completion_rejects_a_single_injected_fingerprint() {
+    let injected = AssertionFingerprint([INJECTED_FINGERPRINT_BYTE; ASSERTION_FINGERPRINT_BYTES]);
+    let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
+    builder
+        .insert_with_fingerprint(descriptor(), injected)
+        .expect("injected descriptor");
+    assert_eq!(
+        builder.complete(AssertionFingerprint::ZERO),
+        Err(CatalogConflict::Descriptor(
+            IdentityError::InvalidFingerprint
+        ))
     );
 }
 
@@ -191,6 +218,60 @@ fn accepted_catalog_validation_recomputes_all_identity_fields() {
     assert_eq!(
         validate_accepted_catalog(&wrong_canonical),
         Err(CatalogConflict::CanonicalMismatch)
+    );
+}
+
+#[test]
+fn legacy_descriptors_are_diagnostic_but_never_strict() {
+    let legacy = legacy_descriptor();
+    validate_legacy_descriptors(&[legacy.clone(), legacy.clone()])
+        .expect("exact legacy duplicate is diagnostic");
+    let mut conflict = legacy.clone();
+    conflict.message = "conflicting legacy alias".to_string();
+    assert_eq!(
+        validate_legacy_descriptors(&[legacy.clone(), conflict]),
+        Err(CatalogConflict::LegacyAliasConflict)
+    );
+
+    let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
+    assert_eq!(
+        builder.insert(legacy),
+        Err(CatalogConflict::LegacyIdentityForbidden)
+    );
+    assert_eq!(
+        builder.insert(descriptor()),
+        Err(CatalogConflict::PostConflict)
+    );
+}
+
+#[test]
+fn forged_legacy_accepted_catalog_cannot_resolve_events() {
+    let descriptor = legacy_descriptor();
+    let fingerprint = descriptor.fingerprint().expect("legacy fingerprint");
+    let admitted = AdmittedAssertion {
+        canonical_bytes: descriptor.canonical_bytes().expect("legacy canonical"),
+        descriptor,
+        fingerprint,
+    };
+    let assertions = BTreeMap::from([(fingerprint, admitted)]);
+    let token = catalog_token(&assertions);
+    let catalog = AcceptedCatalog {
+        catalog_version: ASSERTION_CATALOG_VERSION,
+        token,
+        status: CatalogValidationStatus::Accepted,
+        assertions,
+    };
+    assert_eq!(
+        validate_accepted_catalog(&catalog),
+        Err(CatalogConflict::LegacyIdentityForbidden)
+    );
+    assert_eq!(
+        catalog.resolve_event(&BoundAssertionEvent {
+            catalog_token: token,
+            fingerprint,
+            kind: AssertionKind::Always,
+        }),
+        Err(CatalogConflict::LegacyIdentityForbidden)
     );
 }
 

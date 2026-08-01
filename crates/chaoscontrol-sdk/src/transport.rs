@@ -165,23 +165,6 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
     use crate::internal::LocalAssert;
 
     match command {
-        CMD_ASSERT_CATALOG => {
-            let assert_type = match flags {
-                crate::assert::CATALOG_KIND_SOMETIMES => "sometimes",
-                crate::assert::CATALOG_KIND_REACHABLE | crate::assert::CATALOG_KIND_UNREACHABLE => {
-                    "reachability"
-                }
-                _ => "always",
-            };
-            crate::internal::local_emit_assert(&LocalAssert {
-                assert_type,
-                hit: false,
-                condition,
-                message,
-                id,
-                json_details,
-            });
-        }
         CMD_ASSERT_ALWAYS => {
             crate::internal::local_emit_assert(&LocalAssert {
                 assert_type: "always",
@@ -239,7 +222,7 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
         CMD_ASSERT_CATALOG_BEGIN => serde_json::json!({
             "chaoscontrol_assertion_catalog": {
                 "record": "begin",
-                "catalog_version": 1,
+                "catalog_version": chaoscontrol_protocol::assertion_catalog::ASSERTION_CATALOG_VERSION,
                 "expected_descriptors": id,
                 "valid": decode_catalog_begin(payload).is_ok()
             }
@@ -264,7 +247,7 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
             Ok(token) => serde_json::json!({
                 "chaoscontrol_assertion_catalog": {
                     "record": "complete",
-                    "catalog_version": 1,
+                    "catalog_version": chaoscontrol_protocol::assertion_catalog::ASSERTION_CATALOG_VERSION,
                     "descriptor_count": id,
                     "catalog_token": token
                 }
@@ -280,8 +263,9 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
         | CMD_ASSERT_SOMETIMES
         | CMD_ASSERT_REACHABLE
         | CMD_ASSERT_UNREACHABLE => serde_json::json!({
-            "chaoscontrol_assertion_quarantine": {
-                "classification": "legacy-ambiguous",
+            "chaoscontrol_assertion_catalog": {
+                "record": "conflict",
+                "error": "unbound strict assertion event",
                 "command": command,
                 "flags": flags,
                 "compatibility_id": id
@@ -321,7 +305,7 @@ fn dispatch_local_bound(
             "message": message,
             "display_type": assert_type,
             "details": details,
-            "identity_version": 1,
+            "identity_version": chaoscontrol_protocol::assertion_identity::ASSERTION_IDENTITY_VERSION,
             "catalog_token": identity.catalog_token,
             "assertion_fingerprint": identity.fingerprint,
             "catalog_status": "accepted"
@@ -332,13 +316,7 @@ fn dispatch_local_bound(
 
 #[cfg(feature = "full")]
 fn encode_hex(input: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(input.len().saturating_mul(2));
-    for byte in input {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
+    chaoscontrol_protocol::assertion_identity::encode_lower_hex(input)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -362,39 +340,6 @@ pub(crate) fn hypercall(
 pub(crate) fn hypercall_simple(_command: u8, _id: u32) -> (u64, u8) {
     (0, 0)
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Guidance transport (guest writes distance into result field)
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Issue a guidance hypercall.
-///
-/// Writes the f64 distance into the `result` field (offset 0x10) of
-/// the hypercall page, sets `CMD_GUIDANCE` and `id`, then triggers.
-/// No payload (message/details) — the assertion ID links to the catalog.
-#[cfg(feature = "full")]
-pub(crate) fn hypercall_guidance(id: u32, distance: f64) {
-    if let Some(page_ptr) = crate::internal::vm_page_ptr() {
-        unsafe {
-            let page = &mut *page_ptr;
-            page.command = chaoscontrol_protocol::CMD_GUIDANCE;
-            page.flags = 0;
-            page.id = id;
-            page.payload_len = 0;
-            // Write distance into result field (guest → host direction for guidance)
-            page.result = u64::from_le_bytes(distance.to_le_bytes());
-            page.status = 0;
-
-            crate::internal::vm_trigger();
-        }
-    }
-    // Local/noop: silently discard guidance — no meaningful fallback.
-}
-
-/// No-op guidance — evaluates args but does nothing.
-#[cfg(not(feature = "full"))]
-#[allow(dead_code)]
-pub(crate) fn hypercall_guidance(_id: u32, _distance: f64) {}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Compile-time transport validation

@@ -21,18 +21,13 @@ pub use crate::{chaoscontrol_init, is_in_vm, is_local_output};
 pub use crate::runtime::guest_init;
 
 // ── Assertion functions ──────────────────────────────────────────────
-pub use crate::assert::{
-    always, always_or_unreachable, always_or_unreachable_with_id, always_with_id, assert_raw,
-    assert_raw_with_id, location_id, reachable, reachable_with_id, sometimes, sometimes_with_id,
-    unreachable, unreachable_with_id, AssertionKind,
-};
+pub use crate::assert::AssertionKind;
 
 // ── Assertion macros ─────────────────────────────────────────────────
 pub use crate::{
     // Core
     cc_assert_always,
     cc_assert_always_category,
-    cc_assert_always_category_with_id,
     // Always comparisons
     cc_assert_always_eq,
     cc_assert_always_err,
@@ -68,9 +63,6 @@ pub use crate::{
     cc_assert_unreachable,
     cc_assert_unreachable_stable,
 };
-
-// ── Guidance ─────────────────────────────────────────────────────────
-pub use crate::guidance::{guidance, guidance_with_id};
 
 // ── Lifecycle ────────────────────────────────────────────────────────
 pub use crate::lifecycle::{send_event, setup_complete};

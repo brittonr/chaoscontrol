@@ -1,13 +1,14 @@
 use chaoscontrol_fault::oracle::PropertyOracle;
 use chaoscontrol_fault::report_merge::{merge_oracle_reports, ReportMergeConflict};
 use chaoscontrol_protocol::assertion_catalog::{
-    token_for_descriptors, BoundAssertionEvent, CatalogBuilder,
+    catalog_token, token_for_descriptors, AdmittedAssertion, BoundAssertionEvent, CatalogBuilder,
+    CatalogConflict, CatalogValidationStatus,
 };
 use chaoscontrol_protocol::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
     ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_EVENT_DETAILS_BYTES,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const COMPATIBILITY_ID: u32 = 303;
 const SOURCE_LINE: u32 = 12;
@@ -17,8 +18,8 @@ fn descriptor(namespace: &str, guest: &str) -> AssertionDescriptor {
     AssertionDescriptor {
         identity_version: ASSERTION_IDENTITY_VERSION,
         namespace: namespace.to_string(),
-        logical_key: AssertionLogicalKey::LegacyU32 {
-            id: COMPATIBILITY_ID,
+        logical_key: AssertionLogicalKey::Stable {
+            key: "commit-index-bounded".to_string(),
         },
         compatibility_id: Some(COMPATIBILITY_ID),
         kind: AssertionKind::Always,
@@ -31,22 +32,45 @@ fn descriptor(namespace: &str, guest: &str) -> AssertionDescriptor {
     }
 }
 
-fn report_for(
-    value: &AssertionDescriptor,
-    hits: usize,
-) -> chaoscontrol_fault::oracle::OracleReport {
+fn automatic_descriptor(namespace: &str, guest: &str) -> AssertionDescriptor {
+    let mut value = descriptor(namespace, guest);
+    value.logical_key = AssertionLogicalKey::Automatic {
+        source_site: format!(
+            "{}:{}:{}",
+            value.source_file, value.source_line, value.source_column
+        ),
+    };
+    value
+}
+
+fn legacy_descriptor(namespace: &str, guest: &str) -> AssertionDescriptor {
+    let mut value = descriptor(namespace, guest);
+    value.logical_key = AssertionLogicalKey::LegacyU32 {
+        id: COMPATIBILITY_ID,
+    };
+    value
+}
+
+fn oracle_for(value: &AssertionDescriptor) -> (PropertyOracle, BoundAssertionEvent) {
     let token = token_for_descriptors(core::slice::from_ref(value)).expect("catalog token");
     let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
     builder.insert(value.clone()).expect("descriptor");
     let catalog = builder.complete(token).expect("catalog complete");
-    let fingerprint = value.fingerprint().expect("fingerprint");
     let event = BoundAssertionEvent {
         catalog_token: token,
-        fingerprint,
+        fingerprint: value.fingerprint().expect("fingerprint"),
         kind: value.kind,
     };
     let mut oracle = PropertyOracle::new();
     oracle.activate_catalog(catalog).expect("activate catalog");
+    (oracle, event)
+}
+
+fn report_for(
+    value: &AssertionDescriptor,
+    hits: usize,
+) -> chaoscontrol_fault::oracle::OracleReport {
+    let (mut oracle, event) = oracle_for(value);
     oracle.begin_run();
     for _ in 0..hits {
         oracle
@@ -55,6 +79,23 @@ fn report_for(
     }
     oracle.end_run();
     oracle.report()
+}
+
+fn forged_legacy_report() -> chaoscontrol_fault::oracle::OracleReport {
+    let value = descriptor("stable:legacy-fixture", "legacy-fixture");
+    let fingerprint = value.fingerprint().expect("fixture fingerprint");
+    let mut report = report_for(&value, 1);
+    let mut record = report
+        .structured_assertions
+        .remove(&fingerprint)
+        .expect("fixture record");
+    record.identity = None;
+    record.catalog_tokens.clear();
+    report.assertions = BTreeMap::from([(COMPATIBILITY_ID, record)]);
+    report.catalog_status = CatalogValidationStatus::LegacyAmbiguous;
+    report.identity_conflicts = vec!["historical legacy identity".to_string()];
+    report.collision_safe_evidence = false;
+    report
 }
 
 #[test]
@@ -75,7 +116,16 @@ fn same_descriptor_aggregates_with_vm_provenance() {
 }
 
 #[test]
-fn same_legacy_number_in_distinct_namespaces_stays_separate() {
+fn automatic_descriptor_aggregates_with_vm_provenance() {
+    let value = automatic_descriptor("build:raft:1", "raft");
+    let reports = [(0, report_for(&value, 1)), (1, report_for(&value, 1))];
+    let merged = merge_oracle_reports(&reports).expect("merge automatic reports");
+    assert_eq!(merged.structured_assertions.len(), 1);
+    assert!(merged.collision_safe_evidence);
+}
+
+#[test]
+fn same_compatibility_alias_in_distinct_namespaces_stays_separate() {
     let raft = descriptor("stable:raft", "raft");
     let redb = descriptor("stable:redb", "redb");
     let reports = [(0, report_for(&raft, 1)), (1, report_for(&redb, 1))];
@@ -84,6 +134,10 @@ fn same_legacy_number_in_distinct_namespaces_stays_separate() {
     assert_ne!(
         raft.fingerprint().expect("raft fingerprint"),
         redb.fingerprint().expect("redb fingerprint")
+    );
+    assert_eq!(
+        merged.record_for_compatibility_id(COMPATIBILITY_ID),
+        Err(CatalogConflict::CompatibilityAliasConflict)
     );
 }
 
@@ -108,13 +162,58 @@ fn tampered_descriptor_and_fingerprint_fail_closed() {
 }
 
 #[test]
-fn legacy_report_is_never_promoted_by_merge() {
-    let mut oracle = PropertyOracle::new();
-    oracle.begin_run();
-    oracle.record_always(COMPATIBILITY_ID, true, "legacy");
-    oracle.end_run();
+fn legacy_u32_identity_is_rejected_before_controller_merge() {
+    let stable = descriptor("stable:raft", "raft");
+    let mut report = report_for(&stable, 1);
+    let legacy = legacy_descriptor("legacy:raft", "raft");
+    let fingerprint = legacy.fingerprint().expect("legacy fingerprint");
+    let admitted = AdmittedAssertion {
+        canonical_bytes: legacy.canonical_bytes().expect("legacy canonical"),
+        descriptor: legacy,
+        fingerprint,
+    };
+    let catalog = std::collections::BTreeMap::from([(fingerprint, admitted.clone())]);
+    let token = catalog_token(&catalog);
+    let mut record = report
+        .structured_assertions
+        .remove(&stable.fingerprint().expect("stable fingerprint"))
+        .expect("strict record");
+    record.identity = Some(admitted);
+    record.catalog_tokens = BTreeSet::from([token]);
+    report.structured_assertions.insert(fingerprint, record);
+
     assert_eq!(
-        merge_oracle_reports(&[(0, oracle.report())]),
+        merge_oracle_reports(&[(0, report)]),
+        Err(ReportMergeConflict::IneligibleInput)
+    );
+}
+
+#[test]
+fn legacy_report_is_never_promoted_or_selected() {
+    let legacy = forged_legacy_report();
+    assert_eq!(
+        legacy.record_for_compatibility_id(COMPATIBILITY_ID),
+        Err(CatalogConflict::CatalogStatusMismatch)
+    );
+    assert_eq!(
+        merge_oracle_reports(&[(0, legacy)]),
+        Err(ReportMergeConflict::IneligibleInput)
+    );
+}
+
+#[test]
+fn mixed_report_is_never_promoted_or_selected() {
+    let value = descriptor("stable:mixed", "mixed");
+    let mut mixed = report_for(&value, 1);
+    let legacy = forged_legacy_report();
+    mixed.assertions = legacy.assertions;
+
+    assert_eq!(
+        mixed.record_for_compatibility_id(COMPATIBILITY_ID),
+        Err(CatalogConflict::CatalogStatusMismatch)
+    );
+    assert_eq!(
+        merge_oracle_reports(&[(0, mixed)]),
         Err(ReportMergeConflict::IneligibleInput)
     );
 }
@@ -167,21 +266,38 @@ fn requires_distinct_vm_ids_and_exact_accepted_inputs() {
 }
 
 #[test]
-fn recomputes_eligibility_instead_of_trusting_caller_boolean() {
+fn active_run_report_cannot_be_merged() {
+    let value = descriptor("stable:active", "active");
+    let (mut oracle, event) = oracle_for(&value);
+    oracle.begin_run();
+    oracle
+        .record_bound_event(&event, true, None)
+        .expect("bound event");
+    let active = oracle.report();
+
+    assert!(!active.collision_safe_evidence);
+    assert_eq!(
+        merge_oracle_reports(&[(0, active)]),
+        Err(ReportMergeConflict::IneligibleInput)
+    );
+}
+
+#[test]
+fn explicit_source_demotion_cannot_be_repromoted_or_selected() {
     let value = descriptor("stable:raft", "raft");
-    let mut valid = report_for(&value, 1);
-    valid.collision_safe_evidence = false;
-    assert!(
-        merge_oracle_reports(&[(0, valid)])
-            .expect("derived eligibility")
-            .collision_safe_evidence
+    let mut demoted = report_for(&value, 1);
+    demoted.collision_safe_evidence = false;
+
+    assert_eq!(
+        demoted.record_for_compatibility_id(COMPATIBILITY_ID),
+        Err(CatalogConflict::CatalogStatusMismatch)
+    );
+    assert_eq!(
+        merge_oracle_reports(&[(0, demoted)]),
+        Err(ReportMergeConflict::IneligibleInput)
     );
 
-    let mut legacy = PropertyOracle::new();
-    legacy.begin_run();
-    legacy.record_always(COMPATIBILITY_ID, true, "legacy");
-    legacy.end_run();
-    let mut forged = legacy.report();
+    let mut forged = forged_legacy_report();
     forged.collision_safe_evidence = true;
     assert_eq!(
         merge_oracle_reports(&[(0, forged)]),
@@ -214,6 +330,42 @@ fn rejects_forged_catalog_and_vm_dimensions() {
         .insert(FORGED_VM_INSTANCE);
     assert_eq!(
         merge_oracle_reports(&[(0, provenance)]),
+        Err(ReportMergeConflict::IneligibleInput)
+    );
+}
+
+#[test]
+fn final_reports_reject_zero_run_hits_and_failure_at_total_runs() {
+    let value = descriptor("stable:final-counters", "final-counters");
+    let fingerprint = value.fingerprint().expect("fingerprint");
+
+    let mut zero_run = report_for(&value, 1);
+    zero_run.total_runs = 0;
+    let zero_record = zero_run
+        .structured_assertions
+        .get_mut(&fingerprint)
+        .expect("zero-run record");
+    zero_record.runs_hit = 0;
+    zero_record.runs_satisfied = 0;
+    assert_eq!(
+        merge_oracle_reports(&[(0, zero_run)]),
+        Err(ReportMergeConflict::IneligibleInput)
+    );
+
+    let mut out_of_range = report_for(&value, 1);
+    let failure_run = out_of_range.total_runs;
+    let failure_record = out_of_range
+        .structured_assertions
+        .get_mut(&fingerprint)
+        .expect("failure record");
+    failure_record.true_count = 0;
+    failure_record.false_count = failure_record.hit_count;
+    failure_record.runs_satisfied = 0;
+    failure_record.first_failure_run = Some(failure_run);
+    out_of_range.passed = 0;
+    out_of_range.failed = 1;
+    assert_eq!(
+        merge_oracle_reports(&[(0, out_of_range)]),
         Err(ReportMergeConflict::IneligibleInput)
     );
 }

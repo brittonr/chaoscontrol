@@ -228,6 +228,41 @@ Output directory contains:
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 
+### Assertion identity and migration
+
+Automatic assertion macros use the namespace `build:<package>:<version>`.
+Their logical keys include the exact source file, line, and column. A package
+version change or source move creates a new automatic identity.
+
+Use the `*_stable` assertion macros when an assertion needs an explicit
+namespace and logical key. The namespace and key remain the logical identity.
+Changes to the kind, message, source site, guest, or category change the full
+fingerprint. Two different descriptors for one logical identity are a fatal
+catalog conflict.
+
+The old public `u32` assertion APIs and compatibility wire aliases are removed.
+Use automatic macros or explicit stable namespace/key macros. Old compiled
+clients and unbound assertion events are unsupported and fail closed. Removed
+commands `0x05` and `0x07` return the unknown-command error.
+
+Bounded readers can still identify `legacy_u32` in historical serialized input.
+They quarantine or reject that input. A legacy identity cannot enter strict
+catalogs, counters, readiness, replay, merges, or accepted v2 summaries.
+
+The unbound guidance API and command `0x07` are also removed. Future guidance
+must bind to an exact catalog token and descriptor fingerprint.
+
+The live oracle has no integer recording path. It updates counters only for
+catalog-bound fingerprints. Integer aliases can select one record only after
+the complete structured report and its collision-safe claim validate.
+
+Runtime restore accepts only pristine pre-catalog state or validated structured
+state. Diagnostic legacy and fatal snapshots remain readable but not restorable.
+
+ChaosControl uses BLAKE3 fingerprints to bind canonical descriptor bytes. This
+binding detects known mismatches and collisions. It does not prove that a hash
+collision is impossible.
+
 ### Contract-backed evidence
 
 Nickel contracts live under `contracts/evidence/`. Human-authored run configs

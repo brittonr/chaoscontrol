@@ -145,6 +145,24 @@ fn accepted_catalog_binds_event_and_snapshot_state() {
 }
 
 #[test]
+fn accepted_event_without_active_run_is_rejected_before_counter_mutation() {
+    let value = descriptor();
+    let fingerprint = value.fingerprint().expect("fingerprint");
+    let mut engine = FaultEngine::new(EngineConfig::default());
+    let token = admit(&mut engine, &value);
+    let before = engine.oracle().structured_assertions()[&fingerprint].clone();
+
+    assert_eq!(
+        engine.handle_hypercall(&event_page(&value, token, true)).1,
+        STATUS_ASSERTION_EVENT_REJECTED
+    );
+    assert_eq!(
+        engine.oracle().structured_assertions()[&fingerprint],
+        before
+    );
+}
+
+#[test]
 fn missing_completion_and_unknown_identity_reject_events() {
     let value = descriptor();
     let mut incomplete = FaultEngine::new(EngineConfig::default());
@@ -226,6 +244,18 @@ fn redundant_transport_identity_fields_must_match() {
         STATUS_ASSERTION_IDENTITY_CONFLICT
     );
 
+    let mut missing_id_descriptor = value.clone();
+    missing_id_descriptor.compatibility_id = None;
+    let mut missing_id_engine = FaultEngine::new(EngineConfig::default());
+    assert_eq!(
+        missing_id_engine.handle_hypercall(&begin_page(1)).1,
+        STATUS_OK
+    );
+    let missing_id_status = missing_id_engine
+        .handle_hypercall(&descriptor_page(&missing_id_descriptor))
+        .1;
+    assert_eq!(missing_id_status, STATUS_ASSERTION_IDENTITY_CONFLICT);
+
     let mut completion_spoof = FaultEngine::new(EngineConfig::default());
     assert_eq!(
         completion_spoof.handle_hypercall(&begin_page(1)).1,
@@ -256,19 +286,14 @@ fn redundant_transport_identity_fields_must_match() {
 }
 
 #[test]
-fn legacy_diagnostic_quarantine_cannot_promote() {
+fn unbound_strict_event_fails_closed_without_legacy_fallback() {
     let mut engine = FaultEngine::new(EngineConfig::default());
-    engine.enable_legacy_assertion_diagnostics();
-    engine.begin_run();
-    let legacy = page(CMD_ASSERT_ALWAYS, TRUE_FLAG, COMPATIBILITY_ID, &[]);
+    let unbound = page(CMD_ASSERT_ALWAYS, TRUE_FLAG, COMPATIBILITY_ID, &[]);
     assert_eq!(
-        engine.handle_hypercall(&legacy).1,
+        engine.handle_hypercall(&unbound).1,
         STATUS_ASSERTION_EVENT_REJECTED
     );
-    engine.end_run();
-    let report = engine.oracle().report();
-    assert!(!report.collision_safe_evidence);
-    assert!(report.structured_assertions.is_empty());
+    assert!(!engine.oracle().report().collision_safe_evidence);
 }
 
 #[test]

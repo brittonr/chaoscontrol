@@ -392,7 +392,7 @@
               kernel = mkChaosKernel { };
               initrd = initrd-redb;
               diskImage = redb-disk-image;
-              assertionId = 2718281828;
+              assertionId = 4149728441;
               cmdlineTemplate = "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}";
               vms = 1;
               rounds = 3;
@@ -408,7 +408,7 @@
               workload = "net";
               kernel = mkChaosKernel { virtioNet = true; };
               initrd = initrd-net;
-              assertionId = 3141592653;
+              assertionId = 2074476939;
               cmdlineTemplate = "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}";
               vms = 3;
               rounds = 4;
@@ -424,7 +424,7 @@
               workload = "rust-workload";
               kernel = mkChaosKernel { kcov = true; };
               initrd = initrd-rust-workload;
-              assertionId = 1414213562;
+              assertionId = 3143219316;
               cmdlineTemplate = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}";
               vms = 1;
               rounds = 3;

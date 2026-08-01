@@ -1,6 +1,6 @@
 use crate::oracle::{AssertionRecord, OracleReport, Verdict};
 use crate::oracle_validation::{
-    validate_aggregated_oracle_report, validate_strict_oracle_report, MAX_ORACLE_EVENTS,
+    validate_prepared_oracle_report, validate_strict_oracle_report, MAX_ORACLE_EVENTS,
 };
 use chaoscontrol_protocol::assertion_catalog::{
     token_for_descriptors, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
@@ -75,7 +75,7 @@ pub fn merge_oracle_reports(
         unexercised,
         events,
     };
-    validate_aggregated_oracle_report(&output).map_err(|_| ReportMergeConflict::IneligibleInput)?;
+    validate_prepared_oracle_report(&output).map_err(|_| ReportMergeConflict::IneligibleInput)?;
     output.collision_safe_evidence = true;
     Ok(output)
 }

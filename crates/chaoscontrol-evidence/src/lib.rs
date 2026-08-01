@@ -29,6 +29,7 @@ pub mod kernel_bundle_validation;
 mod non_null_option;
 pub mod operator_triage;
 pub mod profile_projection;
+mod profile_projection_spec;
 mod profile_projection_verification;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;

@@ -664,7 +664,7 @@ impl Explorer {
         let timings = Self::phase_totals_for(&results);
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
-        let mut bugs_found = 0;
+        let mut bugs_found: usize = 0;
 
         for (i, (result, schedule)) in results.into_iter().enumerate() {
             branches_run += 1;
@@ -679,6 +679,17 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
+            let branch_bugs =
+                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth)?;
+            bugs_found =
+                bugs_found
+                    .checked_add(branch_bugs.len())
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "round bug count overflow".to_string(),
+                    })?;
+            if !branch_bugs.is_empty() {
+                warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
+            }
 
             if new_edges > 0 {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
@@ -691,7 +702,7 @@ impl Explorer {
                     enriched_result.clone(),
                     schedule.clone(),
                     new_edges,
-                    snapshot.as_ref(),
+                    branch_bugs,
                     parent_depth + 1,
                 );
 
@@ -704,14 +715,7 @@ impl Explorer {
                         parent_depth + 1,
                     );
                 }
-            }
-
-            let branch_bugs =
-                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth);
-            bugs_found += branch_bugs.len();
-
-            if !branch_bugs.is_empty() {
-                warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
+            } else {
                 self.standalone_bugs.extend(branch_bugs);
             }
 
@@ -754,7 +758,7 @@ impl Explorer {
     fn explore_input_tree_round(&mut self) -> Result<RoundReport, ExploreError> {
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
-        let mut bugs_found = 0;
+        let mut bugs_found: usize = 0;
         let mut timings = BranchTimings::default();
 
         // Select entry from frontier
@@ -780,6 +784,21 @@ impl Explorer {
         timings.coverage_ms += probe_result.timings.coverage_ms;
         branches_run += 1;
         self.total_branches_run += 1;
+        let probe_bugs = self.extract_bugs(
+            &probe_result,
+            &base_schedule,
+            snapshot.as_ref(),
+            parent_depth,
+        )?;
+        bugs_found =
+            bugs_found
+                .checked_add(probe_bugs.len())
+                .ok_or_else(|| ExploreError::Config {
+                    message: "input-tree bug count overflow".to_string(),
+                })?;
+        if !probe_bugs.is_empty() {
+            warn!("Input tree probe found {} bugs!", probe_bugs.len());
+        }
 
         // Check if the probe itself found new coverage
         let mut probe_enriched = probe_result.coverage.clone();
@@ -798,7 +817,7 @@ impl Explorer {
                 enriched_probe.clone(),
                 base_schedule.clone(),
                 probe_new,
-                snapshot.as_ref(),
+                probe_bugs,
                 parent_depth + 1,
             );
             if let Some(snap) = probe_result.snapshot.clone() {
@@ -810,6 +829,8 @@ impl Explorer {
                     parent_depth + 1,
                 );
             }
+        } else {
+            self.standalone_bugs.extend(probe_bugs);
         }
         self.coverage.update_global(&probe_enriched);
 
@@ -886,6 +907,21 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
+            let branch_bugs =
+                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth)?;
+            bugs_found =
+                bugs_found
+                    .checked_add(branch_bugs.len())
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "input-tree bug count overflow".to_string(),
+                    })?;
+            if !branch_bugs.is_empty() {
+                warn!(
+                    "Input tree branch {} found {} bugs!",
+                    i + 1,
+                    branch_bugs.len()
+                );
+            }
 
             if new_edges > 0 {
                 debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
@@ -898,7 +934,7 @@ impl Explorer {
                     enriched_result.clone(),
                     base_schedule.clone(),
                     new_edges,
-                    snapshot.as_ref(),
+                    branch_bugs,
                     parent_depth + 1,
                 );
 
@@ -911,19 +947,7 @@ impl Explorer {
                         parent_depth + 1,
                     );
                 }
-            }
-
-            // Check for bugs
-            let branch_bugs =
-                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth);
-            bugs_found += branch_bugs.len();
-
-            if !branch_bugs.is_empty() {
-                warn!(
-                    "Input tree branch {} found {} bugs!",
-                    i + 1,
-                    branch_bugs.len()
-                );
+            } else {
                 self.standalone_bugs.extend(branch_bugs);
             }
 
@@ -1308,35 +1332,54 @@ impl Explorer {
         schedule: &FaultSchedule,
         replay_snapshot: Option<&SimulationSnapshot>,
         replay_parent_depth: u32,
-    ) -> Vec<BugReport> {
+    ) -> Result<Vec<BugReport>, ExploreError> {
         let mut bugs = Vec::new();
-        let Ok(report_facts) = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(
+        let has_failed_assertion =
+            result
+                .oracle_report
+                .structured_assertions
+                .values()
+                .any(|record| {
+                    matches!(
+                        record.verdict(),
+                        chaoscontrol_fault::oracle::Verdict::Failed
+                    )
+                });
+        if !has_failed_assertion {
+            return Ok(bugs);
+        }
+        let report_facts = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(
             &result.oracle_report,
-        ) else {
-            return bugs;
-        };
+        )
+        .map_err(|error| ExploreError::Config {
+            message: format!("failed assertion report is not admissible: {error:?}"),
+        })?;
 
         for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
             if matches!(
                 record.verdict(),
                 chaoscontrol_fault::oracle::Verdict::Failed
             ) {
-                let Some(assertion_id) = record.compatibility_id else {
-                    continue;
-                };
-                let Some(admitted) = record.identity.as_ref() else {
-                    continue;
-                };
-                let Ok(assertion_identity) =
+                let assertion_id = record.compatibility_id.unwrap_or_default();
+                let admitted = record
+                    .identity
+                    .as_ref()
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "failed assertion has no admitted identity".to_string(),
+                    })?;
+                let assertion_identity =
                     chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
                         admitted,
                         report_facts.catalog_token,
                     )
-                else {
-                    continue;
-                };
+                    .map_err(|error| ExploreError::Config {
+                        message: format!("failed assertion identity is invalid: {error:?}"),
+                    })?;
                 if assertion_identity.fingerprint != *assertion_fingerprint {
-                    continue;
+                    return Err(ExploreError::Config {
+                        message: "failed assertion fingerprint does not match its report key"
+                            .to_string(),
+                    });
                 }
                 let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule);
 
@@ -1381,7 +1424,7 @@ impl Explorer {
             }
         }
 
-        bugs
+        Ok(bugs)
     }
 
     /// Recycle corpus entries into the frontier when it empties.
@@ -1509,12 +1552,9 @@ impl Explorer {
         result: BranchResult,
         schedule: FaultSchedule,
         new_edges: usize,
-        replay_snapshot: Option<&SimulationSnapshot>,
+        bugs: Vec<BugReport>,
         depth: u32,
     ) {
-        let replay_parent_depth = depth.saturating_sub(1);
-        let bugs = self.extract_bugs(&result, &schedule, replay_snapshot, replay_parent_depth);
-
         let entry = CorpusEntry {
             id: 0, // Will be assigned by corpus
             schedule,
@@ -2304,6 +2344,83 @@ pub struct ExplorationStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEST_ALIAS: u32 = 42;
+
+    fn failed_report(compatibility_id: Option<u32>) -> OracleReport {
+        let mut descriptor =
+            crate::test_support::assertion_identity(u64::from(TEST_ALIAS)).descriptor;
+        descriptor.compatibility_id = compatibility_id;
+        let token = chaoscontrol_protocol::admission::token_for_descriptors(core::slice::from_ref(
+            &descriptor,
+        ))
+        .expect("catalog token");
+        let fingerprint = descriptor.fingerprint().expect("fingerprint");
+        let mut builder =
+            chaoscontrol_protocol::admission::CatalogBuilder::begin(1).expect("catalog begins");
+        builder.insert(descriptor.clone()).expect("descriptor");
+        let catalog = builder.complete(token).expect("catalog completes");
+        let event = chaoscontrol_protocol::admission::BoundAssertionEvent {
+            catalog_token: token,
+            fingerprint,
+            kind: descriptor.kind,
+        };
+        let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+        oracle.activate_catalog(catalog).expect("catalog activates");
+        oracle.begin_run();
+        oracle
+            .record_bound_event(&event, false, None)
+            .expect("failed event records");
+        oracle.end_run();
+        oracle.report()
+    }
+
+    fn branch_result(oracle_report: OracleReport) -> BranchResult {
+        BranchResult {
+            coverage: CoverageBitmap::new(),
+            oracle_report,
+            schedule: FaultSchedule::new(),
+            exit_counts: Vec::new(),
+            halted: false,
+            total_ticks: 0,
+            bugs: Vec::new(),
+            snapshot: None,
+            schedule_variant: None,
+            schedule_fingerprint: 0,
+            timings: BranchTimings::default(),
+        }
+    }
+
+    #[test]
+    fn bug_extraction_accepts_exact_identity_without_compatibility_alias() {
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let result = branch_result(failed_report(None));
+        let bugs = explorer
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .expect("exact failed assertion extracts");
+
+        assert_eq!(bugs.len(), 1);
+        assert_eq!(bugs[0].assertion_id, 0);
+        assert_eq!(bugs[0].assertion_identity.descriptor.compatibility_id, None);
+    }
+
+    #[test]
+    fn bug_extraction_rejects_invalid_failed_report() {
+        let mut report = failed_report(Some(TEST_ALIAS));
+        let record = report
+            .structured_assertions
+            .values_mut()
+            .next()
+            .expect("failed record");
+        record.identity = None;
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let result = branch_result(report);
+
+        assert!(explorer
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .is_err());
+        assert!(explorer.seen_dedup_keys.is_empty());
+    }
 
     #[test]
     fn nickel_assertion_fixture_round_trips_through_rust_type() {

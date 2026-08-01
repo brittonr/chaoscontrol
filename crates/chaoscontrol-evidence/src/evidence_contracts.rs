@@ -700,9 +700,9 @@ pub fn validate_replay_verdict_with_options(
     let has_identity = !value.get("assertion_identity").is_none_or(Value::is_null);
     let has_bug_binding = bug_core_field_count == REPLAY_BUG_CORE_FIELD_COUNT
         && (schema_version == LEGACY_REPLAY_VERDICT_SCHEMA_VERSION || has_identity);
-    let has_no_bug_binding = bug_core_field_count == 0 && !has_identity;
+    let binding_shape_valid = has_bug_binding || (bug_core_field_count == 0 && !has_identity);
     ensure(
-        has_bug_binding || has_no_bug_binding,
+        binding_shape_valid,
         "replay-verdict bug binding must be complete or absent",
     )?;
     let replay_parent_depth = if has_bug_binding {

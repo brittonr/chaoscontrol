@@ -36,6 +36,8 @@ const ACCEPTED_REPLAY_ARTIFACT_COUNT: usize = 2;
 const REPLAY_BUG_CORE_FIELD_COUNT: usize = 4;
 const ACCEPTED_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
 const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 = 2;
+const BYTES_PER_MIB: u64 = 1024 * 1024;
+const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
 
 const SNAPSHOT_STATUSES: [&str; 6] = [
     "not_required",
@@ -432,7 +434,7 @@ pub fn validate_snapshot_ref_with_root(
             format!("snapshot artifact missing: {path_value}"),
         )?;
         ensure(
-            sha256_file(&full)? == digest,
+            sha256_file(&full, MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES)? == digest,
             format!("snapshot artifact hash mismatch: {path_value}"),
         )?;
         ensure(
@@ -715,8 +717,13 @@ pub fn validate_replay_verdict_with_options(
                 path.exists(),
                 format!("replay-verdict artifact missing: {path_str}"),
             )?;
+            let maximum_bytes = if path_str.ends_with(".snapshot.bin") {
+                MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES
+            } else {
+                crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES
+            };
             ensure(
-                sha256_file(&path)? == item["sha256"].as_str().unwrap(),
+                sha256_file(&path, maximum_bytes)? == item["sha256"].as_str().unwrap(),
                 format!("replay-verdict artifact hash mismatch: {path_str}"),
             )?;
         }
@@ -1030,7 +1037,8 @@ pub fn validate_receipt_with_root(
                     format!("receipt artifact missing: {path_str}"),
                 )?;
                 ensure(
-                    sha256_file(&path)? == artifact["sha256"].as_str().unwrap(),
+                    sha256_file(&path, crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES)?
+                        == artifact["sha256"].as_str().unwrap(),
                     format!("receipt artifact hash mismatch: {path_str}"),
                 )?;
             }
@@ -1247,11 +1255,8 @@ fn is_safe_snapshot_path(path: &Path) -> bool {
         && path.components().next() == Some(Component::Normal("snapshots".as_ref()))
 }
 
-fn sha256_file(path: &Path) -> EvidenceResult<String> {
-    let bytes = crate::bounded_file::read_bounded_regular_bytes(
-        path,
-        crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
-    )?;
+fn sha256_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(path, maximum_bytes)?;
     let digest = Sha256::digest(&bytes);
     Ok(format!("sha256:{digest:x}"))
 }

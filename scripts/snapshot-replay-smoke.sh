@@ -18,6 +18,7 @@ set -euo pipefail
 : "${MEMORY_MIB:=128}"
 : "${ASSERTION_ALIAS:=3463273124}"
 : "${PROBE_FAIL_AFTER:=0}"
+: "${DIAGNOSTIC_TAIL_LINES:=300}"
 
 readonly TIMEOUT_EXIT_STATUS=124
 readonly BUG_FOUND_EXIT_STATUS=1
@@ -26,13 +27,20 @@ readonly MAXIMUM_EXPORTED_BUGS=1
 
 workdir="${WORKDIR:-$(mktemp -d)}"
 run_dir="$workdir/run"
+export_dir="$workdir/export"
 run_log="$workdir/run.log"
 export_log="$workdir/export.log"
 reproduce_log="$workdir/reproduce.log"
 verdict_path="$run_dir/replay-verdict.json"
 
-rm -rf "$run_dir"
-mkdir -p "$run_dir"
+rm -rf "$run_dir" "$export_dir"
+mkdir -p "$run_dir" "$export_dir"
+
+show_run_diagnostics() {
+  grep -E "Exploration (failed|evidence is invalid|output failed)|Error:" "$run_log" \
+    | tail -n "$DIAGNOSTIC_TAIL_LINES" >&2 || true
+  tail -n "$DIAGNOSTIC_TAIL_LINES" "$run_log" >&2 || true
+}
 
 set +e
 timeout "$RUN_TIMEOUT_SECONDS" "$CHAOSCONTROL_EXPLORE" run \
@@ -54,32 +62,36 @@ set -e
 
 if [[ "$run_rc" != 0 && "$run_rc" != "$BUG_FOUND_EXIT_STATUS" && "$run_rc" != "$TIMEOUT_EXIT_STATUS" ]]; then
   echo "snapshot replay smoke: run failed with rc=$run_rc" >&2
-  tail -100 "$run_log" >&2 || true
+  show_run_diagnostics
   exit "$run_rc"
 fi
 if [[ ! -f "$run_dir/checkpoint.json" ]]; then
   echo "snapshot replay smoke: missing checkpoint.json after run rc=$run_rc" >&2
-  tail -100 "$run_log" >&2 || true
+  show_run_diagnostics
   exit 1
 fi
 
-"$CHAOSCONTROL_EXPLORE" export-bugs \
+if ! "$CHAOSCONTROL_EXPLORE" export-bugs \
   --checkpoint "$run_dir/checkpoint.json" \
-  --output "$run_dir" \
+  --output "$export_dir" \
   --no-overwrite \
   --assertion-id "$ASSERTION_ALIAS" \
   --min-replay-parent-depth "$MINIMUM_REPLAY_PARENT_DEPTH" \
   --max-bugs "$MAXIMUM_EXPORTED_BUGS" \
-  >"$export_log" 2>&1
+  >"$export_log" 2>&1; then
+  echo "snapshot replay smoke: checkpoint export failed" >&2
+  tail -n "$DIAGNOSTIC_TAIL_LINES" "$export_log" >&2 || true
+  exit 1
+fi
 
 shopt -s nullglob
-bug_files=("$run_dir"/bug_*.json)
+bug_files=("$export_dir"/bug_*.json)
 shopt -u nullglob
 if [[ "${#bug_files[@]}" != "$MAXIMUM_EXPORTED_BUGS" ]]; then
   echo "snapshot replay smoke: expected one filtered bug, found ${#bug_files[@]}" >&2
-  tail -100 "$run_log" >&2 || true
-  tail -100 "$run_dir/report.txt" >&2 || true
-  tail -100 "$export_log" >&2 || true
+  show_run_diagnostics
+  tail -n "$DIAGNOSTIC_TAIL_LINES" "$run_dir/report.txt" >&2 || true
+  tail -n "$DIAGNOSTIC_TAIL_LINES" "$export_log" >&2 || true
   exit 1
 fi
 bug_path="${bug_files[0]}"
@@ -99,7 +111,7 @@ reproduce_rc=$?
 set -e
 if [[ "$reproduce_rc" != 0 ]]; then
   echo "snapshot replay smoke: reproduce failed with rc=$reproduce_rc" >&2
-  tail -100 "$reproduce_log" >&2 || true
+  tail -n "$DIAGNOSTIC_TAIL_LINES" "$reproduce_log" >&2 || true
   exit "$reproduce_rc"
 fi
 

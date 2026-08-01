@@ -34,6 +34,9 @@ pub enum ExploreError {
 
     #[snafu(display("Configuration error: {message}"))]
     Config { message: String },
+
+    #[snafu(display("checkpoint persistence failed"), context(false))]
+    Checkpoint { source: CheckpointError },
 }
 
 /// How the explorer branches the execution tree.
@@ -513,11 +516,9 @@ impl Explorer {
                 round_report.frontier_size
             );
 
-            // Save checkpoint if output directory is configured
+            // A configured checkpoint is authority-bearing output. Failure is fatal.
             if let Some(ref output_dir) = self.config.output_dir {
-                if let Err(e) = self.save_checkpoint_to_dir(output_dir) {
-                    warn!("Failed to save checkpoint: {}", e);
-                }
+                self.save_checkpoint_to_dir(output_dir)?;
             }
 
             // Track stale rounds (no new edges, no new bugs).
@@ -1338,8 +1339,17 @@ impl Explorer {
         result: &BranchResult,
         schedule: &FaultSchedule,
         replay_snapshot: Option<&SimulationSnapshot>,
-        replay_parent_depth: u32,
+        parent_depth: u32,
     ) -> Result<Vec<BugReport>, ExploreError> {
+        let replay_parent_depth = if replay_snapshot.is_some() {
+            parent_depth
+                .checked_add(1)
+                .ok_or_else(|| ExploreError::Config {
+                    message: "replay parent depth overflow".to_string(),
+                })?
+        } else {
+            0
+        };
         let mut bugs = Vec::new();
         let has_failed_assertion =
             result
@@ -1997,20 +2007,22 @@ impl Explorer {
         let mut bugs = Vec::new();
         for bug in self.all_bugs() {
             let mut serialized: SerializableBug = (&bug).into();
-            if serialized.replay_parent_snapshot_ref.is_none() {
-                if let Some(snapshot) = bug.snapshot.as_ref() {
-                    let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
-                        &snapshot_store,
-                        snapshot,
-                        bug.replay_parent_depth,
-                    )?;
-                    serialized.replay_parent_snapshot_ref = Some(reference);
-                } else if bug.replay_parent_depth > 0 {
-                    return Err(CheckpointError::MissingRequiredReplayParentSnapshot {
+            if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
+                let snapshot = bug.snapshot.as_ref().ok_or(
+                    CheckpointError::MissingRequiredReplayParentSnapshot {
                         bug_id: bug.bug_id,
                         replay_parent_depth: bug.replay_parent_depth,
-                    });
-                }
+                    },
+                )?;
+                let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
+                    &snapshot_store,
+                    snapshot,
+                    bug.replay_parent_depth,
+                )?;
+                serialized.replay_parent_snapshot_ref = Some(reference);
+            }
+            if bug.replay_parent_depth == 0 {
+                serialized.replay_parent_snapshot_ref = None;
             }
             bugs.push(serialized);
         }

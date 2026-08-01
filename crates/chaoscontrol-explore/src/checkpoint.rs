@@ -909,8 +909,8 @@ pub struct CheckpointBugExportSummary {
 ///
 /// This is a finalization path for interrupted/resumed campaigns where bugs
 /// reached `checkpoint.json` before the normal end-of-run artifact writer ran.
-/// Existing replay parent snapshot refs are validated against the output store;
-/// bugs with `replay_parent_depth > 0` must already carry a durable ref.
+/// Existing replay parent snapshot refs are validated against the checkpoint store.
+/// Matched snapshots are copied into the output store with the same exact ref.
 pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
     checkpoint_path: P,
     output_dir: Q,
@@ -935,6 +935,7 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
     overwrite: bool,
     filter: CheckpointBugExportFilter,
 ) -> Result<CheckpointBugExportSummary, CheckpointBugExportError> {
+    let checkpoint_path = checkpoint_path.as_ref();
     let checkpoint = load_checkpoint(checkpoint_path)?;
     validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
         CheckpointBugExportError::InvalidAssertionIdentity {
@@ -942,9 +943,11 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
             reason: error.source.to_string(),
         }
     })?;
+    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir)?;
-    let snapshot_store = FileSnapshotStore::new(output_dir);
+    let source_snapshot_store = FileSnapshotStore::new(source_dir);
+    let output_snapshot_store = FileSnapshotStore::new(output_dir);
 
     let mut bugs_matched = 0;
     let mut bugs_written = 0;
@@ -961,7 +964,23 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
         bugs_matched += 1;
 
         if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
-            snapshot_store.get_snapshot_artifact(reference)?;
+            let artifact = source_snapshot_store.get_snapshot_artifact(reference)?;
+            if artifact.replay_parent_depth != bug.replay_parent_depth {
+                return Err(CheckpointBugExportError::SnapshotStore {
+                    source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                        field: "replay_parent_depth",
+                    },
+                });
+            }
+            let output_reference = output_snapshot_store
+                .put_snapshot(&artifact.snapshot, artifact.replay_parent_depth)?;
+            if output_reference != *reference {
+                return Err(CheckpointBugExportError::SnapshotStore {
+                    source: crate::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                        field: "exported_reference",
+                    },
+                });
+            }
             snapshot_refs_validated += 1;
         }
 

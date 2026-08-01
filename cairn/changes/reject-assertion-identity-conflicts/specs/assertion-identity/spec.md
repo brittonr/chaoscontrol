@@ -154,6 +154,38 @@ r[chaoscontrol.assertion_identity.validation.local]
 - THEN generation MUST fail with a deterministic conflict diagnostic
 - AND first-seen metadata MUST NOT hide the conflict.
 
+### Requirement: Replay artifacts bind exact assertion identity
+
+r[chaoscontrol.assertion_identity.replay_artifacts] Exported bugs and schema-v2 replay verdicts MUST carry the failed assertion fingerprint, complete descriptor, canonical descriptor bytes, and catalog token. Before reproduction or minimization mutates runtime state, the carrier MUST resolve through a reconstructed accepted catalog or validated restored report. The numeric assertion alias is redundant metadata: it MUST equal a present descriptor compatibility ID, or it MUST be zero when the descriptor has no compatibility ID.
+
+#### Scenario: Exact bug identity enters replay
+
+- GIVEN a bug carries a strict descriptor, fingerprint, canonical bytes, catalog token, and redundant alias
+- WHEN reproduction restores the parent report
+- THEN replay MUST resolve the exact fingerprint through the restored accepted catalog before applying the schedule
+- AND the replay verdict MUST retain the same exact identity.
+
+#### Scenario: Replay carrier substitutes identity data
+
+- GIVEN a bug or verdict changes its descriptor, canonical bytes, fingerprint, catalog token, or redundant alias
+- WHEN replay, minimization, checkpoint resume, campaign aggregation, export, or evidence promotion validates it
+- THEN the complete carrier MUST be rejected before mutation or publication
+- AND alias collisions MUST resolve only by exact fingerprint and descriptor equality.
+
+#### Scenario: One bug in a collection is invalid
+
+- GIVEN a checkpoint or campaign contains one valid bug and one missing, legacy, or malformed bug identity
+- WHEN resume, aggregation, auto-minimization preparation, or export validates the collection
+- THEN the whole untrusted collection MUST fail or become explicitly fatal and non-promoting
+- AND the invalid bug MUST NOT be silently omitted.
+
+#### Scenario: Historical bug has only an integer ID
+
+- GIVEN a historical bug or schema-v1 replay verdict has only an assertion integer
+- WHEN a bounded diagnostic reader opens it
+- THEN the reader MAY preserve it as non-authoritative diagnostic data
+- BUT reproduction, minimization, export, and promotion MUST reject it.
+
 ### Requirement: Legacy identity is explicitly unsupported
 
 r[chaoscontrol.assertion_identity.compatibility] Public `u32` assertion APIs, explicit-ID macros, compatibility commands, and unbound guidance MUST NOT exist. Historical `LegacyU32` serialized input MUST be rejected in strict mode or labeled `legacy-ambiguous` by bounded diagnostic readers.

@@ -60,7 +60,15 @@ Legacy input cannot complete an accepted catalog. It cannot update strict counte
 
 **Rationale:** Adapting old records would recreate the unsupported uniqueness claim.
 
-### 7. Keep identity validation pure and adversarially tested
+### 7. Treat replay carriers as catalog-bound evidence
+
+**Choice:** Bugs, schema-v2 replay verdicts, checkpoints, campaign collections, and minimization inputs carry the complete assertion evidence identity. Replay authority comes only from joining that carrier to a reconstructed accepted catalog or validated restored report. A numeric alias is redundant: it matches a present compatibility ID, or it is zero when no compatibility ID exists.
+
+Collection validation is atomic. Resume, aggregation, auto-minimization preparation, and export reject the complete untrusted collection on the first missing, legacy, malformed, or report-mismatched identity. Historical ID-only bugs and schema-v1 verdicts remain bounded diagnostic input and never become replay or promotion authority.
+
+**Rationale:** Validating canonical bytes alone does not reject a canonical legacy descriptor and does not prove catalog membership. Dropping one invalid bug would erase a failure and make the resulting report look cleaner.
+
+### 8. Keep identity validation pure and adversarially tested
 
 **Choice:** Canonicalization, fingerprint input construction, catalog insertion, conflict classification, event resolution, and report merge are pure. Tests inject candidates with the same test fingerprint but different canonical descriptors to prove collision handling independently of BLAKE3's practical strength.
 

@@ -211,20 +211,19 @@ cargo run --release --bin chaoscontrol-explore -- resume \
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/
 
-# Finalize only targeted snapshot-backed replay candidates; filenames preserve
-# their checkpoint index (for example bug_2.json), and unrelated snapshot refs
-# are not validated.
+# Finalize only targeted snapshot-backed replay candidates. The checkpoint and
+# every bug identity are validated before filtering or writing any bug file.
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/ \
-  --assertion-id 1806003755 --min-replay-parent-depth 1 --max-bugs 1
+  --assertion-id <current-v2-compatibility-id> --min-replay-parent-depth 1 --max-bugs 1
 ```
 
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history
-- `assertions.json` — per-assertion verdicts and hit counts
-- `bug_N.json` — bug reports (consumable by minimize/reproduce)
-- `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed CBOR `SimulationSnapshot` payloads (legacy evidence may still reference the v1 bincode codec) for bugs that need parent context
+- `assertions.json` — a closed v2 summary with exact descriptors, fingerprints, catalog tokens, verdicts, and counters
+- `bug_N.json` — catalog-bound bug reports for minimize/reproduce; ID-only historical bugs are diagnostic-only
+- `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 
@@ -291,7 +290,7 @@ The repeatable KVM smoke gate for this rail is:
 nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 ```
 
-It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
+It runs the bounded Raft `snapshot_replay_probe` workload. It validates all checkpoint bugs before export. The v2 verdict must bind exact admitted identity. It must also report `snapshot_backed_reproduced`, positive replay depth, a valid v2 snapshot ref, and exit status 0. Raw logs remain temporary.
 
 For a single operator-facing readiness button, run:
 

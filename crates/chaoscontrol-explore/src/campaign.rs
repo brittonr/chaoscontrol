@@ -133,7 +133,7 @@ pub fn campaign_bugs_for_minimization(
         let exact_matches = summary
             .assertions()
             .iter()
-            .filter(|detail| detail_matches_identity(detail, identity))
+            .filter(|detail| crate::bug::identity::detail_matches_identity(detail, identity))
             .count();
         if exact_matches != 1 {
             return Err(BugSetIdentityError {
@@ -165,20 +165,6 @@ fn validate_campaign_bug_carriers(bugs: &[CampaignBug]) -> Result<(), BugSetIden
         })?;
     }
     Ok(())
-}
-
-fn detail_matches_identity(
-    detail: &crate::explorer::AssertionDetail,
-    identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
-) -> bool {
-    let Some(candidate) = detail.identity.as_ref() else {
-        return false;
-    };
-    candidate.descriptor == identity.descriptor
-        && candidate.fingerprint == identity.fingerprint
-        && candidate.canonical_descriptor
-            == chaoscontrol_protocol::identity::encode_lower_hex(&identity.canonical_descriptor)
-        && candidate.catalog_tokens.as_slice() == [identity.catalog_token]
 }
 
 // ═══════════════════════════════════════════════════════════════════════

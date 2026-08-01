@@ -110,6 +110,38 @@ pub fn validate_engine_snapshot(
     Ok(())
 }
 
+pub fn engine_snapshot_validation_diagnostic(snapshot: &EngineSnapshot) -> String {
+    let run = snapshot.oracle.current_run.as_ref();
+    format!(
+        "catalog={:?} accepted_catalog={} legacy={} structured={} conflicts={} events={} total_runs={} active_run={} run_setup={} engine_setup={}",
+        snapshot.oracle.catalog_status,
+        snapshot.oracle.accepted_catalog.is_some(),
+        snapshot.oracle.assertions.len(),
+        snapshot.oracle.structured_assertions.len(),
+        snapshot.oracle.identity_conflicts.len(),
+        snapshot.oracle.events.len(),
+        snapshot.oracle.total_runs,
+        run.is_some(),
+        run.is_some_and(|state| state.setup_complete),
+        snapshot.setup_complete,
+    )
+}
+
+pub fn validate_orchestration_engine_snapshot(
+    snapshot: &EngineSnapshot,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    crate::oracle_snapshot_validation::validate_orchestration_oracle_snapshot(&snapshot.oracle)?;
+    let oracle_setup_complete = snapshot
+        .oracle
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.setup_complete);
+    if snapshot.setup_complete != oracle_setup_complete {
+        return Err(crate::oracle_validation::OracleValidationError::Status);
+    }
+    Ok(())
+}
+
 pub fn validate_engine_snapshot_assertion_evidence(
     snapshot: &EngineSnapshot,
     identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
@@ -380,7 +412,10 @@ impl FaultEngine {
             .complete(token)
             .and_then(|catalog| self.oracle.activate_catalog(catalog))
         {
-            Ok(()) => (0, STATUS_OK),
+            Ok(()) => {
+                self.oracle.begin_run();
+                (0, STATUS_OK)
+            }
             Err(conflict) => self.catalog_failure(conflict),
         }
     }
@@ -541,27 +576,39 @@ impl FaultEngine {
         }
     }
 
-    /// Restore engine state from a snapshot.
+    /// Restore assertion-authority engine state from a validated snapshot.
     pub fn restore(
         &mut self,
         snapshot: &EngineSnapshot,
     ) -> Result<(), crate::oracle_validation::OracleValidationError> {
         validate_engine_snapshot(snapshot)?;
+        self.oracle.restore(&snapshot.oracle)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    /// Restore controller orchestration state without assertion authority.
+    pub fn restore_orchestration(
+        &mut self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), crate::oracle_validation::OracleValidationError> {
+        validate_orchestration_engine_snapshot(snapshot)?;
+        self.oracle.restore_orchestration(&snapshot.oracle)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    fn apply_snapshot(&mut self, snapshot: &EngineSnapshot) {
         self.rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
         self.rng.set_stream(snapshot.rng_stream);
         self.rng.set_word_pos(snapshot.rng_word_pos);
-        self.oracle.restore(&snapshot.oracle)?;
         self.schedule.restore(&snapshot.schedule);
         self.faults_injected = snapshot.faults_injected;
         self.setup_complete = snapshot.setup_complete;
         self.next_random_fault_time_ns = snapshot.next_random_fault_time_ns;
         self.choice_count = snapshot.choice_count;
-        // Clear history — new run starts recording fresh.
-        // random_overrides are NOT cleared — they're set externally
-        // before each branch by the explorer.
         self.choice_history.clear();
         self.catalog_builder = None;
-        Ok(())
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -947,6 +994,28 @@ mod tests {
         );
         assert!(engine.restore(&snapshot).is_err());
         assert_eq!(engine.oracle.report(), before);
+    }
+
+    #[test]
+    fn orchestration_snapshot_has_no_assertion_authority() {
+        let mut source = FaultEngine::new(EngineConfig::default());
+        source.begin_run();
+        source.force_setup_complete();
+        let snapshot = source.snapshot();
+
+        assert!(validate_engine_snapshot(&snapshot).is_err());
+        validate_orchestration_engine_snapshot(&snapshot)
+            .expect("empty orchestration state validates");
+        let mut restored = FaultEngine::new(EngineConfig::default());
+        restored
+            .restore_orchestration(&snapshot)
+            .expect("orchestration state restores");
+        assert!(restored.is_setup_complete());
+
+        let mut forged = snapshot;
+        forged.oracle.total_runs = 1;
+        assert!(validate_orchestration_engine_snapshot(&forged).is_err());
+        assert!(restored.restore_orchestration(&forged).is_err());
     }
 
     #[test]

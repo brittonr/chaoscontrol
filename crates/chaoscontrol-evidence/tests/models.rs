@@ -207,7 +207,10 @@ fn renders_replay_readiness_operator_surfaces_in_rust() {
     assert!(summary.contains("dogfood=rust-workload:pass"));
     assert!(dashboard.contains("snapshot_backed_reproduced"));
     assert!(dashboard.contains("not universal determinism"));
-    assert!(readme_block.contains("bounded committed-evidence signal"));
+    assert!(readme_block.contains("bounded static gate execution"));
+    assert!(readme_block.contains("A passed status does not promote a workload"));
+    assert!(readme_block.contains("fresh admitted v2 KVM evidence"));
+    assert!(!readme_block.contains("accepted proof manifests"));
 }
 
 #[test]
@@ -965,6 +968,101 @@ fn validates_accepted_dogfood_config_in_rust() {
 }
 
 #[test]
+fn diagnostic_dogfood_uses_live_alias_and_requires_quarantine_status() {
+    const HISTORICAL_ALIAS: u64 = 7;
+    const LIVE_ALIAS: u64 = 8;
+    const FAIL_AFTER: u64 = 25;
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    let dogfood = root.join("dogfood-results");
+    std::fs::create_dir_all(dogfood.join("fake-proof")).expect("create proof dir");
+    std::fs::write(
+        dogfood.join("fake-proof/assertions.json"),
+        include_str!("fixtures/assertion-readiness/legacy-array.json"),
+    )
+    .expect("write historical assertions");
+
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "scope": "historical test",
+        "anti_claims": [],
+        "required_replay_class": "snapshot_backed_reproduced",
+        "proofs": [{
+            "workload": "fake-workload",
+            "assertion_id": HISTORICAL_ALIAS,
+            "evidence_dir": "dogfood-results/fake-proof",
+            "summary": "summary.json",
+            "bug": "bug.json",
+            "verdict": "verdict.json",
+            "snapshot": "snapshot.bin"
+        }]
+    });
+    let mut expectations = serde_json::json!({
+        "workloads": {
+            "fake-workload": {
+                "assertion_id": LIVE_ALIAS,
+                "probe_key": "fake_probe",
+                "fail_after_key": "fake_fail_after",
+                "runner": {"fail_after_values": [FAIL_AFTER], "max_attempts": 1},
+                "expected": {
+                    "accepted": true,
+                    "replay_class": "snapshot_backed_reproduced",
+                    "min_replay_parent_depth": 1,
+                    "fail_after_values": [FAIL_AFTER]
+                },
+                "historical_evidence": {
+                    "promotion_status": "blocked-assertion-identity"
+                }
+            }
+        }
+    });
+    let config = serde_json::json!({
+        "fake-workload": {
+            "assertion_id": LIVE_ALIAS,
+            "fail_after_values": [FAIL_AFTER],
+            "max_attempts": 1,
+            "cmdline_template": "fake_probe=snapshot_replay_probe fake_fail_after={fail_after}",
+            "expectation": expectations["workloads"]["fake-workload"].clone()
+        }
+    });
+    for (path, value) in [
+        (dogfood.join("accepted-workload-proofs.json"), &manifest),
+        (
+            dogfood.join("accepted-dogfood-expectations.json"),
+            &expectations,
+        ),
+        (root.join("config.json"), &config),
+    ] {
+        std::fs::write(path, serde_json::to_vec(value).expect("serialize fixture"))
+            .expect("write fixture");
+    }
+
+    let line = validate_accepted_dogfood_config(
+        root.join("config.json"),
+        dogfood.join("accepted-dogfood-expectations.json"),
+        dogfood.join("accepted-workload-proofs.json"),
+    )
+    .expect("live alias is independent from diagnostic history");
+    assert!(line.contains("1 historical identity artifact(s)"));
+
+    expectations["workloads"]["fake-workload"]["historical_evidence"] = serde_json::json!({});
+    std::fs::write(
+        dogfood.join("accepted-dogfood-expectations.json"),
+        serde_json::to_vec(&expectations).expect("serialize invalid expectation"),
+    )
+    .expect("write invalid expectation");
+    let error = validate_accepted_dogfood_config(
+        root.join("config.json"),
+        dogfood.join("accepted-dogfood-expectations.json"),
+        dogfood.join("accepted-workload-proofs.json"),
+    )
+    .expect_err("missing quarantine status is rejected");
+    assert!(error
+        .message()
+        .contains("must declare promotion_status=blocked-assertion-identity"));
+}
+
+#[test]
 fn validates_evidence_contract_fixtures_in_rust() {
     check_evidence_contract_fixtures("../..").expect("evidence contract fixtures validate");
 }
@@ -1193,21 +1291,22 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 }
 
 #[test]
-fn committed_readiness_promotion_gate_is_blocked_without_v2_evidence() {
-    let error = validate_readiness_promotion_files(
+fn committed_readiness_gate_accepts_explicit_legacy_quarantine() {
+    let summary = validate_readiness_promotion_files(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
     )
-    .expect_err("readiness report has no promotable workload");
+    .expect("historical workload rows remain blocked");
 
-    assert!(error
-        .message()
-        .contains("no supported-bounded workload rows"));
-    assert!(run_readiness_promotion_selftest(
+    assert!(summary
+        .lines
+        .iter()
+        .all(|line| line.contains("status=blocked-assertion-identity")));
+    run_readiness_promotion_selftest(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
     )
-    .is_err());
+    .expect("readiness promotion selftest");
 }
 
 #[test]

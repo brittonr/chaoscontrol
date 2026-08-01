@@ -290,21 +290,21 @@ The repeatable KVM smoke gate for this rail is:
 nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 ```
 
-It runs the bounded Raft `snapshot_replay_probe` workload. It validates all checkpoint bugs before export. The v2 verdict must bind exact admitted identity. It must also report `snapshot_backed_reproduced`, positive replay depth, a valid v2 snapshot ref, and exit status 0. Raw logs remain temporary.
+It runs one bounded Raft `snapshot_replay_probe` branch. It validates all checkpoint bugs before filtered export. A Rust validator checks exact bug identity, schema-v2 verdict semantics, current snapshot format, artifact hashes, and replay linkage. Raw logs remain temporary.
 
 For a single operator-facing readiness button, run:
 
 <!-- replay-readiness-status:start -->
-> **Replay readiness:** `replay-readiness status=passed exit=0 static_gates=12/12 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
+> **Replay readiness checks:** `replay-readiness status=passed exit=0 static_gates=12/12 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
 >
-> This is a bounded committed-evidence signal for ChaosControl's Antithesis-alternative rail: static contracts, accepted proof manifests, and optional selected dogfood evidence. It is not a claim of universal determinism or hosted-product parity.
+> This status reports bounded static gate execution. Historical workload rows remain blocked until fresh admitted v2 KVM evidence exists. A passed status does not promote a workload. It is not a claim of universal determinism.
 <!-- replay-readiness-status:end -->
 
 ```bash
 nix run .#replay-readiness
 ```
 
-This checks the committed contract registry, evidence contracts, accepted proof manifest, consistency-checker fixtures/reports, generated readiness reports, dogfood artifact size budget, and the Nix-generated accepted-verdict wrapper smoke config against `dogfood-results/accepted-dogfood-expectations.json`. CI and dashboards can request a machine-readable operator receipt:
+This checks the contract registry, evidence contracts, historical proof manifest, current promotion classifications, consistency fixtures, generated reports, artifact limits, and dogfood wrapper configuration. CI and dashboards can request a machine-readable operator receipt:
 
 The consistency-checker fixture gate validates typed operation histories and bounded semantic reports under `dogfood-results/consistency-checker-fixtures/`; these reports are semantic workload evidence only and explicitly do not imply deterministic replay proof, assertion-readiness coverage, or hosted-product parity.
 
@@ -410,7 +410,7 @@ nix run .#net-accepted-verdict-dogfood -- \
   --output dogfood-results/net-accepted-verdict-dogfood-<timestamp>
 ```
 
-The Rust workload proof uses the packaged downstream-shaped initrd, a KCOV-enabled kernel, one VM, and the explicit harness assertion ID. This is a slow VM/replay rail and may build a Linux kernel if the KCOV kernel is not already cached:
+The Rust workload proof attempt uses the packaged initrd, a KCOV-enabled kernel, one VM, and the explicit harness assertion identity. This slow rail can build a Linux kernel when no cached kernel exists:
 
 ```bash
 nix run .#rust-workload-accepted-verdict-dogfood -- \
@@ -419,7 +419,7 @@ nix run .#rust-workload-accepted-verdict-dogfood -- \
 
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
-The current accepted workload-proof coverage is tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. New breadth/readiness claims must add a committed manifest entry plus evidence and pass the aggregate coverage and generated-readiness checks. Oversized snapshot evidence can be stored as `<snapshot>.chunks.json` plus ordered `.partNN` files; the Rust `check-replay-proof-coverage` gate verifies the chunk stream against the logical snapshot digest, and `cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- <snapshot>.chunks.json` reconstructs the raw `.snapshot.bin` when manual replay needs it.
+Historical workload-proof inventory and current promotion status are tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. The schema-v1 manifest is historical input, not current promotion authority. New claims require admitted v2 identity, committed evidence, and passing coverage and readiness checks. Oversized snapshots can use a chunks manifest plus ordered parts. The coverage gate verifies the stream against its logical digest.
 
 The assertion-readiness report may show zero ordinary assertion blockers after local harness coverage and replay-probe signal separation. Read that as an instrumentation-readiness signal only: it does not establish hosted-product parity, universal determinism, workload onboarding completeness, or operator triage UX readiness without the separate replay/readiness gates above.
 
@@ -668,7 +668,7 @@ snafu = "0.8"             # Error handling
 
 ## Roadmap
 
-Current green baseline: bounded snapshot-backed replay is proven for `raft`, `redb`, `net`, and `rust-workload`; full `nix flake check -L` passes. The current product target remains Rust-only workload support on one machine with multiple local ChaosControl hypervisors.
+Current baseline: replay artifacts for `raft`, `redb`, `net`, and `rust-workload` are historical diagnostics. Fresh admitted v2 KVM evidence is still required. The product target remains Rust-only workload support on one machine with multiple local ChaosControl hypervisors.
 
 ### Current missing features
 

@@ -1115,7 +1115,7 @@ fn cmd_run(
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {}", e);
+            eprintln!("Exploration failed: {e:?}");
             std::process::exit(1);
         }
     };
@@ -1448,8 +1448,15 @@ fn validate_exploration_output(
     report: &chaoscontrol_explore::explorer::ExplorationReport,
     num_vms: usize,
 ) -> Result<AssertionSummaryV2, String> {
-    let summary = AssertionSummaryV2::from_exploration(report)
-        .map_err(|error| format!("invalid assertion summary: {error}"))?;
+    let summary = AssertionSummaryV2::from_exploration(report).map_err(|error| {
+        format!(
+            "invalid assertion summary: {error}; catalog_status={:?}; collision_safe={}; details={}; conflicts={:?}",
+            report.assertion_catalog_status,
+            report.collision_safe_assertion_evidence,
+            report.assertion_details.len(),
+            report.assertion_identity_conflicts,
+        )
+    })?;
     chaoscontrol_explore::bug::identity::validate_reported_bug_identities(
         &report.bugs,
         summary.assertions(),
@@ -1940,7 +1947,7 @@ fn cmd_resume(
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {}", e);
+            eprintln!("Exploration failed: {e:?}");
             std::process::exit(1);
         }
     };

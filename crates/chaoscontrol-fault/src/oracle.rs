@@ -624,7 +624,16 @@ impl PropertyOracle {
 
     // ── Reporting ───────────────────────────────────────────────
 
-    /// Produce a summary report of all assertions across all runs.
+    /// Produce a finalized report projection without changing live run state.
+    pub fn finalized_report_projection(&self) -> OracleReport {
+        let mut finalized = self.clone();
+        if finalized.current_run.is_some() {
+            finalized.end_run();
+        }
+        finalized.report()
+    }
+
+    /// Produce a summary report of all completed runs.
     pub fn report(&self) -> OracleReport {
         let mut passed = 0;
         let mut failed = 0;
@@ -684,12 +693,26 @@ impl PropertyOracle {
         }
     }
 
-    /// Restore oracle state from a validated snapshot.
+    /// Restore oracle state from a validated assertion-authority snapshot.
     pub fn restore(
         &mut self,
         snapshot: &OracleSnapshot,
     ) -> Result<(), crate::oracle_validation::OracleValidationError> {
         crate::oracle_validation::validate_restorable_oracle_snapshot(snapshot)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    pub(crate) fn restore_orchestration(
+        &mut self,
+        snapshot: &OracleSnapshot,
+    ) -> Result<(), crate::oracle_validation::OracleValidationError> {
+        crate::oracle_snapshot_validation::validate_orchestration_oracle_snapshot(snapshot)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    fn apply_snapshot(&mut self, snapshot: &OracleSnapshot) {
         self.structured_assertions = snapshot.structured_assertions.clone();
         self.accepted_catalog = snapshot.accepted_catalog.clone();
         self.catalog_status = snapshot.catalog_status;
@@ -697,7 +720,6 @@ impl PropertyOracle {
         self.total_runs = snapshot.total_runs;
         self.events = snapshot.events.clone();
         self.current_run = snapshot.current_run.clone();
-        Ok(())
     }
 
     // ── Internal ────────────────────────────────────────────────

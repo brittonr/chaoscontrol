@@ -30,6 +30,7 @@ mod non_null_option;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
+mod replay_verdict_artifact;
 mod sdk_local_catalog;
 mod sdk_local_event;
 mod sdk_local_identity;
@@ -163,6 +164,9 @@ pub use replay_readiness_surfaces::{
     write_multi_hypervisor_campaign_receipt_path as write_replay_readiness_multi_hypervisor_campaign_receipt_path,
     write_networked_hosted_scheduler_receipt_path as write_replay_readiness_networked_hosted_scheduler_receipt_path,
     write_scheduler_receipt_path as write_replay_readiness_scheduler_receipt_path,
+};
+pub use replay_verdict_artifact::{
+    validate_snapshot_backed_replay_artifact, ReplayVerdictArtifactSummary,
 };
 pub use sdk_local_report::{
     check_sdk_assertion_quality_fixtures, check_sdk_assertion_quality_path,
@@ -1004,7 +1008,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         }
     }
     output.push_str("\n## Replay proof signals\n\n");
-    output.push_str("Replay-probe failures are intentional snapshot-replay proof signals. They remain checked evidence, but they are not ordinary instrumentation-readiness promotion blockers.\n\n");
+    output.push_str("Historical replay-probe failures remain checked diagnostic evidence. They do not provide current snapshot-replay authority or ordinary instrumentation-readiness promotion.\n\n");
     let mut replay_probe_signals = rows
         .iter()
         .flat_map(|row| row.replay_probe_signals.iter())
@@ -1012,7 +1016,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         .collect::<Vec<_>>();
     replay_probe_signals.sort();
     if replay_probe_signals.is_empty() {
-        output.push_str("- No replay-probe failure signals in accepted proof artifacts.\n");
+        output.push_str("- No replay-probe failure signals in historical proof artifacts.\n");
     } else {
         for signal in replay_probe_signals {
             output.push_str("- ");
@@ -1022,7 +1026,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     }
 
     output.push_str("\n## Gap details\n\n");
-    output.push_str("These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.\n\n");
+    output.push_str("These details are derived from committed historical `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures. Inferred categories and local-harness coverage are marked. No fresh VM campaign is implied.\n\n");
     let mut rendered_details = rows
         .iter()
         .flat_map(|row| row.gap_details.iter())
@@ -1030,8 +1034,9 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         .collect::<Vec<_>>();
     rendered_details.sort();
     if rendered_details.is_empty() {
-        output
-            .push_str("- No unhit or non-passing assertion details in accepted proof artifacts.\n");
+        output.push_str(
+            "- No unhit or non-passing assertion details in historical proof artifacts.\n",
+        );
     } else {
         for detail in rendered_details {
             output.push_str(&detail);
@@ -1049,7 +1054,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         .collect::<Vec<_>>();
     local_covered.sort();
     if local_covered.is_empty() {
-        output.push_str("- No accepted-proof gaps are covered by local deterministic assertion harness fixtures.\n");
+        output.push_str("- No historical proof gaps are covered by local deterministic assertion harness fixtures.\n");
     } else {
         for detail in local_covered {
             output.push_str("- ");
@@ -1059,7 +1064,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     }
 
     output.push_str("\n## Operator interpretation\n\n");
-    output.push_str("Zero ordinary assertion blockers applies only to accepted v2 assertion evidence after deterministic local harness coverage is applied. Diagnostic-only rows cannot promote. Read accepted results as an instrumentation-readiness signal only: they do not establish hosted-product parity. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.\n");
+    output.push_str("Zero ordinary assertion blockers applies only to accepted v2 assertion evidence after deterministic local harness coverage is applied. Diagnostic-only rows cannot promote. Any future accepted result is an instrumentation-readiness signal only. It does not establish hosted-product parity. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.\n");
 
     output.push_str("\n## Anti-claim\n\n");
     output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Replay-probe failure visibility is proof-signal accounting, not an application invariant failure. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
@@ -1588,7 +1593,7 @@ fn assertion_readiness_row(
         };
         if let Some(evidence) = local_evidence {
             local_fixture_covered.push(format!(
-                "`{label}` covered by local deterministic harness `{evidence}` (accepted-proof verdict={artifact_verdict}, hit_count={artifact_hit_count})"
+                "`{label}` covered by local deterministic harness `{evidence}` (historical verdict={artifact_verdict}, hit_count={artifact_hit_count})"
             ));
         }
         if hit_count == 0 {

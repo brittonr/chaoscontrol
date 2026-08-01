@@ -43,6 +43,38 @@ pub fn validate_restorable_oracle_snapshot(
     Ok(())
 }
 
+pub fn validate_orchestration_oracle_snapshot(
+    snapshot: &OracleSnapshot,
+) -> Result<(), OracleValidationError> {
+    crate::oracle_event_validation::validate_bounds(
+        &snapshot.events,
+        &snapshot.identity_conflicts,
+        snapshot.total_runs,
+    )?;
+    if snapshot.catalog_status != CatalogValidationStatus::Pending
+        || snapshot.accepted_catalog.is_some()
+        || !snapshot.assertions.is_empty()
+        || !snapshot.structured_assertions.is_empty()
+        || !snapshot.identity_conflicts.is_empty()
+        || !snapshot.events.is_empty()
+        || snapshot.total_runs != 0
+    {
+        return Err(OracleValidationError::Status);
+    }
+    let run = snapshot
+        .current_run
+        .as_ref()
+        .ok_or(OracleValidationError::Status)?;
+    if run.run_id != 0
+        || !run.strict_hit_ids.is_empty()
+        || !run.strict_satisfied_ids.is_empty()
+        || run.immediate_failure.is_some()
+    {
+        return Err(OracleValidationError::Status);
+    }
+    Ok(())
+}
+
 pub fn resolve_snapshot_assertion_evidence<'a>(
     snapshot: &'a OracleSnapshot,
     identity: &AssertionEvidenceIdentity,

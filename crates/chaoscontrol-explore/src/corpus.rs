@@ -82,6 +82,21 @@ impl Corpus {
         }
     }
 
+    /// Assign IDs to bugs that are retained outside corpus entries.
+    pub fn assign_bug_ids(&mut self, bugs: &mut [BugReport]) -> Result<(), &'static str> {
+        let count = u64::try_from(bugs.len()).map_err(|_| "bug ID count exceeds u64")?;
+        let next = self
+            .next_bug_id
+            .checked_add(count)
+            .ok_or("bug ID range overflow")?;
+        for (offset, bug) in bugs.iter_mut().enumerate() {
+            let offset = u64::try_from(offset).map_err(|_| "bug ID offset exceeds u64")?;
+            bug.bug_id = self.next_bug_id + offset;
+        }
+        self.next_bug_id = next;
+        Ok(())
+    }
+
     /// Add an entry to the corpus.
     ///
     /// Automatically assigns an ID and updates global coverage.
@@ -89,11 +104,10 @@ impl Corpus {
         entry.id = self.next_id;
         self.next_id += 1;
 
-        // Assign bug IDs
-        for bug in &mut entry.bugs_found {
-            bug.bug_id = self.next_bug_id;
-            self.next_bug_id += 1;
-        }
+        // The in-memory corpus cannot contain enough bugs to exhaust u64.
+        // The fallible standalone path handles imported or forged counters.
+        self.assign_bug_ids(&mut entry.bugs_found)
+            .expect("in-memory corpus bug ID capacity exhausted");
 
         self.global_coverage.merge(&entry.coverage);
         self.entries.push(entry);
@@ -265,12 +279,29 @@ mod tests {
     #[test]
     fn test_corpus_bug_id_assignment() {
         let mut corpus = Corpus::new();
+        let mut standalone = make_entry(0, 1, 2).bugs_found;
+        corpus
+            .assign_bug_ids(&mut standalone)
+            .expect("standalone IDs");
+        corpus.add(make_entry(5, 1, 1));
 
-        corpus.add(make_entry(5, 1, 2)); // 2 bugs
+        assert_eq!(standalone[0].bug_id, 0);
+        assert_eq!(standalone[1].bug_id, 1);
+        assert_eq!(corpus.bugs()[0].bug_id, 2);
+    }
 
-        let bugs = corpus.bugs();
-        assert_eq!(bugs[0].bug_id, 0);
-        assert_eq!(bugs[1].bug_id, 1);
+    #[test]
+    fn standalone_bug_id_overflow_has_no_partial_update() {
+        let mut corpus = Corpus::new();
+        corpus.next_bug_id = u64::MAX;
+        let mut standalone = make_entry(0, 1, 1).bugs_found;
+
+        assert_eq!(
+            corpus.assign_bug_ids(&mut standalone),
+            Err("bug ID range overflow")
+        );
+        assert_eq!(standalone[0].bug_id, 0);
+        assert_eq!(corpus.next_bug_id, u64::MAX);
     }
 
     #[test]

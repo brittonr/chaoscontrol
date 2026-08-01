@@ -1,13 +1,14 @@
 {
   "schema_version": 1,
-  "scope": "accepted snapshot-backed dogfood expectation lockfile",
+  "scope": "live snapshot-backed dogfood attempt expectation lockfile",
   "anti_claims": [
     "These expectations bind bounded dogfood wrapper defaults and operator receipts; they are not universal determinism claims.",
-    "Historical curated evidence may use different probe parameters, but live wrapper defaults must derive from this file."
+    "Historical schema-v1 evidence is diagnostic-only and may use different aliases or probe parameters.",
+    "A successful live attempt cannot promote without admitted v2 assertion identity and current artifact linkage."
   ],
   "workloads": {
     "raft": {
-      "assertion_id": 1806003755,
+      "assertion_id": 3463273124,
       "probe_key": "raft_bug",
       "fail_after_key": "raft_snapshot_probe_fail_after",
       "expected": {
@@ -40,14 +41,15 @@
           40
         ]
       },
-      "curated_evidence": {
+      "historical_evidence": {
+        "promotion_status": "blocked-assertion-identity",
         "manifest": "dogfood-results/accepted-workload-proofs.json",
         "evidence_dir": "dogfood-results/raft-accepted-filtered-export-dogfood-20260507-014114",
         "summary": "accepted-snapshot-verdict-summary.json"
       }
     },
     "redb": {
-      "assertion_id": 2718281828,
+      "assertion_id": 4149728441,
       "probe_key": "redb_bug",
       "fail_after_key": "redb_snapshot_probe_fail_after",
       "expected": {
@@ -80,14 +82,15 @@
           40
         ]
       },
-      "curated_evidence": {
+      "historical_evidence": {
+        "promotion_status": "blocked-assertion-identity",
         "manifest": "dogfood-results/accepted-workload-proofs.json",
         "evidence_dir": "dogfood-results/redb-accepted-verdict-dogfood-20260507-020314",
         "summary": "accepted-snapshot-verdict-summary.json"
       }
     },
     "net": {
-      "assertion_id": 3141592653,
+      "assertion_id": 2074476939,
       "probe_key": "net_bug",
       "fail_after_key": "net_snapshot_probe_fail_after",
       "expected": {
@@ -107,7 +110,8 @@
           3
         ]
       },
-      "curated_evidence": {
+      "historical_evidence": {
+        "promotion_status": "blocked-assertion-identity",
         "manifest": "dogfood-results/accepted-workload-proofs.json",
         "evidence_dir": "dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z",
         "summary": "accepted-snapshot-verdict-summary.json",
@@ -115,7 +119,7 @@
       }
     },
     "rust-workload": {
-      "assertion_id": 1414213562,
+      "assertion_id": 3143219316,
       "probe_key": "rust_workload_bug",
       "fail_after_key": "rust_workload_snapshot_probe_fail_after",
       "expected": {
@@ -148,7 +152,8 @@
           40
         ]
       },
-      "curated_evidence": {
+      "historical_evidence": {
+        "promotion_status": "blocked-assertion-identity",
         "manifest": "dogfood-results/accepted-workload-proofs.json",
         "evidence_dir": "dogfood-results/rust-workload-accepted-verdict-dogfood-20260507T191439Z",
         "summary": "accepted-snapshot-verdict-summary.json"

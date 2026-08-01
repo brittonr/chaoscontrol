@@ -607,6 +607,22 @@ impl VmSnapshot {
         chaoscontrol_fault::engine::validate_engine_snapshot(&self.fault_engine_snapshot)
     }
 
+    pub fn assertion_validation_diagnostic(&self) -> String {
+        chaoscontrol_fault::engine::engine_snapshot_validation_diagnostic(
+            &self.fault_engine_snapshot,
+        )
+    }
+
+    pub fn validate_assertion_evidence(
+        &self,
+        identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    ) -> Result<(), chaoscontrol_fault::oracle_validation::OracleValidationError> {
+        chaoscontrol_fault::engine::validate_engine_snapshot_assertion_evidence(
+            &self.fault_engine_snapshot,
+            identity,
+        )
+    }
+
     /// Convenience accessor: RIP of vCPU 0 (BSP).
     pub fn rip(&self) -> u64 {
         self.vcpu_snapshots[0].regs.rip

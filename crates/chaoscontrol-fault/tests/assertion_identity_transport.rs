@@ -17,7 +17,6 @@ fn accepted_catalog_binds_event_and_snapshot_state() {
     let value = descriptor();
     let mut engine = FaultEngine::new(EngineConfig::default());
     let token = admit(&mut engine, &value);
-    engine.begin_run();
     assert_eq!(
         engine.handle_hypercall(&event_page(&value, token, true)).1,
         STATUS_OK
@@ -44,6 +43,7 @@ fn accepted_event_without_active_run_is_rejected_before_counter_mutation() {
     let fingerprint = value.fingerprint().expect("fingerprint");
     let mut engine = FaultEngine::new(EngineConfig::default());
     let token = admit(&mut engine, &value);
+    engine.end_run();
     let before = engine.oracle().structured_assertions()[&fingerprint].clone();
 
     assert_eq!(

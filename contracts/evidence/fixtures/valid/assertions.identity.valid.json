@@ -1,0 +1,41 @@
+{
+  "schema": "chaoscontrol.assertion-summary.v2",
+  "catalog_status": "accepted",
+  "collision_safe_evidence": true,
+  "assertions": [
+  {
+    "category": "invariant",
+    "false_count": 0,
+    "guest": "guest",
+    "hit_count": 1,
+    "id": 7,
+    "identity": {
+      "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0111006f72672e6578616d706c652e6775657374020b0002737461626c652d6b6579030100000412006d6573736167652d737461626c652d6b6579050b007372632f6d61696e2e727306040001000000070400010000000805006775657374090900696e76617269616e740a040007000000",
+      "catalog_tokens": [
+        "194fcda5b0b92c13fa30cd42c50bc6facd742fc196d686ea0c86966c04e743aa"
+      ],
+      "descriptor": {
+        "category": "invariant",
+        "compatibility_id": 7,
+        "guest": "guest",
+        "identity_version": 1,
+        "kind": "always",
+        "logical_key": {
+          "key": "stable-key",
+          "type": "stable"
+        },
+        "message": "message-stable-key",
+        "namespace": "org.example.guest",
+        "source_column": 1,
+        "source_file": "src/main.rs",
+        "source_line": 1
+      },
+      "fingerprint": "f3417ad3636538c1e5f211e5fae5ecb2bd96562e33a1c4705518191afd85fe41"
+    },
+    "kind": "always",
+    "message": "message-stable-key",
+    "true_count": 1,
+    "verdict": "passed"
+  }
+  ]
+}

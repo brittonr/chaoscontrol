@@ -1,11 +1,13 @@
 use crate::{EvidenceError, EvidenceResult};
 use chaoscontrol_protocol::assertion_catalog::{
-    AcceptedCatalog, CatalogBuilder, MAX_ASSERTION_CATALOG_ENTRIES,
+    AcceptedCatalog, CatalogBuilder, ASSERTION_CATALOG_VERSION, MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, ASSERTION_IDENTITY_VERSION,
+    AssertionDescriptor, AssertionFingerprint, MAX_ASSERTION_CANONICAL_BYTES,
 };
 use serde::Deserialize;
+
+const MAX_CANONICAL_HEX_BYTES: usize = MAX_ASSERTION_CANONICAL_BYTES * 2;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -50,7 +52,7 @@ pub(crate) fn apply_catalog_line(
             expected_descriptors,
             valid,
         } => {
-            if catalog_version != ASSERTION_IDENTITY_VERSION || !valid {
+            if catalog_version != ASSERTION_CATALOG_VERSION || !valid {
                 return line_error(line_index, "invalid catalog begin record");
             }
             if builder.is_some() || accepted.is_some() {
@@ -97,14 +99,20 @@ pub(crate) fn apply_catalog_line(
             descriptor_count,
             catalog_token,
         } => {
-            if catalog_version != ASSERTION_IDENTITY_VERSION
+            if catalog_version != ASSERTION_CATALOG_VERSION
                 || descriptor_count > MAX_ASSERTION_CATALOG_ENTRIES
             {
                 return line_error(line_index, "invalid catalog complete record");
             }
-            let Some(pending) = builder.take() else {
+            let Some(pending) = builder.as_ref() else {
                 return line_error(line_index, "catalog completion without begin");
             };
+            if descriptor_count != pending.expected_frames()
+                || descriptor_count != pending.received_frames()
+            {
+                return line_error(line_index, "catalog descriptor count mismatch");
+            }
+            let pending = builder.take().expect("pending catalog was checked");
             *accepted = Some(pending.complete(catalog_token).map_err(|error| {
                 EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
             })?);
@@ -120,6 +128,12 @@ pub(crate) fn apply_catalog_line(
 }
 
 fn decode_hex(value: &str, line_index: usize) -> EvidenceResult<Vec<u8>> {
+    if value.len() > MAX_CANONICAL_HEX_BYTES {
+        return line_error(
+            line_index,
+            "canonical descriptor hex exceeds the byte limit",
+        );
+    }
     if !value.len().is_multiple_of(2) {
         return line_error(line_index, "canonical descriptor hex length is invalid");
     }

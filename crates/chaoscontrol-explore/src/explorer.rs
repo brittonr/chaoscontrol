@@ -1676,8 +1676,14 @@ impl Explorer {
             .map(|c| c.network().stats().clone())
             .unwrap_or_default();
 
-        // Collect assertion stats + per-assertion detail from oracle reports
-        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
+        // Collect assertion stats, detail, and authority from the merged oracle report.
+        let (
+            assertion_stats,
+            assertion_details,
+            assertion_catalog_status,
+            collision_safe_assertion_evidence,
+            assertion_identity_conflicts,
+        ) = self.collect_assertion_detail();
 
         ExplorationReport {
             rounds: self.rounds_completed,
@@ -1689,6 +1695,9 @@ impl Explorer {
             network_stats,
             assertion_stats,
             assertion_details,
+            assertion_catalog_status,
+            collision_safe_assertion_evidence,
+            assertion_identity_conflicts,
             round_history: self.round_history.clone(),
             wall_clock_seconds: 0.0, // Set by caller
             branches_per_second: 0.0,
@@ -1700,13 +1709,26 @@ impl Explorer {
 
     /// Collect assertion stats and per-assertion detail from all VM oracles.
     ///
-    /// Merges assertion records across VMs by summing hit/true/false counts
-    /// and taking the worst-case verdict per assertion ID.
-    fn collect_assertion_detail(&self) -> (AssertionStats, Vec<AssertionDetail>) {
+    /// Reads the merged oracle report and preserves its kind-derived verdicts.
+    fn collect_assertion_detail(
+        &self,
+    ) -> (
+        AssertionStats,
+        Vec<AssertionDetail>,
+        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+        bool,
+        Vec<String>,
+    ) {
         use chaoscontrol_fault::oracle::Verdict;
 
         let Some(controller) = &self.controller else {
-            return (AssertionStats::default(), Vec::new());
+            return (
+                AssertionStats::default(),
+                Vec::new(),
+                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                false,
+                Vec::new(),
+            );
         };
         let report = controller.report();
         let mut passed = 0_usize;
@@ -1727,19 +1749,13 @@ impl Explorer {
             let identity = record.identity.as_ref().map(|admitted| {
                 let descriptor = &admitted.descriptor;
                 AssertionIdentityDetail {
-                    identity_version: descriptor.identity_version,
-                    namespace: descriptor.namespace.clone(),
-                    logical_key: descriptor.logical_key.clone(),
-                    fingerprint: admitted.fingerprint.to_hex(),
-                    canonical_descriptor: encode_hex(&admitted.canonical_bytes),
-                    catalog_tokens: record
-                        .catalog_tokens
-                        .iter()
-                        .map(|token| token.to_hex())
-                        .collect(),
-                    source_file: descriptor.source_file.clone(),
-                    source_line: descriptor.source_line,
-                    source_column: descriptor.source_column,
+                    descriptor: descriptor.clone(),
+                    fingerprint: admitted.fingerprint,
+                    canonical_descriptor:
+                        chaoscontrol_protocol::assertion_identity::encode_lower_hex(
+                            &admitted.canonical_bytes,
+                        ),
+                    catalog_tokens: record.catalog_tokens.iter().copied().collect(),
                 }
             });
             details.push(AssertionDetail {
@@ -1762,19 +1778,11 @@ impl Explorer {
                 "unexercised" => 1_u8,
                 _ => 2_u8,
             };
-            let left_fingerprint = left
-                .identity
-                .as_ref()
-                .map(|identity| identity.fingerprint.as_str())
-                .unwrap_or("");
-            let right_fingerprint = right
-                .identity
-                .as_ref()
-                .map(|identity| identity.fingerprint.as_str())
-                .unwrap_or("");
+            let left_fingerprint = left.identity.as_ref().map(|identity| identity.fingerprint);
+            let right_fingerprint = right.identity.as_ref().map(|identity| identity.fingerprint);
             order(&left.verdict)
                 .cmp(&order(&right.verdict))
-                .then(left_fingerprint.cmp(right_fingerprint))
+                .then(left_fingerprint.cmp(&right_fingerprint))
                 .then(left.id.cmp(&right.id))
         });
         let stats = AssertionStats {
@@ -1783,7 +1791,13 @@ impl Explorer {
             failed,
             unexercised,
         };
-        (stats, details)
+        (
+            stats,
+            details,
+            report.catalog_status,
+            report.collision_safe_evidence,
+            report.identity_conflicts,
+        )
     }
 
     /// Get current exploration stats.
@@ -1802,7 +1816,7 @@ impl Explorer {
     pub fn snapshot_state(&self) -> crate::dashboard_types::DashboardState {
         use crate::dashboard_types::*;
 
-        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
+        let (assertion_stats, assertion_details, _, _, _) = self.collect_assertion_detail();
 
         let bugs: Vec<DashboardBug> = self
             .corpus
@@ -2185,6 +2199,12 @@ pub struct ExplorationReport {
     pub assertion_stats: AssertionStats,
     /// Per-assertion detail — individual verdicts, hit counts, messages.
     pub assertion_details: Vec<AssertionDetail>,
+    /// Catalog authority retained from the validated merged oracle report.
+    pub assertion_catalog_status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+    /// True only for a non-empty validated accepted assertion catalog.
+    pub collision_safe_assertion_evidence: bool,
+    /// Assertion identity diagnostics retained from the merged oracle report.
+    pub assertion_identity_conflicts: Vec<String>,
     /// Per-round exploration history.
     pub round_history: Vec<RoundHistory>,
     /// Total wall-clock time for the exploration run.
@@ -2215,34 +2235,32 @@ pub struct AssertionStats {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssertionIdentityDetail {
-    pub identity_version: u8,
-    pub namespace: String,
-    pub logical_key: chaoscontrol_protocol::assertion_identity::AssertionLogicalKey,
-    pub fingerprint: String,
+    pub descriptor: chaoscontrol_protocol::assertion_identity::AssertionDescriptor,
+    pub fingerprint: chaoscontrol_protocol::assertion_identity::AssertionFingerprint,
     pub canonical_descriptor: String,
-    pub catalog_tokens: Vec<String>,
-    pub source_file: String,
-    pub source_line: u32,
-    pub source_column: u32,
+    pub catalog_tokens: Vec<chaoscontrol_protocol::assertion_identity::AssertionFingerprint>,
 }
 
 /// Per-assertion detail for the exploration report.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssertionDetail {
-    /// Assertion ID (FNV-1a hash of location).
+    /// Non-authoritative compact alias.
     pub id: u32,
     /// Collision-safe identity. None means diagnostic legacy input.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::non_null_option::deserialize"
+    )]
     pub identity: Option<AssertionIdentityDetail>,
     /// Human-readable message.
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
     pub kind: String,
     /// Guest name for assertion-density reporting.
-    #[serde(default = "default_uncategorized_string")]
     pub guest: String,
     /// Density category for grouped exercise reporting.
-    #[serde(default = "default_uncategorized_string")]
     pub category: String,
     /// Final verdict: "passed", "failed", "unexercised".
     pub verdict: String,
@@ -2255,19 +2273,6 @@ pub struct AssertionDetail {
     /// JSON details from the most recent failure (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_failure_details: Option<String>,
-}
-
-fn encode_hex(bytes: &[u8]) -> String {
-    use core::fmt::Write;
-    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
-    }
-    output
-}
-
-fn default_uncategorized_string() -> String {
-    "uncategorized".to_string()
 }
 
 /// Current exploration statistics.

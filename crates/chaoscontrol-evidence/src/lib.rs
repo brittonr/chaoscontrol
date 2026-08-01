@@ -13,20 +13,28 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod assertion_summary_identity;
+mod assertion_summary_semantics;
+mod bounded_file;
 pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
 pub mod in_process_simulator;
+mod json_preflight;
 pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
+mod non_null_option;
 pub mod operator_triage;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 mod sdk_local_catalog;
 mod sdk_local_event;
 mod sdk_local_identity;
+mod sdk_local_identity_value;
+mod sdk_local_quality;
 pub mod sdk_local_report;
+mod sdk_local_verdict;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,
     read_history_path as read_consistency_history_path,
@@ -49,11 +57,11 @@ pub use dogfood_guards::{
 };
 pub use evidence_contracts::{
     check_evidence_contract_fixtures, check_evidence_contracts, run_nickel_examples,
-    validate_artifact_hash, validate_assertion_summary, validate_bug_report,
-    validate_checkpoint_reference, validate_markdown_receipt, validate_receipt,
-    validate_receipt_with_root, validate_replay_verdict, validate_replay_verdict_with_options,
-    validate_run_config, validate_snapshot_ref, validate_snapshot_ref_with_root,
-    EVIDENCE_CONTRACTS_SUCCESS,
+    validate_artifact_hash, validate_assertion_summary, validate_assertion_summary_for_promotion,
+    validate_bug_report, validate_checkpoint_reference, validate_markdown_receipt,
+    validate_receipt, validate_receipt_with_root, validate_replay_verdict,
+    validate_replay_verdict_with_options, validate_run_config, validate_snapshot_ref,
+    validate_snapshot_ref_with_root, EVIDENCE_CONTRACTS_SUCCESS,
 };
 pub use in_process_simulator::{
     compare_simulator_receipts, compare_simulator_vm_receipt_bridge, run_simulator_adapter,
@@ -160,6 +168,8 @@ pub use sdk_local_report::{
     summarize_sdk_local_report, write_sdk_local_report, AssertionQualityGate,
     DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
 };
+
+const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
@@ -1879,12 +1889,8 @@ fn load_json<T>(root: &Path, path: &Path) -> EvidenceResult<T>
 where
     T: for<'de> Deserialize<'de>,
 {
-    let input = std::fs::read_to_string(path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, path)
-        ))
-    })?;
+    let input = bounded_file::read_bounded_regular_file(path, MAX_EVIDENCE_JSON_BYTES)?;
+    json_preflight::preflight_json(&input, json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&input).map_err(|err| {
         EvidenceError::new(format!(
             "invalid JSON in {}: {err}",

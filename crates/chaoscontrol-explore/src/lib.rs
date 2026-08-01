@@ -74,6 +74,9 @@
 //! All exploration is deterministic given the same seed. The explorer uses
 //! seeded RNGs throughout and avoids HashMaps (using BTreeMap instead).
 
+pub mod assertion_summary;
+mod assertion_summary_validation;
+pub mod assertion_summary_writer;
 pub mod campaign;
 pub mod checkpoint;
 pub mod corpus;
@@ -85,6 +88,7 @@ pub mod input_tree;
 pub mod memory;
 pub mod minimizer;
 pub mod mutator;
+mod non_null_option;
 pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]

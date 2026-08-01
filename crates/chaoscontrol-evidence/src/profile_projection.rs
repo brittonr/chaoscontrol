@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
+use crate::profile_projection_spec::{validate_receipt_against_spec, ProjectionSpec, SPECS};
 use crate::{EvidenceError, EvidenceResult};
 
 pub(crate) const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
@@ -11,54 +12,6 @@ pub(crate) const EVALUATOR_IDENTITY: &str = "nickel-lang-cli nickel 1.15.1 (rev 
 pub(crate) const NON_CLAIMS: [&str; 2] = [
     "profile conformance is pre-run intent only",
     "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim",
-];
-
-struct ProjectionSpec {
-    profile_id: &'static str,
-    source: &'static str,
-    contract: &'static str,
-    imports: &'static [&'static str],
-    output: &'static str,
-    receipt: &'static str,
-}
-
-const SPECS: [ProjectionSpec; 4] = [
-    ProjectionSpec {
-        profile_id: "vm-run",
-        source: "contracts/evidence/examples/raft-run-config.ncl",
-        contract: "contracts/evidence/run-config.ncl",
-        imports: &["contracts/evidence/profile-primitives.ncl"],
-        output: "contracts/evidence/fixtures/valid/run-profile.valid.json",
-        receipt: "contracts/evidence/fixtures/valid/run-profile.projection-receipt.json",
-    },
-    ProjectionSpec {
-        profile_id: "in-process-simulator",
-        source: "contracts/evidence/examples/register-simulator-profile.ncl",
-        contract: "contracts/evidence/simulator-profile.ncl",
-        imports: &["contracts/evidence/profile-primitives.ncl"],
-        output: "contracts/evidence/fixtures/valid/simulator-profile.valid.json",
-        receipt: "contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json",
-    },
-    ProjectionSpec {
-        profile_id: "campaign",
-        source: "contracts/evidence/examples/raft-campaign-profile.ncl",
-        contract: "contracts/evidence/campaign-profile.ncl",
-        imports: &[
-            "contracts/evidence/examples/raft-run-config.ncl",
-            "contracts/evidence/run-config.ncl",
-            "contracts/evidence/profile-primitives.ncl",
-        ],
-        output: "contracts/evidence/fixtures/valid/campaign-profile.valid.json",
-        receipt: "contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json",
-    },
-    ProjectionSpec {
-        profile_id: "finite-fault-schedule",
-        source: "contracts/evidence/examples/raft-fault-schedule-profile.ncl",
-        contract: "contracts/evidence/fault-schedule-profile.ncl",
-        imports: &["contracts/evidence/profile-primitives.ncl"],
-        output: "contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json",
-        receipt: "contracts/evidence/fixtures/valid/fault-schedule-profile.projection-receipt.json",
-    },
 ];
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -91,12 +44,13 @@ pub struct BoundIdentity {
 pub fn check_profile_projections(root: &Path, write: bool) -> EvidenceResult<()> {
     let command = nickel_command()?;
     validate_evaluator(&command)?;
-    for spec in &SPECS {
-        let projection = evaluate_profile(root, &command, spec.source)?;
+    for spec in SPECS {
+        let projection = evaluate_profile(root, &command, spec.source.path)?;
         let output_bytes = canonical_pretty_json(&projection)?;
         let receipt = build_receipt(root, spec, &output_bytes)?;
+        validate_receipt_against_spec(&receipt, spec)?;
         let receipt_bytes = pretty_json(&receipt)?;
-        check_or_write(root.join(spec.output), &output_bytes, write)?;
+        check_or_write(root.join(spec.projection.path), &output_bytes, write)?;
         check_or_write(root.join(spec.receipt), &receipt_bytes, write)?;
     }
     Ok(())
@@ -107,12 +61,12 @@ fn build_receipt(
     spec: &ProjectionSpec,
     projection: &[u8],
 ) -> EvidenceResult<ProjectionReceipt> {
-    let source = bound_file(root, spec.source)?;
-    let contract = bound_file(root, spec.contract)?;
+    let source = bound_file(root, spec.source.path)?;
+    let contract = bound_file(root, spec.contract.path)?;
     let imports = spec
         .imports
         .iter()
-        .map(|path| bound_file(root, path))
+        .map(|artifact| bound_file(root, artifact.path))
         .collect::<EvidenceResult<Vec<_>>>()?;
     Ok(ProjectionReceipt {
         schema: RECEIPT_SCHEMA.to_string(),
@@ -125,7 +79,7 @@ fn build_receipt(
             identity: blake3_identity(EVALUATOR_IDENTITY.as_bytes()),
         },
         projection: BoundArtifact {
-            path: spec.output.to_string(),
+            path: spec.projection.path.to_string(),
             identity: blake3_identity(projection),
         },
         non_claims: NON_CLAIMS

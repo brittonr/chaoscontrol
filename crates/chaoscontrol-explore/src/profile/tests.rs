@@ -49,7 +49,14 @@ fn campaign_profile_maps_workers_mutation_metrics_and_output() {
 }
 
 #[test]
-fn campaign_profile_rejects_duplicate_seeds_and_scenario_substitution() {
+fn campaign_profile_rejects_unknown_fields_duplicate_seeds_and_scenario_substitution() {
+    let mut unknown = serde_json::from_str::<serde_json::Value>(CAMPAIGN).expect("campaign JSON");
+    unknown
+        .as_object_mut()
+        .expect("campaign object")
+        .insert("elapsed".to_string(), serde_json::json!(1));
+    assert!(serde_json::from_value::<CampaignProfile>(unknown).is_err());
+
     let mut value = serde_json::from_str::<serde_json::Value>(CAMPAIGN).expect("campaign JSON");
     value["seeds"] = serde_json::json!([42, 42]);
     let duplicate: CampaignProfile = serde_json::from_value(value).expect("typed duplicate");
@@ -76,7 +83,14 @@ fn finite_schedule_maps_closed_fault_descriptors() {
 }
 
 #[test]
-fn finite_schedule_rejects_target_and_order_substitution() {
+fn finite_schedule_rejects_unknown_fields_target_and_order_substitution() {
+    let mut unknown = serde_json::from_str::<serde_json::Value>(SCHEDULE).expect("schedule JSON");
+    unknown
+        .as_object_mut()
+        .expect("schedule object")
+        .insert("elapsed".to_string(), serde_json::json!(1));
+    assert!(serde_json::from_value::<FaultScheduleProfile>(unknown).is_err());
+
     let mut target = serde_json::from_str::<serde_json::Value>(SCHEDULE).expect("schedule JSON");
     target["faults"][1]["target"] = serde_json::json!(3);
     let target: FaultScheduleProfile = serde_json::from_value(target).expect("typed target");

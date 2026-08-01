@@ -45,7 +45,7 @@ cargo run -p chaoscontrol-evidence --bin check-profile-projections -- --root .
 
 The workflow evaluates Nickel outside runtime hot paths. It canonicalizes JSON and records BLAKE3 identities for the source, imports, evaluator, profile, and projection.
 
-Use `check-profile-admission <kind> <projection> <receipt>` to test the Rust boundary without starting a VM, thread, or simulator. Admission rechecks source, contract, import, evaluator, profile, and canonical projection identities. Rust uses bounded regular-file reads, closed serde shapes, and repeated safety checks.
+Use `check-profile-admission <kind> <projection> <receipt>` to test the Rust boundary without starting a VM, thread, or simulator. Admission compares every path and identity with the compiled trusted profile specification. It then rechecks the source, contract, imports, evaluator, profile, and canonical projection. A modified receipt cannot authorize modified profile inputs or projections. Rust uses bounded regular-file reads, closed serde shapes, and repeated safety checks.
 
 ## Non-claims
 

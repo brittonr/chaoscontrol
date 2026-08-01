@@ -72,6 +72,7 @@ pub fn validate_accepted_dogfood_config(
         .and_then(Value::as_object)
         .ok_or_else(|| EvidenceError::new("expectations: missing workloads object"))?;
     let mut errors = Vec::new();
+    let mut diagnostic_only_workloads = 0_usize;
 
     let proof_workloads = manifest
         .proofs
@@ -246,6 +247,17 @@ pub fn validate_accepted_dogfood_config(
                 proof.assertion_id
             ));
         }
+        let admission = match crate::load_assertion_admission(repo_root, proof) {
+            Ok(admission) => admission,
+            Err(error) => {
+                errors.push(format!("{}: {error}", proof.workload));
+                continue;
+            }
+        };
+        if admission.status == crate::assertion::readiness::IdentityStatus::DiagnosticOnly {
+            diagnostic_only_workloads += 1;
+            continue;
+        }
         let summary_path = repo_root.join(&proof.evidence_dir).join(&proof.summary);
         if !summary_path.is_file() {
             errors.push(format!(
@@ -312,7 +324,7 @@ pub fn validate_accepted_dogfood_config(
         ));
     }
     Ok(format!(
-        "accepted-dogfood-config: {} workloads match expectation lockfile and deterministic wrapper config",
+        "accepted-dogfood-config: {} workload configs match; {diagnostic_only_workloads} historical identity artifact(s) are diagnostic-only and non-promoting",
         manifest.proofs.len()
     ))
 }

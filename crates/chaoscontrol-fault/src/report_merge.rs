@@ -2,10 +2,10 @@ use crate::oracle::{AssertionRecord, OracleReport, Verdict};
 use crate::oracle_validation::{
     validate_prepared_oracle_report, validate_strict_oracle_report, MAX_ORACLE_EVENTS,
 };
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     token_for_descriptors, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
+use chaoscontrol_protocol::identity::AssertionFingerprint;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const MAX_ORACLE_REPORTS: usize = 1024;

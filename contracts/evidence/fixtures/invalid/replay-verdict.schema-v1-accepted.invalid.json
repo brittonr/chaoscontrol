@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "run_id": "legacy-id-only-verdict",
+  "replay_class": "snapshot_backed_reproduced",
+  "reproduced": true,
+  "command": {
+    "command": "chaoscontrol-explore reproduce --bug bug_0.json",
+    "exit_status": 0
+  },
+  "diagnostic": "legacy verdict has no admitted assertion identity",
+  "bug_path": "bug_0.json",
+  "bug_id": 0,
+  "assertion_id": 7,
+  "replay_parent_depth": 1,
+  "snapshot": {
+    "status": "valid",
+    "present": true,
+    "digest_verified": true,
+    "reference": {
+      "store": "file-content-addressed",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "codec": "simulation-snapshot-bincode-zstd-v1",
+      "schema_version": 1,
+      "path": "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.bin"
+    }
+  },
+  "artifact_hashes": [
+    {
+      "path": "bug_0.json",
+      "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 use chaoscontrol_fault::oracle::PropertyOracle;
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, CatalogBuilder};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogBuilder};
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::Value;
@@ -34,7 +34,7 @@ pub fn strict_oracle() -> PropertyOracle {
     builder.insert(descriptor.clone()).expect("descriptor");
     let catalog = builder.complete(token).expect("catalog complete");
     let fingerprint = descriptor.fingerprint().expect("fingerprint");
-    let event = chaoscontrol_protocol::assertion_catalog::BoundAssertionEvent {
+    let event = chaoscontrol_protocol::admission::BoundAssertionEvent {
         catalog_token: token,
         fingerprint,
         kind: descriptor.kind,

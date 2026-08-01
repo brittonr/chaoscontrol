@@ -6,13 +6,14 @@
 
 use crate::checkpoint::SerializableBug;
 use crate::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
+use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 1;
+pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,18 +40,21 @@ pub enum SnapshotValidationStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactHash {
     pub path: String,
     pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplayCommandContext {
     pub command: String,
     pub exit_status: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplaySnapshotValidation {
     pub status: SnapshotValidationStatus,
     pub present: bool,
@@ -62,6 +66,7 @@ pub struct ReplaySnapshotValidation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplayVerdict {
     pub schema_version: u32,
     pub run_id: String,
@@ -75,10 +80,20 @@ pub struct ReplayVerdict {
     pub bug_id: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assertion_id: Option<u64>,
+    #[serde(
+        default = "no_assertion_identity",
+        deserialize_with = "crate::non_null_option::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub assertion_identity: Option<AssertionEvidenceIdentity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_parent_depth: Option<u32>,
     pub snapshot: ReplaySnapshotValidation,
     pub artifact_hashes: Vec<ArtifactHash>,
+}
+
+fn no_assertion_identity() -> Option<AssertionEvidenceIdentity> {
+    None
 }
 
 impl ReplayVerdict {
@@ -88,10 +103,28 @@ impl ReplayVerdict {
         bug_path: impl Into<String>,
         bug: &SerializableBug,
         snapshot: ReplaySnapshotValidation,
+        admitted_report: Option<&chaoscontrol_fault::oracle::OracleReport>,
         target_failed: bool,
         diagnostic: impl Into<String>,
-    ) -> Self {
+    ) -> Result<Self, crate::bug::identity::BugIdentityError> {
+        let assertion_identity = bug.require_replay_identity()?.clone();
         let replay_class = classify_reproduce(bug, &snapshot, target_failed);
+        if matches!(
+            replay_class,
+            ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced
+        ) {
+            let report = admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
+            let record = crate::bug::identity::resolve_restored_report(
+                bug.assertion_id,
+                Some(&assertion_identity),
+                report,
+            )?;
+            let report_failed =
+                record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
+            if report_failed != target_failed {
+                return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
+            }
+        }
         let bug_path = bug_path.into();
         let mut artifact_hashes = Vec::new();
         if let Ok(hash) = hash_file(&bug_path) {
@@ -109,11 +142,11 @@ impl ReplayVerdict {
             }
         }
 
-        Self {
+        Ok(Self {
             schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
             run_id: default_run_id(),
             replay_class,
-            reproduced: target_failed,
+            reproduced: replay_class == ReplayClass::SnapshotBackedReproduced,
             command: ReplayCommandContext {
                 command,
                 exit_status,
@@ -122,10 +155,11 @@ impl ReplayVerdict {
             bug_path: Some(bug_path),
             bug_id: Some(bug.bug_id),
             assertion_id: Some(bug.assertion_id),
+            assertion_identity: Some(assertion_identity),
             replay_parent_depth: Some(bug.replay_parent_depth),
             snapshot,
             artifact_hashes,
-        }
+        })
     }
 
     pub fn no_bug_found(command: String, diagnostic: impl Into<String>) -> Self {
@@ -142,6 +176,7 @@ impl ReplayVerdict {
             bug_path: None,
             bug_id: None,
             assertion_id: None,
+            assertion_identity: None,
             replay_parent_depth: None,
             snapshot: ReplaySnapshotValidation::not_required(),
             artifact_hashes: Vec::new(),
@@ -188,6 +223,10 @@ impl ReplaySnapshotValidation {
             | SnapshotStoreError::UnsupportedCodec { .. }
             | SnapshotStoreError::UnsupportedSchema { .. }
             | SnapshotStoreError::PathEscape { .. }
+            | SnapshotStoreError::NotRegular { .. }
+            | SnapshotStoreError::TooLarge { .. }
+            | SnapshotStoreError::DecompressedTooLarge { .. }
+            | SnapshotStoreError::MetadataMismatch { .. }
             | SnapshotStoreError::Io { .. }
             | SnapshotStoreError::Json { .. }
             | SnapshotStoreError::CborEncode { .. }
@@ -208,6 +247,9 @@ pub fn classify_reproduce(
     snapshot: &ReplaySnapshotValidation,
     target_failed: bool,
 ) -> ReplayClass {
+    if bug.require_replay_identity().is_err() {
+        return ReplayClass::ReplayError;
+    }
     match snapshot.status {
         SnapshotValidationStatus::MissingRef => ReplayClass::MissingSnapshotRef,
         SnapshotValidationStatus::MissingArtifact => ReplayClass::MissingSnapshotArtifact,
@@ -256,6 +298,8 @@ fn default_run_id() -> String {
 mod tests {
     use super::*;
     use crate::checkpoint::SerializableSchedule;
+    use chaoscontrol_fault::oracle::PropertyOracle;
+    use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder};
 
     fn snapshot_ref() -> ReplayParentSnapshotRef {
         ReplayParentSnapshotRef {
@@ -273,6 +317,7 @@ mod tests {
         SerializableBug {
             bug_id: 7,
             assertion_id: 1806003755,
+            assertion_identity: Some(crate::test_support::assertion_identity(1806003755)),
             assertion_location: "raft probe".to_string(),
             schedule: SerializableSchedule { faults: Vec::new() },
             tick: 123,
@@ -283,6 +328,33 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
         }
+    }
+
+    fn report_for_bug(bug: &SerializableBug, observation: bool) -> chaoscontrol_fault::oracle::OracleReport {
+        let identity = bug.require_replay_identity().expect("test identity");
+        let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
+        builder
+            .insert(identity.descriptor.clone())
+            .expect("descriptor inserts");
+        let catalog = builder
+            .complete(identity.catalog_token)
+            .expect("catalog completes");
+        let mut oracle = PropertyOracle::new();
+        oracle.activate_catalog(catalog).expect("catalog activates");
+        oracle.begin_run();
+        oracle
+            .record_bound_event(
+                &BoundAssertionEvent {
+                    catalog_token: identity.catalog_token,
+                    fingerprint: identity.fingerprint,
+                    kind: identity.descriptor.kind,
+                },
+                observation,
+                None,
+            )
+            .expect("observation records");
+        oracle.end_run();
+        oracle.report()
     }
 
     #[test]
@@ -403,6 +475,7 @@ mod tests {
     #[test]
     fn serializes_stable_snake_case_class() {
         let bug = bug(2, true);
+        let report = report_for_bug(&bug, false);
         let verdict = ReplayVerdict::from_reproduce(
             "chaoscontrol-explore reproduce ...".to_string(),
             0,
@@ -413,11 +486,54 @@ mod tests {
                     .clone()
                     .expect("snapshot ref"),
             ),
+            Some(&report),
             true,
             "BUG REPRODUCED — assertion 1806003755 failed",
-        );
+        )
+        .expect("strict identity produces verdict");
         let json = serde_json::to_string(&verdict).unwrap();
         assert!(json.contains("snapshot_backed_reproduced"));
         assert!(json.contains("digest_verified"));
+        assert!(json.contains("assertion_identity"));
+    }
+
+    #[test]
+    fn rejects_legacy_bug_before_verdict_generation() {
+        let mut legacy = bug(2, true);
+        legacy.assertion_identity = None;
+        let result = ReplayVerdict::from_reproduce(
+            "chaoscontrol-explore reproduce ...".to_string(),
+            1,
+            "bug_2.json",
+            &legacy,
+            ReplaySnapshotValidation::missing_ref("missing ref"),
+            None,
+            false,
+            "legacy bug",
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_a_reproduced_claim_that_conflicts_with_the_admitted_report() {
+        let bug = bug(2, true);
+        let report = report_for_bug(&bug, true);
+        let result = ReplayVerdict::from_reproduce(
+            "chaoscontrol-explore reproduce ...".to_string(),
+            0,
+            "bug_2.json",
+            &bug,
+            ReplaySnapshotValidation::valid(
+                bug.replay_parent_snapshot_ref
+                    .clone()
+                    .expect("snapshot ref"),
+            ),
+            Some(&report),
+            true,
+            "forged failure",
+        );
+
+        assert_eq!(result, Err(crate::bug::identity::BugIdentityError::ReportMismatch));
     }
 }

@@ -1944,6 +1944,19 @@ impl SimulationSnapshot {
         }
         Ok(())
     }
+
+    pub fn validate_assertion_evidence(
+        &self,
+        expected_vms: usize,
+        identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    ) -> Result<(), String> {
+        self.validate_assertion_identity(expected_vms)?;
+        chaoscontrol_fault::engine::validate_engine_snapshot_assertion_evidence(
+            &self.fault_engine_snapshot,
+            identity,
+        )
+        .map_err(|error| format!("snapshot assertion evidence mismatch: {error:?}"))
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

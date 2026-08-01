@@ -1,4 +1,4 @@
-use chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
+use chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
 use std::io::{self, Write};
 
 pub(crate) fn assertion_details(value: &serde_json::Value) -> Result<Vec<u8>, io::Error> {

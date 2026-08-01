@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod assertion;
+mod assertion_evidence_carrier;
 mod assertion_summary_identity;
 mod assertion_summary_semantics;
 mod bounded_file;
@@ -58,10 +60,10 @@ pub use dogfood_guards::{
 pub use evidence_contracts::{
     check_evidence_contract_fixtures, check_evidence_contracts, run_nickel_examples,
     validate_artifact_hash, validate_assertion_summary, validate_assertion_summary_for_promotion,
-    validate_bug_report, validate_checkpoint_reference, validate_markdown_receipt,
-    validate_receipt, validate_receipt_with_root, validate_replay_verdict,
-    validate_replay_verdict_with_options, validate_run_config, validate_snapshot_ref,
-    validate_snapshot_ref_with_root, EVIDENCE_CONTRACTS_SUCCESS,
+    validate_bug_report, validate_bug_report_for_replay, validate_checkpoint_reference,
+    validate_markdown_receipt, validate_receipt, validate_receipt_with_root,
+    validate_replay_verdict, validate_replay_verdict_with_options, validate_run_config,
+    validate_snapshot_ref, validate_snapshot_ref_with_root, EVIDENCE_CONTRACTS_SUCCESS,
 };
 pub use in_process_simulator::{
     compare_simulator_receipts, compare_simulator_vm_receipt_bridge, run_simulator_adapter,
@@ -174,7 +176,7 @@ const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
 pub const REPLAY_PROOF_COVERAGE_DOC: &str = "docs/replay-proof-coverage.md";
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
+pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 2;
 pub const SNAPSHOT_COPY_BUFFER_BYTES: usize = 1024 * 1024;
 pub const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 pub const REQUIRED_WORKLOADS: [&str; 2] = ["raft", "redb"];
@@ -188,13 +190,14 @@ pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
 pub const LOCAL_ASSERTION_HARNESSES_PATH: &str = "dogfood-results/local-assertion-harnesses.json";
 pub const REQUIRED_ASSERTION_SUMMARY_FRAGMENTS: [&str; 2] = [
-    "assertion-density and uncovered-catalog view over accepted replay evidence",
+    "assertion-density and uncovered-catalog view over historical replay evidence",
     "not replay proof by itself",
 ];
-pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 4] = [
+pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 5] = [
     "A high exercised count only says the committed run observed cataloged SDK assertions",
     "Local harness coverage is not snapshot replay evidence",
-    "Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions",
+    "Zero ordinary assertion blockers applies only to accepted v2 assertion evidence",
+    "Legacy bare-array assertion artifacts are diagnostic-only",
     "Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence",
 ];
 pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 5] = [
@@ -205,6 +208,7 @@ pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 5] = [
     "zero assertion blockers proves product parity",
 ];
 pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
+pub const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExperimentalReplaySurface {
@@ -236,8 +240,8 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
     ExperimentalReplaySurface {
         surface: "Operator triage UX",
         status: "local-runbook",
-        reason: "Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and accepted proof artifacts. It records local decisions without raw-log scraping, but it is not a hosted service or fleet workflow.",
-        promotion_evidence: "A local triage runbook must stay generated from readiness receipts, open committed bug/replay artifacts, run reproduce/minimize, and record operator decisions without raw-log scraping.",
+        reason: "Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and historical diagnostic artifacts. Its blocked sections do not run reproduction or minimization for ID-only bugs. It is not a hosted service or fleet workflow.",
+        promotion_evidence: "A promotable local triage path requires fresh admitted v2 KVM evidence, exact bug/report identity binding, replay and minimization commands, and operator decisions without raw-log scraping.",
     },
     ExperimentalReplaySurface {
         surface: "Hosted/fleet triage UI",
@@ -625,6 +629,22 @@ pub fn validate_replay_proof_coverage(
         .collect()
 }
 
+pub fn review_replay_proof_coverage(
+    root: impl AsRef<Path>,
+) -> EvidenceResult<Vec<ReplayProofCoverageLine>> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|error| {
+        EvidenceError::new(format!("{}: {error}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    manifest
+        .proofs
+        .iter()
+        .map(|proof| review_workload_proof(root, proof))
+        .collect()
+}
+
 pub fn render_replay_proof_coverage(lines: &[ReplayProofCoverageLine]) -> String {
     let mut output = String::from("replay proof coverage ok:\n");
     for line in lines {
@@ -642,7 +662,11 @@ pub fn render_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResul
         EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
     })?;
     manifest.validate_shape()?;
-    let coverage = validate_replay_proof_coverage(root)?;
+    let coverage = manifest
+        .proofs
+        .iter()
+        .map(|proof| review_workload_proof(root, proof))
+        .collect::<EvidenceResult<Vec<_>>>()?;
     render_replay_proof_coverage_doc_from_parts(&manifest, &coverage)
 }
 
@@ -650,12 +674,7 @@ pub fn check_replay_proof_coverage_doc(root: impl AsRef<Path>) -> EvidenceResult
     let root = root.as_ref();
     let expected = render_replay_proof_coverage_doc(root)?;
     let doc_path = root.join(REPLAY_PROOF_COVERAGE_DOC);
-    let actual = std::fs::read_to_string(&doc_path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, &doc_path)
-        ))
-    })?;
+    let actual = bounded_file::read_bounded_regular_file(&doc_path, MAX_EVIDENCE_JSON_BYTES)?;
     ensure(
         actual == expected,
         format!(
@@ -686,9 +705,16 @@ pub fn render_replay_proof_coverage_doc_from_parts(
         "coverage lines do not match manifest proof count",
     )?;
 
+    let promoted = coverage
+        .iter()
+        .filter(|line| line.replay_class == REQUIRED_REPLAY_CLASS)
+        .count();
+    let blocked = coverage.len() - promoted;
     let mut output = String::new();
     output.push_str("# Replay Proof Coverage\n\n");
-    output.push_str("ChaosControl currently has accepted snapshot-backed replay proof coverage for the workloads listed in `dogfood-results/accepted-workload-proofs.json`.\n\n");
+    output.push_str(&format!(
+        "The manifest retains historical snapshot-backed replay artifacts. Current assertion-identity admission promotes {promoted} workload(s) and blocks {blocked} workload(s).\n\n"
+    ));
     output.push_str("| Workload | Assertion ID | Evidence | Verdict |\n");
     output.push_str("| --- | ---: | --- | --- |\n");
     for proof in &manifest.proofs {
@@ -707,8 +733,8 @@ pub fn render_replay_proof_coverage_doc_from_parts(
         ));
     }
     output.push('\n');
-    output.push_str("The manifest/check are intentionally conservative: every listed proof must have an accepted summary, exported bug artifact, replay verdict with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `command.exit_status = 0`, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified `.snapshot.bin.chunks.json` sidecar whose ordered chunks reconstruct to the referenced digest.\n\n");
-    output.push_str("This is workload coverage evidence, not a mathematical or universal determinism proof. It only supports claims about the named bounded workload rails and their committed verdict/snapshot artifacts. Operator-facing supported vs experimental status is generated in `docs/replay-readiness-status.md`. New breadth claims should add a manifest entry plus committed evidence and pass:\n\n");
+    output.push_str("A promoted proof requires an accepted summary, exported bug artifact, replay verdict, retained snapshot, and accepted v2 assertion summary. The v2 summary must bind the selected alias to one admitted structured descriptor. Historical bare-array assertion files remain diagnostic-only.\n\n");
+    output.push_str("This is workload coverage evidence, not a mathematical or universal determinism proof. A blocked row does not support a current bounded replay claim. Fresh admitted KVM evidence must pass:\n\n");
     output.push_str("```bash\n");
     output.push_str("cargo run -p chaoscontrol-evidence --bin check-replay-proof-coverage -- .\n");
     output.push_str(
@@ -733,30 +759,39 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
         "accepted workload proof manifest has no proofs",
     )?;
 
-    let workloads = manifest
+    let reviews = manifest
         .proofs
         .iter()
-        .map(|proof| format!("`{}`", proof.workload))
-        .collect::<Vec<_>>()
-        .join(", ");
+        .map(|proof| review_workload_proof(root, proof))
+        .collect::<EvidenceResult<Vec<_>>>()?;
+    let promoted_workloads = reviews
+        .iter()
+        .filter(|line| line.replay_class == REQUIRED_REPLAY_CLASS)
+        .map(|line| format!("`{}`", line.workload))
+        .collect::<Vec<_>>();
     let mut output = String::new();
     output.push_str("# Replay Readiness Status\n\n");
     output.push_str("Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .`.\n\n");
     output.push_str("## Summary\n\n");
-    output.push_str(&format!(
-        "ChaosControl currently supports bounded snapshot-backed replay proof claims for: {workloads}.\n\n"
-    ));
+    if promoted_workloads.is_empty() {
+        output.push_str("ChaosControl currently has no workload with fresh admitted v2 KVM evidence. Historical replay artifacts remain diagnostic and blocked from current promotion.\n\n");
+    } else {
+        output.push_str(&format!(
+            "ChaosControl currently supports bounded snapshot-backed replay proof claims for: {}.\n\n",
+            promoted_workloads.join(", ")
+        ));
+    }
     output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration; remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.\n\n");
     output.push_str("This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.\n\n");
-    output.push_str("## Supported bounded replay surfaces\n\n");
-    output.push_str("| Workload | Status | Assertion ID | Accepted verdict | Replay parent depth | export/reproduce exit | Evidence |\n");
+    output.push_str("## Bounded replay evidence promotion status\n\n");
+    output.push_str("| Workload | Status | Assertion ID | Historical verdict | Replay parent depth | export/reproduce exit | Evidence |\n");
     output.push_str("| --- | --- | ---: | --- | ---: | --- | --- |\n");
-    for proof in &manifest.proofs {
-        output.push_str(&render_replay_readiness_proof_row(root, proof)?);
+    for (proof, review) in manifest.proofs.iter().zip(&reviews) {
+        output.push_str(&render_replay_readiness_proof_row(root, proof, review)?);
         output.push('\n');
     }
     output.push('\n');
-    output.push_str("Supported here means the committed evidence contains an accepted summary, exported bug artifact, Rust-owned replay verdict, `replay_parent_depth > 0`, and either a present digest-matching `.snapshot.bin` artifact or a verified chunk manifest sidecar validated by the Rust `check-replay-proof-coverage` gate.\n\n");
+    output.push_str("`blocked-assertion-identity` means that the retained replay files predate admitted v2 structured assertion identity. Numeric alias agreement cannot promote them. Fresh KVM evidence must bind the selected alias and complete catalog through an accepted v2 summary.\n\n");
     output.push_str("## Experimental or unproven surfaces\n\n");
     output
         .push_str("| Surface | Status | Why it is not promoted | Required promotion evidence |\n");
@@ -786,14 +821,20 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
 fn render_replay_readiness_proof_row(
     root: &Path,
     proof: &AcceptedWorkloadProof,
+    review: &ReplayProofCoverageLine,
 ) -> EvidenceResult<String> {
     let evidence_dir = root.join(&proof.evidence_dir);
     let verdict: ReplayVerdict = load_json(root, &evidence_dir.join(&proof.verdict))?;
     let summary: AcceptedVerdictSummary = load_json(root, &evidence_dir.join(&proof.summary))?;
+    let status = if review.replay_class == REQUIRED_REPLAY_CLASS {
+        SUPPORTED_REPLAY_STATUS
+    } else {
+        BLOCKED_ASSERTION_IDENTITY_STATUS
+    };
     Ok(format!(
         "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` / `{}` | `{}/` |",
         proof.workload,
-        SUPPORTED_REPLAY_STATUS,
+        status,
         proof.assertion_id,
         verdict.replay_class,
         verdict.replay_parent_depth,
@@ -807,12 +848,7 @@ pub fn check_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<(
     let root = root.as_ref();
     let expected = render_replay_readiness_status(root)?;
     let report_path = root.join(REPLAY_READINESS_STATUS_DOC);
-    let actual = std::fs::read_to_string(&report_path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, &report_path)
-        ))
-    })?;
+    let actual = bounded_file::read_bounded_regular_file(&report_path, MAX_EVIDENCE_JSON_BYTES)?;
     ensure(
         actual == expected,
         "readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-replay-readiness-report -- --write .",
@@ -834,6 +870,8 @@ pub fn write_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssertionReadinessRow {
     pub workload: String,
+    pub identity_status: String,
+    pub identity_blocker: Option<String>,
     pub total: usize,
     pub exercised: usize,
     pub always: usize,
@@ -853,8 +891,9 @@ pub struct AssertionReadinessRow {
 impl AssertionReadinessRow {
     fn render(&self) -> String {
         format!(
-            "| `{}` | `{}` | `{}` | `{}` / `{}` / `{}` / `{}` | `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` / `{}` / `{}` / `{}` | `{}` | `{}` | `{}` | `{}` |",
             self.workload,
+            self.identity_status,
             self.total,
             self.exercised,
             self.always,
@@ -938,17 +977,24 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     output.push_str("# Assertion Readiness Status\n\n");
     output.push_str("Generated from `dogfood-results/accepted-workload-proofs.json` and each committed `assertions.json`. Do not hand-edit this file; run `cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .`.\n\n");
     output.push_str("## Summary\n\n");
-    output.push_str("This report is an assertion-density and uncovered-catalog view over accepted replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
-    output.push_str("## Accepted proof assertion coverage\n\n");
-    output.push_str("| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Replay probe failures | Evidence |\n");
-    output.push_str("| --- | ---: | ---: | --- | ---: | ---: | ---: | --- |\n");
+    output.push_str("This report is an assertion-density and uncovered-catalog view over historical replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.\n\n");
+    output.push_str("Legacy bare-array assertion artifacts are diagnostic-only. Only an accepted v2 summary with a complete admitted structured catalog can qualify for promotion.\n\n");
+    output.push_str("## Assertion evidence status\n\n");
+    output.push_str("| Workload | Identity status | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Replay probe failures | Evidence |\n");
+    output.push_str("| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | --- |\n");
     for row in &rows {
         output.push_str(&row.render());
         output.push('\n');
     }
     output.push_str("\n## Promotion guidance\n\n");
-    output.push_str("Before promoting a workload beyond a bounded replay proof, review these gaps and either add meaningful assertion categories/coverage or explicitly document why the remaining gaps are acceptable for that workload:\n\n");
+    output.push_str("Before promotion, each workload must have accepted v2 assertion identity. Category or coverage rationale cannot waive this identity requirement.\n\n");
     for row in &rows {
+        if let Some(blocker) = &row.identity_blocker {
+            output.push_str(&format!(
+                "- {}: identity status `{}` blocks promotion: {}. Fresh admitted v2 KVM evidence is required.\n",
+                row.workload, row.identity_status, blocker
+            ));
+        }
         for gap in &row.gaps {
             output.push_str("- ");
             output.push_str(gap);
@@ -1011,7 +1057,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
     }
 
     output.push_str("\n## Operator interpretation\n\n");
-    output.push_str("Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions after deterministic local harness coverage is applied. Read it as an instrumentation-readiness signal only: it does not establish hosted-product parity or promote a workload, device profile, or ChaosControl as a hosted product by itself. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.\n");
+    output.push_str("Zero ordinary assertion blockers applies only to accepted v2 assertion evidence after deterministic local harness coverage is applied. Diagnostic-only rows cannot promote. Read accepted results as an instrumentation-readiness signal only: they do not establish hosted-product parity. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.\n");
 
     output.push_str("\n## Anti-claim\n\n");
     output.push_str("A high exercised count only says the committed run observed cataloged SDK assertions or that a clearly-labeled local deterministic harness covered a previously unhit assertion condition. Local harness coverage is not snapshot replay evidence. Replay-probe failure visibility is proof-signal accounting, not an application invariant failure. Product parity still requires workload setup ergonomics, replay evidence, minimization/reproduction UX, and operator triage surfaces outside this report.\n");
@@ -1022,12 +1068,7 @@ pub fn check_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResul
     let root = root.as_ref();
     let expected = render_assertion_readiness_status(root)?;
     let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
-    let actual = std::fs::read_to_string(&report_path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, &report_path)
-        ))
-    })?;
+    let actual = bounded_file::read_bounded_regular_file(&report_path, MAX_EVIDENCE_JSON_BYTES)?;
     ensure(
         actual == expected,
         "assertion readiness report stale: run cargo run -p chaoscontrol-evidence --bin generate-assertion-readiness-report -- --write .",
@@ -1055,6 +1096,18 @@ pub fn check_assertion_readiness_promotion(root: impl AsRef<Path>) -> EvidenceRe
     )
 }
 
+pub fn check_assertion_readiness_boundary(root: impl AsRef<Path>) -> EvidenceResult<Vec<String>> {
+    let root = root.as_ref();
+    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
+    let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
+    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|error| {
+        EvidenceError::new(format!("{}: {error}", rel_display(root, &manifest_path)))
+    })?;
+    manifest.validate_shape()?;
+    let report = bounded_file::read_bounded_regular_file(&report_path, MAX_EVIDENCE_JSON_BYTES)?;
+    validate_assertion_readiness_boundary(root, &manifest, &report)
+}
+
 pub fn check_assertion_readiness_promotion_paths(
     root: impl AsRef<Path>,
     manifest_path: impl AsRef<Path>,
@@ -1067,12 +1120,7 @@ pub fn check_assertion_readiness_promotion_paths(
         EvidenceError::new(format!("{}: {err}", rel_display(root, manifest_path)))
     })?;
     manifest.validate_shape()?;
-    let report = std::fs::read_to_string(report_path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, report_path)
-        ))
-    })?;
+    let report = bounded_file::read_bounded_regular_file(report_path, MAX_EVIDENCE_JSON_BYTES)?;
     validate_assertion_readiness_promotion(root, &manifest, &report)
 }
 
@@ -1080,6 +1128,23 @@ pub fn validate_assertion_readiness_promotion(
     root: &Path,
     manifest: &AcceptedWorkloadProofs,
     report: &str,
+) -> EvidenceResult<Vec<String>> {
+    validate_assertion_readiness(root, manifest, report, true)
+}
+
+pub fn validate_assertion_readiness_boundary(
+    root: &Path,
+    manifest: &AcceptedWorkloadProofs,
+    report: &str,
+) -> EvidenceResult<Vec<String>> {
+    validate_assertion_readiness(root, manifest, report, false)
+}
+
+fn validate_assertion_readiness(
+    root: &Path,
+    manifest: &AcceptedWorkloadProofs,
+    report: &str,
+    require_promotion: bool,
 ) -> EvidenceResult<Vec<String>> {
     for fragment in REQUIRED_ASSERTION_SUMMARY_FRAGMENTS
         .iter()
@@ -1135,10 +1200,25 @@ pub fn validate_assertion_readiness_promotion(
         ),
     )?;
 
+    let identity_statuses = expected
+        .iter()
+        .map(|summary| {
+            let row = rows
+                .get(&summary.workload)
+                .expect("report workload sets were checked");
+            assertion::readiness::WorkloadIdentityStatus {
+                workload: &summary.workload,
+                artifact_status: &summary.identity_status,
+                report_status: &row.identity_status,
+            }
+        })
+        .collect::<Vec<_>>();
+    assertion::readiness::require_report_bindings(&identity_statuses)?;
+
     for summary in &expected {
         let row = rows
             .get(&summary.workload)
-            .ok_or_else(|| EvidenceError::new(format!("missing row for {}", summary.workload)))?;
+            .expect("report workload sets were checked");
         compare_assertion_field(&summary.workload, "cataloged", row.cataloged, summary.total)?;
         compare_assertion_field(
             &summary.workload,
@@ -1215,12 +1295,17 @@ pub fn validate_assertion_readiness_promotion(
         )?;
     }
 
+    if require_promotion {
+        assertion::readiness::require_all_accepted(&identity_statuses)?;
+    }
+
     let mut lines = expected
         .iter()
         .map(|summary| {
             format!(
-                "{}: cataloged={} exercised={} unhit={} uncategorized={} nonpassing={} replay_probe_failures={}",
+                "{}: identity_status={} cataloged={} exercised={} unhit={} uncategorized={} nonpassing={} replay_probe_failures={}",
                 summary.workload,
+                summary.identity_status,
                 summary.total,
                 summary.exercised,
                 summary.total - summary.exercised,
@@ -1236,67 +1321,19 @@ pub fn validate_assertion_readiness_promotion(
 
 pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
-    let manifest_path = root.join("dogfood-results/accepted-workload-proofs.json");
-    let manifest = AcceptedWorkloadProofs::from_path(&manifest_path).map_err(|err| {
-        EvidenceError::new(format!("{}: {err}", rel_display(root, &manifest_path)))
-    })?;
-    manifest.validate_shape()?;
-    let report_path = root.join(ASSERTION_READINESS_STATUS_DOC);
-    let report = std::fs::read_to_string(&report_path).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing or unreadable file: {}: {err}",
-            rel_display(root, &report_path)
-        ))
-    })?;
-    validate_assertion_readiness_promotion(root, &manifest, &report)?;
-
-    expect_assertion_promotion_failure(
-        "missing anti-claim",
-        root,
-        &manifest,
-        report.replacen(
-            "but it is not replay proof by itself",
-            "and is promotion-ready",
-            1,
-        ),
-        "missing anti-claim",
+    let error = check_assertion_readiness_promotion(root)
+        .expect_err("historical diagnostic artifacts must block promotion");
+    ensure(
+        error.message().contains("fresh admitted v2 KVM evidence"),
+        "assertion-readiness selftest did not reach the v2 identity blocker",
     )?;
-    expect_assertion_promotion_failure(
-        "hidden replay-probe signal",
-        root,
-        &manifest,
-        report.replacen(
-            "- raft: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)\n",
-            "",
-            1,
-        ),
-        "raft: replay-probe signal count",
-    )?;
-    expect_assertion_promotion_failure(
-        "weakened report count",
-        root,
-        &manifest,
-        report.replacen(
-            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` | `1` |",
-            "| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `1` | `1` |",
-            1,
-        ),
-        "redb: report nonpassing=1",
-    )?;
-    expect_assertion_promotion_failure(
-        "report-only workload",
-        root,
-        &manifest,
-        report.replacen("| `raft` | `43` |", "| `new-service` | `43` |", 1),
-        "missing from assertion-readiness report",
-    )?;
-    expect_assertion_promotion_failure(
-        "explicit overclaim",
-        root,
-        &manifest,
-        format!("{report}\nFull Antithesis-style product replacement is now ready.\n"),
-        "overclaim fragment",
-    )
+    for workload in REQUIRED_WORKLOADS {
+        ensure(
+            error.message().contains(workload),
+            format!("assertion-readiness selftest omitted blocked workload {workload}"),
+        )?;
+    }
+    Ok(())
 }
 
 fn compare_assertion_field(
@@ -1313,26 +1350,10 @@ fn compare_assertion_field(
     )
 }
 
-fn expect_assertion_promotion_failure(
-    name: &str,
-    root: &Path,
-    manifest: &AcceptedWorkloadProofs,
-    report: String,
-    needle: &str,
-) -> EvidenceResult<()> {
-    match validate_assertion_readiness_promotion(root, manifest, &report) {
-        Ok(_) => Err(EvidenceError::new(format!("{name}: unexpectedly passed"))),
-        Err(err) if err.message().contains(needle) => Ok(()),
-        Err(err) => Err(EvidenceError::new(format!(
-            "{name}: expected {needle:?}, got {}",
-            err.message()
-        ))),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AssertionReadinessParsedRow {
     workload: String,
+    identity_status: String,
     cataloged: usize,
     exercised: usize,
     always: usize,
@@ -1354,25 +1375,28 @@ fn parse_assertion_readiness_rows(
             continue;
         }
         let cells = markdown_table_cells(line);
-        if cells.len() != 8 {
+        if cells.len() != 9 {
             continue;
         }
         let workload = unbacktick(cells[0]).ok_or_else(|| {
             EvidenceError::new(format!("malformed assertion-readiness row: {line}"))
         })?;
-        let cataloged = parse_backtick_usize(cells[1], line)?;
-        let exercised = parse_backtick_usize(cells[2], line)?;
-        let kinds = cells[3]
+        let identity_status = unbacktick(cells[1]).ok_or_else(|| {
+            EvidenceError::new(format!("malformed assertion identity status: {line}"))
+        })?;
+        let cataloged = parse_backtick_usize(cells[2], line)?;
+        let exercised = parse_backtick_usize(cells[3], line)?;
+        let kinds = cells[4]
             .split(" / ")
             .map(|part| parse_backtick_usize(part, line))
             .collect::<EvidenceResult<Vec<_>>>()?;
         if kinds.len() != 4 {
             continue;
         }
-        let uncategorized = parse_backtick_usize(cells[4], line)?;
-        let nonpassing = parse_backtick_usize(cells[5], line)?;
-        let replay_probe_failures = parse_backtick_usize(cells[6], line)?;
-        let evidence_path = unbacktick(cells[7]).ok_or_else(|| {
+        let uncategorized = parse_backtick_usize(cells[5], line)?;
+        let nonpassing = parse_backtick_usize(cells[6], line)?;
+        let replay_probe_failures = parse_backtick_usize(cells[7], line)?;
+        let evidence_path = unbacktick(cells[8]).ok_or_else(|| {
             EvidenceError::new(format!(
                 "malformed assertion-readiness evidence cell: {line}"
             ))
@@ -1382,6 +1406,7 @@ fn parse_assertion_readiness_rows(
                 workload.clone(),
                 AssertionReadinessParsedRow {
                     workload: workload.clone(),
+                    identity_status,
                     cataloged,
                     exercised,
                     always: kinds[0],
@@ -1501,13 +1526,26 @@ fn unbacktick(cell: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn load_assertion_admission(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<assertion::readiness::IdentityAdmission> {
+    let path = root.join(&proof.evidence_dir).join("assertions.json");
+    let value: serde_json::Value = load_json(root, &path)?;
+    assertion::readiness::classify(&value).map_err(|error| {
+        EvidenceError::new(format!("{}: {}", rel_display(root, &path), error.message()))
+    })
+}
+
 fn assertion_readiness_row(
     root: &Path,
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<AssertionReadinessRow> {
     let evidence_path = format!("{}/assertions.json", proof.evidence_dir);
-    let assertions_path = root.join(&evidence_path);
-    let assertions: Vec<AssertionSummaryEntry> = load_json(root, &assertions_path)?;
+    let admission = load_assertion_admission(root, proof)?;
+    let identity_status = admission.status.as_str().to_string();
+    let identity_blocker = admission.promotion_blocker.clone();
+    let assertions = admission.entries;
     let local_support = local_assertion_support(root, &proof.workload)?;
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     let mut uncategorized = 0_usize;
@@ -1596,6 +1634,8 @@ fn assertion_readiness_row(
     let exercised = total - unhit.len();
     Ok(AssertionReadinessRow {
         workload: proof.workload.clone(),
+        identity_status,
+        identity_blocker,
         total,
         exercised,
         always: *counts.get("always").unwrap_or(&0),
@@ -1813,10 +1853,62 @@ fn coverage_workload_label(workload: &str) -> String {
     }
 }
 
+struct ReplayArtifactReview {
+    line: ReplayProofCoverageLine,
+    bug: BugRecord,
+    bug_value: serde_json::Value,
+    verdict: ReplayVerdict,
+    verdict_value: serde_json::Value,
+}
+
 fn validate_workload_proof(
     root: &Path,
     proof: &AcceptedWorkloadProof,
 ) -> EvidenceResult<ReplayProofCoverageLine> {
+    let review = validate_workload_replay_artifacts(root, proof)?;
+    validate_workload_assertion_identity(root, proof, &review)?;
+    Ok(review.line)
+}
+
+fn review_workload_proof(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<ReplayProofCoverageLine> {
+    let mut review = validate_workload_replay_artifacts(root, proof)?;
+    if validate_workload_assertion_identity(root, proof, &review).is_err() {
+        review.line.replay_class = BLOCKED_ASSERTION_IDENTITY_STATUS.to_string();
+    }
+    Ok(review.line)
+}
+
+fn validate_workload_assertion_identity(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+    review: &ReplayArtifactReview,
+) -> EvidenceResult<()> {
+    validate_bug_report_for_replay(&review.bug_value)?;
+    validate_replay_verdict_with_options(&review.verdict_value, true, false, root)?;
+    let bug_identity = review.bug.require_assertion_identity()?;
+    let verdict_identity = review.verdict.require_assertion_identity()?;
+    review.verdict.validate_shape()?;
+    ensure(
+        bug_identity == verdict_identity,
+        format!(
+            "{}: bug and replay verdict assertion identities differ",
+            proof.workload
+        ),
+    )?;
+    load_assertion_admission(root, proof)?.require_evidence_identity(
+        &proof.workload,
+        proof.assertion_id,
+        bug_identity,
+    )
+}
+
+fn validate_workload_replay_artifacts(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<ReplayArtifactReview> {
     let evidence_dir = root.join(&proof.evidence_dir);
     let summary_path = evidence_dir.join(&proof.summary);
     let bug_path = evidence_dir.join(&proof.bug);
@@ -1824,8 +1916,20 @@ fn validate_workload_proof(
     let snapshot_path = evidence_dir.join(&proof.snapshot);
 
     let summary: AcceptedVerdictSummary = load_json(root, &summary_path)?;
-    let bug: BugRecord = load_json(root, &bug_path)?;
-    let verdict: ReplayVerdict = load_json(root, &verdict_path)?;
+    let bug_value: serde_json::Value = load_json(root, &bug_path)?;
+    validate_bug_report(&bug_value)?;
+    let bug: BugRecord = serde_json::from_value(bug_value.clone()).map_err(|error| {
+        EvidenceError::new(format!("{}: invalid bug report: {error}", proof.workload))
+    })?;
+    let verdict_value: serde_json::Value = load_json(root, &verdict_path)?;
+    validate_replay_verdict_with_options(&verdict_value, false, false, root)?;
+    let verdict: ReplayVerdict =
+        serde_json::from_value(verdict_value.clone()).map_err(|error| {
+            EvidenceError::new(format!(
+                "{}: invalid replay verdict: {error}",
+                proof.workload
+            ))
+        })?;
 
     ensure(
         summary.accepted,
@@ -1853,9 +1957,17 @@ fn validate_workload_proof(
         format!("{}: bug lacks snapshot ref", proof.workload),
     )?;
 
-    verdict
-        .validate_shape()
-        .map_err(|err| EvidenceError::new(format!("{}: {}", proof.workload, err.message())))?;
+    ensure(
+        verdict.replay_class == REQUIRED_REPLAY_CLASS
+            && verdict.reproduced
+            && verdict.command.exit_status == 0
+            && verdict.replay_parent_depth > 0,
+        format!(
+            "{}: historical replay verdict facts are invalid",
+            proof.workload
+        ),
+    )?;
+    verdict.snapshot.validate_shape()?;
     ensure(
         verdict.assertion_id == proof.assertion_id,
         format!("{}: verdict assertion mismatch", proof.workload),
@@ -1875,13 +1987,19 @@ fn validate_workload_proof(
         format!("{}: snapshot digest mismatch", proof.workload),
     )?;
 
-    Ok(ReplayProofCoverageLine {
-        workload: proof.workload.clone(),
-        replay_class: REQUIRED_REPLAY_CLASS.to_string(),
-        assertion_id: proof.assertion_id,
-        replay_parent_depth: verdict.replay_parent_depth,
-        snapshot_digest: expected_digest,
-        snapshot_storage: storage,
+    Ok(ReplayArtifactReview {
+        line: ReplayProofCoverageLine {
+            workload: proof.workload.clone(),
+            replay_class: REQUIRED_REPLAY_CLASS.to_string(),
+            assertion_id: proof.assertion_id,
+            replay_parent_depth: verdict.replay_parent_depth,
+            snapshot_digest: expected_digest,
+            snapshot_storage: storage,
+        },
+        bug,
+        bug_value,
+        verdict,
+        verdict_value,
     })
 }
 
@@ -2065,7 +2183,9 @@ impl AcceptedWorkloadProofs {
     }
 
     pub fn from_path(path: impl AsRef<Path>) -> EvidenceResult<Self> {
-        let input = std::fs::read_to_string(path)?;
+        let path = path.as_ref();
+        let input = bounded_file::read_bounded_regular_file(path, MAX_EVIDENCE_JSON_BYTES)?;
+        json_preflight::preflight_json(&input, json_preflight::QUALITY_REPORT_LIMITS)?;
         Self::from_json_str(&input)
     }
 
@@ -2170,6 +2290,11 @@ pub struct SummaryVerdictRef {
 pub struct BugRecord {
     pub bug_id: u64,
     pub assertion_id: u64,
+    #[serde(
+        default = "no_evidence_identity",
+        deserialize_with = "non_null_option::deserialize"
+    )]
+    pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
     pub assertion_location: Option<String>,
     pub tick: Option<u64>,
     pub replay_parent_depth: u64,
@@ -2178,6 +2303,7 @@ pub struct BugRecord {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ReplayVerdict {
     pub schema_version: u64,
     pub run_id: String,
@@ -2188,12 +2314,61 @@ pub struct ReplayVerdict {
     pub bug_path: String,
     pub bug_id: u64,
     pub assertion_id: u64,
+    #[serde(
+        default = "no_evidence_identity",
+        deserialize_with = "non_null_option::deserialize"
+    )]
+    pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
     pub replay_parent_depth: u64,
     pub snapshot: SnapshotVerdict,
     pub artifact_hashes: Vec<ArtifactHash>,
 }
 
+fn no_evidence_identity() -> Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+    None
+}
+
+fn require_evidence_identity<'a>(
+    assertion_id: u64,
+    identity: Option<&'a chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    carrier: &str,
+) -> EvidenceResult<&'a chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+    let identity = identity.ok_or_else(|| {
+        EvidenceError::new(format!(
+            "{carrier}: legacy assertion ID-only evidence cannot promote"
+        ))
+    })?;
+    identity
+        .validate_compatibility_alias(assertion_id)
+        .map_err(|error| {
+            EvidenceError::new(format!("{carrier}: invalid assertion identity: {error:?}"))
+        })?;
+    Ok(identity)
+}
+
+impl BugRecord {
+    fn require_assertion_identity(
+        &self,
+    ) -> EvidenceResult<&chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+        require_evidence_identity(
+            self.assertion_id,
+            self.assertion_identity.as_ref(),
+            "bug-report",
+        )
+    }
+}
+
 impl ReplayVerdict {
+    fn require_assertion_identity(
+        &self,
+    ) -> EvidenceResult<&chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+        require_evidence_identity(
+            self.assertion_id,
+            self.assertion_identity.as_ref(),
+            "replay-verdict",
+        )
+    }
+
     pub fn validate_shape(&self) -> EvidenceResult<()> {
         ensure(
             self.schema_version == REPLAY_VERDICT_SCHEMA_VERSION,
@@ -2213,6 +2388,7 @@ impl ReplayVerdict {
             self.replay_parent_depth > 0,
             "verdict lacks replay parent depth",
         )?;
+        self.require_assertion_identity()?;
         self.snapshot.validate_shape()?;
         Ok(())
     }

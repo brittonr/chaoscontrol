@@ -4,10 +4,11 @@ use crate::oracle_record_validation::{validate_active_record, validate_final_rec
 pub use crate::oracle_snapshot_validation::{
     validate_oracle_snapshot, validate_restorable_oracle_snapshot,
 };
-use chaoscontrol_protocol::assertion_catalog::{
-    CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
+use chaoscontrol_protocol::admission::{
+    AcceptedCatalog, AssertionEvidenceIdentity, CatalogBuilder, CatalogValidationStatus,
+    MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
+use chaoscontrol_protocol::identity::AssertionFingerprint;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,10 +25,11 @@ pub enum OracleValidationError {
     VmProvenance,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrictReportFacts {
     pub catalog_token: AssertionFingerprint,
     pub catalog_size: usize,
+    pub catalog: AcceptedCatalog,
 }
 
 pub fn validate_strict_oracle_report(
@@ -40,6 +42,33 @@ pub fn validate_oracle_report_claim(
     report: &OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     validate_final_oracle_report(report, false)
+}
+
+pub fn resolve_assertion_evidence<'a>(
+    report: &'a OracleReport,
+    identity: &AssertionEvidenceIdentity,
+) -> Result<&'a AssertionRecord, OracleValidationError> {
+    let facts = validate_oracle_report_claim(report)?;
+    identity
+        .validate_for_catalog(&facts.catalog)
+        .map_err(|_| OracleValidationError::Record)?;
+    let record = report
+        .structured_assertions
+        .get(&identity.fingerprint)
+        .ok_or(OracleValidationError::Record)?;
+    let admitted = record
+        .identity
+        .as_ref()
+        .ok_or(OracleValidationError::Record)?;
+    if admitted.descriptor != identity.descriptor
+        || admitted.fingerprint != identity.fingerprint
+        || admitted.canonical_bytes != identity.canonical_descriptor
+        || record.catalog_tokens.len() != 1
+        || !record.catalog_tokens.contains(&identity.catalog_token)
+    {
+        return Err(OracleValidationError::Record);
+    }
+    Ok(record)
 }
 
 pub(crate) fn validate_prepared_oracle_report(
@@ -153,12 +182,13 @@ pub(crate) fn validate_strict_records(
             .map_err(|_| OracleValidationError::Catalog)?;
     }
     let catalog_token = token.ok_or(OracleValidationError::Catalog)?;
-    builder
+    let catalog = builder
         .complete(catalog_token)
         .map_err(|_| OracleValidationError::Catalog)?;
     Ok(StrictReportFacts {
         catalog_token,
         catalog_size: records.len(),
+        catalog,
     })
 }
 

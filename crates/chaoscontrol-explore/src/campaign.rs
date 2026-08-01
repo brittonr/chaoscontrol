@@ -5,7 +5,8 @@
 //! report. Each seed runs in its own OS thread with its own KVM VMs —
 //! no shared mutable state between seeds.
 
-use crate::checkpoint::SerializableBug;
+use crate::checkpoint::{BugSetIdentityError, SerializableBug};
+use crate::corpus::BugReport;
 use crate::explorer::{
     AssertionDetail, AssertionStats, ExplorationReport, Explorer, ExplorerConfig,
 };
@@ -80,7 +81,7 @@ pub struct CampaignReport {
     pub assertion_identity_conflicts: Vec<String>,
     /// Catalog authority derived from all source reports and merged details.
     #[serde(default = "pending_catalog_status")]
-    pub assertion_catalog_status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+    pub assertion_catalog_status: chaoscontrol_protocol::admission::CatalogValidationStatus,
     /// True only when every source and merged detail is accepted and strict.
     #[serde(default)]
     pub collision_safe_assertion_evidence: bool,
@@ -94,8 +95,81 @@ pub struct CampaignReport {
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
 }
 
-fn pending_catalog_status() -> chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus {
-    chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending
+fn pending_catalog_status() -> chaoscontrol_protocol::admission::CatalogValidationStatus {
+    chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+}
+
+pub fn campaign_bugs_for_minimization(
+    report: &CampaignReport,
+) -> Result<Vec<BugReport>, BugSetIdentityError> {
+    validate_campaign_bug_carriers(&report.bugs)?;
+    let Some(first_bug) = report.bugs.first() else {
+        return Ok(Vec::new());
+    };
+    let summary =
+        crate::assertion_summary::AssertionSummaryV2::from_campaign(report).map_err(|_| {
+            BugSetIdentityError {
+                bug_id: first_bug.bug.bug_id,
+                source: crate::bug::identity::BugIdentityError::ReportMismatch,
+            }
+        })?;
+    for campaign_bug in &report.bugs {
+        let identity = campaign_bug
+            .bug
+            .require_replay_identity()
+            .map_err(|source| BugSetIdentityError {
+                bug_id: campaign_bug.bug.bug_id,
+                source,
+            })?;
+        let exact_matches = summary
+            .assertions()
+            .iter()
+            .filter(|detail| detail_matches_identity(detail, identity))
+            .count();
+        if exact_matches != 1 {
+            return Err(BugSetIdentityError {
+                bug_id: campaign_bug.bug.bug_id,
+                source: crate::bug::identity::BugIdentityError::ReportMismatch,
+            });
+        }
+    }
+    report
+        .bugs
+        .iter()
+        .map(|campaign_bug| {
+            let mut bug =
+                BugReport::try_from(&campaign_bug.bug).map_err(|source| BugSetIdentityError {
+                    bug_id: campaign_bug.bug.bug_id,
+                    source,
+                })?;
+            bug.dedup_key = campaign_bug.dedup_key;
+            Ok(bug)
+        })
+        .collect()
+}
+
+fn validate_campaign_bug_carriers(bugs: &[CampaignBug]) -> Result<(), BugSetIdentityError> {
+    for campaign_bug in bugs {
+        BugReport::try_from(&campaign_bug.bug).map_err(|source| BugSetIdentityError {
+            bug_id: campaign_bug.bug.bug_id,
+            source,
+        })?;
+    }
+    Ok(())
+}
+
+fn detail_matches_identity(
+    detail: &crate::explorer::AssertionDetail,
+    identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+) -> bool {
+    let Some(candidate) = detail.identity.as_ref() else {
+        return false;
+    };
+    candidate.descriptor == identity.descriptor
+        && candidate.fingerprint == identity.fingerprint
+        && candidate.canonical_descriptor
+            == chaoscontrol_protocol::identity::encode_lower_hex(&identity.canonical_descriptor)
+        && candidate.catalog_tokens.as_slice() == [identity.catalog_token]
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -461,11 +535,11 @@ pub fn aggregate_reports(
             assertion_identity_conflicts.push(format!("seed {seed}: {error}"));
         }
         source_fatal |= report.assertion_catalog_status
-            == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict;
+            == chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict;
         all_sources_accepted &= source_assertion_status
-            == Ok(chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted)
+            == Ok(chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted)
             && report.assertion_catalog_status
-                == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+                == chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
             && report.collision_safe_assertion_evidence;
         assertion_identity_conflicts.extend(
             report
@@ -563,29 +637,28 @@ pub fn aggregate_reports(
         .first()
         .and_then(|(_, r, _)| r.scenario_config.clone());
 
-    let recomputed_status = crate::assertion_summary::validate_assertion_details(
-        &assertion_details,
-    )
-    .unwrap_or(chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict);
+    let recomputed_status =
+        crate::assertion_summary::validate_assertion_details(&assertion_details)
+            .unwrap_or(chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict);
     let assertion_catalog_status = if source_fatal
         || !assertion_identity_conflicts.is_empty()
         || recomputed_status
-            == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+            == chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
     {
-        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+        chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
     } else if recomputed_status
-        == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+        == chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
     {
         if all_sources_accepted {
-            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+            chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
         } else {
-            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+            chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
         }
     } else {
-        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous
+        chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
     };
     let collision_safe_assertion_evidence = assertion_catalog_status
-        == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted;
+        == chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted;
 
     CampaignReport {
         seeds_run,
@@ -698,10 +771,8 @@ mod tests {
     use crate::coverage::CoverageStats;
     use crate::explorer::AssertionIdentityDetail;
     use chaoscontrol_fault::schedule::FaultSchedule;
-    use chaoscontrol_protocol::assertion_catalog::{
-        token_for_descriptors, CatalogValidationStatus,
-    };
-    use chaoscontrol_protocol::assertion_identity::{
+    use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogValidationStatus};
+    use chaoscontrol_protocol::identity::{
         AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
     };
 
@@ -738,6 +809,7 @@ mod tests {
         BugReport {
             bug_id: id,
             assertion_id,
+            assertion_identity: crate::test_support::assertion_identity(assertion_id),
             assertion_location: location.to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,
@@ -755,9 +827,9 @@ mod tests {
         let collision_safe =
             !details.is_empty() && details.iter().all(|detail| detail.identity.is_some());
         let status = if collision_safe {
-            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+            chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
         } else {
-            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous
+            chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
         };
         ExplorationReport {
             rounds: 10,
@@ -813,6 +885,103 @@ mod tests {
 
         let campaign = aggregate_reports(reports, 2.0);
         assert_eq!(campaign.bugs.len(), 2);
+    }
+
+    fn bug_for_detail(bug_id: u64, detail: &AssertionDetail) -> BugReport {
+        let detail_identity = detail.identity.as_ref().expect("strict detail identity");
+        BugReport {
+            bug_id,
+            assertion_id: u64::from(detail.id),
+            assertion_identity: chaoscontrol_protocol::admission::AssertionEvidenceIdentity {
+                descriptor: detail_identity.descriptor.clone(),
+                fingerprint: detail_identity.fingerprint,
+                canonical_descriptor: detail_identity
+                    .descriptor
+                    .canonical_bytes()
+                    .expect("canonical descriptor"),
+                catalog_token: detail_identity.catalog_tokens[0],
+            },
+            assertion_location: "src/main.rs:10".to_string(),
+            schedule: FaultSchedule::new(),
+            snapshot: None,
+            tick: 1,
+            replay_parent_depth: 0,
+            replay_parent_snapshot_ref: None,
+            dedup_key: 1,
+            schedule_variant: None,
+            scenario_config: None,
+            scenario_summary: None,
+        }
+    }
+
+    #[test]
+    fn minimization_accepts_bug_joined_to_campaign_catalog() {
+        let detail = make_strict_detail(AssertionKind::Always, "failed", 1, 0, 1);
+        let bug = bug_for_detail(0, &detail);
+        let report = aggregate_reports(
+            vec![(
+                FIRST_TEST_SEED,
+                make_report(vec![bug], vec![detail]),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+
+        let bugs = campaign_bugs_for_minimization(&report).expect("catalog-bound bug is valid");
+        assert_eq!(bugs.len(), 1);
+    }
+
+    #[test]
+    fn minimization_rejects_catalog_token_substitution() {
+        let detail = make_strict_detail(AssertionKind::Always, "failed", 1, 0, 1);
+        let bug = bug_for_detail(0, &detail);
+        let mut report = aggregate_reports(
+            vec![(
+                FIRST_TEST_SEED,
+                make_report(vec![bug], vec![detail]),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+        report.bugs[0]
+            .bug
+            .assertion_identity
+            .as_mut()
+            .expect("identity")
+            .catalog_token = chaoscontrol_protocol::identity::AssertionFingerprint::ZERO;
+
+        let error = campaign_bugs_for_minimization(&report)
+            .expect_err("catalog token substitution is rejected");
+        assert_eq!(
+            error.source,
+            crate::bug::identity::BugIdentityError::ReportMismatch
+        );
+    }
+
+    #[test]
+    fn minimization_rejects_mixed_valid_and_legacy_bug_set() {
+        let valid = make_bug(0, 100, "safety.rs:10", 0xAAAA);
+        let legacy = make_bug(1, 200, "safety.rs:20", 0xBBBB);
+        let mut report = aggregate_reports(
+            vec![
+                (
+                    FIRST_TEST_SEED,
+                    make_report(vec![valid], Vec::new()),
+                    SINGLE_REPORT_SECONDS,
+                ),
+                (
+                    SECOND_TEST_SEED,
+                    make_report(vec![legacy], Vec::new()),
+                    SINGLE_REPORT_SECONDS,
+                ),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+        report.bugs[1].bug.assertion_identity = None;
+
+        let error = campaign_bugs_for_minimization(&report)
+            .expect_err("one legacy bug rejects the complete carrier");
+        assert_eq!(error.bug_id, 1);
     }
 
     // ── 6.3: assertion merging ──────────────────────────────────────
@@ -881,7 +1050,7 @@ mod tests {
     }
 
     fn encode_test_hex(bytes: &[u8]) -> String {
-        chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+        chaoscontrol_protocol::identity::encode_lower_hex(bytes)
     }
 
     #[test]
@@ -1083,7 +1252,7 @@ mod tests {
             .descriptor
             .fingerprint()
             .expect("legacy fingerprint");
-        identity.canonical_descriptor = chaoscontrol_protocol::assertion_identity::encode_lower_hex(
+        identity.canonical_descriptor = chaoscontrol_protocol::identity::encode_lower_hex(
             &identity
                 .descriptor
                 .canonical_bytes()
@@ -1155,6 +1324,7 @@ mod tests {
                 bug: SerializableBug {
                     bug_id: 0,
                     assertion_id: 100,
+                    assertion_identity: Some(crate::test_support::assertion_identity(100)),
                     assertion_location: "test.rs:1".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
@@ -1193,7 +1363,7 @@ mod tests {
             assertion_stats: AssertionStats::default(),
             assertion_identity_conflicts: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             wall_clock_seconds: 25.0,
             failed_seeds: Vec::new(),

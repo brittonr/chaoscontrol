@@ -471,6 +471,7 @@ mod tests {
             bugs: vec![SerializableBug {
                 bug_id: 0,
                 assertion_id: 99,
+                assertion_identity: Some(crate::test_support::assertion_identity(99)),
                 assertion_location: "test assertion".to_string(),
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
@@ -481,6 +482,7 @@ mod tests {
                 scenario_config: None,
                 scenario_summary: None,
             }],
+            assertion_report: None,
             rounds_completed: 10,
             total_branches_run: 80,
             total_edges: 200,

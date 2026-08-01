@@ -1,6 +1,6 @@
 use chaoscontrol_evidence::{check_sdk_assertion_quality_report, summarize_sdk_local_jsonl};
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::{json, Value};
@@ -30,7 +30,7 @@ fn descriptor(namespace: &str, kind: AssertionKind, message: &str) -> AssertionD
 }
 
 fn encode_hex(bytes: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }
 
 fn render(lines: &[Value]) -> String {
@@ -137,6 +137,36 @@ fn fingerprint_hex_is_the_exact_event_id_without_a_compatibility_alias() {
     let mut invalid = catalog_jsonl(&value);
     invalid.push_str(&render(&[event]));
     assert!(summarize_sdk_local_jsonl(&invalid, EVIDENCE_CLASS, None).is_err());
+}
+
+#[test]
+fn strict_event_requires_redundant_display_type_and_must_hit() {
+    let descriptor = descriptor("stable:required-shape", AssertionKind::Always, "strict");
+    let base_event: Value =
+        serde_json::from_str(event_line(&descriptor, true).trim()).expect("event JSON");
+
+    for (field, replacement) in [
+        ("display_type", None),
+        ("display_type", Some(Value::Null)),
+        ("must_hit", None),
+        ("must_hit", Some(Value::Null)),
+    ] {
+        let mut event = base_event.clone();
+        let body = event["antithesis_assert"]
+            .as_object_mut()
+            .expect("assertion body");
+        match replacement {
+            Some(value) => {
+                body.insert(field.to_string(), value);
+            }
+            None => {
+                body.remove(field);
+            }
+        }
+        let mut content = catalog_jsonl(&descriptor);
+        content.push_str(&render(&[event]));
+        assert!(summarize_sdk_local_jsonl(&content, EVIDENCE_CLASS, None).is_err());
+    }
 }
 
 #[test]

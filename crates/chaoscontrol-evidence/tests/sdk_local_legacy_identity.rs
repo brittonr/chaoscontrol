@@ -1,6 +1,6 @@
 use chaoscontrol_evidence::{check_sdk_assertion_quality_report, summarize_sdk_local_jsonl};
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
+use chaoscontrol_protocol::identity::{
     encode_lower_hex, AssertionDescriptor, AssertionKind, AssertionLogicalKey,
     ASSERTION_IDENTITY_VERSION,
 };

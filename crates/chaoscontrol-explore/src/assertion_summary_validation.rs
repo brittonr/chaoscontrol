@@ -1,8 +1,8 @@
 use crate::explorer::{AssertionDetail, AssertionIdentityDetail};
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     AssertionFingerprint, AssertionKind, MAX_ASSERTION_CATEGORY_BYTES,
     MAX_ASSERTION_EVENT_DETAILS_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
 };
@@ -101,7 +101,7 @@ fn validate_strict_identity(detail: &AssertionDetail) -> Result<&AssertionIdenti
     let expected_id = identity.descriptor.compatibility_id.unwrap_or_default();
     if identity.fingerprint != fingerprint
         || identity.canonical_descriptor
-            != chaoscontrol_protocol::assertion_identity::encode_lower_hex(&canonical)
+            != chaoscontrol_protocol::identity::encode_lower_hex(&canonical)
         || identity.catalog_tokens.len() != 1
         || detail.id != expected_id
         || detail.message != identity.descriptor.message

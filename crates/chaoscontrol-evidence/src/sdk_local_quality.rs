@@ -1,8 +1,6 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_catalog::{CatalogBuilder, MAX_ASSERTION_REPORT_ENTRIES};
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind,
-};
+use chaoscontrol_protocol::admission::{CatalogBuilder, MAX_ASSERTION_REPORT_ENTRIES};
+use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -89,7 +87,6 @@ struct CoverageEntry {
     success_count: u64,
     failure_count: u64,
     adoption_tracks: Vec<String>,
-    #[serde(default)]
     identity: Option<LocalReportIdentity>,
 }
 

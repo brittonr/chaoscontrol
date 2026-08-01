@@ -30,6 +30,8 @@ const REPLAY_CLASSES: [&str; 8] = [
     "replay_error",
 ];
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
+const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
+const SUBSTITUTED_ASSERTION_ALIAS: u64 = 8;
 
 const SNAPSHOT_STATUSES: [&str; 6] = [
     "not_required",
@@ -62,13 +64,41 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     let valid = contracts.join("fixtures/valid");
     validate_run_config(&load_json(&valid.join("run-config.valid.json"))?)?;
     validate_receipt(&load_json(&valid.join("receipt.known-gap.valid.json"))?)?;
-    validate_bug_report(&load_json(&valid.join("bug-report.valid.json"))?)?;
+    let legacy_bug = load_json(&valid.join("bug-report.valid.json"))?;
+    validate_bug_report(&legacy_bug)?;
+    ensure(
+        validate_bug_report_for_replay(&legacy_bug).is_err(),
+        "legacy assertion ID-only bug unexpectedly qualified for replay",
+    )?;
+    let identity_bug = load_json(&valid.join("bug-report.identity.valid.json"))?;
+    validate_bug_report(&identity_bug)?;
+    validate_bug_report_for_replay(&identity_bug)?;
+    let mut substituted_bug = identity_bug.clone();
+    substituted_bug["assertion_id"] = Value::from(SUBSTITUTED_ASSERTION_ALIAS);
+    ensure(
+        validate_bug_report_for_replay(&substituted_bug).is_err(),
+        "substituted bug alias unexpectedly qualified for replay",
+    )?;
+    let mut forged_bug = identity_bug.clone();
+    forged_bug["assertion_identity"]["descriptor"]["message"] = Value::from("forged descriptor");
+    ensure(
+        validate_bug_report_for_replay(&forged_bug).is_err(),
+        "forged bug descriptor unexpectedly qualified for replay",
+    )?;
+    let mut extended_bug = identity_bug;
+    extended_bug["unreviewed_authority"] = Value::from(true);
+    ensure(
+        validate_bug_report_for_replay(&extended_bug).is_err(),
+        "unknown bug field unexpectedly qualified for replay",
+    )?;
     validate_snapshot_ref(&load_json(&valid.join("snapshot-ref.valid.json"))?)?;
-    validate_replay_verdict_with_options(
-        &load_json(&valid.join("replay-verdict.snapshot-backed.valid.json"))?,
-        true,
-        false,
-        root,
+    let replay_verdict = load_json(&valid.join("replay-verdict.snapshot-backed.valid.json"))?;
+    validate_replay_verdict_with_options(&replay_verdict, true, false, root)?;
+    let mut extended_verdict = replay_verdict;
+    extended_verdict["unreviewed_authority"] = Value::from(true);
+    ensure(
+        validate_replay_verdict_with_options(&extended_verdict, true, false, root).is_err(),
+        "unknown replay verdict field unexpectedly qualified for replay",
     )?;
     validate_assertion_summary(&load_json(&valid.join("assertions.valid.json"))?)?;
     let identity_summary = load_json(&valid.join("assertions.identity.valid.json"))?;
@@ -153,6 +183,7 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         "replay-verdict.snapshot-not-reproduced.invalid.json",
         "replay-verdict.no-bug-found.invalid.json",
         "replay-verdict.replay-error.invalid.json",
+        "replay-verdict.schema-v1-accepted.invalid.json",
     ] {
         let path = invalid.join(fixture);
         validate_replay_verdict(&load_json(&path)?)?;
@@ -173,6 +204,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-run-config.ncl",
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
+        "examples/bug-report-identity.ncl",
         "examples/raft-assertion-summary.ncl",
         "examples/assertion-summary-logical-keys.ncl",
         "examples/assertion-summary-no-alias.ncl",
@@ -194,6 +226,8 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         )?;
     }
     for rel in [
+        "fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
+        "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
         "fixtures/invalid/assertions.nickel-ascii-control.invalid.ncl",
         "fixtures/invalid/assertions.nickel-automatic-source-mismatch.invalid.ncl",
         "fixtures/invalid/assertions.nickel-cardinality.invalid.ncl",
@@ -294,7 +328,11 @@ pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
 }
 
 pub fn validate_artifact_hash(value: &Value) -> EvidenceResult<()> {
-    ensure(value.is_object(), "artifact-hash: expected object")?;
+    crate::assertion_evidence_carrier::require_only_fields(
+        value,
+        &["path", "sha256"],
+        "artifact-hash",
+    )?;
     require_str(value.get("path"), "artifact-hash.path")?;
     let digest = require_str(value.get("sha256"), "artifact-hash.sha256")?;
     ensure(
@@ -312,7 +350,11 @@ pub fn validate_snapshot_ref_with_root(
     root: &Path,
     check_files: bool,
 ) -> EvidenceResult<()> {
-    ensure(value.is_object(), "snapshot-ref: expected object")?;
+    crate::assertion_evidence_carrier::require_only_fields(
+        value,
+        &["store", "digest", "codec", "schema_version", "path"],
+        "snapshot-ref",
+    )?;
     ensure(
         value.get("store").and_then(Value::as_str) == Some("file-content-addressed"),
         "snapshot-ref.store: expected file-content-addressed",
@@ -368,7 +410,24 @@ pub fn validate_snapshot_ref_with_root(
 }
 
 pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
-    ensure(value.is_object(), "bug-report: expected object")?;
+    crate::assertion_evidence_carrier::require_only_fields(
+        value,
+        &[
+            "bug_id",
+            "assertion_id",
+            "assertion_identity",
+            "assertion_location",
+            "schedule",
+            "tick",
+            "replay_parent_depth",
+            "replay_parent_snapshot_ref",
+            "dedup_key",
+            "schedule_variant",
+            "scenario_config",
+            "scenario_summary",
+        ],
+        "bug-report",
+    )?;
     for key in [
         "bug_id",
         "assertion_id",
@@ -404,7 +463,11 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
     let schedule = value
         .get("schedule")
         .ok_or_else(|| EvidenceError::new("bug-report.schedule: expected object"))?;
-    ensure(schedule.is_object(), "bug-report.schedule: expected object")?;
+    crate::assertion_evidence_carrier::require_only_fields(
+        schedule,
+        &["faults"],
+        "bug-report.schedule",
+    )?;
     let faults = schedule
         .get("faults")
         .ok_or_else(|| EvidenceError::new("bug-report.schedule.faults: expected list"))?;
@@ -412,10 +475,43 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
         faults.is_array(),
         "bug-report.schedule.faults: expected list",
     )?;
+    let assertion_id = value
+        .get("assertion_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| EvidenceError::new("bug-report.assertion_id: expected unsigned integer"))?;
+    crate::assertion_evidence_carrier::optional_identity(
+        value,
+        "assertion_identity",
+        assertion_id,
+        false,
+        "bug-report",
+    )?;
+    Ok(())
+}
+
+pub fn validate_bug_report_for_replay(value: &Value) -> EvidenceResult<()> {
+    validate_bug_report(value)?;
+    let assertion_id = value
+        .get("assertion_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| EvidenceError::new("bug-report.assertion_id: expected unsigned integer"))?;
+    crate::assertion_evidence_carrier::optional_identity(
+        value,
+        "assertion_identity",
+        assertion_id,
+        true,
+        "bug-report",
+    )?;
+    let faults = value
+        .get("schedule")
+        .and_then(|schedule| schedule.get("faults"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| EvidenceError::new("bug-report.schedule.faults: expected list"))?;
     ensure(
-        !faults.as_array().unwrap().is_empty(),
-        "bug-report.schedule.faults: expected at least one fault",
-    )
+        !faults.is_empty(),
+        "bug-report.schedule.faults: expected at least one fault for replay",
+    )?;
+    Ok(())
 }
 
 pub fn validate_assertion_summary(value: &Value) -> EvidenceResult<()> {
@@ -446,10 +542,35 @@ pub fn validate_replay_verdict_with_options(
     check_files: bool,
     root: &Path,
 ) -> EvidenceResult<()> {
-    ensure(value.is_object(), "replay-verdict: expected object")?;
+    crate::assertion_evidence_carrier::require_only_fields(
+        value,
+        &[
+            "schema_version",
+            "run_id",
+            "replay_class",
+            "reproduced",
+            "command",
+            "diagnostic",
+            "bug_path",
+            "bug_id",
+            "assertion_id",
+            "assertion_identity",
+            "replay_parent_depth",
+            "snapshot",
+            "artifact_hashes",
+        ],
+        "replay-verdict",
+    )?;
+    let schema_version = value
+        .get("schema_version")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| EvidenceError::new("replay-verdict.schema_version: expected integer"))?;
     ensure(
-        value.get("schema_version").and_then(Value::as_u64) == Some(1),
-        "replay-verdict.schema_version: expected 1",
+        matches!(
+            schema_version,
+            LEGACY_REPLAY_VERDICT_SCHEMA_VERSION | crate::REPLAY_VERDICT_SCHEMA_VERSION
+        ),
+        format!("replay-verdict.schema_version: unsupported version {schema_version}"),
     )?;
     require_str(value.get("run_id"), "replay-verdict.run_id")?;
     let replay_class = require_str(value.get("replay_class"), "replay-verdict.replay_class")?;
@@ -464,9 +585,10 @@ pub fn validate_replay_verdict_with_options(
     let command = value
         .get("command")
         .ok_or_else(|| EvidenceError::new("replay-verdict.command: expected object"))?;
-    ensure(
-        command.is_object(),
-        "replay-verdict.command: expected object",
+    crate::assertion_evidence_carrier::require_only_fields(
+        command,
+        &["command", "exit_status"],
+        "replay-verdict.command",
     )?;
     require_str(command.get("command"), "replay-verdict.command.command")?;
     require_num(
@@ -477,9 +599,16 @@ pub fn validate_replay_verdict_with_options(
     let snapshot = value
         .get("snapshot")
         .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot: expected object"))?;
-    ensure(
-        snapshot.is_object(),
-        "replay-verdict.snapshot: expected object",
+    crate::assertion_evidence_carrier::require_only_fields(
+        snapshot,
+        &[
+            "status",
+            "present",
+            "digest_verified",
+            "reference",
+            "diagnostic",
+        ],
+        "replay-verdict.snapshot",
     )?;
     ensure(
         snapshot
@@ -523,8 +652,19 @@ pub fn validate_replay_verdict_with_options(
             value.get("replay_parent_depth"),
             "replay-verdict.replay_parent_depth",
         )?;
+        if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
+            validate_replay_assertion_identity(value)?;
+        }
     }
     if accepted_snapshot_proof {
+        ensure(
+            schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION,
+            format!(
+                "accepted replay proof requires schema_version {}",
+                crate::REPLAY_VERDICT_SCHEMA_VERSION
+            ),
+        )?;
+        validate_replay_assertion_identity(value)?;
         ensure(
             replay_class == "snapshot_backed_reproduced",
             format!(
@@ -573,6 +713,35 @@ pub fn validate_replay_verdict_with_options(
         )?;
     }
     Ok(())
+}
+
+fn validate_replay_assertion_identity(value: &Value) -> EvidenceResult<()> {
+    let assertion_id = value
+        .get("assertion_id")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| EvidenceError::new("replay-verdict.assertion_id: expected integer"))?;
+    let identity_value = value
+        .get("assertion_identity")
+        .ok_or_else(|| EvidenceError::new("replay-verdict.assertion_identity: required for v2"))?;
+    ensure(
+        !identity_value.is_null(),
+        "replay-verdict.assertion_identity: null is invalid",
+    )?;
+    let identity = serde_json::from_value::<
+        chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    >(identity_value.clone())
+    .map_err(|error| {
+        EvidenceError::new(format!(
+            "replay-verdict.assertion_identity: invalid carrier: {error}"
+        ))
+    })?;
+    identity
+        .validate_compatibility_alias(assertion_id)
+        .map_err(|error| {
+            EvidenceError::new(format!(
+                "replay-verdict.assertion_identity: invalid identity: {error:?}"
+            ))
+        })
 }
 
 pub fn validate_receipt(value: &Value) -> EvidenceResult<()> {

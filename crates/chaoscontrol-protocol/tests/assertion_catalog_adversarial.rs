@@ -1,14 +1,14 @@
 #![cfg(feature = "std")]
 
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     catalog_token, token_for_descriptors, validate_accepted_catalog, validate_legacy_descriptors,
     AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent, CatalogBuilder, CatalogConflict,
     CatalogValidationStatus, ASSERTION_CATALOG_VERSION,
 };
 use std::collections::BTreeMap;
 
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
+use chaoscontrol_protocol::identity::{
+    AssertionDescriptor, AssertionError, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
     ASSERTION_FINGERPRINT_BYTES, ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_MESSAGE_BYTES,
 };
 
@@ -43,7 +43,7 @@ fn legacy_descriptor() -> AssertionDescriptor {
     legacy
 }
 
-fn accepted_catalog() -> chaoscontrol_protocol::assertion_catalog::AcceptedCatalog {
+fn accepted_catalog() -> chaoscontrol_protocol::admission::AcceptedCatalog {
     let descriptor = descriptor();
     let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("catalog token");
     let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
@@ -127,7 +127,7 @@ fn completion_rejects_a_single_injected_fingerprint() {
     assert_eq!(
         builder.complete(AssertionFingerprint::ZERO),
         Err(CatalogConflict::Descriptor(
-            IdentityError::InvalidFingerprint
+            AssertionError::InvalidFingerprint
         ))
     );
 }
@@ -137,19 +137,19 @@ fn strict_descriptor_rejects_legacy_alias_and_zero_source_position() {
     let mut legacy = descriptor();
     legacy.logical_key = AssertionLogicalKey::LegacyU32 { id: LEGACY_ID };
     legacy.compatibility_id = Some(OTHER_LEGACY_ID);
-    assert_eq!(legacy.validate(), Err(IdentityError::InvalidLegacyAlias));
+    assert_eq!(legacy.validate(), Err(AssertionError::InvalidLegacyAlias));
 
     let mut zero_line = descriptor();
     zero_line.source_line = 0;
     assert_eq!(
         zero_line.validate(),
-        Err(IdentityError::InvalidSourcePosition)
+        Err(AssertionError::InvalidSourcePosition)
     );
     let mut zero_column = descriptor();
     zero_column.source_column = 0;
     assert_eq!(
         zero_column.validate(),
-        Err(IdentityError::InvalidSourcePosition)
+        Err(AssertionError::InvalidSourcePosition)
     );
 }
 
@@ -165,7 +165,7 @@ fn automatic_identity_must_match_normalized_source_site() {
     }
     assert_eq!(
         automatic.validate(),
-        Err(IdentityError::InvalidAutomaticSourceSite)
+        Err(AssertionError::InvalidAutomaticSourceSite)
     );
 }
 
@@ -178,7 +178,7 @@ fn bounded_category_tokens_include_shipped_template_vocabulary() {
     }
     let mut invalid = descriptor();
     invalid.category = "Service Invariant".to_string();
-    assert_eq!(invalid.validate(), Err(IdentityError::InvalidCategory));
+    assert_eq!(invalid.validate(), Err(AssertionError::InvalidCategory));
 }
 
 #[test]

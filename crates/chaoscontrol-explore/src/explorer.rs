@@ -1279,7 +1279,7 @@ impl Explorer {
 
     /// Compute a dedup key from structured assertion identity and fault types.
     fn compute_dedup_key(
-        assertion_fingerprint: chaoscontrol_protocol::assertion_identity::AssertionFingerprint,
+        assertion_fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
         schedule: &FaultSchedule,
     ) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -1310,9 +1310,11 @@ impl Explorer {
         replay_parent_depth: u32,
     ) -> Vec<BugReport> {
         let mut bugs = Vec::new();
-        if !result.oracle_report.collision_safe_evidence {
+        let Ok(report_facts) = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(
+            &result.oracle_report,
+        ) else {
             return bugs;
-        }
+        };
 
         for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
             if matches!(
@@ -1322,6 +1324,20 @@ impl Explorer {
                 let Some(assertion_id) = record.compatibility_id else {
                     continue;
                 };
+                let Some(admitted) = record.identity.as_ref() else {
+                    continue;
+                };
+                let Ok(assertion_identity) =
+                    chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                        admitted,
+                        report_facts.catalog_token,
+                    )
+                else {
+                    continue;
+                };
+                if assertion_identity.fingerprint != *assertion_fingerprint {
+                    continue;
+                }
                 let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule);
 
                 // Skip if we've already seen this (assertion, fault_types) pair
@@ -1337,6 +1353,7 @@ impl Explorer {
                 let bug = BugReport {
                     bug_id: 0, // Will be assigned by corpus
                     assertion_id: assertion_id as u64,
+                    assertion_identity,
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: replay_snapshot.cloned(),
@@ -1715,7 +1732,7 @@ impl Explorer {
     ) -> (
         AssertionStats,
         Vec<AssertionDetail>,
-        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+        chaoscontrol_protocol::admission::CatalogValidationStatus,
         bool,
         Vec<String>,
     ) {
@@ -1725,7 +1742,7 @@ impl Explorer {
             return (
                 AssertionStats::default(),
                 Vec::new(),
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
                 false,
                 Vec::new(),
             );
@@ -1751,10 +1768,9 @@ impl Explorer {
                 AssertionIdentityDetail {
                     descriptor: descriptor.clone(),
                     fingerprint: admitted.fingerprint,
-                    canonical_descriptor:
-                        chaoscontrol_protocol::assertion_identity::encode_lower_hex(
-                            &admitted.canonical_bytes,
-                        ),
+                    canonical_descriptor: chaoscontrol_protocol::identity::encode_lower_hex(
+                        &admitted.canonical_bytes,
+                    ),
                     catalog_tokens: record.catalog_tokens.iter().copied().collect(),
                 }
             });
@@ -1942,10 +1958,22 @@ impl Explorer {
             bugs.push(serialized);
         }
 
+        let assertion_report = if let Some(controller) = self.controller.as_ref() {
+            let report = controller.report();
+            match chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(&report) {
+                Ok(_) => Some(report),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        crate::checkpoint::validate_bug_set(&bugs, assertion_report.as_ref())?;
+
         Ok(ExplorationCheckpoint {
             config,
             global_coverage: self.coverage.global_coverage().as_slice().to_vec(),
             bugs,
+            assertion_report,
             rounds_completed: self.rounds_completed,
             total_branches_run: self.total_branches_run,
             total_edges: self.coverage.stats().total_edges,
@@ -1963,7 +1991,11 @@ impl Explorer {
         kernel_path_override: Option<String>,
         initrd_path_override: Option<String>,
         max_rounds_override: Option<u64>,
-    ) -> Self {
+    ) -> Result<Self, crate::checkpoint::BugSetIdentityError> {
+        let standalone_bugs = crate::checkpoint::replay_bug_set(
+            &checkpoint.bugs,
+            checkpoint.assertion_report.as_ref(),
+        )?;
         let config = ExplorerConfig {
             num_vms: checkpoint.config.num_vms,
             vm_config: VmConfig::default(),
@@ -2013,7 +2045,7 @@ impl Explorer {
             checkpoint.rounds_completed, checkpoint.total_branches_run, checkpoint.total_edges
         );
 
-        Self {
+        Ok(Self {
             config,
             frontier,
             corpus,
@@ -2032,28 +2064,11 @@ impl Explorer {
                 .unwrap_or_default()
                 .into_iter()
                 .collect(),
-            standalone_bugs: checkpoint
-                .bugs
-                .iter()
-                .map(|b| BugReport {
-                    bug_id: b.bug_id,
-                    assertion_id: b.assertion_id,
-                    assertion_location: b.assertion_location.clone(),
-                    schedule: (&b.schedule).into(),
-                    snapshot: None,
-                    tick: b.tick,
-                    replay_parent_depth: b.replay_parent_depth,
-                    replay_parent_snapshot_ref: b.replay_parent_snapshot_ref.clone(),
-                    dedup_key: b.dedup_key.unwrap_or(0),
-                    schedule_variant: None,
-                    scenario_config: b.scenario_config.clone(),
-                    scenario_summary: b.scenario_summary.clone(),
-                })
-                .collect(),
+            standalone_bugs,
             consecutive_stale_rounds: 0,
             scenario_summary: checkpoint.scenario_summary.clone(),
             metrics_sink: None,
-        }
+        })
     }
 }
 
@@ -2200,7 +2215,7 @@ pub struct ExplorationReport {
     /// Per-assertion detail — individual verdicts, hit counts, messages.
     pub assertion_details: Vec<AssertionDetail>,
     /// Catalog authority retained from the validated merged oracle report.
-    pub assertion_catalog_status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+    pub assertion_catalog_status: chaoscontrol_protocol::admission::CatalogValidationStatus,
     /// True only for a non-empty validated accepted assertion catalog.
     pub collision_safe_assertion_evidence: bool,
     /// Assertion identity diagnostics retained from the merged oracle report.
@@ -2220,7 +2235,7 @@ pub struct ExplorationReport {
 }
 
 /// Summary of assertion coverage across all exploration branches.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssertionStats {
     /// Total registered assertion sites (catalog + runtime).
     pub catalog_size: usize,
@@ -2235,10 +2250,10 @@ pub struct AssertionStats {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssertionIdentityDetail {
-    pub descriptor: chaoscontrol_protocol::assertion_identity::AssertionDescriptor,
-    pub fingerprint: chaoscontrol_protocol::assertion_identity::AssertionFingerprint,
+    pub descriptor: chaoscontrol_protocol::identity::AssertionDescriptor,
+    pub fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
     pub canonical_descriptor: String,
-    pub catalog_tokens: Vec<chaoscontrol_protocol::assertion_identity::AssertionFingerprint>,
+    pub catalog_tokens: Vec<chaoscontrol_protocol::identity::AssertionFingerprint>,
 }
 
 /// Per-assertion detail for the exploration report.
@@ -2686,7 +2701,8 @@ mod tests {
             Some("/fake/kernel".to_string()),
             Some("/fake/initrd".to_string()),
             Some(200),
-        );
+        )
+        .expect("valid checkpoint restores");
 
         assert_eq!(restored.rounds_completed, 42);
         assert_eq!(restored.total_branches_run, 336);

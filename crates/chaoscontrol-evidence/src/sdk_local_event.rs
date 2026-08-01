@@ -1,14 +1,16 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_catalog::{AcceptedCatalog, BoundAssertionEvent};
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, ASSERTION_IDENTITY_VERSION,
-    MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
+use chaoscontrol_protocol::admission::{AcceptedCatalog, BoundAssertionEvent};
+use chaoscontrol_protocol::identity::{
+    AssertionDescriptor, AssertionFingerprint, AssertionKind, ASSERTION_FINGERPRINT_HEX_BYTES,
+    ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES,
+    MAX_ASSERTION_MESSAGE_BYTES,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
 const ASSERTION_IDENTITY_FIELD_COUNT: usize = 4;
+const MAX_LEGACY_DIAGNOSTIC_ID_BYTES: usize = ASSERTION_FINGERPRINT_HEX_BYTES;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedLocalIdentity {
@@ -36,20 +38,14 @@ struct AssertionBody {
     assert_type: String,
     condition: bool,
     hit: bool,
-    #[serde(default)]
     must_hit: Option<bool>,
     id: String,
     message: String,
-    #[serde(default)]
     display_type: Option<String>,
     details: Value,
-    #[serde(default)]
     identity_version: Option<u8>,
-    #[serde(default)]
     catalog_token: Option<AssertionFingerprint>,
-    #[serde(default)]
     assertion_fingerprint: Option<AssertionFingerprint>,
-    #[serde(default)]
     catalog_status: Option<String>,
 }
 
@@ -114,8 +110,17 @@ impl LocalEventState {
     }
 
     fn insert_legacy(&mut self, assertion: AssertionBody, line_index: usize) -> EvidenceResult<()> {
-        if assertion.id.is_empty() {
-            return line_error(line_index, "legacy assertion ID is empty");
+        if assertion.id.is_empty()
+            || assertion.id.len() > MAX_LEGACY_DIAGNOSTIC_ID_BYTES
+            || !assertion
+                .id
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return line_error(
+                line_index,
+                "legacy assertion ID must be bounded lowercase hexadecimal text",
+            );
         }
         if !matches!(
             assertion.assert_type.as_str(),
@@ -195,22 +200,14 @@ fn resolve_assertion(
             "event message conflicts with the catalog descriptor",
         );
     }
-    if !assertion.hit
-        || assertion
-            .display_type
-            .as_deref()
-            .is_some_and(|value| value != assertion.assert_type)
-    {
+    if !assertion.hit || assertion.display_type.as_deref() != Some(assertion.assert_type.as_str()) {
         return line_error(line_index, "assertion event shape is invalid");
     }
     let expected_must_hit = matches!(
         kind,
         AssertionKind::Sometimes | AssertionKind::Reachable | AssertionKind::Unreachable
     );
-    if assertion
-        .must_hit
-        .is_some_and(|must_hit| must_hit != expected_must_hit)
-    {
+    if assertion.must_hit != Some(expected_must_hit) {
         return line_error(line_index, "assertion must_hit conflicts with its kind");
     }
     let expected_id =

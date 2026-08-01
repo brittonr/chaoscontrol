@@ -5,8 +5,8 @@ use chaoscontrol_explore::coverage::CoverageStats;
 use chaoscontrol_explore::explorer::{
     AssertionDetail, AssertionIdentityDetail, AssertionStats, ExplorationReport,
 };
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, CatalogValidationStatus};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogValidationStatus};
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
 
@@ -15,7 +15,7 @@ const SOURCE_LINE: u32 = 12;
 const SOURCE_COLUMN: u32 = 3;
 
 fn encode_hex(bytes: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }
 
 fn strict_detail() -> AssertionDetail {

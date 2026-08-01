@@ -2,7 +2,7 @@ use crate::oracle_snapshot_common::{
     descriptor, first_map_value_mut, forged_snapshot, strict_oracle, COMPATIBILITY_ID,
 };
 use chaoscontrol_fault::oracle::PropertyOracle;
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, CatalogBuilder};
+use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogBuilder};
 use serde_json::{json, Value};
 
 pub fn active_failure_snapshot() -> chaoscontrol_fault::oracle::OracleSnapshot {
@@ -11,7 +11,7 @@ pub fn active_failure_snapshot() -> chaoscontrol_fault::oracle::OracleSnapshot {
     let mut builder = CatalogBuilder::begin(1).expect("catalog begin");
     builder.insert(descriptor.clone()).expect("descriptor");
     let catalog = builder.complete(token).expect("catalog complete");
-    let event = chaoscontrol_protocol::assertion_catalog::BoundAssertionEvent {
+    let event = chaoscontrol_protocol::admission::BoundAssertionEvent {
         catalog_token: token,
         fingerprint: descriptor.fingerprint().expect("fingerprint"),
         kind: descriptor.kind,

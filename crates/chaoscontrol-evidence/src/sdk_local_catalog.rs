@@ -1,8 +1,8 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     AcceptedCatalog, CatalogBuilder, ASSERTION_CATALOG_VERSION, MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionFingerprint, MAX_ASSERTION_CANONICAL_BYTES,
 };
 use serde::Deserialize;

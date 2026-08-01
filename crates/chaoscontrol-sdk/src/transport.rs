@@ -87,13 +87,12 @@ pub(crate) fn hypercall_raw(command: u8, flags: u8, id: u32, payload: &[u8]) -> 
 pub(crate) fn hypercall_bound_assertion(
     command: u8,
     flags: u8,
-    id: u32,
     message: &str,
     json_details: &[u8],
     identity: crate::assertion_catalog::BoundIdentity,
 ) -> (u64, u8) {
-    use chaoscontrol_protocol::assertion_identity::AssertionKind;
-    use chaoscontrol_protocol::assertion_wire::{encode_event_frame, EventFrame};
+    use chaoscontrol_protocol::identity::AssertionKind;
+    use chaoscontrol_protocol::transport::{encode_event_frame, EventFrame};
     let kind = match command {
         chaoscontrol_protocol::CMD_ASSERT_ALWAYS => AssertionKind::Always,
         chaoscontrol_protocol::CMD_ASSERT_SOMETIMES => AssertionKind::Sometimes,
@@ -101,7 +100,11 @@ pub(crate) fn hypercall_bound_assertion(
         chaoscontrol_protocol::CMD_ASSERT_UNREACHABLE => AssertionKind::Unreachable,
         _ => return (0, chaoscontrol_protocol::STATUS_ERROR),
     };
-    let wire_id = identity.compatibility_id.unwrap_or(id);
+    let details = match serde_json::from_slice::<serde_json::Value>(json_details) {
+        Ok(details) if details.is_object() => details,
+        Ok(_) | Err(_) => return (0, chaoscontrol_protocol::STATUS_ERROR),
+    };
+    let (wire_id, _) = bound_event_ids(&identity);
     let frame = EventFrame {
         catalog_token: identity.catalog_token,
         fingerprint: identity.fingerprint,
@@ -115,7 +118,7 @@ pub(crate) fn hypercall_bound_assertion(
     if crate::internal::vm_page_ptr().is_some() {
         return hypercall_raw(command, flags, wire_id, &payload[..length]);
     }
-    dispatch_local_bound(command, flags, wire_id, message, json_details, identity);
+    dispatch_local_bound(command, flags, message, &details, identity);
     (0, 0)
 }
 
@@ -214,7 +217,7 @@ fn dispatch_local(command: u8, flags: u8, id: u32, message: &str, json_details: 
 
 #[cfg(feature = "full")]
 fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
-    use chaoscontrol_protocol::assertion_wire::{
+    use chaoscontrol_protocol::transport::{
         decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame,
     };
     use chaoscontrol_protocol::*;
@@ -222,7 +225,7 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
         CMD_ASSERT_CATALOG_BEGIN => serde_json::json!({
             "chaoscontrol_assertion_catalog": {
                 "record": "begin",
-                "catalog_version": chaoscontrol_protocol::assertion_catalog::ASSERTION_CATALOG_VERSION,
+                "catalog_version": chaoscontrol_protocol::admission::ASSERTION_CATALOG_VERSION,
                 "expected_descriptors": id,
                 "valid": decode_catalog_begin(payload).is_ok()
             }
@@ -247,7 +250,7 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
             Ok(token) => serde_json::json!({
                 "chaoscontrol_assertion_catalog": {
                     "record": "complete",
-                    "catalog_version": chaoscontrol_protocol::assertion_catalog::ASSERTION_CATALOG_VERSION,
+                    "catalog_version": chaoscontrol_protocol::admission::ASSERTION_CATALOG_VERSION,
                     "descriptor_count": id,
                     "catalog_token": token
                 }
@@ -277,12 +280,21 @@ fn dispatch_local_raw(command: u8, flags: u8, id: u32, payload: &[u8]) {
 }
 
 #[cfg(feature = "full")]
+fn bound_event_ids(identity: &crate::assertion_catalog::BoundIdentity) -> (u32, String) {
+    let wire_id = identity.compatibility_id.unwrap_or(0);
+    let report_id = identity
+        .compatibility_id
+        .map(|compatibility_id| format!("{compatibility_id:08x}"))
+        .unwrap_or_else(|| identity.fingerprint.to_hex());
+    (wire_id, report_id)
+}
+
+#[cfg(feature = "full")]
 fn dispatch_local_bound(
     command: u8,
     flags: u8,
-    id: u32,
     message: &str,
-    json_details: &[u8],
+    details: &serde_json::Value,
     identity: crate::assertion_catalog::BoundIdentity,
 ) {
     use chaoscontrol_protocol::*;
@@ -293,19 +305,18 @@ fn dispatch_local_bound(
         CMD_ASSERT_UNREACHABLE => ("reachability", false),
         _ => return,
     };
-    let details = serde_json::from_slice::<serde_json::Value>(json_details)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let (_, report_id) = bound_event_ids(&identity);
     let value = serde_json::json!({
         "antithesis_assert": {
             "assert_type": assert_type,
             "condition": condition,
             "hit": true,
             "must_hit": matches!(assert_type, "sometimes" | "reachability"),
-            "id": format!("{id:08x}"),
+            "id": report_id,
             "message": message,
             "display_type": assert_type,
             "details": details,
-            "identity_version": chaoscontrol_protocol::assertion_identity::ASSERTION_IDENTITY_VERSION,
+            "identity_version": chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
             "catalog_token": identity.catalog_token,
             "assertion_fingerprint": identity.fingerprint,
             "catalog_status": "accepted"
@@ -316,7 +327,7 @@ fn dispatch_local_bound(
 
 #[cfg(feature = "full")]
 fn encode_hex(input: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(input)
+    chaoscontrol_protocol::identity::encode_lower_hex(input)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -348,6 +359,31 @@ pub(crate) fn hypercall_simple(_command: u8, _id: u32) -> (u64, u8) {
 #[cfg(test)]
 mod tests {
     use chaoscontrol_protocol::PAYLOAD_MAX;
+
+    #[cfg(feature = "full")]
+    #[test]
+    fn bound_event_ids_use_exact_alias_or_fingerprint_fallback() {
+        const PRESENT_ALIAS: u32 = 7;
+        const FINGERPRINT_BYTE: u8 = 0xab;
+        let fingerprint = chaoscontrol_protocol::identity::AssertionFingerprint(
+            [FINGERPRINT_BYTE; chaoscontrol_protocol::identity::ASSERTION_FINGERPRINT_BYTES],
+        );
+        let present = crate::assertion_catalog::BoundIdentity {
+            catalog_token: chaoscontrol_protocol::identity::AssertionFingerprint::ZERO,
+            fingerprint,
+            compatibility_id: Some(PRESENT_ALIAS),
+        };
+        let absent = crate::assertion_catalog::BoundIdentity {
+            compatibility_id: None,
+            ..present
+        };
+
+        assert_eq!(
+            super::bound_event_ids(&present),
+            (PRESENT_ALIAS, "00000007".to_string())
+        );
+        assert_eq!(super::bound_event_ids(&absent), (0, fingerprint.to_hex()));
+    }
 
     #[test]
     fn payload_max_fits_in_page() {

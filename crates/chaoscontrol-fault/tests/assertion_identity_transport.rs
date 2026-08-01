@@ -1,11 +1,11 @@
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_fault::oracle::Verdict;
-use chaoscontrol_protocol::assertion_catalog::token_for_descriptors;
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::token_for_descriptors;
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
     ASSERTION_IDENTITY_VERSION,
 };
-use chaoscontrol_protocol::assertion_wire::{
+use chaoscontrol_protocol::transport::{
     encode_catalog_begin, encode_catalog_complete, encode_descriptor_frame, encode_event_frame,
     EventFrame, EVENT_KIND_OFFSET,
 };

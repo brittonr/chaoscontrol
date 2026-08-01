@@ -1,10 +1,10 @@
 use chaoscontrol_fault::oracle::PropertyOracle;
 use chaoscontrol_fault::report_merge::{merge_oracle_reports, ReportMergeConflict};
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     catalog_token, token_for_descriptors, AdmittedAssertion, BoundAssertionEvent, CatalogBuilder,
     CatalogConflict, CatalogValidationStatus,
 };
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
     ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_EVENT_DETAILS_BYTES,
 };

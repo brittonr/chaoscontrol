@@ -1,12 +1,12 @@
 use crate::assert::{AssertionKind, CatalogEntry, CatalogLogicalKey, ASSERTION_CATALOG};
 use crate::transport;
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     catalog_token, AcceptedCatalog, CatalogBuilder, CatalogConflict, MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
-use chaoscontrol_protocol::assertion_wire::{
+use chaoscontrol_protocol::transport::{
     encode_catalog_begin, encode_catalog_complete, encode_descriptor_frame,
 };
 use chaoscontrol_protocol::{
@@ -169,7 +169,7 @@ fn accept_descriptors(
             .canonical_bytes()
             .map_err(CatalogConflict::Descriptor)?;
         assertions.entry(fingerprint).or_insert_with(|| {
-            chaoscontrol_protocol::assertion_catalog::AdmittedAssertion {
+            chaoscontrol_protocol::admission::AdmittedAssertion {
                 descriptor: descriptor.clone(),
                 fingerprint,
                 canonical_bytes,
@@ -205,31 +205,25 @@ fn descriptor_from_entry(entry: &CatalogEntry) -> Result<AssertionDescriptor, Ca
     Ok(descriptor)
 }
 
-fn protocol_kind(kind: AssertionKind) -> chaoscontrol_protocol::assertion_identity::AssertionKind {
+fn protocol_kind(kind: AssertionKind) -> chaoscontrol_protocol::identity::AssertionKind {
     match kind {
-        AssertionKind::Always => chaoscontrol_protocol::assertion_identity::AssertionKind::Always,
-        AssertionKind::Sometimes => {
-            chaoscontrol_protocol::assertion_identity::AssertionKind::Sometimes
-        }
-        AssertionKind::Reachable => {
-            chaoscontrol_protocol::assertion_identity::AssertionKind::Reachable
-        }
-        AssertionKind::Unreachable => {
-            chaoscontrol_protocol::assertion_identity::AssertionKind::Unreachable
-        }
+        AssertionKind::Always => chaoscontrol_protocol::identity::AssertionKind::Always,
+        AssertionKind::Sometimes => chaoscontrol_protocol::identity::AssertionKind::Sometimes,
+        AssertionKind::Reachable => chaoscontrol_protocol::identity::AssertionKind::Reachable,
+        AssertionKind::Unreachable => chaoscontrol_protocol::identity::AssertionKind::Unreachable,
     }
 }
 
 fn protocol_catalog_kind(
     kind: u8,
-) -> Result<chaoscontrol_protocol::assertion_identity::AssertionKind, CatalogConflict> {
+) -> Result<chaoscontrol_protocol::identity::AssertionKind, CatalogConflict> {
     match kind {
         crate::assert::CATALOG_KIND_ALWAYS => Ok(protocol_kind(AssertionKind::Always)),
         crate::assert::CATALOG_KIND_SOMETIMES => Ok(protocol_kind(AssertionKind::Sometimes)),
         crate::assert::CATALOG_KIND_REACHABLE => Ok(protocol_kind(AssertionKind::Reachable)),
         crate::assert::CATALOG_KIND_UNREACHABLE => Ok(protocol_kind(AssertionKind::Unreachable)),
         _ => Err(CatalogConflict::Descriptor(
-            chaoscontrol_protocol::assertion_identity::IdentityError::InvalidKind,
+            chaoscontrol_protocol::identity::AssertionError::InvalidKind,
         )),
     }
 }

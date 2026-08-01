@@ -1446,63 +1446,32 @@ fn cmd_campaign(
     let runner = CampaignRunner::new(campaign_config);
     match runner.run() {
         Ok(report) => {
-            // Write reports
-            let formatted = format_campaign_report(&report);
-            println!("{}\n", formatted);
-
-            if let Err(e) = fs::create_dir_all(&output) {
-                eprintln!("Error creating output directory: {}", e);
-            }
-
-            let report_path = format!("{}/campaign_report.txt", output);
-            if let Err(e) = fs::write(&report_path, &formatted) {
-                eprintln!("Error writing report: {}", e);
-            } else {
-                eprintln!("Report saved to {}", report_path);
-            }
-
-            let json_path = format!("{}/campaign_report.json", output);
-            match serde_json::to_string_pretty(&report) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&json_path, &json) {
-                        eprintln!("Error writing JSON report: {}", e);
-                    } else {
-                        eprintln!("JSON report saved to {}", json_path);
-                    }
+            let prepared = match prepare_campaign_outputs(&report) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("Error preparing campaign evidence: {error}");
+                    std::process::exit(EXIT_ERROR);
                 }
-                Err(e) => eprintln!("Error serializing report: {}", e),
-            }
-
-            let assertions_path = format!("{}/assertions.json", output);
-            match write_assertion_summary(&assertions_path, || {
-                AssertionSummaryV2::from_campaign(&report)
-            }) {
-                Ok(_) => eprintln!("Assertions saved to {}", assertions_path),
-                Err(error) => eprintln!("Error writing assertions: {error}"),
+            };
+            println!("{}\n", prepared.formatted);
+            if let Err(error) = persist_campaign_outputs(&output, &prepared) {
+                eprintln!("Error writing campaign evidence: {error}");
+                std::process::exit(EXIT_ERROR);
             }
 
             // Auto-minimize campaign bugs
             if auto_minimize && !report.bugs.is_empty() {
                 if chaoscontrol_explore::signal::shutdown_requested() {
-                    eprintln!("Skipping auto-minimize: interrupted");
+                    eprintln!("Auto-minimize failed: campaign was interrupted");
+                    std::process::exit(EXIT_ERROR);
                 } else {
-                    // Reject the whole campaign carrier before minimization.
-                    let bugs = match chaoscontrol_explore::campaign::campaign_bugs_for_minimization(
-                        &report,
-                    ) {
-                        Ok(bugs) => bugs,
-                        Err(error) => {
-                            eprintln!("Error: campaign bugs cannot auto-minimize: {error}");
-                            std::process::exit(EXIT_ERROR);
-                        }
-                    };
                     let min_dir = format!("{}/minimized", output);
                     if let Err(error) = fs::create_dir_all(&min_dir) {
                         eprintln!("Error creating minimization directory: {error}");
                         std::process::exit(EXIT_ERROR);
                     }
                     if let Err(error) =
-                        auto_minimize_bugs(&bugs, &base_config_for_minimize, &min_dir)
+                        auto_minimize_bugs(&prepared.bugs, &base_config_for_minimize, &min_dir)
                     {
                         eprintln!("Auto-minimize failed: {error}");
                         std::process::exit(EXIT_ERROR);
@@ -1530,6 +1499,48 @@ fn cmd_campaign(
             std::process::exit(2);
         }
     }
+}
+
+struct PreparedCampaignOutputs {
+    formatted: String,
+    json: String,
+    assertions: AssertionSummaryV2,
+    bugs: Vec<chaoscontrol_explore::corpus::BugReport>,
+}
+
+fn prepare_campaign_outputs(
+    report: &chaoscontrol_explore::campaign::CampaignReport,
+) -> Result<PreparedCampaignOutputs, String> {
+    let bugs = chaoscontrol_explore::campaign::campaign_bugs_for_minimization(report)
+        .map_err(|error| format!("invalid bug collection: {error}"))?;
+    let assertions = AssertionSummaryV2::from_campaign(report)
+        .map_err(|error| format!("invalid assertion summary: {error}"))?;
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("report serialization failed: {error}"))?;
+    Ok(PreparedCampaignOutputs {
+        formatted: format_campaign_report(report),
+        json,
+        assertions,
+        bugs,
+    })
+}
+
+fn persist_campaign_outputs(
+    output: &str,
+    prepared: &PreparedCampaignOutputs,
+) -> Result<(), String> {
+    fs::create_dir_all(output)
+        .map_err(|error| format!("cannot create output directory: {error}"))?;
+    let output = Path::new(output);
+    let text_path = output.join("campaign_report.txt");
+    fs::write(&text_path, &prepared.formatted)
+        .map_err(|error| format!("cannot write {}: {error}", text_path.display()))?;
+    let json_path = output.join("campaign_report.json");
+    fs::write(&json_path, &prepared.json)
+        .map_err(|error| format!("cannot write {}: {error}", json_path.display()))?;
+    let assertions_path = output.join("assertions.json");
+    write_assertion_summary(&assertions_path, || Ok(prepared.assertions.clone()))?;
+    Ok(())
 }
 
 fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
@@ -1656,23 +1667,16 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
             reports.push((*seed, report, summary.wall_clock_seconds));
         }
         let campaign_report = chaoscontrol_explore::campaign::aggregate_reports(reports, 0.0);
-        let formatted = format_campaign_report(&campaign_report);
-        println!("{}", formatted);
-
-        // Write final reports
-        let json = match serde_json::to_string_pretty(&campaign_report) {
-            Ok(json) => json,
+        let prepared = match prepare_campaign_outputs(&campaign_report) {
+            Ok(prepared) => prepared,
             Err(error) => {
-                eprintln!("Campaign report serialization failed: {error}");
+                eprintln!("Campaign aggregation evidence is invalid: {error}");
                 std::process::exit(EXIT_ERROR);
             }
         };
-        if let Err(error) = fs::write(format!("{}/campaign_report.json", corpus), &json) {
-            eprintln!("Campaign JSON report write failed: {error}");
-            std::process::exit(EXIT_ERROR);
-        }
-        if let Err(error) = fs::write(format!("{}/campaign_report.txt", corpus), &formatted) {
-            eprintln!("Campaign text report write failed: {error}");
+        println!("{}", prepared.formatted);
+        if let Err(error) = persist_campaign_outputs(&corpus, &prepared) {
+            eprintln!("Campaign aggregation write failed: {error}");
             std::process::exit(EXIT_ERROR);
         }
         return;
@@ -1726,10 +1730,19 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
     let runner = CampaignRunner::new(campaign_config);
     match runner.run() {
         Ok(report) => {
-            let formatted = format_campaign_report(&report);
-            println!("{}", formatted);
-
-            if report.bugs.is_empty() {
+            let prepared = match prepare_campaign_outputs(&report) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("Resumed campaign evidence is invalid: {error}");
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            println!("{}", prepared.formatted);
+            if let Err(error) = persist_campaign_outputs(&corpus, &prepared) {
+                eprintln!("Resumed campaign evidence write failed: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+            if prepared.bugs.is_empty() {
                 std::process::exit(1);
             }
         }

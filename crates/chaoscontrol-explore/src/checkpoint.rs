@@ -18,6 +18,7 @@ use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const MAX_CHECKPOINT_BUGS: usize = 4_096;
@@ -764,8 +765,23 @@ pub fn save_checkpoint<P: AsRef<Path>>(
     path: P,
     checkpoint: &ExplorationCheckpoint,
 ) -> Result<(), CheckpointError> {
-    let json = serde_json::to_string_pretty(checkpoint)?;
-    fs::write(path, json)?;
+    validate_checkpoint(checkpoint)?;
+    let bytes = serde_json::to_vec_pretty(checkpoint)?;
+    if bytes.len() as u64 > crate::bounded_json::MAX_CHECKPOINT_BYTES {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "serialized checkpoint exceeds the byte limit".to_string(),
+        });
+    }
+    let path = path.as_ref();
+    let parent = path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    temporary.write_all(&bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 
@@ -1456,6 +1472,11 @@ mod tests {
 
     const TEST_EXPORT_ALIAS: u64 = 1_806_003_755;
 
+    fn write_untrusted_checkpoint(path: &Path, checkpoint: &ExplorationCheckpoint) {
+        let bytes = serde_json::to_vec_pretty(checkpoint).expect("checkpoint fixture JSON");
+        fs::write(path, bytes).expect("write untrusted checkpoint fixture");
+    }
+
     fn minimal_bug(bug_id: u64) -> SerializableBug {
         let assertion_id = bug_id + 100;
         SerializableBug {
@@ -1480,12 +1501,48 @@ mod tests {
     }
 
     #[test]
+    fn invalid_checkpoint_does_not_replace_a_valid_checkpoint() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let valid = minimal_checkpoint_with_bugs(Vec::new());
+        save_checkpoint(&path, &valid).expect("valid checkpoint writes");
+        let before = fs::read(&path).expect("valid checkpoint bytes");
+        let mut invalid = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        invalid.assertion_report = None;
+
+        assert!(save_checkpoint(&path, &invalid).is_err());
+        assert_eq!(fs::read(&path).expect("retained checkpoint bytes"), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn checkpoint_save_replaces_a_symlink_without_following_it() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let target = directory.path().join("target.json");
+        fs::write(&target, b"retain target").expect("target fixture");
+        symlink(&target, &path).expect("checkpoint symlink");
+
+        save_checkpoint(&path, &minimal_checkpoint_with_bugs(Vec::new()))
+            .expect("valid checkpoint replaces symlink");
+        assert_eq!(fs::read(&target).expect("target bytes"), b"retain target");
+        assert!(!fs::symlink_metadata(&path)
+            .expect("checkpoint metadata")
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
     fn load_rejects_bug_without_admitting_report() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("checkpoint.json");
         let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
         checkpoint.assertion_report = None;
-        save_checkpoint(&path, &checkpoint).expect("checkpoint writes");
+        assert!(save_checkpoint(&path, &checkpoint).is_err());
+        assert!(!path.exists());
+        write_untrusted_checkpoint(&path, &checkpoint);
 
         assert!(matches!(
             load_checkpoint(&path),
@@ -1503,7 +1560,8 @@ mod tests {
             .as_mut()
             .expect("identity")
             .catalog_token = chaoscontrol_protocol::identity::AssertionFingerprint::ZERO;
-        save_checkpoint(&path, &checkpoint).expect("checkpoint writes");
+        assert!(save_checkpoint(&path, &checkpoint).is_err());
+        write_untrusted_checkpoint(&path, &checkpoint);
 
         assert!(matches!(
             load_checkpoint(&path),
@@ -1545,7 +1603,7 @@ mod tests {
         let skipped_depth = minimal_bug(3);
         let checkpoint =
             minimal_checkpoint_with_bugs(vec![skipped_assertion, selected, skipped_depth]);
-        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+        write_untrusted_checkpoint(&checkpoint_path, &checkpoint);
 
         let summary = export_checkpoint_bugs_with_filter(
             &checkpoint_path,
@@ -1583,7 +1641,7 @@ mod tests {
         set_assertion_alias(&mut selected, TEST_EXPORT_ALIAS);
         selected.replay_parent_depth = 0;
         let checkpoint = minimal_checkpoint_with_bugs(vec![skipped, selected]);
-        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+        write_untrusted_checkpoint(&checkpoint_path, &checkpoint);
 
         let summary = export_checkpoint_bugs_with_filter(
             &checkpoint_path,
@@ -1648,7 +1706,7 @@ mod tests {
         let mut legacy = minimal_bug(2);
         legacy.assertion_identity = None;
         let checkpoint = minimal_checkpoint_with_bugs(vec![valid, legacy]);
-        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+        write_untrusted_checkpoint(&checkpoint_path, &checkpoint);
 
         let error = export_checkpoint_bugs_with_filter(
             &checkpoint_path,
@@ -1680,7 +1738,7 @@ mod tests {
         let mut bug = minimal_bug(7);
         bug.replay_parent_depth = 2;
         let checkpoint = minimal_checkpoint_with_bugs(vec![bug]);
-        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+        write_untrusted_checkpoint(&checkpoint_path, &checkpoint);
 
         let err = export_checkpoint_bugs(&checkpoint_path, dir.path(), true).unwrap_err();
         assert!(matches!(

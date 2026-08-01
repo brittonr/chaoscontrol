@@ -1,6 +1,6 @@
 use chaoscontrol_evidence::{validate_assertion_summary, validate_assertion_summary_for_promotion};
-use chaoscontrol_protocol::assertion_catalog::{catalog_token, AdmittedAssertion};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::admission::{catalog_token, AdmittedAssertion};
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_FINGERPRINT_BYTES,
     ASSERTION_IDENTITY_VERSION,
 };
@@ -47,7 +47,7 @@ fn catalog_token_for(descriptors: &[AssertionDescriptor]) -> String {
 }
 
 fn encode_hex(bytes: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }
 
 fn entry(descriptor: &AssertionDescriptor, token: &str) -> Value {
@@ -101,8 +101,12 @@ fn accepts_collision_safe_summary_for_promotion() {
 fn accepts_null_compatibility_id_and_omits_absent_failure_details() {
     let mut without_alias = descriptor("org.example.guest", "without-alias", COMPATIBILITY_ID);
     without_alias.compatibility_id = None;
-    let summary = strict_summary(std::slice::from_ref(&without_alias));
+    let mut summary = strict_summary(std::slice::from_ref(&without_alias));
+    summary["assertions"][0]["identity"]["descriptor"]["compatibility_id"] = Value::Null;
 
+    assert!(summary["assertions"][0]["identity"]["descriptor"]
+        .get("compatibility_id")
+        .is_some());
     assert_eq!(
         summary["assertions"][0]["identity"]["descriptor"]["compatibility_id"],
         Value::Null
@@ -261,7 +265,7 @@ fn rejects_spoofed_verdict_kind_counts_and_unbounded_details() {
     assert!(validate_assertion_summary(&invalid_reachable).is_err());
 
     let mut details = strict_summary(std::slice::from_ref(&descriptor));
-    details["assertions"][0]["last_failure_details"] = json!("x"
-        .repeat(chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_EVENT_DETAILS_BYTES + 1));
+    details["assertions"][0]["last_failure_details"] =
+        json!("x".repeat(chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES + 1));
     assert!(validate_assertion_summary(&details).is_err());
 }

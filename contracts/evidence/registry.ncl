@@ -90,6 +90,8 @@ let Registry = {
       owner = "chaoscontrol-explore",
       source_paths = [
         "crates/chaoscontrol-explore/src",
+        "contracts/evidence/assertion-evidence-identity.ncl",
+        "contracts/evidence/bug-report.ncl",
       ],
       artifact_paths = [
         "dogfood-results/*/bug_*.json",
@@ -97,9 +99,13 @@ let Registry = {
       validation_commands = [
         "check-evidence-contracts --root .",
         "nickel export contracts/evidence/examples/raft-bug-report.ncl",
+        "nickel export contracts/evidence/examples/bug-report-identity.ncl",
       ],
       fixture_coverage = [
         "dogfood-results/raft-20260506-095025/bug_0.json",
+        "contracts/evidence/fixtures/valid/bug-report.identity.valid.json",
+        "contracts/evidence/fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
         "contracts/evidence/fixtures/invalid/receipt.missing-deterministic-context.invalid.json",
       ],
       freshness = "Rust serde shape is authoritative; Nickel validates the public evidence shape or generated schema freshness.",
@@ -203,6 +209,7 @@ let Registry = {
         "contracts/evidence/fixtures/invalid/replay-verdict.schedule-only-not-proof.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.missing-snapshot-ref.invalid.json",
         "contracts/evidence/fixtures/invalid/replay-verdict.snapshot-not-reproduced.invalid.json",
+        "contracts/evidence/fixtures/invalid/replay-verdict.schema-v1-accepted.invalid.json",
       ],
       freshness = "Rust replay verdict code is the semantic source of truth; Nickel/checkers validate public verdict shape and accepted-proof gates.",
       rationale = "Verdicts classify replay attempts without scraping raw logs, separating accepted snapshot-backed proof from schedule-only gaps and invalid evidence.",

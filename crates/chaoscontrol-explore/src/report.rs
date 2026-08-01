@@ -751,6 +751,7 @@ mod tests {
         BugReport {
             bug_id: id,
             assertion_id,
+            assertion_identity: crate::test_support::assertion_identity(assertion_id),
             assertion_location: location.to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,
@@ -788,7 +789,7 @@ mod tests {
             },
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -824,7 +825,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -864,7 +865,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -906,6 +907,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 1,
             assertion_id: 50,
+            assertion_identity: crate::test_support::assertion_identity(50),
             assertion_location: "bug.rs:1".to_string(),
             schedule,
             snapshot: None,
@@ -992,7 +994,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: history,
@@ -1066,7 +1068,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: history,
@@ -1104,7 +1106,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -1200,7 +1202,7 @@ mod tests {
             },
             assertion_details: details,
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -1278,7 +1280,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
             collision_safe_assertion_evidence: false,
             assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
@@ -1310,6 +1312,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 1,
             assertion_id: 50,
+            assertion_identity: crate::test_support::assertion_identity(50),
             assertion_location: "bug.rs:1".to_string(),
             schedule,
             snapshot: None,
@@ -1343,6 +1346,7 @@ mod tests {
                 bug: SerializableBug {
                     bug_id: 0,
                     assertion_id: 100,
+                    assertion_identity: Some(crate::test_support::assertion_identity(100)),
                     assertion_location: "safety.rs:10".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
@@ -1422,7 +1426,7 @@ mod tests {
             },
             assertion_identity_conflicts: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
@@ -1466,7 +1470,7 @@ mod tests {
             assertion_stats: Default::default(),
             assertion_identity_conflicts: Vec::new(),
             assertion_catalog_status:
-                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous,
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
             collision_safe_assertion_evidence: false,
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),

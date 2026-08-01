@@ -75,9 +75,12 @@ pub fn render_operator_triage_runbook(root: &Path, receipt: &Value) -> EvidenceR
         "operator triage needs at least one proof",
     )?;
 
+    let has_promotable_proof = proofs
+        .iter()
+        .any(|proof| crate::validate_workload_proof(root, proof).is_ok());
     let mut output = String::new();
     output.push_str("# ChaosControl Local Operator Triage Runbook\n\n");
-    output.push_str("Generated from a replay-readiness receipt and `dogfood-results/accepted-workload-proofs.json`. Do not scrape `run.log`, `reproduce.log`, or temporary VM logs for the triage decision; use the receipt, bug JSON, replay verdict, snapshot artifact/chunk manifest, and the commands below.\n\n");
+    output.push_str("Generated from a replay-readiness receipt and `dogfood-results/accepted-workload-proofs.json`. Do not scrape `run.log`, `reproduce.log`, or temporary VM logs for the triage decision. Use only the bounded artifacts and status below.\n\n");
     output.push_str("## Receipt entry point\n\n");
     output.push_str(&format!("- Summary: `{summary_line}`\n"));
     output.push_str(&format!(
@@ -89,10 +92,11 @@ pub fn render_operator_triage_runbook(root: &Path, receipt: &Value) -> EvidenceR
     output.push_str(
         "1. Open the readiness receipt and dashboard/summary artifacts for status only.\n",
     );
-    output.push_str("2. Open each listed `bug_*.json` and `replay-verdict*.json` below. Confirm `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, and `snapshot.status = valid`.\n");
-    output.push_str("3. Re-run reproduce with the recorded command, writing any fresh verdict under `target/operator-triage/`.\n");
-    output.push_str("4. Run minimize using the same kernel/initrd/VM options from the recorded reproduce command and the listed bug path; write minimized output under `target/operator-triage/`.\n");
-    output.push_str("5. Record the operator decision with the JSON template for each workload. Keep raw logs local unless a concise hash-bound receipt explicitly promotes them.\n\n");
+    if has_promotable_proof {
+        output.push_str("2. Confirm that each selected bug and verdict has exact admitted v2 assertion identity.\n3. Re-run reproduce and minimize only with the catalog-bound commands shown below.\n4. Record the operator decision. Keep raw logs local unless a concise hash-bound receipt explicitly promotes them.\n\n");
+    } else {
+        output.push_str("2. Treat every listed bug, verdict, and snapshot as historical diagnostic data.\n3. Do not run reproduction or minimization for these ID-only carriers.\n4. Record `blocked-assertion-identity` until fresh admitted v2 KVM evidence exists.\n\n");
+    }
     output.push_str("## Workloads\n\n");
 
     for proof in proofs {
@@ -114,7 +118,6 @@ fn render_proof_section(root: &Path, proof: &AcceptedWorkloadProof) -> EvidenceR
     let summary: AcceptedVerdictSummary = read_json(&evidence_dir.join(&proof.summary))?;
     let bug: BugRecord = read_json(&evidence_dir.join(&proof.bug))?;
     let verdict: ReplayVerdict = read_json(&evidence_dir.join(&proof.verdict))?;
-    verdict.validate_shape()?;
     ensure(
         summary.accepted && summary.reproduce_exit_status == 0 && summary.export_exit_status == 0,
         format!("{} summary is not accepted/reproduced", proof.workload),
@@ -131,6 +134,13 @@ fn render_proof_section(root: &Path, proof: &AcceptedWorkloadProof) -> EvidenceR
     let bug_path = format!("{}/{}", proof.evidence_dir, proof.bug);
     let verdict_path = format!("{}/{}", proof.evidence_dir, proof.verdict);
     let snapshot_path = format!("{}/{}", proof.evidence_dir, proof.snapshot);
+    if let Err(error) = crate::validate_workload_proof(root, proof) {
+        return Ok(format!(
+            "### `{}` — blocked assertion identity\n\n- Historical bug: `{bug_path}`\n- Historical replay verdict: `{verdict_path}`\n- Historical snapshot: `{snapshot_path}`\n- Status: `blocked-assertion-identity`\n- Blocker: {}\n\nDo not reproduce, minimize, or promote this ID-only carrier. Generate fresh admitted v2 KVM evidence first.\n\n",
+            proof.workload,
+            error.message()
+        ));
+    }
     let triage_verdict = format!("{TRIAGE_DIR}/{}-replay-verdict.json", proof.workload);
     let minimized = format!("{TRIAGE_DIR}/{}-minimized-bug.json", proof.workload);
     let decision = format!("{TRIAGE_DIR}/{}-decision.json", proof.workload);

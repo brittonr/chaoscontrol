@@ -1,4 +1,4 @@
-use chaoscontrol_protocol::assertion_identity::AssertionKind;
+use chaoscontrol_protocol::identity::AssertionKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LocalAssertionVerdict {

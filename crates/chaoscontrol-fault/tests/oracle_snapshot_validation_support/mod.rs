@@ -1,9 +1,9 @@
 use crate::oracle_snapshot_common::{descriptor, COMPATIBILITY_ID};
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     catalog_token, AcceptedCatalog, AdmittedAssertion, CatalogValidationStatus,
     ASSERTION_CATALOG_VERSION,
 };
-use chaoscontrol_protocol::assertion_identity::AssertionLogicalKey;
+use chaoscontrol_protocol::identity::AssertionLogicalKey;
 use std::collections::BTreeMap;
 
 pub const FUTURE_RUN_ID: u32 = 2;

@@ -1,6 +1,3 @@
-use core::fmt;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 pub use crate::{
     ASSERTION_KIND_ALWAYS_DISCRIMINANT, ASSERTION_KIND_REACHABLE_DISCRIMINANT,
     ASSERTION_KIND_SOMETIMES_DISCRIMINANT, ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
@@ -35,9 +32,9 @@ impl AssertionFingerprint {
         encode_lower_hex(&self.0)
     }
 
-    pub fn from_hex(value: &str) -> Result<Self, IdentityError> {
+    pub fn from_hex(value: &str) -> Result<Self, AssertionError> {
         if value.len() != ASSERTION_FINGERPRINT_HEX_BYTES {
-            return Err(IdentityError::InvalidFingerprint);
+            return Err(AssertionError::InvalidFingerprint);
         }
         let mut bytes = [0_u8; ASSERTION_FINGERPRINT_BYTES];
         for (index, pair) in value
@@ -61,33 +58,35 @@ pub fn encode_lower_hex(bytes: &[u8]) -> String {
     output
 }
 
-impl fmt::Display for AssertionFingerprint {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for AssertionFingerprint {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str(&self.to_hex())
     }
 }
 
-impl Serialize for AssertionFingerprint {
+impl serde::Serialize for AssertionFingerprint {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: Serializer,
+        S: serde::Serializer,
     {
         serializer.serialize_str(&self.to_hex())
     }
 }
 
-impl<'de> Deserialize<'de> for AssertionFingerprint {
+impl<'de> serde::Deserialize<'de> for AssertionFingerprint {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>,
+        D: serde::Deserializer<'de>,
     {
-        let value = String::deserialize(deserializer)?;
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
         Self::from_hex(&value).map_err(serde::de::Error::custom)
     }
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AssertionKind {
     Always = ASSERTION_KIND_ALWAYS_DISCRIMINANT,
@@ -96,7 +95,7 @@ pub enum AssertionKind {
     Unreachable = ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AssertionLogicalKey {
     Automatic { source_site: String },
@@ -104,17 +103,13 @@ pub enum AssertionLogicalKey {
     LegacyU32 { id: u32 },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssertionDescriptor {
     pub identity_version: u8,
     pub namespace: String,
     pub logical_key: AssertionLogicalKey,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "deserialize_compatibility_id"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility_id: Option<u32>,
     pub kind: AssertionKind,
     pub message: String,
@@ -125,8 +120,24 @@ pub struct AssertionDescriptor {
     pub category: String,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawAssertionDescriptor {
+    identity_version: u8,
+    namespace: String,
+    logical_key: AssertionLogicalKey,
+    compatibility_id: Option<u32>,
+    kind: AssertionKind,
+    message: String,
+    source_file: String,
+    source_line: u32,
+    source_column: u32,
+    guest: String,
+    category: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IdentityError {
+pub enum AssertionError {
     EmptyField(&'static str),
     FieldTooLong(&'static str),
     InvalidAutomaticSourceSite,
@@ -141,38 +152,53 @@ pub enum IdentityError {
     MalformedCanonical,
 }
 
-impl fmt::Display for IdentityError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Display for AssertionError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(formatter, "assertion identity error: {self:?}")
     }
 }
 
-impl std::error::Error for IdentityError {}
+impl std::error::Error for AssertionError {}
 
-fn deserialize_compatibility_id<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    u32::deserialize(deserializer).map(Some)
+impl<'de> serde::Deserialize<'de> for AssertionDescriptor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = <RawAssertionDescriptor as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self {
+            identity_version: raw.identity_version,
+            namespace: raw.namespace,
+            logical_key: raw.logical_key,
+            compatibility_id: raw.compatibility_id,
+            kind: raw.kind,
+            message: raw.message,
+            source_file: raw.source_file,
+            source_line: raw.source_line,
+            source_column: raw.source_column,
+            guest: raw.guest,
+            category: raw.category,
+        })
+    }
 }
 
 impl AssertionDescriptor {
-    pub fn validate(&self) -> Result<(), IdentityError> {
-        crate::assertion_identity_core::validate_descriptor(self)
+    pub fn validate(&self) -> Result<(), AssertionError> {
+        crate::canonical::validate_descriptor(self)
     }
 
-    pub fn canonical_bytes(&self) -> Result<Vec<u8>, IdentityError> {
-        crate::assertion_identity_core::canonical_descriptor(self)
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, AssertionError> {
+        crate::canonical::canonical_descriptor(self)
     }
 
-    pub fn fingerprint(&self) -> Result<AssertionFingerprint, IdentityError> {
+    pub fn fingerprint(&self) -> Result<AssertionFingerprint, AssertionError> {
         fingerprint_canonical(&self.canonical_bytes()?)
     }
 }
 
-pub fn fingerprint_canonical(bytes: &[u8]) -> Result<AssertionFingerprint, IdentityError> {
+pub fn fingerprint_canonical(bytes: &[u8]) -> Result<AssertionFingerprint, AssertionError> {
     if bytes.len() > MAX_ASSERTION_CANONICAL_BYTES {
-        return Err(IdentityError::FieldTooLong("canonical_descriptor"));
+        return Err(AssertionError::FieldTooLong("canonical_descriptor"));
     }
     let mut hasher = blake3::Hasher::new();
     hasher.update(FINGERPRINT_DOMAIN);
@@ -180,10 +206,10 @@ pub fn fingerprint_canonical(bytes: &[u8]) -> Result<AssertionFingerprint, Ident
     Ok(AssertionFingerprint(*hasher.finalize().as_bytes()))
 }
 
-fn hex_nibble(byte: u8) -> Result<u8, IdentityError> {
+fn hex_nibble(byte: u8) -> Result<u8, AssertionError> {
     match byte {
         b'0'..=b'9' => Ok(byte - b'0'),
         b'a'..=b'f' => Ok(byte - b'a' + HEX_ALPHA_DIGIT_OFFSET),
-        _ => Err(IdentityError::InvalidFingerprint),
+        _ => Err(AssertionError::InvalidFingerprint),
     }
 }

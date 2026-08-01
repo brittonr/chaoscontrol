@@ -6,8 +6,8 @@ use chaoscontrol_fault::oracle::{PropertyOracle, Verdict};
 use chaoscontrol_fault::oracle_validation::{
     validate_oracle_snapshot, validate_restorable_oracle_snapshot, OracleValidationError,
 };
-use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, CatalogValidationStatus};
-use chaoscontrol_protocol::assertion_identity::ASSERTION_FINGERPRINT_BYTES;
+use chaoscontrol_protocol::admission::{token_for_descriptors, CatalogValidationStatus};
+use chaoscontrol_protocol::identity::ASSERTION_FINGERPRINT_BYTES;
 use oracle_snapshot_common::{descriptor, first_map_value_mut, forged_snapshot, strict_oracle};
 use oracle_snapshot_restore_support::{
     active_failure_snapshot, fatal_diagnostic_snapshot, legacy_diagnostic_snapshot,
@@ -116,7 +116,7 @@ fn event_counter_overflow_is_non_partial_and_poisoned() {
     oracle.restore(&snapshot).expect("restore maximum snapshot");
     let descriptor = descriptor();
     let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
-    let event = chaoscontrol_protocol::assertion_catalog::BoundAssertionEvent {
+    let event = chaoscontrol_protocol::admission::BoundAssertionEvent {
         catalog_token: token,
         fingerprint: descriptor.fingerprint().expect("fingerprint"),
         kind: descriptor.kind,

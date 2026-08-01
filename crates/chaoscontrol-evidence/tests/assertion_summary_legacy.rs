@@ -1,5 +1,5 @@
 use chaoscontrol_evidence::{validate_assertion_summary, validate_assertion_summary_for_promotion};
-use chaoscontrol_protocol::assertion_catalog::MAX_ASSERTION_REPORT_ENTRIES;
+use chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES;
 use serde_json::{json, Value};
 
 const COMPATIBILITY_ID: u32 = 7;
@@ -32,7 +32,7 @@ fn duplicate_legacy_ids_and_unbounded_metadata_are_rejected() {
     let too_long = json!([{
         "id": COMPATIBILITY_ID,
         "message": "x".repeat(
-            chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_MESSAGE_BYTES + 1
+            chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES + 1
         ),
         "kind": "always",
         "guest": "guest",

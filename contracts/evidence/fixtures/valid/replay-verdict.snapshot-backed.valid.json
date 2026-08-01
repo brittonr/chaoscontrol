@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "run_id": "replay-fixture-accepted",
   "replay_class": "snapshot_backed_reproduced",
   "reproduced": true,
@@ -7,10 +7,31 @@
     "command": "chaoscontrol-explore reproduce --bug dogfood-results/raft-snapshot-probe/bug_2.json --verdict-output replay-verdict.json",
     "exit_status": 0
   },
-  "diagnostic": "BUG REPRODUCED \u2014 assertion 1806003755 failed",
+  "diagnostic": "BUG REPRODUCED \u2014 assertion 7 failed",
   "bug_path": "dogfood-results/raft-snapshot-probe/bug_2.json",
   "bug_id": 2,
-  "assertion_id": 1806003755,
+  "assertion_id": 7,
+  "assertion_identity": {
+    "descriptor": {
+      "identity_version": 1,
+      "namespace": "org.example.guest",
+      "logical_key": {
+        "type": "stable",
+        "key": "stable-key"
+      },
+      "compatibility_id": 7,
+      "kind": "always",
+      "message": "message-stable-key",
+      "source_file": "src/main.rs",
+      "source_line": 1,
+      "source_column": 1,
+      "guest": "guest",
+      "category": "invariant"
+    },
+    "fingerprint": "f3417ad3636538c1e5f211e5fae5ecb2bd96562e33a1c4705518191afd85fe41",
+    "canonical_descriptor": [99, 104, 97, 111, 115, 99, 111, 110, 116, 114, 111, 108, 46, 97, 115, 115, 101, 114, 116, 105, 111, 110, 45, 100, 101, 115, 99, 114, 105, 112, 116, 111, 114, 46, 118, 49, 0, 1, 10, 1, 17, 0, 111, 114, 103, 46, 101, 120, 97, 109, 112, 108, 101, 46, 103, 117, 101, 115, 116, 2, 11, 0, 2, 115, 116, 97, 98, 108, 101, 45, 107, 101, 121, 3, 1, 0, 0, 4, 18, 0, 109, 101, 115, 115, 97, 103, 101, 45, 115, 116, 97, 98, 108, 101, 45, 107, 101, 121, 5, 11, 0, 115, 114, 99, 47, 109, 97, 105, 110, 46, 114, 115, 6, 4, 0, 1, 0, 0, 0, 7, 4, 0, 1, 0, 0, 0, 8, 5, 0, 103, 117, 101, 115, 116, 9, 9, 0, 105, 110, 118, 97, 114, 105, 97, 110, 116, 10, 4, 0, 7, 0, 0, 0],
+    "catalog_token": "194fcda5b0b92c13fa30cd42c50bc6facd742fc196d686ea0c86966c04e743aa"
+  },
   "replay_parent_depth": 1,
   "snapshot": {
     "status": "valid",

@@ -14,12 +14,12 @@
 //! | `reachable`  | Point was reached at least once, in any run   |
 //! | `unreachable`| Point was never reached in any run             |
 
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     validate_accepted_catalog, AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent,
     CatalogConflict, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
-pub use chaoscontrol_protocol::assertion_identity::AssertionKind;
+use chaoscontrol_protocol::identity::AssertionFingerprint;
+pub use chaoscontrol_protocol::identity::AssertionKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -75,16 +75,28 @@ pub struct AssertionRecord {
     /// Density category for assertion exercise reporting.
     pub category: String,
     /// Structured descriptor binding for strict records.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "no_admitted_assertion",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub identity: Option<AdmittedAssertion>,
     /// Compatibility ID retained for existing CLI filters.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "no_compatibility_id",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub compatibility_id: Option<u32>,
     /// Catalog tokens that admitted this exact descriptor.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    #[serde(
+        default = "empty_catalog_tokens",
+        skip_serializing_if = "BTreeSet::is_empty"
+    )]
     pub catalog_tokens: BTreeSet<AssertionFingerprint>,
     /// VM instances that contributed to an aggregated record.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    #[serde(
+        default = "empty_vm_instances",
+        skip_serializing_if = "BTreeSet::is_empty"
+    )]
     pub vm_instances: BTreeSet<u32>,
 }
 
@@ -221,6 +233,38 @@ pub struct OracleEvent {
     pub details: serde_json::Value,
 }
 
+fn no_admitted_assertion() -> Option<AdmittedAssertion> {
+    None
+}
+
+fn no_compatibility_id() -> Option<u32> {
+    None
+}
+
+fn empty_catalog_tokens() -> BTreeSet<AssertionFingerprint> {
+    BTreeSet::new()
+}
+
+fn empty_vm_instances() -> BTreeSet<u32> {
+    BTreeSet::new()
+}
+
+fn empty_structured_assertions() -> BTreeMap<AssertionFingerprint, AssertionRecord> {
+    BTreeMap::new()
+}
+
+fn empty_identity_conflicts() -> Vec<String> {
+    Vec::new()
+}
+
+fn no_accepted_catalog() -> Option<AcceptedCatalog> {
+    None
+}
+
+fn no_current_run() -> Option<RunState> {
+    None
+}
+
 fn pending_catalog_status() -> CatalogValidationStatus {
     CatalogValidationStatus::Pending
 }
@@ -232,13 +276,13 @@ pub struct OracleReport {
     /// Diagnostic-only legacy records.
     pub assertions: BTreeMap<u32, AssertionRecord>,
     /// Collision-safe assertion records.
-    #[serde(default)]
+    #[serde(default = "empty_structured_assertions")]
     pub structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
     /// Catalog state at report creation.
     #[serde(default = "pending_catalog_status")]
     pub catalog_status: CatalogValidationStatus,
     /// Fatal assertion identity diagnostics.
-    #[serde(default)]
+    #[serde(default = "empty_identity_conflicts")]
     pub identity_conflicts: Vec<String>,
     /// True only for the structured subset bound to one accepted strict catalog.
     #[serde(default)]
@@ -457,13 +501,10 @@ impl PropertyOracle {
             return self.reject_bound_event(CatalogConflict::CompatibilityAliasConflict);
         }
         if details.is_some_and(|value| {
-            value.len()
-                > chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_EVENT_DETAILS_BYTES
+            value.len() > chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES
         }) {
             return self.reject_bound_event(CatalogConflict::Descriptor(
-                chaoscontrol_protocol::assertion_identity::IdentityError::FieldTooLong(
-                    "event_details",
-                ),
+                chaoscontrol_protocol::identity::AssertionError::FieldTooLong("event_details"),
             ));
         }
         let Some(record) = self.structured_assertions.get(&event.fingerprint) else {
@@ -705,17 +746,17 @@ impl Default for PropertyOracle {
 #[serde(deny_unknown_fields)]
 pub struct OracleSnapshot {
     pub(crate) assertions: BTreeMap<u32, AssertionRecord>,
-    #[serde(default)]
+    #[serde(default = "empty_structured_assertions")]
     pub(crate) structured_assertions: BTreeMap<AssertionFingerprint, AssertionRecord>,
-    #[serde(default)]
+    #[serde(default = "no_accepted_catalog")]
     pub(crate) accepted_catalog: Option<AcceptedCatalog>,
     #[serde(default = "pending_catalog_status")]
     pub(crate) catalog_status: CatalogValidationStatus,
-    #[serde(default)]
+    #[serde(default = "empty_identity_conflicts")]
     pub(crate) identity_conflicts: Vec<String>,
     pub(crate) total_runs: u32,
     pub(crate) events: Vec<OracleEvent>,
-    #[serde(default)]
+    #[serde(default = "no_current_run")]
     pub(crate) current_run: Option<RunState>,
 }
 

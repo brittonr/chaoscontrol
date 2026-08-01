@@ -1,6 +1,6 @@
 use crate::oracle::OracleEvent;
 use crate::oracle_validation::OracleValidationError;
-use chaoscontrol_protocol::assertion_identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
+use chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
 use std::io::{self, Write};
 
 pub const MAX_ORACLE_EVENTS: usize = 16_384;

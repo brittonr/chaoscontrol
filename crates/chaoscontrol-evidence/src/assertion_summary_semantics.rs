@@ -1,5 +1,5 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_EVENT_DETAILS_BYTES, MAX_ASSERTION_GUEST_BYTES,
     MAX_ASSERTION_MESSAGE_BYTES,
 };

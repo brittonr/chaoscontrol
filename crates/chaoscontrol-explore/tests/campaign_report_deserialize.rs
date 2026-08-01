@@ -1,6 +1,6 @@
 use chaoscontrol_explore::campaign::{CampaignReport, SeedSummary};
 use chaoscontrol_explore::explorer::AssertionStats;
-use chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus;
+use chaoscontrol_protocol::admission::CatalogValidationStatus;
 use serde_json::json;
 
 fn report() -> CampaignReport {

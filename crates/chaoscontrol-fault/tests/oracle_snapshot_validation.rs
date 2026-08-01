@@ -5,8 +5,8 @@ use chaoscontrol_fault::oracle::PropertyOracle;
 use chaoscontrol_fault::oracle_validation::{
     validate_oracle_snapshot, validate_strict_oracle_report, OracleValidationError,
 };
-use chaoscontrol_protocol::assertion_catalog::CatalogConflict;
-use chaoscontrol_protocol::assertion_identity::ASSERTION_FINGERPRINT_BYTES;
+use chaoscontrol_protocol::admission::CatalogConflict;
+use chaoscontrol_protocol::identity::ASSERTION_FINGERPRINT_BYTES;
 use oracle_snapshot_common::{descriptor, first_map_value_mut, forged_snapshot, strict_oracle};
 use oracle_snapshot_validation_support::{legacy_catalog, FUTURE_RUN_ID};
 use serde_json::json;

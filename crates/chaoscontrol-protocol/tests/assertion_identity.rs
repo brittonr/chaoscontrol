@@ -1,17 +1,17 @@
 #![cfg(feature = "std")]
 
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     token_for_descriptors, validate_legacy_descriptors, BoundAssertionEvent, CatalogBuilder,
     CatalogConflict, CatalogInsert, MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
+use chaoscontrol_protocol::identity::{
+    AssertionDescriptor, AssertionError, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
     ASSERTION_DESCRIPTOR_DOMAIN, ASSERTION_FINGERPRINT_BYTES, ASSERTION_IDENTITY_VERSION,
     ASSERTION_KIND_ALWAYS_DISCRIMINANT, ASSERTION_KIND_REACHABLE_DISCRIMINANT,
     ASSERTION_KIND_SOMETIMES_DISCRIMINANT, ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
     MAX_ASSERTION_MESSAGE_BYTES,
 };
-use chaoscontrol_protocol::assertion_wire::{
+use chaoscontrol_protocol::transport::{
     decode_descriptor_frame, decode_event_frame, encode_descriptor_frame, encode_event_frame,
     EventFrame,
 };
@@ -143,7 +143,7 @@ fn logical_key_metadata_conflicts_are_typed() {
             value.source_line = SOURCE_LINE + 1;
             (
                 value,
-                CatalogConflict::Descriptor(IdentityError::InvalidAutomaticSourceSite),
+                CatalogConflict::Descriptor(AssertionError::InvalidAutomaticSourceSite),
             )
         }),
         ("guest", {
@@ -245,7 +245,7 @@ fn events_require_the_accepted_token_fingerprint_and_kind() {
 }
 
 #[test]
-fn compatibility_id_none_serializes_as_missing_and_rejects_explicit_null() {
+fn compatibility_id_none_serializes_as_missing_and_accepts_explicit_null() {
     let mut value = automatic();
     value.compatibility_id = None;
     let json = serde_json::to_value(&value).expect("descriptor JSON");
@@ -256,7 +256,9 @@ fn compatibility_id_none_serializes_as_missing_and_rejects_explicit_null() {
 
     let mut null = json;
     null["compatibility_id"] = serde_json::Value::Null;
-    assert!(serde_json::from_value::<AssertionDescriptor>(null).is_err());
+    let decoded: AssertionDescriptor =
+        serde_json::from_value(null).expect("null alias decodes as None");
+    assert_eq!(decoded.compatibility_id, None);
 }
 
 #[test]
@@ -265,7 +267,7 @@ fn malformed_and_over_limit_inputs_fail_before_admission() {
     too_long.message = "x".repeat(MAX_ASSERTION_MESSAGE_BYTES + 1);
     assert_eq!(
         too_long.validate(),
-        Err(IdentityError::FieldTooLong("message"))
+        Err(AssertionError::FieldTooLong("message"))
     );
     assert!(matches!(
         CatalogBuilder::begin(MAX_ASSERTION_CATALOG_ENTRIES + 1),

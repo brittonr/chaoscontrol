@@ -320,7 +320,7 @@ pub fn summarize_sdk_local_jsonl(
         Value::from(catalog.len() as u64),
     );
     let report_catalog_status = if identity.legacy_ambiguous {
-        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous
+        chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
     } else {
         identity.catalog_status
     };
@@ -332,7 +332,7 @@ pub fn summarize_sdk_local_jsonl(
         "collision_safe_evidence".to_string(),
         Value::Bool(
             identity.catalog_status
-                == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+                == chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
                 && !identity.legacy_ambiguous,
         ),
     );
@@ -575,10 +575,8 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
 }
 
 fn strict_quality_fixture_jsonl() -> EvidenceResult<String> {
-    use chaoscontrol_protocol::assertion_catalog::{
-        token_for_descriptors, ASSERTION_CATALOG_VERSION,
-    };
-    use chaoscontrol_protocol::assertion_identity::{
+    use chaoscontrol_protocol::admission::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
+    use chaoscontrol_protocol::identity::{
         AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
     };
     const COMPATIBILITY_ID: u32 = 1;
@@ -638,7 +636,7 @@ fn strict_quality_fixture_jsonl() -> EvidenceResult<String> {
 }
 
 fn encode_bytes_hex(bytes: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }
 
 pub fn check_sdk_local_report_tracks() -> EvidenceResult<String> {
@@ -699,16 +697,14 @@ fn assertion_site_value(site: &AssertionSite) -> Value {
     serde_json::to_value(site).expect("assertion site contains JSON-safe fields")
 }
 
-fn descriptor_assert_type(
-    kind: chaoscontrol_protocol::assertion_identity::AssertionKind,
-) -> &'static str {
+fn descriptor_assert_type(kind: chaoscontrol_protocol::identity::AssertionKind) -> &'static str {
     crate::sdk_local_identity_value::exact_kind(kind)
 }
 
 fn catalog_status_string(
-    status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+    status: chaoscontrol_protocol::admission::CatalogValidationStatus,
 ) -> &'static str {
-    use chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus;
+    use chaoscontrol_protocol::admission::CatalogValidationStatus;
     match status {
         CatalogValidationStatus::Pending => "pending",
         CatalogValidationStatus::Accepted => "accepted",

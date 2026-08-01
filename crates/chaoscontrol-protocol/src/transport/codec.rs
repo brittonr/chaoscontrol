@@ -1,12 +1,3 @@
-use crate::assertion_identity::{
-    AssertionDescriptor, AssertionKind, AssertionLogicalKey, IdentityError,
-    ASSERTION_DESCRIPTOR_DOMAIN, ASSERTION_IDENTITY_VERSION, ASSERTION_KIND_ALWAYS_DISCRIMINANT,
-    ASSERTION_KIND_REACHABLE_DISCRIMINANT, ASSERTION_KIND_SOMETIMES_DISCRIMINANT,
-    ASSERTION_KIND_UNREACHABLE_DISCRIMINANT, MAX_ASSERTION_CANONICAL_BYTES,
-    MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_KEY_BYTES,
-    MAX_ASSERTION_MESSAGE_BYTES, MAX_ASSERTION_NAMESPACE_BYTES, MAX_ASSERTION_SOURCE_BYTES,
-};
-
 const FIELD_COUNT: u8 = 10;
 const NAMESPACE_FIELD_TAG: u8 = 1;
 const LOGICAL_KEY_FIELD_TAG: u8 = 2;
@@ -28,52 +19,60 @@ const LOGICAL_KEY_DISCRIMINANT_BYTES: usize = 1;
 
 pub(crate) fn decode_canonical_descriptor(
     input: &[u8],
-) -> Result<AssertionDescriptor, IdentityError> {
-    if input.len() > MAX_ASSERTION_CANONICAL_BYTES
-        || !input.starts_with(ASSERTION_DESCRIPTOR_DOMAIN)
+) -> Result<crate::identity::AssertionDescriptor, crate::identity::AssertionError> {
+    if input.len() > crate::identity::MAX_ASSERTION_CANONICAL_BYTES
+        || !input.starts_with(crate::identity::ASSERTION_DESCRIPTOR_DOMAIN)
     {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
-    let mut cursor = ASSERTION_DESCRIPTOR_DOMAIN.len();
+    let mut cursor = crate::identity::ASSERTION_DESCRIPTOR_DOMAIN.len();
     let version = take_byte(input, &mut cursor)?;
     let field_count = take_byte(input, &mut cursor)?;
-    if version != ASSERTION_IDENTITY_VERSION || field_count != FIELD_COUNT {
-        return Err(IdentityError::InvalidVersion);
+    if version != crate::identity::ASSERTION_IDENTITY_VERSION || field_count != FIELD_COUNT {
+        return Err(crate::identity::AssertionError::InvalidVersion);
     }
     let namespace = take_string(
         input,
         &mut cursor,
         NAMESPACE_FIELD_TAG,
-        MAX_ASSERTION_NAMESPACE_BYTES,
+        crate::identity::MAX_ASSERTION_NAMESPACE_BYTES,
     )?;
     let logical_key = decode_logical_key(take_field(
         input,
         &mut cursor,
         LOGICAL_KEY_FIELD_TAG,
-        MAX_ASSERTION_KEY_BYTES + LOGICAL_KEY_DISCRIMINANT_BYTES,
+        crate::identity::MAX_ASSERTION_KEY_BYTES + LOGICAL_KEY_DISCRIMINANT_BYTES,
     )?)?;
     let kind_field = take_field(input, &mut cursor, KIND_FIELD_TAG, KIND_FIELD_BYTES)?;
     if kind_field.len() != KIND_FIELD_BYTES {
-        return Err(IdentityError::InvalidKind);
+        return Err(crate::identity::AssertionError::InvalidKind);
     }
     let kind = match kind_field[0] {
-        ASSERTION_KIND_ALWAYS_DISCRIMINANT => AssertionKind::Always,
-        ASSERTION_KIND_SOMETIMES_DISCRIMINANT => AssertionKind::Sometimes,
-        ASSERTION_KIND_REACHABLE_DISCRIMINANT => AssertionKind::Reachable,
-        ASSERTION_KIND_UNREACHABLE_DISCRIMINANT => AssertionKind::Unreachable,
-        _ => return Err(IdentityError::InvalidKind),
+        crate::identity::ASSERTION_KIND_ALWAYS_DISCRIMINANT => {
+            crate::identity::AssertionKind::Always
+        }
+        crate::identity::ASSERTION_KIND_SOMETIMES_DISCRIMINANT => {
+            crate::identity::AssertionKind::Sometimes
+        }
+        crate::identity::ASSERTION_KIND_REACHABLE_DISCRIMINANT => {
+            crate::identity::AssertionKind::Reachable
+        }
+        crate::identity::ASSERTION_KIND_UNREACHABLE_DISCRIMINANT => {
+            crate::identity::AssertionKind::Unreachable
+        }
+        _ => return Err(crate::identity::AssertionError::InvalidKind),
     };
     let message = take_string(
         input,
         &mut cursor,
         MESSAGE_FIELD_TAG,
-        MAX_ASSERTION_MESSAGE_BYTES,
+        crate::identity::MAX_ASSERTION_MESSAGE_BYTES,
     )?;
     let source_file = take_string(
         input,
         &mut cursor,
         SOURCE_FILE_FIELD_TAG,
-        MAX_ASSERTION_SOURCE_BYTES,
+        crate::identity::MAX_ASSERTION_SOURCE_BYTES,
     )?;
     let source_line = take_u32(input, &mut cursor, SOURCE_LINE_FIELD_TAG)?;
     let source_column = take_u32(input, &mut cursor, SOURCE_COLUMN_FIELD_TAG)?;
@@ -81,19 +80,19 @@ pub(crate) fn decode_canonical_descriptor(
         input,
         &mut cursor,
         GUEST_FIELD_TAG,
-        MAX_ASSERTION_GUEST_BYTES,
+        crate::identity::MAX_ASSERTION_GUEST_BYTES,
     )?;
     let category = take_string(
         input,
         &mut cursor,
         CATEGORY_FIELD_TAG,
-        MAX_ASSERTION_CATEGORY_BYTES,
+        crate::identity::MAX_ASSERTION_CATEGORY_BYTES,
     )?;
     let compatibility_id = take_optional_u32(input, &mut cursor, COMPATIBILITY_ID_FIELD_TAG)?;
     if cursor != input.len() {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
-    let descriptor = AssertionDescriptor {
+    let descriptor = crate::identity::AssertionDescriptor {
         identity_version: version,
         namespace,
         logical_key,
@@ -110,27 +109,29 @@ pub(crate) fn decode_canonical_descriptor(
     Ok(descriptor)
 }
 
-fn decode_logical_key(input: &[u8]) -> Result<AssertionLogicalKey, IdentityError> {
+fn decode_logical_key(
+    input: &[u8],
+) -> Result<crate::identity::AssertionLogicalKey, crate::identity::AssertionError> {
     let (tag, value) = input
         .split_first()
-        .ok_or(IdentityError::MalformedCanonical)?;
+        .ok_or(crate::identity::AssertionError::MalformedCanonical)?;
     match *tag {
-        AUTOMATIC_KEY_DISCRIMINANT => Ok(AssertionLogicalKey::Automatic {
-            source_site: decode_string(value, MAX_ASSERTION_KEY_BYTES)?,
+        AUTOMATIC_KEY_DISCRIMINANT => Ok(crate::identity::AssertionLogicalKey::Automatic {
+            source_site: decode_string(value, crate::identity::MAX_ASSERTION_KEY_BYTES)?,
         }),
-        STABLE_KEY_DISCRIMINANT => Ok(AssertionLogicalKey::Stable {
-            key: decode_string(value, MAX_ASSERTION_KEY_BYTES)?,
+        STABLE_KEY_DISCRIMINANT => Ok(crate::identity::AssertionLogicalKey::Stable {
+            key: decode_string(value, crate::identity::MAX_ASSERTION_KEY_BYTES)?,
         }),
         LEGACY_KEY_DISCRIMINANT if value.len() == U32_FIELD_BYTES => {
-            Ok(AssertionLogicalKey::LegacyU32 {
+            Ok(crate::identity::AssertionLogicalKey::LegacyU32 {
                 id: u32::from_le_bytes(
                     value
                         .try_into()
-                        .map_err(|_| IdentityError::MalformedCanonical)?,
+                        .map_err(|_| crate::identity::AssertionError::MalformedCanonical)?,
                 ),
             })
         }
-        _ => Err(IdentityError::MalformedCanonical),
+        _ => Err(crate::identity::AssertionError::MalformedCanonical),
     }
 }
 
@@ -139,48 +140,48 @@ fn take_string(
     cursor: &mut usize,
     tag: u8,
     maximum: usize,
-) -> Result<String, IdentityError> {
+) -> Result<String, crate::identity::AssertionError> {
     decode_string(take_field(input, cursor, tag, maximum)?, maximum)
 }
 
-fn decode_string(input: &[u8], maximum: usize) -> Result<String, IdentityError> {
+fn decode_string(input: &[u8], maximum: usize) -> Result<String, crate::identity::AssertionError> {
     if input.is_empty() || input.len() > maximum {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
     core::str::from_utf8(input)
         .map(str::to_string)
-        .map_err(|_| IdentityError::MalformedCanonical)
+        .map_err(|_| crate::identity::AssertionError::MalformedCanonical)
 }
 
 fn take_optional_u32(
     input: &[u8],
     cursor: &mut usize,
     tag: u8,
-) -> Result<Option<u32>, IdentityError> {
+) -> Result<Option<u32>, crate::identity::AssertionError> {
     let bytes = take_field(input, cursor, tag, U32_FIELD_BYTES)?;
     if bytes.is_empty() {
         return Ok(None);
     }
     if bytes.len() != U32_FIELD_BYTES {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
-    Ok(Some(u32::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| IdentityError::MalformedCanonical)?,
-    )))
+    Ok(Some(u32::from_le_bytes(bytes.try_into().map_err(
+        |_| crate::identity::AssertionError::MalformedCanonical,
+    )?)))
 }
 
-fn take_u32(input: &[u8], cursor: &mut usize, tag: u8) -> Result<u32, IdentityError> {
+fn take_u32(
+    input: &[u8],
+    cursor: &mut usize,
+    tag: u8,
+) -> Result<u32, crate::identity::AssertionError> {
     let bytes = take_field(input, cursor, tag, U32_FIELD_BYTES)?;
     if bytes.len() != U32_FIELD_BYTES {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
-    Ok(u32::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| IdentityError::MalformedCanonical)?,
-    ))
+    Ok(u32::from_le_bytes(bytes.try_into().map_err(|_| {
+        crate::identity::AssertionError::MalformedCanonical
+    })?))
 }
 
 fn take_field<'a>(
@@ -188,37 +189,37 @@ fn take_field<'a>(
     cursor: &mut usize,
     expected_tag: u8,
     maximum: usize,
-) -> Result<&'a [u8], IdentityError> {
+) -> Result<&'a [u8], crate::identity::AssertionError> {
     let tag = take_byte(input, cursor)?;
     if tag != expected_tag || input.len().saturating_sub(*cursor) < FIELD_LENGTH_BYTES {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
     let length_end = cursor
         .checked_add(FIELD_LENGTH_BYTES)
-        .ok_or(IdentityError::MalformedCanonical)?;
+        .ok_or(crate::identity::AssertionError::MalformedCanonical)?;
     let length = u16::from_le_bytes(
         input[*cursor..length_end]
             .try_into()
-            .map_err(|_| IdentityError::MalformedCanonical)?,
+            .map_err(|_| crate::identity::AssertionError::MalformedCanonical)?,
     ) as usize;
     *cursor = length_end;
     if length > maximum || input.len().saturating_sub(*cursor) < length {
-        return Err(IdentityError::MalformedCanonical);
+        return Err(crate::identity::AssertionError::MalformedCanonical);
     }
     let end = cursor
         .checked_add(length)
-        .ok_or(IdentityError::MalformedCanonical)?;
+        .ok_or(crate::identity::AssertionError::MalformedCanonical)?;
     let value = &input[*cursor..end];
     *cursor = end;
     Ok(value)
 }
 
-fn take_byte(input: &[u8], cursor: &mut usize) -> Result<u8, IdentityError> {
+fn take_byte(input: &[u8], cursor: &mut usize) -> Result<u8, crate::identity::AssertionError> {
     let value = *input
         .get(*cursor)
-        .ok_or(IdentityError::MalformedCanonical)?;
+        .ok_or(crate::identity::AssertionError::MalformedCanonical)?;
     *cursor = cursor
         .checked_add(1)
-        .ok_or(IdentityError::MalformedCanonical)?;
+        .ok_or(crate::identity::AssertionError::MalformedCanonical)?;
     Ok(value)
 }

@@ -1,6 +1,4 @@
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind,
-};
+use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 
 pub(crate) fn exact_kind(kind: AssertionKind) -> &'static str {
     match kind {
@@ -24,5 +22,5 @@ pub(crate) fn report_id(
 }
 
 pub(crate) fn encode_hex(bytes: &[u8]) -> String {
-    chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }

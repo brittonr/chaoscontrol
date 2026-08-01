@@ -3,6 +3,7 @@
 use crate::coverage::CoverageBitmap;
 use crate::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
 
@@ -11,8 +12,10 @@ use chaoscontrol_vmm::scheduler::ScheduleVariant;
 pub struct BugReport {
     /// Unique bug ID.
     pub bug_id: u64,
-    /// The assertion that failed.
+    /// Non-authoritative compact alias for display and filtering.
     pub assertion_id: u64,
+    /// Exact admitted assertion identity that failed.
+    pub assertion_identity: AssertionEvidenceIdentity,
     /// The assertion location/message.
     pub assertion_location: String,
     /// The fault schedule that triggered it.
@@ -178,6 +181,7 @@ mod tests {
             bugs_found.push(BugReport {
                 bug_id: 0,
                 assertion_id: i as u64,
+                assertion_identity: crate::test_support::assertion_identity(i as u64),
                 assertion_location: format!("bug_{}", i),
                 schedule: FaultSchedule::new(),
                 snapshot: None,
@@ -299,6 +303,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 42,
             assertion_id: 100,
+            assertion_identity: crate::test_support::assertion_identity(100),
             assertion_location: "test.rs:123".to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,

@@ -7,10 +7,8 @@
 use crate::faults::{Fault, GpRegister};
 use crate::oracle::{AssertionKind, PropertyOracle};
 use crate::schedule::FaultSchedule;
-use chaoscontrol_protocol::assertion_catalog::{
-    BoundAssertionEvent, CatalogBuilder, CatalogConflict,
-};
-use chaoscontrol_protocol::assertion_wire::{
+use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder, CatalogConflict};
+use chaoscontrol_protocol::transport::{
     decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame, decode_event_frame,
 };
 use chaoscontrol_protocol::*;
@@ -110,6 +108,18 @@ pub fn validate_engine_snapshot(
         return Err(crate::oracle_validation::OracleValidationError::Status);
     }
     Ok(())
+}
+
+pub fn validate_engine_snapshot_assertion_evidence(
+    snapshot: &EngineSnapshot,
+    identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    validate_engine_snapshot(snapshot)?;
+    crate::oracle_snapshot_validation::resolve_snapshot_assertion_evidence(
+        &snapshot.oracle,
+        identity,
+    )
+    .map(|_| ())
 }
 
 /// The central fault injection engine.
@@ -298,13 +308,13 @@ impl FaultEngine {
     fn handle_catalog_begin(&mut self, page: &HypercallPage) -> (u64, u8) {
         if self.catalog_builder.is_some()
             || self.oracle.catalog_status()
-                != chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending
+                != chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
         {
             return self.catalog_failure(CatalogConflict::AlreadyBegun);
         }
         let Ok(payload) = self.page_payload(page) else {
             return self.catalog_failure(CatalogConflict::Descriptor(
-                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
             ));
         };
         if let Err(error) = decode_catalog_begin(payload) {
@@ -323,7 +333,7 @@ impl FaultEngine {
     fn handle_catalog_descriptor(&mut self, page: &HypercallPage) -> (u64, u8) {
         let Ok(payload) = self.page_payload(page) else {
             return self.catalog_failure(CatalogConflict::Descriptor(
-                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
             ));
         };
         let frame = match decode_descriptor_frame(payload) {
@@ -346,7 +356,7 @@ impl FaultEngine {
     fn handle_catalog_complete(&mut self, page: &HypercallPage) -> (u64, u8) {
         let Ok(payload) = self.page_payload(page) else {
             return self.catalog_failure(CatalogConflict::Descriptor(
-                chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
             ));
         };
         let token = match decode_catalog_complete(payload) {
@@ -377,7 +387,7 @@ impl FaultEngine {
 
     fn handle_assertion_event(&mut self, page: &HypercallPage, kind: AssertionKind) -> (u64, u8) {
         if self.oracle.catalog_status()
-            != chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+            != chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
         {
             self.oracle
                 .mark_identity_conflict(CatalogConflict::CatalogIncomplete);
@@ -386,7 +396,7 @@ impl FaultEngine {
         let Ok(payload) = self.page_payload(page) else {
             self.oracle
                 .mark_identity_conflict(CatalogConflict::Descriptor(
-                    chaoscontrol_protocol::assertion_identity::IdentityError::MalformedCanonical,
+                    chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
                 ));
             return (0, STATUS_ASSERTION_EVENT_REJECTED);
         };
@@ -949,7 +959,7 @@ mod tests {
         assert!(engine.catalog_builder.is_none());
         assert_eq!(
             engine.oracle.catalog_status(),
-            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+            chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
         );
         engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("stale builder"));
         engine.begin_run();

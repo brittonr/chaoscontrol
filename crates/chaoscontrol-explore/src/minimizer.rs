@@ -109,13 +109,8 @@ impl Minimizer {
         let original_total = self.bug.schedule.total();
 
         if original_total == 0 {
-            info!("Schedule is empty, nothing to minimize");
-            return Ok(MinimizeResult {
-                schedule: self.bug.schedule.clone(),
-                original_faults: 0,
-                minimized_faults: 0,
-                candidates_tested: 0,
-                assertion_id: self.bug.assertion_id,
+            return Err(ExploreError::Config {
+                message: "cannot minimize an empty fault schedule".to_string(),
             });
         }
 
@@ -150,7 +145,13 @@ impl Minimizer {
         // Delta debugging (ddmin)
         let minimized_indices = self.ddmin(&replay_snapshot, all_indices)?;
 
-        let minimized_schedule = self.bug.schedule.subset(&minimized_indices);
+        let minimized_schedule = self
+            .bug
+            .schedule
+            .subset(&minimized_indices)
+            .map_err(|error| ExploreError::Config {
+                message: error.to_string(),
+            })?;
         let minimized_count = minimized_schedule.total();
 
         info!(
@@ -277,11 +278,36 @@ impl Minimizer {
     ) -> Result<bool, ExploreError> {
         self.candidates_tested += 1;
 
-        let schedule = self.bug.schedule.subset(indices);
+        let schedule = self
+            .bug
+            .schedule
+            .subset(indices)
+            .map_err(|error| ExploreError::Config {
+                message: error.to_string(),
+            })?;
+        crate::bug::identity::validate_carrier(
+            self.bug.assertion_id,
+            Some(&self.bug.assertion_identity),
+        )
+        .map_err(|error| ExploreError::Config {
+            message: error.to_string(),
+        })?;
+        snapshot
+            .validate_assertion_evidence(self.config.num_vms, &self.bug.assertion_identity)
+            .map_err(|error| ExploreError::Config { message: error })?;
         let controller = self.controller.as_mut().unwrap();
 
-        // Restore snapshot
+        // Restore only after the snapshot admits the exact assertion target.
         controller.restore_all(snapshot)?;
+        let restored_report = controller.report();
+        crate::bug::identity::resolve_restored_report(
+            self.bug.assertion_id,
+            Some(&self.bug.assertion_identity),
+            &restored_report,
+        )
+        .map_err(|error| ExploreError::Config {
+            message: error.to_string(),
+        })?;
         controller.reset_vm_statuses();
 
         // Apply candidate schedule
@@ -291,14 +317,17 @@ impl Minimizer {
         // Run
         controller.run(self.config.ticks_per_branch)?;
 
-        // Check if the same assertion failed
+        // Check if the exact same assertion failed.
         let report = controller.report();
-        let assertion_id = self.bug.assertion_id as u32;
-        let triggered = report
-            .record_for_compatibility_id(assertion_id)
-            .ok()
-            .flatten()
-            .is_some_and(|record| matches!(record.verdict(), Verdict::Failed));
+        let record = crate::bug::identity::resolve_restored_report(
+            self.bug.assertion_id,
+            Some(&self.bug.assertion_identity),
+            &report,
+        )
+        .map_err(|error| ExploreError::Config {
+            message: error.to_string(),
+        })?;
+        let triggered = matches!(record.verdict(), Verdict::Failed);
 
         debug!(
             "  candidate {} ({} faults): {}",
@@ -418,6 +447,7 @@ mod tests {
         BugReport {
             bug_id: 7,
             assertion_id: 42,
+            assertion_identity: crate::test_support::assertion_identity(42),
             assertion_location: "assertion".into(),
             schedule: FaultSchedule::new(),
             snapshot,
@@ -450,16 +480,15 @@ mod tests {
     }
 
     #[test]
-    fn test_minimize_result_empty_schedule() {
-        let result = MinimizeResult {
-            schedule: FaultSchedule::new(),
-            original_faults: 0,
-            minimized_faults: 0,
-            candidates_tested: 0,
-            assertion_id: 100,
-        };
-        assert_eq!(result.original_faults, 0);
-        assert_eq!(result.minimized_faults, 0);
+    fn rejects_empty_schedule_before_controller_creation() {
+        let mut minimizer = Minimizer::new(test_config(), bug_with_snapshot(None));
+
+        let error = minimizer
+            .minimize()
+            .expect_err("empty schedule must not produce a minimized bug");
+
+        assert!(matches!(error, ExploreError::Config { .. }));
+        assert!(minimizer.controller.is_none());
     }
 
     #[test]
@@ -470,7 +499,7 @@ mod tests {
         schedule.add(ScheduledFault::new(300, Fault::DiskFull { target: 1 }));
 
         // Take only indices 0 and 2
-        let sub = schedule.subset(&[0, 2]);
+        let sub = schedule.subset(&[0, 2]).expect("valid subset");
         assert_eq!(sub.total(), 2);
 
         // Verify the faults are correct
@@ -484,18 +513,40 @@ mod tests {
         let mut schedule = FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
-        let sub = schedule.subset(&[]);
+        let sub = schedule.subset(&[]).expect("empty subset is valid");
         assert_eq!(sub.total(), 0);
     }
 
     #[test]
     fn test_schedule_subset_out_of_bounds() {
+        const INVALID_INDEX: usize = 5;
         let mut schedule = FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
-        // Index 5 is out of bounds — silently skipped
-        let sub = schedule.subset(&[0, 5]);
-        assert_eq!(sub.total(), 1);
+        let error = schedule
+            .subset(&[0, INVALID_INDEX])
+            .expect_err("out-of-bounds index must fail closed");
+        assert_eq!(
+            error,
+            chaoscontrol_fault::schedule::ScheduleSubsetError::OutOfBounds {
+                index: INVALID_INDEX,
+                length: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn test_schedule_subset_rejects_duplicate_indices() {
+        let mut schedule = FaultSchedule::new();
+        schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
+
+        let error = schedule
+            .subset(&[0, 0])
+            .expect_err("duplicate index must fail closed");
+        assert_eq!(
+            error,
+            chaoscontrol_fault::schedule::ScheduleSubsetError::DuplicateIndex { index: 0 }
+        );
     }
 
     #[test]

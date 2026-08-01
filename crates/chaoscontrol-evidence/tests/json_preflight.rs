@@ -8,11 +8,10 @@ const DEEP_LEVELS: usize = 65;
 const TOKEN_ITEMS: usize = 5_000;
 const REPORT_TOKENS_PER_ENTRY: usize = 96;
 const REPORT_BASE_TOKENS: usize = 1_024;
-const REPORT_TOKEN_ITEMS: usize =
-    chaoscontrol_protocol::assertion_catalog::MAX_ASSERTION_REPORT_ENTRIES
-        * REPORT_TOKENS_PER_ENTRY
-        + REPORT_BASE_TOKENS
-        + 1;
+const REPORT_TOKEN_ITEMS: usize = chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES
+    * REPORT_TOKENS_PER_ENTRY
+    + REPORT_BASE_TOKENS
+    + 1;
 const STRING_BYTES: usize = 13 * 1024;
 const REPORT_STRING_BYTES: usize = 8 * 1024 * 1024 + 1;
 
@@ -43,7 +42,7 @@ fn preflight_accepts_a_small_valid_jsonl_stream_and_report() {
 
 #[test]
 fn preflight_accepts_a_valid_maximum_cardinality_quality_report() {
-    let entry_count = chaoscontrol_protocol::assertion_catalog::MAX_ASSERTION_REPORT_ENTRIES;
+    let entry_count = chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES;
     let entries = (0..entry_count)
         .map(|index| {
             serde_json::json!({

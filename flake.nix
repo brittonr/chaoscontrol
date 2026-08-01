@@ -59,11 +59,13 @@
             let
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
               isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
+            || isAssertionReadinessFixture
             || isDogfoodCheckpointFixture
             || isDogfoodAssertionHarnessFixture
             || (builtins.match ".*\\.bpf\\.c$" path != null)
@@ -795,7 +797,7 @@
                   ("readiness-surface-drift", "check-readiness-surface-drift .", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
-                  ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
+                  ("assertion-readiness-boundary", "check-assertion-readiness-boundary .", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
                   ("sdk-assertion-quality", "check-sdk-assertion-quality", os.environ["SDK_ASSERTION_QUALITY_STATUS"]),
                   ("consistency-checker-fixtures", "check-consistency-fixtures .", os.environ["CONSISTENCY_FIXTURES_STATUS"]),
@@ -927,7 +929,7 @@
               run_gate readiness-surface-drift readiness_surface_drift_status check-readiness-surface-drift .
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
-              run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
+              run_gate assertion-readiness-boundary assertion_promotion_status check-assertion-readiness-boundary .
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status check-sdk-local-report-tracks
               run_gate sdk-assertion-quality sdk_assertion_quality_status check-sdk-assertion-quality
               run_gate consistency-checker-fixtures consistency_fixtures_status check-consistency-fixtures .
@@ -1405,7 +1407,7 @@
                   replay-readiness-triage --root . --sample-receipt --check docs/operator-triage-runbook.md
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
-                  check-assertion-readiness-promotion-gate .
+                  check-assertion-readiness-boundary .
                   check-sdk-assertion-quality
                   check-dogfood-artifact-sizes
                   check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}

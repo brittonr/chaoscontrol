@@ -221,14 +221,7 @@ pub fn assert_raw_with_key(
         transport::hypercall_raw(kind.to_command(), flags, 0, &[]);
         return;
     };
-    transport::hypercall_bound_assertion(
-        kind.to_command(),
-        flags,
-        0,
-        message,
-        &json_bytes,
-        identity,
-    );
+    transport::hypercall_bound_assertion(kind.to_command(), flags, message, &json_bytes, identity);
 }
 
 #[cfg(feature = "full")]
@@ -248,14 +241,7 @@ fn emit_registered_assertion_core(
         transport::hypercall_raw(kind.to_command(), flags, id, &[]);
         return;
     };
-    transport::hypercall_bound_assertion(
-        kind.to_command(),
-        flags,
-        id,
-        message,
-        &json_bytes,
-        identity,
-    );
+    transport::hypercall_bound_assertion(kind.to_command(), flags, message, &json_bytes, identity);
 }
 
 #[cfg(feature = "full")]

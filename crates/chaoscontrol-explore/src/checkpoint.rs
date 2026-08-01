@@ -20,6 +20,11 @@ use snafu::Snafu;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const MAX_CHECKPOINT_BUGS: usize = 4_096;
+const MAX_SERIALIZABLE_FAULTS: usize = 4_096;
+const MAX_CHECKPOINT_ROUND_HISTORY: usize = 1_000_000;
+const MAX_CHECKPOINT_DEDUP_KEYS: usize = 65_536;
+
 /// Errors from checkpoint operations.
 #[derive(Debug, Snafu)]
 pub enum CheckpointError {
@@ -33,6 +38,15 @@ pub enum CheckpointError {
     SnapshotStore {
         source: crate::snapshot_store::SnapshotStoreError,
     },
+
+    #[snafu(display("checkpoint contains invalid bug identity"), context(false))]
+    InvalidBugIdentity { source: BugSetIdentityError },
+
+    #[snafu(display("checkpoint assertion report is invalid: {reason}"))]
+    InvalidAssertionReport { reason: String },
+
+    #[snafu(display("checkpoint bounds are invalid: {reason}"))]
+    InvalidBounds { reason: String },
 
     #[snafu(display(
         "bug {bug_id} requires replay parent snapshot depth {replay_parent_depth}, but no parent snapshot is available"
@@ -518,6 +532,7 @@ impl From<&SerializableFault> for Fault {
 
 /// Serializable scheduled fault.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerializableScheduledFault {
     pub time_ns: u64,
     pub fault: SerializableFault,
@@ -526,6 +541,7 @@ pub struct SerializableScheduledFault {
 
 /// Serializable fault schedule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerializableSchedule {
     pub faults: Vec<SerializableScheduledFault>,
 }
@@ -562,9 +578,18 @@ impl From<&SerializableSchedule> for FaultSchedule {
 
 /// Serializable bug report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerializableBug {
     pub bug_id: u64,
+    /// Non-authoritative compact alias for display and filtering.
     pub assertion_id: u64,
+    /// Exact replay authority. Missing identity is legacy diagnostic input only.
+    #[serde(
+        default = "no_assertion_identity",
+        deserialize_with = "crate::non_null_option::deserialize",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
     pub assertion_location: String,
     pub schedule: SerializableSchedule,
     pub tick: u64,
@@ -592,11 +617,78 @@ pub struct SerializableBug {
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
 }
 
+fn no_assertion_identity() -> Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity> {
+    None
+}
+
+impl SerializableBug {
+    pub fn require_replay_identity(
+        &self,
+    ) -> Result<
+        &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+        crate::bug::identity::BugIdentityError,
+    > {
+        crate::bug::identity::validate_carrier(self.assertion_id, self.assertion_identity.as_ref())
+    }
+}
+
+#[derive(Debug, Snafu)]
+#[snafu(display("bug {bug_id} has invalid replay identity: {source}"))]
+pub struct BugSetIdentityError {
+    pub bug_id: u64,
+    pub source: crate::bug::identity::BugIdentityError,
+}
+
+pub fn validate_bug_set(
+    bugs: &[SerializableBug],
+    assertion_report: Option<&chaoscontrol_fault::oracle::OracleReport>,
+) -> Result<(), BugSetIdentityError> {
+    let Some(first_bug) = bugs.first() else {
+        return Ok(());
+    };
+    let report = assertion_report.ok_or(BugSetIdentityError {
+        bug_id: first_bug.bug_id,
+        source: crate::bug::identity::BugIdentityError::ReportMismatch,
+    })?;
+    for bug in bugs {
+        BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
+            bug_id: bug.bug_id,
+            source,
+        })?;
+        crate::bug::identity::resolve_restored_report(
+            bug.assertion_id,
+            bug.assertion_identity.as_ref(),
+            report,
+        )
+        .map_err(|source| BugSetIdentityError {
+            bug_id: bug.bug_id,
+            source,
+        })?;
+    }
+    Ok(())
+}
+
+pub fn replay_bug_set(
+    bugs: &[SerializableBug],
+    assertion_report: Option<&chaoscontrol_fault::oracle::OracleReport>,
+) -> Result<Vec<BugReport>, BugSetIdentityError> {
+    validate_bug_set(bugs, assertion_report)?;
+    bugs.iter()
+        .map(|bug| {
+            BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source,
+            })
+        })
+        .collect()
+}
+
 impl From<&BugReport> for SerializableBug {
     fn from(bug: &BugReport) -> Self {
         SerializableBug {
             bug_id: bug.bug_id,
             assertion_id: bug.assertion_id,
+            assertion_identity: Some(bug.assertion_identity.clone()),
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
@@ -610,12 +702,45 @@ impl From<&BugReport> for SerializableBug {
     }
 }
 
+impl TryFrom<&SerializableBug> for BugReport {
+    type Error = crate::bug::identity::BugIdentityError;
+
+    fn try_from(bug: &SerializableBug) -> Result<Self, Self::Error> {
+        let assertion_identity = bug.require_replay_identity()?.clone();
+        if bug.assertion_location.is_empty()
+            || bug.schedule.faults.len() > MAX_SERIALIZABLE_FAULTS
+            || (bug.replay_parent_depth > 0) != bug.replay_parent_snapshot_ref.is_some()
+        {
+            return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
+        }
+        Ok(Self {
+            bug_id: bug.bug_id,
+            assertion_id: bug.assertion_id,
+            assertion_identity,
+            assertion_location: bug.assertion_location.clone(),
+            schedule: (&bug.schedule).into(),
+            snapshot: None,
+            tick: bug.tick,
+            replay_parent_depth: bug.replay_parent_depth,
+            replay_parent_snapshot_ref: bug.replay_parent_snapshot_ref.clone(),
+            dedup_key: bug.dedup_key.unwrap_or(0),
+            schedule_variant: bug.schedule_variant.clone(),
+            scenario_config: bug.scenario_config.clone(),
+            scenario_summary: bug.scenario_summary.clone(),
+        })
+    }
+}
+
 /// Complete checkpoint — everything needed to resume exploration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExplorationCheckpoint {
     pub config: CheckpointConfig,
     pub global_coverage: Vec<u8>,
     pub bugs: Vec<SerializableBug>,
+    /// Accepted report that admits every retained bug identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assertion_report: Option<chaoscontrol_fault::oracle::OracleReport>,
     pub rounds_completed: u64,
     pub total_branches_run: u64,
     pub total_edges: usize,
@@ -646,9 +771,68 @@ pub fn save_checkpoint<P: AsRef<Path>>(
 
 /// Load a checkpoint from a JSON file.
 pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<ExplorationCheckpoint, CheckpointError> {
-    let json = fs::read_to_string(path)?;
+    let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
     let checkpoint = serde_json::from_str(&json)?;
+    validate_checkpoint(&checkpoint)?;
     Ok(checkpoint)
+}
+
+pub fn load_serializable_bug<P: AsRef<Path>>(path: P) -> Result<SerializableBug, CheckpointError> {
+    load_serializable_bug_artifact(path).map(|(bug, _bytes)| bug)
+}
+
+pub fn load_serializable_bug_artifact<P: AsRef<Path>>(
+    path: P,
+) -> Result<(SerializableBug, Vec<u8>), CheckpointError> {
+    let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
+    let bug: SerializableBug = serde_json::from_str(&json)?;
+    BugReport::try_from(&bug).map_err(|source| CheckpointError::InvalidBugIdentity {
+        source: BugSetIdentityError {
+            bug_id: bug.bug_id,
+            source,
+        },
+    })?;
+    Ok((bug, json.into_bytes()))
+}
+
+fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), CheckpointError> {
+    if checkpoint.global_coverage.len() > crate::coverage::MAP_SIZE {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "global coverage exceeds the bitmap size".to_string(),
+        });
+    }
+    if checkpoint.bugs.len() > MAX_CHECKPOINT_BUGS {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "bug count exceeds the checkpoint limit".to_string(),
+        });
+    }
+    if checkpoint
+        .round_history
+        .as_ref()
+        .is_some_and(|history| history.len() > MAX_CHECKPOINT_ROUND_HISTORY)
+    {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "round history exceeds the checkpoint limit".to_string(),
+        });
+    }
+    if checkpoint
+        .seen_dedup_keys
+        .as_ref()
+        .is_some_and(|keys| keys.len() > MAX_CHECKPOINT_DEDUP_KEYS)
+    {
+        return Err(CheckpointError::InvalidBounds {
+            reason: "dedup key count exceeds the checkpoint limit".to_string(),
+        });
+    }
+    if let Some(report) = checkpoint.assertion_report.as_ref() {
+        chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(report).map_err(
+            |error| CheckpointError::InvalidAssertionReport {
+                reason: format!("{error:?}"),
+            },
+        )?;
+    }
+    validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref())?;
+    Ok(())
 }
 
 #[derive(Debug, Snafu)]
@@ -667,13 +851,8 @@ pub enum CheckpointBugExportError {
         source: crate::snapshot_store::SnapshotStoreError,
     },
 
-    #[snafu(display(
-        "checkpoint bug {bug_id} requires replay parent snapshot depth {replay_parent_depth}, but has no replay_parent_snapshot_ref"
-    ))]
-    MissingRequiredSnapshotRef {
-        bug_id: u64,
-        replay_parent_depth: u32,
-    },
+    #[snafu(display("checkpoint bug {bug_id} cannot export for replay: {reason}"))]
+    InvalidAssertionIdentity { bug_id: u64, reason: String },
 
     #[snafu(display("bug artifact already exists: {}", path.display()))]
     AlreadyExists { path: PathBuf },
@@ -731,9 +910,9 @@ pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
 
 /// Export only checkpoint-held bugs matching the provided filter.
 ///
-/// Filtered exports preserve the checkpoint bug index in `bug_N.json` filenames
-/// and validate snapshot refs only for matched bugs. This lets automation finish
-/// a targeted artifact export without spending time validating unrelated bugs.
+/// Filtered exports preserve the checkpoint bug index in `bug_N.json` filenames.
+/// The loader validates every bug identity and reference shape before filtering.
+/// Snapshot artifact bytes are loaded only for matched bugs.
 pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
     checkpoint_path: P,
     output_dir: Q,
@@ -741,6 +920,12 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
     filter: CheckpointBugExportFilter,
 ) -> Result<CheckpointBugExportSummary, CheckpointBugExportError> {
     let checkpoint = load_checkpoint(checkpoint_path)?;
+    validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref()).map_err(|error| {
+        CheckpointBugExportError::InvalidAssertionIdentity {
+            bug_id: error.bug_id,
+            reason: error.source.to_string(),
+        }
+    })?;
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir)?;
     let snapshot_store = FileSnapshotStore::new(output_dir);
@@ -762,11 +947,6 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
         if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
             snapshot_store.get_snapshot_artifact(reference)?;
             snapshot_refs_validated += 1;
-        } else if bug.replay_parent_depth > 0 {
-            return Err(CheckpointBugExportError::MissingRequiredSnapshotRef {
-                bug_id: bug.bug_id,
-                replay_parent_depth: bug.replay_parent_depth,
-            });
         }
 
         let path = output_dir.join(format!("bug_{index}.json"));
@@ -803,6 +983,42 @@ mod tests {
         let reparsed: SerializableBug = serde_json::from_str(&roundtrip).unwrap();
         assert_eq!(bug.assertion_id, reparsed.assertion_id);
         assert_eq!(bug.tick, reparsed.tick);
+    }
+
+    #[test]
+    fn standalone_bug_loader_accepts_a_complete_identity() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("bug.json");
+        let bug = minimal_bug(1);
+        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+            .expect("write bug fixture");
+
+        let loaded = load_serializable_bug(&path).expect("complete bug loads");
+        assert_eq!(loaded.bug_id, bug.bug_id);
+        assert_eq!(loaded.assertion_identity, bug.assertion_identity);
+    }
+
+    #[test]
+    fn standalone_bug_loader_rejects_an_oversized_schedule() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("bug.json");
+        let mut bug = minimal_bug(1);
+        let fault = SerializableScheduledFault {
+            time_ns: 0,
+            fault: SerializableFault::NetworkLatency {
+                target: 0,
+                latency_ns: 1,
+            },
+            label: None,
+        };
+        bug.schedule.faults = vec![fault; MAX_SERIALIZABLE_FAULTS + 1];
+        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+            .expect("write bug fixture");
+
+        assert!(matches!(
+            load_serializable_bug(&path),
+            Err(CheckpointError::InvalidBugIdentity { .. })
+        ));
     }
 
     #[test]
@@ -873,6 +1089,7 @@ mod tests {
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
+            assertion_report: None,
             rounds_completed: 10,
             total_branches_run: 80,
             total_edges: 1234,
@@ -923,6 +1140,7 @@ mod tests {
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
+            assertion_report: None,
             rounds_completed: 5,
             total_branches_run: 20,
             total_edges: 567,
@@ -1005,6 +1223,7 @@ mod tests {
             },
             global_coverage: vec![],
             bugs: vec![],
+            assertion_report: None,
             rounds_completed: 2,
             total_branches_run: 16,
             total_edges: 52,
@@ -1087,6 +1306,7 @@ mod tests {
             bugs: vec![SerializableBug {
                 bug_id: 1,
                 assertion_id: 50,
+                assertion_identity: Some(crate::test_support::assertion_identity(50)),
                 assertion_location: "test.rs:1".into(),
                 schedule: SerializableSchedule { faults: Vec::new() },
                 tick: 1000,
@@ -1097,6 +1317,7 @@ mod tests {
                 scenario_config: Some(sc_config.clone()),
                 scenario_summary: Some(materialized.summary.clone()),
             }],
+            assertion_report: None,
             rounds_completed: 5,
             total_branches_run: 40,
             total_edges: 100,
@@ -1157,7 +1378,46 @@ mod tests {
         assert!(checkpoint.config.scenario.is_none());
     }
 
-    fn minimal_checkpoint_with_bugs(bugs: Vec<SerializableBug>) -> ExplorationCheckpoint {
+    fn minimal_checkpoint_with_bugs(mut bugs: Vec<SerializableBug>) -> ExplorationCheckpoint {
+        let mut descriptors = std::collections::BTreeMap::new();
+        for bug in &bugs {
+            if let Some(identity) = bug.assertion_identity.as_ref() {
+                descriptors.insert(identity.fingerprint, identity.descriptor.clone());
+            }
+        }
+        let assertion_report = if descriptors.is_empty() {
+            None
+        } else {
+            let descriptors = descriptors.into_values().collect::<Vec<_>>();
+            let token = chaoscontrol_protocol::admission::token_for_descriptors(&descriptors)
+                .expect("catalog token");
+            let mut builder =
+                chaoscontrol_protocol::admission::CatalogBuilder::begin(descriptors.len())
+                    .expect("catalog begins");
+            for descriptor in descriptors {
+                builder.insert(descriptor).expect("descriptor inserts");
+            }
+            let catalog = builder.complete(token).expect("catalog completes");
+            for bug in &mut bugs {
+                let Some(identity) = bug.assertion_identity.as_ref() else {
+                    continue;
+                };
+                let admitted = catalog
+                    .assertions
+                    .get(&identity.fingerprint)
+                    .expect("bug descriptor admitted");
+                bug.assertion_identity = Some(
+                    chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                        admitted, token,
+                    )
+                    .expect("evidence identity"),
+                );
+            }
+            let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+            oracle.activate_catalog(catalog).expect("catalog activates");
+            Some(oracle.report())
+        };
+
         ExplorationCheckpoint {
             config: CheckpointConfig {
                 num_vms: 2,
@@ -1182,6 +1442,7 @@ mod tests {
             },
             global_coverage: vec![],
             bugs,
+            assertion_report,
             rounds_completed: 1,
             total_branches_run: 8,
             total_edges: 10,
@@ -1193,10 +1454,14 @@ mod tests {
         }
     }
 
+    const TEST_EXPORT_ALIAS: u64 = 1_806_003_755;
+
     fn minimal_bug(bug_id: u64) -> SerializableBug {
+        let assertion_id = bug_id + 100;
         SerializableBug {
             bug_id,
-            assertion_id: bug_id + 100,
+            assertion_id,
+            assertion_identity: Some(crate::test_support::assertion_identity(assertion_id)),
             assertion_location: "test.rs:1".into(),
             schedule: SerializableSchedule { faults: Vec::new() },
             tick: 1000,
@@ -1207,6 +1472,43 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
         }
+    }
+
+    fn set_assertion_alias(bug: &mut SerializableBug, assertion_id: u64) {
+        bug.assertion_id = assertion_id;
+        bug.assertion_identity = Some(crate::test_support::assertion_identity(assertion_id));
+    }
+
+    #[test]
+    fn load_rejects_bug_without_admitting_report() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        checkpoint.assertion_report = None;
+        save_checkpoint(&path, &checkpoint).expect("checkpoint writes");
+
+        assert!(matches!(
+            load_checkpoint(&path),
+            Err(CheckpointError::InvalidBugIdentity { .. })
+        ));
+    }
+
+    #[test]
+    fn load_rejects_catalog_token_substitution() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
+        checkpoint.bugs[0]
+            .assertion_identity
+            .as_mut()
+            .expect("identity")
+            .catalog_token = chaoscontrol_protocol::identity::AssertionFingerprint::ZERO;
+        save_checkpoint(&path, &checkpoint).expect("checkpoint writes");
+
+        assert!(matches!(
+            load_checkpoint(&path),
+            Err(CheckpointError::InvalidBugIdentity { .. })
+        ));
     }
 
     #[test]
@@ -1238,7 +1540,7 @@ mod tests {
         let out = dir.path().join("exported");
         let skipped_assertion = minimal_bug(1);
         let mut selected = minimal_bug(2);
-        selected.assertion_id = 1806003755;
+        set_assertion_alias(&mut selected, TEST_EXPORT_ALIAS);
         selected.replay_parent_depth = 2;
         let skipped_depth = minimal_bug(3);
         let checkpoint =
@@ -1250,7 +1552,7 @@ mod tests {
             &out,
             true,
             CheckpointBugExportFilter {
-                assertion_id: Some(1806003755),
+                assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: Some(1),
                 max_bugs: None,
             },
@@ -1259,9 +1561,10 @@ mod tests {
 
         assert!(matches!(
             summary,
-            CheckpointBugExportError::MissingRequiredSnapshotRef {
-                bug_id: 2,
-                replay_parent_depth: 2,
+            CheckpointBugExportError::Checkpoint {
+                source: CheckpointError::InvalidBugIdentity {
+                    source: BugSetIdentityError { bug_id: 2, .. }
+                }
             }
         ));
         assert!(!out.join("bug_0.json").exists());
@@ -1269,15 +1572,15 @@ mod tests {
     }
 
     #[test]
-    fn export_checkpoint_bugs_filter_skips_unmatched_missing_snapshot_ref() {
+    fn export_checkpoint_bugs_filter_rejects_unmatched_missing_snapshot_ref() {
         let dir = tempfile::tempdir().unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
         let out = dir.path().join("exported");
         let mut skipped = minimal_bug(7);
-        skipped.assertion_id = 1;
+        set_assertion_alias(&mut skipped, 1);
         skipped.replay_parent_depth = 2;
         let mut selected = minimal_bug(8);
-        selected.assertion_id = 1806003755;
+        set_assertion_alias(&mut selected, TEST_EXPORT_ALIAS);
         selected.replay_parent_depth = 0;
         let checkpoint = minimal_checkpoint_with_bugs(vec![skipped, selected]);
         save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
@@ -1287,19 +1590,22 @@ mod tests {
             &out,
             true,
             CheckpointBugExportFilter {
-                assertion_id: Some(1806003755),
+                assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: None,
                 max_bugs: None,
             },
         )
-        .unwrap();
+        .expect_err("an invalid unmatched bug rejects the complete checkpoint");
 
-        assert_eq!(summary.bugs_scanned, 2);
-        assert_eq!(summary.bugs_matched, 1);
-        assert_eq!(summary.bugs_written, 1);
-        assert_eq!(summary.snapshot_refs_validated, 0);
-        assert!(!out.join("bug_0.json").exists());
-        assert!(out.join("bug_1.json").exists());
+        assert!(matches!(
+            summary,
+            CheckpointBugExportError::Checkpoint {
+                source: CheckpointError::InvalidBugIdentity {
+                    source: BugSetIdentityError { bug_id: 7, .. }
+                }
+            }
+        ));
+        assert!(!out.exists());
     }
 
     #[test]
@@ -1308,9 +1614,9 @@ mod tests {
         let checkpoint_path = dir.path().join("checkpoint.json");
         let out = dir.path().join("exported");
         let mut first = minimal_bug(1);
-        first.assertion_id = 1806003755;
+        set_assertion_alias(&mut first, TEST_EXPORT_ALIAS);
         let mut second = minimal_bug(2);
-        second.assertion_id = 1806003755;
+        set_assertion_alias(&mut second, TEST_EXPORT_ALIAS);
         let checkpoint = minimal_checkpoint_with_bugs(vec![first, second]);
         save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
 
@@ -1319,7 +1625,7 @@ mod tests {
             &out,
             true,
             CheckpointBugExportFilter {
-                assertion_id: Some(1806003755),
+                assertion_id: Some(TEST_EXPORT_ALIAS),
                 min_replay_parent_depth: None,
                 max_bugs: Some(1),
             },
@@ -1334,7 +1640,41 @@ mod tests {
     }
 
     #[test]
-    fn export_checkpoint_bugs_rejects_required_missing_snapshot_ref() {
+    fn export_rejects_complete_carrier_when_unmatched_bug_is_legacy() {
+        let dir = tempfile::tempdir().unwrap();
+        let checkpoint_path = dir.path().join("checkpoint.json");
+        let out = dir.path().join("exported");
+        let valid = minimal_bug(1);
+        let mut legacy = minimal_bug(2);
+        legacy.assertion_identity = None;
+        let checkpoint = minimal_checkpoint_with_bugs(vec![valid, legacy]);
+        save_checkpoint(&checkpoint_path, &checkpoint).unwrap();
+
+        let error = export_checkpoint_bugs_with_filter(
+            &checkpoint_path,
+            &out,
+            true,
+            CheckpointBugExportFilter {
+                assertion_id: None,
+                min_replay_parent_depth: None,
+                max_bugs: Some(1),
+            },
+        )
+        .expect_err("invalid neighbor rejects the complete carrier");
+
+        assert!(matches!(
+            error,
+            CheckpointBugExportError::Checkpoint {
+                source: CheckpointError::InvalidBugIdentity {
+                    source: BugSetIdentityError { bug_id: 2, .. }
+                }
+            }
+        ));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn export_checkpoint_bugs_rejects_inconsistent_snapshot_reference() {
         let dir = tempfile::tempdir().unwrap();
         let checkpoint_path = dir.path().join("checkpoint.json");
         let mut bug = minimal_bug(7);
@@ -1345,9 +1685,10 @@ mod tests {
         let err = export_checkpoint_bugs(&checkpoint_path, dir.path(), true).unwrap_err();
         assert!(matches!(
             err,
-            CheckpointBugExportError::MissingRequiredSnapshotRef {
-                bug_id: 7,
-                replay_parent_depth: 2,
+            CheckpointBugExportError::Checkpoint {
+                source: CheckpointError::InvalidBugIdentity {
+                    source: BugSetIdentityError { bug_id: 7, .. }
+                }
             }
         ));
     }

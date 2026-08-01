@@ -1,10 +1,8 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind,
-};
+use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
@@ -33,7 +31,10 @@ struct ReviewIdentity {
 #[serde(deny_unknown_fields)]
 struct ReviewAssertion {
     id: u32,
-    #[serde(default, deserialize_with = "crate::non_null_option::deserialize")]
+    #[serde(
+        default = "no_review_identity",
+        deserialize_with = "crate::non_null_option::deserialize"
+    )]
     identity: Option<ReviewIdentity>,
     message: String,
     kind: String,
@@ -43,8 +44,11 @@ struct ReviewAssertion {
     hit_count: u64,
     true_count: u64,
     false_count: u64,
-    #[serde(default)]
     last_failure_details: Option<String>,
+}
+
+fn no_review_identity() -> Option<ReviewIdentity> {
+    None
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

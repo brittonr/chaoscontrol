@@ -1,20 +1,16 @@
-pub use crate::assertion_catalog_token::{catalog_token, token_for_descriptors};
-use crate::assertion_catalog_validation::classify_descriptor_conflict;
-pub use crate::assertion_catalog_validation::{
-    validate_accepted_catalog, validate_legacy_descriptors,
-};
-use crate::assertion_identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
-    MAX_ASSERTION_CANONICAL_BYTES,
-};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+mod checks;
+mod digest;
+mod evidence;
+
+pub use self::checks::{validate_accepted_catalog, validate_legacy_descriptors};
+pub use self::digest::{catalog_token, token_for_descriptors};
+pub use self::evidence::AssertionEvidenceIdentity;
 
 pub const MAX_ASSERTION_CATALOG_ENTRIES: usize = 4096;
 pub const MAX_ASSERTION_REPORT_ENTRIES: usize = MAX_ASSERTION_CATALOG_ENTRIES;
 pub const ASSERTION_CATALOG_VERSION: u8 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CatalogValidationStatus {
     Pending,
@@ -23,21 +19,22 @@ pub enum CatalogValidationStatus {
     LegacyAmbiguous,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmittedAssertion {
-    pub descriptor: AssertionDescriptor,
-    pub fingerprint: AssertionFingerprint,
+    pub descriptor: crate::identity::AssertionDescriptor,
+    pub fingerprint: crate::identity::AssertionFingerprint,
     pub canonical_bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AcceptedCatalog {
     pub catalog_version: u8,
-    pub token: AssertionFingerprint,
+    pub token: crate::identity::AssertionFingerprint,
     pub status: CatalogValidationStatus,
-    pub assertions: BTreeMap<AssertionFingerprint, AdmittedAssertion>,
+    pub assertions:
+        std::collections::BTreeMap<crate::identity::AssertionFingerprint, AdmittedAssertion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +47,7 @@ pub enum CatalogConflict {
     CounterOverflow,
     CatalogIncomplete,
     CatalogTokenMismatch,
-    Descriptor(IdentityError),
+    Descriptor(crate::identity::AssertionError),
     EmptyCatalog,
     FingerprintCollision,
     GuestConflict,
@@ -80,9 +77,9 @@ pub enum CatalogInsert {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundAssertionEvent {
-    pub catalog_token: AssertionFingerprint,
-    pub fingerprint: AssertionFingerprint,
-    pub kind: AssertionKind,
+    pub catalog_token: crate::identity::AssertionFingerprint,
+    pub fingerprint: crate::identity::AssertionFingerprint,
+    pub kind: crate::identity::AssertionKind,
 }
 
 #[derive(Debug, Clone)]
@@ -91,9 +88,13 @@ pub struct CatalogBuilder {
     received_frames: usize,
     completed: bool,
     conflict: Option<CatalogConflict>,
-    by_logical_key: BTreeMap<(String, AssertionLogicalKey), AdmittedAssertion>,
-    by_compatibility_id: BTreeMap<(String, u32), AdmittedAssertion>,
-    pub(crate) by_fingerprint: BTreeMap<AssertionFingerprint, AdmittedAssertion>,
+    by_logical_key: std::collections::BTreeMap<
+        (String, crate::identity::AssertionLogicalKey),
+        AdmittedAssertion,
+    >,
+    by_compatibility_id: std::collections::BTreeMap<(String, u32), AdmittedAssertion>,
+    pub(crate) by_fingerprint:
+        std::collections::BTreeMap<crate::identity::AssertionFingerprint, AdmittedAssertion>,
 }
 
 impl CatalogBuilder {
@@ -109,15 +110,15 @@ impl CatalogBuilder {
             received_frames: 0,
             completed: false,
             conflict: None,
-            by_logical_key: BTreeMap::new(),
-            by_compatibility_id: BTreeMap::new(),
-            by_fingerprint: BTreeMap::new(),
+            by_logical_key: std::collections::BTreeMap::new(),
+            by_compatibility_id: std::collections::BTreeMap::new(),
+            by_fingerprint: std::collections::BTreeMap::new(),
         })
     }
 
     pub fn insert(
         &mut self,
-        descriptor: AssertionDescriptor,
+        descriptor: crate::identity::AssertionDescriptor,
     ) -> Result<CatalogInsert, CatalogConflict> {
         let fingerprint = match descriptor.fingerprint() {
             Ok(fingerprint) => fingerprint,
@@ -128,8 +129,8 @@ impl CatalogBuilder {
 
     pub fn insert_with_fingerprint(
         &mut self,
-        descriptor: AssertionDescriptor,
-        fingerprint: AssertionFingerprint,
+        descriptor: crate::identity::AssertionDescriptor,
+        fingerprint: crate::identity::AssertionFingerprint,
     ) -> Result<CatalogInsert, CatalogConflict> {
         if self.completed {
             return Err(CatalogConflict::PostCompletion);
@@ -139,7 +140,7 @@ impl CatalogBuilder {
         }
         if matches!(
             &descriptor.logical_key,
-            AssertionLogicalKey::LegacyU32 { .. }
+            crate::identity::AssertionLogicalKey::LegacyU32 { .. }
         ) {
             return self.fail(CatalogConflict::LegacyIdentityForbidden);
         }
@@ -154,17 +155,17 @@ impl CatalogBuilder {
             Ok(canonical) => canonical,
             Err(error) => return self.fail(CatalogConflict::Descriptor(error)),
         };
-        if canonical_bytes.len() > MAX_ASSERTION_CANONICAL_BYTES {
-            return self.fail(CatalogConflict::Descriptor(IdentityError::FieldTooLong(
-                "canonical_descriptor",
-            )));
+        if canonical_bytes.len() > crate::identity::MAX_ASSERTION_CANONICAL_BYTES {
+            return self.fail(CatalogConflict::Descriptor(
+                crate::identity::AssertionError::FieldTooLong("canonical_descriptor"),
+            ));
         }
         let logical_key = (descriptor.namespace.clone(), descriptor.logical_key.clone());
         if let Some(existing) = self.by_logical_key.get(&logical_key) {
             if existing.canonical_bytes == canonical_bytes && existing.fingerprint == fingerprint {
                 return Ok(CatalogInsert::ExactDuplicate);
             }
-            return self.fail(classify_descriptor_conflict(
+            return self.fail(checks::classify_descriptor_conflict(
                 &existing.descriptor,
                 &descriptor,
             ));
@@ -180,10 +181,10 @@ impl CatalogBuilder {
                 if existing.canonical_bytes != canonical_bytes {
                     let conflict = if matches!(
                         descriptor.logical_key,
-                        AssertionLogicalKey::LegacyU32 { .. }
+                        crate::identity::AssertionLogicalKey::LegacyU32 { .. }
                     ) || matches!(
                         existing.descriptor.logical_key,
-                        AssertionLogicalKey::LegacyU32 { .. }
+                        crate::identity::AssertionLogicalKey::LegacyU32 { .. }
                     ) {
                         CatalogConflict::LegacyAliasConflict
                     } else {
@@ -212,7 +213,7 @@ impl CatalogBuilder {
 
     pub fn complete(
         mut self,
-        claimed_token: AssertionFingerprint,
+        claimed_token: crate::identity::AssertionFingerprint,
     ) -> Result<AcceptedCatalog, CatalogConflict> {
         if let Some(conflict) = self.conflict {
             return Err(conflict);
@@ -234,7 +235,7 @@ impl CatalogBuilder {
                 .map_err(CatalogConflict::Descriptor)?;
             if *key != fingerprint || admitted.fingerprint != fingerprint {
                 return Err(CatalogConflict::Descriptor(
-                    IdentityError::InvalidFingerprint,
+                    crate::identity::AssertionError::InvalidFingerprint,
                 ));
             }
             if admitted.canonical_bytes != canonical {
@@ -279,7 +280,7 @@ impl AcceptedCatalog {
         if self.assertions.values().any(|assertion| {
             matches!(
                 &assertion.descriptor.logical_key,
-                AssertionLogicalKey::LegacyU32 { .. }
+                crate::identity::AssertionLogicalKey::LegacyU32 { .. }
             )
         }) {
             return Err(CatalogConflict::LegacyIdentityForbidden);

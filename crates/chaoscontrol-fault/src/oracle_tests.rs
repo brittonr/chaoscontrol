@@ -1,8 +1,8 @@
 use super::*;
-use chaoscontrol_protocol::assertion_catalog::{
+use chaoscontrol_protocol::admission::{
     token_for_descriptors, BoundAssertionEvent, CatalogBuilder,
 };
-use chaoscontrol_protocol::assertion_identity::{
+use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::json;

@@ -1,7 +1,7 @@
 use crate::assertion_summary_validation::validate_fatal_details;
 use crate::campaign::CampaignReport;
 use crate::explorer::{AssertionDetail, ExplorationReport};
-use chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus;
+use chaoscontrol_protocol::admission::CatalogValidationStatus;
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub(crate) use crate::assertion_summary_validation::{

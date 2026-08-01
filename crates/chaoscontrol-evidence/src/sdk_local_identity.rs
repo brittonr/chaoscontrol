@@ -1,7 +1,5 @@
 use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::assertion_catalog::{
-    AcceptedCatalog, CatalogBuilder, CatalogValidationStatus,
-};
+use chaoscontrol_protocol::admission::{AcceptedCatalog, CatalogBuilder, CatalogValidationStatus};
 use serde_json::Value;
 use std::collections::BTreeMap;
 

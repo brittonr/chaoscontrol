@@ -1,11 +1,11 @@
 use crate::oracle::{AssertionKind, AssertionRecord, OracleSnapshot};
 use crate::oracle_record_validation::validate_legacy_records;
 use crate::oracle_validation::{validate_strict_records, OracleValidationError};
-use chaoscontrol_protocol::assertion_catalog::{
-    validate_accepted_catalog, AcceptedCatalog, CatalogValidationStatus,
+use chaoscontrol_protocol::admission::{
+    validate_accepted_catalog, AcceptedCatalog, AssertionEvidenceIdentity, CatalogValidationStatus,
     MAX_ASSERTION_CATALOG_ENTRIES,
 };
-use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
+use chaoscontrol_protocol::identity::AssertionFingerprint;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub fn validate_oracle_snapshot(snapshot: &OracleSnapshot) -> Result<(), OracleValidationError> {
@@ -41,6 +41,24 @@ pub fn validate_restorable_oracle_snapshot(
         return Err(OracleValidationError::Status);
     }
     Ok(())
+}
+
+pub fn resolve_snapshot_assertion_evidence<'a>(
+    snapshot: &'a OracleSnapshot,
+    identity: &AssertionEvidenceIdentity,
+) -> Result<&'a AssertionRecord, OracleValidationError> {
+    validate_accepted_snapshot(snapshot)?;
+    let catalog = snapshot
+        .accepted_catalog
+        .as_ref()
+        .ok_or(OracleValidationError::Catalog)?;
+    identity
+        .validate_for_catalog(catalog)
+        .map_err(|_| OracleValidationError::Catalog)?;
+    snapshot
+        .structured_assertions
+        .get(&identity.fingerprint)
+        .ok_or(OracleValidationError::Record)
 }
 
 fn validate_pending_snapshot(snapshot: &OracleSnapshot) -> Result<(), OracleValidationError> {

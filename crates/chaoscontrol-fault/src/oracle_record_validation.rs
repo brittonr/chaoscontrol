@@ -1,6 +1,6 @@
 use crate::oracle::AssertionRecord;
 use crate::oracle_validation::OracleValidationError;
-use chaoscontrol_protocol::assertion_identity::{AssertionKind, MAX_ASSERTION_EVENT_DETAILS_BYTES};
+use chaoscontrol_protocol::identity::{AssertionKind, MAX_ASSERTION_EVENT_DETAILS_BYTES};
 use std::collections::BTreeMap;
 
 pub(crate) fn validate_legacy_records(

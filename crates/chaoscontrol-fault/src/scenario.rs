@@ -61,6 +61,7 @@ impl std::fmt::Display for ScenarioFamily {
 
 /// Configuration for materializing a helical scenario.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScenarioConfig {
     /// Which scenario family to generate.
     pub family: ScenarioFamily,
@@ -85,6 +86,7 @@ impl ScenarioConfig {
 
 /// Summary of a single phase within a materialized scenario.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhaseEntry {
     /// Turn index (0-based).
     pub turn: usize,
@@ -102,6 +104,7 @@ pub struct PhaseEntry {
 
 /// Complete phase summary for a materialized scenario.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhaseSummary {
     /// The scenario config that produced this summary.
     pub config: ScenarioConfig,
@@ -585,6 +588,9 @@ mod tests {
         let config = ScenarioConfig::new(ScenarioFamily::NetworkRing, 3, 1000, 6);
         let json = serde_json::to_string(&config).unwrap();
         let roundtrip: ScenarioConfig = serde_json::from_str(&json).unwrap();
+        let mut unknown = serde_json::to_value(&config).expect("scenario config JSON");
+        unknown["unreviewed_authority"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<ScenarioConfig>(unknown).is_err());
         assert_eq!(roundtrip.family, ScenarioFamily::NetworkRing);
         assert_eq!(roundtrip.num_vms, 3);
         assert_eq!(roundtrip.phase_ticks, 1000);
@@ -597,6 +603,9 @@ mod tests {
         let result = materialize(&config, 42);
         let json = serde_json::to_string(&result.summary).unwrap();
         let roundtrip: PhaseSummary = serde_json::from_str(&json).unwrap();
+        let mut unknown = serde_json::to_value(&result.summary).expect("phase summary JSON");
+        unknown["phases"][0]["unreviewed_authority"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<PhaseSummary>(unknown).is_err());
         assert_eq!(roundtrip.phases.len(), result.summary.phases.len());
         assert_eq!(
             roundtrip.total_duration_ns,

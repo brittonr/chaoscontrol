@@ -1574,13 +1574,16 @@ fn persist_campaign_outputs(
     fs::create_dir_all(output)
         .map_err(|error| format!("cannot create output directory: {error}"))?;
     let output = Path::new(output);
-    let text_path = output.join("campaign_report.txt");
-    fs::write(&text_path, &prepared.formatted)
-        .map_err(|error| format!("cannot write {}: {error}", text_path.display()))?;
-    let json_path = output.join("campaign_report.json");
-    fs::write(&json_path, &prepared.json)
-        .map_err(|error| format!("cannot write {}: {error}", json_path.display()))?;
     let assertions_path = output.join("assertions.json");
+    match fs::remove_file(&assertions_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("cannot remove stale assertion summary: {error}")),
+    }
+    let text_path = output.join("campaign_report.txt");
+    write_atomic_replacing(&text_path, prepared.formatted.as_bytes())?;
+    let json_path = output.join("campaign_report.json");
+    write_atomic_replacing(&json_path, prepared.json.as_bytes())?;
     write_assertion_summary(&assertions_path, || Ok(prepared.assertions.clone()))?;
     Ok(())
 }
@@ -2685,6 +2688,27 @@ fn auto_minimize_bugs(
         eprintln!("  Saved to {}", path.display());
         written.push(path);
     }
+    Ok(())
+}
+
+fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| error.to_string())?;
+    temporary
+        .persist(path)
+        .map_err(|error| error.error.to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

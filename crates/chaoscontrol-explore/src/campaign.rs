@@ -269,6 +269,11 @@ fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> 
             return Err("campaign progress path is invalid".to_string());
         }
     }
+    if config.scenario.as_ref().is_some_and(|scenario| {
+        scenario.num_vms != config.num_vms || scenario.phase_ticks == 0 || scenario.turns == 0
+    }) {
+        return Err("campaign progress scenario is invalid".to_string());
+    }
     let seeds = progress.seeds.iter().copied().collect::<BTreeSet<_>>();
     for (seed, summary) in &progress.completed {
         if !seeds.contains(seed) || summary.seed != *seed || progress.failed.contains_key(seed) {

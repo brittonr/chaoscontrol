@@ -14,11 +14,16 @@ use crate::report::format_campaign_report;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Write;
+use std::path::Path;
 use std::time::Instant;
 
 const BYTES_PER_MIB: usize = 1024 * 1024;
 const MIB_PER_GIB: f64 = 1024.0;
 pub const MAX_CAMPAIGN_SEEDS: usize = 1024;
+const MAX_CAMPAIGN_PROGRESS_BYTES: u64 = 1024 * 1024;
+const MAX_CAMPAIGN_PATH_BYTES: usize = 4096;
+const MAX_CAMPAIGN_ERROR_BYTES: usize = 4096;
 
 /// Configuration for a multi-seed campaign.
 #[derive(Clone)]
@@ -182,6 +187,7 @@ fn detail_matches_identity(
 
 /// Serializable subset of ExplorerConfig for campaign checkpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerializableCampaignConfig {
     pub kernel_path: String,
     pub initrd_path: Option<String>,
@@ -228,6 +234,7 @@ impl SerializableCampaignConfig {
 
 /// Incremental campaign checkpoint — updated after each seed completes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CampaignProgress {
     /// All seeds in the campaign.
     pub seeds: Vec<u64>,
@@ -242,23 +249,84 @@ pub struct CampaignProgress {
     pub failed: BTreeMap<u64, String>,
 }
 
+fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> Result<(), String> {
+    validate_unique_seeds(&progress.seeds).map_err(str::to_string)?;
+    if progress.seeds.is_empty()
+        || progress.seeds.len() > MAX_CAMPAIGN_SEEDS
+        || progress.output_dir != output_dir
+        || progress.output_dir.is_empty()
+        || progress.output_dir.len() > MAX_CAMPAIGN_PATH_BYTES
+    {
+        return Err("campaign progress output or seed bounds are invalid".to_string());
+    }
+    let config = &progress.config;
+    if config.kernel_path.is_empty()
+        || config.kernel_path.len() > MAX_CAMPAIGN_PATH_BYTES
+        || config.num_vms == 0
+        || config.branch_factor == 0
+        || config.ticks_per_branch == 0
+        || config.max_rounds == 0
+        || config.quantum == 0
+        || config.num_vcpus == 0
+        || !matches!(
+            config.exploration_mode.as_str(),
+            "fault-schedule" | "input-tree" | "hybrid"
+        )
+    {
+        return Err("campaign progress configuration is invalid".to_string());
+    }
+    for optional_path in [&config.initrd_path, &config.disk_image_path] {
+        if optional_path
+            .as_ref()
+            .is_some_and(|path| path.is_empty() || path.len() > MAX_CAMPAIGN_PATH_BYTES)
+        {
+            return Err("campaign progress path is invalid".to_string());
+        }
+    }
+    let seeds = progress.seeds.iter().copied().collect::<BTreeSet<_>>();
+    for (seed, summary) in &progress.completed {
+        if !seeds.contains(seed) || summary.seed != *seed || progress.failed.contains_key(seed) {
+            return Err("campaign progress completed seed is invalid".to_string());
+        }
+    }
+    for (seed, error) in &progress.failed {
+        if !seeds.contains(seed) || error.is_empty() || error.len() > MAX_CAMPAIGN_ERROR_BYTES {
+            return Err("campaign progress failed seed is invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
 /// Save campaign progress to `{output_dir}/campaign_progress.json`.
 pub fn save_campaign_progress(
     progress: &CampaignProgress,
     output_dir: &str,
 ) -> Result<(), std::io::Error> {
-    let path = format!("{}/campaign_progress.json", output_dir);
-    let json = serde_json::to_string_pretty(progress).map_err(std::io::Error::other)?;
-    std::fs::write(&path, json)?;
-    info!("Saved campaign progress: {}", path);
+    validate_campaign_progress(progress, output_dir).map_err(std::io::Error::other)?;
+    let bytes = serde_json::to_vec_pretty(progress).map_err(std::io::Error::other)?;
+    if bytes.len() as u64 > MAX_CAMPAIGN_PROGRESS_BYTES {
+        return Err(std::io::Error::other(
+            "campaign progress exceeds the byte limit",
+        ));
+    }
+    let output_dir = Path::new(output_dir);
+    let path = output_dir.join("campaign_progress.json");
+    let mut temporary = tempfile::NamedTempFile::new_in(output_dir)?;
+    temporary.write_all(&bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(&path).map_err(|error| error.error)?;
+    std::fs::File::open(output_dir)?.sync_all()?;
+    info!("Saved campaign progress: {}", path.display());
     Ok(())
 }
 
 /// Load campaign progress from `{dir}/campaign_progress.json`.
 pub fn load_campaign_progress(dir: &str) -> Result<CampaignProgress, std::io::Error> {
-    let path = format!("{}/campaign_progress.json", dir);
-    let json = std::fs::read_to_string(&path)?;
-    serde_json::from_str(&json).map_err(std::io::Error::other)
+    let path = Path::new(dir).join("campaign_progress.json");
+    let json = crate::bounded_json::read_bounded_json(&path, MAX_CAMPAIGN_PROGRESS_BYTES)?;
+    let progress: CampaignProgress = serde_json::from_str(&json).map_err(std::io::Error::other)?;
+    validate_campaign_progress(&progress, dir).map_err(std::io::Error::other)?;
+    Ok(progress)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1537,7 +1605,10 @@ mod tests {
 
         let json = serde_json::to_string_pretty(&progress).unwrap();
         let loaded: CampaignProgress = serde_json::from_str(&json).unwrap();
+        let mut unknown = serde_json::to_value(&progress).expect("campaign progress JSON");
+        unknown["unreviewed_authority"] = serde_json::Value::Bool(true);
 
+        assert!(serde_json::from_value::<CampaignProgress>(unknown).is_err());
         assert_eq!(loaded.seeds, vec![42, 43, 44]);
         assert_eq!(loaded.completed.len(), 1);
         assert!(loaded.completed.contains_key(&42));
@@ -1547,8 +1618,8 @@ mod tests {
 
     #[test]
     fn campaign_progress_save_load() {
-        let dir = std::env::temp_dir().join(format!("cc-test-progress-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let dir = temporary.path();
 
         let progress = CampaignProgress {
             seeds: vec![10, 20],
@@ -1568,17 +1639,31 @@ mod tests {
                 num_vcpus: 1,
                 scenario: None,
             },
-            output_dir: dir.to_string_lossy().into(),
+            output_dir: dir.to_string_lossy().into_owned(),
             completed: BTreeMap::new(),
             failed: BTreeMap::new(),
         };
 
-        save_campaign_progress(&progress, &dir.to_string_lossy()).unwrap();
-        let loaded = load_campaign_progress(&dir.to_string_lossy()).unwrap();
+        let dir_text = dir.to_string_lossy();
+        save_campaign_progress(&progress, &dir_text).unwrap();
+        let loaded = load_campaign_progress(&dir_text).unwrap();
+        let path = dir.join("campaign_progress.json");
+        let before = std::fs::read(&path).expect("campaign progress bytes");
+        let mut duplicate = progress.clone();
+        duplicate.seeds = vec![10, 10];
 
+        assert!(save_campaign_progress(&duplicate, &dir_text).is_err());
+        assert_eq!(std::fs::read(&path).expect("retained progress"), before);
         assert_eq!(loaded.seeds, vec![10, 20]);
         assert!(loaded.completed.is_empty());
 
-        std::fs::remove_dir_all(&dir).ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let target = dir.join("retained-progress.json");
+            std::fs::rename(&path, &target).expect("move progress fixture");
+            symlink(&target, &path).expect("progress symlink");
+            assert!(load_campaign_progress(&dir_text).is_err());
+        }
     }
 }

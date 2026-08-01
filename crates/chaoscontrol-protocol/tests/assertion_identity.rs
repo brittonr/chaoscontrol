@@ -76,7 +76,6 @@ fn canonical_descriptor_and_wire_round_trip_are_stable() {
         fingerprint,
         descriptor.fingerprint().expect("repeat fingerprint")
     );
-
     let mut payload = [0_u8; PAYLOAD_MAX];
     let length = encode_descriptor_frame(&descriptor, &mut payload).expect("encode descriptor");
     let decoded = decode_descriptor_frame(&payload[..length]).expect("decode descriptor");
@@ -173,7 +172,6 @@ fn legacy_alias_conflict_is_diagnostic_and_never_admitted() {
         validate_legacy_descriptors(&[first.clone(), conflict]),
         Err(CatalogConflict::LegacyAliasConflict)
     );
-
     let mut other = descriptor(AssertionLogicalKey::LegacyU32 { id: LEGACY_ID });
     other.namespace = "build:redb-guest:v1".to_string();
     other.guest = "redb".to_string();

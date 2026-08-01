@@ -103,7 +103,6 @@ fn snapshot_restore_continues_sequence() {
             seed,
             ..Default::default()
         });
-        engine.begin_run();
 
         let page = make_random_get_page();
         for _ in 0..pre_calls {

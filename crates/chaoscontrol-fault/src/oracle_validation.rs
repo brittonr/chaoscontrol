@@ -1,12 +1,14 @@
-use crate::oracle::{AssertionRecord, OracleReport, OracleSnapshot};
+use crate::oracle::{AssertionRecord, OracleReport};
 pub use crate::oracle_event_validation::{MAX_IDENTITY_CONFLICTS, MAX_ORACLE_EVENTS};
-use crate::oracle_record_validation::{validate_legacy_records, validate_record};
+use crate::oracle_record_validation::{validate_active_record, validate_final_record};
+pub use crate::oracle_snapshot_validation::{
+    validate_oracle_snapshot, validate_restorable_oracle_snapshot,
+};
 use chaoscontrol_protocol::assertion_catalog::{
-    validate_accepted_catalog, CatalogBuilder, CatalogValidationStatus,
-    MAX_ASSERTION_CATALOG_ENTRIES,
+    CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use chaoscontrol_protocol::assertion_identity::AssertionFingerprint;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OracleValidationError {
@@ -28,75 +30,36 @@ pub struct StrictReportFacts {
     pub catalog_size: usize,
 }
 
-pub fn validate_oracle_snapshot(snapshot: &OracleSnapshot) -> Result<(), OracleValidationError> {
-    crate::oracle_event_validation::validate_bounds(
-        &snapshot.events,
-        &snapshot.identity_conflicts,
-        snapshot.total_runs,
-    )?;
-    if snapshot
-        .assertions
-        .len()
-        .saturating_add(snapshot.structured_assertions.len())
-        > MAX_ASSERTION_CATALOG_ENTRIES
-    {
-        return Err(OracleValidationError::Cardinality);
-    }
-    match snapshot.catalog_status {
-        CatalogValidationStatus::Pending => {
-            if snapshot.accepted_catalog.is_some()
-                || !snapshot.assertions.is_empty()
-                || !snapshot.structured_assertions.is_empty()
-                || !snapshot.identity_conflicts.is_empty()
-            {
-                return Err(OracleValidationError::Status);
-            }
-        }
-        CatalogValidationStatus::Accepted => validate_accepted_snapshot(snapshot)?,
-        CatalogValidationStatus::LegacyAmbiguous => {
-            if snapshot.accepted_catalog.is_some()
-                || !snapshot.structured_assertions.is_empty()
-                || snapshot.assertions.is_empty()
-                || snapshot.identity_conflicts.is_empty()
-            {
-                return Err(OracleValidationError::LegacyState);
-            }
-            validate_legacy_records(&snapshot.assertions, snapshot.total_runs)?;
-        }
-        CatalogValidationStatus::FatalConflict => {
-            if snapshot.identity_conflicts.is_empty() {
-                return Err(OracleValidationError::ConflictState);
-            }
-            validate_legacy_records(&snapshot.assertions, snapshot.total_runs)?;
-            if let Some(catalog) = &snapshot.accepted_catalog {
-                validate_accepted_catalog(catalog).map_err(|_| OracleValidationError::Catalog)?;
-                validate_strict_records(
-                    &snapshot.structured_assertions,
-                    snapshot.total_runs,
-                    false,
-                )?;
-                validate_catalog_record_equality(catalog, &snapshot.structured_assertions)?;
-            } else if !snapshot.structured_assertions.is_empty() {
-                return Err(OracleValidationError::Catalog);
-            }
-        }
-    }
-    Ok(())
-}
-
 pub fn validate_strict_oracle_report(
     report: &OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
-    validate_oracle_report(report, true)
+    validate_final_oracle_report(report, true)
 }
 
-pub fn validate_aggregated_oracle_report(
+pub fn validate_oracle_report_claim(
     report: &OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
-    validate_oracle_report(report, false)
+    validate_final_oracle_report(report, false)
 }
 
-fn validate_oracle_report(
+pub(crate) fn validate_prepared_oracle_report(
+    report: &OracleReport,
+) -> Result<StrictReportFacts, OracleValidationError> {
+    validate_oracle_report_facts(report, false)
+}
+
+fn validate_final_oracle_report(
+    report: &OracleReport,
+    reject_vm_provenance: bool,
+) -> Result<StrictReportFacts, OracleValidationError> {
+    let facts = validate_oracle_report_facts(report, reject_vm_provenance)?;
+    if !report.collision_safe_evidence {
+        return Err(OracleValidationError::Status);
+    }
+    Ok(facts)
+}
+
+fn validate_oracle_report_facts(
     report: &OracleReport,
     reject_vm_provenance: bool,
 ) -> Result<StrictReportFacts, OracleValidationError> {
@@ -115,6 +78,7 @@ fn validate_oracle_report(
         &report.structured_assertions,
         report.total_runs,
         reject_vm_provenance,
+        None,
     )?;
     if report.catalog_size != facts.catalog_size {
         return Err(OracleValidationError::Summary);
@@ -126,53 +90,11 @@ fn validate_oracle_report(
     Ok(facts)
 }
 
-fn validate_accepted_snapshot(snapshot: &OracleSnapshot) -> Result<(), OracleValidationError> {
-    if !snapshot.assertions.is_empty() || !snapshot.identity_conflicts.is_empty() {
-        return Err(OracleValidationError::Status);
-    }
-    let catalog = snapshot
-        .accepted_catalog
-        .as_ref()
-        .ok_or(OracleValidationError::Catalog)?;
-    validate_accepted_catalog(catalog).map_err(|_| OracleValidationError::Catalog)?;
-    let facts =
-        validate_strict_records(&snapshot.structured_assertions, snapshot.total_runs, false)?;
-    if facts.catalog_token != catalog.token || facts.catalog_size != catalog.assertions.len() {
-        return Err(OracleValidationError::Catalog);
-    }
-    validate_catalog_record_equality(catalog, &snapshot.structured_assertions)
-}
-
-fn validate_catalog_record_equality(
-    catalog: &chaoscontrol_protocol::assertion_catalog::AcceptedCatalog,
-    records: &BTreeMap<AssertionFingerprint, AssertionRecord>,
-) -> Result<(), OracleValidationError> {
-    if catalog.assertions.len() != records.len() {
-        return Err(OracleValidationError::Catalog);
-    }
-    for (fingerprint, admitted) in &catalog.assertions {
-        let record = records
-            .get(fingerprint)
-            .ok_or(OracleValidationError::Record)?;
-        if record.identity.as_ref() != Some(admitted)
-            || record.message != admitted.descriptor.message
-            || record.kind != admitted.descriptor.kind
-            || record.guest != admitted.descriptor.guest
-            || record.category != admitted.descriptor.category
-            || record.compatibility_id != admitted.descriptor.compatibility_id
-            || record.catalog_tokens != BTreeSet::from([catalog.token])
-            || !record.vm_instances.is_empty()
-        {
-            return Err(OracleValidationError::Record);
-        }
-    }
-    Ok(())
-}
-
-fn validate_strict_records(
+pub(crate) fn validate_strict_records(
     records: &BTreeMap<AssertionFingerprint, AssertionRecord>,
     total_runs: u32,
     reject_vm_provenance: bool,
+    active_run: Option<&crate::oracle::RunState>,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     if records.is_empty() || records.len() > MAX_ASSERTION_CATALOG_ENTRIES {
         return Err(OracleValidationError::Cardinality);
@@ -181,7 +103,15 @@ fn validate_strict_records(
     let mut builder =
         CatalogBuilder::begin(records.len()).map_err(|_| OracleValidationError::Catalog)?;
     for (fingerprint, record) in records {
-        validate_record(record, total_runs)?;
+        match active_run {
+            Some(run) => validate_active_record(
+                record,
+                total_runs,
+                run.strict_hit_ids.contains(fingerprint),
+                run.strict_satisfied_ids.contains(fingerprint),
+            )?,
+            None => validate_final_record(record, total_runs)?,
+        }
         if reject_vm_provenance && !record.vm_instances.is_empty() {
             return Err(OracleValidationError::VmProvenance);
         }

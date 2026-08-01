@@ -3,6 +3,7 @@ use crate::assertion_catalog::{
     MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use crate::assertion_identity::{AssertionDescriptor, AssertionLogicalKey};
+use std::collections::BTreeMap;
 
 pub fn validate_accepted_catalog(catalog: &AcceptedCatalog) -> Result<(), CatalogConflict> {
     if catalog.catalog_version != ASSERTION_CATALOG_VERSION {
@@ -33,6 +34,37 @@ pub fn validate_accepted_catalog(catalog: &AcceptedCatalog) -> Result<(), Catalo
         builder.insert_with_fingerprint(assertion.descriptor.clone(), *key)?;
     }
     builder.complete(catalog.token)?;
+    Ok(())
+}
+
+/// Validate legacy descriptors for diagnostic quarantine only.
+///
+/// A successful result does not admit these descriptors to a strict catalog.
+pub fn validate_legacy_descriptors(
+    descriptors: &[AssertionDescriptor],
+) -> Result<(), CatalogConflict> {
+    if descriptors.len() > MAX_ASSERTION_CATALOG_ENTRIES {
+        return Err(CatalogConflict::CardinalityOverflow);
+    }
+    let mut aliases: BTreeMap<(String, u32), Vec<u8>> = BTreeMap::new();
+    for descriptor in descriptors {
+        let AssertionLogicalKey::LegacyU32 { id } = &descriptor.logical_key else {
+            return Err(CatalogConflict::LegacyIdentityForbidden);
+        };
+        if descriptor.compatibility_id != Some(*id) {
+            return Err(CatalogConflict::LegacyAliasConflict);
+        }
+        let canonical = descriptor
+            .canonical_bytes()
+            .map_err(CatalogConflict::Descriptor)?;
+        let alias = (descriptor.namespace.clone(), *id);
+        if aliases
+            .insert(alias, canonical.clone())
+            .is_some_and(|existing| existing != canonical)
+        {
+            return Err(CatalogConflict::LegacyAliasConflict);
+        }
+    }
     Ok(())
 }
 

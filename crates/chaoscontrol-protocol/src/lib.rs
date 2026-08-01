@@ -24,11 +24,17 @@
 #[cfg(feature = "std")]
 pub mod assertion_catalog;
 #[cfg(feature = "std")]
+mod assertion_catalog_token;
+#[cfg(feature = "std")]
 mod assertion_catalog_validation;
 #[cfg(feature = "std")]
 pub mod assertion_identity;
 #[cfg(feature = "std")]
+mod assertion_identity_core;
+#[cfg(feature = "std")]
 pub mod assertion_wire;
+#[cfg(feature = "std")]
+mod assertion_wire_decode;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Addresses and ports
@@ -109,6 +115,15 @@ pub const COVERAGE_BITMAP_SIZE: usize = 65536;
 pub const COVERAGE_PORT: u16 = 0x0511;
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Assertion kind discriminants
+// ═══════════════════════════════════════════════════════════════════════
+
+pub const ASSERTION_KIND_ALWAYS_DISCRIMINANT: u8 = 0;
+pub const ASSERTION_KIND_SOMETIMES_DISCRIMINANT: u8 = 1;
+pub const ASSERTION_KIND_REACHABLE_DISCRIMINANT: u8 = 2;
+pub const ASSERTION_KIND_UNREACHABLE_DISCRIMINANT: u8 = 3;
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Command IDs
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -124,17 +139,8 @@ pub const CMD_ASSERT_REACHABLE: u8 = 0x03;
 /// Assertion: this point must never be reached in any run.
 pub const CMD_ASSERT_UNREACHABLE: u8 = 0x04;
 
-/// Legacy assertion catalog registration. Strict mode quarantines this record.
-pub const CMD_ASSERT_CATALOG_LEGACY: u8 = 0x05;
-
-/// Compatibility name for the legacy catalog command.
-pub const CMD_ASSERT_CATALOG: u8 = CMD_ASSERT_CATALOG_LEGACY;
-
 /// Begin a versioned bounded assertion catalog.
 pub const CMD_ASSERT_CATALOG_BEGIN: u8 = 0x06;
-
-/// Guidance data (numeric/boolean distance-to-violation hints).
-pub const CMD_GUIDANCE: u8 = 0x07;
 
 /// Add one canonical descriptor to the pending assertion catalog.
 pub const CMD_ASSERT_CATALOG_DESCRIPTOR: u8 = 0x08;

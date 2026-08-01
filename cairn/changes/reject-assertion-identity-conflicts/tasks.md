@@ -7,7 +7,7 @@
 ## Phase 2: SDK and protocol binding
 
 - [ ] [serial] Add versioned catalog begin/descriptor/complete transport records and preserve complete source, guest, category, and logical-key metadata through the host decoder. r[chaoscontrol.assertion_identity.catalog_protocol]
-- [ ] [parallel] Add explicit stable namespace/key assertion APIs and map existing `u32` APIs into the scoped legacy-key compatibility variant. r[chaoscontrol.assertion_identity.compatibility]
+- [ ] [parallel] Add explicit stable namespace/key assertion APIs; remove public `u32` assertion APIs, compatibility commands, and unbound guidance; migrate in-repo callers. r[chaoscontrol.assertion_identity.compatibility]
 - [ ] [serial] Bind runtime events to accepted catalog fingerprints or tokens and reject pre-catalog, unknown, mismatched, or post-conflict events in strict mode. r[chaoscontrol.assertion_identity.event_binding]
 - [ ] [serial] Remove strict-mode oracle auto-creation and `u32`-only authoritative maps while preserving an explicitly quarantined diagnostic path. r[chaoscontrol.assertion_identity.event_binding]
 
@@ -25,5 +25,5 @@
 - [ ] [parallel] Add pre-catalog, unknown-fingerprint, mismatched-token, event-kind-spoofing, and catalog-conflict runtime tests. r[chaoscontrol.assertion_identity.validation.events]
 - [ ] [parallel] Add local JSONL conflict and namespace-separation tests. r[chaoscontrol.assertion_identity.validation.local]
 - [ ] [serial] Add strict rejection and diagnostic quarantine tests for legacy `u32`-only protocol, snapshot, and report inputs. r[chaoscontrol.assertion_identity.validation.legacy]
-- [ ] [serial] Document automatic build scope, explicit-key continuity, migration behavior, and the digest-uniqueness non-claim. r[chaoscontrol.assertion_identity.compatibility]
+- [ ] [serial] Document automatic build scope, explicit-key continuity, unsupported old wire/API forms, and the digest-uniqueness non-claim. r[chaoscontrol.assertion_identity.compatibility]
 - [ ] [serial] Run focused protocol/SDK/oracle/report/contract tests, workspace tests, Cairn validation, and proposal/design/tasks gates before sync or archive. r[chaoscontrol.assertion_identity.validation]

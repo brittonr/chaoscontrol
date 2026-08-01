@@ -1,5 +1,8 @@
+pub use crate::assertion_catalog_token::{catalog_token, token_for_descriptors};
 use crate::assertion_catalog_validation::classify_descriptor_conflict;
-pub use crate::assertion_catalog_validation::validate_accepted_catalog;
+pub use crate::assertion_catalog_validation::{
+    validate_accepted_catalog, validate_legacy_descriptors,
+};
 use crate::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey, IdentityError,
     MAX_ASSERTION_CANONICAL_BYTES,
@@ -10,7 +13,6 @@ use std::collections::BTreeMap;
 pub const MAX_ASSERTION_CATALOG_ENTRIES: usize = 4096;
 pub const MAX_ASSERTION_REPORT_ENTRIES: usize = MAX_ASSERTION_CATALOG_ENTRIES;
 pub const ASSERTION_CATALOG_VERSION: u8 = 1;
-const CATALOG_DOMAIN: &[u8] = b"chaoscontrol.assertion-catalog.v1\0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -54,9 +56,11 @@ pub enum CatalogConflict {
     GuestConflict,
     KindConflict,
     LegacyAliasConflict,
+    LegacyIdentityForbidden,
     LogicalKeyConflict,
     MessageConflict,
     NamespaceConflict,
+    NoActiveRun,
     PostCompletion,
     PostConflict,
     SourceConflict,
@@ -89,7 +93,7 @@ pub struct CatalogBuilder {
     conflict: Option<CatalogConflict>,
     by_logical_key: BTreeMap<(String, AssertionLogicalKey), AdmittedAssertion>,
     by_compatibility_id: BTreeMap<(String, u32), AdmittedAssertion>,
-    by_fingerprint: BTreeMap<AssertionFingerprint, AdmittedAssertion>,
+    pub(crate) by_fingerprint: BTreeMap<AssertionFingerprint, AdmittedAssertion>,
 }
 
 impl CatalogBuilder {
@@ -132,6 +136,12 @@ impl CatalogBuilder {
         }
         if self.conflict.is_some() {
             return Err(CatalogConflict::PostConflict);
+        }
+        if matches!(
+            &descriptor.logical_key,
+            AssertionLogicalKey::LegacyU32 { .. }
+        ) {
+            return self.fail(CatalogConflict::LegacyIdentityForbidden);
         }
         self.received_frames = match self.received_frames.checked_add(1) {
             Some(count) => count,
@@ -213,6 +223,24 @@ impl CatalogBuilder {
         if self.received_frames != self.expected_frames {
             return Err(CatalogConflict::CatalogIncomplete);
         }
+        for (key, admitted) in &self.by_fingerprint {
+            let canonical = admitted
+                .descriptor
+                .canonical_bytes()
+                .map_err(CatalogConflict::Descriptor)?;
+            let fingerprint = admitted
+                .descriptor
+                .fingerprint()
+                .map_err(CatalogConflict::Descriptor)?;
+            if *key != fingerprint || admitted.fingerprint != fingerprint {
+                return Err(CatalogConflict::Descriptor(
+                    IdentityError::InvalidFingerprint,
+                ));
+            }
+            if admitted.canonical_bytes != canonical {
+                return Err(CatalogConflict::CanonicalMismatch);
+            }
+        }
         let token = catalog_token(&self.by_fingerprint);
         if token != claimed_token {
             return Err(CatalogConflict::CatalogTokenMismatch);
@@ -248,6 +276,14 @@ impl AcceptedCatalog {
         if self.status != CatalogValidationStatus::Accepted {
             return Err(CatalogConflict::PostConflict);
         }
+        if self.assertions.values().any(|assertion| {
+            matches!(
+                &assertion.descriptor.logical_key,
+                AssertionLogicalKey::LegacyU32 { .. }
+            )
+        }) {
+            return Err(CatalogConflict::LegacyIdentityForbidden);
+        }
         if event.catalog_token != self.token {
             return Err(CatalogConflict::EventCatalogMismatch);
         }
@@ -260,32 +296,4 @@ impl AcceptedCatalog {
         }
         Ok(admitted)
     }
-}
-
-pub fn catalog_token(
-    assertions: &BTreeMap<AssertionFingerprint, AdmittedAssertion>,
-) -> AssertionFingerprint {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(CATALOG_DOMAIN);
-    hasher.update(&(assertions.len() as u64).to_le_bytes());
-    for (fingerprint, assertion) in assertions {
-        hasher.update(&fingerprint.0);
-        hasher.update(&(assertion.canonical_bytes.len() as u64).to_le_bytes());
-        hasher.update(&assertion.canonical_bytes);
-    }
-    AssertionFingerprint(*hasher.finalize().as_bytes())
-}
-
-pub fn token_for_descriptors(
-    descriptors: &[AssertionDescriptor],
-) -> Result<AssertionFingerprint, CatalogConflict> {
-    if descriptors.len() > MAX_ASSERTION_CATALOG_ENTRIES {
-        return Err(CatalogConflict::CardinalityOverflow);
-    }
-    let mut builder = CatalogBuilder::begin(descriptors.len())?;
-    for descriptor in descriptors {
-        builder.insert(descriptor.clone())?;
-    }
-    let token = catalog_token(&builder.by_fingerprint);
-    Ok(token)
 }

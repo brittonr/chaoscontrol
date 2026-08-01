@@ -1,9 +1,20 @@
 use core::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+pub use crate::{
+    ASSERTION_KIND_ALWAYS_DISCRIMINANT, ASSERTION_KIND_REACHABLE_DISCRIMINANT,
+    ASSERTION_KIND_SOMETIMES_DISCRIMINANT, ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
+};
+
 pub const ASSERTION_IDENTITY_VERSION: u8 = 1;
 pub const ASSERTION_FINGERPRINT_BYTES: usize = 32;
-pub const ASSERTION_FINGERPRINT_HEX_BYTES: usize = ASSERTION_FINGERPRINT_BYTES * 2;
+const HEX_CHARACTERS_PER_BYTE: usize = 2;
+const HEX_ALPHABET_BYTES: usize = 16;
+const HEX_HIGH_NIBBLE_SHIFT: u32 = 4;
+const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
+const HEX_ALPHA_DIGIT_OFFSET: u8 = 10;
+pub const ASSERTION_FINGERPRINT_HEX_BYTES: usize =
+    ASSERTION_FINGERPRINT_BYTES * HEX_CHARACTERS_PER_BYTE;
 pub const MAX_ASSERTION_NAMESPACE_BYTES: usize = 128;
 pub const MAX_ASSERTION_KEY_BYTES: usize = 256;
 pub const MAX_ASSERTION_MESSAGE_BYTES: usize = 1024;
@@ -12,10 +23,8 @@ pub const MAX_ASSERTION_GUEST_BYTES: usize = 128;
 pub const MAX_ASSERTION_CATEGORY_BYTES: usize = 64;
 pub const MAX_ASSERTION_CANONICAL_BYTES: usize = 2304;
 pub const MAX_ASSERTION_EVENT_DETAILS_BYTES: usize = 2048;
-
 pub const ASSERTION_DESCRIPTOR_DOMAIN: &[u8] = b"chaoscontrol.assertion-descriptor.v1\0";
 const FINGERPRINT_DOMAIN: &[u8] = b"chaoscontrol.assertion-fingerprint.v1\0";
-const FIELD_COUNT: u8 = 10;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AssertionFingerprint(pub [u8; ASSERTION_FINGERPRINT_BYTES]);
 
@@ -23,13 +32,7 @@ impl AssertionFingerprint {
     pub const ZERO: Self = Self([0; ASSERTION_FINGERPRINT_BYTES]);
 
     pub fn to_hex(self) -> String {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut output = String::with_capacity(ASSERTION_FINGERPRINT_HEX_BYTES);
-        for byte in self.0 {
-            output.push(HEX[(byte >> 4) as usize] as char);
-            output.push(HEX[(byte & 0x0f) as usize] as char);
-        }
-        output
+        encode_lower_hex(&self.0)
     }
 
     pub fn from_hex(value: &str) -> Result<Self, IdentityError> {
@@ -37,11 +40,25 @@ impl AssertionFingerprint {
             return Err(IdentityError::InvalidFingerprint);
         }
         let mut bytes = [0_u8; ASSERTION_FINGERPRINT_BYTES];
-        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-            bytes[index] = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
+        for (index, pair) in value
+            .as_bytes()
+            .chunks_exact(HEX_CHARACTERS_PER_BYTE)
+            .enumerate()
+        {
+            bytes[index] = (hex_nibble(pair[0])? << HEX_HIGH_NIBBLE_SHIFT) | hex_nibble(pair[1])?;
         }
         Ok(Self(bytes))
     }
+}
+
+pub fn encode_lower_hex(bytes: &[u8]) -> String {
+    const HEX_ALPHABET: &[u8; HEX_ALPHABET_BYTES] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len().saturating_mul(HEX_CHARACTERS_PER_BYTE));
+    for byte in bytes {
+        output.push(HEX_ALPHABET[(byte >> HEX_HIGH_NIBBLE_SHIFT) as usize] as char);
+        output.push(HEX_ALPHABET[(byte & HEX_LOW_NIBBLE_MASK) as usize] as char);
+    }
+    output
 }
 
 impl fmt::Display for AssertionFingerprint {
@@ -73,10 +90,10 @@ impl<'de> Deserialize<'de> for AssertionFingerprint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AssertionKind {
-    Always,
-    Sometimes,
-    Reachable,
-    Unreachable,
+    Always = ASSERTION_KIND_ALWAYS_DISCRIMINANT,
+    Sometimes = ASSERTION_KIND_SOMETIMES_DISCRIMINANT,
+    Reachable = ASSERTION_KIND_REACHABLE_DISCRIMINANT,
+    Unreachable = ASSERTION_KIND_UNREACHABLE_DISCRIMINANT,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -93,6 +110,11 @@ pub struct AssertionDescriptor {
     pub identity_version: u8,
     pub namespace: String,
     pub logical_key: AssertionLogicalKey,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_compatibility_id"
+    )]
     pub compatibility_id: Option<u32>,
     pub kind: AssertionKind,
     pub message: String,
@@ -127,72 +149,20 @@ impl fmt::Display for IdentityError {
 
 impl std::error::Error for IdentityError {}
 
+fn deserialize_compatibility_id<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    u32::deserialize(deserializer).map(Some)
+}
+
 impl AssertionDescriptor {
     pub fn validate(&self) -> Result<(), IdentityError> {
-        if self.identity_version != ASSERTION_IDENTITY_VERSION {
-            return Err(IdentityError::InvalidVersion);
-        }
-        validate_text("namespace", &self.namespace, MAX_ASSERTION_NAMESPACE_BYTES)?;
-        match &self.logical_key {
-            AssertionLogicalKey::Automatic { source_site } => {
-                validate_text("source_site", source_site, MAX_ASSERTION_KEY_BYTES)?;
-            }
-            AssertionLogicalKey::Stable { key } => {
-                validate_text("key", key, MAX_ASSERTION_KEY_BYTES)?;
-            }
-            AssertionLogicalKey::LegacyU32 { id } => {
-                if self.compatibility_id != Some(*id) {
-                    return Err(IdentityError::InvalidLegacyAlias);
-                }
-            }
-        }
-        validate_text("message", &self.message, MAX_ASSERTION_MESSAGE_BYTES)?;
-        validate_text("source_file", &self.source_file, MAX_ASSERTION_SOURCE_BYTES)?;
-        validate_source_path(&self.source_file)?;
-        if self.source_line == 0 || self.source_column == 0 {
-            return Err(IdentityError::InvalidSourcePosition);
-        }
-        if let AssertionLogicalKey::Automatic { source_site } = &self.logical_key {
-            let expected = format!(
-                "{}:{}:{}",
-                self.source_file, self.source_line, self.source_column
-            );
-            if source_site != &expected {
-                return Err(IdentityError::InvalidAutomaticSourceSite);
-            }
-        }
-        validate_text("guest", &self.guest, MAX_ASSERTION_GUEST_BYTES)?;
-        validate_category(&self.category)?;
-        Ok(())
+        crate::assertion_identity_core::validate_descriptor(self)
     }
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, IdentityError> {
-        self.validate()?;
-        let mut output = Vec::with_capacity(MAX_ASSERTION_CANONICAL_BYTES);
-        output.extend_from_slice(ASSERTION_DESCRIPTOR_DOMAIN);
-        output.push(ASSERTION_IDENTITY_VERSION);
-        output.push(FIELD_COUNT);
-        write_field(&mut output, 1, self.namespace.as_bytes())?;
-        write_field(&mut output, 2, &logical_key_bytes(&self.logical_key)?)?;
-        write_field(&mut output, 3, &[self.kind as u8])?;
-        write_field(&mut output, 4, self.message.as_bytes())?;
-        write_field(&mut output, 5, self.source_file.as_bytes())?;
-        write_field(&mut output, 6, &self.source_line.to_le_bytes())?;
-        write_field(&mut output, 7, &self.source_column.to_le_bytes())?;
-        write_field(&mut output, 8, self.guest.as_bytes())?;
-        write_field(&mut output, 9, self.category.as_bytes())?;
-        let compatibility_id = self.compatibility_id.map(u32::to_le_bytes);
-        write_field(
-            &mut output,
-            10,
-            compatibility_id
-                .as_ref()
-                .map_or(&[], |bytes| bytes.as_slice()),
-        )?;
-        if output.len() > MAX_ASSERTION_CANONICAL_BYTES {
-            return Err(IdentityError::FieldTooLong("canonical_descriptor"));
-        }
-        Ok(output)
+        crate::assertion_identity_core::canonical_descriptor(self)
     }
 
     pub fn fingerprint(&self) -> Result<AssertionFingerprint, IdentityError> {
@@ -210,81 +180,10 @@ pub fn fingerprint_canonical(bytes: &[u8]) -> Result<AssertionFingerprint, Ident
     Ok(AssertionFingerprint(*hasher.finalize().as_bytes()))
 }
 
-fn logical_key_bytes(key: &AssertionLogicalKey) -> Result<Vec<u8>, IdentityError> {
-    let mut output = Vec::with_capacity(MAX_ASSERTION_KEY_BYTES + 1);
-    match key {
-        AssertionLogicalKey::Automatic { source_site } => {
-            output.push(1);
-            output.extend_from_slice(source_site.as_bytes());
-        }
-        AssertionLogicalKey::Stable { key } => {
-            output.push(2);
-            output.extend_from_slice(key.as_bytes());
-        }
-        AssertionLogicalKey::LegacyU32 { id } => {
-            output.push(3);
-            output.extend_from_slice(&id.to_le_bytes());
-        }
-    }
-    Ok(output)
-}
-
-fn write_field(output: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), IdentityError> {
-    let length = u16::try_from(value.len()).map_err(|_| IdentityError::MalformedCanonical)?;
-    let required = output.len().saturating_add(3).saturating_add(value.len());
-    if required > MAX_ASSERTION_CANONICAL_BYTES {
-        return Err(IdentityError::FieldTooLong("canonical_descriptor"));
-    }
-    output.push(tag);
-    output.extend_from_slice(&length.to_le_bytes());
-    output.extend_from_slice(value);
-    Ok(())
-}
-
-fn validate_category(value: &str) -> Result<(), IdentityError> {
-    validate_text("category", value, MAX_ASSERTION_CATEGORY_BYTES)?;
-    let normalized = value
-        .bytes()
-        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
-    if !normalized || value.starts_with('-') || value.ends_with('-') {
-        return Err(IdentityError::InvalidCategory);
-    }
-    Ok(())
-}
-
-fn validate_text(field: &'static str, value: &str, maximum: usize) -> Result<(), IdentityError> {
-    if value.is_empty() {
-        return Err(IdentityError::EmptyField(field));
-    }
-    if value.len() > maximum {
-        return Err(IdentityError::FieldTooLong(field));
-    }
-    if value
-        .bytes()
-        .any(|byte| byte == 0 || byte.is_ascii_control())
-    {
-        return Err(IdentityError::InvalidCharacter(field));
-    }
-    Ok(())
-}
-
-fn validate_source_path(value: &str) -> Result<(), IdentityError> {
-    if value.starts_with('/') || value.starts_with('\\') || value.contains("\\") {
-        return Err(IdentityError::InvalidPath);
-    }
-    if value
-        .split('/')
-        .any(|part| part.is_empty() || part == "." || part == "..")
-    {
-        return Err(IdentityError::InvalidPath);
-    }
-    Ok(())
-}
-
 fn hex_nibble(byte: u8) -> Result<u8, IdentityError> {
     match byte {
         b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'a'..=b'f' => Ok(byte - b'a' + HEX_ALPHA_DIGIT_OFFSET),
         _ => Err(IdentityError::InvalidFingerprint),
     }
 }

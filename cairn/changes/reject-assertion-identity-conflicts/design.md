@@ -14,17 +14,17 @@ The compact `AssertionFingerprint` is BLAKE3 over domain-separated canonical des
 
 **Rationale:** A digest is efficient on the wire, but only retained canonical data can distinguish an actual duplicate from a key conflict or theoretical digest collision.
 
-### 2. Scope compatibility IDs instead of trusting them
+### 2. Remove integer identity at the source boundary
 
-**Choice:** Existing explicit `u32` IDs map to a legacy-key variant within an explicit catalog namespace. Repeating one with an identical descriptor is idempotent; repeating it with different kind, message, source, guest, or category is a catalog conflict. New explicit-key APIs accept a stable namespace/key suitable for cross-build continuity.
+**Choice:** Remove public `u32` assertion functions, explicit-ID macros, SDK legacy catalog registration, compatibility command aliases, and unbound guidance APIs. Source code uses automatic identities or explicit stable namespace/key identities.
 
-Automatic source-site keys are documented as build-scoped because file paths and line numbers can move. Normalization removes configured build-root prefixes and ambiguous path forms, but does not claim semantic continuity after source edits.
+Automatic source-site keys are build-scoped because file paths and line numbers can move. Stable namespace/key APIs provide deliberate logical continuity. Full fingerprints still change when descriptor metadata changes.
 
-**Rationale:** This preserves source compatibility where possible without pretending that an unnamespaced small integer is globally unique.
+**Rationale:** A source compatibility layer would preserve the ambiguity that this change must remove.
 
 ### 3. Validate the complete catalog before accepting events
 
-**Choice:** SDK initialization emits a versioned catalog boundary, all descriptors, and a catalog-complete record with canonical catalog identity. A pure validator checks field bounds, known kinds/categories, canonical ordering/encoding, duplicate equivalence, logical-key conflicts, fingerprint collisions, and legacy-alias conflicts.
+**Choice:** SDK initialization emits a versioned catalog boundary, all descriptors, and a catalog-complete record with canonical catalog identity. A pure validator checks field bounds, known kinds/categories, canonical ordering/encoding, duplicate equivalence, logical-key conflicts, and fingerprint collisions. Any `LegacyU32` descriptor rejects strict admission.
 
 The host marks a catalog active only after validation succeeds. Strict runtime events before completion, after conflict, or for an unknown identity are rejected and make the run ineligible for accepted assertion evidence.
 
@@ -34,7 +34,9 @@ The host marks a catalog active only after validation succeeds. Strict runtime e
 
 **Choice:** Runtime assertion events carry the validated descriptor fingerprint or an ephemeral token derived from the accepted catalog plus fingerprint. The oracle resolves it to the retained descriptor and updates only that record. Event kind or descriptor metadata cannot override catalog authority.
 
-The oracle no longer auto-creates assertion records in strict mode. A separate diagnostic mode may quarantine unregistered legacy events, but those events remain visibly unverified.
+The oracle no longer auto-creates assertion records in strict mode. It has no live legacy record map or integer recording methods. Per-run hits, satisfaction, and immediate failures retain structured fingerprints. Unbound events and old strict-command payloads fail closed. A bounded historical parser can classify diagnostic input, but it cannot update live records or counters.
+
+The old guidance command stored values in `HashMap<u32, f64>` without catalog binding. This change removes that API, command, state, and tests. A future design can restore guidance only with an exact catalog token and fingerprint.
 
 **Rationale:** Catalog identity must be authoritative for both exercised and unexercised assertions.
 
@@ -42,17 +44,21 @@ The oracle no longer auto-creates assertion records in strict mode. A separate d
 
 **Choice:** Per-VM reports retain complete assertion identity and the VM-instance dimension. Aggregation combines counts across VM instances only when logical key, canonical descriptor, and fingerprint all match. Distinct catalog namespaces remain distinct. Any conflict is a report error rather than first-wins behavior.
 
+Each merge source must already carry a true collision-safe claim. The validator independently checks all source facts before it checks that claim. Only an internal prepared-output validator accepts a false claim while `PropertyOracle::report` or report merge derives the final true value.
+
+Compatibility aliases remain selectors for validated structured reports. Selector lookup validates the complete final report, rejects legacy or mixed maps and explicit demotion, searches only structured records, and requires a unique alias match.
+
 The local JSONL report uses the same pure registry/merge core as the VMM report path.
 
 **Rationale:** Multiple instances of the same guest binary should aggregate the same property, while unrelated guests and colliding catalogs must not.
 
 ### 6. Define strict legacy behavior
 
-**Choice:** Versioned strict protocol and evidence modes require structured identity. Legacy `u32`-only streams may be parsed in an explicit diagnostic mode scoped by source stream, with metadata consistency checks and a `legacy-ambiguous` classification. They cannot pass collision-safe assertion-evidence acceptance without migration to a validated catalog.
+**Choice:** Versioned strict protocol and evidence modes require automatic or stable structured identity. Old `u32` source APIs and compatibility wire aliases do not exist. Bounded readers can identify historical `LegacyU32` input only to reject or quarantine it with a `legacy-ambiguous` classification.
 
-Runtime records remain Rust-owned. Nickel contracts at review boundaries validate the identity version, fingerprint shape, descriptor fields, catalog status, and legacy classification.
+Legacy input cannot complete an accepted catalog. It cannot update strict counters, readiness, replay, merges, restore, or promotion. General snapshot validation can classify bounded historical diagnostics. Runtime restore accepts only pristine Pending state or fully validated Accepted structured state, and it validates active-run fingerprints before mutation. Runtime records remain Rust-owned. Nickel rejects `LegacyU32` in accepted summaries.
 
-**Rationale:** Silently upgrading old records would recreate the unsupported uniqueness claim.
+**Rationale:** Adapting old records would recreate the unsupported uniqueness claim.
 
 ### 7. Keep identity validation pure and adversarially tested
 

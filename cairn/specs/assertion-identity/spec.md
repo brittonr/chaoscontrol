@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Bind every assertion registration, runtime event, snapshot, and report record to a validated structured descriptor and reject ambiguous identity instead of silently merging properties.
+Defines the `assertion-identity` capability.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Assertion identity is structured and canonical
 

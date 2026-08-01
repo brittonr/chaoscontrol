@@ -28,6 +28,7 @@ pub struct CampaignConfig {
 
 /// Per-seed summary in the campaign report.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SeedSummary {
     pub seed: u64,
     pub rounds: u64,
@@ -42,6 +43,7 @@ pub struct SeedSummary {
 
 /// A bug deduplicated across seeds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CampaignBug {
     /// The underlying bug report (from whichever seed found it first).
     pub bug: SerializableBug,
@@ -55,6 +57,7 @@ pub struct CampaignBug {
 
 /// Aggregated report across all seeds in a campaign.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CampaignReport {
     /// All seeds that were run.
     pub seeds_run: Vec<u64>,
@@ -68,14 +71,17 @@ pub struct CampaignReport {
     pub bugs: Vec<CampaignBug>,
     /// Per-seed summaries.
     pub per_seed: Vec<SeedSummary>,
-    /// Merged assertion details (summed counts, worst verdict).
+    /// Merged assertion details with checked counts and kind-derived verdicts.
     pub assertion_details: Vec<AssertionDetail>,
     /// Merged assertion stats.
     pub assertion_stats: AssertionStats,
     /// Fatal identity conflicts found during report aggregation.
     #[serde(default)]
     pub assertion_identity_conflicts: Vec<String>,
-    /// True only when every merged assertion retained strict identity.
+    /// Catalog authority derived from all source reports and merged details.
+    #[serde(default = "pending_catalog_status")]
+    pub assertion_catalog_status: chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus,
+    /// True only when every source and merged detail is accepted and strict.
     #[serde(default)]
     pub collision_safe_assertion_evidence: bool,
     /// Wall-clock time for the entire campaign.
@@ -86,6 +92,10 @@ pub struct CampaignReport {
     /// Helical scenario config used across all seeds (if any).
     #[serde(default)]
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+}
+
+fn pending_catalog_status() -> chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus {
+    chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -417,11 +427,52 @@ pub fn aggregate_reports(
     let mut assertion_map: BTreeMap<String, AssertionDetail> = BTreeMap::new();
     let mut assertion_identity_conflicts = Vec::new();
     let mut rejected_assertion_keys = std::collections::BTreeSet::new();
+    let mut all_sources_accepted = !seed_reports.is_empty();
+    let mut source_fatal = false;
+    let mut seen_seeds = std::collections::BTreeSet::new();
 
     for (seed, report, elapsed) in &seed_reports {
+        if !seen_seeds.insert(*seed) {
+            source_fatal = true;
+            all_sources_accepted = false;
+            assertion_identity_conflicts.push(format!("duplicate campaign seed: {seed}"));
+            continue;
+        }
         seeds_run.push(*seed);
-        total_rounds += report.rounds;
-        total_branches += report.total_branches;
+        match total_rounds.checked_add(report.rounds) {
+            Some(value) => total_rounds = value,
+            None => {
+                source_fatal = true;
+                assertion_identity_conflicts.push("campaign round count overflow".to_string());
+            }
+        }
+        match total_branches.checked_add(report.total_branches) {
+            Some(value) => total_branches = value,
+            None => {
+                source_fatal = true;
+                assertion_identity_conflicts.push("campaign branch count overflow".to_string());
+            }
+        }
+        let source_assertion_status =
+            crate::assertion_summary::validate_assertion_details(&report.assertion_details);
+        let source_assertions_valid = source_assertion_status.is_ok();
+        if let Err(error) = &source_assertion_status {
+            source_fatal = true;
+            assertion_identity_conflicts.push(format!("seed {seed}: {error}"));
+        }
+        source_fatal |= report.assertion_catalog_status
+            == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict;
+        all_sources_accepted &= source_assertion_status
+            == Ok(chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted)
+            && report.assertion_catalog_status
+                == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+            && report.collision_safe_assertion_evidence;
+        assertion_identity_conflicts.extend(
+            report
+                .assertion_identity_conflicts
+                .iter()
+                .map(|error| format!("seed {seed}: {error}")),
+        );
 
         if !report.bugs.is_empty() {
             seeds_with_bugs.push(*seed);
@@ -457,6 +508,9 @@ pub fn aggregate_reports(
             }
         }
 
+        if !source_assertions_valid {
+            continue;
+        }
         for detail in &report.assertion_details {
             let key = assertion_detail_key(detail);
             if rejected_assertion_keys.contains(&key) {
@@ -509,10 +563,29 @@ pub fn aggregate_reports(
         .first()
         .and_then(|(_, r, _)| r.scenario_config.clone());
 
-    let collision_safe_assertion_evidence = assertion_identity_conflicts.is_empty()
-        && assertion_details
-            .iter()
-            .all(|detail| detail.identity.is_some());
+    let recomputed_status = crate::assertion_summary::validate_assertion_details(
+        &assertion_details,
+    )
+    .unwrap_or(chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict);
+    let assertion_catalog_status = if source_fatal
+        || !assertion_identity_conflicts.is_empty()
+        || recomputed_status
+            == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+    {
+        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+    } else if recomputed_status
+        == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+    {
+        if all_sources_accepted {
+            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+        } else {
+            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::FatalConflict
+        }
+    } else {
+        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous
+    };
+    let collision_safe_assertion_evidence = assertion_catalog_status
+        == chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted;
 
     CampaignReport {
         seeds_run,
@@ -524,6 +597,7 @@ pub fn aggregate_reports(
         assertion_details,
         assertion_stats,
         assertion_identity_conflicts,
+        assertion_catalog_status,
         collision_safe_assertion_evidence,
         wall_clock_seconds,
         failed_seeds: Vec::new(),
@@ -534,7 +608,7 @@ pub fn aggregate_reports(
 fn assertion_detail_key(detail: &AssertionDetail) -> String {
     detail.identity.as_ref().map_or_else(
         || format!("legacy-ambiguous:{:08x}", detail.id),
-        |identity| identity.fingerprint.clone(),
+        |identity| identity.fingerprint.to_hex(),
     )
 }
 
@@ -542,6 +616,13 @@ fn merge_assertion_detail(
     existing: &mut AssertionDetail,
     candidate: &AssertionDetail,
 ) -> Result<(), &'static str> {
+    let existing_verdict = crate::assertion_summary::derive_detail_verdict(existing)
+        .map_err(|_| "invalid existing assertion counters")?;
+    let candidate_verdict = crate::assertion_summary::derive_detail_verdict(candidate)
+        .map_err(|_| "invalid candidate assertion counters")?;
+    if existing.verdict != existing_verdict || candidate.verdict != candidate_verdict {
+        return Err("assertion verdict conflicts with counters");
+    }
     if existing.identity != candidate.identity
         || existing.id != candidate.id
         || existing.message != candidate.message
@@ -551,24 +632,29 @@ fn merge_assertion_detail(
     {
         return Err("descriptor metadata conflict");
     }
-    existing.hit_count = existing
+    let hit_count = existing
         .hit_count
         .checked_add(candidate.hit_count)
         .ok_or("hit count overflow")?;
-    existing.true_count = existing
+    let true_count = existing
         .true_count
         .checked_add(candidate.true_count)
         .ok_or("true count overflow")?;
-    existing.false_count = existing
+    let false_count = existing
         .false_count
         .checked_add(candidate.false_count)
         .ok_or("false count overflow")?;
-    if verdict_rank(&candidate.verdict) < verdict_rank(&existing.verdict) {
-        existing.verdict = candidate.verdict.clone();
-    }
+    let mut merged = existing.clone();
+    merged.hit_count = hit_count;
+    merged.true_count = true_count;
+    merged.false_count = false_count;
+    merged.verdict = crate::assertion_summary::derive_detail_verdict(&merged)
+        .map_err(|_| "invalid merged assertion counters")?
+        .to_string();
     if candidate.last_failure_details.is_some() {
-        existing.last_failure_details = candidate.last_failure_details.clone();
+        merged.last_failure_details = candidate.last_failure_details.clone();
     }
+    *existing = merged;
     Ok(())
 }
 
@@ -583,7 +669,7 @@ fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// Lower rank = worse verdict (for "worst wins" merge).
+/// Display rank used only to sort failed and unexercised assertions first.
 fn verdict_rank(verdict: &str) -> u8 {
     match verdict {
         "failed" => 0,
@@ -610,7 +696,20 @@ mod tests {
     use crate::checkpoint::SerializableSchedule;
     use crate::corpus::BugReport;
     use crate::coverage::CoverageStats;
+    use crate::explorer::AssertionIdentityDetail;
     use chaoscontrol_fault::schedule::FaultSchedule;
+    use chaoscontrol_protocol::assertion_catalog::{
+        token_for_descriptors, CatalogValidationStatus,
+    };
+    use chaoscontrol_protocol::assertion_identity::{
+        AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
+    };
+
+    const FIRST_TEST_SEED: u64 = 1;
+    const SECOND_TEST_SEED: u64 = 2;
+    const TEST_COMPATIBILITY_ID: u32 = 100;
+    const SINGLE_REPORT_SECONDS: f64 = 1.0;
+    const TWO_REPORT_SECONDS: f64 = 2.0;
 
     // ── 6.1: seed generation ────────────────────────────────────────
 
@@ -653,6 +752,13 @@ mod tests {
     }
 
     fn make_report(bugs: Vec<BugReport>, details: Vec<AssertionDetail>) -> ExplorationReport {
+        let collision_safe =
+            !details.is_empty() && details.iter().all(|detail| detail.identity.is_some());
+        let status = if collision_safe {
+            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Accepted
+        } else {
+            chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous
+        };
         ExplorationReport {
             rounds: 10,
             total_branches: 80,
@@ -667,6 +773,9 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: details,
+            assertion_catalog_status: status,
+            collision_safe_assertion_evidence: collision_safe,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -724,6 +833,57 @@ mod tests {
         }
     }
 
+    fn make_strict_detail(
+        kind: AssertionKind,
+        verdict: &str,
+        hits: u64,
+        true_count: u64,
+        false_count: u64,
+    ) -> AssertionDetail {
+        const SOURCE_LINE: u32 = 10;
+        const SOURCE_COLUMN: u32 = 4;
+        let descriptor = AssertionDescriptor {
+            identity_version: ASSERTION_IDENTITY_VERSION,
+            namespace: "org.example.campaign".to_string(),
+            logical_key: AssertionLogicalKey::Stable {
+                key: format!("{kind:?}").to_lowercase(),
+            },
+            compatibility_id: Some(TEST_COMPATIBILITY_ID),
+            kind,
+            message: "campaign assertion".to_string(),
+            source_file: "src/main.rs".to_string(),
+            source_line: SOURCE_LINE,
+            source_column: SOURCE_COLUMN,
+            guest: "guest".to_string(),
+            category: "invariant".to_string(),
+        };
+        let fingerprint = descriptor.fingerprint().expect("fingerprint");
+        let canonical = descriptor.canonical_bytes().expect("canonical descriptor");
+        let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
+        AssertionDetail {
+            id: TEST_COMPATIBILITY_ID,
+            identity: Some(AssertionIdentityDetail {
+                descriptor,
+                fingerprint,
+                canonical_descriptor: encode_test_hex(&canonical),
+                catalog_tokens: vec![token],
+            }),
+            message: "campaign assertion".to_string(),
+            kind: format!("{kind:?}").to_lowercase(),
+            guest: "guest".to_string(),
+            category: "invariant".to_string(),
+            verdict: verdict.to_string(),
+            hit_count: hits,
+            true_count,
+            false_count,
+            last_failure_details: None,
+        }
+    }
+
+    fn encode_test_hex(bytes: &[u8]) -> String {
+        chaoscontrol_protocol::assertion_identity::encode_lower_hex(bytes)
+    }
+
     #[test]
     fn assertion_merge_sums_counts() {
         let d1 = make_detail(100, "passed", 50, 50, 0);
@@ -745,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn assertion_merge_worst_verdict_wins() {
+    fn always_merge_derives_failure_from_aggregate_counts() {
         let d1 = make_detail(100, "passed", 50, 50, 0);
         let d2 = make_detail(100, "failed", 30, 20, 10);
 
@@ -763,6 +923,223 @@ mod tests {
         assert_eq!(merged.verdict, "failed");
         assert_eq!(merged.hit_count, 80);
         assert_eq!(merged.false_count, 10);
+    }
+
+    #[test]
+    fn campaign_authority_rejects_empty_legacy_and_conflicted_sources() {
+        let empty = aggregate_reports(
+            vec![(
+                FIRST_TEST_SEED,
+                make_report(Vec::new(), Vec::new()),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+        assert!(!empty.collision_safe_assertion_evidence);
+        assert_eq!(
+            empty.assertion_catalog_status,
+            CatalogValidationStatus::LegacyAmbiguous
+        );
+
+        let legacy = aggregate_reports(
+            vec![(
+                1,
+                make_report(Vec::new(), vec![make_detail(100, "passed", 1, 1, 0)]),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+        assert_eq!(
+            legacy.assertion_catalog_status,
+            CatalogValidationStatus::LegacyAmbiguous
+        );
+
+        let mut conflicted = make_report(
+            Vec::new(),
+            vec![make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0)],
+        );
+        conflicted.assertion_catalog_status = CatalogValidationStatus::FatalConflict;
+        conflicted.collision_safe_assertion_evidence = false;
+        conflicted
+            .assertion_identity_conflicts
+            .push("forged source".to_string());
+        let campaign = aggregate_reports(
+            vec![(FIRST_TEST_SEED, conflicted, SINGLE_REPORT_SECONDS)],
+            SINGLE_REPORT_SECONDS,
+        );
+        assert_eq!(
+            campaign.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+        assert!(!campaign.collision_safe_assertion_evidence);
+
+        let strict = make_report(
+            Vec::new(),
+            vec![make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0)],
+        );
+        let empty_source = make_report(Vec::new(), Vec::new());
+        let mixed_sources = aggregate_reports(
+            vec![
+                (FIRST_TEST_SEED, strict, SINGLE_REPORT_SECONDS),
+                (SECOND_TEST_SEED, empty_source, SINGLE_REPORT_SECONDS),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+        assert_eq!(
+            mixed_sources.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+    }
+
+    #[test]
+    fn duplicate_seed_and_counter_overflow_are_fatal() {
+        let detail = make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0);
+        let duplicate = aggregate_reports(
+            vec![
+                (
+                    FIRST_TEST_SEED,
+                    make_report(Vec::new(), vec![detail.clone()]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+                (
+                    FIRST_TEST_SEED,
+                    make_report(Vec::new(), vec![detail.clone()]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+        assert_eq!(
+            duplicate.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+        assert_eq!(duplicate.seeds_run, vec![FIRST_TEST_SEED]);
+
+        let mut first = make_report(Vec::new(), vec![detail.clone()]);
+        first.rounds = u64::MAX;
+        let second = make_report(Vec::new(), vec![detail]);
+        let overflow = aggregate_reports(
+            vec![
+                (FIRST_TEST_SEED, first, SINGLE_REPORT_SECONDS),
+                (SECOND_TEST_SEED, second, SINGLE_REPORT_SECONDS),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+        assert_eq!(
+            overflow.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+        assert!(!overflow.collision_safe_assertion_evidence);
+    }
+
+    #[test]
+    fn aggregate_verdicts_use_exact_kind_semantics_across_seeds() {
+        for (kind, first, second) in [
+            (
+                AssertionKind::Sometimes,
+                make_strict_detail(AssertionKind::Sometimes, "failed", 1, 0, 1),
+                make_strict_detail(AssertionKind::Sometimes, "passed", 1, 1, 0),
+            ),
+            (
+                AssertionKind::Reachable,
+                make_strict_detail(AssertionKind::Reachable, "unexercised", 0, 0, 0),
+                make_strict_detail(AssertionKind::Reachable, "passed", 1, 1, 0),
+            ),
+        ] {
+            let reports = vec![
+                (
+                    FIRST_TEST_SEED,
+                    make_report(Vec::new(), vec![first]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+                (
+                    SECOND_TEST_SEED,
+                    make_report(Vec::new(), vec![second]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+            ];
+            let campaign = aggregate_reports(reports, TWO_REPORT_SECONDS);
+            assert_eq!(
+                campaign.assertion_details[0].kind,
+                format!("{kind:?}").to_lowercase()
+            );
+            assert_eq!(campaign.assertion_details[0].verdict, "passed");
+            assert_eq!(
+                campaign.assertion_catalog_status,
+                CatalogValidationStatus::Accepted
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_u32_identity_cannot_enter_an_accepted_campaign() {
+        let mut detail = make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0);
+        let identity = detail.identity.as_mut().expect("strict identity");
+        identity.descriptor.namespace = "legacy:campaign".to_string();
+        identity.descriptor.logical_key = AssertionLogicalKey::LegacyU32 {
+            id: TEST_COMPATIBILITY_ID,
+        };
+        identity.fingerprint = identity
+            .descriptor
+            .fingerprint()
+            .expect("legacy fingerprint");
+        identity.canonical_descriptor = chaoscontrol_protocol::assertion_identity::encode_lower_hex(
+            &identity
+                .descriptor
+                .canonical_bytes()
+                .expect("legacy canonical"),
+        );
+        identity.catalog_tokens = vec![identity.fingerprint];
+        let report = make_report(Vec::new(), vec![detail]);
+
+        let campaign = aggregate_reports(
+            vec![(FIRST_TEST_SEED, report, SINGLE_REPORT_SECONDS)],
+            SINGLE_REPORT_SECONDS,
+        );
+        assert_eq!(
+            campaign.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+        assert!(!campaign.collision_safe_assertion_evidence);
+    }
+
+    #[test]
+    fn caller_verdict_spoofs_are_fatal_for_first_and_later_sources() {
+        let spoof = make_strict_detail(AssertionKind::Always, "failed", 1, 1, 0);
+        let first = aggregate_reports(
+            vec![(
+                FIRST_TEST_SEED,
+                make_report(Vec::new(), vec![spoof.clone()]),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+        assert_eq!(
+            first.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+
+        let valid = make_strict_detail(AssertionKind::Always, "passed", 1, 1, 0);
+        let later = aggregate_reports(
+            vec![
+                (
+                    FIRST_TEST_SEED,
+                    make_report(Vec::new(), vec![valid]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+                (
+                    SECOND_TEST_SEED,
+                    make_report(Vec::new(), vec![spoof]),
+                    SINGLE_REPORT_SECONDS,
+                ),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+        assert_eq!(
+            later.assertion_catalog_status,
+            CatalogValidationStatus::FatalConflict
+        );
+        assert!(!later.collision_safe_assertion_evidence);
     }
 
     // ── 6.4: serde roundtrip ────────────────────────────────────────
@@ -815,7 +1192,9 @@ mod tests {
             assertion_details: Vec::new(),
             assertion_stats: AssertionStats::default(),
             assertion_identity_conflicts: Vec::new(),
-            collision_safe_assertion_evidence: true,
+            assertion_catalog_status:
+                chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::LegacyAmbiguous,
+            collision_safe_assertion_evidence: false,
             wall_clock_seconds: 25.0,
             failed_seeds: Vec::new(),
             scenario_config: None,

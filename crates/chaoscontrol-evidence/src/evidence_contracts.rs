@@ -29,6 +29,8 @@ const REPLAY_CLASSES: [&str; 8] = [
     "no_bug_found",
     "replay_error",
 ];
+const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
+
 const SNAPSHOT_STATUSES: [&str; 6] = [
     "not_required",
     "missing_ref",
@@ -69,6 +71,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         root,
     )?;
     validate_assertion_summary(&load_json(&valid.join("assertions.valid.json"))?)?;
+    let identity_summary = load_json(&valid.join("assertions.identity.valid.json"))?;
+    validate_assertion_summary(&identity_summary)?;
+    validate_assertion_summary_for_promotion(&identity_summary)?;
 
     let invalid = contracts.join("fixtures/invalid");
     expect_invalid(
@@ -86,6 +91,14 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     expect_invalid(
         &invalid.join("assertions.bad-verdict.invalid.json"),
         validate_assertion_summary,
+    )?;
+    expect_invalid(
+        &invalid.join("assertions.identity-conflict.invalid.json"),
+        validate_assertion_summary,
+    )?;
+    expect_invalid(
+        &invalid.join("assertions.legacy-promotion.invalid.json"),
+        validate_assertion_summary_for_promotion,
     )?;
     expect_invalid(
         &invalid.join("bug-report.missing-schedule.invalid.json"),
@@ -161,6 +174,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
         "examples/raft-assertion-summary.ncl",
+        "examples/assertion-summary-logical-keys.ncl",
+        "examples/assertion-summary-no-alias.ncl",
+        "examples/assertion-summary-null-alias.ncl",
         "examples/raft-replay-verdict.ncl",
     ] {
         let status = Command::new(&command[0])
@@ -175,6 +191,51 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         ensure(
             status.success(),
             format!("Nickel export failed for {rel}: {status}"),
+        )?;
+    }
+    for rel in [
+        "fixtures/invalid/assertions.nickel-ascii-control.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-automatic-source-mismatch.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-cardinality.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-duplicate-fingerprint.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-duplicate-legacy-id.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-empty.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-extra-assertion.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-extra-descriptor.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-extra-summary.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-fatal-metadata-spoof.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-fractional-count.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-inconsistent-token.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-invalid-source-path.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-legacy-accepted.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-legacy-alias-mismatch.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-legacy-control.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-multibyte-boundary.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-negative-count.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-null-identity.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-overflow-count.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-redundant-id.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-redundant-metadata.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-token-cardinality.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-uppercase-hex.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-verdict.invalid.ncl",
+        "fixtures/invalid/assertions.nickel-wrong-logical-key.invalid.ncl",
+    ] {
+        let status = Command::new(&command[0])
+            .args(&command[1..])
+            .arg(root.join("contracts/evidence").join(rel))
+            .current_dir(root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|err| {
+                EvidenceError::new(format!(
+                    "failed to run negative Nickel export for {rel}: {err}"
+                ))
+            })?;
+        ensure(
+            !status.success(),
+            format!("negative Nickel fixture unexpectedly passed: {rel}"),
         )?;
     }
     Ok(())
@@ -358,33 +419,11 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
 }
 
 pub fn validate_assertion_summary(value: &Value) -> EvidenceResult<()> {
-    let items = value
-        .as_array()
-        .ok_or_else(|| EvidenceError::new("assertion-summary: expected non-empty array"))?;
-    ensure(
-        !items.is_empty(),
-        "assertion-summary: expected non-empty array",
-    )?;
-    for (idx, item) in items.iter().enumerate() {
-        ensure(
-            item.is_object(),
-            format!("assertion-summary[{idx}]: expected object"),
-        )?;
-        for key in ["id", "hit_count", "true_count", "false_count"] {
-            require_num(item.get(key), &format!("assertion-summary[{idx}].{key}"))?;
-        }
-        for key in ["message", "kind", "guest", "category"] {
-            require_str(item.get(key), &format!("assertion-summary[{idx}].{key}"))?;
-        }
-        ensure(
-            matches!(
-                item.get("verdict").and_then(Value::as_str),
-                Some("passed" | "failed" | "unexercised")
-            ),
-            format!("assertion-summary[{idx}].verdict: invalid"),
-        )?;
-    }
-    Ok(())
+    crate::assertion_summary_identity::validate(value, false).map(|_| ())
+}
+
+pub fn validate_assertion_summary_for_promotion(value: &Value) -> EvidenceResult<()> {
+    crate::assertion_summary_identity::validate(value, true).map(|_| ())
 }
 
 pub fn validate_checkpoint_reference(value: Option<&Value>) -> EvidenceResult<()> {
@@ -717,8 +756,8 @@ pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult
 }
 
 fn load_json(path: &Path) -> EvidenceResult<Value> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: invalid JSON: {err}", path.display())))?;
+    let text = crate::bounded_file::read_bounded_regular_file(path, MAX_EVIDENCE_JSON_BYTES)?;
+    crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text)
         .map_err(|err| EvidenceError::new(format!("{}: invalid JSON: {err}", path.display())))
 }

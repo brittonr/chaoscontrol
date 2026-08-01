@@ -118,15 +118,18 @@ let Registry = {
         "dogfood-results/*/report.txt",
       ],
       validation_commands = [
-        "future:cargo test -p chaoscontrol-explore assertion_summary_roundtrip",
-        "future:nickel export contracts/evidence/assertion-summary-shape.ncl",
+        "cargo test -p chaoscontrol-evidence --test assertion_summary_identity",
+        "nickel export contracts/evidence/examples/raft-assertion-summary.ncl",
+        "check-evidence-contracts --root .",
       ],
       fixture_coverage = [
         "dogfood-results/raft-20260506-095025/assertions.json",
-        "future:malformed coverage totals fixture",
+        "contracts/evidence/fixtures/valid/assertions.identity.valid.json",
+        "contracts/evidence/fixtures/invalid/assertions.identity-conflict.invalid.json",
+        "contracts/evidence/fixtures/invalid/assertions.legacy-promotion.invalid.json",
       ],
-      freshness = "Rust assertion catalog/reporting types are authoritative; contract validation checks receipt-facing totals and coverage consistency.",
-      rationale = "Assertion coverage determines whether dogfood evidence exercised the intended property surface.",
+      freshness = "Rust assertion identity and report types are authoritative. Nickel reviews the public shape. Rust recomputes fingerprints, catalog tokens, metadata equality, and promotion status.",
+      rationale = "Assertion coverage is useful only when each result binds to one admitted descriptor. Legacy summaries remain readable but are never collision-safe promotion evidence.",
     },
     {
       id = "checkpoint-reference",

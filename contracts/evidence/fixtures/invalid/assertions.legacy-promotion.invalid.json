@@ -1,0 +1,13 @@
+[
+  {
+    "id": 7,
+    "message": "legacy assertion",
+    "kind": "always",
+    "guest": "legacy-guest",
+    "category": "uncategorized",
+    "verdict": "passed",
+    "hit_count": 1,
+    "true_count": 1,
+    "false_count": 0
+  }
+]

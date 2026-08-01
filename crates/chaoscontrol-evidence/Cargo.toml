@@ -11,6 +11,7 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 blake3 = "1.8"
+libc = "0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 

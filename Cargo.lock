@@ -301,6 +301,7 @@ dependencies = [
  "blake3",
  "chaoscontrol-protocol",
  "chaoscontrol-vmm",
+ "libc",
  "serde",
  "serde_json",
  "sha2",
@@ -313,6 +314,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "axum",
+ "chaoscontrol-evidence",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
  "chaoscontrol-vmm",
@@ -384,6 +386,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

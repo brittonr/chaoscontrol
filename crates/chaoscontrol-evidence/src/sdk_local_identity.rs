@@ -37,6 +37,10 @@ pub(crate) fn validate_local_identity_stream(
         if line.len() > MAX_SDK_JSONL_LINE_BYTES {
             return line_error(line_index, "line exceeds the byte limit");
         }
+        crate::json_preflight::preflight_json(line, crate::json_preflight::JSONL_LINE_LIMITS)
+            .map_err(|error| {
+                EvidenceError::new(format!("line {}: {}", line_index + 1, error.message()))
+            })?;
         event_count = event_count
             .checked_add(1)
             .ok_or_else(|| EvidenceError::new("SDK JSONL event count overflow"))?;

@@ -2,6 +2,7 @@ use crate::{EvidenceError, EvidenceResult};
 use chaoscontrol_protocol::assertion_catalog::{AcceptedCatalog, BoundAssertionEvent};
 use chaoscontrol_protocol::assertion_identity::{
     AssertionDescriptor, AssertionFingerprint, AssertionKind, ASSERTION_IDENTITY_VERSION,
+    MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -116,12 +117,40 @@ impl LocalEventState {
         if assertion.id.is_empty() {
             return line_error(line_index, "legacy assertion ID is empty");
         }
-        let details = assertion.details.as_object();
+        if !matches!(
+            assertion.assert_type.as_str(),
+            "always" | "sometimes" | "reachability"
+        ) {
+            return line_error(line_index, "legacy assertion type is unknown");
+        }
+        if assertion.message.is_empty() || assertion.message.len() > MAX_ASSERTION_MESSAGE_BYTES {
+            return line_error(line_index, "legacy assertion message is out of bounds");
+        }
+        let details = assertion.details.as_object().ok_or_else(|| {
+            EvidenceError::new(format!(
+                "line {}: assertion details must be an object",
+                line_index + 1
+            ))
+        })?;
+        let guest = legacy_detail_string(
+            details,
+            "guest",
+            "uncategorized",
+            MAX_ASSERTION_GUEST_BYTES,
+            line_index,
+        )?;
+        let category = legacy_detail_string(
+            details,
+            "category",
+            "uncategorized",
+            MAX_ASSERTION_CATEGORY_BYTES,
+            line_index,
+        )?;
         let metadata = LegacyMetadata {
             message: assertion.message,
             assert_type: assertion.assert_type,
-            guest: detail_string(details, "guest", "uncategorized"),
-            category: detail_string(details, "category", "uncategorized"),
+            guest,
+            category,
         };
         if let Some(existing) = self.legacy.get(&assertion.id) {
             if existing != &metadata {
@@ -174,17 +203,20 @@ fn resolve_assertion(
     {
         return line_error(line_index, "assertion event shape is invalid");
     }
-    let expected_must_hit = matches!(kind, AssertionKind::Sometimes | AssertionKind::Reachable);
+    let expected_must_hit = matches!(
+        kind,
+        AssertionKind::Sometimes | AssertionKind::Reachable | AssertionKind::Unreachable
+    );
     if assertion
         .must_hit
         .is_some_and(|must_hit| must_hit != expected_must_hit)
     {
         return line_error(line_index, "assertion must_hit conflicts with its kind");
     }
-    if let Some(compatibility_id) = admitted.descriptor.compatibility_id {
-        if assertion.id != format!("{compatibility_id:08x}") {
-            return line_error(line_index, "compatibility ID conflicts with the descriptor");
-        }
+    let expected_id =
+        crate::sdk_local_identity_value::report_id(&admitted.descriptor, admitted.fingerprint);
+    if assertion.id != expected_id {
+        return line_error(line_index, "event ID conflicts with the descriptor");
     }
     validate_event_metadata(assertion, &admitted.descriptor, line_index)?;
     Ok(ResolvedLocalIdentity {
@@ -217,7 +249,10 @@ fn validate_event_metadata(
         ("guest", descriptor.guest.as_str()),
         ("category", descriptor.category.as_str()),
     ] {
-        if let Some(actual) = details.get(field).and_then(Value::as_str) {
+        if let Some(value) = details.get(field) {
+            let Some(actual) = value.as_str() else {
+                return line_error(line_index, &format!("event {field} must be a string"));
+            };
             if actual != expected {
                 return line_error(line_index, &format!("event {field} conflicts with catalog"));
             }
@@ -226,12 +261,26 @@ fn validate_event_metadata(
     Ok(())
 }
 
-fn detail_string(details: Option<&Map<String, Value>>, field: &str, default: &str) -> String {
-    details
-        .and_then(|value| value.get(field))
-        .and_then(Value::as_str)
-        .unwrap_or(default)
-        .to_string()
+fn legacy_detail_string(
+    details: &Map<String, Value>,
+    field: &str,
+    default: &str,
+    maximum_bytes: usize,
+    line_index: usize,
+) -> EvidenceResult<String> {
+    let value = match details.get(field) {
+        Some(value) => value.as_str().ok_or_else(|| {
+            EvidenceError::new(format!("line {}: {field} must be a string", line_index + 1))
+        })?,
+        None => default,
+    };
+    if value.is_empty() || value.len() > maximum_bytes {
+        return line_error(
+            line_index,
+            &format!("legacy assertion {field} is out of bounds"),
+        );
+    }
+    Ok(value.to_string())
 }
 
 fn line_error<T>(line_index: usize, message: &str) -> EvidenceResult<T> {

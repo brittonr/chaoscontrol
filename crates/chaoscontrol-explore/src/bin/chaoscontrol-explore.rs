@@ -38,6 +38,8 @@
 //! On resume, we re-bootstrap the VMs but carry forward the global coverage map,
 //! so we don't re-explore known territory.
 
+use chaoscontrol_explore::assertion_summary::AssertionSummaryV2;
+use chaoscontrol_explore::assertion_summary_writer::write_assertion_summary;
 use chaoscontrol_explore::campaign::{
     generate_seeds, load_campaign_progress, CampaignConfig, CampaignRunner,
 };
@@ -1189,25 +1191,17 @@ fn cmd_run(
             // Use the JSON format for bug reproduction.
         }
 
-        // Save per-assertion detail as JSON
-        if !report.assertion_details.is_empty() {
-            let assertions_path = format!("{}/assertions.json", output_dir);
-            match serde_json::to_string_pretty(&report.assertion_details) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&assertions_path, &json) {
-                        eprintln!("Warning: failed to save assertions: {}", e);
-                    } else {
-                        eprintln!(
-                            "Saved {} assertion details to: {}",
-                            report.assertion_details.len(),
-                            assertions_path
-                        );
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to serialize assertions: {}", e);
-                }
-            }
+        // Save per-assertion detail as bounded, atomic JSON.
+        let assertions_path = format!("{}/assertions.json", output_dir);
+        match write_assertion_summary(&assertions_path, || {
+            AssertionSummaryV2::from_exploration(&report)
+        }) {
+            Ok(_) => eprintln!(
+                "Saved {} assertion details to: {}",
+                report.assertion_details.len(),
+                assertions_path
+            ),
+            Err(error) => eprintln!("Warning: failed to save assertions: {error}"),
         }
     }
 
@@ -1469,15 +1463,11 @@ fn cmd_campaign(
             }
 
             let assertions_path = format!("{}/assertions.json", output);
-            match serde_json::to_string_pretty(&report.assertion_details) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&assertions_path, &json) {
-                        eprintln!("Error writing assertions: {}", e);
-                    } else {
-                        eprintln!("Assertions saved to {}", assertions_path);
-                    }
-                }
-                Err(e) => eprintln!("Error serializing assertions: {}", e),
+            match write_assertion_summary(&assertions_path, || {
+                AssertionSummaryV2::from_campaign(&report)
+            }) {
+                Ok(_) => eprintln!("Assertions saved to {}", assertions_path),
+                Err(error) => eprintln!("Error writing assertions: {error}"),
             }
 
             // Auto-minimize campaign bugs
@@ -1584,6 +1574,10 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                     network_stats: Default::default(),
                     assertion_stats: Default::default(),
                     assertion_details: Vec::new(),
+                    assertion_catalog_status:
+                        chaoscontrol_protocol::assertion_catalog::CatalogValidationStatus::Pending,
+                    collision_safe_assertion_evidence: false,
+                    assertion_identity_conflicts: Vec::new(),
                     round_history: cp.round_history.unwrap_or_default(),
                     wall_clock_seconds: summary.wall_clock_seconds,
                     branches_per_second: if summary.wall_clock_seconds > 0.0 {
@@ -1877,25 +1871,17 @@ fn cmd_resume(
         }
     }
 
-    // Save per-assertion detail as JSON
-    if !report.assertion_details.is_empty() {
-        let assertions_path = format!("{}/assertions.json", corpus);
-        match serde_json::to_string_pretty(&report.assertion_details) {
-            Ok(json) => {
-                if let Err(e) = fs::write(&assertions_path, &json) {
-                    eprintln!("Warning: failed to save assertions: {}", e);
-                } else {
-                    eprintln!(
-                        "Saved {} assertion details to: {}",
-                        report.assertion_details.len(),
-                        assertions_path
-                    );
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: failed to serialize assertions: {}", e);
-            }
-        }
+    // Save per-assertion detail as bounded, atomic JSON.
+    let assertions_path = format!("{}/assertions.json", corpus);
+    match write_assertion_summary(&assertions_path, || {
+        AssertionSummaryV2::from_exploration(&report)
+    }) {
+        Ok(_) => eprintln!(
+            "Saved {} assertion details to: {}",
+            report.assertion_details.len(),
+            assertions_path
+        ),
+        Err(error) => eprintln!("Warning: failed to save assertions: {error}"),
     }
 
     // Exit with error code if bugs found

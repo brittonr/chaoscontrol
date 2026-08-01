@@ -5,9 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{EvidenceError, EvidenceResult};
 
-const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
-const RECEIPT_SCHEMA: &str = "chaoscontrol.profile-projection-receipt.v1";
-const EVALUATOR_IDENTITY: &str = "nickel-lang-cli nickel 1.15.1 (rev cargore)";
+pub(crate) const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
+pub(crate) const RECEIPT_SCHEMA: &str = "chaoscontrol.profile-projection-receipt.v1";
+pub(crate) const EVALUATOR_IDENTITY: &str = "nickel-lang-cli nickel 1.15.1 (rev cargore)";
+pub(crate) const NON_CLAIMS: [&str; 2] = [
+    "profile conformance is pre-run intent only",
+    "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim",
+];
 
 struct ProjectionSpec {
     profile_id: &'static str,
@@ -124,15 +128,14 @@ fn build_receipt(
             path: spec.output.to_string(),
             identity: blake3_identity(projection),
         },
-        non_claims: vec![
-            "profile conformance is pre-run intent only".to_string(),
-            "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim"
-                .to_string(),
-        ],
+        non_claims: NON_CLAIMS
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
     })
 }
 
-fn bound_file(root: &Path, relative: &str) -> EvidenceResult<BoundArtifact> {
+pub(crate) fn bound_file(root: &Path, relative: &str) -> EvidenceResult<BoundArtifact> {
     let bytes =
         crate::bounded_file::read_bounded_regular_file(&root.join(relative), MAX_PROFILE_BYTES)?;
     Ok(BoundArtifact {
@@ -141,7 +144,7 @@ fn bound_file(root: &Path, relative: &str) -> EvidenceResult<BoundArtifact> {
     })
 }
 
-fn canonical_pretty_json(bytes: &[u8]) -> EvidenceResult<Vec<u8>> {
+pub(crate) fn canonical_pretty_json(bytes: &[u8]) -> EvidenceResult<Vec<u8>> {
     let value: serde_json::Value = serde_json::from_slice(bytes)
         .map_err(|error| EvidenceError::new(format!("invalid Nickel JSON projection: {error}")))?;
     pretty_json(&value)
@@ -154,7 +157,7 @@ fn pretty_json(value: &impl Serialize) -> EvidenceResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn blake3_identity(bytes: &[u8]) -> String {
+pub(crate) fn blake3_identity(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
 }
 
@@ -276,20 +279,20 @@ fn check_or_write(path: PathBuf, expected: &[u8], write: bool) -> EvidenceResult
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn canonical_json_ignores_input_field_order() {
-        let left = canonical_pretty_json(br#"{"b":2,"a":1}"#).expect("left");
-        let right = canonical_pretty_json(br#"{"a":1,"b":2}"#).expect("right");
-        assert_eq!(left, right);
-        assert_eq!(blake3_identity(&left), blake3_identity(&right));
-    }
-
-    #[test]
-    fn malformed_projection_is_rejected() {
-        assert!(canonical_pretty_json(b"not-json").is_err());
-    }
+pub fn verify_profile_projection(
+    root: &Path,
+    projection: &Path,
+    receipt: &Path,
+    expected_profile_id: &str,
+) -> EvidenceResult<String> {
+    crate::profile_projection_verification::verify_profile_projection(
+        root,
+        projection,
+        receipt,
+        expected_profile_id,
+    )
 }
+
+#[cfg(test)]
+#[path = "profile_projection_tests.rs"]
+mod tests;

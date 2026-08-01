@@ -53,7 +53,7 @@ let Registry = {
       validation_commands = [
         "check-profile-projections --root .",
         "nickel export contracts/evidence/examples/raft-run-config.ncl",
-        "check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json",
+        "check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json",
         "cargo test -p chaoscontrol-explore profile::tests",
       ],
       fixture_coverage = [
@@ -82,7 +82,7 @@ let Registry = {
       ],
       validation_commands = [
         "check-profile-projections --root .",
-        "check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json",
+        "check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json",
         "cargo test -p chaoscontrol-evidence simulator_profile",
       ],
       fixture_coverage = [
@@ -111,7 +111,7 @@ let Registry = {
       ],
       validation_commands = [
         "check-profile-projections --root .",
-        "check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json",
+        "check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json",
         "cargo test -p chaoscontrol-explore profile::tests",
       ],
       fixture_coverage = [
@@ -140,7 +140,7 @@ let Registry = {
       ],
       validation_commands = [
         "check-profile-projections --root .",
-        "check-profile-admission schedule contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json",
+        "check-profile-admission schedule contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json contracts/evidence/fixtures/valid/fault-schedule-profile.projection-receipt.json",
         "cargo test -p chaoscontrol-explore profile::tests",
       ],
       fixture_coverage = [

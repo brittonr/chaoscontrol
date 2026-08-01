@@ -20,7 +20,6 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
 use std::collections::{BTreeMap, BTreeSet};
-use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
@@ -1305,27 +1304,35 @@ impl Explorer {
     fn compute_dedup_key(
         assertion_fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
         schedule: &FaultSchedule,
-    ) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        assertion_fingerprint.hash(&mut hasher);
+    ) -> Result<u64, ExploreError> {
+        const DEDUP_DOMAIN: &[u8] = b"chaoscontrol.bug-dedup.v1\0";
+        const DEDUP_KEY_BYTES: usize = core::mem::size_of::<u64>();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(DEDUP_DOMAIN);
+        hasher.update(&assertion_fingerprint.0);
 
-        // Collect unique fault type names, sorted
         let mut type_names: Vec<&str> = schedule
             .faults()
             .iter()
-            .map(|sf| sf.fault.type_name())
+            .map(|scheduled| scheduled.fault.type_name())
             .collect();
         type_names.sort_unstable();
         type_names.dedup();
         for name in &type_names {
-            name.hash(&mut hasher);
+            let length = u64::try_from(name.len()).map_err(|_| ExploreError::Config {
+                message: "fault type name length exceeds the dedup encoding".to_string(),
+            })?;
+            hasher.update(&length.to_le_bytes());
+            hasher.update(name.as_bytes());
         }
-
-        hasher.finish()
+        let digest = hasher.finalize();
+        let mut key = [0_u8; DEDUP_KEY_BYTES];
+        key.copy_from_slice(&digest.as_bytes()[..DEDUP_KEY_BYTES]);
+        Ok(u64::from_le_bytes(key))
     }
 
     /// Extract bug reports from a branch result, deduplicating by
-    /// (assertion_id, sorted fault type set).
+    /// (assertion fingerprint, sorted fault type set).
     fn extract_bugs(
         &mut self,
         result: &BranchResult,
@@ -1381,7 +1388,7 @@ impl Explorer {
                             .to_string(),
                     });
                 }
-                let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule);
+                let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule)?;
 
                 // Skip if we've already seen this (assertion, fault_types) pair
                 if self.seen_dedup_keys.contains(&dedup_key) {
@@ -1592,7 +1599,7 @@ impl Explorer {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        for (assertion_id, record) in oracle.all_records() {
+        for (assertion_fingerprint, record) in oracle.all_records() {
             // Bucket the hit count: 0, 1, 2-3, 4-7, 8-15, 16-31, 32+
             let hit_bucket = match record.hit_count {
                 0 => 0u8,
@@ -1611,12 +1618,12 @@ impl Explorer {
                 chaoscontrol_fault::oracle::Verdict::Failed => 2,
             };
 
-            // Hash (assertion_id, verdict, hit_bucket) into a coverage edge.
+            // Hash (assertion fingerprint, verdict, hit bucket) into a coverage edge.
             // Use assertion region: [CODE_REGION_END, ASSERTION_REGION_END)
             let assertion_region_size =
                 crate::coverage::ASSERTION_REGION_END - crate::coverage::CODE_REGION_END;
             let mut hasher = DefaultHasher::new();
-            assertion_id.hash(&mut hasher);
+            assertion_fingerprint.hash(&mut hasher);
             verdict_code.hash(&mut hasher);
             hit_bucket.hash(&mut hasher);
             let index = (hasher.finish() as usize % assertion_region_size)
@@ -1631,7 +1638,7 @@ impl Explorer {
                 let ratio_bucket = (u128::from(record.true_count) * RATIO_BUCKET_COUNT
                     / u128::from(record.hit_count)) as u8;
                 let mut hasher2 = DefaultHasher::new();
-                assertion_id.hash(&mut hasher2);
+                assertion_fingerprint.hash(&mut hasher2);
                 RATIO_DOMAIN.hash(&mut hasher2);
                 ratio_bucket.hash(&mut hasher2);
                 let index2 = (hasher2.finish() as usize % assertion_region_size)
@@ -2402,6 +2409,24 @@ mod tests {
         assert_eq!(bugs.len(), 1);
         assert_eq!(bugs[0].assertion_id, 0);
         assert_eq!(bugs[0].assertion_identity.descriptor.compatibility_id, None);
+    }
+
+    #[test]
+    fn bug_dedup_key_is_deterministic_and_identity_bound() {
+        let first = crate::test_support::assertion_identity(u64::from(TEST_ALIAS));
+        let second = crate::test_support::assertion_identity(u64::from(TEST_ALIAS + 1));
+        let schedule = FaultSchedule::new();
+        let key =
+            Explorer::compute_dedup_key(first.fingerprint, &schedule).expect("first dedup key");
+
+        assert_eq!(
+            Explorer::compute_dedup_key(first.fingerprint, &schedule).expect("repeat dedup key"),
+            key
+        );
+        assert_ne!(
+            Explorer::compute_dedup_key(second.fingerprint, &schedule).expect("second dedup key"),
+            key
+        );
     }
 
     #[test]

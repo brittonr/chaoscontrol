@@ -32,7 +32,7 @@ pub struct BugReport {
     pub replay_parent_depth: u32,
     /// Durable replay parent snapshot artifact reference, when persisted.
     pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
-    /// Dedup key: hash of (assertion_id, sorted fault type names).
+    /// Dedup key: hash of (assertion fingerprint, sorted fault type names).
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
     pub schedule_variant: Option<ScheduleVariant>,

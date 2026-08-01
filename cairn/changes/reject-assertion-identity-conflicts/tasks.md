@@ -17,6 +17,7 @@
 - [ ] [serial] Merge per-VM records only after exact descriptor validation, aggregate matching guest-binary properties across VM instances, and keep distinct namespaces separate. r[chaoscontrol.assertion_identity.merge]
 - [ ] [serial] Reuse the pure identity/merge core in local JSONL reporting and reject first-wins metadata conflicts. r[chaoscontrol.assertion_identity.local_reports]
 - [ ] [serial] Update compact Nickel review-boundary contracts and acceptance logic for identity version, descriptor, fingerprint, catalog status, and legacy classification while keeping runtime records Rust-owned. r[chaoscontrol.assertion_identity.compatibility]
+- [ ] [serial] Bind exported bugs, schema-v2 replay verdicts, checkpoints, campaign collections, and minimization inputs to exact admitted assertion identity; reject the whole carrier on the first invalid bug. r[chaoscontrol.assertion_identity.replay_artifacts]
 
 ## Phase 4: Regression evidence
 
@@ -25,5 +26,6 @@
 - [ ] [parallel] Add pre-catalog, unknown-fingerprint, mismatched-token, event-kind-spoofing, and catalog-conflict runtime tests. r[chaoscontrol.assertion_identity.validation.events]
 - [ ] [parallel] Add local JSONL conflict and namespace-separation tests. r[chaoscontrol.assertion_identity.validation.local]
 - [ ] [serial] Add strict rejection and diagnostic quarantine tests for legacy `u32`-only protocol, snapshot, and report inputs. r[chaoscontrol.assertion_identity.validation.legacy]
+- [ ] [parallel] Add forged descriptor, canonical-byte, catalog-token, alias-substitution, alias-collision, and mixed valid/invalid bug collection tests. r[chaoscontrol.assertion_identity.replay_artifacts]
 - [ ] [serial] Document automatic build scope, explicit-key continuity, unsupported old wire/API forms, and the digest-uniqueness non-claim. r[chaoscontrol.assertion_identity.compatibility]
 - [ ] [serial] Run focused protocol/SDK/oracle/report/contract tests, workspace tests, Cairn validation, and proposal/design/tasks gates before sync or archive. r[chaoscontrol.assertion_identity.validation]

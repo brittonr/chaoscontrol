@@ -1,0 +1,41 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "name": "adapter"
+    }
+  ],
+  "disk": {
+    "profile_id": "simulated-disk-v1",
+    "simulated": true
+  },
+  "fault_schedule": {
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "schedule_id": "register-faults-v1"
+  },
+  "network": {
+    "profile_id": "simulated-network-v1",
+    "simulated": true
+  },
+  "rng": {
+    "algorithm": "xorshift64-v1",
+    "seed_derivation": "config.seed"
+  },
+  "run_id": "register-simulator-42",
+  "scheduler": {
+    "max_steps": 1000,
+    "name": "round-robin-v1"
+  },
+  "schema_version": 1,
+  "scope": "adapter-based in-process simulator evidence; not VM replay proof, not arbitrary binary support, not full FoundationDB parity",
+  "seed": 42,
+  "virtual_clock": {
+    "start_tick": 0,
+    "tick_quantum": 5
+  },
+  "workload": {
+    "adapter_version": "v1",
+    "name": "register-model",
+    "scenario_id": "single-writer-recovery"
+  }
+}

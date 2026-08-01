@@ -1399,6 +1399,10 @@
                   cd ${self}
                   check-contract-registry .
                   check-evidence-contracts --root .
+                  check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json
+                  check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json
+                  check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json
+                  check-profile-admission schedule contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json
                   check-replay-proof-coverage .
                   check-replay-proof-coverage --check-doc .
                   materialize-snapshot-chunks --selftest
@@ -1884,6 +1888,7 @@
               })
               pkgs.cargo-watch
               pkgs.cargo-edit
+              pkgs.nickel
 
               # eBPF tracing harness
               pkgs.clang

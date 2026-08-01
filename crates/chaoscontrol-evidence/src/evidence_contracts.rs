@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub const EVIDENCE_CONTRACTS_SUCCESS: &str =
-    "evidence contracts ok: nickel examples, dogfood receipt, positive fixtures, negative fixtures";
+    "evidence contracts ok: Nickel profiles, projection freshness, receipts, positive fixtures, negative fixtures";
 
 const STATUSES: [&str; 5] = [
     "accepted",
@@ -49,6 +49,7 @@ const SNAPSHOT_STATUSES: [&str; 6] = [
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
     run_nickel_examples(root)?;
+    crate::profile_projection::check_profile_projections(root, false)?;
     check_evidence_contract_fixtures(root)?;
     Ok(EVIDENCE_CONTRACTS_SUCCESS)
 }
@@ -67,6 +68,11 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
 
     let valid = contracts.join("fixtures/valid");
     validate_run_config(&load_json(&valid.join("run-config.valid.json"))?)?;
+    let simulator_profile = serde_json::from_value::<crate::simulator_profile::SimulatorProfile>(
+        load_json(&valid.join("simulator-profile.valid.json"))?,
+    )
+    .map_err(|error| EvidenceError::new(format!("invalid simulator profile fixture: {error}")))?;
+    simulator_profile.try_into_config()?;
     validate_receipt(&load_json(&valid.join("receipt.known-gap.valid.json"))?)?;
     let legacy_bug = load_json(&valid.join("bug-report.valid.json"))?;
     validate_bug_report(&legacy_bug)?;
@@ -215,6 +221,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
     })?;
     for rel in [
         "examples/raft-run-config.ncl",
+        "examples/register-simulator-profile.ncl",
+        "examples/raft-campaign-profile.ncl",
+        "examples/raft-fault-schedule-profile.ncl",
         "examples/raft-dogfood-receipt.ncl",
         "examples/raft-bug-report.ncl",
         "examples/bug-report-identity.ncl",
@@ -241,6 +250,25 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
     for rel in [
         "fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
         "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
+        "fixtures/invalid/run-profile.unknown-mode.invalid.ncl",
+        "fixtures/invalid/run-profile.unknown-field.invalid.ncl",
+        "fixtures/invalid/run-profile.zero-budget.invalid.ncl",
+        "fixtures/invalid/run-profile.unsafe-reference.invalid.ncl",
+        "fixtures/invalid/run-profile.implicit-blind-coverage.invalid.ncl",
+        "fixtures/invalid/simulator-profile.unsupported-rng.invalid.ncl",
+        "fixtures/invalid/simulator-profile.empty-artifacts.invalid.ncl",
+        "fixtures/invalid/simulator-profile.malformed-digest.invalid.ncl",
+        "fixtures/invalid/simulator-profile.weakened-scope.invalid.ncl",
+        "fixtures/invalid/campaign-profile.duplicate-seeds.invalid.ncl",
+        "fixtures/invalid/campaign-profile.incompatible-topology.invalid.ncl",
+        "fixtures/invalid/campaign-profile.inverted-havoc.invalid.ncl",
+        "fixtures/invalid/campaign-profile.invalid-workers.invalid.ncl",
+        "fixtures/invalid/campaign-profile.implicit-metrics.invalid.ncl",
+        "fixtures/invalid/fault-schedule.out-of-range-target.invalid.ncl",
+        "fixtures/invalid/fault-schedule.unordered.invalid.ncl",
+        "fixtures/invalid/fault-schedule.overlapping-partition.invalid.ncl",
+        "fixtures/invalid/fault-schedule.malformed-identity.invalid.ncl",
+        "fixtures/invalid/fault-schedule.unknown-action.invalid.ncl",
         "fixtures/invalid/assertions.nickel-ascii-control.invalid.ncl",
         "fixtures/invalid/assertions.nickel-automatic-source-mismatch.invalid.ncl",
         "fixtures/invalid/assertions.nickel-cardinality.invalid.ncl",

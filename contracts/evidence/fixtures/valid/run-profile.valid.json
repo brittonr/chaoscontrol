@@ -1,0 +1,53 @@
+{
+  "artifacts": {
+    "disk": null,
+    "initrd": {
+      "identity": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "kind": "absolute-path",
+      "path": "/nix/store/example-chaoscontrol-initrd-raft/initrd"
+    },
+    "kernel": {
+      "identity": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "absolute-path",
+      "path": "/nix/store/example-chaoscontrol-vmlinux/vmlinux"
+    }
+  },
+  "coverage": {
+    "bitmap_gpa": 0,
+    "mode": "blind"
+  },
+  "exploration": {
+    "bootstrap_budget": 10000,
+    "branch_factor": 2,
+    "max_frontier": 10000,
+    "max_rounds": 3,
+    "mode": "hybrid",
+    "quantum": 100,
+    "stale_round_limit": 10,
+    "ticks_per_branch": 500
+  },
+  "guest_cmdline": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after=0",
+  "logging": {
+    "determinism_log_output": null,
+    "determinism_log_policy": "disabled",
+    "memory_hash": false,
+    "raw_log_policy": "debug-only-excluded-from-git",
+    "register_interval": 0
+  },
+  "mode": "vm-exploration",
+  "profile_id": "raft-vm-exploration",
+  "schema": "chaoscontrol.run-profile.v2",
+  "scope": "pre-run VM exploration intent; not KVM availability, guest correctness, deterministic replay, fault effect, campaign completion, or accepted evidence",
+  "seed": 42,
+  "topology": {
+    "memory_mib": 128,
+    "num_vcpus": 1,
+    "num_vms": 3,
+    "scheduling": {
+      "diversity": false,
+      "maximum_quantum": 100,
+      "minimum_quantum": 100,
+      "strategy": "round-robin"
+    }
+  }
+}

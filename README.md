@@ -264,14 +264,11 @@ collision is impossible.
 
 ### Contract-backed evidence
 
-Nickel contracts live under `contracts/evidence/`. Human-authored run configs
-and dogfood receipts are the review boundary; runtime-emitted bug reports,
-assertion summaries, and checkpoint references remain Rust-owned JSON that is
-validated at the boundary. Raw `run.log` / `reproduce.log` files are debug-only
-and are intentionally excluded from the acceptance record. Replay parent snapshot
-references are Rust-derived, JSON/Nickel-contractable refs (`store`, `digest`,
-`codec`, `schema_version`, and confined `snapshots/...` path); the optional redb
-store/index is host-side only and is not a public evidence format.
+Nickel contracts live under `contracts/evidence/`. Nickel owns human-authored VM run, in-process simulator, campaign, and finite fault-schedule profiles. Rust revalidates each external JSON projection and owns config construction, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay.
+
+Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
+
+Raw `run.log` and `reproduce.log` files are debug-only. They are excluded from the acceptance record. Replay parent snapshot references are Rust-derived refs with a store, digest, codec, schema version, and confined path. The optional redb store or index is host-side only. It is not a public evidence format.
 
 Acceptance statuses are:
 - `accepted` — the receipt and replay evidence are complete and the reported bug reproduces.

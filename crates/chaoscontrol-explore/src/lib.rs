@@ -92,6 +92,7 @@ pub mod memory;
 pub mod minimizer;
 pub mod mutator;
 mod non_null_option;
+pub mod profile;
 pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]

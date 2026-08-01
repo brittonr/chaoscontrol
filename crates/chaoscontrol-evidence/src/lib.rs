@@ -28,6 +28,7 @@ pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
 mod non_null_option;
 pub mod operator_triage;
+pub mod profile_projection;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 mod replay_verdict_artifact;
@@ -38,6 +39,7 @@ mod sdk_local_identity_value;
 mod sdk_local_quality;
 pub mod sdk_local_report;
 mod sdk_local_verdict;
+pub mod simulator_profile;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,
     read_history_path as read_consistency_history_path,

@@ -1,0 +1,30 @@
+{
+  "schema": "chaoscontrol.profile-projection-receipt.v1",
+  "profile_id": "finite-fault-schedule",
+  "source": {
+    "path": "contracts/evidence/examples/raft-fault-schedule-profile.ncl",
+    "identity": "blake3:a879d54b3cbafa84a23a83f4d77cc94d89055aefaf45279816dae60fe54943dd"
+  },
+  "contract": {
+    "path": "contracts/evidence/fault-schedule-profile.ncl",
+    "identity": "blake3:de501efbcb8b33f2d70c0b2b6dafb54ae27da7629cc47c3d040ca4d2bb16d22f"
+  },
+  "imports": [
+    {
+      "path": "contracts/evidence/profile-primitives.ncl",
+      "identity": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08"
+    }
+  ],
+  "evaluator": {
+    "name": "nickel-lang-cli nickel 1.15.1 (rev cargore)",
+    "identity": "blake3:283b5e590a77d27ebcb9f338666f4704217650999664d2143099b228dca1602a"
+  },
+  "projection": {
+    "path": "contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json",
+    "identity": "blake3:2819933e3581e0f6b69b177346b6400ad9248d2de92299d163ec28393334c7e6"
+  },
+  "non_claims": [
+    "profile conformance is pre-run intent only",
+    "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim"
+  ]
+}

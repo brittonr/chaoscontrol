@@ -1,4 +1,5 @@
-mod oracle_snapshot_support;
+mod oracle_snapshot_common;
+mod oracle_snapshot_validation_support;
 
 use chaoscontrol_fault::oracle::PropertyOracle;
 use chaoscontrol_fault::oracle_validation::{
@@ -6,9 +7,8 @@ use chaoscontrol_fault::oracle_validation::{
 };
 use chaoscontrol_protocol::assertion_catalog::CatalogConflict;
 use chaoscontrol_protocol::assertion_identity::ASSERTION_FINGERPRINT_BYTES;
-use oracle_snapshot_support::{
-    descriptor, first_map_value_mut, forged_snapshot, legacy_catalog, strict_oracle, FUTURE_RUN_ID,
-};
+use oracle_snapshot_common::{descriptor, first_map_value_mut, forged_snapshot, strict_oracle};
+use oracle_snapshot_validation_support::{legacy_catalog, FUTURE_RUN_ID};
 use serde_json::json;
 use std::collections::BTreeSet;
 

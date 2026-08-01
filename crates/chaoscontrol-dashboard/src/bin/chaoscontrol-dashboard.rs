@@ -6,9 +6,7 @@
 
 use chaoscontrol_explore::checkpoint::load_checkpoint;
 use chaoscontrol_explore::dashboard_types::DashboardState;
-use chaoscontrol_explore::explorer::AssertionDetail;
 use clap::{Parser, Subcommand};
-use std::fs;
 use std::path::Path;
 
 #[derive(Parser)]
@@ -66,18 +64,13 @@ fn cmd_serve(corpus: String, port: u16) {
         }
     };
 
-    // Load assertion details (optional)
-    let assertions_path = format!("{}/assertions.json", corpus);
-    let assertion_details: Vec<AssertionDetail> = if Path::new(&assertions_path).exists() {
-        match fs::read_to_string(&assertions_path) {
-            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
-            Err(_) => Vec::new(),
+    let state = match DashboardState::from_checkpoint(&checkpoint) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("Error: checkpoint evidence is invalid: {error}");
+            std::process::exit(1);
         }
-    } else {
-        Vec::new()
     };
-
-    let state = DashboardState::from_checkpoint(&checkpoint, assertion_details);
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!("  ChaosControl Dashboard");

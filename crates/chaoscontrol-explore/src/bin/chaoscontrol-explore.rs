@@ -1220,13 +1220,13 @@ fn cmd_run(
         }
 
         let report_path = Path::new(output_dir).join("report.txt");
-        if let Err(error) = fs::write(&report_path, &formatted) {
+        if let Err(error) = write_new_synced(&report_path, formatted.as_bytes()) {
             eprintln!("Error writing exploration report: {error}");
             std::process::exit(EXIT_ERROR);
         }
         eprintln!("Saved report to: {}", report_path.display());
         for (path, bytes) in bug_outputs {
-            if let Err(error) = fs::write(&path, bytes) {
+            if let Err(error) = write_new_synced(&path, &bytes) {
                 eprintln!("Error writing bug carrier {}: {error}", path.display());
                 std::process::exit(EXIT_ERROR);
             }
@@ -2613,7 +2613,6 @@ fn auto_minimize_bugs(
     output_dir: &str,
 ) -> Result<(), String> {
     use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
-    use std::io::Write;
     use std::time::Instant;
 
     eprintln!(
@@ -2677,21 +2676,7 @@ fn auto_minimize_bugs(
 
     let mut written = Vec::with_capacity(prepared.len());
     for (path, bytes) in prepared {
-        let mut file = match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(file) => file,
-            Err(error) => {
-                return rollback_minimized_bugs(
-                    &written,
-                    format!("failed to reserve {}: {error}", path.display()),
-                );
-            }
-        };
-        if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
-            written.push(path.clone());
+        if let Err(error) = write_new_synced(&path, &bytes) {
             return rollback_minimized_bugs(
                 &written,
                 format!("failed to commit {}: {error}", path.display()),
@@ -2699,6 +2684,27 @@ fn auto_minimize_bugs(
         }
         eprintln!("  Saved to {}", path.display());
         written.push(path);
+    }
+    Ok(())
+}
+
+fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+        drop(file);
+        return match fs::remove_file(path) {
+            Ok(()) => Err(error.to_string()),
+            Err(cleanup_error) => Err(format!(
+                "{error}; failed to remove partial {}: {cleanup_error}",
+                path.display()
+            )),
+        };
     }
     Ok(())
 }

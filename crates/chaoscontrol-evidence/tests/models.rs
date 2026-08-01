@@ -114,9 +114,12 @@ fn rejects_stale_replay_proof_coverage_doc() {
     write_valid_minimal_coverage_fixture(root);
 
     let err = check_replay_proof_coverage_doc(root).expect_err("stale doc rejected");
-    assert!(err
-        .message()
-        .contains("docs/replay-proof-coverage.md is stale"));
+    assert!(
+        err.message()
+            .contains("docs/replay-proof-coverage.md is stale"),
+        "unexpected error: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -154,7 +157,11 @@ fn rejects_stale_replay_readiness_status() {
     write_valid_minimal_coverage_fixture(root);
 
     let err = check_replay_readiness_status(root).expect_err("stale doc rejected");
-    assert!(err.message().contains("readiness report stale"));
+    assert!(
+        err.message().contains("readiness report stale"),
+        "unexpected error: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -1440,7 +1447,11 @@ fn rejects_tampered_snapshot_digest_in_full_coverage_validator() {
     );
 
     let err = validate_replay_proof_coverage(root).expect_err("tamper is rejected");
-    assert!(err.message().contains("raft: snapshot digest mismatch"));
+    assert!(
+        err.message().contains("raft: snapshot digest mismatch"),
+        "unexpected error: {}",
+        err.message()
+    );
 }
 
 fn write_valid_minimal_coverage_fixture(root: &std::path::Path) {

@@ -4,11 +4,14 @@ use chaoscontrol_protocol::identity::{
     ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const RAFT_ASSERTION_ID: u32 = 1;
 const REDB_ASSERTION_ID: u32 = 2;
+const EVIDENCE_PATH: &str = "dogfood-results/fake-proof";
 const SNAPSHOT_PATH: &str = "snapshots/fixture.snapshot.bin";
+const SNAPSHOT_ARTIFACT_PATH: &str = "dogfood-results/fake-proof/snapshots/fixture.snapshot.bin";
 
 pub(crate) fn write_strict_replay_artifacts(evidence_dir: &Path, digest: &str) {
     let descriptors = [
@@ -136,6 +139,13 @@ fn write_verdict(
     identity: &AssertionEvidenceIdentity,
     digest: &str,
 ) {
+    let bug_name = path
+        .file_name()
+        .expect("fixture verdict name")
+        .to_string_lossy()
+        .replace("verdict", "bug");
+    let bug_path = format!("{EVIDENCE_PATH}/{bug_name}");
+    let bug_digest = sha256_file(&path.with_file_name(&bug_name));
     write_json(
         path,
         &json!({
@@ -145,13 +155,16 @@ fn write_verdict(
             "reproduced": true,
             "command": {"command": "fixture", "exit_status": 0},
             "diagnostic": "BUG REPRODUCED",
-            "bug_path": path.file_name().expect("fixture verdict name").to_string_lossy().replace("verdict", "bug"),
+            "bug_path": bug_path.clone(),
             "bug_id": 0,
             "assertion_id": assertion_id,
             "assertion_identity": identity,
             "replay_parent_depth": 1,
             "snapshot": {"status": "valid", "present": true, "digest_verified": true, "reference": snapshot_ref(digest)},
-            "artifact_hashes": [{"path": SNAPSHOT_PATH, "sha256": digest}],
+            "artifact_hashes": [
+                {"path": bug_path, "sha256": bug_digest},
+                {"path": SNAPSHOT_ARTIFACT_PATH, "sha256": digest},
+            ],
         }),
     );
 }
@@ -164,6 +177,11 @@ fn snapshot_ref(digest: &str) -> Value {
         "schema_version": 2,
         "path": SNAPSHOT_PATH,
     })
+}
+
+fn sha256_file(path: &Path) -> String {
+    let bytes = std::fs::read(path).expect("read strict fixture artifact");
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
 fn write_json(path: &Path, value: &Value) {

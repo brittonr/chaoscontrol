@@ -276,8 +276,12 @@ impl Minimizer {
         snapshot: &SimulationSnapshot,
         indices: &[usize],
     ) -> Result<bool, ExploreError> {
-        self.candidates_tested += 1;
-
+        let candidates_tested =
+            self.candidates_tested
+                .checked_add(1)
+                .ok_or_else(|| ExploreError::Config {
+                    message: "minimizer candidate counter overflow".to_string(),
+                })?;
         let schedule = self
             .bug
             .schedule
@@ -295,7 +299,13 @@ impl Minimizer {
         snapshot
             .validate_assertion_evidence(self.config.num_vms, &self.bug.assertion_identity)
             .map_err(|error| ExploreError::Config { message: error })?;
-        let controller = self.controller.as_mut().unwrap();
+        self.candidates_tested = candidates_tested;
+        let controller = self
+            .controller
+            .as_mut()
+            .ok_or_else(|| ExploreError::Config {
+                message: "minimizer controller is not initialized".to_string(),
+            })?;
 
         // Restore only after the snapshot admits the exact assertion target.
         controller.restore_all(snapshot)?;

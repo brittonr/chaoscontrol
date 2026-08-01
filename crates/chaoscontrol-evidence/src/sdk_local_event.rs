@@ -182,13 +182,15 @@ fn resolve_assertion(
         );
     }
     let kind = assertion_kind(&assertion.assert_type, assertion.condition)?;
+    let catalog_token = assertion
+        .catalog_token
+        .ok_or_else(|| EvidenceError::new("assertion catalog token is missing"))?;
+    let fingerprint = assertion
+        .assertion_fingerprint
+        .ok_or_else(|| EvidenceError::new("assertion fingerprint is missing"))?;
     let event = BoundAssertionEvent {
-        catalog_token: assertion
-            .catalog_token
-            .expect("identity fields were counted"),
-        fingerprint: assertion
-            .assertion_fingerprint
-            .expect("identity fields were counted"),
+        catalog_token,
+        fingerprint,
         kind,
     };
     let admitted = catalog

@@ -40,8 +40,8 @@
     "reference": {
       "store": "file-content-addressed",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      "codec": "simulation-snapshot-bincode-zstd-v1",
-      "schema_version": 1,
+      "codec": "simulation-snapshot-cbor-zstd-v2",
+      "schema_version": 2,
       "path": "snapshots/0000000000000000000000000000000000000000000000000000000000000000.snapshot.bin"
     }
   },

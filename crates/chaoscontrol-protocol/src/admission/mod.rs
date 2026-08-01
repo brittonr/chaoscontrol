@@ -58,7 +58,6 @@ pub enum CatalogConflict {
     MessageConflict,
     NamespaceConflict,
     NoActiveRun,
-    PostCompletion,
     PostConflict,
     SourceConflict,
     CategoryConflict,
@@ -86,7 +85,6 @@ pub struct BoundAssertionEvent {
 pub struct CatalogBuilder {
     expected_frames: usize,
     received_frames: usize,
-    completed: bool,
     conflict: Option<CatalogConflict>,
     by_logical_key: std::collections::BTreeMap<
         (String, crate::identity::AssertionLogicalKey),
@@ -108,7 +106,6 @@ impl CatalogBuilder {
         Ok(Self {
             expected_frames,
             received_frames: 0,
-            completed: false,
             conflict: None,
             by_logical_key: std::collections::BTreeMap::new(),
             by_compatibility_id: std::collections::BTreeMap::new(),
@@ -132,9 +129,6 @@ impl CatalogBuilder {
         descriptor: crate::identity::AssertionDescriptor,
         fingerprint: crate::identity::AssertionFingerprint,
     ) -> Result<CatalogInsert, CatalogConflict> {
-        if self.completed {
-            return Err(CatalogConflict::PostCompletion);
-        }
         if self.conflict.is_some() {
             return Err(CatalogConflict::PostConflict);
         }
@@ -212,14 +206,11 @@ impl CatalogBuilder {
     }
 
     pub fn complete(
-        mut self,
+        self,
         claimed_token: crate::identity::AssertionFingerprint,
     ) -> Result<AcceptedCatalog, CatalogConflict> {
         if let Some(conflict) = self.conflict {
             return Err(conflict);
-        }
-        if self.completed {
-            return Err(CatalogConflict::PostCompletion);
         }
         if self.received_frames != self.expected_frames {
             return Err(CatalogConflict::CatalogIncomplete);
@@ -246,7 +237,6 @@ impl CatalogBuilder {
         if token != claimed_token {
             return Err(CatalogConflict::CatalogTokenMismatch);
         }
-        self.completed = true;
         Ok(AcceptedCatalog {
             catalog_version: ASSERTION_CATALOG_VERSION,
             token,

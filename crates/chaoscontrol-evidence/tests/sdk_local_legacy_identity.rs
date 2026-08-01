@@ -4,7 +4,7 @@ use chaoscontrol_protocol::assertion_identity::{
     encode_lower_hex, AssertionDescriptor, AssertionKind, AssertionLogicalKey,
     ASSERTION_IDENTITY_VERSION,
 };
-use serde_json::{json, Value};
+use serde_json::json;
 
 const COMPATIBILITY_ID: u32 = 73;
 const SOURCE_LINE: u32 = 19;

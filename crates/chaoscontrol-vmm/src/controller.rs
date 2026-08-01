@@ -1975,9 +1975,11 @@ mod tests {
         const FORGED_TICK: u64 = 99;
         const ORIGINAL_SEED: u64 = 41;
         const FORGED_SEED: u64 = 43;
-        let mut config = SimulationConfig::default();
-        config.num_vms = 0;
-        config.seed = ORIGINAL_SEED;
+        let config = SimulationConfig {
+            num_vms: 0,
+            seed: ORIGINAL_SEED,
+            ..SimulationConfig::default()
+        };
         let mut controller = SimulationController {
             vms: Vec::new(),
             fault_engine: FaultEngine::new(EngineConfig::default()),

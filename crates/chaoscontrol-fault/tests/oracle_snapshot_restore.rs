@@ -1,4 +1,5 @@
-mod oracle_snapshot_support;
+mod oracle_snapshot_common;
+mod oracle_snapshot_restore_support;
 
 use chaoscontrol_fault::engine::{validate_engine_snapshot, EngineConfig, FaultEngine};
 use chaoscontrol_fault::oracle::{PropertyOracle, Verdict};
@@ -7,9 +8,9 @@ use chaoscontrol_fault::oracle_validation::{
 };
 use chaoscontrol_protocol::assertion_catalog::{token_for_descriptors, CatalogValidationStatus};
 use chaoscontrol_protocol::assertion_identity::ASSERTION_FINGERPRINT_BYTES;
-use oracle_snapshot_support::{
-    active_failure_snapshot, descriptor, fatal_diagnostic_snapshot, first_map_value_mut,
-    forged_snapshot, legacy_diagnostic_snapshot, strict_oracle,
+use oracle_snapshot_common::{descriptor, first_map_value_mut, forged_snapshot, strict_oracle};
+use oracle_snapshot_restore_support::{
+    active_failure_snapshot, fatal_diagnostic_snapshot, legacy_diagnostic_snapshot,
 };
 use serde_json::json;
 

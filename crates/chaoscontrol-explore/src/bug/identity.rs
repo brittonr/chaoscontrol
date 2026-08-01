@@ -1,3 +1,6 @@
+use crate::checkpoint::BugSetIdentityError;
+use crate::corpus::BugReport;
+use crate::explorer::AssertionDetail;
 use chaoscontrol_fault::oracle::{AssertionRecord, OracleReport};
 use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use snafu::Snafu;
@@ -46,6 +49,45 @@ pub fn resolve_restored_report<'a>(
     let identity = validate_carrier(assertion_id, identity)?;
     chaoscontrol_fault::oracle_validation::resolve_assertion_evidence(report, identity)
         .map_err(|_| BugIdentityError::ReportMismatch)
+}
+
+pub(crate) fn detail_matches_identity(
+    detail: &AssertionDetail,
+    identity: &AssertionEvidenceIdentity,
+) -> bool {
+    let Some(candidate) = detail.identity.as_ref() else {
+        return false;
+    };
+    candidate.descriptor == identity.descriptor
+        && candidate.fingerprint == identity.fingerprint
+        && candidate.canonical_descriptor
+            == chaoscontrol_protocol::identity::encode_lower_hex(&identity.canonical_descriptor)
+        && candidate.catalog_tokens.as_slice() == [identity.catalog_token]
+}
+
+pub fn validate_reported_bug_identities(
+    bugs: &[BugReport],
+    assertions: &[AssertionDetail],
+) -> Result<(), BugSetIdentityError> {
+    for bug in bugs {
+        let identity = validate_carrier(bug.assertion_id, Some(&bug.assertion_identity)).map_err(
+            |source| BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source,
+            },
+        )?;
+        let exact_matches = assertions
+            .iter()
+            .filter(|detail| detail_matches_identity(detail, identity))
+            .count();
+        if exact_matches != 1 {
+            return Err(BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source: BugIdentityError::ReportMismatch,
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

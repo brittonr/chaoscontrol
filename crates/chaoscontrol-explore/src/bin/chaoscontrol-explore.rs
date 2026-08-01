@@ -1124,98 +1124,140 @@ fn cmd_run(
     eprintln!("Exploration complete!");
     eprintln!();
 
-    // Format and print report
+    let assertion_summary = match AssertionSummaryV2::from_exploration(&report) {
+        Ok(summary) => summary,
+        Err(error) => {
+            eprintln!("Exploration assertion evidence is invalid: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
+    if let Err(error) = chaoscontrol_explore::bug::identity::validate_reported_bug_identities(
+        &report.bugs,
+        assertion_summary.assertions(),
+    ) {
+        eprintln!("Exploration bug collection is invalid: {error}");
+        std::process::exit(EXIT_ERROR);
+    }
+    for bug in &report.bugs {
+        if bug.replay_parent_depth > 0 {
+            let snapshot = match bug.snapshot.as_ref() {
+                Some(snapshot) => snapshot,
+                None => {
+                    eprintln!("Bug {} has no required replay parent snapshot", bug.bug_id);
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            if let Err(error) = snapshot.validate_assertion_evidence(vms, &bug.assertion_identity) {
+                eprintln!(
+                    "Bug {} replay parent snapshot is invalid: {error}",
+                    bug.bug_id
+                );
+                std::process::exit(EXIT_ERROR);
+            }
+        }
+    }
+
+    // Format and print the validated report.
     let formatted = format_report(&report);
     println!("{}", formatted);
 
     // Save output if requested
     if let Some(ref output_dir) = output {
-        // Save formatted report
-        let report_path = format!("{}/report.txt", output_dir);
-        if let Err(e) = fs::write(&report_path, &formatted) {
-            eprintln!("Warning: failed to save report: {}", e);
-        } else {
-            eprintln!("Saved report to: {}", report_path);
+        let assertions_path = Path::new(output_dir).join("assertions.json");
+        match fs::remove_file(&assertions_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                eprintln!("Error removing stale assertion summary: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
         }
 
-        // Save bugs as JSON (consumable by `minimize` subcommand) + Debug text
         let snapshot_store =
             chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output_dir);
+        let mut bug_outputs = Vec::with_capacity(report.bugs.len());
         for bug in &report.bugs {
-            // JSON format (for minimize subcommand)
             let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
-            if let Some(snapshot) = bug.snapshot.as_ref() {
-                match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
-                    &snapshot_store,
-                    snapshot,
-                    bug.replay_parent_depth,
-                ) {
-                    Ok(reference) => {
-                        serialized.replay_parent_snapshot_ref = Some(reference);
+            if bug.replay_parent_depth > 0 {
+                let snapshot = match bug.snapshot.as_ref() {
+                    Some(snapshot) => snapshot,
+                    None => {
+                        eprintln!("Bug {} has no required replay parent snapshot", bug.bug_id);
+                        std::process::exit(EXIT_ERROR);
                     }
-                    Err(e) if bug.replay_parent_depth > 0 => {
-                        eprintln!(
-                            "Error: failed to persist required replay parent snapshot for bug {}: {}",
-                            bug.bug_id, e
-                        );
-                        std::process::exit(1);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: failed to persist schedule-only replay parent metadata for bug {}: {}",
-                            bug.bug_id, e
-                        );
-                    }
-                }
-            } else if bug.replay_parent_depth > 0 {
-                eprintln!(
-                    "Error: bug {} requires replay parent snapshot depth {} but no parent snapshot is available to persist",
-                    bug.bug_id, bug.replay_parent_depth
-                );
-                std::process::exit(1);
+                };
+                let reference =
+                    match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
+                        &snapshot_store,
+                        snapshot,
+                        bug.replay_parent_depth,
+                    ) {
+                        Ok(reference) => reference,
+                        Err(error) => {
+                            eprintln!("Bug {} snapshot persistence failed: {error}", bug.bug_id);
+                            std::process::exit(EXIT_ERROR);
+                        }
+                    };
+                serialized.replay_parent_snapshot_ref = Some(reference);
+            } else {
+                serialized.replay_parent_snapshot_ref = None;
             }
-            let json_path = format!("{}/bug_{}.json", output_dir, bug.bug_id);
-            match serde_json::to_string_pretty(&serialized) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&json_path, &json) {
-                        eprintln!("Warning: failed to save bug {} JSON: {}", bug.bug_id, e);
-                    } else {
-                        eprintln!("Saved bug {} to: {}", bug.bug_id, json_path);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to serialize bug {}: {}", bug.bug_id, e);
-                }
+            if let Err(error) = chaoscontrol_explore::corpus::BugReport::try_from(&serialized) {
+                eprintln!("Bug {} carrier validation failed: {error}", bug.bug_id);
+                std::process::exit(EXIT_ERROR);
             }
-
-            // Note: Debug format (.txt) not saved — BugReport's snapshot
-            // field contains full guest memory, making .txt files ~12GB each.
-            // Use the JSON format for bug reproduction.
+            let bytes = match serde_json::to_vec_pretty(&serialized) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    eprintln!("Bug {} serialization failed: {error}", bug.bug_id);
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            bug_outputs.push((
+                Path::new(output_dir).join(format!("bug_{}.json", bug.bug_id)),
+                bytes,
+            ));
         }
 
-        // Save per-assertion detail as bounded, atomic JSON.
-        let assertions_path = format!("{}/assertions.json", output_dir);
-        match write_assertion_summary(&assertions_path, || {
-            AssertionSummaryV2::from_exploration(&report)
-        }) {
-            Ok(_) => eprintln!(
-                "Saved {} assertion details to: {}",
-                report.assertion_details.len(),
-                assertions_path
-            ),
-            Err(error) => eprintln!("Warning: failed to save assertions: {error}"),
+        let report_path = Path::new(output_dir).join("report.txt");
+        if let Err(error) = fs::write(&report_path, &formatted) {
+            eprintln!("Error writing exploration report: {error}");
+            std::process::exit(EXIT_ERROR);
         }
+        eprintln!("Saved report to: {}", report_path.display());
+        for (path, bytes) in bug_outputs {
+            if let Err(error) = fs::write(&path, bytes) {
+                eprintln!("Error writing bug carrier {}: {error}", path.display());
+                std::process::exit(EXIT_ERROR);
+            }
+            eprintln!("Saved bug to: {}", path.display());
+        }
+        if let Err(error) =
+            write_assertion_summary(&assertions_path, || Ok(assertion_summary.clone()))
+        {
+            eprintln!("Error writing assertion summary: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+        eprintln!(
+            "Saved {} assertion details to: {}",
+            report.assertion_details.len(),
+            assertions_path.display()
+        );
     }
 
     // Auto-minimize bugs if requested
     if auto_minimize && !report.bugs.is_empty() {
         if chaoscontrol_explore::signal::shutdown_requested() {
-            eprintln!("Skipping auto-minimize: interrupted");
+            eprintln!("Auto-minimize failed: exploration was interrupted");
+            std::process::exit(EXIT_ERROR);
         } else if let Some(ref output_dir) = output {
             if let Err(error) = auto_minimize_bugs(&report.bugs, &config_for_minimize, output_dir) {
                 eprintln!("Auto-minimize failed: {error}");
                 std::process::exit(EXIT_ERROR);
             }
+        } else {
+            eprintln!("Auto-minimize requires an output directory");
+            std::process::exit(EXIT_ERROR);
         }
     }
 

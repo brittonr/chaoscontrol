@@ -314,6 +314,7 @@ version = "0.1.0"
 dependencies = [
  "async-stream",
  "axum",
+ "blake3",
  "chaoscontrol-evidence",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",

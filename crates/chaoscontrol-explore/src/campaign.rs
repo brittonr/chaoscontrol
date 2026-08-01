@@ -61,7 +61,7 @@ pub struct CampaignBug {
     pub found_by_seeds: Vec<u64>,
     /// First seed to find it.
     pub first_seed: u64,
-    /// Dedup key: hash(assertion_id, sorted fault type names).
+    /// Dedup key: hash(assertion fingerprint, sorted fault type names).
     pub dedup_key: u64,
 }
 

@@ -604,7 +604,7 @@ pub struct SerializableBug {
     /// Durable replay parent snapshot artifact reference for parent-context replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
-    /// Dedup key: hash of (assertion_id, sorted fault type names).
+    /// Dedup key: hash of (assertion fingerprint, sorted fault type names).
     #[serde(default)]
     pub dedup_key: Option<u64>,
     /// Schedule variant used when this bug was found.

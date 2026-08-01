@@ -21,5 +21,5 @@ Assertion evidence must bind runtime hits to a validated catalog descriptor and 
 - **Compatibility**: old integer-ID source APIs and wire forms are unsupported. Historical serialized input can be identified for bounded diagnostics, but it cannot satisfy strict evidence gates.
 - **Usability**: automatic source identities remain convenient but are build-scoped; callers needing continuity across source movement use an explicit stable logical key and namespace.
 - **Ownership**: runtime catalogs/events/reports remain Rust-owned; Nickel validates compact review-boundary schemas where those reports enter readiness evidence.
-- **Scope boundary**: this package does not own replay artifact references, path validation, or general replay DTO extraction.
+- **Scope boundary**: this package owns assertion-identity linkage and the bounded artifact reads needed to verify it through replay. It does not own general replay scheduling or unrelated DTO semantics.
 - **Claims**: BLAKE3 is a compact fingerprint, not a uniqueness proof; canonical descriptor comparison and conflict rejection are what prevent silent merging.

@@ -32,6 +32,10 @@ const REPLAY_CLASSES: [&str; 8] = [
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
 const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
 const SUBSTITUTED_ASSERTION_ALIAS: u64 = 8;
+const ACCEPTED_REPLAY_ARTIFACT_COUNT: usize = 2;
+const REPLAY_BUG_CORE_FIELD_COUNT: usize = 4;
+const ACCEPTED_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 = 2;
 
 const SNAPSHOT_STATUSES: [&str; 6] = [
     "not_required",
@@ -93,7 +97,12 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     )?;
     validate_snapshot_ref(&load_json(&valid.join("snapshot-ref.valid.json"))?)?;
     let replay_verdict = load_json(&valid.join("replay-verdict.snapshot-backed.valid.json"))?;
-    validate_replay_verdict_with_options(&replay_verdict, true, false, root)?;
+    validate_replay_verdict_with_options(&replay_verdict, true, false, root).map_err(|error| {
+        EvidenceError::new(format!(
+            "replay-verdict.snapshot-backed.valid.json: {}",
+            error.message()
+        ))
+    })?;
     let mut extended_verdict = replay_verdict;
     extended_verdict["unreviewed_authority"] = Value::from(true);
     ensure(
@@ -175,8 +184,11 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         |value| validate_receipt_with_root(value, root, true),
     )?;
 
+    expect_invalid(
+        &invalid.join("replay-verdict.schedule-only-not-proof.invalid.json"),
+        validate_replay_verdict,
+    )?;
     for fixture in [
-        "replay-verdict.schedule-only-not-proof.invalid.json",
         "replay-verdict.missing-snapshot-ref.invalid.json",
         "replay-verdict.missing-snapshot-artifact.invalid.json",
         "replay-verdict.invalid-snapshot-digest.invalid.json",
@@ -186,7 +198,8 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         "replay-verdict.schema-v1-accepted.invalid.json",
     ] {
         let path = invalid.join(fixture);
-        validate_replay_verdict(&load_json(&path)?)?;
+        validate_replay_verdict(&load_json(&path)?)
+            .map_err(|error| EvidenceError::new(format!("{fixture}: {}", error.message())))?;
         expect_invalid(&path, |value| {
             validate_replay_verdict_with_options(value, true, false, root)
         })?;
@@ -581,7 +594,10 @@ pub fn validate_replay_verdict_with_options(
             sorted(REPLAY_CLASSES)
         ),
     )?;
-    require_bool(value.get("reproduced"), "replay-verdict.reproduced")?;
+    let reproduced = value
+        .get("reproduced")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| EvidenceError::new("replay-verdict.reproduced: expected bool"))?;
     let command = value
         .get("command")
         .ok_or_else(|| EvidenceError::new("replay-verdict.command: expected object"))?;
@@ -591,10 +607,12 @@ pub fn validate_replay_verdict_with_options(
         "replay-verdict.command",
     )?;
     require_str(command.get("command"), "replay-verdict.command.command")?;
-    require_num(
-        command.get("exit_status"),
-        "replay-verdict.command.exit_status",
-    )?;
+    let exit_status = command
+        .get("exit_status")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| {
+            EvidenceError::new("replay-verdict.command.exit_status: expected integer")
+        })?;
     require_str(value.get("diagnostic"), "replay-verdict.diagnostic")?;
     let snapshot = value
         .get("snapshot")
@@ -610,27 +628,58 @@ pub fn validate_replay_verdict_with_options(
         ],
         "replay-verdict.snapshot",
     )?;
-    ensure(
-        snapshot
-            .get("status")
-            .and_then(Value::as_str)
-            .is_some_and(|status| SNAPSHOT_STATUSES.contains(&status)),
-        "replay-verdict.snapshot.status: invalid",
-    )?;
-    require_bool(snapshot.get("present"), "replay-verdict.snapshot.present")?;
-    require_bool(
-        snapshot.get("digest_verified"),
-        "replay-verdict.snapshot.digest_verified",
-    )?;
-    if let Some(reference) = snapshot.get("reference").filter(|value| !value.is_null()) {
+    let snapshot_status = snapshot
+        .get("status")
+        .and_then(Value::as_str)
+        .filter(|status| SNAPSHOT_STATUSES.contains(status))
+        .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot.status: invalid"))?;
+    let snapshot_present = snapshot
+        .get("present")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot.present: expected bool"))?;
+    let digest_verified = snapshot
+        .get("digest_verified")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            EvidenceError::new("replay-verdict.snapshot.digest_verified: expected bool")
+        })?;
+    let snapshot_reference = snapshot.get("reference").filter(|value| !value.is_null());
+    if let Some(reference) = snapshot_reference {
         validate_snapshot_ref(reference)?;
+        if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
+            ensure(
+                reference.get("codec").and_then(Value::as_str) == Some(ACCEPTED_SNAPSHOT_CODEC)
+                    && reference.get("schema_version").and_then(Value::as_u64)
+                        == Some(ACCEPTED_SNAPSHOT_SCHEMA_VERSION),
+                "v2 replay verdict requires the current CBOR v2 snapshot codec",
+            )?;
+        }
     }
+    let valid_snapshot_shape = match snapshot_status {
+        "valid" => snapshot_present && digest_verified && snapshot_reference.is_some(),
+        "not_required" | "missing_ref" => {
+            !snapshot_present && !digest_verified && snapshot_reference.is_none()
+        }
+        _ => !snapshot_present && !digest_verified && snapshot_reference.is_some(),
+    };
+    ensure(
+        valid_snapshot_shape,
+        "replay-verdict snapshot status fields conflict",
+    )?;
     let hashes = value
         .get("artifact_hashes")
         .and_then(Value::as_array)
         .ok_or_else(|| EvidenceError::new("replay-verdict.artifact_hashes: expected list"))?;
+    let mut artifact_paths = BTreeSet::new();
     for item in hashes {
         validate_artifact_hash(item)?;
+        let artifact_path = item["path"]
+            .as_str()
+            .ok_or_else(|| EvidenceError::new("replay-verdict artifact path must be a string"))?;
+        ensure(
+            artifact_paths.insert(artifact_path),
+            format!("replay-verdict duplicate artifact path: {artifact_path}"),
+        )?;
         if check_files {
             let path_str = item["path"].as_str().unwrap();
             let path = root.join(path_str);
@@ -644,18 +693,45 @@ pub fn validate_replay_verdict_with_options(
             )?;
         }
     }
-    if !value.get("bug_path").is_none_or(Value::is_null) {
+    let bug_core_field_count = ["bug_path", "bug_id", "assertion_id", "replay_parent_depth"]
+        .iter()
+        .filter(|field| !value.get(**field).is_none_or(Value::is_null))
+        .count();
+    let has_identity = !value.get("assertion_identity").is_none_or(Value::is_null);
+    let has_bug_binding = bug_core_field_count == REPLAY_BUG_CORE_FIELD_COUNT
+        && (schema_version == LEGACY_REPLAY_VERDICT_SCHEMA_VERSION || has_identity);
+    let has_no_bug_binding = bug_core_field_count == 0 && !has_identity;
+    ensure(
+        has_bug_binding || has_no_bug_binding,
+        "replay-verdict bug binding must be complete or absent",
+    )?;
+    let replay_parent_depth = if has_bug_binding {
         require_str(value.get("bug_path"), "replay-verdict.bug_path")?;
         require_num(value.get("bug_id"), "replay-verdict.bug_id")?;
         require_num(value.get("assertion_id"), "replay-verdict.assertion_id")?;
-        require_num(
-            value.get("replay_parent_depth"),
-            "replay-verdict.replay_parent_depth",
-        )?;
+        let depth = value
+            .get("replay_parent_depth")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                EvidenceError::new("replay-verdict.replay_parent_depth: expected integer")
+            })?;
         if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
             validate_replay_assertion_identity(value)?;
         }
-    }
+        Some(depth)
+    } else {
+        None
+    };
+    validate_replay_semantics(ReplaySemanticFacts {
+        replay_class,
+        reproduced,
+        exit_status,
+        strict_v2: schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION,
+        has_bug_binding,
+        replay_parent_depth,
+        snapshot_status,
+        artifact_hashes: hashes,
+    })?;
     if accepted_snapshot_proof {
         ensure(
             schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION,
@@ -708,11 +784,152 @@ pub fn validate_replay_verdict_with_options(
             "accepted replay proof requires snapshot reference",
         )?;
         ensure(
-            !hashes.is_empty(),
-            "accepted replay proof requires artifact hashes",
+            hashes.len() == ACCEPTED_REPLAY_ARTIFACT_COUNT,
+            format!(
+                "accepted replay proof requires exactly {ACCEPTED_REPLAY_ARTIFACT_COUNT} artifact hashes"
+            ),
+        )?;
+        let bug_path = require_str(value.get("bug_path"), "accepted replay proof bug_path")?;
+        let reference = snapshot_reference.ok_or_else(|| {
+            EvidenceError::new("accepted replay proof requires snapshot reference")
+        })?;
+        let reference_path = require_str(
+            reference.get("path"),
+            "accepted replay proof snapshot reference path",
+        )?;
+        let reference_digest = require_str(
+            reference.get("digest"),
+            "accepted replay proof snapshot reference digest",
+        )?;
+        ensure(
+            reference.get("codec").and_then(Value::as_str) == Some(ACCEPTED_SNAPSHOT_CODEC)
+                && reference.get("schema_version").and_then(Value::as_u64)
+                    == Some(ACCEPTED_SNAPSHOT_SCHEMA_VERSION),
+            "accepted replay proof requires the current CBOR v2 snapshot codec",
+        )?;
+        let bug_parent = Path::new(bug_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
+        let snapshot_artifact_path = bug_parent
+            .join(reference_path)
+            .to_string_lossy()
+            .into_owned();
+        ensure(
+            artifact_paths.contains(bug_path)
+                && artifact_paths.contains(snapshot_artifact_path.as_str()),
+            "accepted replay proof artifact paths do not bind the bug and snapshot",
+        )?;
+        let snapshot_hash = hashes
+            .iter()
+            .find(|hash| {
+                hash.get("path").and_then(Value::as_str) == Some(snapshot_artifact_path.as_str())
+            })
+            .and_then(|hash| hash.get("sha256"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| EvidenceError::new("accepted replay proof snapshot hash is missing"))?;
+        ensure(
+            snapshot_hash == reference_digest,
+            "accepted replay proof snapshot hash differs from its reference",
         )?;
     }
     Ok(())
+}
+
+struct ReplaySemanticFacts<'a> {
+    replay_class: &'a str,
+    reproduced: bool,
+    exit_status: i64,
+    strict_v2: bool,
+    has_bug_binding: bool,
+    replay_parent_depth: Option<u64>,
+    snapshot_status: &'a str,
+    artifact_hashes: &'a [Value],
+}
+
+fn validate_replay_semantics(facts: ReplaySemanticFacts<'_>) -> EvidenceResult<()> {
+    let ReplaySemanticFacts {
+        replay_class,
+        reproduced,
+        exit_status,
+        strict_v2,
+        has_bug_binding,
+        replay_parent_depth,
+        snapshot_status,
+        artifact_hashes,
+    } = facts;
+    let exit_status_matches = if reproduced {
+        exit_status == 0
+    } else {
+        exit_status != 0
+    };
+    ensure(
+        exit_status_matches,
+        "replay-verdict exit status conflicts with reproduced",
+    )?;
+    let has_positive_depth = replay_parent_depth.is_some_and(|depth| depth > 0);
+    let has_zero_depth = replay_parent_depth == Some(0);
+    let has_bug_artifacts = !artifact_hashes.is_empty();
+    let has_complete_accepted_artifacts = if strict_v2 {
+        artifact_hashes.len() == ACCEPTED_REPLAY_ARTIFACT_COUNT
+    } else {
+        has_bug_artifacts
+    };
+    let valid = match replay_class {
+        "snapshot_backed_reproduced" => {
+            reproduced
+                && exit_status == 0
+                && has_bug_binding
+                && has_positive_depth
+                && snapshot_status == "valid"
+                && has_complete_accepted_artifacts
+        }
+        "snapshot_backed_not_reproduced" => {
+            !reproduced
+                && exit_status != 0
+                && has_bug_binding
+                && has_positive_depth
+                && snapshot_status == "valid"
+                && has_complete_accepted_artifacts
+        }
+        "schedule_only_replay_gap" => {
+            !reproduced
+                && has_bug_binding
+                && has_zero_depth
+                && snapshot_status == "not_required"
+                && has_bug_artifacts
+        }
+        "missing_snapshot_ref" => {
+            !reproduced
+                && has_bug_binding
+                && has_positive_depth
+                && snapshot_status == "missing_ref"
+                && has_bug_artifacts
+        }
+        "missing_snapshot_artifact" => {
+            !reproduced
+                && has_bug_binding
+                && has_positive_depth
+                && snapshot_status == "missing_artifact"
+                && has_bug_artifacts
+        }
+        "invalid_snapshot_digest" => {
+            !reproduced
+                && has_bug_binding
+                && has_positive_depth
+                && matches!(snapshot_status, "invalid_digest" | "invalid_ref")
+                && has_bug_artifacts
+        }
+        "no_bug_found" => {
+            !reproduced
+                && exit_status != 0
+                && !has_bug_binding
+                && snapshot_status == "not_required"
+                && artifact_hashes.is_empty()
+        }
+        "replay_error" => !reproduced && has_bug_binding && has_bug_artifacts,
+        _ => false,
+    };
+    ensure(valid, "replay-verdict class fields conflict")
 }
 
 fn validate_replay_assertion_identity(value: &Value) -> EvidenceResult<()> {
@@ -972,13 +1189,6 @@ fn require_pos_int(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
     )
 }
 
-fn require_bool(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
-    ensure(
-        value.is_some_and(Value::is_boolean),
-        format!("{label}: expected bool"),
-    )
-}
-
 fn require_status(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
     let status = value.and_then(Value::as_str).unwrap_or("");
     ensure(
@@ -1010,8 +1220,10 @@ fn is_safe_snapshot_path(path: &Path) -> bool {
 }
 
 fn sha256_file(path: &Path) -> EvidenceResult<String> {
-    let bytes =
-        std::fs::read(path).map_err(|err| EvidenceError::new(format!("I/O error: {err}")))?;
+    let bytes = crate::bounded_file::read_bounded_regular_bytes(
+        path,
+        crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
+    )?;
     let digest = Sha256::digest(&bytes);
     Ok(format!("sha256:{digest:x}"))
 }

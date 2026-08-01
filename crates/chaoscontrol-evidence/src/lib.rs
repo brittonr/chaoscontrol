@@ -185,6 +185,8 @@ pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
     "simulation-snapshot-bincode-zstd-v1",
 ];
 pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
+const CURRENT_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
+const CURRENT_SNAPSHOT_SCHEMA_VERSION: u64 = 2;
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
@@ -1887,7 +1889,7 @@ fn validate_workload_assertion_identity(
     review: &ReplayArtifactReview,
 ) -> EvidenceResult<()> {
     validate_bug_report_for_replay(&review.bug_value)?;
-    validate_replay_verdict_with_options(&review.verdict_value, true, false, root)?;
+    validate_replay_verdict_with_options(&review.verdict_value, true, true, root)?;
     let bug_identity = review.bug.require_assertion_identity()?;
     let verdict_identity = review.verdict.require_assertion_identity()?;
     review.verdict.validate_shape()?;
@@ -2413,7 +2415,7 @@ impl SnapshotVerdict {
         ensure(self.status == "valid", "snapshot status is not valid")?;
         ensure(self.present, "snapshot not present")?;
         ensure(self.digest_verified, "snapshot digest not verified")?;
-        self.reference.validate_shape()
+        self.reference.validate_current_shape()
     }
 }
 
@@ -2442,6 +2444,15 @@ impl SnapshotRef {
         )?;
         ensure(!self.path.is_empty(), "snapshot path must be non-empty")?;
         Ok(())
+    }
+
+    fn validate_current_shape(&self) -> EvidenceResult<()> {
+        self.validate_shape()?;
+        ensure(
+            self.codec == CURRENT_SNAPSHOT_CODEC
+                && self.schema_version == CURRENT_SNAPSHOT_SCHEMA_VERSION,
+            "accepted snapshot evidence requires the current CBOR v2 codec",
+        )
     }
 }
 

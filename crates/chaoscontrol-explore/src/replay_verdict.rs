@@ -10,10 +10,13 @@ use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 2;
+const REPRODUCED_EXIT_STATUS: i32 = 0;
+const NOT_REPRODUCED_EXIT_STATUS: i32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -96,62 +99,91 @@ fn no_assertion_identity() -> Option<AssertionEvidenceIdentity> {
     None
 }
 
+pub struct ReproduceVerdictInput<'a> {
+    pub run_id: String,
+    pub command: String,
+    pub exit_status: i32,
+    pub bug_path: String,
+    pub bug_artifact_hash: ArtifactHash,
+    pub bug: &'a SerializableBug,
+    pub snapshot: ReplaySnapshotValidation,
+    pub admitted_report: Option<&'a chaoscontrol_fault::oracle::OracleReport>,
+    pub target_failed: bool,
+    pub diagnostic: String,
+}
+
 impl ReplayVerdict {
     pub fn from_reproduce(
-        command: String,
-        exit_status: i32,
-        bug_path: impl Into<String>,
-        bug: &SerializableBug,
-        snapshot: ReplaySnapshotValidation,
-        admitted_report: Option<&chaoscontrol_fault::oracle::OracleReport>,
-        target_failed: bool,
-        diagnostic: impl Into<String>,
+        input: ReproduceVerdictInput<'_>,
     ) -> Result<Self, crate::bug::identity::BugIdentityError> {
+        let ReproduceVerdictInput {
+            run_id,
+            command,
+            exit_status,
+            bug_path,
+            bug_artifact_hash,
+            bug,
+            snapshot,
+            admitted_report,
+            target_failed,
+            diagnostic,
+        } = input;
         let assertion_identity = bug.require_replay_identity()?.clone();
         let replay_class = classify_reproduce(bug, &snapshot, target_failed);
+        let reproduced = replay_class == ReplayClass::SnapshotBackedReproduced;
+        let expected_exit_status = if reproduced {
+            REPRODUCED_EXIT_STATUS
+        } else {
+            NOT_REPRODUCED_EXIT_STATUS
+        };
+        if exit_status != expected_exit_status {
+            return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
+        }
         if matches!(
             replay_class,
             ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced
         ) {
-            let report = admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
+            let report =
+                admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
             let record = crate::bug::identity::resolve_restored_report(
                 bug.assertion_id,
                 Some(&assertion_identity),
                 report,
             )?;
-            let report_failed =
-                record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
+            let report_failed = record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
             if report_failed != target_failed {
                 return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
             }
         }
-        let bug_path = bug_path.into();
-        let mut artifact_hashes = Vec::new();
-        if let Ok(hash) = hash_file(&bug_path) {
-            artifact_hashes.push(hash);
+        if bug_artifact_hash.path != bug_path {
+            return Err(crate::bug::identity::BugIdentityError::ArtifactMismatch);
         }
+        let mut artifact_hashes = vec![bug_artifact_hash];
         if snapshot.digest_verified {
             if let Some(reference) = snapshot.reference.as_ref() {
-                let root = Path::new(&bug_path)
+                let bug_parent = Path::new(&bug_path)
                     .parent()
                     .unwrap_or_else(|| Path::new("."));
-                let snapshot_path = root.join(&reference.path);
-                if let Ok(hash) = hash_file(snapshot_path.to_string_lossy().as_ref()) {
-                    artifact_hashes.push(hash);
-                }
+                artifact_hashes.push(ArtifactHash {
+                    path: bug_parent
+                        .join(&reference.path)
+                        .to_string_lossy()
+                        .into_owned(),
+                    sha256: reference.digest.clone(),
+                });
             }
         }
 
         Ok(Self {
             schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
-            run_id: default_run_id(),
+            run_id,
             replay_class,
-            reproduced: replay_class == ReplayClass::SnapshotBackedReproduced,
+            reproduced,
             command: ReplayCommandContext {
                 command,
                 exit_status,
             },
-            diagnostic: diagnostic.into(),
+            diagnostic,
             bug_path: Some(bug_path),
             bug_id: Some(bug.bug_id),
             assertion_id: Some(bug.assertion_id),
@@ -162,15 +194,15 @@ impl ReplayVerdict {
         })
     }
 
-    pub fn no_bug_found(command: String, diagnostic: impl Into<String>) -> Self {
+    pub fn no_bug_found(run_id: String, command: String, diagnostic: impl Into<String>) -> Self {
         Self {
             schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
-            run_id: default_run_id(),
+            run_id,
             replay_class: ReplayClass::NoBugFound,
             reproduced: false,
             command: ReplayCommandContext {
                 command,
-                exit_status: 1,
+                exit_status: NOT_REPRODUCED_EXIT_STATUS,
             },
             diagnostic: diagnostic.into(),
             bug_path: None,
@@ -269,24 +301,40 @@ pub fn write_verdict(
     path: impl AsRef<Path>,
     verdict: &ReplayVerdict,
 ) -> Result<(), std::io::Error> {
-    if let Some(parent) = path.as_ref().parent() {
+    let path = path.as_ref();
+    let mut bytes = serde_json::to_vec_pretty(verdict)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+    bytes.push(b'\n');
+    if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(verdict).expect("replay verdict serializes");
-    fs::write(path, format!("{json}\n"))
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
+        drop(file);
+        if let Err(cleanup_error) = fs::remove_file(path) {
+            return Err(std::io::Error::new(
+                error.kind(),
+                format!("{error}; failed to remove partial verdict: {cleanup_error}"),
+            ));
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
-pub fn hash_file(path: &str) -> Result<ArtifactHash, std::io::Error> {
-    let bytes = fs::read(path)?;
-    let mut h = Sha256::new();
-    h.update(bytes);
-    Ok(ArtifactHash {
-        path: path.to_string(),
-        sha256: format!("sha256:{:x}", h.finalize()),
-    })
+pub fn hash_bytes(path: impl Into<String>, bytes: &[u8]) -> ArtifactHash {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    ArtifactHash {
+        path: path.into(),
+        sha256: format!("sha256:{:x}", hasher.finalize()),
+    }
 }
 
-fn default_run_id() -> String {
+pub fn new_run_id() -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -301,16 +349,22 @@ mod tests {
     use chaoscontrol_fault::oracle::PropertyOracle;
     use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder};
 
+    const TEST_RUN_ID: &str = "replay-test";
+
     fn snapshot_ref() -> ReplayParentSnapshotRef {
         ReplayParentSnapshotRef {
             store: "file-content-addressed".to_string(),
             digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                 .to_string(),
-            codec: "simulation-snapshot-bincode-zstd-v1".to_string(),
-            schema_version: 1,
+            codec: "simulation-snapshot-cbor-zstd-v2".to_string(),
+            schema_version: 2,
             path: "snapshots/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.snapshot.bin"
                 .to_string(),
         }
+    }
+
+    fn bug_hash() -> ArtifactHash {
+        hash_bytes("bug_2.json", b"bounded bug fixture")
     }
 
     fn bug(depth: u32, has_ref: bool) -> SerializableBug {
@@ -330,7 +384,10 @@ mod tests {
         }
     }
 
-    fn report_for_bug(bug: &SerializableBug, observation: bool) -> chaoscontrol_fault::oracle::OracleReport {
+    fn report_for_bug(
+        bug: &SerializableBug,
+        observation: bool,
+    ) -> chaoscontrol_fault::oracle::OracleReport {
         let identity = bug.require_replay_identity().expect("test identity");
         let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
         builder
@@ -458,6 +515,7 @@ mod tests {
     #[test]
     fn no_bug_found_verdict_is_not_reproduced_and_has_no_bug_context() {
         let verdict = ReplayVerdict::no_bug_found(
+            TEST_RUN_ID.to_string(),
             "chaoscontrol-explore reproduce --bug missing.json".to_string(),
             "bug file not found",
         );
@@ -476,20 +534,22 @@ mod tests {
     fn serializes_stable_snake_case_class() {
         let bug = bug(2, true);
         let report = report_for_bug(&bug, false);
-        let verdict = ReplayVerdict::from_reproduce(
-            "chaoscontrol-explore reproduce ...".to_string(),
-            0,
-            "bug_2.json",
-            &bug,
-            ReplaySnapshotValidation::valid(
+        let verdict = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "chaoscontrol-explore reproduce ...".to_string(),
+            exit_status: 0,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug: &bug,
+            snapshot: ReplaySnapshotValidation::valid(
                 bug.replay_parent_snapshot_ref
                     .clone()
                     .expect("snapshot ref"),
             ),
-            Some(&report),
-            true,
-            "BUG REPRODUCED — assertion 1806003755 failed",
-        )
+            admitted_report: Some(&report),
+            target_failed: true,
+            diagnostic: "BUG REPRODUCED — assertion 1806003755 failed".to_string(),
+        })
         .expect("strict identity produces verdict");
         let json = serde_json::to_string(&verdict).unwrap();
         assert!(json.contains("snapshot_backed_reproduced"));
@@ -501,39 +561,73 @@ mod tests {
     fn rejects_legacy_bug_before_verdict_generation() {
         let mut legacy = bug(2, true);
         legacy.assertion_identity = None;
-        let result = ReplayVerdict::from_reproduce(
-            "chaoscontrol-explore reproduce ...".to_string(),
-            1,
-            "bug_2.json",
-            &legacy,
-            ReplaySnapshotValidation::missing_ref("missing ref"),
-            None,
-            false,
-            "legacy bug",
-        );
+        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "chaoscontrol-explore reproduce ...".to_string(),
+            exit_status: 1,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug: &legacy,
+            snapshot: ReplaySnapshotValidation::missing_ref("missing ref"),
+            admitted_report: None,
+            target_failed: false,
+            diagnostic: "legacy bug".to_string(),
+        });
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_exit_status_that_conflicts_with_the_replay_class() {
+        let bug = bug(2, true);
+        let report = report_for_bug(&bug, false);
+        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "chaoscontrol-explore reproduce ...".to_string(),
+            exit_status: NOT_REPRODUCED_EXIT_STATUS,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug: &bug,
+            snapshot: ReplaySnapshotValidation::valid(
+                bug.replay_parent_snapshot_ref
+                    .clone()
+                    .expect("snapshot ref"),
+            ),
+            admitted_report: Some(&report),
+            target_failed: true,
+            diagnostic: "forged command status".to_string(),
+        });
+
+        assert_eq!(
+            result,
+            Err(crate::bug::identity::BugIdentityError::MalformedCarrier)
+        );
     }
 
     #[test]
     fn rejects_a_reproduced_claim_that_conflicts_with_the_admitted_report() {
         let bug = bug(2, true);
         let report = report_for_bug(&bug, true);
-        let result = ReplayVerdict::from_reproduce(
-            "chaoscontrol-explore reproduce ...".to_string(),
-            0,
-            "bug_2.json",
-            &bug,
-            ReplaySnapshotValidation::valid(
+        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "chaoscontrol-explore reproduce ...".to_string(),
+            exit_status: 0,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug: &bug,
+            snapshot: ReplaySnapshotValidation::valid(
                 bug.replay_parent_snapshot_ref
                     .clone()
                     .expect("snapshot ref"),
             ),
-            Some(&report),
-            true,
-            "forged failure",
-        );
+            admitted_report: Some(&report),
+            target_failed: true,
+            diagnostic: "forged failure".to_string(),
+        });
 
-        assert_eq!(result, Err(crate::bug::identity::BugIdentityError::ReportMismatch));
+        assert_eq!(
+            result,
+            Err(crate::bug::identity::BugIdentityError::ReportMismatch)
+        );
     }
 }

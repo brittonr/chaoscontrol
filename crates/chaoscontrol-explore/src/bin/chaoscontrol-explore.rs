@@ -1428,7 +1428,13 @@ fn cmd_campaign(
         metrics_file: None,
     };
 
-    let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
+    let seed_list = match generate_seeds(seed, campaign_seeds, seeds.as_deref()) {
+        Ok(seed_list) => seed_list,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
 
     let base_config_for_minimize = base_config.clone();
     let campaign_config = CampaignConfig {
@@ -2224,13 +2230,16 @@ fn cmd_reproduce(
         std::process::exit(1);
     }
     // Load the untrusted bug carrier with bounded regular-file handling.
-    let serialized_bug = match chaoscontrol_explore::checkpoint::load_serializable_bug(&bug_path) {
-        Ok(bug) => bug,
-        Err(error) => {
-            eprintln!("Error: failed to load bug file: {error}");
-            std::process::exit(EXIT_ERROR);
-        }
-    };
+    let (serialized_bug, bug_artifact_bytes) =
+        match chaoscontrol_explore::checkpoint::load_serializable_bug_artifact(&bug_path) {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                eprintln!("Error: failed to load bug file: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+    let bug_artifact_hash =
+        chaoscontrol_explore::replay_verdict::hash_bytes(bug_path.clone(), &bug_artifact_bytes);
 
     let target_identity = match serialized_bug.require_replay_identity() {
         Ok(identity) => identity.clone(),
@@ -2263,14 +2272,18 @@ fn cmd_reproduce(
             .clone()
             .unwrap_or_else(|| "invalid replay parent snapshot evidence".to_string());
         let verdict = match chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
-            command_context,
-            1,
-            bug_path.clone(),
-            &serialized_bug,
-            snapshot_validation,
-            None,
-            false,
-            diagnostic.clone(),
+            chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
+                run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
+                command: command_context,
+                exit_status: 1,
+                bug_path: bug_path.clone(),
+                bug_artifact_hash: bug_artifact_hash.clone(),
+                bug: &serialized_bug,
+                snapshot: snapshot_validation,
+                admitted_report: None,
+                target_failed: false,
+                diagnostic: diagnostic.clone(),
+            },
         ) {
             Ok(verdict) => verdict,
             Err(error) => {
@@ -2509,14 +2522,18 @@ fn cmd_reproduce(
     let exit_status = if target_failed { 0 } else { 1 };
     if let Some(path) = verdict_output.as_ref() {
         let verdict = match chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
-            command_context,
-            exit_status,
-            bug_path.clone(),
-            &serialized_bug,
-            snapshot_validation,
-            Some(&report),
-            target_failed,
-            diagnostic,
+            chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
+                run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
+                command: command_context,
+                exit_status,
+                bug_path: bug_path.clone(),
+                bug_artifact_hash,
+                bug: &serialized_bug,
+                snapshot: snapshot_validation,
+                admitted_report: Some(&report),
+                target_failed,
+                diagnostic,
+            },
         ) {
             Ok(verdict) => verdict,
             Err(error) => {

@@ -13,8 +13,12 @@ use crate::explorer::{
 use crate::report::format_campaign_report;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
+
+const BYTES_PER_MIB: usize = 1024 * 1024;
+const MIB_PER_GIB: f64 = 1024.0;
+pub const MAX_CAMPAIGN_SEEDS: usize = 1024;
 
 /// Configuration for a multi-seed campaign.
 #[derive(Clone)]
@@ -279,6 +283,26 @@ enum SeedResult {
     },
 }
 
+fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
+    let mut seen = BTreeSet::new();
+    for seed in seeds {
+        if !seen.insert(*seed) {
+            return Err("campaign seeds must be unique");
+        }
+    }
+    Ok(())
+}
+
+fn checked_campaign_memory_mb(
+    num_seeds: usize,
+    num_vms: usize,
+    vm_memory_mb: usize,
+) -> Option<usize> {
+    num_seeds
+        .checked_mul(num_vms)
+        .and_then(|value| value.checked_mul(vm_memory_mb))
+}
+
 impl CampaignRunner {
     pub fn new(config: CampaignConfig) -> Self {
         Self { config }
@@ -286,18 +310,24 @@ impl CampaignRunner {
 
     /// Run all seeds in parallel, return the aggregated report.
     pub fn run(&self) -> Result<CampaignReport, crate::explorer::ExploreError> {
+        validate_unique_seeds(&self.config.seeds).map_err(|message| {
+            crate::explorer::ExploreError::Config {
+                message: message.to_string(),
+            }
+        })?;
         let num_seeds = self.config.seeds.len();
         let num_vms = self.config.base_explorer_config.num_vms;
-        let vm_memory_mb = self.config.base_explorer_config.vm_config.memory_size / (1024 * 1024);
-
-        // Log memory estimate.
-        let estimated_mb = num_seeds * num_vms * vm_memory_mb;
+        let vm_memory_mb = self.config.base_explorer_config.vm_config.memory_size / BYTES_PER_MIB;
+        let estimated_mb = checked_campaign_memory_mb(num_seeds, num_vms, vm_memory_mb)
+            .ok_or_else(|| crate::explorer::ExploreError::Config {
+                message: "campaign memory estimate overflow".to_string(),
+            })?;
         info!(
             "Campaign: {} seeds × {} VMs × {} MB = ~{:.1} GB estimated memory",
             num_seeds,
             num_vms,
             vm_memory_mb,
-            estimated_mb as f64 / 1024.0,
+            estimated_mb as f64 / MIB_PER_GIB,
         );
         info!(
             "Launching {} seed{} in parallel...",
@@ -307,8 +337,12 @@ impl CampaignRunner {
 
         let campaign_start = Instant::now();
 
-        // Create output directories.
-        std::fs::create_dir_all(&self.config.output_dir).ok();
+        // Reserve the output path before any seed can mutate a guest.
+        std::fs::create_dir_all(&self.config.output_dir).map_err(|error| {
+            crate::explorer::ExploreError::Config {
+                message: format!("cannot create campaign output directory: {error}"),
+            }
+        })?;
 
         // Run seeds in parallel via scoped threads.
         // Each thread catches panics so one bad seed doesn't kill the campaign.
@@ -474,13 +508,30 @@ impl CampaignRunner {
     }
 }
 
-/// Generate seed list: explicit seeds if provided, else base_seed..base_seed+n.
-pub fn generate_seeds(base_seed: u64, count: usize, explicit: Option<&[u64]>) -> Vec<u64> {
-    if let Some(seeds) = explicit {
+/// Generate a bounded unique seed list.
+pub fn generate_seeds(
+    base_seed: u64,
+    count: usize,
+    explicit: Option<&[u64]>,
+) -> Result<Vec<u64>, &'static str> {
+    let requested_count = explicit.map_or(count, <[u64]>::len);
+    if requested_count == 0 || requested_count > MAX_CAMPAIGN_SEEDS {
+        return Err("campaign seed count is outside the supported range");
+    }
+    let seeds = if let Some(seeds) = explicit {
         seeds.to_vec()
     } else {
-        (0..count as u64).map(|i| base_seed + i).collect()
-    }
+        let count = u64::try_from(count).map_err(|_| "campaign seed count does not fit u64")?;
+        (0..count)
+            .map(|offset| {
+                base_seed
+                    .checked_add(offset)
+                    .ok_or("campaign seed sequence overflow")
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    validate_unique_seeds(&seeds)?;
+    Ok(seeds)
 }
 
 /// Merge per-seed `ExplorationReport`s into a `CampaignReport`.
@@ -752,15 +803,20 @@ fn verdict_rank(verdict: &str) -> u8 {
 }
 
 /// Format the memory estimate string.
-pub fn format_memory_estimate(num_seeds: usize, num_vms: usize, vm_memory_mb: usize) -> String {
-    let total_mb = num_seeds * num_vms * vm_memory_mb;
-    format!(
+pub fn format_memory_estimate(
+    num_seeds: usize,
+    num_vms: usize,
+    vm_memory_mb: usize,
+) -> Result<String, &'static str> {
+    let total_mb = checked_campaign_memory_mb(num_seeds, num_vms, vm_memory_mb)
+        .ok_or("campaign memory estimate overflow")?;
+    Ok(format!(
         "Estimated memory: {:.1} GB ({} seeds × {} VMs × {} MB)",
-        total_mb as f64 / 1024.0,
+        total_mb as f64 / MIB_PER_GIB,
         num_seeds,
         num_vms,
         vm_memory_mb,
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -786,21 +842,23 @@ mod tests {
 
     #[test]
     fn seed_generation_default_sequence() {
-        let seeds = generate_seeds(42, 5, None);
+        let seeds = generate_seeds(42, 5, None).expect("seed sequence");
         assert_eq!(seeds, vec![42, 43, 44, 45, 46]);
     }
 
     #[test]
     fn seed_generation_explicit_list() {
         let explicit = vec![10, 99, 200];
-        let seeds = generate_seeds(42, 5, Some(&explicit));
+        let seeds = generate_seeds(42, 5, Some(&explicit)).expect("explicit seeds");
         assert_eq!(seeds, vec![10, 99, 200]);
     }
 
     #[test]
     fn seed_generation_single() {
-        let seeds = generate_seeds(0, 1, None);
+        let seeds = generate_seeds(0, 1, None).expect("single seed");
         assert_eq!(seeds, vec![0]);
+        assert!(generate_seeds(0, 1, Some(&[1, 1])).is_err());
+        assert!(generate_seeds(u64::MAX, MAX_CAMPAIGN_SEEDS, None).is_err());
     }
 
     // ── 6.2: bug dedup across seeds ─────────────────────────────────
@@ -1383,7 +1441,7 @@ mod tests {
 
     #[test]
     fn memory_estimate_format() {
-        let s = format_memory_estimate(5, 3, 256);
+        let s = format_memory_estimate(5, 3, 256).expect("memory estimate");
         assert!(s.contains("3.8 GB"));
         assert!(s.contains("5 seeds"));
         assert!(s.contains("3 VMs"));
@@ -1392,9 +1450,10 @@ mod tests {
 
     #[test]
     fn memory_estimate_small() {
-        let s = format_memory_estimate(1, 1, 256);
+        let s = format_memory_estimate(1, 1, 256).expect("memory estimate");
         assert!(s.contains("0.3 GB") || s.contains("0.2 GB"));
         assert!(s.contains("1 seeds"));
+        assert!(format_memory_estimate(usize::MAX, usize::MAX, 1).is_err());
     }
 
     // ── report persistence ──────────────────────────────────────────

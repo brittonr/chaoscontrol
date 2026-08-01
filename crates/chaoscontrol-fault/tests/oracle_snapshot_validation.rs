@@ -5,7 +5,10 @@ use chaoscontrol_fault::oracle::PropertyOracle;
 use chaoscontrol_fault::oracle_validation::{
     validate_oracle_snapshot, validate_strict_oracle_report, OracleValidationError,
 };
-use chaoscontrol_protocol::admission::CatalogConflict;
+use chaoscontrol_fault::resolve_snapshot_assertion_evidence;
+use chaoscontrol_protocol::admission::{
+    token_for_descriptors, AssertionEvidenceIdentity, CatalogBuilder, CatalogConflict,
+};
 use chaoscontrol_protocol::identity::ASSERTION_FINGERPRINT_BYTES;
 use oracle_snapshot_common::{descriptor, first_map_value_mut, forged_snapshot, strict_oracle};
 use oracle_snapshot_validation_support::{legacy_catalog, FUTURE_RUN_ID};
@@ -127,4 +130,42 @@ fn rejects_spoofed_record_metadata_and_event_run() {
         validate_oracle_snapshot(&event),
         Err(OracleValidationError::Event)
     );
+}
+
+fn snapshot_identity() -> AssertionEvidenceIdentity {
+    let descriptor = descriptor();
+    let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("catalog token");
+    let mut builder = CatalogBuilder::begin(1).expect("catalog begins");
+    builder.insert(descriptor).expect("descriptor inserts");
+    let catalog = builder.complete(token).expect("catalog completes");
+    let admitted = catalog
+        .assertions
+        .values()
+        .next()
+        .expect("admitted assertion");
+    AssertionEvidenceIdentity::from_admitted(admitted, token).expect("snapshot identity")
+}
+
+#[test]
+fn exact_snapshot_identity_resolves_the_structured_record() {
+    let snapshot = strict_oracle().snapshot();
+    let identity = snapshot_identity();
+
+    let record = resolve_snapshot_assertion_evidence(&snapshot, &identity)
+        .expect("exact admitted identity resolves");
+    assert_eq!(record.message, identity.descriptor.message);
+}
+
+#[test]
+fn exact_snapshot_resolution_rejects_token_substitution_and_missing_record() {
+    let snapshot = strict_oracle().snapshot();
+    let mut substituted = snapshot_identity();
+    substituted.catalog_token = chaoscontrol_protocol::identity::AssertionFingerprint::ZERO;
+    assert!(resolve_snapshot_assertion_evidence(&snapshot, &substituted).is_err());
+
+    let missing_record = forged_snapshot(|value| {
+        value["structured_assertions"] = json!({});
+    });
+    let identity = snapshot_identity();
+    assert!(resolve_snapshot_assertion_evidence(&missing_record, &identity).is_err());
 }

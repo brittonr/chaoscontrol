@@ -213,6 +213,12 @@ fn active_run_report_is_explicitly_non_promoting() {
     assert!(!active.collision_safe_evidence);
     assert!(crate::oracle_validation::validate_strict_oracle_report(&active).is_err());
 
+    let projected = oracle.finalized_report_projection();
+    assert!(projected.collision_safe_evidence);
+    assert_eq!(projected.total_runs, 1);
+    assert_eq!(oracle.total_runs(), 0);
+    assert!(!oracle.report().collision_safe_evidence);
+
     oracle.end_run();
     assert!(oracle.report().collision_safe_evidence);
 }

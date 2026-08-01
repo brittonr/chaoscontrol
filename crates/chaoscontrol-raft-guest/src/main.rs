@@ -923,7 +923,9 @@ fn main() {
         );
 
         if bug == BugMode::SnapshotReplayProbe {
-            cc_assert_always_category!(
+            cc_assert_always_stable!(
+                "org.onixresearch.chaoscontrol.raft",
+                "snapshot-replay-probe.v1",
                 "raft",
                 "invariant",
                 tick < snapshot_probe_fail_after,

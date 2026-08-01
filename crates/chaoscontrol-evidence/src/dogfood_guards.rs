@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::{ensure, AcceptedWorkloadProofs, EvidenceError, EvidenceResult, REQUIRED_REPLAY_CLASS};
 
 pub const DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES: u64 = 50 * 1024 * 1024;
+const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
 
 pub fn check_dogfood_artifact_sizes(
     root: impl AsRef<Path>,
@@ -231,22 +232,6 @@ pub fn validate_accepted_dogfood_config(
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        if cfg.get("assertion_id") != Some(&Value::from(proof.assertion_id)) {
-            errors.push(format!(
-                "{}: wrapper assertion_id {} != manifest {}",
-                proof.workload,
-                display_value(cfg.get("assertion_id")),
-                proof.assertion_id
-            ));
-        }
-        if !exp.is_empty() && exp.get("assertion_id") != Some(&Value::from(proof.assertion_id)) {
-            errors.push(format!(
-                "{}: expectation assertion_id {} != manifest {}",
-                proof.workload,
-                display_value(exp.get("assertion_id")),
-                proof.assertion_id
-            ));
-        }
         let admission = match crate::load_assertion_admission(repo_root, proof) {
             Ok(admission) => admission,
             Err(error) => {
@@ -255,8 +240,35 @@ pub fn validate_accepted_dogfood_config(
             }
         };
         if admission.status == crate::assertion::readiness::IdentityStatus::DiagnosticOnly {
+            let promotion_status = exp
+                .get("historical_evidence")
+                .and_then(Value::as_object)
+                .and_then(|historical| historical.get("promotion_status"))
+                .and_then(Value::as_str);
+            if promotion_status != Some(BLOCKED_ASSERTION_IDENTITY_STATUS) {
+                errors.push(format!(
+                    "{}: diagnostic historical evidence must declare promotion_status={BLOCKED_ASSERTION_IDENTITY_STATUS}",
+                    proof.workload
+                ));
+            }
             diagnostic_only_workloads += 1;
             continue;
+        }
+        if cfg.get("assertion_id") != Some(&Value::from(proof.assertion_id)) {
+            errors.push(format!(
+                "{}: wrapper assertion_id {} != admitted manifest {}",
+                proof.workload,
+                display_value(cfg.get("assertion_id")),
+                proof.assertion_id
+            ));
+        }
+        if !exp.is_empty() && exp.get("assertion_id") != Some(&Value::from(proof.assertion_id)) {
+            errors.push(format!(
+                "{}: expectation assertion_id {} != admitted manifest {}",
+                proof.workload,
+                display_value(exp.get("assertion_id")),
+                proof.assertion_id
+            ));
         }
         let summary_path = repo_root.join(&proof.evidence_dir).join(&proof.summary);
         if !summary_path.is_file() {
@@ -369,9 +381,10 @@ fn scan_files(
 }
 
 fn load_json(path: &Path) -> EvidenceResult<Value> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
-    serde_json::from_str(&text).map_err(Into::into)
+    let input =
+        crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
+    crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
+    serde_json::from_str(&input).map_err(Into::into)
 }
 
 fn summary_fail_after(summary: &Value, workload: &str) -> Option<i64> {

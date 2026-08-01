@@ -377,7 +377,7 @@
               workload = "raft";
               kernel = mkChaosKernel { virtioNet = true; };
               initrd = initrd-raft;
-              assertionId = 1806003755;
+              assertionId = 3463273124;
               cmdlineTemplate = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}";
               vms = 3;
               rounds = 3;
@@ -1680,8 +1680,6 @@
                   nativeBuildInputs = [
                     chaoscontrol
                     pkgs.coreutils
-                    pkgs.gnugrep
-                    pkgs.python3
                   ];
                   requiredSystemFeatures = [ "kvm" ];
                 }

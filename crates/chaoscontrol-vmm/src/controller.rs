@@ -19,6 +19,17 @@ use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
+fn all_setup_complete(statuses: impl Iterator<Item = bool>) -> bool {
+    let mut saw_vm = false;
+    for status in statuses {
+        saw_vm = true;
+        if !status {
+            return false;
+        }
+    }
+    saw_vm
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Configuration
 // ═══════════════════════════════════════════════════════════════════════
@@ -906,7 +917,7 @@ impl SimulationController {
         })
     }
 
-    /// Run the simulation until any VM signals `setup_complete`, or until
+    /// Run the simulation until all VMs signal `setup_complete`, or until
     /// `max_ticks` is reached (whichever comes first).
     ///
     /// Used for bootstrap: boot kernel + guest initialisation is variable-length,
@@ -925,17 +936,18 @@ impl SimulationController {
         while self.tick < stop_at {
             let result = self.step_round()?;
 
-            // Check ANY VM's fault engine for setup_complete.
-            // The SDK hypercall goes to the per-VM engine, not the
-            // controller's engine, so we check VMs directly.
-            let any_setup_complete = self
-                .vms
-                .iter()
-                .any(|slot| slot.vm.fault_engine().is_setup_complete());
+            // The SDK hypercall goes to each per-VM engine, not the
+            // controller's engine. Every VM must complete setup before the
+            // controller can create an exploration snapshot.
+            let all_setup_complete = all_setup_complete(
+                self.vms
+                    .iter()
+                    .map(|slot| slot.vm.fault_engine().is_setup_complete()),
+            );
 
-            if any_setup_complete {
+            if all_setup_complete {
                 info!(
-                    "Bootstrap complete: setup_complete received at tick {}",
+                    "Bootstrap complete: all VMs reached setup_complete at tick {}",
                     self.tick
                 );
                 // Propagate to controller's engine so idle detection
@@ -950,13 +962,14 @@ impl SimulationController {
             }
         }
 
-        let any_setup = self
-            .vms
-            .iter()
-            .any(|slot| slot.vm.fault_engine().is_setup_complete());
-        if !any_setup {
+        let all_setup = all_setup_complete(
+            self.vms
+                .iter()
+                .map(|slot| slot.vm.fault_engine().is_setup_complete()),
+        );
+        if !all_setup {
             warn!(
-                "Bootstrap reached max_ticks ({}) without setup_complete",
+                "Bootstrap reached max_ticks ({}) before all VMs completed setup",
                 max_ticks
             );
         }
@@ -1621,7 +1634,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
-            .restore(&snapshot.fault_engine_snapshot)
+            .restore_orchestration(&snapshot.fault_engine_snapshot)
             .map_err(|error| {
                 SnapshotSnafu {
                     message: format!("invalid assertion snapshot: {error:?}"),
@@ -1666,7 +1679,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
-            .restore(&snapshot.fault_engine_snapshot)
+            .restore_orchestration(&snapshot.fault_engine_snapshot)
             .map_err(|error| {
                 SnapshotSnafu {
                     message: format!("invalid assertion snapshot: {error:?}"),
@@ -1716,7 +1729,13 @@ impl SimulationController {
                         chaoscontrol_fault::report_merge::ReportMergeConflict::CardinalityOverflow,
                     );
                 };
-                reports.push((vm_instance, slot.vm.fault_engine().oracle().report()));
+                reports.push((
+                    vm_instance,
+                    slot.vm
+                        .fault_engine()
+                        .oracle()
+                        .finalized_report_projection(),
+                ));
             }
         }
         match merge_oracle_reports(&reports) {
@@ -1935,12 +1954,17 @@ impl SimulationSnapshot {
         if self.vm_snapshots.len() != expected_vms {
             return Err("Snapshot VM count mismatch".to_string());
         }
-        chaoscontrol_fault::engine::validate_engine_snapshot(&self.fault_engine_snapshot)
-            .map_err(|error| format!("invalid controller assertion snapshot: {error:?}"))?;
+        chaoscontrol_fault::engine::validate_orchestration_engine_snapshot(
+            &self.fault_engine_snapshot,
+        )
+        .map_err(|error| format!("invalid controller orchestration snapshot: {error:?}"))?;
         for (index, (snapshot, _)) in self.vm_snapshots.iter().enumerate() {
-            snapshot
-                .validate_assertion_identity()
-                .map_err(|error| format!("invalid VM {index} assertion snapshot: {error:?}"))?;
+            snapshot.validate_assertion_identity().map_err(|error| {
+                format!(
+                    "invalid VM {index} assertion snapshot: {error:?}; {}",
+                    snapshot.assertion_validation_diagnostic()
+                )
+            })?;
         }
         Ok(())
     }
@@ -1951,11 +1975,15 @@ impl SimulationSnapshot {
         identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
     ) -> Result<(), String> {
         self.validate_assertion_identity(expected_vms)?;
-        chaoscontrol_fault::engine::validate_engine_snapshot_assertion_evidence(
-            &self.fault_engine_snapshot,
-            identity,
-        )
-        .map_err(|error| format!("snapshot assertion evidence mismatch: {error:?}"))
+        let admitted = self
+            .vm_snapshots
+            .iter()
+            .filter(|(snapshot, _)| snapshot.validate_assertion_evidence(identity).is_ok())
+            .count();
+        if admitted == 0 {
+            return Err("snapshot assertion evidence is absent from every VM".to_string());
+        }
+        Ok(())
     }
 }
 
@@ -1968,6 +1996,13 @@ mod tests {
     use super::*;
     use chaoscontrol_fault::faults::FaultCategory;
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
+
+    #[test]
+    fn setup_completion_requires_every_vm() {
+        assert!(all_setup_complete([true, true, true].into_iter()));
+        assert!(!all_setup_complete([true, false, true].into_iter()));
+        assert!(!all_setup_complete([].into_iter()));
+    }
 
     fn dummy_kernel_path() -> String {
         // Return a plausible path; tests that actually run VMs will need a real kernel

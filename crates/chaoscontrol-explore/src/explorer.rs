@@ -715,7 +715,7 @@ impl Explorer {
                     );
                 }
             } else {
-                self.standalone_bugs.extend(branch_bugs);
+                self.retain_standalone_bugs(branch_bugs)?;
             }
 
             self.coverage.update_global(&enriched);
@@ -829,7 +829,7 @@ impl Explorer {
                 );
             }
         } else {
-            self.standalone_bugs.extend(probe_bugs);
+            self.retain_standalone_bugs(probe_bugs)?;
         }
         self.coverage.update_global(&probe_enriched);
 
@@ -947,7 +947,7 @@ impl Explorer {
                     );
                 }
             } else {
-                self.standalone_bugs.extend(branch_bugs);
+                self.retain_standalone_bugs(branch_bugs)?;
             }
 
             self.coverage.update_global(&enriched);
@@ -1572,6 +1572,16 @@ impl Explorer {
         };
 
         self.corpus.add(entry);
+    }
+
+    fn retain_standalone_bugs(&mut self, mut bugs: Vec<BugReport>) -> Result<(), ExploreError> {
+        self.corpus
+            .assign_bug_ids(&mut bugs)
+            .map_err(|message| ExploreError::Config {
+                message: message.to_string(),
+            })?;
+        self.standalone_bugs.extend(bugs);
+        Ok(())
     }
 
     /// Generate pseudo-coverage from assertion variety (blind mode).

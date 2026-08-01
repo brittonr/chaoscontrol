@@ -4032,7 +4032,7 @@ pub fn update_readme_status_path(
 }
 
 pub fn render_readme_status_block(summary_line: &str) -> String {
-    format!("{README_START_MARKER}\n> **Replay readiness:** `{summary_line}`\n>\n> This is a bounded committed-evidence signal for ChaosControl's Antithesis-alternative rail: static contracts, accepted proof manifests, and optional selected dogfood evidence. It is not a claim of universal determinism or hosted-product parity.\n{README_END_MARKER}")
+    format!("{README_START_MARKER}\n> **Replay readiness checks:** `{summary_line}`\n>\n> This status reports bounded static gate execution. Historical workload rows remain blocked until fresh admitted v2 KVM evidence exists. A passed status does not promote a workload. It is not a claim of universal determinism.\n{README_END_MARKER}")
 }
 
 pub fn replace_readme_marker_block(readme_text: &str, replacement: &str) -> EvidenceResult<String> {

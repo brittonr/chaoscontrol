@@ -9,18 +9,22 @@ const MAX_JSON_STRUCTURAL_TOKENS: usize = 500_000;
 const MAX_JSON_STRING_BYTES: usize = 8 * 1024 * 1024;
 
 pub(crate) fn read_checkpoint(path: &Path) -> io::Result<String> {
+    read_bounded_json(path, MAX_CHECKPOINT_BYTES)
+}
+
+pub(crate) fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> {
     let mut file = open_regular_file(path)?;
     let metadata = file.metadata()?;
-    if metadata.len() > MAX_CHECKPOINT_BYTES {
-        return Err(invalid_data("checkpoint exceeds the input byte limit"));
+    if metadata.len() > maximum_bytes {
+        return Err(invalid_data("JSON input exceeds the byte limit"));
     }
-    let read_limit = MAX_CHECKPOINT_BYTES
+    let read_limit = maximum_bytes
         .checked_add(1)
-        .ok_or_else(|| invalid_data("checkpoint read limit overflow"))?;
+        .ok_or_else(|| invalid_data("JSON input read limit overflow"))?;
     let mut input = String::new();
     file.by_ref().take(read_limit).read_to_string(&mut input)?;
-    if input.len() as u64 > MAX_CHECKPOINT_BYTES {
-        return Err(invalid_data("checkpoint exceeds the input byte limit"));
+    if input.len() as u64 > maximum_bytes {
+        return Err(invalid_data("JSON input exceeds the byte limit"));
     }
     preflight_json(&input)?;
     Ok(input)

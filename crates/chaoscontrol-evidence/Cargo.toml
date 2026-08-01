@@ -20,6 +20,10 @@ name = "check-evidence-contracts"
 path = "src/bin/check-evidence-contracts.rs"
 
 [[bin]]
+name = "check-profile-projections"
+path = "src/bin/check-profile-projections.rs"
+
+[[bin]]
 name = "check-replay-proof-coverage"
 path = "src/bin/check-replay-proof-coverage.rs"
 

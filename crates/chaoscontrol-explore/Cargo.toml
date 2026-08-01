@@ -9,6 +9,10 @@ license = "AGPL-3.0-or-later"
 name = "chaoscontrol-explore"
 path = "src/bin/chaoscontrol-explore.rs"
 
+[[bin]]
+name = "check-profile-admission"
+path = "src/bin/check-profile-admission.rs"
+
 [features]
 default = []
 dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep:futures-core"]
@@ -18,6 +22,7 @@ profiling = ["dep:tracing", "chaoscontrol-vmm/profiling"]
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
+chaoscontrol-evidence = { path = "../chaoscontrol-evidence" }
 blake3 = "1.8"
 log = "0.4"
 snafu = "0.8"
@@ -41,6 +46,3 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"]
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
-
-[dev-dependencies]
-chaoscontrol-evidence = { path = "../chaoscontrol-evidence" }

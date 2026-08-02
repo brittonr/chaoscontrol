@@ -23,5 +23,6 @@ dogfood-results/vm-determinism-drift-latest/dlogs/
 dogfood-results/local-multi-hypervisor-kvm-smoke-*/
 
 target/
+.pi/
 __pycache__/
 */__pycache__/

@@ -300,6 +300,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "chaoscontrol-protocol",
+ "chaoscontrol-replay-evidence-core",
  "chaoscontrol-vmm",
  "libc",
  "serde",
@@ -318,6 +319,7 @@ dependencies = [
  "chaoscontrol-evidence",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
+ "chaoscontrol-replay-evidence-core",
  "chaoscontrol-vmm",
  "ciborium",
  "clap",
@@ -428,6 +430,15 @@ dependencies = [
  "serde_json",
  "snafu",
  "tempfile",
+]
+
+[[package]]
+name = "chaoscontrol-replay-evidence-core"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-protocol",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

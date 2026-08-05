@@ -13,9 +13,12 @@ use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
-pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-pub const FILE_STORE_KIND: &str = "file-content-addressed";
+pub use chaoscontrol_replay_evidence_core::dto::ReplayParentSnapshotRef;
+use chaoscontrol_replay_evidence_core::validate as core_validate;
+
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION;
+pub const SNAPSHOT_CODEC: &str = core_validate::CURRENT_SNAPSHOT_CODEC;
+pub const FILE_STORE_KIND: &str = core_validate::FILE_STORE_KIND;
 pub const SNAPSHOT_DIR: &str = "snapshots";
 const BYTES_PER_KIB: u64 = 1024;
 const KIB_PER_MIB: u64 = 1024;
@@ -24,16 +27,6 @@ const MAX_COMPRESSED_SNAPSHOT_BYTES: u64 = 256 * BYTES_PER_MIB;
 const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
 const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
 const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReplayParentSnapshotRef {
-    pub store: String,
-    pub digest: String,
-    pub codec: String,
-    pub schema_version: u32,
-    pub path: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -347,17 +340,19 @@ impl SnapshotStore for FileSnapshotStore {
 }
 
 pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), SnapshotStoreError> {
-    if reference.store != FILE_STORE_KIND {
+    // Admissibility decisions live in the shared core; this shell maps them
+    // onto the store error variants for stable diagnostics.
+    if reference.store != core_validate::FILE_STORE_KIND {
         return Err(SnapshotStoreError::UnsupportedStore {
             store: reference.store.clone(),
         });
     }
-    if reference.codec != SNAPSHOT_CODEC {
+    if reference.codec != core_validate::CURRENT_SNAPSHOT_CODEC {
         return Err(SnapshotStoreError::UnsupportedCodec {
             codec: reference.codec.clone(),
         });
     }
-    if reference.schema_version != SNAPSHOT_SCHEMA_VERSION {
+    if reference.schema_version != core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION {
         return Err(SnapshotStoreError::UnsupportedSchema {
             version: reference.schema_version,
         });

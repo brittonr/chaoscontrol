@@ -1432,7 +1432,9 @@ fn rejects_malformed_snapshot_ref() {
         .snapshot
         .validate_shape()
         .expect_err("bad digest is rejected");
-    assert!(err.message().contains("snapshot digest is not sha256"));
+    assert!(err
+        .message()
+        .contains("snapshot-ref.digest: expected sha256:<64 hex>"));
 }
 
 #[test]

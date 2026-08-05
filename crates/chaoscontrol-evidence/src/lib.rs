@@ -58,6 +58,18 @@ pub use consistency_checker::{
     RegisterWorkloadHistoryAdapter, SingleRegisterChecker,
 };
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
+
+// Shared replay/evidence core: the single Rust-owned authority for replay
+// verdict DTOs, snapshot reference DTOs, replay classes, and validation
+// decisions. This crate keeps only stricter accepted-proof adapter views and
+// shell orchestration.
+pub use chaoscontrol_replay_evidence_core::claims::{
+    FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS, REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS,
+};
+pub use chaoscontrol_replay_evidence_core::dto::{ArtifactHash, ReplayParentSnapshotRef};
+pub use chaoscontrol_replay_evidence_core::validate::{
+    REQUIRED_REPLAY_CLASS, SUPPORTED_SNAPSHOT_CODECS,
+};
 pub use dogfood_guards::{
     check_dogfood_artifact_sizes, run_dogfood_guards_selftest, validate_accepted_dogfood_config,
     DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES,
@@ -184,17 +196,14 @@ const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
 pub const REPLAY_PROOF_COVERAGE_DOC: &str = "docs/replay-proof-coverage.md";
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 2;
+pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::REPLAY_VERDICT_SCHEMA_VERSION as u64;
 pub const SNAPSHOT_COPY_BUFFER_BYTES: usize = 1024 * 1024;
-pub const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 pub const REQUIRED_WORKLOADS: [&str; 2] = ["raft", "redb"];
-pub const SUPPORTED_SNAPSHOT_CODECS: [&str; 2] = [
-    "simulation-snapshot-cbor-zstd-v2",
-    "simulation-snapshot-bincode-zstd-v1",
+pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [
+    chaoscontrol_replay_evidence_core::SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS[0] as u64,
+    chaoscontrol_replay_evidence_core::SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS[1] as u64,
 ];
-pub const SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: [u64; 2] = [1, 2];
-const CURRENT_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-const CURRENT_SNAPSHOT_SCHEMA_VERSION: u64 = 2;
 
 pub const REPLAY_READINESS_STATUS_DOC: &str = "docs/replay-readiness-status.md";
 pub const ASSERTION_READINESS_STATUS_DOC: &str = "docs/assertion-readiness-status.md";
@@ -202,20 +211,6 @@ pub const LOCAL_ASSERTION_HARNESSES_PATH: &str = "dogfood-results/local-assertio
 pub const REQUIRED_ASSERTION_SUMMARY_FRAGMENTS: [&str; 2] = [
     "assertion-density and uncovered-catalog view over historical replay evidence",
     "not replay proof by itself",
-];
-pub const REQUIRED_ASSERTION_ANTI_CLAIM_FRAGMENTS: [&str; 5] = [
-    "A high exercised count only says the committed run observed cataloged SDK assertions",
-    "Local harness coverage is not snapshot replay evidence",
-    "Zero ordinary assertion blockers applies only to accepted v2 assertion evidence",
-    "Legacy bare-array assertion artifacts are diagnostic-only",
-    "Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence",
-];
-pub const FORBIDDEN_ASSERTION_OVERCLAIM_FRAGMENTS: [&str; 5] = [
-    "product parity is established",
-    "full antithesis-style product replacement",
-    "assertion density proves replay",
-    "assertion coverage proves replay",
-    "zero assertion blockers proves product parity",
 ];
 pub const SUPPORTED_REPLAY_STATUS: &str = "supported-bounded";
 pub const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
@@ -2424,52 +2419,13 @@ impl SnapshotVerdict {
         ensure(self.status == "valid", "snapshot status is not valid")?;
         ensure(self.present, "snapshot not present")?;
         ensure(self.digest_verified, "snapshot digest not verified")?;
-        self.reference.validate_current_shape()
+        chaoscontrol_replay_evidence_core::validate::validate_snapshot_ref_current(&self.reference)
+            .map_err(|error| EvidenceError::new(error.message()))
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct SnapshotRef {
-    pub store: String,
-    pub digest: String,
-    pub codec: String,
-    pub schema_version: u64,
-    pub path: String,
-}
-
-impl SnapshotRef {
-    pub fn validate_shape(&self) -> EvidenceResult<()> {
-        ensure(
-            self.digest.starts_with("sha256:") && self.digest.len() == "sha256:".len() + 64,
-            "snapshot digest is not sha256",
-        )?;
-        ensure(
-            SUPPORTED_SNAPSHOT_CODECS.contains(&self.codec.as_str()),
-            "unexpected snapshot codec",
-        )?;
-        ensure(
-            SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.contains(&self.schema_version),
-            "unexpected snapshot schema_version",
-        )?;
-        ensure(!self.path.is_empty(), "snapshot path must be non-empty")?;
-        Ok(())
-    }
-
-    fn validate_current_shape(&self) -> EvidenceResult<()> {
-        self.validate_shape()?;
-        ensure(
-            self.codec == CURRENT_SNAPSHOT_CODEC
-                && self.schema_version == CURRENT_SNAPSHOT_SCHEMA_VERSION,
-            "accepted snapshot evidence requires the current CBOR v2 codec",
-        )
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ArtifactHash {
-    pub path: String,
-    pub sha256: String,
-}
+/// Compatibility alias: the shared core owns the snapshot reference DTO.
+pub type SnapshotRef = ReplayParentSnapshotRef;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct AssertionSummaryEntry {

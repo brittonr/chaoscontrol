@@ -2036,7 +2036,9 @@ fn load_replay_parent_snapshot_for_verdict(
     Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
     chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation,
 ) {
-    use chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation;
+    use chaoscontrol_explore::replay_verdict::{
+        snapshot_validation_from_error, ReplaySnapshotValidation,
+    };
     use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
 
     match serialized_bug.replay_parent_snapshot_ref.as_ref() {
@@ -2064,12 +2066,12 @@ fn load_replay_parent_snapshot_for_verdict(
                     };
                     (
                         None,
-                        ReplaySnapshotValidation::from_error(reference.clone(), &error),
+                        snapshot_validation_from_error(reference.clone(), &error),
                     )
                 }
                 Err(error) => (
                     None,
-                    ReplaySnapshotValidation::from_error(reference.clone(), &error),
+                    snapshot_validation_from_error(reference.clone(), &error),
                 ),
             }
         }
@@ -2317,7 +2319,7 @@ fn cmd_reproduce(
             .diagnostic
             .clone()
             .unwrap_or_else(|| "invalid replay parent snapshot evidence".to_string());
-        let verdict = match chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
+        let verdict = match chaoscontrol_explore::replay_verdict::verdict_from_reproduce(
             chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
                 run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
                 command: command_context,
@@ -2567,7 +2569,7 @@ fn cmd_reproduce(
     // Exit code: 0 if bug reproduced, 1 if not
     let exit_status = if target_failed { 0 } else { 1 };
     if let Some(path) = verdict_output.as_ref() {
-        let verdict = match chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
+        let verdict = match chaoscontrol_explore::replay_verdict::verdict_from_reproduce(
             chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
                 run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
                 command: command_context,

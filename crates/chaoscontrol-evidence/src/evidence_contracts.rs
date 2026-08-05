@@ -19,34 +19,20 @@ const STATUSES: [&str; 5] = [
     "invalid",
     "raw-log-only",
 ];
-const REPLAY_CLASSES: [&str; 8] = [
-    "snapshot_backed_reproduced",
-    "snapshot_backed_not_reproduced",
-    "schedule_only_replay_gap",
-    "missing_snapshot_ref",
-    "missing_snapshot_artifact",
-    "invalid_snapshot_digest",
-    "no_bug_found",
-    "replay_error",
-];
+// Replay classes and snapshot statuses are owned by the shared core.
+use chaoscontrol_replay_evidence_core::validate::{REPLAY_CLASSES, SNAPSHOT_STATUSES};
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
-const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 = 1;
+const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::LEGACY_REPLAY_VERDICT_SCHEMA_VERSION as u64;
 const SUBSTITUTED_ASSERTION_ALIAS: u64 = 8;
 const ACCEPTED_REPLAY_ARTIFACT_COUNT: usize = 2;
 const REPLAY_BUG_CORE_FIELD_COUNT: usize = 4;
-const ACCEPTED_SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 = 2;
+const ACCEPTED_SNAPSHOT_CODEC: &str =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC;
+const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 =
+    chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION as u64;
 const BYTES_PER_MIB: u64 = 1024 * 1024;
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
-
-const SNAPSHOT_STATUSES: [&str; 6] = [
-    "not_required",
-    "missing_ref",
-    "valid",
-    "missing_artifact",
-    "invalid_digest",
-    "invalid_ref",
-];
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
@@ -576,7 +562,21 @@ pub fn validate_checkpoint_reference(value: Option<&Value>) -> EvidenceResult<()
 }
 
 pub fn validate_replay_verdict(value: &Value) -> EvidenceResult<()> {
-    validate_replay_verdict_with_options(value, false, false, Path::new("."))
+    validate_replay_verdict_with_options(value, false, false, Path::new("."))?;
+    // Public evidence boundary: committed verdicts must publish confined
+    // relative paths. Local replay tooling (absolute paths) uses
+    // validate_replay_verdict_with_options directly.
+    if value.get("schema_version").and_then(Value::as_u64)
+        == Some(crate::REPLAY_VERDICT_SCHEMA_VERSION)
+    {
+        let core_verdict: chaoscontrol_replay_evidence_core::dto::ReplayVerdict =
+            serde_json::from_value(value.clone()).map_err(|error| {
+                EvidenceError::new(format!("replay-verdict: shared core DTO mismatch: {error}"))
+            })?;
+        chaoscontrol_replay_evidence_core::validate::validate_public_verdict_paths(&core_verdict)
+            .map_err(|error| EvidenceError::new(format!("replay-verdict: {}", error.message())))?;
+    }
+    Ok(())
 }
 
 pub fn validate_replay_verdict_with_options(
@@ -866,6 +866,22 @@ pub fn validate_replay_verdict_with_options(
             snapshot_hash == reference_digest,
             "accepted replay proof snapshot hash differs from its reference",
         )?;
+    }
+    // Shared-core delegation: current-schema verdicts must also satisfy the
+    // typed DTO consistency rules owned by chaoscontrol-replay-evidence-core.
+    if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
+        let core_verdict: chaoscontrol_replay_evidence_core::dto::ReplayVerdict =
+            serde_json::from_value(value.clone()).map_err(|error| {
+                EvidenceError::new(format!("replay-verdict: shared core DTO mismatch: {error}"))
+            })?;
+        chaoscontrol_replay_evidence_core::validate::validate_verdict_consistency(&core_verdict)
+            .map_err(|error| EvidenceError::new(format!("replay-verdict: {}", error.message())))?;
+        if accepted_snapshot_proof {
+            chaoscontrol_replay_evidence_core::validate::validate_accepted_proof(&core_verdict)
+                .map_err(|error| {
+                    EvidenceError::new(format!("replay-verdict: {}", error.message()))
+                })?;
+        }
     }
     Ok(())
 }
@@ -1242,9 +1258,7 @@ fn ensure(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
 }
 
 fn is_prefixed_sha256(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    chaoscontrol_replay_evidence_core::validate::is_prefixed_sha256(value)
 }
 
 fn is_safe_snapshot_path(path: &Path) -> bool {

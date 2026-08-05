@@ -14,6 +14,7 @@ blake3 = "1.8"
 libc = "0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
+chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
 
 [[bin]]
 name = "check-evidence-contracts"

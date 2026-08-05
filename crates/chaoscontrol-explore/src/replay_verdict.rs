@@ -3,101 +3,27 @@
 //! These records are Rust-owned runtime evidence. Nickel/contracts validate the
 //! public JSON shape, but replay classification remains here with the executor
 //! that observed snapshot validation and assertion outcomes.
+//!
+//! The DTO definitions, replay classes, snapshot statuses, and validation
+//! decisions are owned by `chaoscontrol-replay-evidence-core` and re-exported
+//! here for compatibility. This module keeps only shell concerns: binding
+//! verdicts to observed bug/oracle state, hashing artifact bytes, generating
+//! run IDs from the clock, and writing verdict files.
 
 use crate::checkpoint::SerializableBug;
 use crate::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
-use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const REPLAY_VERDICT_SCHEMA_VERSION: u32 = 2;
-const REPRODUCED_EXIT_STATUS: i32 = 0;
-const NOT_REPRODUCED_EXIT_STATUS: i32 = 1;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReplayClass {
-    SnapshotBackedReproduced,
-    SnapshotBackedNotReproduced,
-    ScheduleOnlyReplayGap,
-    MissingSnapshotRef,
-    MissingSnapshotArtifact,
-    InvalidSnapshotDigest,
-    NoBugFound,
-    ReplayError,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SnapshotValidationStatus {
-    NotRequired,
-    MissingRef,
-    Valid,
-    MissingArtifact,
-    InvalidDigest,
-    InvalidRef,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactHash {
-    pub path: String,
-    pub sha256: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReplayCommandContext {
-    pub command: String,
-    pub exit_status: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReplaySnapshotValidation {
-    pub status: SnapshotValidationStatus,
-    pub present: bool,
-    pub digest_verified: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reference: Option<ReplayParentSnapshotRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub diagnostic: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReplayVerdict {
-    pub schema_version: u32,
-    pub run_id: String,
-    pub replay_class: ReplayClass,
-    pub reproduced: bool,
-    pub command: ReplayCommandContext,
-    pub diagnostic: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bug_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bug_id: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assertion_id: Option<u64>,
-    #[serde(
-        default = "no_assertion_identity",
-        deserialize_with = "crate::non_null_option::deserialize",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub assertion_identity: Option<AssertionEvidenceIdentity>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub replay_parent_depth: Option<u32>,
-    pub snapshot: ReplaySnapshotValidation,
-    pub artifact_hashes: Vec<ArtifactHash>,
-}
-
-fn no_assertion_identity() -> Option<AssertionEvidenceIdentity> {
-    None
-}
+use chaoscontrol_replay_evidence_core::classify::classify_replay;
+pub use chaoscontrol_replay_evidence_core::dto::{
+    ArtifactHash, ReplayClass, ReplayCommandContext, ReplaySnapshotValidation, ReplayVerdict,
+    SnapshotValidationStatus, NOT_REPRODUCED_EXIT_STATUS, REPLAY_VERDICT_SCHEMA_VERSION,
+    REPRODUCED_EXIT_STATUS,
+};
 
 pub struct ReproduceVerdictInput<'a> {
     pub run_id: String,
@@ -112,165 +38,117 @@ pub struct ReproduceVerdictInput<'a> {
     pub diagnostic: String,
 }
 
-impl ReplayVerdict {
-    pub fn from_reproduce(
-        input: ReproduceVerdictInput<'_>,
-    ) -> Result<Self, crate::bug::identity::BugIdentityError> {
-        let ReproduceVerdictInput {
-            run_id,
+/// Bind a replay verdict to the observed bug, oracle report, and command
+/// outcome. Fails closed when the claimed outcome conflicts with the admitted
+/// evidence carriers.
+pub fn verdict_from_reproduce(
+    input: ReproduceVerdictInput<'_>,
+) -> Result<ReplayVerdict, crate::bug::identity::BugIdentityError> {
+    let ReproduceVerdictInput {
+        run_id,
+        command,
+        exit_status,
+        bug_path,
+        bug_artifact_hash,
+        bug,
+        snapshot,
+        admitted_report,
+        target_failed,
+        diagnostic,
+    } = input;
+    let assertion_identity = bug.require_replay_identity()?.clone();
+    let replay_class = classify_reproduce(bug, &snapshot, target_failed);
+    let reproduced = replay_class == ReplayClass::SnapshotBackedReproduced;
+    let expected_exit_status = if reproduced {
+        REPRODUCED_EXIT_STATUS
+    } else {
+        NOT_REPRODUCED_EXIT_STATUS
+    };
+    if exit_status != expected_exit_status {
+        return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
+    }
+    if matches!(
+        replay_class,
+        ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced
+    ) {
+        let report =
+            admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
+        let record = crate::bug::identity::resolve_restored_report(
+            bug.assertion_id,
+            Some(&assertion_identity),
+            report,
+        )?;
+        let report_failed = record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
+        if report_failed != target_failed {
+            return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
+        }
+    }
+    if bug_artifact_hash.path != bug_path {
+        return Err(crate::bug::identity::BugIdentityError::ArtifactMismatch);
+    }
+    let mut artifact_hashes = vec![bug_artifact_hash];
+    if snapshot.digest_verified {
+        if let Some(reference) = snapshot.reference.as_ref() {
+            let bug_parent = Path::new(&bug_path)
+                .parent()
+                .unwrap_or_else(|| Path::new("."));
+            artifact_hashes.push(ArtifactHash {
+                path: bug_parent
+                    .join(&reference.path)
+                    .to_string_lossy()
+                    .into_owned(),
+                sha256: reference.digest.clone(),
+            });
+        }
+    }
+
+    Ok(ReplayVerdict {
+        schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
+        run_id,
+        replay_class,
+        reproduced,
+        command: ReplayCommandContext {
             command,
             exit_status,
-            bug_path,
-            bug_artifact_hash,
-            bug,
-            snapshot,
-            admitted_report,
-            target_failed,
-            diagnostic,
-        } = input;
-        let assertion_identity = bug.require_replay_identity()?.clone();
-        let replay_class = classify_reproduce(bug, &snapshot, target_failed);
-        let reproduced = replay_class == ReplayClass::SnapshotBackedReproduced;
-        let expected_exit_status = if reproduced {
-            REPRODUCED_EXIT_STATUS
-        } else {
-            NOT_REPRODUCED_EXIT_STATUS
-        };
-        if exit_status != expected_exit_status {
-            return Err(crate::bug::identity::BugIdentityError::MalformedCarrier);
-        }
-        if matches!(
-            replay_class,
-            ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced
-        ) {
-            let report =
-                admitted_report.ok_or(crate::bug::identity::BugIdentityError::ReportMismatch)?;
-            let record = crate::bug::identity::resolve_restored_report(
-                bug.assertion_id,
-                Some(&assertion_identity),
-                report,
-            )?;
-            let report_failed = record.verdict() == chaoscontrol_fault::oracle::Verdict::Failed;
-            if report_failed != target_failed {
-                return Err(crate::bug::identity::BugIdentityError::ReportMismatch);
-            }
-        }
-        if bug_artifact_hash.path != bug_path {
-            return Err(crate::bug::identity::BugIdentityError::ArtifactMismatch);
-        }
-        let mut artifact_hashes = vec![bug_artifact_hash];
-        if snapshot.digest_verified {
-            if let Some(reference) = snapshot.reference.as_ref() {
-                let bug_parent = Path::new(&bug_path)
-                    .parent()
-                    .unwrap_or_else(|| Path::new("."));
-                artifact_hashes.push(ArtifactHash {
-                    path: bug_parent
-                        .join(&reference.path)
-                        .to_string_lossy()
-                        .into_owned(),
-                    sha256: reference.digest.clone(),
-                });
-            }
-        }
-
-        Ok(Self {
-            schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
-            run_id,
-            replay_class,
-            reproduced,
-            command: ReplayCommandContext {
-                command,
-                exit_status,
-            },
-            diagnostic,
-            bug_path: Some(bug_path),
-            bug_id: Some(bug.bug_id),
-            assertion_id: Some(bug.assertion_id),
-            assertion_identity: Some(assertion_identity),
-            replay_parent_depth: Some(bug.replay_parent_depth),
-            snapshot,
-            artifact_hashes,
-        })
-    }
-
-    pub fn no_bug_found(run_id: String, command: String, diagnostic: impl Into<String>) -> Self {
-        Self {
-            schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
-            run_id,
-            replay_class: ReplayClass::NoBugFound,
-            reproduced: false,
-            command: ReplayCommandContext {
-                command,
-                exit_status: NOT_REPRODUCED_EXIT_STATUS,
-            },
-            diagnostic: diagnostic.into(),
-            bug_path: None,
-            bug_id: None,
-            assertion_id: None,
-            assertion_identity: None,
-            replay_parent_depth: None,
-            snapshot: ReplaySnapshotValidation::not_required(),
-            artifact_hashes: Vec::new(),
-        }
-    }
+        },
+        diagnostic,
+        bug_path: Some(bug_path),
+        bug_id: Some(bug.bug_id),
+        assertion_id: Some(bug.assertion_id),
+        assertion_identity: Some(assertion_identity),
+        replay_parent_depth: Some(bug.replay_parent_depth),
+        snapshot,
+        artifact_hashes,
+    })
 }
 
-impl ReplaySnapshotValidation {
-    pub fn not_required() -> Self {
-        Self {
-            status: SnapshotValidationStatus::NotRequired,
-            present: false,
-            digest_verified: false,
-            reference: None,
-            diagnostic: None,
-        }
-    }
-
-    pub fn missing_ref(diagnostic: impl Into<String>) -> Self {
-        Self {
-            status: SnapshotValidationStatus::MissingRef,
-            present: false,
-            digest_verified: false,
-            reference: None,
-            diagnostic: Some(diagnostic.into()),
-        }
-    }
-
-    pub fn valid(reference: ReplayParentSnapshotRef) -> Self {
-        Self {
-            status: SnapshotValidationStatus::Valid,
-            present: true,
-            digest_verified: true,
-            reference: Some(reference),
-            diagnostic: None,
-        }
-    }
-
-    pub fn from_error(reference: ReplayParentSnapshotRef, error: &SnapshotStoreError) -> Self {
-        let status = match error {
-            SnapshotStoreError::Missing { .. } => SnapshotValidationStatus::MissingArtifact,
-            SnapshotStoreError::DigestMismatch { .. } => SnapshotValidationStatus::InvalidDigest,
-            SnapshotStoreError::UnsupportedStore { .. }
-            | SnapshotStoreError::UnsupportedCodec { .. }
-            | SnapshotStoreError::UnsupportedSchema { .. }
-            | SnapshotStoreError::PathEscape { .. }
-            | SnapshotStoreError::NotRegular { .. }
-            | SnapshotStoreError::TooLarge { .. }
-            | SnapshotStoreError::DecompressedTooLarge { .. }
-            | SnapshotStoreError::MetadataMismatch { .. }
-            | SnapshotStoreError::Io { .. }
-            | SnapshotStoreError::Json { .. }
-            | SnapshotStoreError::CborEncode { .. }
-            | SnapshotStoreError::CborDecode { .. } => SnapshotValidationStatus::InvalidRef,
-        };
-        Self {
-            status,
-            present: false,
-            digest_verified: false,
-            reference: Some(reference),
-            diagnostic: Some(error.to_string()),
-        }
+/// Map a snapshot store failure onto the public snapshot validation status.
+pub fn snapshot_validation_from_error(
+    reference: ReplayParentSnapshotRef,
+    error: &SnapshotStoreError,
+) -> ReplaySnapshotValidation {
+    let status = match error {
+        SnapshotStoreError::Missing { .. } => SnapshotValidationStatus::MissingArtifact,
+        SnapshotStoreError::DigestMismatch { .. } => SnapshotValidationStatus::InvalidDigest,
+        SnapshotStoreError::UnsupportedStore { .. }
+        | SnapshotStoreError::UnsupportedCodec { .. }
+        | SnapshotStoreError::UnsupportedSchema { .. }
+        | SnapshotStoreError::PathEscape { .. }
+        | SnapshotStoreError::NotRegular { .. }
+        | SnapshotStoreError::TooLarge { .. }
+        | SnapshotStoreError::DecompressedTooLarge { .. }
+        | SnapshotStoreError::MetadataMismatch { .. }
+        | SnapshotStoreError::Io { .. }
+        | SnapshotStoreError::Json { .. }
+        | SnapshotStoreError::CborEncode { .. }
+        | SnapshotStoreError::CborDecode { .. } => SnapshotValidationStatus::InvalidRef,
+    };
+    ReplaySnapshotValidation {
+        status,
+        present: false,
+        digest_verified: false,
+        reference: Some(reference),
+        diagnostic: Some(error.to_string()),
     }
 }
 
@@ -279,22 +157,12 @@ pub fn classify_reproduce(
     snapshot: &ReplaySnapshotValidation,
     target_failed: bool,
 ) -> ReplayClass {
-    if bug.require_replay_identity().is_err() {
-        return ReplayClass::ReplayError;
-    }
-    match snapshot.status {
-        SnapshotValidationStatus::MissingRef => ReplayClass::MissingSnapshotRef,
-        SnapshotValidationStatus::MissingArtifact => ReplayClass::MissingSnapshotArtifact,
-        SnapshotValidationStatus::InvalidDigest | SnapshotValidationStatus::InvalidRef => {
-            ReplayClass::InvalidSnapshotDigest
-        }
-        SnapshotValidationStatus::Valid if bug.replay_parent_depth == 0 => {
-            ReplayClass::ScheduleOnlyReplayGap
-        }
-        SnapshotValidationStatus::Valid if target_failed => ReplayClass::SnapshotBackedReproduced,
-        SnapshotValidationStatus::Valid => ReplayClass::SnapshotBackedNotReproduced,
-        SnapshotValidationStatus::NotRequired => ReplayClass::ScheduleOnlyReplayGap,
-    }
+    classify_replay(
+        bug.require_replay_identity().is_ok(),
+        bug.replay_parent_depth,
+        snapshot.status,
+        target_failed,
+    )
 }
 
 pub fn write_verdict(
@@ -471,7 +339,7 @@ mod tests {
         assert_eq!(
             classify_reproduce(
                 &bug,
-                &ReplaySnapshotValidation::from_error(
+                &snapshot_validation_from_error(
                     reference.clone(),
                     &SnapshotStoreError::Missing {
                         path: reference.path.clone(),
@@ -484,7 +352,7 @@ mod tests {
         assert_eq!(
             classify_reproduce(
                 &bug,
-                &ReplaySnapshotValidation::from_error(
+                &snapshot_validation_from_error(
                     reference.clone(),
                     &SnapshotStoreError::DigestMismatch {
                         path: reference.path.clone(),
@@ -500,7 +368,7 @@ mod tests {
         assert_eq!(
             classify_reproduce(
                 &bug,
-                &ReplaySnapshotValidation::from_error(
+                &snapshot_validation_from_error(
                     reference,
                     &SnapshotStoreError::UnsupportedCodec {
                         codec: "other-codec".to_string(),
@@ -534,7 +402,7 @@ mod tests {
     fn serializes_stable_snake_case_class() {
         let bug = bug(2, true);
         let report = report_for_bug(&bug, false);
-        let verdict = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+        let verdict = verdict_from_reproduce(ReproduceVerdictInput {
             run_id: TEST_RUN_ID.to_string(),
             command: "chaoscontrol-explore reproduce ...".to_string(),
             exit_status: 0,
@@ -561,7 +429,7 @@ mod tests {
     fn rejects_legacy_bug_before_verdict_generation() {
         let mut legacy = bug(2, true);
         legacy.assertion_identity = None;
-        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+        let result = verdict_from_reproduce(ReproduceVerdictInput {
             run_id: TEST_RUN_ID.to_string(),
             command: "chaoscontrol-explore reproduce ...".to_string(),
             exit_status: 1,
@@ -581,7 +449,7 @@ mod tests {
     fn rejects_exit_status_that_conflicts_with_the_replay_class() {
         let bug = bug(2, true);
         let report = report_for_bug(&bug, false);
-        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+        let result = verdict_from_reproduce(ReproduceVerdictInput {
             run_id: TEST_RUN_ID.to_string(),
             command: "chaoscontrol-explore reproduce ...".to_string(),
             exit_status: NOT_REPRODUCED_EXIT_STATUS,
@@ -608,7 +476,7 @@ mod tests {
     fn rejects_a_reproduced_claim_that_conflicts_with_the_admitted_report() {
         let bug = bug(2, true);
         let report = report_for_bug(&bug, true);
-        let result = ReplayVerdict::from_reproduce(ReproduceVerdictInput {
+        let result = verdict_from_reproduce(ReproduceVerdictInput {
             run_id: TEST_RUN_ID.to_string(),
             command: "chaoscontrol-explore reproduce ...".to_string(),
             exit_status: 0,

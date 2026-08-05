@@ -23,6 +23,7 @@ chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-evidence = { path = "../chaoscontrol-evidence" }
+chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
 blake3 = "1.8"
 log = "0.4"
 snafu = "0.8"

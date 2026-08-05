@@ -420,6 +420,7 @@ dependencies = [
  "chaoscontrol-vmm",
  "clap",
  "env_logger",
+ "libc",
  "log",
  "rand",
  "rand_chacha",

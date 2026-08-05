@@ -9,6 +9,7 @@ license = "AGPL-3.0-or-later"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol" }
+libc = "0.2"
 log = "0.4"
 snafu = "0.8"
 serde = { version = "1", features = ["derive"] }

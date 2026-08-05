@@ -11,6 +11,20 @@ use crate::{ensure, EvidenceError, EvidenceResult};
 pub const README_START_MARKER: &str = "<!-- replay-readiness-status:start -->";
 pub const README_END_MARKER: &str = "<!-- replay-readiness-status:end -->";
 
+/// Execute one operator-authored plan command.
+///
+/// TRUST BOUNDARY: plan commands are code. A scheduler plan file has
+/// the same trust level as a Makefile or a shell script. Plan validators
+/// check shape only; no validator restricts command content. Execute
+/// only plans written by the local operator. Never execute plans derived
+/// from receipts, artifacts, or input produced by another machine.
+///
+/// Uses `sh -c`, not a login shell, so execution does not source
+/// profile files such as `/etc/profile` or `~/.profile`.
+fn run_plan_command(command: &str) -> std::io::Result<std::process::ExitStatus> {
+    Command::new("sh").arg("-c").arg(command).status()
+}
+
 pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
     summarize_receipt(&load_json(path.as_ref())?)
 }
@@ -562,10 +576,7 @@ pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResu
             &format!("scheduler.run_plan[{idx}].decision_policy"),
         )?;
         let run_started = unix_seconds();
-        let status = Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .status()
+        let status = run_plan_command(command)
             .map_err(|err| EvidenceError::new(format!("scheduler run {run_id}: {err}")))?;
         let exit_code = status.code().unwrap_or(125);
         let receipt_summary = if exit_code == 0 {
@@ -881,10 +892,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         )?;
         let worker_id = worker_ids[idx % (max_concurrency as usize)];
         let lease_id = format!("lease-{queue_entry_id}");
-        let status = Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .status()
+        let status = run_plan_command(command)
             .map_err(|err| EvidenceError::new(format!("fleet scheduler run {run_id}: {err}")))?;
         let exit_code = status.code().unwrap_or(125);
         let run_status = if exit_code == 0 { "passed" } else { "failed" };
@@ -1502,13 +1510,9 @@ pub fn execute_hosted_shared_state_receipt(
             .get(machine_id)
             .expect("worker machines were validated");
         let lease_id = format!("lease-{queue_entry_id}");
-        let status = Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .status()
-            .map_err(|err| {
-                EvidenceError::new(format!("hosted shared-state run {run_id}: {err}"))
-            })?;
+        let status = run_plan_command(command).map_err(|err| {
+            EvidenceError::new(format!("hosted shared-state run {run_id}: {err}"))
+        })?;
         let exit_code = status.code().unwrap_or(125);
         let run_status = if exit_code == 0 {
             "completed"
@@ -2209,13 +2213,9 @@ pub fn execute_networked_hosted_scheduler_receipt(
         let writer_id = machine_writer
             .get(machine_id)
             .expect("machine id validated for session");
-        let status = Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .status()
-            .map_err(|err| {
-                EvidenceError::new(format!("networked hosted scheduler run {run_id}: {err}"))
-            })?;
+        let status = run_plan_command(command).map_err(|err| {
+            EvidenceError::new(format!("networked hosted scheduler run {run_id}: {err}"))
+        })?;
         let exit_code = status.code().unwrap_or(125);
         let state = if exit_code == 0 {
             "completed"
@@ -3035,13 +3035,9 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             .cloned()
             .unwrap_or_default();
         let lease_id = format!("lease-{campaign_id}-{queue_entry_id}");
-        let status = Command::new("sh")
-            .arg("-lc")
-            .arg(command)
-            .status()
-            .map_err(|err| {
-                EvidenceError::new(format!("multi-hypervisor campaign run {run_id}: {err}"))
-            })?;
+        let status = run_plan_command(command).map_err(|err| {
+            EvidenceError::new(format!("multi-hypervisor campaign run {run_id}: {err}"))
+        })?;
         let exit_code = status.code().unwrap_or(125);
         let run_status = if exit_code == 0 { "passed" } else { "failed" };
         if exit_code != 0 {

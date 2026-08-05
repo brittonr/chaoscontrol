@@ -215,6 +215,12 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
 
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
+
         /// Named helical scenario family. Generates a rotating multi-phase
         /// fault schedule instead of random mutations.
         ///
@@ -498,6 +504,12 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
 
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
+
         /// Named helical scenario family.
         #[arg(long)]
         scenario: Option<String>,
@@ -555,6 +567,12 @@ enum Commands {
         /// Dashboard port (default: 8080).
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
+
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
     },
 
     /// Export checkpoint-held bugs as standalone bug_N.json artifacts.
@@ -626,6 +644,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -663,6 +682,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -733,6 +753,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -767,6 +788,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -797,7 +819,16 @@ fn main() {
             rounds,
             dashboard,
             dashboard_port,
-        } => cmd_resume(corpus, kernel, initrd, rounds, dashboard, dashboard_port),
+            dashboard_host,
+        } => cmd_resume(
+            corpus,
+            kernel,
+            initrd,
+            rounds,
+            dashboard,
+            dashboard_port,
+            dashboard_host,
+        ),
         Commands::Minimize {
             kernel,
             initrd,
@@ -904,6 +935,7 @@ fn cmd_run(
     auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
+    dashboard_host: String,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
@@ -1091,15 +1123,15 @@ fn cmd_run(
     // Start dashboard if requested
     #[cfg(feature = "dashboard")]
     if dashboard {
-        match chaoscontrol_explore::server::start(dashboard_port) {
+        match chaoscontrol_explore::server::start(&dashboard_host, dashboard_port) {
             Some(sink) => {
-                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                eprintln!("Dashboard: http://{}:{}", dashboard_host, dashboard_port);
                 explorer.set_event_sink(sink);
             }
             None => {
                 eprintln!(
-                    "Warning: failed to start dashboard on port {}",
-                    dashboard_port
+                    "Warning: failed to start dashboard on {}:{}",
+                    dashboard_host, dashboard_port
                 );
             }
         }
@@ -1108,7 +1140,7 @@ fn cmd_run(
     if dashboard {
         eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
     }
-    let _ = (dashboard, dashboard_port);
+    let _ = (dashboard, dashboard_port, dashboard_host);
 
     // Run with progress tracking
     let report = match run_with_progress(&mut explorer) {
@@ -1230,6 +1262,7 @@ fn cmd_campaign(
     auto_minimize: bool,
     dashboard: bool,
     #[cfg_attr(not(feature = "dashboard"), allow(unused_variables))] dashboard_port: u16,
+    #[cfg_attr(not(feature = "dashboard"), allow(unused_variables))] dashboard_host: String,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
@@ -1248,7 +1281,7 @@ fn cmd_campaign(
     // Start dashboard if requested.
     #[cfg(feature = "dashboard")]
     let _dashboard_tx = if dashboard {
-        chaoscontrol_explore::server::start(dashboard_port)
+        chaoscontrol_explore::server::start(&dashboard_host, dashboard_port)
     } else {
         None
     };
@@ -1814,6 +1847,7 @@ fn cmd_resume(
     rounds_override: Option<u64>,
     dashboard: bool,
     dashboard_port: u16,
+    dashboard_host: String,
 ) {
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
@@ -1923,15 +1957,15 @@ fn cmd_resume(
     // Start dashboard if requested
     #[cfg(feature = "dashboard")]
     if dashboard {
-        match chaoscontrol_explore::server::start(dashboard_port) {
+        match chaoscontrol_explore::server::start(&dashboard_host, dashboard_port) {
             Some(sink) => {
-                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                eprintln!("Dashboard: http://{}:{}", dashboard_host, dashboard_port);
                 explorer.set_event_sink(sink);
             }
             None => {
                 eprintln!(
-                    "Warning: failed to start dashboard on port {}",
-                    dashboard_port
+                    "Warning: failed to start dashboard on {}:{}",
+                    dashboard_host, dashboard_port
                 );
             }
         }
@@ -1940,7 +1974,7 @@ fn cmd_resume(
     if dashboard {
         eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
     }
-    let _ = (dashboard, dashboard_port);
+    let _ = (dashboard, dashboard_port, dashboard_host);
 
     // Run exploration
     let report = match run_with_progress(&mut explorer) {

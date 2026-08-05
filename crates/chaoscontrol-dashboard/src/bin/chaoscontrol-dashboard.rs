@@ -29,6 +29,12 @@ enum Commands {
         /// Port to listen on.
         #[arg(short, long, default_value = "8080")]
         port: u16,
+
+        /// Host to bind (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
 }
 
@@ -38,11 +44,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { corpus, port } => cmd_serve(corpus, port),
+        Commands::Serve { corpus, port, host } => cmd_serve(corpus, port, host),
     }
 }
 
-fn cmd_serve(corpus: String, port: u16) {
+fn cmd_serve(corpus: String, port: u16, host: String) {
     // Validate corpus directory
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: corpus directory not found: {}", corpus);
@@ -83,7 +89,7 @@ fn cmd_serve(corpus: String, port: u16) {
     eprintln!("  Bugs:      {}", state.bugs.len());
     eprintln!();
 
-    if let Err(e) = chaoscontrol_explore::server::start_standalone(state, port) {
+    if let Err(e) = chaoscontrol_explore::server::start_standalone(state, &host, port) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }

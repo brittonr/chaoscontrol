@@ -772,4 +772,5 @@ An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workl
 
 ## References
 
+- [Antithesis documentation index](docs/references/antithesis-documentation.md) — design reference for deterministic simulation, fault injection, assertions, exploration, replay, and debugging.
 - [antithesishq/antithesis-skills](https://github.com/antithesishq/antithesis-skills) — workflow-design prior art for staged agent research, workload onboarding, launch gates, and receipt-first triage. ChaosControl does not depend on Antithesis, Snouty, Docker Compose, Kubernetes, or hosted services.

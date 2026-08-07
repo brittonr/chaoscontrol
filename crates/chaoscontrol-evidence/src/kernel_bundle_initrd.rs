@@ -804,15 +804,15 @@ mod tests {
         unix_fs::symlink("dir/file.txt", &link).expect("symlink");
 
         let mut output = Vec::new();
-        let mut writer = NewcWriter::new(&mut output);
-        let mut seen = BTreeSet::new();
-        writer
-            .add_absolute_tree(&mut seen, &root)
-            .expect("add tree");
-        writer.finish(&mut seen).expect("finish");
-        let entries_written = writer.entries_written;
-        let bytes_written = writer.bytes_written;
-        drop(writer);
+        let (entries_written, bytes_written) = {
+            let mut writer = NewcWriter::new(&mut output);
+            let mut seen = BTreeSet::new();
+            writer
+                .add_absolute_tree(&mut seen, &root)
+                .expect("add tree");
+            writer.finish(&mut seen).expect("finish");
+            (writer.entries_written, writer.bytes_written)
+        };
         let archive = String::from_utf8_lossy(&output);
 
         assert!(archive.contains("root/dir/file.txt"));

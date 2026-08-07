@@ -6,10 +6,13 @@
 
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::io;
 use std::path::Path;
 use std::time::Instant;
+
+const MAX_LOCAL_JSONL_BYTES: usize = 16 * 1024 * 1024;
+const MAX_LOCAL_JSONL_LINE_BYTES: usize = 16 * 1024;
+const MAX_LOCAL_JSONL_EVENTS: usize = 65_536;
 
 /// Minimal harness metadata for a Rust workload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,6 +202,8 @@ pub struct AssertionCoverage {
 /// Parsed local dry-run report from `CHAOSCONTROL_SDK_LOCAL_OUTPUT` JSONL.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LocalDryRunReport {
+    /// This compatibility parser is diagnostic-only and never collision-safe.
+    pub collision_safe_evidence: bool,
     pub setup_complete: bool,
     pub lifecycle_events: BTreeMap<String, usize>,
     pub cataloged_assertions: usize,
@@ -216,11 +221,21 @@ pub struct LocalDryRunReport {
 impl LocalDryRunReport {
     /// Parse a local JSONL output file emitted by the SDK.
     pub fn from_path(path: impl AsRef<Path>) -> io::Result<Self> {
-        Self::from_jsonl(&fs::read_to_string(path)?)
+        let content = crate::local_json_security::read_bounded_regular_file(
+            path.as_ref(),
+            MAX_LOCAL_JSONL_BYTES,
+        )?;
+        Self::from_jsonl(&content)
     }
 
     /// Parse local JSONL output content emitted by the SDK.
+    ///
+    /// This compatibility API rejects conflicting legacy metadata, but it is
+    /// diagnostic-only. Use the evidence crate's strict report for promotion.
     pub fn from_jsonl(content: &str) -> io::Result<Self> {
+        if content.len() > MAX_LOCAL_JSONL_BYTES {
+            return Err(invalid_data("SDK JSONL exceeds the input byte limit"));
+        }
         let mut report = LocalDryRunReport::default();
         let mut catalog = BTreeMap::<String, CatalogSite>::new();
         let mut exercised = BTreeSet::<String>::new();
@@ -241,10 +256,21 @@ impl LocalDryRunReport {
             Some(selected)
         }
 
+        let mut event_count = 0_usize;
         for (line_no, line) in content.lines().enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
+            }
+            if trimmed.len() > MAX_LOCAL_JSONL_LINE_BYTES {
+                return Err(invalid_data("SDK JSONL line exceeds the byte limit"));
+            }
+            crate::local_json_security::preflight_json_line(trimmed)?;
+            event_count = event_count
+                .checked_add(1)
+                .ok_or_else(|| invalid_data("SDK JSONL event count overflow"))?;
+            if event_count > MAX_LOCAL_JSONL_EVENTS {
+                return Err(invalid_data("SDK JSONL event count exceeds the limit"));
             }
             let value: Value = serde_json::from_str(trimmed).map_err(|err| {
                 io::Error::new(
@@ -254,46 +280,67 @@ impl LocalDryRunReport {
             })?;
 
             if let Some(assertion) = value.get("antithesis_assert") {
-                let id = assertion
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                let message = assertion
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("<unnamed>")
-                    .to_string();
-                let assert_type = assertion
-                    .get("assert_type")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                let hit = assertion
-                    .get("hit")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                let condition = assertion
-                    .get("condition")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
+                let id = required_string(assertion, "id", line_no)?;
+                let message = required_string(assertion, "message", line_no)?;
+                let assert_type = required_string(assertion, "assert_type", line_no)?;
+                if !matches!(
+                    assert_type.as_str(),
+                    "always" | "sometimes" | "reachability"
+                ) {
+                    return Err(invalid_data(format!(
+                        "unknown assertion type at line {}",
+                        line_no + 1
+                    )));
+                }
+                let hit = required_bool(assertion, "hit", line_no)?;
+                let condition = required_bool(assertion, "condition", line_no)?;
                 let details = assertion.get("details").unwrap_or(&Value::Null);
-                let category = details
+                let explicit_category = details
                     .get("category")
                     .and_then(Value::as_str)
-                    .unwrap_or("uncategorized")
-                    .to_string();
+                    .map(str::to_string);
+                let category = explicit_category
+                    .clone()
+                    .unwrap_or_else(|| "uncategorized".to_string());
                 let track = note_track(&mut report, details_track(details));
 
-                let site = catalog.entry(id.clone()).or_insert(CatalogSite {
-                    message: message.clone(),
-                    assert_type: assert_type.clone(),
-                    category: category.clone(),
-                    observed_hits: 0,
-                    success_count: 0,
-                    failure_count: 0,
-                    adoption_tracks: Vec::new(),
-                });
+                if let Some(existing) = catalog.get_mut(&id) {
+                    if existing.message != message || existing.assert_type != assert_type {
+                        return Err(invalid_data(format!(
+                            "conflicting assertion metadata for ID {id} at line {}",
+                            line_no + 1
+                        )));
+                    }
+                    if let Some(explicit) = &explicit_category {
+                        if existing.category_explicit && existing.category != *explicit {
+                            return Err(invalid_data(format!(
+                                "conflicting assertion category for ID {id} at line {}",
+                                line_no + 1
+                            )));
+                        }
+                        if !existing.category_explicit {
+                            existing.category = explicit.clone();
+                            existing.category_explicit = true;
+                        }
+                    }
+                } else {
+                    catalog.insert(
+                        id.clone(),
+                        CatalogSite {
+                            message: message.clone(),
+                            assert_type: assert_type.clone(),
+                            category,
+                            category_explicit: explicit_category.is_some(),
+                            observed_hits: 0,
+                            success_count: 0,
+                            failure_count: 0,
+                            adoption_tracks: Vec::new(),
+                        },
+                    );
+                }
+                let site = catalog
+                    .get_mut(&id)
+                    .expect("assertion site was inserted or validated");
                 if let Some(track) = track {
                     if !site.adoption_tracks.contains(&track) {
                         site.adoption_tracks.push(track);
@@ -321,7 +368,14 @@ impl LocalDryRunReport {
                     }
                     _ => {}
                 }
-            } else if let Some(setup) = value.get("antithesis_setup") {
+            } else if value.get("antithesis_setup").is_some() {
+                let setup = exact_setup_record(&value, line_no)?;
+                if report.setup_complete {
+                    return Err(invalid_data(format!(
+                        "duplicate setup record at line {}",
+                        line_no + 1
+                    )));
+                }
                 report.setup_complete = true;
                 *report
                     .lifecycle_events
@@ -398,11 +452,63 @@ impl LocalDryRunReport {
     }
 }
 
+fn exact_setup_record(
+    value: &Value,
+    line_no: usize,
+) -> io::Result<&serde_json::Map<String, Value>> {
+    let outer = value
+        .as_object()
+        .filter(|outer| outer.len() == 1)
+        .ok_or_else(|| invalid_data(format!("invalid setup record at line {}", line_no + 1)))?;
+    let setup = outer
+        .get("antithesis_setup")
+        .and_then(Value::as_object)
+        .filter(|setup| setup.len() == 2)
+        .ok_or_else(|| invalid_data(format!("invalid setup record at line {}", line_no + 1)))?;
+    if setup.get("status").and_then(Value::as_str) != Some("complete")
+        || !setup.get("details").is_some_and(Value::is_object)
+    {
+        return Err(invalid_data(format!(
+            "invalid setup record at line {}",
+            line_no + 1
+        )));
+    }
+    Ok(setup)
+}
+
+fn invalid_data(message: impl Into<String>) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, message.into())
+}
+
+fn required_string(value: &Value, field: &str, line_no: usize) -> io::Result<String> {
+    let selected = value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|selected| !selected.is_empty())
+        .ok_or_else(|| {
+            invalid_data(format!(
+                "assertion {field} must be a non-empty string at line {}",
+                line_no + 1
+            ))
+        })?;
+    Ok(selected.to_string())
+}
+
+fn required_bool(value: &Value, field: &str, line_no: usize) -> io::Result<bool> {
+    value.get(field).and_then(Value::as_bool).ok_or_else(|| {
+        invalid_data(format!(
+            "assertion {field} must be a boolean at line {}",
+            line_no + 1
+        ))
+    })
+}
+
 #[derive(Debug, Clone)]
 struct CatalogSite {
     message: String,
     assert_type: String,
     category: String,
+    category_explicit: bool,
     observed_hits: usize,
     success_count: usize,
     failure_count: usize,
@@ -478,6 +584,69 @@ mod tests {
             vec!["in-process-service"]
         );
     }
+    #[test]
+    fn legacy_diagnostic_parser_rejects_identity_conflicts() {
+        let base = r#"{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"id":"same-id","message":"base","details":{"category":"invariant"}}}"#;
+        let conflicts = [
+            r#"{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"id":"same-id","message":"other","details":{"category":"invariant"}}}"#,
+            r#"{"antithesis_assert":{"assert_type":"sometimes","condition":true,"hit":true,"id":"same-id","message":"base","details":{"category":"invariant"}}}"#,
+            r#"{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"id":"same-id","message":"base","details":{"category":"recovery"}}}"#,
+        ];
+        for conflict in conflicts {
+            assert!(LocalDryRunReport::from_jsonl(&format!("{base}\n{conflict}\n")).is_err());
+        }
+        let malformed_id = r#"{"antithesis_assert":{"assert_type":"always","condition":true,"hit":true,"id":"","message":"base","details":{}}}"#;
+        assert!(LocalDryRunReport::from_jsonl(malformed_id).is_err());
+        let diagnostic = LocalDryRunReport::from_jsonl(&format!("{base}\n{base}\n"))
+            .expect("exact duplicate legacy records");
+        assert!(!diagnostic.collision_safe_evidence);
+    }
+
+    #[test]
+    fn diagnostic_setup_and_json_shape_fail_closed() {
+        const OVER_DEEP_LEVELS: usize = 65;
+        const OVER_STRING_BUDGET: usize = 13 * 1024;
+        for invalid in [
+            r#"{"antithesis_setup":null}"#,
+            r#"{"antithesis_setup":{"status":"pending","details":{}}}"#,
+            r#"{"antithesis_setup":{"status":"complete","details":null}}"#,
+            r#"{"antithesis_setup":{"status":"complete","details":{},"extra":true}}"#,
+        ] {
+            assert!(LocalDryRunReport::from_jsonl(invalid).is_err());
+        }
+        let valid_setup = r#"{"antithesis_setup":{"status":"complete","details":{}}}"#;
+        assert!(LocalDryRunReport::from_jsonl(&format!("{valid_setup}\n{valid_setup}\n")).is_err());
+        let deep = format!(
+            "{}0{}",
+            "[".repeat(OVER_DEEP_LEVELS),
+            "]".repeat(OVER_DEEP_LEVELS)
+        );
+        assert!(LocalDryRunReport::from_jsonl(&deep).is_err());
+        let strings = format!(r#"{{"value":"{}"}}"#, "x".repeat(OVER_STRING_BUDGET));
+        assert!(LocalDryRunReport::from_jsonl(&strings).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn diagnostic_path_rejects_symlinks_and_non_regular_files() {
+        use std::os::unix::fs::symlink;
+        let root =
+            std::env::temp_dir().join(format!("chaoscontrol-sdk-workload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create fixture directory");
+        let target = root.join("report.jsonl");
+        let link = root.join("report-link.jsonl");
+        std::fs::write(
+            &target,
+            r#"{"antithesis_setup":{"status":"complete","details":{}}}"#,
+        )
+        .expect("write fixture");
+        symlink(&target, &link).expect("create symlink");
+        assert!(LocalDryRunReport::from_path(&link).is_err());
+        assert!(LocalDryRunReport::from_path(&root).is_err());
+        std::fs::remove_dir_all(root).expect("remove fixtures");
+    }
+
     #[test]
     fn workload_harness_builds_shared_simulator_vm_adapter_identity() {
         let harness = WorkloadHarness::new("sample-rust-service")

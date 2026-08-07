@@ -12,7 +12,6 @@ use serde_json::json;
 
 const TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("kv");
 const DB_PATH: &str = "/data/test.redb";
-const REDB_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID: u32 = 2_718_281_828;
 
 fn cmdline_value(name: &str) -> Option<String> {
     let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
@@ -684,9 +683,12 @@ fn main() {
         // Periodic full checks.
         iter += 1;
         if snapshot_probe {
-            always_with_id(
+            cc_assert_always_stable!(
+                "org.onixresearch.chaoscontrol.redb",
+                "snapshot-replay-probe",
+                "redb",
+                "recovery",
                 iter < snapshot_probe_fail_after,
-                REDB_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
                 "redb snapshot replay probe trips only after restored parent context",
                 &json!({"iter": iter, "fail_after": snapshot_probe_fail_after}),
             );

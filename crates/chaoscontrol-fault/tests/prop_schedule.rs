@@ -205,7 +205,9 @@ fn subset_preserves_selected_faults() {
         let (schedule, _) = random_schedule(&mut tc, n);
 
         let indices: Vec<usize> = (0..n).filter(|_| tc.bool()).collect();
-        let sub = schedule.subset(&indices);
+        let sub = schedule
+            .subset(&indices)
+            .expect("generated indices are valid");
         assert_eq!(sub.total(), indices.len(), "case {case}");
 
         let orig_faults = schedule.faults();

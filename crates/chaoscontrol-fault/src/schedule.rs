@@ -121,14 +121,25 @@ impl FaultSchedule {
     ///
     /// Used by the minimizer to create candidate schedules with some
     /// faults removed.
-    pub fn subset(&self, indices: &[usize]) -> Self {
-        let mut schedule = Self::new();
-        for &i in indices {
-            if i < self.faults.len() {
-                schedule.add(self.faults[i].clone());
+    pub fn subset(&self, indices: &[usize]) -> Result<Self, ScheduleSubsetError> {
+        let mut seen = std::collections::BTreeSet::new();
+        for &index in indices {
+            if index >= self.faults.len() {
+                return Err(ScheduleSubsetError::OutOfBounds {
+                    index,
+                    length: self.faults.len(),
+                });
+            }
+            if !seen.insert(index) {
+                return Err(ScheduleSubsetError::DuplicateIndex { index });
             }
         }
-        schedule
+
+        let mut schedule = Self::new();
+        for &index in indices {
+            schedule.add(self.faults[index].clone());
+        }
+        Ok(schedule)
     }
 
     /// Reset the cursor to replay the schedule from the beginning.
@@ -154,6 +165,27 @@ impl FaultSchedule {
         self.cursor = snapshot.cursor;
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScheduleSubsetError {
+    OutOfBounds { index: usize, length: usize },
+    DuplicateIndex { index: usize },
+}
+
+impl std::fmt::Display for ScheduleSubsetError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OutOfBounds { index, length } => {
+                write!(formatter, "schedule index {index} exceeds length {length}")
+            }
+            Self::DuplicateIndex { index } => {
+                write!(formatter, "schedule index {index} is duplicated")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ScheduleSubsetError {}
 
 impl Default for FaultSchedule {
     fn default() -> Self {

@@ -1506,6 +1506,7 @@ pub enum FaultTransitionError {
     SnapshotRngStateMismatch,
     SnapshotSelectionSequenceMismatch,
     SnapshotPendingStateMismatch,
+    SnapshotAssertionIdentityMismatch,
     DuplicateObservation,
     AttemptBoundExceeded,
     EventBoundExceeded,

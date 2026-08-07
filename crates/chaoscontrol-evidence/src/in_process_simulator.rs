@@ -9,8 +9,21 @@ pub const SIMULATOR_CONFIG_SCHEMA_VERSION: u64 = 1;
 pub const SIMULATOR_RECEIPT_SCHEMA_VERSION: u64 = 1;
 pub const DEFAULT_SIMULATOR_SCOPE: &str = "adapter-based in-process simulator evidence; not VM replay proof, not arbitrary binary support, not full FoundationDB parity";
 const REQUIRED_SCOPE_FRAGMENT: &str = "not VM replay proof";
+const SHA256_PREFIX: &str = "sha256:";
+const SHA256_HEX_LENGTH: usize = 64;
+
+fn is_sha256_digest(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix(SHA256_PREFIX) else {
+        return false;
+    };
+    hex.len() == SHA256_HEX_LENGTH
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SimulatorConfig {
     pub schema_version: u64,
     pub run_id: String,
@@ -27,6 +40,7 @@ pub struct SimulatorConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct WorkloadIdentity {
     pub name: String,
     pub adapter_version: String,
@@ -70,36 +84,42 @@ pub struct SimulatorVmReceiptBridgeComparison {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SchedulerPolicy {
     pub name: String,
     pub max_steps: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct VirtualClockPolicy {
     pub start_tick: u64,
     pub tick_quantum: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct RngPolicy {
     pub algorithm: String,
     pub seed_derivation: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct NetworkProfile {
     pub profile_id: String,
     pub simulated: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct DiskProfile {
     pub profile_id: String,
     pub simulated: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct FaultScheduleRef {
     pub schedule_id: String,
     pub digest: String,
@@ -895,8 +915,8 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()>
         "simulator workload scenario_id must be non-empty",
     )?;
     require(
-        !config.scheduler.name.is_empty(),
-        "simulator scheduler policy name must be non-empty",
+        config.scheduler.name == "round-robin-v1",
+        "simulator scheduler policy must be round-robin-v1",
     )?;
     require(
         config.scheduler.max_steps > 0,
@@ -914,24 +934,24 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()>
         ),
     )?;
     require(
-        !config.rng.seed_derivation.is_empty(),
-        "simulator rng seed_derivation must be non-empty",
+        config.rng.seed_derivation == "config.seed",
+        "simulator rng seed_derivation must be config.seed",
     )?;
     require(
-        config.network.simulated,
-        "simulator network profile must be simulated",
+        config.network.simulated && !config.network.profile_id.is_empty(),
+        "simulator network profile must be named and simulated",
     )?;
     require(
-        config.disk.simulated,
-        "simulator disk profile must be simulated",
+        config.disk.simulated && !config.disk.profile_id.is_empty(),
+        "simulator disk profile must be named and simulated",
     )?;
     require(
         !config.fault_schedule.schedule_id.is_empty(),
         "simulator fault schedule_id must be non-empty",
     )?;
     require(
-        config.fault_schedule.digest.starts_with("sha256:"),
-        "simulator fault schedule digest must be sha256-bound",
+        is_sha256_digest(&config.fault_schedule.digest),
+        "simulator fault schedule digest must be an exact lowercase sha256 digest",
     )?;
     require(
         !config.artifacts.is_empty(),
@@ -943,8 +963,8 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()>
             "simulator artifact name must be non-empty",
         )?;
         require(
-            digest.starts_with("sha256:"),
-            format!("simulator artifact {name:?} digest must be sha256-bound"),
+            is_sha256_digest(digest),
+            format!("simulator artifact {name:?} digest must be an exact lowercase sha256 digest"),
         )?;
     }
     require(

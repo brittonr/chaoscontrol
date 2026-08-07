@@ -128,13 +128,13 @@ fn main() {
         vm.run_until("workload complete").expect("run VM");
 
         let report = vm.fault_engine().oracle().report();
-        let total = report.assertions.len();
+        let total = report.catalog_size;
 
         // Count kinds
         let mut always_count = 0;
         let mut sometimes_count = 0;
         let mut reachable_count = 0;
-        for record in report.assertions.values() {
+        for (_, record) in report.all_records() {
             match record.kind {
                 chaoscontrol_fault::oracle::AssertionKind::Always => always_count += 1,
                 chaoscontrol_fault::oracle::AssertionKind::Sometimes => sometimes_count += 1,
@@ -164,7 +164,7 @@ fn main() {
         let report = vm.fault_engine().oracle().report();
         let mut all_pass = true;
 
-        for record in report.assertions.values() {
+        for (_, record) in report.all_records() {
             if record.kind == chaoscontrol_fault::oracle::AssertionKind::Always
                 && record.verdict() != Verdict::Passed
             {

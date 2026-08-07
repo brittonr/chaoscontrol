@@ -8,25 +8,28 @@ use chaoscontrol_vmm::controller::SimulationSnapshot;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::Snafu;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
-pub const SNAPSHOT_CODEC: &str = "simulation-snapshot-cbor-zstd-v2";
-pub const LEGACY_SNAPSHOT_CODEC: &str = "simulation-snapshot-bincode-zstd-v1";
-pub const FILE_STORE_KIND: &str = "file-content-addressed";
-pub const SNAPSHOT_DIR: &str = "snapshots";
+pub use chaoscontrol_replay_evidence_core::dto::ReplayParentSnapshotRef;
+use chaoscontrol_replay_evidence_core::validate as core_validate;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplayParentSnapshotRef {
-    pub store: String,
-    pub digest: String,
-    pub codec: String,
-    pub schema_version: u32,
-    pub path: String,
-}
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION;
+pub const SNAPSHOT_CODEC: &str = core_validate::CURRENT_SNAPSHOT_CODEC;
+pub const FILE_STORE_KIND: &str = core_validate::FILE_STORE_KIND;
+pub const SNAPSHOT_DIR: &str = "snapshots";
+const BYTES_PER_KIB: u64 = 1024;
+const KIB_PER_MIB: u64 = 1024;
+const BYTES_PER_MIB: u64 = BYTES_PER_KIB * KIB_PER_MIB;
+const MAX_COMPRESSED_SNAPSHOT_BYTES: u64 = 256 * BYTES_PER_MIB;
+const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
+const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
+const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SnapshotArtifactEnvelope {
     pub schema_version: u32,
     pub codec: String,
@@ -48,6 +51,14 @@ pub enum SnapshotStoreError {
     PathEscape { path: String },
     #[snafu(display("snapshot artifact missing: {path}"))]
     Missing { path: String },
+    #[snafu(display("snapshot artifact is not a regular file: {path}"))]
+    NotRegular { path: String },
+    #[snafu(display("snapshot artifact exceeds {limit} bytes: {path}"))]
+    TooLarge { path: String, limit: u64 },
+    #[snafu(display("snapshot decompression exceeds {limit} bytes"))]
+    DecompressedTooLarge { limit: u64 },
+    #[snafu(display("snapshot artifact metadata mismatch: {field}"))]
+    MetadataMismatch { field: &'static str },
     #[snafu(display(
         "snapshot artifact digest mismatch for {path}: expected {expected}, got {actual}"
     ))]
@@ -80,6 +91,79 @@ fn encode_cbor<T: Serialize>(value: &T) -> Result<Vec<u8>, SnapshotStoreError> {
 fn decode_cbor<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, SnapshotStoreError> {
     ciborium::de::from_reader(std::io::Cursor::new(bytes))
         .map_err(|source| SnapshotStoreError::CborDecode { source })
+}
+
+fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, SnapshotStoreError> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|source| {
+            if source.kind() == std::io::ErrorKind::NotFound {
+                SnapshotStoreError::Missing {
+                    path: display_path.to_string(),
+                }
+            } else if source.raw_os_error() == Some(libc::ELOOP) {
+                SnapshotStoreError::NotRegular {
+                    path: display_path.to_string(),
+                }
+            } else {
+                SnapshotStoreError::Io { source }
+            }
+        })?;
+    let metadata = file
+        .metadata()
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    if !metadata.file_type().is_file() {
+        return Err(SnapshotStoreError::NotRegular {
+            path: display_path.to_string(),
+        });
+    }
+    if metadata.len() > MAX_COMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::TooLarge {
+            path: display_path.to_string(),
+            limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+        });
+    }
+    let read_limit = MAX_COMPRESSED_SNAPSHOT_BYTES
+        .checked_add(READ_LIMIT_SENTINEL_BYTES)
+        .ok_or(SnapshotStoreError::TooLarge {
+            path: display_path.to_string(),
+            limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+        })?;
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(read_limit)
+        .read_to_end(&mut bytes)
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    if bytes.len() as u64 > MAX_COMPRESSED_SNAPSHOT_BYTES {
+        return Err(SnapshotStoreError::TooLarge {
+            path: display_path.to_string(),
+            limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+        });
+    }
+    Ok(bytes)
+}
+
+fn decompress_snapshot(bytes: &[u8], maximum_bytes: u64) -> Result<Vec<u8>, SnapshotStoreError> {
+    let decoder = zstd::stream::read::Decoder::new(std::io::Cursor::new(bytes))
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    let read_limit = maximum_bytes.checked_add(READ_LIMIT_SENTINEL_BYTES).ok_or(
+        SnapshotStoreError::DecompressedTooLarge {
+            limit: maximum_bytes,
+        },
+    )?;
+    let mut decompressed = Vec::new();
+    decoder
+        .take(read_limit)
+        .read_to_end(&mut decompressed)
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+    if decompressed.len() as u64 > maximum_bytes {
+        return Err(SnapshotStoreError::DecompressedTooLarge {
+            limit: maximum_bytes,
+        });
+    }
+    Ok(decompressed)
 }
 
 pub trait SnapshotStore {
@@ -162,8 +246,22 @@ impl SnapshotStore for FileSnapshotStore {
             snapshot: snapshot.clone(),
         };
         let uncompressed = encode_cbor(&envelope)?;
-        let bytes = zstd::stream::encode_all(std::io::Cursor::new(uncompressed), 3)
-            .map_err(|source| SnapshotStoreError::Io { source })?;
+        if uncompressed.len() as u64 > MAX_DECOMPRESSED_SNAPSHOT_BYTES {
+            return Err(SnapshotStoreError::DecompressedTooLarge {
+                limit: MAX_DECOMPRESSED_SNAPSHOT_BYTES,
+            });
+        }
+        let bytes = zstd::stream::encode_all(
+            std::io::Cursor::new(uncompressed),
+            SNAPSHOT_COMPRESSION_LEVEL,
+        )
+        .map_err(|source| SnapshotStoreError::Io { source })?;
+        if bytes.len() as u64 > MAX_COMPRESSED_SNAPSHOT_BYTES {
+            return Err(SnapshotStoreError::TooLarge {
+                path: "generated snapshot".to_string(),
+                limit: MAX_COMPRESSED_SNAPSHOT_BYTES,
+            });
+        }
         let digest = digest_bytes(&bytes);
         let hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
         let rel = format!("{SNAPSHOT_DIR}/{hex}.snapshot.bin");
@@ -185,12 +283,7 @@ impl SnapshotStore for FileSnapshotStore {
         reference: &ReplayParentSnapshotRef,
     ) -> Result<SnapshotArtifactEnvelope, SnapshotStoreError> {
         let path = self.resolve_ref(reference)?;
-        if !path.exists() {
-            return Err(SnapshotStoreError::Missing {
-                path: reference.path.clone(),
-            });
-        }
-        let bytes = fs::read(&path).map_err(|source| SnapshotStoreError::Io { source })?;
+        let bytes = read_snapshot_bytes(&path, &reference.path)?;
         let actual = digest_bytes(&bytes);
         if actual != reference.digest {
             return Err(SnapshotStoreError::DigestMismatch {
@@ -199,18 +292,21 @@ impl SnapshotStore for FileSnapshotStore {
                 actual,
             });
         }
-        let decompressed = zstd::stream::decode_all(std::io::Cursor::new(bytes))
-            .map_err(|source| SnapshotStoreError::Io { source })?;
+        let decompressed = decompress_snapshot(&bytes, MAX_DECOMPRESSED_SNAPSHOT_BYTES)?;
         let artifact: SnapshotArtifactEnvelope = decode_cbor(&decompressed)?;
         if artifact.codec != reference.codec {
-            return Err(SnapshotStoreError::UnsupportedCodec {
-                codec: reference.codec.clone(),
-            });
+            return Err(SnapshotStoreError::MetadataMismatch { field: "codec" });
         }
         if artifact.schema_version != reference.schema_version {
-            return Err(SnapshotStoreError::UnsupportedSchema {
-                version: reference.schema_version,
+            return Err(SnapshotStoreError::MetadataMismatch {
+                field: "schema_version",
             });
+        }
+        if artifact.tick != artifact.snapshot.tick {
+            return Err(SnapshotStoreError::MetadataMismatch { field: "tick" });
+        }
+        if artifact.vm_count != artifact.snapshot.vm_snapshots.len() {
+            return Err(SnapshotStoreError::MetadataMismatch { field: "vm_count" });
         }
         Ok(artifact)
     }
@@ -244,17 +340,19 @@ impl SnapshotStore for FileSnapshotStore {
 }
 
 pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), SnapshotStoreError> {
-    if reference.store != FILE_STORE_KIND {
+    // Admissibility decisions live in the shared core; this shell maps them
+    // onto the store error variants for stable diagnostics.
+    if reference.store != core_validate::FILE_STORE_KIND {
         return Err(SnapshotStoreError::UnsupportedStore {
             store: reference.store.clone(),
         });
     }
-    if reference.codec != SNAPSHOT_CODEC && reference.codec != LEGACY_SNAPSHOT_CODEC {
+    if reference.codec != core_validate::CURRENT_SNAPSHOT_CODEC {
         return Err(SnapshotStoreError::UnsupportedCodec {
             codec: reference.codec.clone(),
         });
     }
-    if reference.schema_version != SNAPSHOT_SCHEMA_VERSION {
+    if reference.schema_version != core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION {
         return Err(SnapshotStoreError::UnsupportedSchema {
             version: reference.schema_version,
         });
@@ -298,9 +396,11 @@ mod tests {
     }
 
     fn write_artifact(dir: &Path, artifact: &SnapshotArtifactEnvelope) -> ReplayParentSnapshotRef {
-        let bytes =
-            zstd::stream::encode_all(std::io::Cursor::new(encode_cbor(artifact).unwrap()), 3)
-                .unwrap();
+        let bytes = zstd::stream::encode_all(
+            std::io::Cursor::new(encode_cbor(artifact).unwrap()),
+            SNAPSHOT_COMPRESSION_LEVEL,
+        )
+        .unwrap();
         let digest = digest_bytes(&bytes);
         let hex = digest.strip_prefix("sha256:").unwrap();
         let rel = format!("snapshots/{hex}.snapshot.bin");
@@ -326,7 +426,7 @@ mod tests {
                 codec: SNAPSHOT_CODEC.to_string(),
                 replay_parent_depth: 2,
                 tick: 17,
-                vm_count: 3,
+                vm_count: 0,
                 snapshot: dummy_snapshot(17),
             },
         );
@@ -395,6 +495,89 @@ mod tests {
     }
 
     #[test]
+    fn symlink_snapshot_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let snapshots = dir.path().join(SNAPSHOT_DIR);
+        fs::create_dir_all(&snapshots).unwrap();
+        let target = snapshots.join("target.snapshot.bin");
+        fs::write(&target, b"target").unwrap();
+        let link = snapshots.join("link.snapshot.bin");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let reference = ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.to_string(),
+            digest: digest_bytes(b"target"),
+            codec: SNAPSHOT_CODEC.to_string(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path: format!("{SNAPSHOT_DIR}/link.snapshot.bin"),
+        };
+
+        assert!(matches!(
+            FileSnapshotStore::new(dir.path()).get_snapshot_artifact(&reference),
+            Err(SnapshotStoreError::NotRegular { .. })
+        ));
+    }
+
+    #[test]
+    fn oversized_snapshot_is_rejected_before_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let snapshots = dir.path().join(SNAPSHOT_DIR);
+        fs::create_dir_all(&snapshots).unwrap();
+        let path = snapshots.join("oversized.snapshot.bin");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(MAX_COMPRESSED_SNAPSHOT_BYTES + READ_LIMIT_SENTINEL_BYTES)
+            .unwrap();
+        let reference = ReplayParentSnapshotRef {
+            store: FILE_STORE_KIND.to_string(),
+            digest: digest_bytes(&[]),
+            codec: SNAPSHOT_CODEC.to_string(),
+            schema_version: SNAPSHOT_SCHEMA_VERSION,
+            path: format!("{SNAPSHOT_DIR}/oversized.snapshot.bin"),
+        };
+
+        assert!(matches!(
+            FileSnapshotStore::new(dir.path()).get_snapshot_artifact(&reference),
+            Err(SnapshotStoreError::TooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn decompression_limit_is_enforced() {
+        const TEST_DECOMPRESSED_LIMIT: u64 = 16;
+        let expanded = vec![0_u8; (TEST_DECOMPRESSED_LIMIT + READ_LIMIT_SENTINEL_BYTES) as usize];
+        let compressed =
+            zstd::stream::encode_all(std::io::Cursor::new(expanded), SNAPSHOT_COMPRESSION_LEVEL)
+                .unwrap();
+
+        assert!(matches!(
+            decompress_snapshot(&compressed, TEST_DECOMPRESSED_LIMIT),
+            Err(SnapshotStoreError::DecompressedTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn snapshot_envelope_metadata_mismatch_is_rejected() {
+        const FORGED_VM_COUNT: usize = 3;
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileSnapshotStore::new(dir.path());
+        let reference = write_artifact(
+            dir.path(),
+            &SnapshotArtifactEnvelope {
+                schema_version: SNAPSHOT_SCHEMA_VERSION,
+                codec: SNAPSHOT_CODEC.to_string(),
+                replay_parent_depth: 1,
+                tick: 17,
+                vm_count: FORGED_VM_COUNT,
+                snapshot: dummy_snapshot(17),
+            },
+        );
+
+        assert!(matches!(
+            store.get_snapshot_artifact(&reference),
+            Err(SnapshotStoreError::MetadataMismatch { field: "vm_count" })
+        ));
+    }
+
+    #[test]
     fn unsupported_codec_and_schema_are_rejected() {
         let dir = tempfile::tempdir().unwrap();
         let store = FileSnapshotStore::new(dir.path());
@@ -452,6 +635,7 @@ mod tests {
         let bug = crate::checkpoint::SerializableBug {
             bug_id: 7,
             assertion_id: 42,
+            assertion_identity: Some(crate::test_support::assertion_identity(42)),
             assertion_location: "fixture assertion".to_string(),
             schedule: (&chaoscontrol_fault::schedule::FaultSchedule::new()).into(),
             tick: 101,

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/chaoscontrol-protocol",
+    "crates/chaoscontrol-replay-evidence-core",
     "crates/chaoscontrol-sdk",
     "crates/chaoscontrol-fault",
     "crates/chaoscontrol-vmm",
@@ -28,6 +29,8 @@ license = "Apache-2.0"
 default_scope = [
     "-p",
     "chaoscontrol-protocol",
+    "-p",
+    "chaoscontrol-replay-evidence-core",
     "-p",
     "chaoscontrol-sdk",
     "-p",

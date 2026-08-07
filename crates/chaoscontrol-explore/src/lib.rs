@@ -74,6 +74,12 @@
 //! All exploration is deterministic given the same seed. The explorer uses
 //! seeded RNGs throughout and avoids HashMaps (using BTreeMap instead).
 
+pub mod assertion_report;
+pub mod assertion_summary;
+mod assertion_summary_validation;
+pub mod assertion_summary_writer;
+mod bounded_json;
+pub mod bug;
 pub mod campaign;
 pub mod checkpoint;
 pub mod corpus;
@@ -85,12 +91,16 @@ pub mod input_tree;
 pub mod memory;
 pub mod minimizer;
 pub mod mutator;
+mod non_null_option;
+pub mod profile;
 pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]
 pub mod server;
 pub mod signal;
 pub mod snapshot_store;
+#[cfg(test)]
+mod test_support;
 pub mod worker;
 
 // Re-export main types for convenience
@@ -99,7 +109,8 @@ pub use campaign::{
     CampaignReport, CampaignRunner, SerializableCampaignConfig,
 };
 pub use checkpoint::{
-    export_checkpoint_bugs, export_checkpoint_bugs_with_filter, load_checkpoint, save_checkpoint,
+    export_checkpoint_bugs, export_checkpoint_bugs_with_filter, load_checkpoint,
+    load_serializable_bug, load_serializable_bug_artifact, save_checkpoint,
     CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
     CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug, SerializableFault,
     SerializableSchedule, SerializableScheduledFault,

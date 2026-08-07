@@ -59,11 +59,13 @@
             let
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
               isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
+            || isAssertionReadinessFixture
             || isDogfoodCheckpointFixture
             || isDogfoodAssertionHarnessFixture
             || (builtins.match ".*\\.bpf\\.c$" path != null)
@@ -375,7 +377,7 @@
               workload = "raft";
               kernel = mkChaosKernel { virtioNet = true; };
               initrd = initrd-raft;
-              assertionId = 1806003755;
+              assertionId = 3463273124;
               cmdlineTemplate = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}";
               vms = 3;
               rounds = 3;
@@ -392,7 +394,7 @@
               kernel = mkChaosKernel { };
               initrd = initrd-redb;
               diskImage = redb-disk-image;
-              assertionId = 2718281828;
+              assertionId = 4149728441;
               cmdlineTemplate = "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}";
               vms = 1;
               rounds = 3;
@@ -408,7 +410,7 @@
               workload = "net";
               kernel = mkChaosKernel { virtioNet = true; };
               initrd = initrd-net;
-              assertionId = 3141592653;
+              assertionId = 2074476939;
               cmdlineTemplate = "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}";
               vms = 3;
               rounds = 4;
@@ -424,7 +426,7 @@
               workload = "rust-workload";
               kernel = mkChaosKernel { kcov = true; };
               initrd = initrd-rust-workload;
-              assertionId = 1414213562;
+              assertionId = 3143219316;
               cmdlineTemplate = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}";
               vms = 1;
               rounds = 3;
@@ -795,7 +797,7 @@
                   ("readiness-surface-drift", "check-readiness-surface-drift .", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
                   ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
                   ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
-                  ("assertion-readiness-promotion", "check-assertion-readiness-promotion-gate .", os.environ["ASSERTION_PROMOTION_STATUS"]),
+                  ("assertion-readiness-boundary", "check-assertion-readiness-boundary .", os.environ["ASSERTION_PROMOTION_STATUS"]),
                   ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
                   ("sdk-assertion-quality", "check-sdk-assertion-quality", os.environ["SDK_ASSERTION_QUALITY_STATUS"]),
                   ("consistency-checker-fixtures", "check-consistency-fixtures .", os.environ["CONSISTENCY_FIXTURES_STATUS"]),
@@ -927,7 +929,7 @@
               run_gate readiness-surface-drift readiness_surface_drift_status check-readiness-surface-drift .
               run_gate readiness-report readiness_report_status generate-replay-readiness-report --check .
               run_gate assertion-readiness-report assertion_report_status generate-assertion-readiness-report --check .
-              run_gate assertion-readiness-promotion assertion_promotion_status check-assertion-readiness-promotion-gate .
+              run_gate assertion-readiness-boundary assertion_promotion_status check-assertion-readiness-boundary .
               run_gate sdk-local-report-tracks sdk_local_report_tracks_status check-sdk-local-report-tracks
               run_gate sdk-assertion-quality sdk_assertion_quality_status check-sdk-assertion-quality
               run_gate consistency-checker-fixtures consistency_fixtures_status check-consistency-fixtures .
@@ -1320,6 +1322,16 @@
               }
             );
 
+            # A tiny malicious guest must reach the production MMIO path without crashing the VMM.
+            virtio-malicious-guest-kvm-smoke = craneLib.cargoTest (
+              commonArgs
+              // {
+                inherit cargoArtifacts;
+                cargoExtraArgs = "-p chaoscontrol-vmm --test virtio_kvm_smoke -- --ignored";
+                requiredSystemFeatures = [ "kvm" ];
+              }
+            );
+
             # Keep optional profiling instrumentation compiling.
             profiling = craneLib.cargoClippy (
               commonArgs
@@ -1387,6 +1399,10 @@
                   cd ${self}
                   check-contract-registry .
                   check-evidence-contracts --root .
+                  check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json
+                  check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json
+                  check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json
+                  check-profile-admission schedule contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json contracts/evidence/fixtures/valid/fault-schedule-profile.projection-receipt.json
                   check-replay-proof-coverage .
                   check-replay-proof-coverage --check-doc .
                   materialize-snapshot-chunks --selftest
@@ -1395,7 +1411,7 @@
                   replay-readiness-triage --root . --sample-receipt --check docs/operator-triage-runbook.md
                   generate-replay-readiness-report --check .
                   generate-assertion-readiness-report --check .
-                  check-assertion-readiness-promotion-gate .
+                  check-assertion-readiness-boundary .
                   check-sdk-assertion-quality
                   check-dogfood-artifact-sizes
                   check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
@@ -1668,8 +1684,6 @@
                   nativeBuildInputs = [
                     chaoscontrol
                     pkgs.coreutils
-                    pkgs.gnugrep
-                    pkgs.python3
                   ];
                   requiredSystemFeatures = [ "kvm" ];
                 }
@@ -1874,6 +1888,7 @@
               })
               pkgs.cargo-watch
               pkgs.cargo-edit
+              pkgs.nickel
 
               # eBPF tracing harness
               pkgs.clang

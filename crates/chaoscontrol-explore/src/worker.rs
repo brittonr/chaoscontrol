@@ -380,15 +380,7 @@ fn run_single_branch(
 fn empty_branch_result(work: &BranchWork) -> BranchResult {
     BranchResult {
         coverage: CoverageBitmap::new(),
-        oracle_report: chaoscontrol_fault::oracle::OracleReport {
-            assertions: std::collections::BTreeMap::new(),
-            total_runs: 0,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: Vec::new(),
-        },
+        oracle_report: chaoscontrol_fault::oracle::OracleReport::empty(),
         schedule: work.schedule.clone(),
         exit_counts: Vec::new(),
         halted: false,

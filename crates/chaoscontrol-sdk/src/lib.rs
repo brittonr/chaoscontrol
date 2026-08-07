@@ -53,10 +53,13 @@
 #![cfg_attr(not(feature = "full"), no_std)]
 
 pub mod assert;
+#[cfg(feature = "full")]
+mod assertion_catalog;
+#[cfg(feature = "full")]
+mod bounded_json;
 pub mod coverage;
 #[cfg(feature = "full")]
 pub mod details;
-pub mod guidance;
 pub mod lifecycle;
 pub mod prelude;
 pub mod random;
@@ -71,6 +74,8 @@ pub use serde_json;
 
 #[cfg(feature = "full")]
 mod internal;
+#[cfg(feature = "full")]
+mod local_json_security;
 
 #[cfg(feature = "full")]
 pub mod kcov;

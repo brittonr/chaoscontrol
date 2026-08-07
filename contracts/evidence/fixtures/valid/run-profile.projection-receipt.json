@@ -1,0 +1,30 @@
+{
+  "schema": "chaoscontrol.profile-projection-receipt.v1",
+  "profile_id": "vm-run",
+  "source": {
+    "path": "contracts/evidence/examples/raft-run-config.ncl",
+    "identity": "blake3:fc01a81570654cff3ac66450a649aa804d1fac5866c69f6b0eac5c01663a8d5f"
+  },
+  "contract": {
+    "path": "contracts/evidence/run-config.ncl",
+    "identity": "blake3:1f9521e8688fb57a1ac1c9647ab733a41bebfcc0a729adb6bdbfd07264982a99"
+  },
+  "imports": [
+    {
+      "path": "contracts/evidence/profile-primitives.ncl",
+      "identity": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08"
+    }
+  ],
+  "evaluator": {
+    "name": "nickel-lang-cli nickel 1.15.1 (rev cargore)",
+    "identity": "blake3:283b5e590a77d27ebcb9f338666f4704217650999664d2143099b228dca1602a"
+  },
+  "projection": {
+    "path": "contracts/evidence/fixtures/valid/run-profile.valid.json",
+    "identity": "blake3:060e21247896866c54852f77beab9bff62a340634c39b98e604831120612cd23"
+  },
+  "non_claims": [
+    "profile conformance is pre-run intent only",
+    "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim"
+  ]
+}

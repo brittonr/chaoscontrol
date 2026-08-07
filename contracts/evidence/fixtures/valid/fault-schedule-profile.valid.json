@@ -1,0 +1,27 @@
+{
+  "faults": [
+    {
+      "kind": "network-partition",
+      "label": "isolate-third-node",
+      "side_a": [
+        0,
+        1
+      ],
+      "side_b": [
+        2
+      ],
+      "time_ns": 1000000
+    },
+    {
+      "kind": "process-kill",
+      "label": "stop-current-leader",
+      "target": 0,
+      "time_ns": 2000000
+    }
+  ],
+  "num_vms": 3,
+  "schedule_id": "raft-partition-recovery-v1",
+  "schema": "chaoscontrol.fault-schedule-profile.v1",
+  "scope": "finite pre-run fault intent; not attempted, applied, observed, or effective fault evidence",
+  "source_identity": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

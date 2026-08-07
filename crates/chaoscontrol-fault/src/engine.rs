@@ -13,12 +13,16 @@ use crate::outcomes::{
     FaultTransitionError, MAX_FAULT_ATTEMPTS, MAX_FAULT_OUTCOME_EVENTS,
 };
 use crate::schedule::FaultSchedule;
+use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder, CatalogConflict};
+use chaoscontrol_protocol::transport::{
+    decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame, decode_event_frame,
+};
 use chaoscontrol_protocol::*;
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use snafu::{ResultExt, Snafu};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Choice recording for input tree exploration
@@ -141,6 +145,7 @@ fn preflight_selection_batch(
 
 /// Snapshot of the engine state.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EngineSnapshot {
     rng_seed: [u8; 32],
     rng_stream: u64,
@@ -186,6 +191,65 @@ impl EngineSnapshot {
     pub fn replace_outcomes_for_validation_test(&mut self, outcomes: FaultOutcomeLedger) {
         self.outcomes = outcomes;
     }
+}
+
+pub fn validate_engine_snapshot(
+    snapshot: &EngineSnapshot,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    crate::oracle_validation::validate_restorable_oracle_snapshot(&snapshot.oracle)?;
+    let oracle_setup_complete = snapshot
+        .oracle
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.setup_complete);
+    if snapshot.setup_complete != oracle_setup_complete {
+        return Err(crate::oracle_validation::OracleValidationError::Status);
+    }
+    Ok(())
+}
+
+pub fn engine_snapshot_validation_diagnostic(snapshot: &EngineSnapshot) -> String {
+    let run = snapshot.oracle.current_run.as_ref();
+    format!(
+        "catalog={:?} accepted_catalog={} legacy={} structured={} conflicts={} events={} total_runs={} active_run={} run_setup={} engine_setup={}",
+        snapshot.oracle.catalog_status,
+        snapshot.oracle.accepted_catalog.is_some(),
+        snapshot.oracle.assertions.len(),
+        snapshot.oracle.structured_assertions.len(),
+        snapshot.oracle.identity_conflicts.len(),
+        snapshot.oracle.events.len(),
+        snapshot.oracle.total_runs,
+        run.is_some(),
+        run.is_some_and(|state| state.setup_complete),
+        snapshot.setup_complete,
+    )
+}
+
+pub fn validate_orchestration_engine_snapshot(
+    snapshot: &EngineSnapshot,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    crate::oracle_snapshot_validation::validate_orchestration_oracle_snapshot(&snapshot.oracle)?;
+    let oracle_setup_complete = snapshot
+        .oracle
+        .current_run
+        .as_ref()
+        .is_some_and(|run| run.setup_complete);
+    if snapshot.setup_complete != oracle_setup_complete {
+        return Err(crate::oracle_validation::OracleValidationError::Status);
+    }
+    Ok(())
+}
+
+pub fn validate_engine_snapshot_assertion_evidence(
+    snapshot: &EngineSnapshot,
+    identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+) -> Result<(), crate::oracle_validation::OracleValidationError> {
+    validate_engine_snapshot(snapshot)?;
+    crate::oracle_snapshot_validation::resolve_snapshot_assertion_evidence(
+        &snapshot.oracle,
+        identity,
+    )
+    .map(|_| ())
 }
 
 /// The central fault injection engine.
@@ -259,9 +323,8 @@ pub struct FaultEngine {
     /// Monotonic counter of random hypercalls (CMD_RANDOM_CHOICE + CMD_RANDOM_GET).
     /// Resets on restore to align with the snapshot's position.
     choice_count: u64,
-    /// Last-reported guidance distance per assertion ID.
-    /// Written by `CMD_GUIDANCE` hypercalls, read by the explorer.
-    guidance_values: HashMap<u32, f64>,
+    /// Pending strict assertion catalog. It becomes authoritative only at completion.
+    catalog_builder: Option<CatalogBuilder>,
 }
 
 impl FaultEngine {
@@ -290,12 +353,13 @@ impl FaultEngine {
             choice_history: Vec::new(),
             random_overrides: BTreeMap::new(),
             choice_count: 0,
-            guidance_values: HashMap::new(),
+            catalog_builder: None,
         }
     }
 
     /// Begin a new test run.
     pub fn begin_run(&mut self) {
+        self.catalog_builder = None;
         self.oracle.begin_run();
         self.setup_complete = false;
         self.schedule.reset();
@@ -361,6 +425,10 @@ impl FaultEngine {
 
     /// End the current test run.
     pub fn end_run(&mut self) {
+        if self.catalog_builder.take().is_some() {
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::CatalogIncomplete);
+        }
         self.oracle.end_run();
     }
 
@@ -370,80 +438,28 @@ impl FaultEngine {
     /// the result and status to write back.
     pub fn handle_hypercall(&mut self, page: &HypercallPage) -> (u64, u8) {
         match page.command {
-            CMD_ASSERT_CATALOG => {
-                let kind = page.flags;
-                let message = self.decode_message(page);
-                let oracle_kind = match kind {
-                    0 => AssertionKind::Always,
-                    1 => AssertionKind::Sometimes,
-                    2 => AssertionKind::Reachable,
-                    3 => AssertionKind::Unreachable,
-                    _ => AssertionKind::Always,
-                };
-                let details: serde_json::Value =
-                    serde_json::from_slice(&page.payload).unwrap_or_default();
-                let guest = details
-                    .get("guest")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("uncategorized");
-                let category = details
-                    .get("category")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("uncategorized");
-                self.oracle.register_catalog_entry_with_metadata(
-                    page.id,
-                    oracle_kind,
-                    &message,
-                    guest,
-                    category,
-                );
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_ALWAYS => {
-                let cond = page.condition();
-                let (message, details) = self.decode_message_and_details(page);
-                let details_ref = if cond { None } else { Some(details.as_slice()) };
-                self.oracle
-                    .record_always_with_details(page.id, cond, &message, details_ref);
-                if cond {
+            CMD_ASSERT_CATALOG_BEGIN => self.handle_catalog_begin(page),
+            CMD_ASSERT_CATALOG_DESCRIPTOR => self.handle_catalog_descriptor(page),
+            CMD_ASSERT_CATALOG_COMPLETE => self.handle_catalog_complete(page),
+            CMD_ASSERT_ALWAYS => self.handle_assertion_event(page, AssertionKind::Always),
+            CMD_ASSERT_SOMETIMES => self.handle_assertion_event(page, AssertionKind::Sometimes),
+            CMD_ASSERT_REACHABLE => self.handle_assertion_event(page, AssertionKind::Reachable),
+            CMD_ASSERT_UNREACHABLE => self.handle_assertion_event(page, AssertionKind::Unreachable),
+            CMD_LIFECYCLE_SETUP_COMPLETE => match self.oracle.record_setup_complete() {
+                Ok(()) => {
+                    self.setup_complete = true;
                     (0, STATUS_OK)
-                } else {
-                    (0, STATUS_ASSERTION_FAILED)
                 }
-            }
-            CMD_ASSERT_SOMETIMES => {
-                let cond = page.condition();
-                let (message, details) = self.decode_message_and_details(page);
-                let details_ref = if cond { None } else { Some(details.as_slice()) };
-                self.oracle
-                    .record_sometimes_with_details(page.id, cond, &message, details_ref);
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_REACHABLE => {
-                let message = self.decode_message(page);
-                self.oracle.record_reachable(page.id, &message);
-                (0, STATUS_OK)
-            }
-            CMD_ASSERT_UNREACHABLE => {
-                let (message, details) = self.decode_message_and_details(page);
-                self.oracle.record_unreachable_with_details(
-                    page.id,
-                    &message,
-                    Some(details.as_slice()),
-                );
-                (0, STATUS_UNREACHABLE_REACHED)
-            }
-            CMD_LIFECYCLE_SETUP_COMPLETE => {
-                self.setup_complete = true;
-                self.oracle.record_setup_complete();
-                (0, STATUS_OK)
-            }
+                Err(_) => (0, STATUS_ERROR),
+            },
             CMD_LIFECYCLE_SEND_EVENT => {
                 let (name, json_details) = self.decode_event(page);
                 let details = serde_json::from_slice::<serde_json::Value>(&json_details)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-                self.oracle.record_event(&name, details);
-                (0, STATUS_OK)
+                match self.oracle.record_event(&name, details) {
+                    Ok(()) => (0, STATUS_OK),
+                    Err(_) => (0, STATUS_ERROR),
+                }
             }
             CMD_RANDOM_GET => {
                 let seq = self.choice_count;
@@ -486,17 +502,161 @@ impl FaultEngine {
                 });
                 (value, STATUS_OK)
             }
-            CMD_GUIDANCE => {
-                // Guest writes f64 distance into the result field.
-                let distance = f64::from_le_bytes(page.result.to_le_bytes());
-                self.guidance_values.insert(page.id, distance);
-                (0, STATUS_OK)
-            }
             _cmd => {
                 // Unknown command — return error
                 (0, STATUS_ERROR)
             }
         }
+    }
+
+    fn handle_catalog_begin(&mut self, page: &HypercallPage) -> (u64, u8) {
+        if self.catalog_builder.is_some()
+            || self.oracle.catalog_status()
+                != chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+        {
+            return self.catalog_failure(CatalogConflict::AlreadyBegun);
+        }
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+            ));
+        };
+        if let Err(error) = decode_catalog_begin(payload) {
+            return self.catalog_failure(CatalogConflict::Descriptor(error));
+        }
+        let expected = page.id as usize;
+        match CatalogBuilder::begin(expected) {
+            Ok(builder) => {
+                self.catalog_builder = Some(builder);
+                (0, STATUS_OK)
+            }
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_catalog_descriptor(&mut self, page: &HypercallPage) -> (u64, u8) {
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+            ));
+        };
+        let frame = match decode_descriptor_frame(payload) {
+            Ok(frame) => frame,
+            Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
+        };
+        if frame.descriptor.compatibility_id != Some(page.id) {
+            return self.catalog_failure(CatalogConflict::CompatibilityAliasConflict);
+        }
+        let result = match self.catalog_builder.as_mut() {
+            Some(builder) => builder.insert_with_fingerprint(frame.descriptor, frame.fingerprint),
+            None => return self.catalog_failure(CatalogConflict::CatalogIncomplete),
+        };
+        match result {
+            Ok(_) => (0, STATUS_OK),
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_catalog_complete(&mut self, page: &HypercallPage) -> (u64, u8) {
+        let Ok(payload) = self.page_payload(page) else {
+            return self.catalog_failure(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+            ));
+        };
+        let token = match decode_catalog_complete(payload) {
+            Ok(token) => token,
+            Err(error) => return self.catalog_failure(CatalogConflict::Descriptor(error)),
+        };
+        let Some(builder) = self.catalog_builder.as_ref() else {
+            return self.catalog_failure(CatalogConflict::CatalogIncomplete);
+        };
+        let completed_count = page.id as usize;
+        if completed_count != builder.expected_frames()
+            || completed_count != builder.received_frames()
+        {
+            return self.catalog_failure(CatalogConflict::UnexpectedDescriptorCount);
+        }
+        let builder = self
+            .catalog_builder
+            .take()
+            .expect("catalog builder was checked");
+        match builder
+            .complete(token)
+            .and_then(|catalog| self.oracle.activate_catalog(catalog))
+        {
+            Ok(()) => {
+                self.oracle.begin_run();
+                (0, STATUS_OK)
+            }
+            Err(conflict) => self.catalog_failure(conflict),
+        }
+    }
+
+    fn handle_assertion_event(&mut self, page: &HypercallPage, kind: AssertionKind) -> (u64, u8) {
+        if self.oracle.catalog_status()
+            != chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+        {
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::CatalogIncomplete);
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        }
+        let Ok(payload) = self.page_payload(page) else {
+            self.oracle
+                .mark_identity_conflict(CatalogConflict::Descriptor(
+                    chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+                ));
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        };
+        let frame = match decode_event_frame(payload, kind) {
+            Ok(frame) => frame,
+            Err(error) => {
+                self.oracle
+                    .mark_identity_conflict(CatalogConflict::Descriptor(error));
+                return (0, STATUS_ASSERTION_EVENT_REJECTED);
+            }
+        };
+        let event = BoundAssertionEvent {
+            catalog_token: frame.catalog_token,
+            fingerprint: frame.fingerprint,
+            kind: frame.kind,
+        };
+        let condition = page.condition();
+        let details = if condition {
+            None
+        } else {
+            Some(frame.details.as_slice())
+        };
+        if self
+            .oracle
+            .record_bound_event_with_compatibility(&event, page.id, condition, details)
+            .is_err()
+        {
+            return (0, STATUS_ASSERTION_EVENT_REJECTED);
+        }
+        match kind {
+            AssertionKind::Always if !condition => (0, STATUS_ASSERTION_FAILED),
+            AssertionKind::Unreachable => (0, STATUS_UNREACHABLE_REACHED),
+            _ => (0, STATUS_OK),
+        }
+    }
+
+    fn catalog_failure(&mut self, conflict: CatalogConflict) -> (u64, u8) {
+        let status = if conflict == CatalogConflict::CardinalityOverflow {
+            STATUS_ASSERTION_LIMIT_EXCEEDED
+        } else {
+            STATUS_ASSERTION_IDENTITY_CONFLICT
+        };
+        self.catalog_builder = None;
+        self.oracle.mark_identity_conflict(conflict);
+        (0, status)
+    }
+
+    fn page_payload<'a>(&self, page: &'a HypercallPage) -> Result<&'a [u8], EngineError> {
+        let payload_length = page.payload_len as usize;
+        if payload_length > PAYLOAD_MAX {
+            return Err(EngineError::PayloadDecode);
+        }
+        Ok(&page.payload[..payload_length])
     }
 
     /// Select due fault attempts without claiming application or observation.
@@ -729,12 +889,15 @@ impl FaultEngine {
     /// Use this in integration tests where the guest doesn't use the SDK
     /// but you still want faults to fire on schedule.
     pub fn force_setup_complete(&mut self) {
-        self.setup_complete = true;
+        if self.oracle.record_setup_complete().is_ok() {
+            self.setup_complete = true;
+        }
     }
 
     /// Reset setup_complete to false (used during VM restart).
     pub fn reset_setup_complete(&mut self) {
         self.setup_complete = false;
+        self.oracle.reset_setup_complete();
     }
 
     /// Replace the schedule before the current run selects any fault.
@@ -774,8 +937,11 @@ impl FaultEngine {
         }
     }
 
-    /// Validate an untrusted engine snapshot without changing live state.
-    pub fn validate_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
+    /// Validate fault-stage state without changing live state.
+    fn validate_fault_snapshot(
+        &self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), FaultTransitionError> {
         validate_fault_outcome_ledger(&snapshot.outcomes)?;
         let canonical_rng = Self::rng_from_seed(self.config.seed);
         if snapshot.rng_seed != canonical_rng.get_seed()
@@ -915,16 +1081,53 @@ impl FaultEngine {
         Ok(())
     }
 
-    /// Validate and restore engine state from an untrusted snapshot.
+    /// Validate fault-stage and assertion-authority state without mutation.
+    pub fn validate_snapshot(&self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
+        self.validate_fault_snapshot(snapshot)?;
+        validate_engine_snapshot(snapshot)
+            .map_err(|_| FaultTransitionError::SnapshotAssertionIdentityMismatch)
+    }
+
+    /// Validate fault-stage and controller orchestration state without mutation.
+    pub fn validate_orchestration_snapshot(
+        &self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), FaultTransitionError> {
+        self.validate_fault_snapshot(snapshot)?;
+        validate_orchestration_engine_snapshot(snapshot)
+            .map_err(|_| FaultTransitionError::SnapshotAssertionIdentityMismatch)
+    }
+
+    /// Validate and restore assertion-authority engine state.
     pub fn restore(&mut self, snapshot: &EngineSnapshot) -> Result<(), FaultTransitionError> {
         self.validate_snapshot(snapshot)?;
+        self.oracle
+            .restore(&snapshot.oracle)
+            .map_err(|_| FaultTransitionError::SnapshotAssertionIdentityMismatch)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    /// Validate and restore controller orchestration state.
+    pub fn restore_orchestration(
+        &mut self,
+        snapshot: &EngineSnapshot,
+    ) -> Result<(), FaultTransitionError> {
+        self.validate_orchestration_snapshot(snapshot)?;
+        self.oracle
+            .restore_orchestration(&snapshot.oracle)
+            .map_err(|_| FaultTransitionError::SnapshotAssertionIdentityMismatch)?;
+        self.apply_snapshot(snapshot);
+        Ok(())
+    }
+
+    fn apply_snapshot(&mut self, snapshot: &EngineSnapshot) {
         let mut restored_schedule = self.schedule.clone();
         restored_schedule.restore(&snapshot.schedule);
         let mut restored_rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
         restored_rng.set_stream(snapshot.rng_stream);
         restored_rng.set_word_pos(snapshot.rng_word_pos);
         self.rng = restored_rng;
-        self.oracle.restore(&snapshot.oracle);
         self.schedule = restored_schedule;
         self.outcomes = snapshot.outcomes.clone();
         self.schedule_id = snapshot.schedule_id;
@@ -935,11 +1138,8 @@ impl FaultEngine {
         self.setup_complete = snapshot.setup_complete;
         self.next_random_fault_time_ns = snapshot.next_random_fault_time_ns;
         self.choice_count = snapshot.choice_count;
-        // Clear history — new run starts recording fresh.
-        // random_overrides are NOT cleared — they're set externally
-        // before each branch by the explorer.
         self.choice_history.clear();
-        Ok(())
+        self.catalog_builder = None;
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -971,41 +1171,12 @@ impl FaultEngine {
         self.choice_count
     }
 
-    /// Get the last-reported guidance distances.
-    ///
-    /// Maps assertion IDs to their most recent distance-to-violation
-    /// hint.  The explorer reads this after each execution quantum to
-    /// guide mutation toward property violations.
-    pub fn guidance_values(&self) -> &HashMap<u32, f64> {
-        &self.guidance_values
-    }
-
     // ── Internal ────────────────────────────────────────────────
 
     fn rng_from_seed(seed: u64) -> ChaCha20Rng {
         let mut key = [0u8; 32];
         key[..8].copy_from_slice(&seed.to_le_bytes());
         ChaCha20Rng::from_seed(key)
-    }
-
-    fn decode_message(&self, page: &HypercallPage) -> String {
-        let payload_len = page.payload_len as usize;
-        if payload_len == 0 {
-            return String::new();
-        }
-        let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
-        decode_payload(buf).map(|p| p.message).unwrap_or_default()
-    }
-
-    fn decode_message_and_details(&self, page: &HypercallPage) -> (String, Vec<u8>) {
-        let payload_len = page.payload_len as usize;
-        if payload_len == 0 {
-            return (String::new(), b"{}".to_vec());
-        }
-        let buf = &page.payload[..payload_len.min(PAYLOAD_MAX)];
-        decode_payload(buf)
-            .map(|p| (p.message, p.json_details))
-            .unwrap_or_else(|| (String::new(), b"{}".to_vec()))
     }
 
     fn decode_event(&self, page: &HypercallPage) -> (String, Vec<u8>) {
@@ -1139,46 +1310,58 @@ mod tests {
     }
 
     #[test]
-    fn handle_assert_always_true() {
+    fn setup_complete_without_active_run_is_rejected() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        let page = make_page(CMD_LIFECYCLE_SETUP_COMPLETE, 0, 0);
+
+        let (_, status) = engine.handle_hypercall(&page);
+        assert_eq!(status, STATUS_ERROR);
+        assert!(!engine.setup_complete);
+        assert!(!engine.oracle.is_setup_complete());
+    }
+
+    #[test]
+    fn strict_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "test", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_OK);
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
         assert!(!engine.has_assertion_failure());
+        assert!(!engine.oracle().report().collision_safe_evidence);
     }
 
     #[test]
-    fn handle_assert_always_false() {
+    fn strict_false_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x00, 1, "bad", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_ASSERTION_FAILED);
-        assert!(engine.has_assertion_failure());
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
+        assert!(!engine.has_assertion_failure());
     }
 
     #[test]
-    fn handle_assert_sometimes() {
+    fn strict_sometimes_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 1, "rare", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_OK); // sometimes(false) is not an immediate failure
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
     }
 
     #[test]
-    fn handle_assert_unreachable() {
+    fn strict_unreachable_event_before_catalog_is_rejected() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
 
         let page = make_page_with_payload(CMD_ASSERT_UNREACHABLE, 0x00, 1, "impossible", b"{}");
         let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_UNREACHABLE_REACHED);
-        assert!(engine.has_assertion_failure());
+        assert_eq!(status, STATUS_ASSERTION_EVENT_REJECTED);
+        assert!(!engine.has_assertion_failure());
     }
 
     #[test]
@@ -1362,7 +1545,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(engine.fault_outcomes().events.len(), 4);
-        engine.restore(&snapshot).unwrap();
+        engine.restore_orchestration(&snapshot).unwrap();
 
         assert_eq!(engine.fault_outcomes(), &expected);
         assert_eq!(engine.fault_outcomes().events.len(), 3);
@@ -1400,7 +1583,7 @@ mod tests {
         engine.begin_run();
         assert!(engine.run_exhausted);
         let valid = engine.snapshot();
-        assert!(engine.validate_snapshot(&valid).is_ok());
+        assert!(engine.validate_orchestration_snapshot(&valid).is_ok());
 
         let mut tampered = valid;
         tampered.run_id = FaultRunId([0; 32]);
@@ -1482,7 +1665,9 @@ mod tests {
             }
         );
         assert_eq!(attempts[0].selected_at_ns, POLLED_AT_NS);
-        assert!(engine.validate_snapshot(&engine.snapshot()).is_ok());
+        assert!(engine
+            .validate_orchestration_snapshot(&engine.snapshot())
+            .is_ok());
     }
 
     #[test]
@@ -1597,7 +1782,9 @@ mod tests {
         });
         engine.begin_run();
         let valid_initial = engine.snapshot();
-        assert!(engine.validate_snapshot(&valid_initial).is_ok());
+        assert!(engine
+            .validate_orchestration_snapshot(&valid_initial)
+            .is_ok());
 
         let mut timer_backward = valid_initial.clone();
         timer_backward.next_random_fault_time_ns = RANDOM_INTERVAL_NS - 1;
@@ -1629,7 +1816,9 @@ mod tests {
         assert_eq!(attempts.len(), 1);
         assert_eq!(attempts[0].source, FaultAttemptSource::Random);
         let valid_selected = engine.snapshot();
-        assert!(engine.validate_snapshot(&valid_selected).is_ok());
+        assert!(engine
+            .validate_orchestration_snapshot(&valid_selected)
+            .is_ok());
         let mut selected_timer_backward = valid_selected.clone();
         selected_timer_backward.next_random_fault_time_ns =
             RANDOM_INTERVAL_NS.saturating_mul(2).saturating_sub(1);
@@ -1779,7 +1968,6 @@ mod tests {
     #[test]
     fn snapshot_restore_engine() {
         let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
 
         // Record some state
         let page = make_page(CMD_RANDOM_GET, 0, 0);
@@ -1792,45 +1980,90 @@ mod tests {
         assert_ne!(v1, v2);
 
         // Restore and verify same next value
-        engine.restore(&snap).unwrap();
+        engine.restore(&snap).expect("restore engine");
         engine.begin_run();
         let (v3, _) = engine.handle_hypercall(&page);
         assert_eq!(v2, v3);
     }
 
     #[test]
-    fn cross_run_oracle_report() {
+    fn removed_identity_commands_return_error() {
+        const REMOVED_LEGACY_COMMAND: u8 = 0x05;
+        const REMOVED_GUIDANCE_COMMAND: u8 = 0x07;
         let mut engine = FaultEngine::new(EngineConfig::default());
-
-        // Run 0: always=true, sometimes=false
         engine.begin_run();
-        let p1 = make_page_with_payload(CMD_ASSERT_ALWAYS, 0x01, 1, "stable", b"{}");
-        let p2 = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x00, 2, "rare", b"{}");
-        engine.handle_hypercall(&p1);
-        engine.handle_hypercall(&p2);
-        engine.end_run();
 
-        // Run 1: always=true, sometimes=true
-        engine.begin_run();
-        engine.handle_hypercall(&p1);
-        let p2_true = make_page_with_payload(CMD_ASSERT_SOMETIMES, 0x01, 2, "rare", b"{}");
-        engine.handle_hypercall(&p2_true);
-        engine.end_run();
-
-        let report = engine.oracle().report();
-        assert_eq!(report.total_runs, 2);
-        assert_eq!(report.passed, 2); // both pass cross-run
-        assert_eq!(report.failed, 0);
+        for command in [REMOVED_LEGACY_COMMAND, REMOVED_GUIDANCE_COMMAND] {
+            let page = make_page(command, 0, 0);
+            let (_, status) = engine.handle_hypercall(&page);
+            assert_eq!(status, STATUS_ERROR);
+        }
     }
 
     #[test]
-    fn unknown_command_returns_error() {
+    fn snapshot_setup_state_must_match_oracle_run() {
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        let before = engine.oracle.report();
+        let mut snapshot = engine.snapshot();
+        snapshot.setup_complete = true;
+
+        assert_eq!(
+            validate_engine_snapshot(&snapshot),
+            Err(crate::oracle_validation::OracleValidationError::Status)
+        );
+        assert!(engine.restore(&snapshot).is_err());
+        assert_eq!(engine.oracle.report(), before);
+    }
+
+    #[test]
+    fn orchestration_snapshot_has_no_assertion_authority() {
+        let mut source = FaultEngine::new(EngineConfig::default());
+        source.begin_run();
+        source.force_setup_complete();
+        let snapshot = source.snapshot();
+
+        assert!(validate_engine_snapshot(&snapshot).is_err());
+        validate_orchestration_engine_snapshot(&snapshot)
+            .expect("empty orchestration state validates");
+        let mut restored = FaultEngine::new(EngineConfig::default());
+        restored
+            .restore_orchestration(&snapshot)
+            .expect("orchestration state restores");
+        assert!(restored.is_setup_complete());
+
+        let mut forged = snapshot;
+        forged.oracle.total_runs = 1;
+        assert!(validate_orchestration_engine_snapshot(&forged).is_err());
+        assert!(restored.restore_orchestration(&forged).is_err());
+    }
+
+    #[test]
+    fn incomplete_catalog_cannot_span_runs() {
         let mut engine = FaultEngine::new(EngineConfig::default());
         engine.begin_run();
+        engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("catalog builder"));
+        engine.end_run();
 
-        let page = make_page(0xFF, 0, 0);
-        let (_, status) = engine.handle_hypercall(&page);
-        assert_eq!(status, STATUS_ERROR);
+        assert!(engine.catalog_builder.is_none());
+        assert_eq!(
+            engine.oracle.catalog_status(),
+            chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
+        );
+        engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("stale builder"));
+        engine.begin_run();
+        assert!(engine.catalog_builder.is_none());
+    }
+
+    #[test]
+    fn restore_clears_ambient_catalog_builder() {
+        let snapshot = FaultEngine::new(EngineConfig::default()).snapshot();
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.catalog_builder = Some(CatalogBuilder::begin(1).expect("stale builder"));
+
+        engine
+            .restore(&snapshot)
+            .expect("restore pristine snapshot");
+        assert!(engine.catalog_builder.is_none());
     }
 
     // ── Input tree exploration tests ────────────────────────────
@@ -1952,7 +2185,6 @@ mod tests {
     #[test]
     fn choice_count_survives_snapshot() {
         let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
 
         let page = make_page(CMD_RANDOM_CHOICE, 0, 5);
         engine.handle_hypercall(&page);
@@ -1966,81 +2198,16 @@ mod tests {
         assert_eq!(engine.choice_count(), 3);
 
         // Restore → back to 2
-        engine.restore(&snap).unwrap();
+        engine.restore(&snap).expect("restore engine");
         assert_eq!(engine.choice_count(), 2);
 
         // History cleared on restore
         assert!(engine.drain_choice_history().is_empty());
     }
 
-    // ── Guidance tests ──────────────────────────────────────────────
-
-    #[test]
-    fn guidance_stores_value() {
-        let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
-
-        let val = 2.72f64;
-        let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
-        page.result = u64::from_le_bytes(val.to_le_bytes());
-        let (_, status) = engine.handle_hypercall(&page);
-
-        assert_eq!(status, STATUS_OK);
-        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&val));
-    }
-
-    #[test]
-    fn guidance_overwrites_value() {
-        let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
-
-        let val1 = 2.72f64;
-        let mut page = make_page(CMD_GUIDANCE, 0, 0xABCD);
-        page.result = u64::from_le_bytes(val1.to_le_bytes());
-        engine.handle_hypercall(&page);
-
-        page.result = u64::from_le_bytes(1.0f64.to_le_bytes());
-        engine.handle_hypercall(&page);
-
-        assert_eq!(engine.guidance_values().get(&0xABCD), Some(&1.0));
-    }
-
-    #[test]
-    fn guidance_stores_nan() {
-        let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
-
-        let mut page = make_page(CMD_GUIDANCE, 0, 42);
-        page.result = u64::from_le_bytes(f64::NAN.to_le_bytes());
-        let (_, status) = engine.handle_hypercall(&page);
-
-        assert_eq!(status, STATUS_OK);
-        let val = engine.guidance_values().get(&42).unwrap();
-        assert!(val.is_nan());
-    }
-
-    #[test]
-    fn guidance_multiple_assertions() {
-        let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
-
-        let mut p1 = make_page(CMD_GUIDANCE, 0, 1);
-        p1.result = u64::from_le_bytes(10.0f64.to_le_bytes());
-        engine.handle_hypercall(&p1);
-
-        let mut p2 = make_page(CMD_GUIDANCE, 0, 2);
-        p2.result = u64::from_le_bytes(0.0f64.to_le_bytes());
-        engine.handle_hypercall(&p2);
-
-        assert_eq!(engine.guidance_values().len(), 2);
-        assert_eq!(engine.guidance_values().get(&1), Some(&10.0));
-        assert_eq!(engine.guidance_values().get(&2), Some(&0.0));
-    }
-
     #[test]
     fn overrides_persist_across_restore() {
         let mut engine = FaultEngine::new(EngineConfig::default());
-        engine.begin_run();
 
         // Set override
         let mut overrides = BTreeMap::new();
@@ -2049,7 +2216,7 @@ mod tests {
 
         // Take snapshot and restore
         let snap = engine.snapshot();
-        engine.restore(&snap).unwrap();
+        engine.restore(&snap).expect("restore engine");
 
         // Override still active
         let page = make_page(CMD_RANDOM_GET, 0, 0);

@@ -2,87 +2,66 @@
 
 ## Purpose
 
-Defines the canonical ChaosControl requirements for assert raw.
+Define the registered generic assertion macro and its structured identity rules.
 
 ## Requirements
+
 ### Requirement: AssertionKind enum
 
-This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
-The SDK SHALL expose a public `AssertionKind` enum with variants `Always`,
-`Sometimes`, `Reachable`, and `Unreachable`. The enum SHALL be `Copy`, `Clone`,
-`Debug`, `PartialEq`, `Eq`, and usable in `no_std` contexts. It SHALL provide a
-`const fn to_catalog_kind() -> u8` method that maps to the corresponding
-`CATALOG_KIND_*` constant.
+The SDK SHALL expose `AssertionKind` with `Always`, `Sometimes`, `Reachable`, and
+`Unreachable` variants. The enum SHALL support compile-time catalog registration.
 
-#### Scenario: Enum variants match protocol commands
-- **WHEN** each `AssertionKind` variant is used in `assert_raw_with_id`
-- **THEN** it SHALL dispatch to the corresponding `CMD_ASSERT_ALWAYS`,
-  `CMD_ASSERT_SOMETIMES`, `CMD_ASSERT_REACHABLE`, or `CMD_ASSERT_UNREACHABLE`
-  protocol command
+#### Scenario: Enum variants select assertion semantics
+
+- **WHEN** a variant is used with `cc_assert_raw!`
+- **THEN** it SHALL select the matching assertion command and stable `u8` discriminant
+- **AND** the event SHALL bind to the registered descriptor fingerprint and catalog token.
 
 #### Scenario: Enum is const-compatible
+
 - **WHEN** `AssertionKind::Always.to_catalog_kind()` is called in a const context
-- **THEN** it SHALL return `CATALOG_KIND_ALWAYS` (0)
-
-### Requirement: assert_raw function
-
-This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
-The SDK SHALL expose `assert_raw(kind, cond, message, details)` that dispatches an
-assertion of the given kind through the hypercall transport. The assertion ID SHALL
-be computed from the message via `location_id()`, matching the behavior of the typed
-assertion functions.
-
-#### Scenario: Always assertion via assert_raw
-- **WHEN** `assert_raw(AssertionKind::Always, true, "safety", &json!({}))` is called
-- **THEN** the oracle SHALL record a true evaluation for assertion "safety" with kind Always
-
-#### Scenario: Sometimes assertion via assert_raw
-- **WHEN** `assert_raw(AssertionKind::Sometimes, false, "liveness", &json!({}))` is called
-- **THEN** the oracle SHALL record a false evaluation for assertion "liveness" with kind Sometimes
-
-#### Scenario: Reachable via assert_raw ignores condition
-- **WHEN** `assert_raw(AssertionKind::Reachable, false, "path reached", &json!({}))` is called
-- **THEN** the oracle SHALL record the point as reached (condition value is ignored)
-
-#### Scenario: Unreachable via assert_raw ignores condition
-- **WHEN** `assert_raw(AssertionKind::Unreachable, true, "dead code", &json!({}))` is called
-- **THEN** the oracle SHALL record the point as reached (immediate failure)
-
-### Requirement: assert_raw_with_id function
-
-This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
-The SDK SHALL expose `assert_raw_with_id(kind, cond, id, message, details)` that
-accepts an explicit assertion ID instead of computing it from the message. This
-enables frameworks that maintain their own ID schemes.
-
-#### Scenario: Explicit ID used in transport
-- **WHEN** `assert_raw_with_id(AssertionKind::Always, true, 42, "custom", &json!({}))` is called
-- **THEN** the hypercall SHALL use assertion ID 42 (not `location_id("custom")`)
+- **THEN** it SHALL return the stable Always discriminant.
 
 ### Requirement: cc_assert_raw macro
 
-This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
-The SDK SHALL expose a `cc_assert_raw!` macro that:
-1. Registers the assertion site in the linkme catalog at compile time
-2. Dispatches through `assert_raw_with_id` at runtime
-
-The macro SHALL accept the same trailing-comma tolerance as other `cc_assert_*!` macros.
+The SDK SHALL expose `cc_assert_raw!`. The macro SHALL register an automatic
+structured descriptor at compile time and emit only a catalog-bound event.
+Runtime-computed kinds and public raw assertion functions are unsupported.
 
 #### Scenario: Catalog registration
+
 - **WHEN** `cc_assert_raw!(AssertionKind::Always, condition, "message")` is compiled
-- **THEN** a `CatalogEntry` with the message and kind SHALL be added to the `ASSERTION_CATALOG` distributed slice
+- **THEN** the SDK SHALL add the complete descriptor to `ASSERTION_CATALOG`
+- **AND** the compact `u32` value SHALL remain a non-authoritative transport alias.
 
 #### Scenario: Macro with details
-- **WHEN** `cc_assert_raw!(AssertionKind::Sometimes, cond, "msg", &json!({"k": "v"}))` is called
-- **THEN** the details JSON SHALL be forwarded to the oracle
+
+- **WHEN** `cc_assert_raw!(AssertionKind::Sometimes, cond, "msg", &json!({"k": "v"}))` runs
+- **THEN** the event SHALL carry the validated catalog token and fingerprint
+- **AND** bounded details SHALL be forwarded to the oracle.
+
+#### Scenario: Identity resolution fails
+
+- **WHEN** the macro cannot resolve its exact registered descriptor
+- **THEN** it SHALL fail closed without sending an unbound assertion event.
+
+### Requirement: Explicit integer assertion APIs are absent
+
+The SDK MUST NOT expose public `assert_raw`, `assert_raw_with_id`, or other
+explicit-`u32` assertion functions or macros.
+
+#### Scenario: Old source API is used
+
+- **WHEN** source code calls a removed integer assertion API
+- **THEN** compilation SHALL fail
+- **AND** no compatibility adapter SHALL map the call to strict evidence.
 
 ### Requirement: no_std compatibility
 
-This requirement MUST be satisfied by the corresponding ChaosControl implementation and validation evidence.
-When the `full` feature is disabled, `assert_raw()`, `assert_raw_with_id()`, and
-`cc_assert_raw!` SHALL compile as no-ops that accept the same arguments but discard
-them, matching the behavior of the existing typed assertion stubs.
+When the `full` feature is disabled, `cc_assert_raw!` SHALL remain a no-op macro
+with the same arguments.
 
 #### Scenario: No-op in no_std mode
-- **WHEN** the crate is compiled without the `full` feature
-- **THEN** `assert_raw(AssertionKind::Always, true, "msg", &())` SHALL compile and do nothing
+
+- **WHEN** a crate compiles `cc_assert_raw!` without the `full` feature
+- **THEN** the macro SHALL compile and produce no assertion transport.

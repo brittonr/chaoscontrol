@@ -38,6 +38,8 @@
 //! On resume, we re-bootstrap the VMs but carry forward the global coverage map,
 //! so we don't re-explore known territory.
 
+use chaoscontrol_explore::assertion_summary::AssertionSummaryV2;
+use chaoscontrol_explore::assertion_summary_writer::write_assertion_summary;
 use chaoscontrol_explore::campaign::{
     generate_seeds, load_campaign_progress, CampaignConfig, CampaignRunner,
 };
@@ -58,6 +60,8 @@ use chaoscontrol_vmm::vm::VmConfig;
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::Path;
+
+const EXIT_ERROR: i32 = 1;
 
 #[derive(Parser)]
 #[command(name = "chaoscontrol-explore")]
@@ -210,6 +214,12 @@ enum Commands {
         /// Dashboard port (default: 8080).
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
+
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
 
         /// Named helical scenario family. Generates a rotating multi-phase
         /// fault schedule instead of random mutations.
@@ -494,6 +504,12 @@ enum Commands {
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
 
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
+
         /// Named helical scenario family.
         #[arg(long)]
         scenario: Option<String>,
@@ -551,6 +567,12 @@ enum Commands {
         /// Dashboard port (default: 8080).
         #[arg(long, default_value = "8080")]
         dashboard_port: u16,
+
+        /// Dashboard bind host (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        dashboard_host: String,
     },
 
     /// Export checkpoint-held bugs as standalone bug_N.json artifacts.
@@ -622,6 +644,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -659,6 +682,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -729,6 +753,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -763,6 +788,7 @@ fn main() {
             auto_minimize,
             dashboard,
             dashboard_port,
+            dashboard_host,
             scenario,
             scenario_phase_ticks,
             scenario_turns,
@@ -793,7 +819,16 @@ fn main() {
             rounds,
             dashboard,
             dashboard_port,
-        } => cmd_resume(corpus, kernel, initrd, rounds, dashboard, dashboard_port),
+            dashboard_host,
+        } => cmd_resume(
+            corpus,
+            kernel,
+            initrd,
+            rounds,
+            dashboard,
+            dashboard_port,
+            dashboard_host,
+        ),
         Commands::Minimize {
             kernel,
             initrd,
@@ -900,6 +935,7 @@ fn cmd_run(
     auto_minimize: bool,
     dashboard: bool,
     dashboard_port: u16,
+    dashboard_host: String,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
@@ -1087,15 +1123,15 @@ fn cmd_run(
     // Start dashboard if requested
     #[cfg(feature = "dashboard")]
     if dashboard {
-        match chaoscontrol_explore::server::start(dashboard_port) {
+        match chaoscontrol_explore::server::start(&dashboard_host, dashboard_port) {
             Some(sink) => {
-                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                eprintln!("Dashboard: http://{}:{}", dashboard_host, dashboard_port);
                 explorer.set_event_sink(sink);
             }
             None => {
                 eprintln!(
-                    "Warning: failed to start dashboard on port {}",
-                    dashboard_port
+                    "Warning: failed to start dashboard on {}:{}",
+                    dashboard_host, dashboard_port
                 );
             }
         }
@@ -1104,14 +1140,14 @@ fn cmd_run(
     if dashboard {
         eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
     }
-    let _ = (dashboard, dashboard_port);
+    let _ = (dashboard, dashboard_port, dashboard_host);
 
     // Run with progress tracking
     let report = match run_with_progress(&mut explorer) {
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {}", e);
+            eprintln!("Exploration failed: {e:?}");
             std::process::exit(1);
         }
     };
@@ -1120,103 +1156,41 @@ fn cmd_run(
     eprintln!("Exploration complete!");
     eprintln!();
 
-    // Format and print report
+    let assertion_summary = match validate_exploration_output(&report, vms) {
+        Ok(summary) => summary,
+        Err(error) => {
+            eprintln!("Exploration evidence is invalid: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
+
+    // Format and print the validated report.
     let formatted = format_report(&report);
     println!("{}", formatted);
 
-    // Save output if requested
+    // Save output if requested.
     if let Some(ref output_dir) = output {
-        // Save formatted report
-        let report_path = format!("{}/report.txt", output_dir);
-        if let Err(e) = fs::write(&report_path, &formatted) {
-            eprintln!("Warning: failed to save report: {}", e);
-        } else {
-            eprintln!("Saved report to: {}", report_path);
-        }
-
-        // Save bugs as JSON (consumable by `minimize` subcommand) + Debug text
-        let snapshot_store =
-            chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output_dir);
-        for bug in &report.bugs {
-            // JSON format (for minimize subcommand)
-            let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
-            if let Some(snapshot) = bug.snapshot.as_ref() {
-                match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
-                    &snapshot_store,
-                    snapshot,
-                    bug.replay_parent_depth,
-                ) {
-                    Ok(reference) => {
-                        serialized.replay_parent_snapshot_ref = Some(reference);
-                    }
-                    Err(e) if bug.replay_parent_depth > 0 => {
-                        eprintln!(
-                            "Error: failed to persist required replay parent snapshot for bug {}: {}",
-                            bug.bug_id, e
-                        );
-                        std::process::exit(1);
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "Warning: failed to persist schedule-only replay parent metadata for bug {}: {}",
-                            bug.bug_id, e
-                        );
-                    }
-                }
-            } else if bug.replay_parent_depth > 0 {
-                eprintln!(
-                    "Error: bug {} requires replay parent snapshot depth {} but no parent snapshot is available to persist",
-                    bug.bug_id, bug.replay_parent_depth
-                );
-                std::process::exit(1);
-            }
-            let json_path = format!("{}/bug_{}.json", output_dir, bug.bug_id);
-            match serde_json::to_string_pretty(&serialized) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&json_path, &json) {
-                        eprintln!("Warning: failed to save bug {} JSON: {}", bug.bug_id, e);
-                    } else {
-                        eprintln!("Saved bug {} to: {}", bug.bug_id, json_path);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to serialize bug {}: {}", bug.bug_id, e);
-                }
-            }
-
-            // Note: Debug format (.txt) not saved — BugReport's snapshot
-            // field contains full guest memory, making .txt files ~12GB each.
-            // Use the JSON format for bug reproduction.
-        }
-
-        // Save per-assertion detail as JSON
-        if !report.assertion_details.is_empty() {
-            let assertions_path = format!("{}/assertions.json", output_dir);
-            match serde_json::to_string_pretty(&report.assertion_details) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&assertions_path, &json) {
-                        eprintln!("Warning: failed to save assertions: {}", e);
-                    } else {
-                        eprintln!(
-                            "Saved {} assertion details to: {}",
-                            report.assertion_details.len(),
-                            assertions_path
-                        );
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: failed to serialize assertions: {}", e);
-                }
-            }
+        if let Err(error) =
+            persist_exploration_outputs(output_dir, &report, &formatted, &assertion_summary, vms)
+        {
+            eprintln!("Exploration output failed: {error}");
+            std::process::exit(EXIT_ERROR);
         }
     }
 
     // Auto-minimize bugs if requested
     if auto_minimize && !report.bugs.is_empty() {
         if chaoscontrol_explore::signal::shutdown_requested() {
-            eprintln!("Skipping auto-minimize: interrupted");
+            eprintln!("Auto-minimize failed: exploration was interrupted");
+            std::process::exit(EXIT_ERROR);
         } else if let Some(ref output_dir) = output {
-            auto_minimize_bugs(&report.bugs, &config_for_minimize, output_dir);
+            if let Err(error) = auto_minimize_bugs(&report.bugs, &config_for_minimize, output_dir) {
+                eprintln!("Auto-minimize failed: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        } else {
+            eprintln!("Auto-minimize requires an output directory");
+            std::process::exit(EXIT_ERROR);
         }
     }
 
@@ -1288,6 +1262,7 @@ fn cmd_campaign(
     auto_minimize: bool,
     dashboard: bool,
     #[cfg_attr(not(feature = "dashboard"), allow(unused_variables))] dashboard_port: u16,
+    #[cfg_attr(not(feature = "dashboard"), allow(unused_variables))] dashboard_host: String,
     scenario: Option<String>,
     scenario_phase_ticks: u64,
     scenario_turns: usize,
@@ -1306,7 +1281,7 @@ fn cmd_campaign(
     // Start dashboard if requested.
     #[cfg(feature = "dashboard")]
     let _dashboard_tx = if dashboard {
-        chaoscontrol_explore::server::start(dashboard_port)
+        chaoscontrol_explore::server::start(&dashboard_host, dashboard_port)
     } else {
         None
     };
@@ -1429,7 +1404,13 @@ fn cmd_campaign(
         metrics_file: None,
     };
 
-    let seed_list = generate_seeds(seed, campaign_seeds, seeds.as_deref());
+    let seed_list = match generate_seeds(seed, campaign_seeds, seeds.as_deref()) {
+        Ok(seed_list) => seed_list,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
 
     let base_config_for_minimize = base_config.clone();
     let campaign_config = CampaignConfig {
@@ -1441,72 +1422,36 @@ fn cmd_campaign(
     let runner = CampaignRunner::new(campaign_config);
     match runner.run() {
         Ok(report) => {
-            // Write reports
-            let formatted = format_campaign_report(&report);
-            println!("{}\n", formatted);
-
-            if let Err(e) = fs::create_dir_all(&output) {
-                eprintln!("Error creating output directory: {}", e);
-            }
-
-            let report_path = format!("{}/campaign_report.txt", output);
-            if let Err(e) = fs::write(&report_path, &formatted) {
-                eprintln!("Error writing report: {}", e);
-            } else {
-                eprintln!("Report saved to {}", report_path);
-            }
-
-            let json_path = format!("{}/campaign_report.json", output);
-            match serde_json::to_string_pretty(&report) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&json_path, &json) {
-                        eprintln!("Error writing JSON report: {}", e);
-                    } else {
-                        eprintln!("JSON report saved to {}", json_path);
-                    }
+            let prepared = match prepare_campaign_outputs(&report) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("Error preparing campaign evidence: {error}");
+                    std::process::exit(EXIT_ERROR);
                 }
-                Err(e) => eprintln!("Error serializing report: {}", e),
-            }
-
-            let assertions_path = format!("{}/assertions.json", output);
-            match serde_json::to_string_pretty(&report.assertion_details) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(&assertions_path, &json) {
-                        eprintln!("Error writing assertions: {}", e);
-                    } else {
-                        eprintln!("Assertions saved to {}", assertions_path);
-                    }
-                }
-                Err(e) => eprintln!("Error serializing assertions: {}", e),
+            };
+            println!("{}\n", prepared.formatted);
+            if let Err(error) = persist_campaign_outputs(&output, &prepared) {
+                eprintln!("Error writing campaign evidence: {error}");
+                std::process::exit(EXIT_ERROR);
             }
 
             // Auto-minimize campaign bugs
             if auto_minimize && !report.bugs.is_empty() {
                 if chaoscontrol_explore::signal::shutdown_requested() {
-                    eprintln!("Skipping auto-minimize: interrupted");
+                    eprintln!("Auto-minimize failed: campaign was interrupted");
+                    std::process::exit(EXIT_ERROR);
                 } else {
-                    // Convert CampaignBugs to BugReports for the minimizer.
-                    let bugs: Vec<chaoscontrol_explore::corpus::BugReport> = report
-                        .bugs
-                        .iter()
-                        .map(|cb| chaoscontrol_explore::corpus::BugReport {
-                            bug_id: cb.bug.bug_id,
-                            assertion_id: cb.bug.assertion_id,
-                            assertion_location: cb.bug.assertion_location.clone(),
-                            schedule: (&cb.bug.schedule).into(),
-                            snapshot: None,
-                            tick: cb.bug.tick,
-                            replay_parent_depth: cb.bug.replay_parent_depth,
-                            replay_parent_snapshot_ref: cb.bug.replay_parent_snapshot_ref.clone(),
-                            dedup_key: cb.dedup_key,
-                            schedule_variant: None,
-                            scenario_config: cb.bug.scenario_config.clone(),
-                            scenario_summary: cb.bug.scenario_summary.clone(),
-                        })
-                        .collect();
                     let min_dir = format!("{}/minimized", output);
-                    let _ = fs::create_dir_all(&min_dir);
-                    auto_minimize_bugs(&bugs, &base_config_for_minimize, &min_dir);
+                    if let Err(error) = fs::create_dir_all(&min_dir) {
+                        eprintln!("Error creating minimization directory: {error}");
+                        std::process::exit(EXIT_ERROR);
+                    }
+                    if let Err(error) =
+                        auto_minimize_bugs(&prepared.bugs, &base_config_for_minimize, &min_dir)
+                    {
+                        eprintln!("Auto-minimize failed: {error}");
+                        std::process::exit(EXIT_ERROR);
+                    }
                 }
             }
 
@@ -1530,6 +1475,159 @@ fn cmd_campaign(
             std::process::exit(2);
         }
     }
+}
+
+fn validate_exploration_output(
+    report: &chaoscontrol_explore::explorer::ExplorationReport,
+    num_vms: usize,
+) -> Result<AssertionSummaryV2, String> {
+    let summary = AssertionSummaryV2::from_exploration(report).map_err(|error| {
+        format!(
+            "invalid assertion summary: {error}; catalog_status={:?}; collision_safe={}; details={}; conflicts={:?}",
+            report.assertion_catalog_status,
+            report.collision_safe_assertion_evidence,
+            report.assertion_details.len(),
+            report.assertion_identity_conflicts,
+        )
+    })?;
+    chaoscontrol_explore::bug::identity::validate_reported_bug_identities(
+        &report.bugs,
+        summary.assertions(),
+    )
+    .map_err(|error| format!("invalid bug collection: {error}"))?;
+    for bug in &report.bugs {
+        if bug.replay_parent_depth == 0 {
+            if bug.replay_parent_snapshot_ref.is_some() {
+                return Err(format!(
+                    "bug {} has an unexpected snapshot reference",
+                    bug.bug_id
+                ));
+            }
+            continue;
+        }
+        if let Some(snapshot) = bug.snapshot.as_ref() {
+            snapshot
+                .validate_assertion_evidence(num_vms, &bug.assertion_identity)
+                .map_err(|error| {
+                    format!(
+                        "bug {} replay parent snapshot is invalid: {error}",
+                        bug.bug_id
+                    )
+                })?;
+        } else if bug.replay_parent_snapshot_ref.is_none() {
+            return Err(format!("bug {} has no replay parent snapshot", bug.bug_id));
+        }
+    }
+    Ok(summary)
+}
+
+fn persist_exploration_outputs(
+    output: &str,
+    report: &chaoscontrol_explore::explorer::ExplorationReport,
+    formatted: &str,
+    assertion_summary: &AssertionSummaryV2,
+    num_vms: usize,
+) -> Result<(), String> {
+    use chaoscontrol_explore::snapshot_store::SnapshotStore;
+
+    let output = Path::new(output);
+    let snapshot_store = chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output);
+    for bug in &report.bugs {
+        if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
+            let snapshot = snapshot_store
+                .get_snapshot(reference)
+                .map_err(|error| format!("bug {} snapshot load failed: {error}", bug.bug_id))?;
+            snapshot
+                .validate_assertion_evidence(num_vms, &bug.assertion_identity)
+                .map_err(|error| format!("bug {} snapshot identity: {error}", bug.bug_id))?;
+        }
+    }
+
+    let assertions_path = output.join("assertions.json");
+    match fs::remove_file(&assertions_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("cannot remove stale assertion summary: {error}")),
+    }
+
+    let mut bug_outputs = Vec::with_capacity(report.bugs.len());
+    for bug in &report.bugs {
+        let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
+        if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
+            let snapshot = bug
+                .snapshot
+                .as_ref()
+                .ok_or_else(|| format!("bug {} has no replay parent snapshot", bug.bug_id))?;
+            serialized.replay_parent_snapshot_ref = Some(
+                snapshot_store
+                    .put_snapshot(snapshot, bug.replay_parent_depth)
+                    .map_err(|error| {
+                        format!("bug {} snapshot persistence failed: {error}", bug.bug_id)
+                    })?,
+            );
+        }
+        if bug.replay_parent_depth == 0 {
+            serialized.replay_parent_snapshot_ref = None;
+        }
+        chaoscontrol_explore::corpus::BugReport::try_from(&serialized)
+            .map_err(|error| format!("bug {} carrier validation failed: {error}", bug.bug_id))?;
+        let bytes = serde_json::to_vec_pretty(&serialized)
+            .map_err(|error| format!("bug {} serialization failed: {error}", bug.bug_id))?;
+        bug_outputs.push((output.join(format!("bug_{}.json", bug.bug_id)), bytes));
+    }
+
+    let report_path = output.join("report.txt");
+    write_atomic_replacing(&report_path, formatted.as_bytes())?;
+    for (path, bytes) in bug_outputs {
+        write_new_or_exact_bug(&path, &bytes)?;
+    }
+    write_assertion_summary(&assertions_path, || Ok(assertion_summary.clone()))?;
+    Ok(())
+}
+
+struct PreparedCampaignOutputs {
+    formatted: String,
+    json: String,
+    assertions: AssertionSummaryV2,
+    bugs: Vec<chaoscontrol_explore::corpus::BugReport>,
+}
+
+fn prepare_campaign_outputs(
+    report: &chaoscontrol_explore::campaign::CampaignReport,
+) -> Result<PreparedCampaignOutputs, String> {
+    let bugs = chaoscontrol_explore::campaign::campaign_bugs_for_minimization(report)
+        .map_err(|error| format!("invalid bug collection: {error}"))?;
+    let assertions = AssertionSummaryV2::from_campaign(report)
+        .map_err(|error| format!("invalid assertion summary: {error}"))?;
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("report serialization failed: {error}"))?;
+    Ok(PreparedCampaignOutputs {
+        formatted: format_campaign_report(report),
+        json,
+        assertions,
+        bugs,
+    })
+}
+
+fn persist_campaign_outputs(
+    output: &str,
+    prepared: &PreparedCampaignOutputs,
+) -> Result<(), String> {
+    fs::create_dir_all(output)
+        .map_err(|error| format!("cannot create output directory: {error}"))?;
+    let output = Path::new(output);
+    let assertions_path = output.join("assertions.json");
+    match fs::remove_file(&assertions_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("cannot remove stale assertion summary: {error}")),
+    }
+    let text_path = output.join("campaign_report.txt");
+    write_atomic_replacing(&text_path, prepared.formatted.as_bytes())?;
+    let json_path = output.join("campaign_report.json");
+    write_atomic_replacing(&json_path, prepared.json.as_bytes())?;
+    write_assertion_summary(&assertions_path, || Ok(prepared.assertions.clone()))?;
+    Ok(())
 }
 
 fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
@@ -1565,52 +1663,109 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
             // Load per-seed checkpoint to reconstruct a minimal report.
             let seed_dir = format!("{}/seed_{}", corpus, seed);
             let cp_path = format!("{}/checkpoint.json", seed_dir);
-            if let Ok(cp) = load_checkpoint(&cp_path) {
-                let report = chaoscontrol_explore::explorer::ExplorationReport {
-                    rounds: cp.rounds_completed,
-                    total_branches: cp.total_branches_run,
+            let cp = match load_checkpoint(&cp_path) {
+                Ok(checkpoint) => checkpoint,
+                Err(error) => {
+                    eprintln!("Campaign aggregation failed to load {cp_path}: {error}");
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            let bugs = match chaoscontrol_explore::checkpoint::replay_bug_set(
+                &cp.bugs,
+                cp.assertion_report.as_ref(),
+            ) {
+                Ok(bugs) => bugs,
+                Err(error) => {
+                    eprintln!("Campaign aggregation rejected {cp_path}: {error}");
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            let projection = match cp.assertion_report.as_ref() {
+                Some(assertion_report) => {
+                    match chaoscontrol_explore::assertion_report::strict_projection(
+                        assertion_report,
+                    ) {
+                        Ok(projection) => Some(projection),
+                        Err(error) => {
+                            eprintln!(
+                                "Campaign aggregation rejected assertion report in {cp_path}: {error:?}"
+                            );
+                            std::process::exit(EXIT_ERROR);
+                        }
+                    }
+                }
+                None => None,
+            };
+            let (assertion_stats, assertion_details, assertion_catalog_status, collision_safe) =
+                projection.map_or_else(
+                    || {
+                        (
+                            Default::default(),
+                            Vec::new(),
+                            chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+                            false,
+                        )
+                    },
+                    |projection| {
+                        (
+                            projection.stats,
+                            projection.details,
+                            projection.catalog_status,
+                            projection.collision_safe_evidence,
+                        )
+                    },
+                );
+            let report = chaoscontrol_explore::explorer::ExplorationReport {
+                rounds: cp.rounds_completed,
+                total_branches: cp.total_branches_run,
+                total_edges: cp.total_edges,
+                bugs,
+                corpus_size: 0,
+                coverage_stats: chaoscontrol_explore::coverage::CoverageStats {
                     total_edges: cp.total_edges,
-                    bugs: Vec::new(), // bugs are in per-seed output
-                    corpus_size: 0,
-                    coverage_stats: chaoscontrol_explore::coverage::CoverageStats {
-                        total_edges: cp.total_edges,
-                        total_runs: cp.total_branches_run,
-                        edges_per_run_avg: if cp.total_branches_run > 0 {
-                            cp.total_edges as f64 / cp.total_branches_run as f64
-                        } else {
-                            0.0
-                        },
-                    },
-                    network_stats: Default::default(),
-                    assertion_stats: Default::default(),
-                    assertion_details: Vec::new(),
-                    round_history: cp.round_history.unwrap_or_default(),
-                    wall_clock_seconds: summary.wall_clock_seconds,
-                    branches_per_second: if summary.wall_clock_seconds > 0.0 {
-                        cp.total_branches_run as f64 / summary.wall_clock_seconds
+                    total_runs: cp.total_branches_run,
+                    edges_per_run_avg: if cp.total_branches_run > 0 {
+                        cp.total_edges as f64 / cp.total_branches_run as f64
                     } else {
                         0.0
                     },
-                    edges_per_second: if summary.wall_clock_seconds > 0.0 {
-                        cp.total_edges as f64 / summary.wall_clock_seconds
-                    } else {
-                        0.0
-                    },
-                    scenario_config: cp.scenario.clone(),
-                    scenario_summary: cp.scenario_summary.clone(),
-                };
-                reports.push((*seed, report, summary.wall_clock_seconds));
-            }
+                },
+                network_stats: Default::default(),
+                assertion_stats,
+                assertion_details,
+                assertion_catalog_status,
+                collision_safe_assertion_evidence: collision_safe,
+                assertion_identity_conflicts: Vec::new(),
+                round_history: cp.round_history.unwrap_or_default(),
+                wall_clock_seconds: summary.wall_clock_seconds,
+                branches_per_second: if summary.wall_clock_seconds > 0.0 {
+                    cp.total_branches_run as f64 / summary.wall_clock_seconds
+                } else {
+                    0.0
+                },
+                edges_per_second: if summary.wall_clock_seconds > 0.0 {
+                    cp.total_edges as f64 / summary.wall_clock_seconds
+                } else {
+                    0.0
+                },
+                scenario_config: cp.scenario.clone(),
+                scenario_summary: cp.scenario_summary.clone(),
+            };
+            reports.push((*seed, report, summary.wall_clock_seconds));
         }
         let campaign_report = chaoscontrol_explore::campaign::aggregate_reports(reports, 0.0);
-        let formatted = format_campaign_report(&campaign_report);
-        println!("{}", formatted);
-
-        // Write final reports
-        if let Ok(json) = serde_json::to_string_pretty(&campaign_report) {
-            let _ = fs::write(format!("{}/campaign_report.json", corpus), &json);
+        let prepared = match prepare_campaign_outputs(&campaign_report) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                eprintln!("Campaign aggregation evidence is invalid: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+        println!("{}", prepared.formatted);
+        if let Err(error) = persist_campaign_outputs(&corpus, &prepared) {
+            eprintln!("Campaign aggregation write failed: {error}");
+            std::process::exit(EXIT_ERROR);
         }
-        let _ = fs::write(format!("{}/campaign_report.txt", corpus), &formatted);
         return;
     }
 
@@ -1662,10 +1817,19 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
     let runner = CampaignRunner::new(campaign_config);
     match runner.run() {
         Ok(report) => {
-            let formatted = format_campaign_report(&report);
-            println!("{}", formatted);
-
-            if report.bugs.is_empty() {
+            let prepared = match prepare_campaign_outputs(&report) {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    eprintln!("Resumed campaign evidence is invalid: {error}");
+                    std::process::exit(EXIT_ERROR);
+                }
+            };
+            println!("{}", prepared.formatted);
+            if let Err(error) = persist_campaign_outputs(&corpus, &prepared) {
+                eprintln!("Resumed campaign evidence write failed: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+            if prepared.bugs.is_empty() {
                 std::process::exit(1);
             }
         }
@@ -1683,6 +1847,7 @@ fn cmd_resume(
     rounds_override: Option<u64>,
     dashboard: bool,
     dashboard_port: u16,
+    dashboard_host: String,
 ) {
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
@@ -1727,7 +1892,8 @@ fn cmd_resume(
         }
     }
 
-    // Calculate remaining rounds
+    // Calculate remaining rounds.
+    let num_vms = checkpoint.config.num_vms;
     let max_rounds = rounds_override.unwrap_or(checkpoint.config.max_rounds);
     let rounds_to_run = max_rounds.saturating_sub(checkpoint.rounds_completed);
 
@@ -1772,12 +1938,18 @@ fn cmd_resume(
     eprintln!();
 
     // Create explorer from checkpoint
-    let mut explorer = Explorer::from_checkpoint(
+    let mut explorer = match Explorer::from_checkpoint(
         checkpoint,
         kernel_override,
         initrd_override,
         Some(max_rounds),
-    );
+    ) {
+        Ok(explorer) => explorer,
+        Err(error) => {
+            eprintln!("Error: checkpoint contains invalid assertion identity: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
 
     // Update output directory to continue saving checkpoints
     explorer.config_mut().output_dir = Some(corpus.clone());
@@ -1785,15 +1957,15 @@ fn cmd_resume(
     // Start dashboard if requested
     #[cfg(feature = "dashboard")]
     if dashboard {
-        match chaoscontrol_explore::server::start(dashboard_port) {
+        match chaoscontrol_explore::server::start(&dashboard_host, dashboard_port) {
             Some(sink) => {
-                eprintln!("Dashboard: http://localhost:{}", dashboard_port);
+                eprintln!("Dashboard: http://{}:{}", dashboard_host, dashboard_port);
                 explorer.set_event_sink(sink);
             }
             None => {
                 eprintln!(
-                    "Warning: failed to start dashboard on port {}",
-                    dashboard_port
+                    "Warning: failed to start dashboard on {}:{}",
+                    dashboard_host, dashboard_port
                 );
             }
         }
@@ -1802,14 +1974,14 @@ fn cmd_resume(
     if dashboard {
         eprintln!("Warning: dashboard feature not enabled. Rebuild with --features dashboard");
     }
-    let _ = (dashboard, dashboard_port);
+    let _ = (dashboard, dashboard_port, dashboard_host);
 
     // Run exploration
     let report = match run_with_progress(&mut explorer) {
         Ok(r) => r,
         Err(e) => {
             eprintln!();
-            eprintln!("Exploration failed: {}", e);
+            eprintln!("Exploration failed: {e:?}");
             std::process::exit(1);
         }
     };
@@ -1818,84 +1990,20 @@ fn cmd_resume(
     eprintln!("Exploration complete!");
     eprintln!();
 
-    // Format and print report
+    let assertion_summary = match validate_exploration_output(&report, num_vms) {
+        Ok(summary) => summary,
+        Err(error) => {
+            eprintln!("Resumed exploration evidence is invalid: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
     let formatted = format_report(&report);
     println!("{}", formatted);
-
-    // Save output
-    let report_path = format!("{}/report.txt", corpus);
-    if let Err(e) = fs::write(&report_path, &formatted) {
-        eprintln!("Warning: failed to save report: {}", e);
-    } else {
-        eprintln!("Saved report to: {}", report_path);
-    }
-
-    // Save bugs as JSON (for minimize/reproduce subcommands)
-    let snapshot_store = chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(&corpus);
-    for bug in &report.bugs {
-        let mut serialized: chaoscontrol_explore::checkpoint::SerializableBug = bug.into();
-        if serialized.replay_parent_snapshot_ref.is_none() {
-            if let Some(snapshot) = bug.snapshot.as_ref() {
-                match chaoscontrol_explore::snapshot_store::SnapshotStore::put_snapshot(
-                    &snapshot_store,
-                    snapshot,
-                    bug.replay_parent_depth,
-                ) {
-                    Ok(reference) => serialized.replay_parent_snapshot_ref = Some(reference),
-                    Err(e) if bug.replay_parent_depth > 0 => {
-                        eprintln!(
-                            "Error: failed to persist required replay parent snapshot for bug {}: {}",
-                            bug.bug_id, e
-                        );
-                        std::process::exit(1);
-                    }
-                    Err(e) => eprintln!(
-                        "Warning: failed to persist optional replay parent snapshot for bug {}: {}",
-                        bug.bug_id, e
-                    ),
-                }
-            } else if bug.replay_parent_depth > 0 {
-                eprintln!(
-                    "Error: bug {} requires replay parent snapshot context (depth {}) but no snapshot is available to persist",
-                    bug.bug_id, bug.replay_parent_depth
-                );
-                std::process::exit(1);
-            }
-        }
-        let json_path = format!("{}/bug_{}.json", corpus, bug.bug_id);
-        match serde_json::to_string_pretty(&serialized) {
-            Ok(json) => {
-                if let Err(e) = fs::write(&json_path, &json) {
-                    eprintln!("Warning: failed to save bug {} JSON: {}", bug.bug_id, e);
-                } else {
-                    eprintln!("Saved bug {} to: {}", bug.bug_id, json_path);
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: failed to serialize bug {}: {}", bug.bug_id, e);
-            }
-        }
-    }
-
-    // Save per-assertion detail as JSON
-    if !report.assertion_details.is_empty() {
-        let assertions_path = format!("{}/assertions.json", corpus);
-        match serde_json::to_string_pretty(&report.assertion_details) {
-            Ok(json) => {
-                if let Err(e) = fs::write(&assertions_path, &json) {
-                    eprintln!("Warning: failed to save assertions: {}", e);
-                } else {
-                    eprintln!(
-                        "Saved {} assertion details to: {}",
-                        report.assertion_details.len(),
-                        assertions_path
-                    );
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: failed to serialize assertions: {}", e);
-            }
-        }
+    if let Err(error) =
+        persist_exploration_outputs(&corpus, &report, &formatted, &assertion_summary, num_vms)
+    {
+        eprintln!("Resumed exploration output failed: {error}");
+        std::process::exit(EXIT_ERROR);
     }
 
     // Exit with error code if bugs found
@@ -1928,7 +2036,9 @@ fn load_replay_parent_snapshot_for_verdict(
     Option<chaoscontrol_vmm::controller::SimulationSnapshot>,
     chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation,
 ) {
-    use chaoscontrol_explore::replay_verdict::ReplaySnapshotValidation;
+    use chaoscontrol_explore::replay_verdict::{
+        snapshot_validation_from_error, ReplaySnapshotValidation,
+    };
     use chaoscontrol_explore::snapshot_store::{FileSnapshotStore, SnapshotStore};
 
     match serialized_bug.replay_parent_snapshot_ref.as_ref() {
@@ -1938,7 +2048,9 @@ fn load_replay_parent_snapshot_for_verdict(
                 .unwrap_or_else(|| Path::new("."));
             let store = FileSnapshotStore::new(root);
             match store.get_snapshot_artifact(reference) {
-                Ok(artifact) => {
+                Ok(artifact)
+                    if artifact.replay_parent_depth == serialized_bug.replay_parent_depth =>
+                {
                     eprintln!(
                         "Loaded replay parent snapshot artifact: {} ({})",
                         reference.path, reference.digest
@@ -1948,9 +2060,18 @@ fn load_replay_parent_snapshot_for_verdict(
                         ReplaySnapshotValidation::valid(reference.clone()),
                     )
                 }
-                Err(e) => (
+                Ok(_) => {
+                    let error = chaoscontrol_explore::snapshot_store::SnapshotStoreError::MetadataMismatch {
+                        field: "replay_parent_depth",
+                    };
+                    (
+                        None,
+                        snapshot_validation_from_error(reference.clone(), &error),
+                    )
+                }
+                Err(error) => (
                     None,
-                    ReplaySnapshotValidation::from_error(reference.clone(), &e),
+                    snapshot_validation_from_error(reference.clone(), &error),
                 ),
             }
         }
@@ -1992,44 +2113,23 @@ fn cmd_minimize(
         std::process::exit(1);
     }
 
-    // Load bug report (JSON with SerializableBug structure)
-    let bug_json = match fs::read_to_string(&bug_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: failed to read bug file: {}", e);
-            std::process::exit(1);
+    // Load the untrusted bug carrier with bounded regular-file handling.
+    let serialized_bug = match chaoscontrol_explore::checkpoint::load_serializable_bug(&bug_path) {
+        Ok(bug) => bug,
+        Err(error) => {
+            eprintln!("Error: failed to load bug file: {error}");
+            std::process::exit(EXIT_ERROR);
         }
     };
 
-    let serialized_bug: chaoscontrol_explore::checkpoint::SerializableBug =
-        match serde_json::from_str(&bug_json) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Error: failed to parse bug file: {}", e);
-                eprintln!("Expected JSON with fields: bug_id, assertion_id, assertion_location, schedule, tick");
-                std::process::exit(1);
-            }
-        };
-
-    let replay_parent_snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
-
-    // Convert serialized schedule back to FaultSchedule
-    let schedule: FaultSchedule = (&serialized_bug.schedule).into();
-
-    let bug = BugReport {
-        bug_id: serialized_bug.bug_id,
-        assertion_id: serialized_bug.assertion_id,
-        assertion_location: serialized_bug.assertion_location.clone(),
-        schedule,
-        snapshot: replay_parent_snapshot,
-        tick: serialized_bug.tick,
-        replay_parent_depth: serialized_bug.replay_parent_depth,
-        replay_parent_snapshot_ref: serialized_bug.replay_parent_snapshot_ref.clone(),
-        dedup_key: serialized_bug.dedup_key.unwrap_or(0),
-        schedule_variant: None,
-        scenario_config: serialized_bug.scenario_config.clone(),
-        scenario_summary: serialized_bug.scenario_summary.clone(),
+    let mut bug = match BugReport::try_from(&serialized_bug) {
+        Ok(bug) => bug,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
     };
+    bug.snapshot = load_replay_parent_snapshot(&bug_path, &serialized_bug);
 
     // Parse scheduling strategy
     let scheduling_strategy = match scheduling.as_str() {
@@ -2127,34 +2227,27 @@ fn cmd_minimize(
     }
     eprintln!();
 
-    // Save minimized bug report
+    // Preserve the admitted bug carrier and replace only schedule-derived fields.
     if let Some(ref output_path) = output {
-        let minimized_bug = chaoscontrol_explore::checkpoint::SerializableBug {
-            bug_id: result.assertion_id,
-            assertion_id: result.assertion_id,
-            assertion_location: String::new(),
-            schedule: (&result.schedule).into(),
-            tick: 0,
-            replay_parent_depth: serialized_bug.replay_parent_depth,
-            replay_parent_snapshot_ref: serialized_bug.replay_parent_snapshot_ref.clone(),
-            dedup_key: None,
-            schedule_variant: None,
-            scenario_config: serialized_bug.scenario_config.clone(),
-            scenario_summary: serialized_bug.scenario_summary.clone(),
-        };
-
-        match serde_json::to_string_pretty(&minimized_bug) {
-            Ok(json) => {
-                if let Err(e) = fs::write(output_path, &json) {
-                    eprintln!("Warning: failed to save minimized schedule: {}", e);
-                } else {
-                    eprintln!("Saved minimized bug to: {}", output_path);
-                }
-            }
-            Err(e) => {
-                eprintln!("Warning: failed to serialize: {}", e);
-            }
+        if result.schedule.total() == 0 {
+            eprintln!("Error: an empty minimized schedule is not a replayable bug carrier");
+            std::process::exit(EXIT_ERROR);
         }
+        let mut minimized_bug = serialized_bug.clone();
+        minimized_bug.schedule = (&result.schedule).into();
+        minimized_bug.dedup_key = None;
+        let json = match serde_json::to_string_pretty(&minimized_bug) {
+            Ok(json) => json,
+            Err(error) => {
+                eprintln!("Error: failed to serialize minimized bug: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+        if let Err(error) = fs::write(output_path, &json) {
+            eprintln!("Error: failed to save minimized bug: {error}");
+            std::process::exit(EXIT_ERROR);
+        }
+        eprintln!("Saved minimized bug to: {output_path}");
     }
 }
 
@@ -2184,32 +2277,37 @@ fn cmd_reproduce(
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
     }
-    if !Path::new(&bug_path).exists() {
-        eprintln!("Error: bug file not found: {}", bug_path);
-        std::process::exit(1);
-    }
+    // Load the untrusted bug carrier with bounded regular-file handling.
+    let (serialized_bug, bug_artifact_bytes) =
+        match chaoscontrol_explore::checkpoint::load_serializable_bug_artifact(&bug_path) {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                eprintln!("Error: failed to load bug file: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+    let bug_artifact_hash =
+        chaoscontrol_explore::replay_verdict::hash_bytes(bug_path.clone(), &bug_artifact_bytes);
 
-    // Load bug report
-    let bug_json = match fs::read_to_string(&bug_path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Error: failed to read bug file: {}", e);
+    let target_identity = match serialized_bug.require_replay_identity() {
+        Ok(identity) => identity.clone(),
+        Err(error) => {
+            eprintln!("Error: {error}");
             std::process::exit(1);
         }
     };
-
-    let serialized_bug: chaoscontrol_explore::checkpoint::SerializableBug =
-        match serde_json::from_str(&bug_json) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Error: failed to parse bug file: {}", e);
-                std::process::exit(1);
-            }
-        };
-
     let command_context = std::env::args().collect::<Vec<_>>().join(" ");
-    let (replay_parent_snapshot, snapshot_validation) =
+    let (replay_parent_snapshot, mut snapshot_validation) =
         load_replay_parent_snapshot_for_verdict(&bug_path, &serialized_bug);
+    if let Some(snapshot) = replay_parent_snapshot.as_ref() {
+        if let Err(error) = snapshot.validate_assertion_evidence(vms, &target_identity) {
+            snapshot_validation.status =
+                chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::InvalidRef;
+            snapshot_validation.diagnostic = Some(format!(
+                "replay parent snapshot does not admit the exact assertion identity: {error:?}"
+            ));
+        }
+    }
     if matches!(
         snapshot_validation.status,
         chaoscontrol_explore::replay_verdict::SnapshotValidationStatus::MissingRef
@@ -2221,21 +2319,33 @@ fn cmd_reproduce(
             .diagnostic
             .clone()
             .unwrap_or_else(|| "invalid replay parent snapshot evidence".to_string());
-        let verdict = chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
-            command_context,
-            1,
-            bug_path.clone(),
-            &serialized_bug,
-            snapshot_validation,
-            false,
-            diagnostic.clone(),
-        );
-        if let Some(path) = verdict_output.as_ref() {
-            if let Err(e) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict) {
-                eprintln!("Warning: failed to write replay verdict {}: {}", path, e);
-            } else {
-                eprintln!("Replay verdict: {}", path);
+        let verdict = match chaoscontrol_explore::replay_verdict::verdict_from_reproduce(
+            chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
+                run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
+                command: command_context,
+                exit_status: 1,
+                bug_path: bug_path.clone(),
+                bug_artifact_hash: bug_artifact_hash.clone(),
+                bug: &serialized_bug,
+                snapshot: snapshot_validation,
+                admitted_report: None,
+                target_failed: false,
+                diagnostic: diagnostic.clone(),
+            },
+        ) {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                eprintln!("Error: replay verdict rejected bug identity: {error}");
+                std::process::exit(EXIT_ERROR);
             }
+        };
+        if let Some(path) = verdict_output.as_ref() {
+            if let Err(error) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict)
+            {
+                eprintln!("Error: failed to write replay verdict {path}: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+            eprintln!("Replay verdict: {path}");
         }
         eprintln!("Error: {diagnostic}");
         std::process::exit(1);
@@ -2352,8 +2462,22 @@ fn cmd_reproduce(
         }
     };
 
+    if let Err(error) = snapshot.validate_assertion_evidence(vms, &target_identity) {
+        eprintln!("Error: replay snapshot assertion identity mismatch: {error:?}");
+        std::process::exit(EXIT_ERROR);
+    }
+
     if let Err(e) = controller.restore_all(&snapshot) {
         eprintln!("Error: restore failed: {}", e);
+        std::process::exit(1);
+    }
+    let restored_report = controller.report();
+    if let Err(error) = chaoscontrol_explore::bug::identity::resolve_restored_report(
+        target_assertion,
+        Some(&target_identity),
+        &restored_report,
+    ) {
+        eprintln!("Error: {error}");
         std::process::exit(1);
     }
     controller.reset_vm_statuses();
@@ -2377,23 +2501,30 @@ fn cmd_reproduce(
     eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!();
 
-    // Check assertion results across all VMs
-    let mut target_failed = false;
-    let mut all_assertions = Vec::new();
-
-    for i in 0..controller.num_vms() {
-        let oracle = controller.vm(i).fault_engine().oracle();
-        for (id, record) in oracle.assertions() {
-            let verdict = record.verdict();
-            if *id == target_assertion as u32 && verdict == Verdict::Failed {
-                target_failed = true;
-            }
-            // Deduplicate by id
-            if !all_assertions.iter().any(|(aid, _, _, _)| aid == id) {
-                all_assertions.push((*id, record.message.clone(), record.kind, verdict));
-            }
+    let report = controller.report();
+    let target_record = match chaoscontrol_explore::bug::identity::resolve_restored_report(
+        target_assertion,
+        Some(&target_identity),
+        &report,
+    ) {
+        Ok(record) => record,
+        Err(error) => {
+            eprintln!("Error: replay result assertion identity mismatch: {error}");
+            std::process::exit(EXIT_ERROR);
         }
-    }
+    };
+    let target_failed = target_record.verdict() == Verdict::Failed;
+    let all_assertions = report
+        .all_records()
+        .map(|(identity, record)| {
+            (
+                format!("{identity:?}"),
+                record.message.clone(),
+                record.kind,
+                record.verdict(),
+            )
+        })
+        .collect::<Vec<_>>();
 
     let diagnostic = if target_failed {
         let message = format!("BUG REPRODUCED — assertion {} failed", target_assertion);
@@ -2441,20 +2572,31 @@ fn cmd_reproduce(
     // Exit code: 0 if bug reproduced, 1 if not
     let exit_status = if target_failed { 0 } else { 1 };
     if let Some(path) = verdict_output.as_ref() {
-        let verdict = chaoscontrol_explore::replay_verdict::ReplayVerdict::from_reproduce(
-            command_context,
-            exit_status,
-            bug_path.clone(),
-            &serialized_bug,
-            snapshot_validation,
-            target_failed,
-            diagnostic,
-        );
-        if let Err(e) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict) {
-            eprintln!("Warning: failed to write replay verdict {}: {}", path, e);
-        } else {
-            eprintln!("Replay verdict: {}", path);
+        let verdict = match chaoscontrol_explore::replay_verdict::verdict_from_reproduce(
+            chaoscontrol_explore::replay_verdict::ReproduceVerdictInput {
+                run_id: chaoscontrol_explore::replay_verdict::new_run_id(),
+                command: command_context,
+                exit_status,
+                bug_path: bug_path.clone(),
+                bug_artifact_hash,
+                bug: &serialized_bug,
+                snapshot: snapshot_validation,
+                admitted_report: Some(&report),
+                target_failed,
+                diagnostic,
+            },
+        ) {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                eprintln!("Error: replay verdict rejected bug identity: {error}");
+                std::process::exit(EXIT_ERROR);
+            }
+        };
+        if let Err(error) = chaoscontrol_explore::replay_verdict::write_verdict(path, &verdict) {
+            eprintln!("Error: failed to write replay verdict {path}: {error}");
+            std::process::exit(EXIT_ERROR);
         }
+        eprintln!("Replay verdict: {path}");
     }
 
     std::process::exit(exit_status);
@@ -2465,7 +2607,7 @@ fn auto_minimize_bugs(
     bugs: &[chaoscontrol_explore::corpus::BugReport],
     config: &ExplorerConfig,
     output_dir: &str,
-) {
+) -> Result<(), String> {
     use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
     use std::time::Instant;
 
@@ -2488,66 +2630,146 @@ fn auto_minimize_bugs(
         bootstrap_budget: config.bootstrap_budget,
         coverage_gpa: config.coverage_gpa,
     };
-
+    let mut prepared = Vec::with_capacity(bugs.len());
     for bug in bugs {
         if chaoscontrol_explore::signal::shutdown_requested() {
-            eprintln!("Skipping remaining minimizations: interrupted");
-            break;
+            return Err("minimization was interrupted".to_string());
         }
-
         let original_faults = bug.schedule.total();
         if original_faults == 0 {
-            eprintln!("Bug {}: already minimal (0 faults)", bug.bug_id);
-            continue;
+            return Err(format!("bug {} has an empty fault schedule", bug.bug_id));
         }
-
         eprintln!(
             "Minimizing bug {} ({} faults)...",
             bug.bug_id, original_faults
         );
         let start = Instant::now();
-
         let mut minimizer = Minimizer::new(min_config.clone(), bug.clone());
-        match minimizer.minimize() {
-            Ok(result) => {
-                let elapsed = start.elapsed().as_secs_f64();
-                eprintln!(
-                    "  Bug {}: {} \u{2192} {} faults ({:.1}s)",
-                    bug.bug_id, result.original_faults, result.minimized_faults, elapsed
-                );
+        let result = minimizer
+            .minimize()
+            .map_err(|error| format!("bug {} minimization failed: {error}", bug.bug_id))?;
+        if result.schedule.total() == 0 {
+            return Err(format!(
+                "bug {} minimized to a non-replayable empty schedule",
+                bug.bug_id
+            ));
+        }
+        eprintln!(
+            "  Bug {}: {} \u{2192} {} faults ({:.1}s)",
+            bug.bug_id,
+            result.original_faults,
+            result.minimized_faults,
+            start.elapsed().as_secs_f64()
+        );
+        let mut minimized_bug = chaoscontrol_explore::checkpoint::SerializableBug::from(bug);
+        minimized_bug.schedule = (&result.schedule).into();
+        minimized_bug.dedup_key = None;
+        let bytes = serde_json::to_vec_pretty(&minimized_bug)
+            .map_err(|error| format!("bug {} serialization failed: {error}", bug.bug_id))?;
+        let path = std::path::Path::new(output_dir).join(format!("bug_{}_min.json", bug.bug_id));
+        prepared.push((path, bytes));
+    }
 
-                // Save minimized schedule
-                let min_bug = chaoscontrol_explore::checkpoint::SerializableBug {
-                    bug_id: bug.bug_id,
-                    assertion_id: bug.assertion_id,
-                    assertion_location: bug.assertion_location.clone(),
-                    schedule: (&result.schedule).into(),
-                    tick: bug.tick,
-                    replay_parent_depth: bug.replay_parent_depth,
-                    replay_parent_snapshot_ref: bug.replay_parent_snapshot_ref.clone(),
-                    dedup_key: Some(bug.dedup_key),
-                    schedule_variant: None,
-                    scenario_config: bug.scenario_config.clone(),
-                    scenario_summary: bug.scenario_summary.clone(),
-                };
-                let path = format!("{}/bug_{}_min.json", output_dir, bug.bug_id);
-                match serde_json::to_string_pretty(&min_bug) {
-                    Ok(json) => {
-                        if let Err(e) = fs::write(&path, &json) {
-                            eprintln!("  Warning: failed to write {}: {}", path, e);
-                        } else {
-                            eprintln!("  Saved to {}", path);
-                        }
-                    }
-                    Err(e) => eprintln!("  Warning: failed to serialize: {}", e),
-                }
-            }
-            Err(e) => {
-                eprintln!(
-                    "  Bug {}: minimization failed ({}), keeping original",
-                    bug.bug_id, e
-                );
+    let mut written = Vec::with_capacity(prepared.len());
+    for (path, bytes) in prepared {
+        if let Err(error) = write_new_synced(&path, &bytes) {
+            return rollback_minimized_bugs(
+                &written,
+                format!("failed to commit {}: {error}", path.display()),
+            );
+        }
+        eprintln!("  Saved to {}", path.display());
+        written.push(path);
+    }
+    Ok(())
+}
+
+fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(bytes)
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| error.to_string())?;
+    temporary
+        .persist(path)
+        .map_err(|error| error.error.to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(file) => commit_reserved_file(file, path, bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let (_bug, existing) =
+                chaoscontrol_explore::checkpoint::load_serializable_bug_artifact(path)
+                    .map_err(|load_error| load_error.to_string())?;
+            if existing == bytes {
+                Ok(())
+            } else {
+                Err(format!("existing bug carrier differs: {}", path.display()))
             }
         }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| error.to_string())?;
+    commit_reserved_file(file, path, bytes)
+}
+
+fn commit_reserved_file(mut file: std::fs::File, path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+
+    if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+        drop(file);
+        return match fs::remove_file(path) {
+            Ok(()) => Err(error.to_string()),
+            Err(cleanup_error) => Err(format!(
+                "{error}; failed to remove partial {}: {cleanup_error}",
+                path.display()
+            )),
+        };
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn rollback_minimized_bugs(paths: &[std::path::PathBuf], reason: String) -> Result<(), String> {
+    let mut cleanup_failures = Vec::new();
+    for path in paths {
+        if let Err(error) = fs::remove_file(path) {
+            cleanup_failures.push(format!("{}: {error}", path.display()));
+        }
+    }
+    if cleanup_failures.is_empty() {
+        Err(reason)
+    } else {
+        Err(format!(
+            "{reason}; rollback failed for {}",
+            cleanup_failures.join(", ")
+        ))
     }
 }

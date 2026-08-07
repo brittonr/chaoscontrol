@@ -9,6 +9,49 @@ use std::path::Path;
 
 pub const MAX_RECORDING_JSON_BYTES: usize = 16 * 1024 * 1024;
 
+/// Maximum bytes accepted for a recording or triage JSON file.
+///
+/// Recordings and triage reports are metadata-only (snapshots are
+/// recreated during replay), so 64 MiB is generous. The cap prevents
+/// memory exhaustion from hostile or corrupt files.
+const MAX_EVIDENCE_JSON_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Extra byte read past the limit to detect oversize content.
+const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
+
+/// Open an evidence JSON file with admission checks: no symlinks,
+/// regular files only, and a hard byte cap.
+fn open_bounded_evidence_file(path: &Path) -> std::io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "evidence JSON is not a regular file",
+        ));
+    }
+    if metadata.len() > MAX_EVIDENCE_JSON_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "evidence JSON exceeds the byte limit",
+        ));
+    }
+    Ok(file)
+}
+
+/// Load bounded JSON from a path. The byte cap is enforced twice: file
+/// metadata before reading, and a sentinel-limited reader during parse.
+fn read_bounded_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, SerializeError> {
+    let file = open_bounded_evidence_file(path)?;
+    let limited = file.take(MAX_EVIDENCE_JSON_BYTES + READ_LIMIT_SENTINEL_BYTES);
+    let value = serde_json::from_reader(limited)?;
+    Ok(value)
+}
+
 /// Errors that can occur during serialization.
 #[derive(Debug, Snafu)]
 pub enum SerializeError {
@@ -40,13 +83,13 @@ pub fn save_recording(recording: &Recording, path: &Path) -> Result<(), Serializ
 /// Note: Loaded recordings will have empty checkpoints (no snapshots).
 /// Snapshots are recreated by replaying the simulation.
 pub fn load_recording(path: &Path) -> Result<Recording, SerializeError> {
-    let metadata = std::fs::metadata(path)?;
+    let file = open_bounded_evidence_file(path)?;
+    let metadata = file.metadata()?;
     if metadata.len() > MAX_RECORDING_JSON_BYTES as u64 {
         return Err(SerializeError::RecordingTooLarge {
             limit: MAX_RECORDING_JSON_BYTES,
         });
     }
-    let file = File::open(path)?;
     let read_limit =
         u64::try_from(MAX_RECORDING_JSON_BYTES).expect("recording byte bound fits u64") + 1;
     let mut bytes = Vec::with_capacity(
@@ -156,9 +199,7 @@ pub fn save_triage_json(report: &TriageReport, path: &Path) -> Result<(), Serial
 
 /// Load a triage report from JSON.
 pub fn load_triage_json(path: &Path) -> Result<TriageReport, SerializeError> {
-    let file = File::open(path)?;
-    let report = serde_json::from_reader(file)?;
-    Ok(report)
+    read_bounded_json(path)
 }
 
 #[cfg(test)]
@@ -383,5 +424,43 @@ mod tests {
         let path = Path::new("/nonexistent/recording.json");
         let result = load_recording(path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_recording_rejects_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("recording.json");
+        save_recording(&test_recording(), &target).unwrap();
+        let link = temp_dir.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(load_recording(&link).is_err());
+    }
+
+    #[test]
+    fn test_load_recording_rejects_oversized_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("huge.json");
+        let file = File::create(&path).unwrap();
+        file.set_len(MAX_EVIDENCE_JSON_BYTES + 1).unwrap();
+
+        assert!(load_recording(&path).is_err());
+    }
+
+    #[test]
+    fn test_load_recording_rejects_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        assert!(load_recording(temp_dir.path()).is_err());
+    }
+
+    #[test]
+    fn test_load_triage_json_rejects_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("report.json");
+        save_triage_json(&test_triage_report(), &target).unwrap();
+        let link = temp_dir.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(load_triage_json(&link).is_err());
     }
 }

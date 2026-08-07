@@ -20,7 +20,7 @@ use crate::acpi;
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
-use crate::devices::virtio_mmio::VirtioMmioDevice;
+use crate::devices::virtio_mmio::{MmioWriteEffect, VirtioMmioDevice};
 use crate::dlog::{DlogRecord, DlogTag, DlogWriter};
 use crate::scheduler::{SchedulerConfig, SchedulingStrategy, VcpuScheduler};
 
@@ -427,8 +427,36 @@ pub enum VmError {
     #[snafu(display("Disk image error: {message}"))]
     DiskImage { message: String },
 
+    #[snafu(display("Failed to deliver virtio IRQ {irq} at asserted={asserted}"))]
+    VirtioInterrupt {
+        irq: u32,
+        asserted: bool,
+        source: kvm_ioctls::Error,
+    },
+
     #[snafu(display("Failed to get dirty page log"))]
     GetDirtyLog { source: kvm_ioctls::Error },
+}
+
+const VIRTIO_IRQ_LEVELS: [bool; 2] = [true, false];
+
+fn deliver_virtio_interrupt_with(
+    device: &mut VirtioMmioDevice,
+    queue_index: usize,
+    mut set_irq_line: impl FnMut(u32, bool) -> Result<(), kvm_ioctls::Error>,
+) -> Result<(), VmError> {
+    let irq = device.irq();
+    for asserted in VIRTIO_IRQ_LEVELS {
+        if let Err(source) = set_irq_line(irq, asserted) {
+            device.record_interrupt_failure(queue_index, irq, asserted);
+            return Err(VmError::VirtioInterrupt {
+                irq,
+                asserted,
+                source,
+            });
+        }
+    }
+    Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -446,25 +474,103 @@ impl vm_superio::Trigger for SerialTrigger {
     }
 }
 
+/// Maximum bytes retained by the serial capture buffer.
+///
+/// The guest controls serial output. Without a cap, a guest that prints
+/// in a loop grows host memory without limit. 4 MiB keeps ample boot and
+/// debug context while bounding worst-case retention per VM.
+const MAX_SERIAL_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Bytes retained after an overflow drain.
+///
+/// Draining to half capacity on overflow amortizes the front-drain cost:
+/// one O(cap) drain per `SERIAL_CAPTURE_RETAINED_BYTES` incoming bytes
+/// instead of one drain per write.
+const SERIAL_CAPTURE_RETAINED_BYTES: usize = MAX_SERIAL_CAPTURE_BYTES / 2;
+
+/// Append `incoming` to `buf`, retaining at most `MAX_SERIAL_CAPTURE_BYTES`
+/// of the most recent output. Returns the number of oldest bytes dropped.
+///
+/// Pure core of [`CapturingWriter`]: no I/O, no locks, no clocks.
+fn capture_serial_bounded(buf: &mut Vec<u8>, incoming: &[u8]) -> usize {
+    if incoming.len() >= MAX_SERIAL_CAPTURE_BYTES {
+        let dropped = buf.len() + (incoming.len() - MAX_SERIAL_CAPTURE_BYTES);
+        buf.clear();
+        buf.extend_from_slice(&incoming[incoming.len() - MAX_SERIAL_CAPTURE_BYTES..]);
+        return dropped;
+    }
+    let mut dropped = 0;
+    if buf.len() + incoming.len() > MAX_SERIAL_CAPTURE_BYTES {
+        // Drop the oldest bytes so the append fits. Retain at most
+        // SERIAL_CAPTURE_RETAINED_BYTES to amortize the drain cost.
+        let room_target = MAX_SERIAL_CAPTURE_BYTES - incoming.len();
+        let target = buf
+            .len()
+            .min(SERIAL_CAPTURE_RETAINED_BYTES)
+            .min(room_target);
+        dropped = buf.len() - target;
+        buf.drain(..dropped);
+    }
+    buf.extend_from_slice(incoming);
+    debug_assert!(buf.len() <= MAX_SERIAL_CAPTURE_BYTES);
+    dropped
+}
+
+/// Placeholder byte for terminal-control bytes in sanitized output.
+const SERIAL_SANITIZE_REPLACEMENT: u8 = b'.';
+
+/// Replace terminal-control bytes with a placeholder.
+///
+/// The guest controls serial output. Raw guest bytes can carry ANSI
+/// escape sequences that rewrite the operator's terminal or trigger
+/// terminal-emulator bugs. Newline, carriage return, and tab pass
+/// through. Every other C0 control byte (ESC included) and DEL become
+/// [`SERIAL_SANITIZE_REPLACEMENT`]. Bytes 0x80..=0xFF pass through so
+/// UTF-8 text stays intact.
+///
+/// Pure core of the [`CapturingWriter`] stdout path: no I/O.
+fn sanitize_serial_for_terminal(bytes: &[u8]) -> Vec<u8> {
+    bytes
+        .iter()
+        .map(|&b| match b {
+            b'\n' | b'\r' | b'\t' => b,
+            0x00..=0x1F | 0x7F => SERIAL_SANITIZE_REPLACEMENT,
+            _ => b,
+        })
+        .collect()
+}
+
 /// A writer that outputs to stdout AND captures bytes in a shared buffer.
 ///
 /// Used as the output sink for the serial port so that serial output is
 /// both visible in real time and available for programmatic inspection
 /// via [`DeterministicVm::take_serial_output`] and
 /// [`DeterministicVm::run_until`].
+///
+/// The capture buffer is bounded: it retains at most
+/// `MAX_SERIAL_CAPTURE_BYTES` of the most recent output. Older bytes are
+/// dropped and counted in `dropped_byte_count`.
+///
+/// stdout receives sanitized bytes (terminal-control bytes replaced).
+/// The capture buffer keeps the raw guest bytes for evidence.
 #[derive(Clone)]
 pub struct CapturingWriter {
     buffer: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    dropped: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl CapturingWriter {
     fn new() -> Self {
         Self {
             buffer: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            dropped: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
     /// Take the captured output, clearing the internal buffer.
+    ///
+    /// Returns at most `MAX_SERIAL_CAPTURE_BYTES` of the most recent
+    /// output. The dropped-byte counter is not reset.
     pub fn take(&self) -> Vec<u8> {
         let mut buf = self.buffer.lock().unwrap();
         std::mem::take(&mut *buf)
@@ -475,13 +581,27 @@ impl CapturingWriter {
         let buf = self.buffer.lock().unwrap();
         String::from_utf8_lossy(&buf).into_owned()
     }
+
+    /// Total captured bytes dropped since creation because the buffer
+    /// reached `MAX_SERIAL_CAPTURE_BYTES`.
+    pub fn dropped_byte_count(&self) -> u64 {
+        self.dropped.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 impl io::Write for CapturingWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        io::stdout().write_all(buf)?;
+        let sanitized = sanitize_serial_for_terminal(buf);
+        io::stdout().write_all(&sanitized)?;
         io::stdout().flush()?;
-        self.buffer.lock().unwrap().extend_from_slice(buf);
+        let dropped = {
+            let mut guard = self.buffer.lock().unwrap();
+            capture_serial_bounded(&mut guard, buf)
+        };
+        if dropped > 0 {
+            self.dropped
+                .fetch_add(dropped as u64, std::sync::atomic::Ordering::Relaxed);
+        }
         Ok(buf.len())
     }
 
@@ -1443,8 +1563,19 @@ impl DeterministicVm {
     // ─── Public API: serial output ───────────────────────────────────
 
     /// Take all serial output captured since the last call.
+    ///
+    /// Returns at most `MAX_SERIAL_CAPTURE_BYTES` of the most recent
+    /// output. Check [`Self::serial_dropped_byte_count`] to detect
+    /// dropped output.
     pub fn take_serial_output(&mut self) -> String {
         String::from_utf8_lossy(&self.serial_writer.take()).into_owned()
+    }
+
+    /// Total serial bytes dropped since VM creation because the capture
+    /// buffer reached its bound. Non-zero means earlier serial output is
+    /// no longer available.
+    pub fn serial_dropped_byte_count(&self) -> u64 {
+        self.serial_writer.dropped_byte_count()
     }
 
     // ─── Public API: determinism state ───────────────────────────────
@@ -2178,7 +2309,7 @@ impl DeterministicVm {
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
 
-        // Restore fault engine state
+        // Restore fault and assertion state. The lower layer validates again.
         self.fault_engine
             .restore(&snapshot.fault_engine_snapshot)
             .map_err(|error| {
@@ -3095,14 +3226,18 @@ impl DeterministicVm {
                 // Find the virtio device that handles this address
                 for dev in &mut self.virtio_devices {
                     if dev.handles(addr) {
-                        let offset = addr - dev.base_addr();
-                        dev.write(offset, data, self.memory.inner());
+                        let effect = dev.write_at(addr, data, self.memory.inner());
 
-                        // Process queues and raise interrupt if needed
-                        if dev.process_queues(self.memory.inner()) {
-                            let irq = dev.irq();
-                            let _ = self.vm.set_irq_line(irq, true);
-                            let _ = self.vm.set_irq_line(irq, false);
+                        // Process only the queue named by a validated notification.
+                        if let Ok(MmioWriteEffect::NotifyQueue(queue_index)) = effect {
+                            if dev.process_queue(queue_index, self.memory.inner()) {
+                                let vm = &self.vm;
+                                deliver_virtio_interrupt_with(
+                                    dev,
+                                    queue_index,
+                                    |irq, asserted| vm.set_irq_line(irq, asserted),
+                                )?;
+                            }
                         }
                         break;
                     }
@@ -3699,6 +3834,99 @@ impl Drop for DeterministicVm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::devices::virtio_types::VirtioFailure;
+
+    #[test]
+    fn serial_capture_small_writes_accumulate() {
+        let mut buf = Vec::new();
+        assert_eq!(capture_serial_bounded(&mut buf, b"hello "), 0);
+        assert_eq!(capture_serial_bounded(&mut buf, b"world"), 0);
+        assert_eq!(buf, b"hello world");
+    }
+
+    #[test]
+    fn serial_capture_exact_capacity_is_retained() {
+        let mut buf = Vec::new();
+        let incoming = vec![0xAB; MAX_SERIAL_CAPTURE_BYTES];
+        assert_eq!(capture_serial_bounded(&mut buf, &incoming), 0);
+        assert_eq!(buf.len(), MAX_SERIAL_CAPTURE_BYTES);
+        assert!(buf.iter().all(|&b| b == 0xAB));
+    }
+
+    #[test]
+    fn serial_capture_overflow_keeps_recent_tail() {
+        let mut buf = Vec::new();
+        // Fill to capacity with 0x00, then overflow with a marker tail.
+        assert_eq!(
+            capture_serial_bounded(&mut buf, &vec![0x00; MAX_SERIAL_CAPTURE_BYTES]),
+            0
+        );
+        let marker = b"OVERFLOW-MARKER";
+        let dropped = capture_serial_bounded(&mut buf, marker);
+        assert!(dropped > 0, "overflow must drop oldest bytes");
+        assert!(buf.len() <= MAX_SERIAL_CAPTURE_BYTES);
+        assert!(
+            buf.ends_with(marker),
+            "most recent output must survive overflow"
+        );
+    }
+
+    #[test]
+    fn serial_capture_oversized_single_write_keeps_its_tail() {
+        const EXTRA: usize = 128;
+        let mut buf = b"prior".to_vec();
+        let mut incoming = vec![0x00; MAX_SERIAL_CAPTURE_BYTES + EXTRA];
+        let tail_start = incoming.len() - MAX_SERIAL_CAPTURE_BYTES;
+        incoming[tail_start..].fill(0xFF);
+        let dropped = capture_serial_bounded(&mut buf, &incoming);
+        assert_eq!(dropped, b"prior".len() + EXTRA);
+        assert_eq!(buf.len(), MAX_SERIAL_CAPTURE_BYTES);
+        assert!(buf.iter().all(|&b| b == 0xFF));
+    }
+
+    #[test]
+    fn serial_capture_stays_bounded_across_many_writes() {
+        let mut buf = Vec::new();
+        let chunk = [0x55; 4096];
+        let writes = (MAX_SERIAL_CAPTURE_BYTES / chunk.len()) * 2;
+        for _ in 0..writes {
+            capture_serial_bounded(&mut buf, &chunk);
+            assert!(buf.len() <= MAX_SERIAL_CAPTURE_BYTES);
+        }
+    }
+
+    #[test]
+    fn sanitize_serial_passes_printable_and_whitespace() {
+        let input = b"boot ok\nprogress\r\ttab\xF0\x9F\x9A\x80";
+        assert_eq!(sanitize_serial_for_terminal(input), input);
+    }
+
+    #[test]
+    fn sanitize_serial_neutralizes_escape_sequences() {
+        // ESC[2J (clear screen) and ESC]0;title BEL (window title) must
+        // not reach the operator's terminal intact.
+        let input = b"\x1B[2J\x1B]0;evil\x07\x00\x7Ftext";
+        let out = sanitize_serial_for_terminal(input);
+        assert!(!out.contains(&0x1B), "ESC must be replaced");
+        assert!(!out.contains(&0x07), "BEL must be replaced");
+        assert!(!out.contains(&0x00), "NUL must be replaced");
+        assert!(!out.contains(&0x7F), "DEL must be replaced");
+        assert!(out.ends_with(b"text"));
+    }
+
+    #[test]
+    fn capturing_writer_counts_dropped_bytes() {
+        use std::io::Write;
+        let mut writer = CapturingWriter::new();
+        assert_eq!(writer.dropped_byte_count(), 0);
+        writer
+            .write_all(&vec![0x00; MAX_SERIAL_CAPTURE_BYTES + 1])
+            .expect("write");
+        assert_eq!(writer.dropped_byte_count(), 1);
+        assert_eq!(writer.take().len(), MAX_SERIAL_CAPTURE_BYTES);
+        // The counter is cumulative: take() does not reset it.
+        assert_eq!(writer.dropped_byte_count(), 1);
+    }
 
     #[test]
     fn test_vm_config_default() {
@@ -3706,6 +3934,58 @@ mod tests {
         assert_eq!(config.memory_size, 256 * 1024 * 1024);
         assert_eq!(config.num_vcpus, 1);
         assert_eq!(config.cpu.tsc_khz, 3_000_000);
+    }
+
+    #[test]
+    fn virtio_interrupt_delivery_asserts_then_deasserts() {
+        let entropy = crate::devices::entropy::DeterministicEntropy::new(0);
+        let backend = crate::devices::virtio_entropy::VirtioEntropy::new(entropy);
+        let mut device =
+            VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, Box::new(backend));
+        let mut levels = [false; VIRTIO_IRQ_LEVELS.len()];
+        let mut calls = 0usize;
+        deliver_virtio_interrupt_with(&mut device, 0, |_irq, asserted| {
+            levels[calls] = asserted;
+            calls += 1;
+            Ok(())
+        })
+        .expect("interrupt delivery");
+        assert_eq!(levels, VIRTIO_IRQ_LEVELS);
+        assert!(device.live_state().failure.is_none());
+    }
+
+    #[test]
+    fn virtio_interrupt_failures_poison_state_and_return_error() {
+        for failed_level in VIRTIO_IRQ_LEVELS {
+            let entropy = crate::devices::entropy::DeterministicEntropy::new(0);
+            let backend = crate::devices::virtio_entropy::VirtioEntropy::new(entropy);
+            let mut device =
+                VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, Box::new(backend));
+            let error = deliver_virtio_interrupt_with(&mut device, 0, |_irq, asserted| {
+                if asserted == failed_level {
+                    Err(kvm_ioctls::Error::new(libc::EIO))
+                } else {
+                    Ok(())
+                }
+            })
+            .expect_err("interrupt failure");
+            assert!(matches!(
+                error,
+                VmError::VirtioInterrupt {
+                    irq: VIRTIO_MMIO_IRQ_2,
+                    asserted,
+                    ..
+                } if asserted == failed_level
+            ));
+            assert_eq!(
+                device.live_state().failure,
+                Some(VirtioFailure::InterruptDelivery {
+                    irq: VIRTIO_MMIO_IRQ_2,
+                    asserted: failed_level,
+                })
+            );
+            assert!(device.live_state().queues[0].failure.is_some());
+        }
     }
 
     #[test]

@@ -113,7 +113,7 @@ nix run .#rust-workload-accepted-verdict-dogfood -- \
 ```
 
 This reuses `scripts/accepted-snapshot-verdict-dogfood.py` with the
-KCOV-enabled kernel, `.#initrd-rust-workload`, assertion ID `1414213562`, and
+KCOV-enabled kernel, `.#initrd-rust-workload`, assertion alias `3143219316`, and
 `rust_workload_bug=snapshot_replay_probe`. It is intentionally a slower VM and
 replay rail: if the KCOV kernel is not cached, Nix may build Linux before the
 run starts. Acceptance still requires filtered `export-bugs`, a valid persisted

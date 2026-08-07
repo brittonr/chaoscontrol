@@ -11,11 +11,18 @@ serde_json = "1"
 sha2 = "0.10"
 tempfile = "3"
 blake3 = "1.8"
+libc = "0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
+chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
+chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
 
 [[bin]]
 name = "check-evidence-contracts"
 path = "src/bin/check-evidence-contracts.rs"
+
+[[bin]]
+name = "check-profile-projections"
+path = "src/bin/check-profile-projections.rs"
 
 [[bin]]
 name = "check-replay-proof-coverage"

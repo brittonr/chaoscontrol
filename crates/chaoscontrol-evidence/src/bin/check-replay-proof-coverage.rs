@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
     check_replay_proof_coverage_doc, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, validate_replay_proof_coverage,
+    render_replay_proof_coverage_doc, review_replay_proof_coverage,
     write_replay_proof_coverage_doc, REPLAY_PROOF_COVERAGE_DOC,
 };
 
@@ -47,7 +47,7 @@ fn main() {
     };
 
     let result = match mode {
-        Mode::Coverage => validate_replay_proof_coverage(&root)
+        Mode::Coverage => review_replay_proof_coverage(&root)
             .map(|lines| print!("{}", render_replay_proof_coverage(&lines))),
         Mode::CheckDoc => check_replay_proof_coverage_doc(&root)
             .map(|()| println!("replay proof coverage doc ok: {REPLAY_PROOF_COVERAGE_DOC}")),

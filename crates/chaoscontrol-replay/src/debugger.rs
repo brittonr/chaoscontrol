@@ -453,13 +453,8 @@ mod tests {
 
         fn report(&self) -> OracleReport {
             OracleReport {
-                assertions: std::collections::BTreeMap::new(),
                 total_runs: 1,
-                passed: 0,
-                failed: 0,
-                unexercised: 0,
-                catalog_size: 0,
-                events: vec![],
+                ..OracleReport::empty()
             }
         }
 

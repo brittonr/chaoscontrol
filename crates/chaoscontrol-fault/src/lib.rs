@@ -13,7 +13,7 @@
 //! ```text
 //! Guest SDK              VMM run loop            Fault Engine
 //! ─────────              ────────────            ────────────
-//! assert::always() ──→ handle_hypercall() ──→ oracle.record_always()
+//! bound assertion ───→ handle_hypercall() ──→ oracle.record_bound_event()
 //! random::get()    ──→ handle_hypercall() ──→ engine.next_random()
 //!                      step() exit loop   ──→ engine.maybe_inject()
 //! ```
@@ -21,6 +21,12 @@
 pub mod engine;
 pub mod faults;
 pub mod oracle;
+mod oracle_event_validation;
+mod oracle_record_validation;
+mod oracle_snapshot_validation;
+pub use oracle_snapshot_validation::resolve_snapshot_assertion_evidence;
+pub mod oracle_validation;
 pub mod outcomes;
+pub mod report_merge;
 pub mod scenario;
 pub mod schedule;

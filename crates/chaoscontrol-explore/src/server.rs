@@ -25,12 +25,26 @@ struct AppState {
     tx: broadcast::Sender<DashboardEvent>,
 }
 
+/// Default dashboard bind address: loopback only.
+///
+/// The dashboard has no authentication. Binding to anything beyond
+/// loopback exposes run state, kernel paths, and bug details to the
+/// network. Pass an explicit host to opt into a wider bind.
+pub const DEFAULT_DASHBOARD_HOST: &str = "127.0.0.1";
+
+/// Resolve a dashboard host string into an IP address.
+///
+/// Pure core: no I/O. Returns `None` for unparseable hosts.
+fn parse_dashboard_host(host: &str) -> Option<std::net::IpAddr> {
+    host.parse::<std::net::IpAddr>().ok()
+}
+
 /// Start the dashboard in live mode.
 ///
 /// Spawns a background thread running a tokio runtime with the HTTP
 /// server. Returns a `SyncSender` that the explorer uses to push
-/// events, or `None` if the server failed to bind.
-pub fn start(port: u16) -> Option<SyncSender<DashboardEvent>> {
+/// events, or `None` if the host is invalid or the server failed to bind.
+pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel::<DashboardEvent>(64);
     let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(256);
 
@@ -41,14 +55,21 @@ pub fn start(port: u16) -> Option<SyncSender<DashboardEvent>> {
 
     let app_state_clone = Arc::clone(&app_state);
 
-    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+    let ip = match parse_dashboard_host(host) {
+        Some(ip) => ip,
+        None => {
+            warn!("Dashboard: invalid host '{}' (expected an IP address)", host);
+            return None;
+        }
+    };
+    let addr = std::net::SocketAddr::from((ip, port));
     let listener = match std::net::TcpListener::bind(addr) {
         Ok(l) => {
             l.set_nonblocking(true).ok();
             l
         }
         Err(e) => {
-            warn!("Dashboard: failed to bind port {}: {}", port, e);
+            warn!("Dashboard: failed to bind {}: {}", addr, e);
             return None;
         }
     };
@@ -73,7 +94,7 @@ pub fn start(port: u16) -> Option<SyncSender<DashboardEvent>> {
             let tokio_listener =
                 tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
 
-            info!("Dashboard server listening on http://0.0.0.0:{}", port);
+            info!("Dashboard server listening on http://{}", addr);
 
             axum::serve(tokio_listener, app)
                 .await
@@ -85,7 +106,9 @@ pub fn start(port: u16) -> Option<SyncSender<DashboardEvent>> {
 }
 
 /// Start in standalone mode — blocks the calling thread.
-pub fn start_standalone(state: DashboardState, port: u16) -> Result<(), String> {
+pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<(), String> {
+    let ip = parse_dashboard_host(host)
+        .ok_or_else(|| format!("invalid host '{}' (expected an IP address)", host))?;
     let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(16);
     let app_state = Arc::new(AppState {
         state: RwLock::new(state),
@@ -100,13 +123,13 @@ pub fn start_standalone(state: DashboardState, port: u16) -> Result<(), String> 
 
     rt.block_on(async move {
         let app = build_router(app_state);
-        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
+        let addr = std::net::SocketAddr::from((ip, port));
         let listener = tokio::net::TcpListener::bind(addr)
             .await
-            .map_err(|e| format!("bind port {}: {}", port, e))?;
+            .map_err(|e| format!("bind {}: {}", addr, e))?;
 
-        info!("Dashboard server listening on http://0.0.0.0:{}", port);
-        eprintln!("Dashboard: http://localhost:{}", port);
+        info!("Dashboard server listening on http://{}", addr);
+        eprintln!("Dashboard: http://{}", addr);
 
         axum::serve(listener, app)
             .await

@@ -751,6 +751,7 @@ mod tests {
         BugReport {
             bug_id: id,
             assertion_id,
+            assertion_identity: crate::test_support::assertion_identity(assertion_id),
             assertion_location: location.to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,
@@ -787,6 +788,10 @@ mod tests {
                 unexercised: 15,
             },
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -819,6 +824,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -855,6 +864,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -894,6 +907,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 1,
             assertion_id: 50,
+            assertion_identity: crate::test_support::assertion_identity(50),
             assertion_location: "bug.rs:1".to_string(),
             schedule,
             snapshot: None,
@@ -979,6 +993,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1049,6 +1067,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: history,
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1083,6 +1105,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1104,6 +1130,7 @@ mod tests {
         let details = vec![
             AssertionDetail {
                 id: 100,
+                identity: None,
                 message: "election safety".into(),
                 kind: "always".into(),
                 guest: "raft".into(),
@@ -1116,6 +1143,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 200,
+                identity: None,
                 message: "log matching".into(),
                 kind: "always".into(),
                 guest: "raft".into(),
@@ -1128,6 +1156,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 300,
+                identity: None,
                 message: "value committed".into(),
                 kind: "sometimes".into(),
                 guest: "redb".into(),
@@ -1140,6 +1169,7 @@ mod tests {
             },
             AssertionDetail {
                 id: 400,
+                identity: None,
                 message: "split brain".into(),
                 kind: "unreachable".into(),
                 guest: "raft".into(),
@@ -1171,6 +1201,10 @@ mod tests {
                 unexercised: 1,
             },
             assertion_details: details,
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1208,6 +1242,7 @@ mod tests {
 
         let detail = AssertionDetail {
             id: 42,
+            identity: None,
             message: "safety property".into(),
             kind: "always".into(),
             guest: "raft".into(),
@@ -1244,6 +1279,10 @@ mod tests {
             network_stats: Default::default(),
             assertion_stats: Default::default(),
             assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
             round_history: Vec::new(),
             wall_clock_seconds: 0.0,
             branches_per_second: 0.0,
@@ -1273,6 +1312,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 1,
             assertion_id: 50,
+            assertion_identity: crate::test_support::assertion_identity(50),
             assertion_location: "bug.rs:1".to_string(),
             schedule,
             snapshot: None,
@@ -1306,6 +1346,7 @@ mod tests {
                 bug: SerializableBug {
                     bug_id: 0,
                     assertion_id: 100,
+                    assertion_identity: Some(crate::test_support::assertion_identity(100)),
                     assertion_location: "safety.rs:10".into(),
                     schedule: SerializableSchedule { faults: Vec::new() },
                     tick: 500,
@@ -1352,6 +1393,7 @@ mod tests {
             assertion_details: vec![
                 AssertionDetail {
                     id: 100,
+                    identity: None,
                     message: "leader completeness".into(),
                     kind: "always".into(),
                     guest: "raft".into(),
@@ -1364,6 +1406,7 @@ mod tests {
                 },
                 AssertionDetail {
                     id: 200,
+                    identity: None,
                     message: "election safety".into(),
                     kind: "always".into(),
                     guest: "raft".into(),
@@ -1381,6 +1424,10 @@ mod tests {
                 failed: 1,
                 unexercised: 0,
             },
+            assertion_identity_conflicts: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
+            collision_safe_assertion_evidence: false,
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
@@ -1421,6 +1468,10 @@ mod tests {
             per_seed: Vec::new(),
             assertion_details: Vec::new(),
             assertion_stats: Default::default(),
+            assertion_identity_conflicts: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
+            collision_safe_assertion_evidence: false,
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),
             scenario_config: None,

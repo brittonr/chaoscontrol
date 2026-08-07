@@ -20,7 +20,6 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use snafu::Snafu;
 use std::collections::{BTreeMap, BTreeSet};
-use std::hash::{Hash, Hasher};
 use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,6 +34,9 @@ pub enum ExploreError {
 
     #[snafu(display("Configuration error: {message}"))]
     Config { message: String },
+
+    #[snafu(display("checkpoint persistence failed"), context(false))]
+    Checkpoint { source: CheckpointError },
 }
 
 /// How the explorer branches the execution tree.
@@ -514,11 +516,9 @@ impl Explorer {
                 round_report.frontier_size
             );
 
-            // Save checkpoint if output directory is configured
+            // A configured checkpoint is authority-bearing output. Failure is fatal.
             if let Some(ref output_dir) = self.config.output_dir {
-                if let Err(e) = self.save_checkpoint_to_dir(output_dir) {
-                    warn!("Failed to save checkpoint: {}", e);
-                }
+                self.save_checkpoint_to_dir(output_dir)?;
             }
 
             // Track stale rounds (no new edges, no new bugs).
@@ -664,7 +664,7 @@ impl Explorer {
         let timings = Self::phase_totals_for(&results);
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
-        let mut bugs_found = 0;
+        let mut bugs_found: usize = 0;
 
         for (i, (result, schedule)) in results.into_iter().enumerate() {
             branches_run += 1;
@@ -679,6 +679,17 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
+            let branch_bugs =
+                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth)?;
+            bugs_found =
+                bugs_found
+                    .checked_add(branch_bugs.len())
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "round bug count overflow".to_string(),
+                    })?;
+            if !branch_bugs.is_empty() {
+                warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
+            }
 
             if new_edges > 0 {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
@@ -691,7 +702,7 @@ impl Explorer {
                     enriched_result.clone(),
                     schedule.clone(),
                     new_edges,
-                    snapshot.as_ref(),
+                    branch_bugs,
                     parent_depth + 1,
                 );
 
@@ -704,15 +715,8 @@ impl Explorer {
                         parent_depth + 1,
                     );
                 }
-            }
-
-            let branch_bugs =
-                self.extract_bugs(&result, &schedule, snapshot.as_ref(), parent_depth);
-            bugs_found += branch_bugs.len();
-
-            if !branch_bugs.is_empty() {
-                warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
-                self.standalone_bugs.extend(branch_bugs);
+            } else {
+                self.retain_standalone_bugs(branch_bugs)?;
             }
 
             self.coverage.update_global(&enriched);
@@ -754,7 +758,7 @@ impl Explorer {
     fn explore_input_tree_round(&mut self) -> Result<RoundReport, ExploreError> {
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
-        let mut bugs_found = 0;
+        let mut bugs_found: usize = 0;
         let mut timings = BranchTimings::default();
 
         // Select entry from frontier
@@ -780,6 +784,21 @@ impl Explorer {
         timings.coverage_ms += probe_result.timings.coverage_ms;
         branches_run += 1;
         self.total_branches_run += 1;
+        let probe_bugs = self.extract_bugs(
+            &probe_result,
+            &base_schedule,
+            snapshot.as_ref(),
+            parent_depth,
+        )?;
+        bugs_found =
+            bugs_found
+                .checked_add(probe_bugs.len())
+                .ok_or_else(|| ExploreError::Config {
+                    message: "input-tree bug count overflow".to_string(),
+                })?;
+        if !probe_bugs.is_empty() {
+            warn!("Input tree probe found {} bugs!", probe_bugs.len());
+        }
 
         // Check if the probe itself found new coverage
         let mut probe_enriched = probe_result.coverage.clone();
@@ -798,7 +817,7 @@ impl Explorer {
                 enriched_probe.clone(),
                 base_schedule.clone(),
                 probe_new,
-                snapshot.as_ref(),
+                probe_bugs,
                 parent_depth + 1,
             );
             if let Some(snap) = probe_result.snapshot.clone() {
@@ -810,6 +829,8 @@ impl Explorer {
                     parent_depth + 1,
                 );
             }
+        } else {
+            self.retain_standalone_bugs(probe_bugs)?;
         }
         self.coverage.update_global(&probe_enriched);
 
@@ -886,6 +907,21 @@ impl Explorer {
             Self::enrich_with_schedule_fingerprint(&mut enriched, result.schedule_fingerprint);
 
             let new_edges = enriched.has_new_coverage(self.coverage.global_coverage());
+            let branch_bugs =
+                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth)?;
+            bugs_found =
+                bugs_found
+                    .checked_add(branch_bugs.len())
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "input-tree bug count overflow".to_string(),
+                    })?;
+            if !branch_bugs.is_empty() {
+                warn!(
+                    "Input tree branch {} found {} bugs!",
+                    i + 1,
+                    branch_bugs.len()
+                );
+            }
 
             if new_edges > 0 {
                 debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
@@ -898,7 +934,7 @@ impl Explorer {
                     enriched_result.clone(),
                     base_schedule.clone(),
                     new_edges,
-                    snapshot.as_ref(),
+                    branch_bugs,
                     parent_depth + 1,
                 );
 
@@ -911,20 +947,8 @@ impl Explorer {
                         parent_depth + 1,
                     );
                 }
-            }
-
-            // Check for bugs
-            let branch_bugs =
-                self.extract_bugs(&result, &base_schedule, snapshot.as_ref(), parent_depth);
-            bugs_found += branch_bugs.len();
-
-            if !branch_bugs.is_empty() {
-                warn!(
-                    "Input tree branch {} found {} bugs!",
-                    i + 1,
-                    branch_bugs.len()
-                );
-                self.standalone_bugs.extend(branch_bugs);
+            } else {
+                self.retain_standalone_bugs(branch_bugs)?;
             }
 
             self.coverage.update_global(&enriched);
@@ -1271,50 +1295,110 @@ impl Explorer {
         score = (score - depth_penalty).max(0.1);
 
         // Bonus for assertion diversity
-        let assertion_count = result.oracle_report.assertions.len();
+        let assertion_count = result.oracle_report.catalog_size;
         score += assertion_count as f64;
 
         score
     }
 
-    /// Compute dedup key from assertion ID and sorted fault type names.
-    fn compute_dedup_key(assertion_id: u64, schedule: &FaultSchedule) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        assertion_id.hash(&mut hasher);
+    /// Compute a dedup key from structured assertion identity and fault types.
+    fn compute_dedup_key(
+        assertion_fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
+        schedule: &FaultSchedule,
+    ) -> Result<u64, ExploreError> {
+        const DEDUP_DOMAIN: &[u8] = b"chaoscontrol.bug-dedup.v1\0";
+        const DEDUP_KEY_BYTES: usize = core::mem::size_of::<u64>();
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(DEDUP_DOMAIN);
+        hasher.update(&assertion_fingerprint.0);
 
-        // Collect unique fault type names, sorted
         let mut type_names: Vec<&str> = schedule
             .faults()
             .iter()
-            .map(|sf| sf.fault.type_name())
+            .map(|scheduled| scheduled.fault.type_name())
             .collect();
         type_names.sort_unstable();
         type_names.dedup();
         for name in &type_names {
-            name.hash(&mut hasher);
+            let length = u64::try_from(name.len()).map_err(|_| ExploreError::Config {
+                message: "fault type name length exceeds the dedup encoding".to_string(),
+            })?;
+            hasher.update(&length.to_le_bytes());
+            hasher.update(name.as_bytes());
         }
-
-        hasher.finish()
+        let digest = hasher.finalize();
+        let mut key = [0_u8; DEDUP_KEY_BYTES];
+        key.copy_from_slice(&digest.as_bytes()[..DEDUP_KEY_BYTES]);
+        Ok(u64::from_le_bytes(key))
     }
 
     /// Extract bug reports from a branch result, deduplicating by
-    /// (assertion_id, sorted fault type set).
+    /// (assertion fingerprint, sorted fault type set).
     fn extract_bugs(
         &mut self,
         result: &BranchResult,
         schedule: &FaultSchedule,
         replay_snapshot: Option<&SimulationSnapshot>,
-        replay_parent_depth: u32,
-    ) -> Vec<BugReport> {
+        parent_depth: u32,
+    ) -> Result<Vec<BugReport>, ExploreError> {
+        let replay_parent_depth = if replay_snapshot.is_some() {
+            parent_depth
+                .checked_add(1)
+                .ok_or_else(|| ExploreError::Config {
+                    message: "replay parent depth overflow".to_string(),
+                })?
+        } else {
+            0
+        };
         let mut bugs = Vec::new();
+        let has_failed_assertion =
+            result
+                .oracle_report
+                .structured_assertions
+                .values()
+                .any(|record| {
+                    matches!(
+                        record.verdict(),
+                        chaoscontrol_fault::oracle::Verdict::Failed
+                    )
+                });
+        if !has_failed_assertion {
+            return Ok(bugs);
+        }
+        let report_facts = chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(
+            &result.oracle_report,
+        )
+        .map_err(|error| ExploreError::Config {
+            message: format!("failed assertion report is not admissible: {error:?}"),
+        })?;
 
-        // Check oracle for failed assertions
-        for (assertion_id, record) in &result.oracle_report.assertions {
+        for (assertion_fingerprint, record) in &result.oracle_report.structured_assertions {
             if matches!(
                 record.verdict(),
                 chaoscontrol_fault::oracle::Verdict::Failed
             ) {
-                let dedup_key = Self::compute_dedup_key(*assertion_id as u64, schedule);
+                let assertion_id = record.compatibility_id.unwrap_or_default();
+                let admitted = record
+                    .identity
+                    .as_ref()
+                    .ok_or_else(|| ExploreError::Config {
+                        message: "failed assertion has no admitted identity".to_string(),
+                    })?;
+                let assertion_identity =
+                    chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                        admitted,
+                        report_facts.catalog_token,
+                    )
+                    .map_err(|error| ExploreError::Config {
+                        message: format!("failed assertion identity is invalid: {error:?}"),
+                    })?;
+                if assertion_identity.fingerprint != *assertion_fingerprint {
+                    return Err(ExploreError::Config {
+                        message: "failed assertion fingerprint does not match its report key"
+                            .to_string(),
+                    });
+                }
+                let dedup_key = Self::compute_dedup_key(*assertion_fingerprint, schedule)?;
 
                 // Skip if we've already seen this (assertion, fault_types) pair
                 if self.seen_dedup_keys.contains(&dedup_key) {
@@ -1328,7 +1412,8 @@ impl Explorer {
 
                 let bug = BugReport {
                     bug_id: 0, // Will be assigned by corpus
-                    assertion_id: *assertion_id as u64,
+                    assertion_id: assertion_id as u64,
+                    assertion_identity,
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: replay_snapshot.cloned(),
@@ -1344,7 +1429,7 @@ impl Explorer {
                 // Emit BugFound event for dashboard.
                 self.emit_event(crate::dashboard_types::DashboardEvent::BugFound {
                     bug_index: self.all_bugs().len() + bugs.len(),
-                    assertion_id: *assertion_id as u64,
+                    assertion_id: assertion_id as u64,
                     assertion_message: record.message.clone(),
                     round: self.rounds_completed,
                     tick: result.total_ticks,
@@ -1356,7 +1441,7 @@ impl Explorer {
             }
         }
 
-        bugs
+        Ok(bugs)
     }
 
     /// Recycle corpus entries into the frontier when it empties.
@@ -1484,12 +1569,9 @@ impl Explorer {
         result: BranchResult,
         schedule: FaultSchedule,
         new_edges: usize,
-        replay_snapshot: Option<&SimulationSnapshot>,
+        bugs: Vec<BugReport>,
         depth: u32,
     ) {
-        let replay_parent_depth = depth.saturating_sub(1);
-        let bugs = self.extract_bugs(&result, &schedule, replay_snapshot, replay_parent_depth);
-
         let entry = CorpusEntry {
             id: 0, // Will be assigned by corpus
             schedule,
@@ -1502,13 +1584,25 @@ impl Explorer {
         self.corpus.add(entry);
     }
 
+    fn retain_standalone_bugs(&mut self, mut bugs: Vec<BugReport>) -> Result<(), ExploreError> {
+        self.corpus
+            .assign_bug_ids(&mut bugs)
+            .map_err(|message| ExploreError::Config {
+                message: message.to_string(),
+            })?;
+        self.standalone_bugs.extend(bugs);
+        Ok(())
+    }
+
     /// Generate pseudo-coverage from assertion variety (blind mode).
     fn assertion_coverage(&self, oracle: &OracleReport) -> CoverageBitmap {
         let mut bitmap = CoverageBitmap::new();
 
-        // Map each assertion ID to a bitmap index
-        for assertion_id in oracle.assertions.keys() {
-            let index = (*assertion_id as usize) % crate::coverage::MAP_SIZE;
+        use std::hash::{Hash, Hasher};
+        for (assertion_key, _) in oracle.all_records() {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            assertion_key.hash(&mut hasher);
+            let index = hasher.finish() as usize % crate::coverage::MAP_SIZE;
             bitmap.record_hit(index);
         }
 
@@ -1525,7 +1619,7 @@ impl Explorer {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        for (assertion_id, record) in &oracle.assertions {
+        for (assertion_fingerprint, record) in oracle.all_records() {
             // Bucket the hit count: 0, 1, 2-3, 4-7, 8-15, 16-31, 32+
             let hit_bucket = match record.hit_count {
                 0 => 0u8,
@@ -1544,12 +1638,12 @@ impl Explorer {
                 chaoscontrol_fault::oracle::Verdict::Failed => 2,
             };
 
-            // Hash (assertion_id, verdict, hit_bucket) into a coverage edge.
+            // Hash (assertion fingerprint, verdict, hit bucket) into a coverage edge.
             // Use assertion region: [CODE_REGION_END, ASSERTION_REGION_END)
             let assertion_region_size =
                 crate::coverage::ASSERTION_REGION_END - crate::coverage::CODE_REGION_END;
             let mut hasher = DefaultHasher::new();
-            assertion_id.hash(&mut hasher);
+            assertion_fingerprint.hash(&mut hasher);
             verdict_code.hash(&mut hasher);
             hit_bucket.hash(&mut hasher);
             let index = (hasher.finish() as usize % assertion_region_size)
@@ -1559,10 +1653,13 @@ impl Explorer {
             // Also hash true/false ratio bucket for always/sometimes assertions.
             // This gives finer-grained signal: "50% true" vs "90% true" are different.
             if record.hit_count > 0 {
-                let ratio_bucket = (record.true_count * 8 / record.hit_count) as u8; // 0..8
+                const RATIO_BUCKET_COUNT: u128 = 8;
+                const RATIO_DOMAIN: u64 = 0xA55E;
+                let ratio_bucket = (u128::from(record.true_count) * RATIO_BUCKET_COUNT
+                    / u128::from(record.hit_count)) as u8;
                 let mut hasher2 = DefaultHasher::new();
-                assertion_id.hash(&mut hasher2);
-                0xA55Eu64.hash(&mut hasher2); // domain separator
+                assertion_fingerprint.hash(&mut hasher2);
+                RATIO_DOMAIN.hash(&mut hasher2);
                 ratio_bucket.hash(&mut hasher2);
                 let index2 = (hasher2.finish() as usize % assertion_region_size)
                     + crate::coverage::CODE_REGION_END;
@@ -1663,8 +1760,14 @@ impl Explorer {
             .map(|c| c.network().stats().clone())
             .unwrap_or_default();
 
-        // Collect assertion stats + per-assertion detail from oracle reports
-        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
+        // Collect assertion stats, detail, and authority from the merged oracle report.
+        let (
+            assertion_stats,
+            assertion_details,
+            assertion_catalog_status,
+            collision_safe_assertion_evidence,
+            assertion_identity_conflicts,
+        ) = self.collect_assertion_detail();
 
         ExplorationReport {
             rounds: self.rounds_completed,
@@ -1676,6 +1779,9 @@ impl Explorer {
             network_stats,
             assertion_stats,
             assertion_details,
+            assertion_catalog_status,
+            collision_safe_assertion_evidence,
+            assertion_identity_conflicts,
             round_history: self.round_history.clone(),
             wall_clock_seconds: 0.0, // Set by caller
             branches_per_second: 0.0,
@@ -1687,66 +1793,57 @@ impl Explorer {
 
     /// Collect assertion stats and per-assertion detail from all VM oracles.
     ///
-    /// Merges assertion records across VMs by summing hit/true/false counts
-    /// and taking the worst-case verdict per assertion ID.
-    fn collect_assertion_detail(&self) -> (AssertionStats, Vec<AssertionDetail>) {
+    /// Reads the merged oracle report and preserves its kind-derived verdicts.
+    fn collect_assertion_detail(
+        &self,
+    ) -> (
+        AssertionStats,
+        Vec<AssertionDetail>,
+        chaoscontrol_protocol::admission::CatalogValidationStatus,
+        bool,
+        Vec<String>,
+    ) {
         use chaoscontrol_fault::oracle::Verdict;
 
         let Some(controller) = &self.controller else {
-            return (AssertionStats::default(), Vec::new());
+            return (
+                AssertionStats::default(),
+                Vec::new(),
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+                false,
+                Vec::new(),
+            );
         };
-
-        // Merge per-assertion records across all VMs.
-        // Same assertion ID may appear in multiple VMs (e.g. catalog entries);
-        // sum their counts so verdicts reflect the full exploration.
-        let mut merged: BTreeMap<u32, chaoscontrol_fault::oracle::AssertionRecord> =
-            BTreeMap::new();
-
-        for i in 0..controller.num_vms() {
-            let report = controller.vm(i).fault_engine().oracle().report();
-            for (id, record) in &report.assertions {
-                if let Some(existing) = merged.get_mut(id) {
-                    existing.hit_count += record.hit_count;
-                    existing.true_count += record.true_count;
-                    existing.false_count += record.false_count;
-                    // Keep the highest runs_hit / runs_satisfied across VMs
-                    existing.runs_hit = existing.runs_hit.max(record.runs_hit);
-                    existing.runs_satisfied = existing.runs_satisfied.max(record.runs_satisfied);
-                    // Preserve first failure
-                    if existing.first_failure_run.is_none() {
-                        existing.first_failure_run = record.first_failure_run;
-                    }
-                    // Keep most recent failure details
-                    if record.last_failure_details.is_some() {
-                        existing.last_failure_details = record.last_failure_details.clone();
-                    }
-                } else {
-                    merged.insert(*id, record.clone());
-                }
-            }
-        }
-
-        // Build stats + detail
-        let mut passed = 0usize;
-        let mut failed = 0usize;
-        let mut unexercised = 0usize;
-        let mut details = Vec::with_capacity(merged.len());
-
-        for (id, record) in &merged {
+        let report = controller.report();
+        let mut passed = 0_usize;
+        let mut failed = 0_usize;
+        let mut unexercised = 0_usize;
+        let mut details = Vec::with_capacity(report.catalog_size);
+        for (_, record) in report.all_records() {
             let verdict = record.verdict();
             match verdict {
                 Verdict::Passed => passed += 1,
                 Verdict::Failed => failed += 1,
                 Verdict::Unexercised => unexercised += 1,
             }
-
             let failure_details = record
                 .last_failure_details
                 .as_ref()
-                .and_then(|bytes| std::str::from_utf8(bytes).ok().map(|s| s.to_string()));
-
+                .and_then(|bytes| std::str::from_utf8(bytes).ok().map(str::to_string));
+            let identity = record.identity.as_ref().map(|admitted| {
+                let descriptor = &admitted.descriptor;
+                AssertionIdentityDetail {
+                    descriptor: descriptor.clone(),
+                    fingerprint: admitted.fingerprint,
+                    canonical_descriptor: chaoscontrol_protocol::identity::encode_lower_hex(
+                        &admitted.canonical_bytes,
+                    ),
+                    catalog_tokens: record.catalog_tokens.iter().copied().collect(),
+                }
+            });
             details.push(AssertionDetail {
-                id: *id,
+                id: record.compatibility_id.unwrap_or_default(),
+                identity,
                 message: record.message.clone(),
                 kind: format!("{:?}", record.kind).to_lowercase(),
                 guest: record.guest.clone(),
@@ -1758,29 +1855,32 @@ impl Explorer {
                 last_failure_details: failure_details,
             });
         }
-
-        // Sort: failed first, then unexercised, then passed
-        details.sort_by(|a, b| {
-            let order = |v: &str| -> u8 {
-                match v {
-                    "failed" => 0,
-                    "unexercised" => 1,
-                    _ => 2,
-                }
+        details.sort_by(|left, right| {
+            let order = |verdict: &str| match verdict {
+                "failed" => 0_u8,
+                "unexercised" => 1_u8,
+                _ => 2_u8,
             };
-            order(&a.verdict)
-                .cmp(&order(&b.verdict))
-                .then(a.id.cmp(&b.id))
+            let left_fingerprint = left.identity.as_ref().map(|identity| identity.fingerprint);
+            let right_fingerprint = right.identity.as_ref().map(|identity| identity.fingerprint);
+            order(&left.verdict)
+                .cmp(&order(&right.verdict))
+                .then(left_fingerprint.cmp(&right_fingerprint))
+                .then(left.id.cmp(&right.id))
         });
-
         let stats = AssertionStats {
-            catalog_size: merged.len(),
+            catalog_size: details.len(),
             passed,
             failed,
             unexercised,
         };
-
-        (stats, details)
+        (
+            stats,
+            details,
+            report.catalog_status,
+            report.collision_safe_evidence,
+            report.identity_conflicts,
+        )
     }
 
     /// Get current exploration stats.
@@ -1799,7 +1899,7 @@ impl Explorer {
     pub fn snapshot_state(&self) -> crate::dashboard_types::DashboardState {
         use crate::dashboard_types::*;
 
-        let (assertion_stats, assertion_details) = self.collect_assertion_detail();
+        let (assertion_stats, assertion_details, _, _, _) = self.collect_assertion_detail();
 
         let bugs: Vec<DashboardBug> = self
             .corpus
@@ -1907,28 +2007,42 @@ impl Explorer {
         let mut bugs = Vec::new();
         for bug in self.all_bugs() {
             let mut serialized: SerializableBug = (&bug).into();
-            if serialized.replay_parent_snapshot_ref.is_none() {
-                if let Some(snapshot) = bug.snapshot.as_ref() {
-                    let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
-                        &snapshot_store,
-                        snapshot,
-                        bug.replay_parent_depth,
-                    )?;
-                    serialized.replay_parent_snapshot_ref = Some(reference);
-                } else if bug.replay_parent_depth > 0 {
-                    return Err(CheckpointError::MissingRequiredReplayParentSnapshot {
+            if bug.replay_parent_depth > 0 && serialized.replay_parent_snapshot_ref.is_none() {
+                let snapshot = bug.snapshot.as_ref().ok_or(
+                    CheckpointError::MissingRequiredReplayParentSnapshot {
                         bug_id: bug.bug_id,
                         replay_parent_depth: bug.replay_parent_depth,
-                    });
-                }
+                    },
+                )?;
+                let reference = crate::snapshot_store::SnapshotStore::put_snapshot(
+                    &snapshot_store,
+                    snapshot,
+                    bug.replay_parent_depth,
+                )?;
+                serialized.replay_parent_snapshot_ref = Some(reference);
+            }
+            if bug.replay_parent_depth == 0 {
+                serialized.replay_parent_snapshot_ref = None;
             }
             bugs.push(serialized);
         }
+
+        let assertion_report = if let Some(controller) = self.controller.as_ref() {
+            let report = controller.report();
+            match chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(&report) {
+                Ok(_) => Some(report),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        crate::checkpoint::validate_bug_set(&bugs, assertion_report.as_ref())?;
 
         Ok(ExplorationCheckpoint {
             config,
             global_coverage: self.coverage.global_coverage().as_slice().to_vec(),
             bugs,
+            assertion_report,
             rounds_completed: self.rounds_completed,
             total_branches_run: self.total_branches_run,
             total_edges: self.coverage.stats().total_edges,
@@ -1946,7 +2060,11 @@ impl Explorer {
         kernel_path_override: Option<String>,
         initrd_path_override: Option<String>,
         max_rounds_override: Option<u64>,
-    ) -> Self {
+    ) -> Result<Self, crate::checkpoint::BugSetIdentityError> {
+        let standalone_bugs = crate::checkpoint::replay_bug_set(
+            &checkpoint.bugs,
+            checkpoint.assertion_report.as_ref(),
+        )?;
         let config = ExplorerConfig {
             num_vms: checkpoint.config.num_vms,
             vm_config: VmConfig::default(),
@@ -1996,7 +2114,7 @@ impl Explorer {
             checkpoint.rounds_completed, checkpoint.total_branches_run, checkpoint.total_edges
         );
 
-        Self {
+        Ok(Self {
             config,
             frontier,
             corpus,
@@ -2015,28 +2133,11 @@ impl Explorer {
                 .unwrap_or_default()
                 .into_iter()
                 .collect(),
-            standalone_bugs: checkpoint
-                .bugs
-                .iter()
-                .map(|b| BugReport {
-                    bug_id: b.bug_id,
-                    assertion_id: b.assertion_id,
-                    assertion_location: b.assertion_location.clone(),
-                    schedule: (&b.schedule).into(),
-                    snapshot: None,
-                    tick: b.tick,
-                    replay_parent_depth: b.replay_parent_depth,
-                    replay_parent_snapshot_ref: b.replay_parent_snapshot_ref.clone(),
-                    dedup_key: b.dedup_key.unwrap_or(0),
-                    schedule_variant: None,
-                    scenario_config: b.scenario_config.clone(),
-                    scenario_summary: b.scenario_summary.clone(),
-                })
-                .collect(),
+            standalone_bugs,
             consecutive_stale_rounds: 0,
             scenario_summary: checkpoint.scenario_summary.clone(),
             metrics_sink: None,
-        }
+        })
     }
 }
 
@@ -2182,6 +2283,12 @@ pub struct ExplorationReport {
     pub assertion_stats: AssertionStats,
     /// Per-assertion detail — individual verdicts, hit counts, messages.
     pub assertion_details: Vec<AssertionDetail>,
+    /// Catalog authority retained from the validated merged oracle report.
+    pub assertion_catalog_status: chaoscontrol_protocol::admission::CatalogValidationStatus,
+    /// True only for a non-empty validated accepted assertion catalog.
+    pub collision_safe_assertion_evidence: bool,
+    /// Assertion identity diagnostics retained from the merged oracle report.
+    pub assertion_identity_conflicts: Vec<String>,
     /// Per-round exploration history.
     pub round_history: Vec<RoundHistory>,
     /// Total wall-clock time for the exploration run.
@@ -2197,7 +2304,7 @@ pub struct ExplorationReport {
 }
 
 /// Summary of assertion coverage across all exploration branches.
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AssertionStats {
     /// Total registered assertion sites (catalog + runtime).
     pub catalog_size: usize,
@@ -2209,20 +2316,35 @@ pub struct AssertionStats {
     pub unexercised: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssertionIdentityDetail {
+    pub descriptor: chaoscontrol_protocol::identity::AssertionDescriptor,
+    pub fingerprint: chaoscontrol_protocol::identity::AssertionFingerprint,
+    pub canonical_descriptor: String,
+    pub catalog_tokens: Vec<chaoscontrol_protocol::identity::AssertionFingerprint>,
+}
+
 /// Per-assertion detail for the exploration report.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssertionDetail {
-    /// Assertion ID (FNV-1a hash of location).
+    /// Non-authoritative compact alias.
     pub id: u32,
+    /// Collision-safe identity. None means diagnostic legacy input.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::non_null_option::deserialize"
+    )]
+    pub identity: Option<AssertionIdentityDetail>,
     /// Human-readable message.
     pub message: String,
     /// Assertion kind: "always", "sometimes", "reachable", "unreachable".
     pub kind: String,
     /// Guest name for assertion-density reporting.
-    #[serde(default = "default_uncategorized_string")]
     pub guest: String,
     /// Density category for grouped exercise reporting.
-    #[serde(default = "default_uncategorized_string")]
     pub category: String,
     /// Final verdict: "passed", "failed", "unexercised".
     pub verdict: String,
@@ -2235,10 +2357,6 @@ pub struct AssertionDetail {
     /// JSON details from the most recent failure (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_failure_details: Option<String>,
-}
-
-fn default_uncategorized_string() -> String {
-    "uncategorized".to_string()
 }
 
 /// Current exploration statistics.
@@ -2255,6 +2373,101 @@ pub struct ExplorationStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEST_ALIAS: u32 = 42;
+
+    fn failed_report(compatibility_id: Option<u32>) -> OracleReport {
+        let mut descriptor =
+            crate::test_support::assertion_identity(u64::from(TEST_ALIAS)).descriptor;
+        descriptor.compatibility_id = compatibility_id;
+        let token = chaoscontrol_protocol::admission::token_for_descriptors(core::slice::from_ref(
+            &descriptor,
+        ))
+        .expect("catalog token");
+        let fingerprint = descriptor.fingerprint().expect("fingerprint");
+        let mut builder =
+            chaoscontrol_protocol::admission::CatalogBuilder::begin(1).expect("catalog begins");
+        builder.insert(descriptor.clone()).expect("descriptor");
+        let catalog = builder.complete(token).expect("catalog completes");
+        let event = chaoscontrol_protocol::admission::BoundAssertionEvent {
+            catalog_token: token,
+            fingerprint,
+            kind: descriptor.kind,
+        };
+        let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+        oracle.activate_catalog(catalog).expect("catalog activates");
+        oracle.begin_run();
+        oracle
+            .record_bound_event(&event, false, None)
+            .expect("failed event records");
+        oracle.end_run();
+        oracle.report()
+    }
+
+    fn branch_result(oracle_report: OracleReport) -> BranchResult {
+        BranchResult {
+            coverage: CoverageBitmap::new(),
+            oracle_report,
+            schedule: FaultSchedule::new(),
+            exit_counts: Vec::new(),
+            halted: false,
+            total_ticks: 0,
+            bugs: Vec::new(),
+            snapshot: None,
+            schedule_variant: None,
+            schedule_fingerprint: 0,
+            timings: BranchTimings::default(),
+        }
+    }
+
+    #[test]
+    fn bug_extraction_accepts_exact_identity_without_compatibility_alias() {
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let result = branch_result(failed_report(None));
+        let bugs = explorer
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .expect("exact failed assertion extracts");
+
+        assert_eq!(bugs.len(), 1);
+        assert_eq!(bugs[0].assertion_id, 0);
+        assert_eq!(bugs[0].assertion_identity.descriptor.compatibility_id, None);
+    }
+
+    #[test]
+    fn bug_dedup_key_is_deterministic_and_identity_bound() {
+        let first = crate::test_support::assertion_identity(u64::from(TEST_ALIAS));
+        let second = crate::test_support::assertion_identity(u64::from(TEST_ALIAS + 1));
+        let schedule = FaultSchedule::new();
+        let key =
+            Explorer::compute_dedup_key(first.fingerprint, &schedule).expect("first dedup key");
+
+        assert_eq!(
+            Explorer::compute_dedup_key(first.fingerprint, &schedule).expect("repeat dedup key"),
+            key
+        );
+        assert_ne!(
+            Explorer::compute_dedup_key(second.fingerprint, &schedule).expect("second dedup key"),
+            key
+        );
+    }
+
+    #[test]
+    fn bug_extraction_rejects_invalid_failed_report() {
+        let mut report = failed_report(Some(TEST_ALIAS));
+        let record = report
+            .structured_assertions
+            .values_mut()
+            .next()
+            .expect("failed record");
+        record.identity = None;
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        let result = branch_result(report);
+
+        assert!(explorer
+            .extract_bugs(&result, &FaultSchedule::new(), None, 0)
+            .is_err());
+        assert!(explorer.seen_dedup_keys.is_empty());
+    }
 
     #[test]
     fn nickel_assertion_fixture_round_trips_through_rust_type() {
@@ -2313,13 +2526,8 @@ mod tests {
         let mut result = BranchResult {
             coverage: CoverageBitmap::new(),
             oracle_report: OracleReport {
-                assertions: std::collections::BTreeMap::new(),
                 total_runs: 1,
-                passed: 0,
-                failed: 0,
-                unexercised: 0,
-                catalog_size: 0,
-                events: Vec::new(),
+                ..OracleReport::empty()
             },
             schedule: FaultSchedule::new(),
             exit_counts: vec![100],
@@ -2347,13 +2555,8 @@ mod tests {
         let explorer = Explorer::new(config);
 
         let mut oracle = OracleReport {
-            assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: Vec::new(),
+            ..OracleReport::empty()
         };
 
         oracle.assertions.insert(
@@ -2370,6 +2573,10 @@ mod tests {
                 last_failure_details: None,
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(10),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2381,13 +2588,8 @@ mod tests {
 
     fn make_oracle_report() -> OracleReport {
         OracleReport {
-            assertions: std::collections::BTreeMap::new(),
             total_runs: 1,
-            passed: 0,
-            failed: 0,
-            unexercised: 0,
-            catalog_size: 0,
-            events: Vec::new(),
+            ..OracleReport::empty()
         }
     }
 
@@ -2510,6 +2712,10 @@ mod tests {
                 last_failure_details: Some(b"{\"term\":3}".to_vec()),
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2528,6 +2734,10 @@ mod tests {
                 last_failure_details: Some(b"{\"term\":5}".to_vec()),
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2558,6 +2768,10 @@ mod tests {
                 last_failure_details: None,
                 guest: "uncategorized".to_string(),
                 category: "uncategorized".to_string(),
+                identity: None,
+                compatibility_id: Some(1),
+                catalog_tokens: std::collections::BTreeSet::new(),
+                vm_instances: std::collections::BTreeSet::new(),
             },
         );
 
@@ -2651,7 +2865,8 @@ mod tests {
             Some("/fake/kernel".to_string()),
             Some("/fake/initrd".to_string()),
             Some(200),
-        );
+        )
+        .expect("valid checkpoint restores");
 
         assert_eq!(restored.rounds_completed, 42);
         assert_eq!(restored.total_branches_run, 336);

@@ -3,6 +3,7 @@
 use crate::coverage::CoverageBitmap;
 use crate::snapshot_store::ReplayParentSnapshotRef;
 use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
 
@@ -11,8 +12,10 @@ use chaoscontrol_vmm::scheduler::ScheduleVariant;
 pub struct BugReport {
     /// Unique bug ID.
     pub bug_id: u64,
-    /// The assertion that failed.
+    /// Non-authoritative compact alias for display and filtering.
     pub assertion_id: u64,
+    /// Exact admitted assertion identity that failed.
+    pub assertion_identity: AssertionEvidenceIdentity,
     /// The assertion location/message.
     pub assertion_location: String,
     /// The fault schedule that triggered it.
@@ -29,7 +32,7 @@ pub struct BugReport {
     pub replay_parent_depth: u32,
     /// Durable replay parent snapshot artifact reference, when persisted.
     pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
-    /// Dedup key: hash of (assertion_id, sorted fault type names).
+    /// Dedup key: hash of (assertion fingerprint, sorted fault type names).
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
     pub schedule_variant: Option<ScheduleVariant>,
@@ -79,6 +82,21 @@ impl Corpus {
         }
     }
 
+    /// Assign IDs to bugs that are retained outside corpus entries.
+    pub fn assign_bug_ids(&mut self, bugs: &mut [BugReport]) -> Result<(), &'static str> {
+        let count = u64::try_from(bugs.len()).map_err(|_| "bug ID count exceeds u64")?;
+        let next = self
+            .next_bug_id
+            .checked_add(count)
+            .ok_or("bug ID range overflow")?;
+        for (offset, bug) in bugs.iter_mut().enumerate() {
+            let offset = u64::try_from(offset).map_err(|_| "bug ID offset exceeds u64")?;
+            bug.bug_id = self.next_bug_id + offset;
+        }
+        self.next_bug_id = next;
+        Ok(())
+    }
+
     /// Add an entry to the corpus.
     ///
     /// Automatically assigns an ID and updates global coverage.
@@ -86,11 +104,10 @@ impl Corpus {
         entry.id = self.next_id;
         self.next_id += 1;
 
-        // Assign bug IDs
-        for bug in &mut entry.bugs_found {
-            bug.bug_id = self.next_bug_id;
-            self.next_bug_id += 1;
-        }
+        // The in-memory corpus cannot contain enough bugs to exhaust u64.
+        // The fallible standalone path handles imported or forged counters.
+        self.assign_bug_ids(&mut entry.bugs_found)
+            .expect("in-memory corpus bug ID capacity exhausted");
 
         self.global_coverage.merge(&entry.coverage);
         self.entries.push(entry);
@@ -178,6 +195,7 @@ mod tests {
             bugs_found.push(BugReport {
                 bug_id: 0,
                 assertion_id: i as u64,
+                assertion_identity: crate::test_support::assertion_identity(i as u64),
                 assertion_location: format!("bug_{}", i),
                 schedule: FaultSchedule::new(),
                 snapshot: None,
@@ -261,12 +279,29 @@ mod tests {
     #[test]
     fn test_corpus_bug_id_assignment() {
         let mut corpus = Corpus::new();
+        let mut standalone = make_entry(0, 1, 2).bugs_found;
+        corpus
+            .assign_bug_ids(&mut standalone)
+            .expect("standalone IDs");
+        corpus.add(make_entry(5, 1, 1));
 
-        corpus.add(make_entry(5, 1, 2)); // 2 bugs
+        assert_eq!(standalone[0].bug_id, 0);
+        assert_eq!(standalone[1].bug_id, 1);
+        assert_eq!(corpus.bugs()[0].bug_id, 2);
+    }
 
-        let bugs = corpus.bugs();
-        assert_eq!(bugs[0].bug_id, 0);
-        assert_eq!(bugs[1].bug_id, 1);
+    #[test]
+    fn standalone_bug_id_overflow_has_no_partial_update() {
+        let mut corpus = Corpus::new();
+        corpus.next_bug_id = u64::MAX;
+        let mut standalone = make_entry(0, 1, 1).bugs_found;
+
+        assert_eq!(
+            corpus.assign_bug_ids(&mut standalone),
+            Err("bug ID range overflow")
+        );
+        assert_eq!(standalone[0].bug_id, 0);
+        assert_eq!(corpus.next_bug_id, u64::MAX);
     }
 
     #[test]
@@ -299,6 +334,7 @@ mod tests {
         let bug = BugReport {
             bug_id: 42,
             assertion_id: 100,
+            assertion_identity: crate::test_support::assertion_identity(100),
             assertion_location: "test.rs:123".to_string(),
             schedule: FaultSchedule::new(),
             snapshot: None,

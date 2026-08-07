@@ -20,6 +20,7 @@ use chaoscontrol_fault::outcomes::{
     FaultStageEvent, FaultStageKind, FaultTransitionError, FaultVmStatus, VmFaultFacts,
     MAX_FAULT_OUTCOME_EVENTS,
 };
+use chaoscontrol_fault::report_merge::{merge_oracle_reports, rejected_merge_report};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use log::{debug, info, warn};
 use rand::RngCore;
@@ -82,6 +83,17 @@ fn checked_bandwidth_serialization_ticks(
     whole_ticks
         .checked_add(has_remainder)
         .ok_or(NetworkSendError::TickArithmetic)
+}
+
+fn all_setup_complete(statuses: impl Iterator<Item = bool>) -> bool {
+    let mut saw_vm = false;
+    for status in statuses {
+        saw_vm = true;
+        if !status {
+            return false;
+        }
+    }
+    saw_vm
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1851,7 +1863,7 @@ impl SimulationController {
         })
     }
 
-    /// Run the simulation until any VM signals `setup_complete`, or until
+    /// Run the simulation until all VMs signal `setup_complete`, or until
     /// `max_ticks` is reached (whichever comes first).
     ///
     /// Used for bootstrap: boot kernel + guest initialisation is variable-length,
@@ -1870,17 +1882,18 @@ impl SimulationController {
         while self.tick < stop_at {
             let result = self.step_round()?;
 
-            // Check ANY VM's fault engine for setup_complete.
-            // The SDK hypercall goes to the per-VM engine, not the
-            // controller's engine, so we check VMs directly.
-            let any_setup_complete = self
-                .vms
-                .iter()
-                .any(|slot| slot.vm.fault_engine().is_setup_complete());
+            // The SDK hypercall goes to each per-VM engine, not the
+            // controller's engine. Every VM must complete setup before the
+            // controller can create an exploration snapshot.
+            let all_setup_complete = all_setup_complete(
+                self.vms
+                    .iter()
+                    .map(|slot| slot.vm.fault_engine().is_setup_complete()),
+            );
 
-            if any_setup_complete {
+            if all_setup_complete {
                 info!(
-                    "Bootstrap complete: setup_complete received at tick {}",
+                    "Bootstrap complete: all VMs reached setup_complete at tick {}",
                     self.tick
                 );
                 // Propagate to controller's engine so idle detection
@@ -1895,13 +1908,14 @@ impl SimulationController {
             }
         }
 
-        let any_setup = self
-            .vms
-            .iter()
-            .any(|slot| slot.vm.fault_engine().is_setup_complete());
-        if !any_setup {
+        let all_setup = all_setup_complete(
+            self.vms
+                .iter()
+                .map(|slot| slot.vm.fault_engine().is_setup_complete()),
+        );
+        if !all_setup {
             warn!(
-                "Bootstrap reached max_ticks ({}) without setup_complete",
+                "Bootstrap reached max_ticks ({}) before all VMs completed setup",
                 max_ticks
             );
         }
@@ -3330,14 +3344,11 @@ impl SimulationController {
     /// Restore all VMs from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
-        if snapshot.vm_snapshots.len() != self.vms.len() {
-            return SnapshotSnafu {
-                message: "Snapshot VM count mismatch",
-            }
-            .fail();
-        }
+        snapshot
+            .validate_assertion_identity(self.vms.len())
+            .map_err(|message| SnapshotSnafu { message }.build())?;
         self.fault_engine
-            .validate_snapshot(&snapshot.fault_engine_snapshot)
+            .validate_orchestration_snapshot(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
         for (index, (vm_snapshot, _)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[index]
@@ -3349,7 +3360,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
-            .restore(&snapshot.fault_engine_snapshot)
+            .restore_orchestration(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
         self.fault_operation_sequence = snapshot.fault_operation_sequence;
         self.pending_process_observations = snapshot.pending_process_observations.clone();
@@ -3492,14 +3503,11 @@ impl SimulationController {
         &mut self,
         snapshot: &SimulationSnapshot,
     ) -> Result<(), VmError> {
-        if snapshot.vm_snapshots.len() != self.vms.len() {
-            return SnapshotSnafu {
-                message: "Snapshot VM count mismatch",
-            }
-            .fail();
-        }
+        snapshot
+            .validate_assertion_identity(self.vms.len())
+            .map_err(|message| SnapshotSnafu { message }.build())?;
         self.fault_engine
-            .validate_snapshot(&snapshot.fault_engine_snapshot)
+            .validate_orchestration_snapshot(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
         for (index, (vm_snapshot, _)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[index]
@@ -3511,7 +3519,7 @@ impl SimulationController {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
-            .restore(&snapshot.fault_engine_snapshot)
+            .restore_orchestration(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
         self.fault_operation_sequence = snapshot.fault_operation_sequence;
         self.pending_process_observations = snapshot.pending_process_observations.clone();
@@ -3550,50 +3558,29 @@ impl SimulationController {
     /// assertions from that VM's guest.  We merge them so the
     /// exploration sees a unified view of all assertion violations.
     fn merged_oracle_report(&self) -> OracleReport {
-        // Start with the first VM's report, then merge others.
-        let mut combined = if let Some(first) = self.vms.first() {
-            first.vm.fault_engine().oracle().report()
+        let mut reports = Vec::with_capacity(self.vms.len().max(1));
+        if self.vms.is_empty() {
+            reports.push((0, self.fault_engine.oracle().report()));
         } else {
-            return self.fault_engine.oracle().report();
-        };
-
-        for slot in self.vms.iter().skip(1) {
-            let report = slot.vm.fault_engine().oracle().report();
-            // Merge assertion records: a failure in ANY VM is a failure.
-            for (id, record) in &report.assertions {
-                combined
-                    .assertions
-                    .entry(*id)
-                    .and_modify(|existing| {
-                        existing.hit_count += record.hit_count;
-                        existing.true_count += record.true_count;
-                        existing.false_count += record.false_count;
-                        existing.runs_hit += record.runs_hit;
-                        existing.runs_satisfied += record.runs_satisfied;
-                        if existing.first_failure_run.is_none() {
-                            existing.first_failure_run = record.first_failure_run;
-                        }
-                    })
-                    .or_insert_with(|| record.clone());
-            }
-            combined.total_runs = combined.total_runs.max(report.total_runs);
-            combined.events.extend(report.events.iter().cloned());
-        }
-
-        // Recompute pass/fail/unexercised counts after merge.
-        combined.passed = 0;
-        combined.failed = 0;
-        combined.unexercised = 0;
-        for record in combined.assertions.values() {
-            match record.verdict() {
-                chaoscontrol_fault::oracle::Verdict::Passed => combined.passed += 1,
-                chaoscontrol_fault::oracle::Verdict::Failed => combined.failed += 1,
-                chaoscontrol_fault::oracle::Verdict::Unexercised => combined.unexercised += 1,
+            for (index, slot) in self.vms.iter().enumerate() {
+                let Ok(vm_instance) = u32::try_from(index) else {
+                    return rejected_merge_report(
+                        chaoscontrol_fault::report_merge::ReportMergeConflict::CardinalityOverflow,
+                    );
+                };
+                reports.push((
+                    vm_instance,
+                    slot.vm
+                        .fault_engine()
+                        .oracle()
+                        .finalized_report_projection(),
+                ));
             }
         }
-        combined.catalog_size = combined.assertions.len();
-
-        combined
+        match merge_oracle_reports(&reports) {
+            Ok(report) => report,
+            Err(conflict) => rejected_merge_report(conflict),
+        }
     }
 
     /// Get current simulation tick.
@@ -3819,6 +3806,7 @@ pub struct SimulationResult {
 
 /// Complete snapshot of simulation state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SimulationSnapshot {
     /// Global tick counter.
     pub tick: u64,
@@ -3842,6 +3830,44 @@ pub struct SimulationSnapshot {
     pub pending_process_observations: VecDeque<(usize, FaultObservation)>,
 }
 
+impl SimulationSnapshot {
+    pub fn validate_assertion_identity(&self, expected_vms: usize) -> Result<(), String> {
+        if self.vm_snapshots.len() != expected_vms {
+            return Err("Snapshot VM count mismatch".to_string());
+        }
+        chaoscontrol_fault::engine::validate_orchestration_engine_snapshot(
+            &self.fault_engine_snapshot,
+        )
+        .map_err(|error| format!("invalid controller orchestration snapshot: {error:?}"))?;
+        for (index, (snapshot, _)) in self.vm_snapshots.iter().enumerate() {
+            snapshot.validate_assertion_identity().map_err(|error| {
+                format!(
+                    "invalid VM {index} assertion snapshot: {error:?}; {}",
+                    snapshot.assertion_validation_diagnostic()
+                )
+            })?;
+        }
+        Ok(())
+    }
+
+    pub fn validate_assertion_evidence(
+        &self,
+        expected_vms: usize,
+        identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    ) -> Result<(), String> {
+        self.validate_assertion_identity(expected_vms)?;
+        let admitted = self
+            .vm_snapshots
+            .iter()
+            .filter(|(snapshot, _)| snapshot.validate_assertion_evidence(identity).is_ok())
+            .count();
+        if admitted == 0 {
+            return Err("snapshot assertion evidence is absent from every VM".to_string());
+        }
+        Ok(())
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════════════
@@ -3855,6 +3881,13 @@ mod tests {
     use chaoscontrol_fault::outcomes::transition_fault_outcome;
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 
+    #[test]
+    fn setup_completion_requires_every_vm() {
+        assert!(all_setup_complete([true, true, true].into_iter()));
+        assert!(!all_setup_complete([true, false, true].into_iter()));
+        assert!(!all_setup_complete([].into_iter()));
+    }
+
     fn dummy_kernel_path() -> String {
         // Return a plausible path; tests that actually run VMs will need a real kernel
         "/tmp/dummy-vmlinux".to_string()
@@ -3862,8 +3895,9 @@ mod tests {
 
     fn adapter_test_controller() -> SimulationController {
         const NETWORK_NODE_COUNT: usize = 2;
+        const TEST_VM_COUNT: usize = 1;
         let config = SimulationConfig {
-            num_vms: 1,
+            num_vms: TEST_VM_COUNT,
             kernel_path: dummy_kernel_path(),
             ..Default::default()
         };
@@ -3881,7 +3915,7 @@ mod tests {
             clock_jitter_bound: 0,
             process_fault_attempt: None,
         };
-        SimulationController {
+        let mut controller = SimulationController {
             vms: vec![slot],
             fault_engine: FaultEngine::new(EngineConfig::default()),
             network: NetworkFabric::new(NETWORK_NODE_COUNT, config.seed),
@@ -3892,7 +3926,9 @@ mod tests {
             fault_application_policy: FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
-        }
+        };
+        controller.fault_engine.begin_run();
+        controller
     }
 
     fn adapter_test_block(controller: &mut SimulationController) -> &mut DeterministicBlock {
@@ -3924,6 +3960,59 @@ mod tests {
         assert_eq!(config.num_vms, 2);
         assert_eq!(config.seed, 42);
         assert_eq!(config.quantum, 100);
+    }
+
+    #[test]
+    fn forged_assertion_snapshot_leaves_controller_state_unchanged() {
+        const ORIGINAL_TICK: u64 = 17;
+        const FORGED_TICK: u64 = 99;
+        const ORIGINAL_SEED: u64 = 41;
+        const FORGED_SEED: u64 = 43;
+        let config = SimulationConfig {
+            num_vms: 0,
+            seed: ORIGINAL_SEED,
+            ..SimulationConfig::default()
+        };
+        let mut controller = SimulationController {
+            vms: Vec::new(),
+            fault_engine: FaultEngine::new(EngineConfig::default()),
+            network: NetworkFabric::new(0, ORIGINAL_SEED),
+            tick: ORIGINAL_TICK,
+            quantum: config.quantum,
+            config,
+            vm_memory_bases: Vec::new(),
+            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_operation_sequence: 0,
+            pending_process_observations: VecDeque::new(),
+        };
+        let mut engine_value =
+            serde_json::to_value(controller.fault_engine.snapshot()).expect("engine snapshot");
+        engine_value["oracle"]["catalog_status"] = serde_json::json!("accepted");
+        let forged_engine =
+            serde_json::from_value(engine_value).expect("forged engine snapshot shape");
+        let snapshot = SimulationSnapshot {
+            tick: FORGED_TICK,
+            vm_snapshots: Vec::new(),
+            network_state: NetworkFabric::new(0, FORGED_SEED),
+            fault_engine_snapshot: forged_engine,
+            vcpu_stall_until: Vec::new(),
+            clock_freeze: Vec::new(),
+            clock_jitter_bound: Vec::new(),
+            process_fault_attempt: Vec::new(),
+            fault_operation_sequence: 0,
+            pending_process_observations: VecDeque::new(),
+        };
+        let network_before =
+            serde_json::to_value(&controller.network).expect("network before restore");
+        let report_before = controller.fault_engine.oracle().report();
+
+        assert!(controller.restore_all(&snapshot).is_err());
+        assert_eq!(controller.tick, ORIGINAL_TICK);
+        assert_eq!(
+            serde_json::to_value(&controller.network).expect("network after restore"),
+            network_before
+        );
+        assert_eq!(controller.fault_engine.oracle().report(), report_before);
     }
 
     #[test]

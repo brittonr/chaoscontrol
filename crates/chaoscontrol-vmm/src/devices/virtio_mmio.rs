@@ -1,377 +1,435 @@
-//! Virtio MMIO transport layer for deterministic device I/O.
-//!
-//! Implements the virtio 1.2 MMIO register interface (version 2, legacy-free)
-//! so guest virtio drivers can discover devices, negotiate features, set up
-//! virtqueues, and perform I/O through descriptor chains.
-//!
-//! This module provides the transport layer only — actual device logic lives
-//! in separate backend implementations ([`VirtioBackend`] trait).
+//! Virtio 1.2 MMIO transport with validated split-ring queue state.
 
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use super::virtio_chain::{plan_descriptor_chain, DescriptorChainPlan, VirtqDesc};
+use super::virtio_types::{
+    LastRequestLiveOutcome, PendingCompletionLiveState, QueueLiveState, QueueViolation,
+    TransportViolation, UsedWriteFailurePoint, ValidatedQueueLiveConfig, VirtioFailure,
+    VirtioLimits, VirtioLiveState, MAX_GUEST_MEMORY_REGIONS, MAX_QUEUE_SIZE, MAX_QUEUE_SIZE_USIZE,
+};
+use super::virtio_validation::{
+    available_element_address, descriptor_address, used_element_address, validate_available_delta,
+    validate_queue_config, validate_queue_size, validate_status_transition, MemoryRegion,
+    RawQueueConfig, ValidatedQueueConfig, VIRTIO_F_VERSION_1, VIRTIO_STATUS_DEVICE_NEEDS_RESET,
+    VIRTIO_STATUS_DRIVER_OK, VIRTIO_STATUS_FEATURES_OK,
+};
+use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap, GuestMemoryRegion};
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Virtio MMIO Register Offsets (virtio 1.2 spec §4.2.2)
-// ═══════════════════════════════════════════════════════════════════════
+pub const VIRTIO_MMIO_MAGIC_VALUE: u64 = 0x000;
+pub const VIRTIO_MMIO_VERSION: u64 = 0x004;
+pub const VIRTIO_MMIO_DEVICE_ID: u64 = 0x008;
+pub const VIRTIO_MMIO_VENDOR_ID: u64 = 0x00C;
+pub const VIRTIO_MMIO_DEVICE_FEATURES: u64 = 0x010;
+pub const VIRTIO_MMIO_DEVICE_FEATURES_SEL: u64 = 0x014;
+pub const VIRTIO_MMIO_DRIVER_FEATURES: u64 = 0x020;
+pub const VIRTIO_MMIO_DRIVER_FEATURES_SEL: u64 = 0x024;
+pub const VIRTIO_MMIO_QUEUE_SEL: u64 = 0x030;
+pub const VIRTIO_MMIO_QUEUE_NUM_MAX: u64 = 0x034;
+pub const VIRTIO_MMIO_QUEUE_NUM: u64 = 0x038;
+pub const VIRTIO_MMIO_QUEUE_READY: u64 = 0x044;
+pub const VIRTIO_MMIO_QUEUE_NOTIFY: u64 = 0x050;
+pub const VIRTIO_MMIO_INTERRUPT_STATUS: u64 = 0x060;
+pub const VIRTIO_MMIO_INTERRUPT_ACK: u64 = 0x064;
+pub const VIRTIO_MMIO_STATUS: u64 = 0x070;
+pub const VIRTIO_MMIO_QUEUE_DESC_LOW: u64 = 0x080;
+pub const VIRTIO_MMIO_QUEUE_DESC_HIGH: u64 = 0x084;
+pub const VIRTIO_MMIO_QUEUE_DRIVER_LOW: u64 = 0x090;
+pub const VIRTIO_MMIO_QUEUE_DRIVER_HIGH: u64 = 0x094;
+pub const VIRTIO_MMIO_QUEUE_DEVICE_LOW: u64 = 0x0A0;
+pub const VIRTIO_MMIO_QUEUE_DEVICE_HIGH: u64 = 0x0A4;
+pub const VIRTIO_MMIO_CONFIG_GENERATION: u64 = 0x0FC;
+pub const VIRTIO_MMIO_CONFIG: u64 = 0x100;
 
-const VIRTIO_MMIO_MAGIC_VALUE: u64 = 0x000;
-const VIRTIO_MMIO_VERSION: u64 = 0x004;
-const VIRTIO_MMIO_DEVICE_ID: u64 = 0x008;
-const VIRTIO_MMIO_VENDOR_ID: u64 = 0x00C;
-const VIRTIO_MMIO_DEVICE_FEATURES: u64 = 0x010;
-const VIRTIO_MMIO_DEVICE_FEATURES_SEL: u64 = 0x014;
-const VIRTIO_MMIO_DRIVER_FEATURES: u64 = 0x020;
-const VIRTIO_MMIO_DRIVER_FEATURES_SEL: u64 = 0x024;
-const VIRTIO_MMIO_QUEUE_SEL: u64 = 0x030;
-const VIRTIO_MMIO_QUEUE_NUM_MAX: u64 = 0x034;
-const VIRTIO_MMIO_QUEUE_NUM: u64 = 0x038;
-const VIRTIO_MMIO_QUEUE_READY: u64 = 0x044;
-const VIRTIO_MMIO_QUEUE_NOTIFY: u64 = 0x050;
-const VIRTIO_MMIO_INTERRUPT_STATUS: u64 = 0x060;
-const VIRTIO_MMIO_INTERRUPT_ACK: u64 = 0x064;
-const VIRTIO_MMIO_STATUS: u64 = 0x070;
-const VIRTIO_MMIO_QUEUE_DESC_LOW: u64 = 0x080;
-const VIRTIO_MMIO_QUEUE_DESC_HIGH: u64 = 0x084;
-const VIRTIO_MMIO_QUEUE_DRIVER_LOW: u64 = 0x090;
-const VIRTIO_MMIO_QUEUE_DRIVER_HIGH: u64 = 0x094;
-const VIRTIO_MMIO_QUEUE_DEVICE_LOW: u64 = 0x0A0;
-const VIRTIO_MMIO_QUEUE_DEVICE_HIGH: u64 = 0x0A4;
-const VIRTIO_MMIO_CONFIG_GENERATION: u64 = 0x0FC;
-const VIRTIO_MMIO_CONFIG: u64 = 0x100;
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Constants
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Magic value returned by VIRTIO_MMIO_MAGIC_VALUE register ("virt" in LE).
-const MAGIC: u32 = 0x74726976;
-
-/// Version number for modern (non-legacy) virtio MMIO.
+const MAGIC: u32 = 0x7472_6976;
 const VERSION: u32 = 2;
-
-/// Vendor ID (we use QEMU's vendor ID for compatibility).
-const VENDOR_ID: u32 = 0x554D4551;
-
-/// Maximum virtqueue size we support (power of 2).
-const QUEUE_SIZE_MAX: u16 = 256;
-
-/// Size of a virtio MMIO device region (4 KB).
+const VENDOR_ID: u32 = 0x554D_4551;
+const MMIO_REGISTER_BYTES: usize = 4;
+const FEATURE_WORD_BITS: u32 = 32;
+const LOW_FEATURE_MASK: u64 = 0x0000_0000_FFFF_FFFF;
+const HIGH_FEATURE_MASK: u64 = 0xFFFF_FFFF_0000_0000;
+const AVAILABLE_INDEX_OFFSET: u64 = 2;
+const USED_INDEX_OFFSET: u64 = 2;
+const DESCRIPTOR_LENGTH_OFFSET: u64 = 8;
+const DESCRIPTOR_FLAGS_OFFSET: u64 = 12;
+const DESCRIPTOR_NEXT_OFFSET: u64 = 14;
+const USED_LENGTH_OFFSET: u64 = 4;
+const VIRTIO_MMIO_INT_VRING: u32 = 1;
 pub const VIRTIO_MMIO_DEVICE_SIZE: u64 = 0x1000;
 
-/// Virtqueue descriptor flags (virtio spec §2.7.5).
-const VIRTQ_DESC_F_NEXT: u16 = 1; // Descriptor continues via `next` field
-const VIRTQ_DESC_F_WRITE: u16 = 2; // Buffer is write-only (device writes)
-                                   // const VIRTQ_DESC_F_INDIRECT: u16 = 4;  // Reserved for future use
-
-/// Device status bits (virtio spec §2.1).
-#[allow(dead_code)]
-const VIRTIO_STATUS_ACKNOWLEDGE: u32 = 1;
-#[allow(dead_code)]
-const VIRTIO_STATUS_DRIVER: u32 = 2;
-#[allow(dead_code)]
-const VIRTIO_STATUS_FEATURES_OK: u32 = 8;
-#[allow(dead_code)]
-const VIRTIO_STATUS_DRIVER_OK: u32 = 4;
-#[allow(dead_code)]
-const VIRTIO_STATUS_FAILED: u32 = 128;
-
-/// Interrupt status bits.
-const VIRTIO_MMIO_INT_VRING: u32 = 1; // Used buffer notification
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Virtio Split Virtqueue Descriptor
-// ═══════════════════════════════════════════════════════════════════════
-
-/// A single virtqueue descriptor (16 bytes, virtio spec §2.7.5).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct VirtqDesc {
-    /// Guest physical address of the buffer.
-    pub addr: u64,
-    /// Length of the buffer in bytes.
-    pub len: u32,
-    /// Descriptor flags (NEXT, WRITE, INDIRECT).
-    pub flags: u16,
-    /// Index of the next descriptor (if NEXT flag is set).
-    pub next: u16,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MmioWriteEffect {
+    None,
+    NotifyQueue(usize),
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  VirtQueue
-// ═══════════════════════════════════════════════════════════════════════
+#[derive(Clone, Debug)]
+pub struct PlannedAvail {
+    pub head_index: u16,
+    pub chain: DescriptorChainPlan,
+}
 
-/// A single split virtqueue.
-///
-/// The guest driver sets up three memory regions:
-/// - Descriptor table (array of [`VirtqDesc`])
-/// - Available ring (driver → device notifications)
-/// - Used ring (device → driver completions)
 #[derive(Clone, Debug)]
 pub struct VirtQueue {
-    /// Maximum queue size offered by the device.
     max_size: u16,
-    /// Actual queue size set by the driver.
-    size: u16,
-    /// Is the queue activated (ready for I/O)?
+    limits: VirtioLimits,
+    raw: RawQueueConfig,
+    validated: Option<ValidatedQueueConfig>,
     ready: bool,
-    /// Guest physical address of the descriptor table.
-    desc_addr: u64,
-    /// Guest physical address of the available ring.
-    driver_addr: u64,
-    /// Guest physical address of the used ring.
-    device_addr: u64,
-    /// Last `avail.idx` we've seen (for tracking new buffers).
     last_avail_idx: u16,
+    next_used_idx: u16,
+    failure: Option<VirtioFailure>,
+    pending_completion: Option<PendingCompletionLiveState>,
+    last_request_outcome: Option<LastRequestLiveOutcome>,
+    used_write_failure: Option<UsedWriteFailurePoint>,
 }
 
 impl VirtQueue {
-    /// Create a new uninitialized virtqueue.
     pub fn new(max_size: u16) -> Self {
+        Self::with_limits(max_size, VirtioLimits::default())
+    }
+
+    pub fn with_limits(max_size: u16, limits: VirtioLimits) -> Self {
         Self {
             max_size,
-            size: 0,
+            limits,
+            raw: RawQueueConfig::default(),
+            validated: None,
             ready: false,
-            desc_addr: 0,
-            driver_addr: 0,
-            device_addr: 0,
             last_avail_idx: 0,
+            next_used_idx: 0,
+            failure: None,
+            pending_completion: None,
+            last_request_outcome: None,
+            used_write_failure: None,
         }
     }
 
-    /// Get the maximum queue size.
     pub fn max_size(&self) -> u16 {
         self.max_size
     }
 
-    /// Set the queue size (driver configuration).
-    pub fn set_size(&mut self, size: u16) {
-        self.size = size.min(self.max_size);
-    }
-
-    /// Get the current queue size.
     pub fn size(&self) -> u16 {
-        self.size
+        self.validated.map_or_else(
+            || u16::try_from(self.raw.size).unwrap_or(0),
+            ValidatedQueueConfig::size,
+        )
     }
 
-    /// Activate the queue (make it ready for I/O).
-    pub fn set_ready(&mut self, ready: bool) {
-        self.ready = ready;
+    pub fn limits(&self) -> VirtioLimits {
+        self.limits
     }
 
-    /// Check if the queue is ready.
     pub fn is_ready(&self) -> bool {
-        self.ready
+        self.ready && self.failure.is_none() && self.validated.is_some()
     }
 
-    /// Set the descriptor table address.
-    pub fn set_desc_addr(&mut self, addr: u64) {
-        self.desc_addr = addr;
-    }
-
-    /// Set the available ring address.
-    pub fn set_driver_addr(&mut self, addr: u64) {
-        self.driver_addr = addr;
-    }
-
-    /// Set the used ring address.
-    pub fn set_device_addr(&mut self, addr: u64) {
-        self.device_addr = addr;
-    }
-
-    /// Read a descriptor from the guest's descriptor table.
-    pub fn read_desc(&self, mem: &GuestMemoryMmap, idx: u16) -> Option<VirtqDesc> {
-        if idx >= self.size {
-            return None;
+    pub fn set_size(&mut self, value: u32) -> Result<(), VirtioFailure> {
+        if self.ready {
+            return Err(VirtioFailure::Transport(
+                TransportViolation::QueueSizeWhileReady,
+            ));
         }
-        let addr = self.desc_addr + (idx as u64) * 16; // Each descriptor is 16 bytes
-        let desc = VirtqDesc {
-            addr: mem.read_obj(GuestAddress(addr)).ok()?,
-            len: mem.read_obj(GuestAddress(addr + 8)).ok()?,
-            flags: mem.read_obj(GuestAddress(addr + 12)).ok()?,
-            next: mem.read_obj(GuestAddress(addr + 14)).ok()?,
-        };
-        Some(desc)
+        validate_queue_size(value, self.max_size, self.limits).map_err(VirtioFailure::Queue)?;
+        self.raw.size = value;
+        Ok(())
     }
 
-    /// Read the `avail.idx` field from the available ring.
-    pub fn read_avail_idx(&self, mem: &GuestMemoryMmap) -> Option<u16> {
-        // Available ring layout:
-        //   u16 flags
-        //   u16 idx
-        //   u16 ring[queue_size]
-        //   u16 used_event (optional)
-        let idx_addr = self.driver_addr + 2;
-        mem.read_obj(GuestAddress(idx_addr)).ok()
+    pub fn set_descriptor_address(&mut self, value: u64) -> Result<(), VirtioFailure> {
+        self.require_address_mutable()?;
+        self.raw.descriptor_address = value;
+        Ok(())
     }
 
-    /// Read an entry from the available ring at the given index.
-    pub fn read_avail_ring(&self, mem: &GuestMemoryMmap, idx: u16) -> Option<u16> {
-        let ring_start = self.driver_addr + 4;
-        let offset = (idx % self.size) as u64;
-        mem.read_obj(GuestAddress(ring_start + offset * 2)).ok()
+    pub fn set_driver_address(&mut self, value: u64) -> Result<(), VirtioFailure> {
+        self.require_address_mutable()?;
+        self.raw.driver_address = value;
+        Ok(())
     }
 
-    /// Add a used buffer to the used ring and increment `used.idx`.
-    pub fn add_used(&mut self, mem: &GuestMemoryMmap, desc_idx: u16, len: u32) -> bool {
-        if !self.ready {
-            return false;
-        }
-
-        // Used ring layout:
-        //   u16 flags
-        //   u16 idx
-        //   struct virtq_used_elem ring[queue_size] {
-        //     u32 id;   // descriptor chain head
-        //     u32 len;  // total bytes written
-        //   }
-        //   u16 avail_event (optional)
-
-        // Read current used.idx
-        let idx_addr = self.device_addr + 2;
-        let used_idx: u16 = match mem.read_obj(GuestAddress(idx_addr)) {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
-
-        // Write used ring element
-        let ring_start = self.device_addr + 4;
-        let ring_offset = ((used_idx % self.size) as u64) * 8;
-        let elem_addr = ring_start + ring_offset;
-
-        if mem
-            .write_obj(desc_idx as u32, GuestAddress(elem_addr))
-            .is_err()
-        {
-            return false;
-        }
-        if mem.write_obj(len, GuestAddress(elem_addr + 4)).is_err() {
-            return false;
-        }
-
-        // Increment used.idx
-        let new_idx = used_idx.wrapping_add(1);
-        if mem.write_obj(new_idx, GuestAddress(idx_addr)).is_err() {
-            return false;
-        }
-
-        true
+    pub fn set_device_address(&mut self, value: u64) -> Result<(), VirtioFailure> {
+        self.require_address_mutable()?;
+        self.raw.device_address = value;
+        Ok(())
     }
 
-    /// Check if there are new buffers available from the driver.
-    pub fn has_new_buffers(&mut self, mem: &GuestMemoryMmap) -> bool {
-        if !self.ready {
-            return false;
-        }
-        let avail_idx = match self.read_avail_idx(mem) {
-            Some(idx) => idx,
-            None => return false,
-        };
-        avail_idx != self.last_avail_idx
+    pub fn raw_config(&self) -> RawQueueConfig {
+        self.raw
     }
 
-    /// Pop the next available descriptor chain head.
-    pub fn pop_avail(&mut self, mem: &GuestMemoryMmap) -> Option<u16> {
-        if !self.ready {
-            return None;
+    pub fn activate(&mut self, mem: &GuestMemoryMmap) -> Result<(), VirtioFailure> {
+        if self.ready {
+            return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
         }
-        let avail_idx = self.read_avail_idx(mem)?;
-        if avail_idx == self.last_avail_idx {
-            return None; // No new buffers
+        let (regions, count) = guest_memory_regions(mem)?;
+        let validated =
+            validate_queue_config(self.raw, self.max_size, &regions[..count], self.limits)
+                .map_err(VirtioFailure::Queue)?;
+        self.validated = Some(validated);
+        self.ready = true;
+        self.last_avail_idx = 0;
+        self.next_used_idx = 0;
+        self.failure = None;
+        self.pending_completion = None;
+        self.last_request_outcome = None;
+        self.used_write_failure = None;
+        Ok(())
+    }
+
+    pub fn plan_next(&self, mem: &GuestMemoryMmap) -> Result<Option<PlannedAvail>, VirtioFailure> {
+        let config = self.config()?;
+        let queue_size = config.size();
+        let available_index_address = config
+            .available_range()
+            .start()
+            .checked_add(AVAILABLE_INDEX_OFFSET)
+            .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
+        let available_index = mem
+            .read_obj(GuestAddress(available_index_address))
+            .map_err(|_| VirtioFailure::GuestMemoryRead)?;
+        let delta = validate_available_delta(self.last_avail_idx, available_index, queue_size)
+            .map_err(VirtioFailure::Queue)?;
+        if delta == 0 {
+            return Ok(None);
         }
-        let desc_idx = self.read_avail_ring(mem, self.last_avail_idx)?;
+        let head_address = available_element_address(config, self.last_avail_idx)
+            .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
+        let head_index: u16 = mem
+            .read_obj(GuestAddress(head_address))
+            .map_err(|_| VirtioFailure::GuestMemoryRead)?;
+        if head_index >= queue_size {
+            return Err(VirtioFailure::Queue(QueueViolation::AvailableHead {
+                head: head_index,
+                capacity: queue_size,
+            }));
+        }
+        let descriptors = self.read_descriptor_table(mem, config)?;
+        let (regions, count) = guest_memory_regions(mem)?;
+        let chain = plan_descriptor_chain(
+            &descriptors[..usize::from(queue_size)],
+            head_index,
+            queue_size,
+            &regions[..count],
+            self.limits,
+        )
+        .map_err(VirtioFailure::Descriptor)?;
+        Ok(Some(PlannedAvail { head_index, chain }))
+    }
+
+    pub fn stage_completion(
+        &mut self,
+        head_index: u16,
+        written_length: u32,
+    ) -> Result<(), VirtioFailure> {
+        if self.pending_completion.is_some() {
+            return Err(VirtioFailure::CompletionState);
+        }
+        self.pending_completion = Some(PendingCompletionLiveState {
+            head_index,
+            written_length,
+            backend_started: false,
+            effects_started: false,
+        });
+        Ok(())
+    }
+
+    pub fn mark_backend_started(&mut self) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .as_mut()
+            .ok_or(VirtioFailure::CompletionState)?;
+        pending.backend_started = true;
+        pending.effects_started = true;
+        Ok(())
+    }
+
+    pub fn mark_effects_started(&mut self) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .as_mut()
+            .ok_or(VirtioFailure::CompletionState)?;
+        pending.effects_started = true;
+        Ok(())
+    }
+
+    pub fn complete(
+        &mut self,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        written_length: u32,
+    ) -> Result<(), VirtioFailure> {
+        self.publish_completion(mem, head_index, written_length)?;
+        self.last_request_outcome = Some(LastRequestLiveOutcome::Completed {
+            head_index,
+            written_length,
+        });
+        Ok(())
+    }
+
+    pub fn complete_rejected(
+        &mut self,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        written_length: u32,
+        failure: VirtioFailure,
+    ) -> Result<(), VirtioFailure> {
+        self.last_request_outcome = Some(LastRequestLiveOutcome::Rejected {
+            head_index,
+            written_length,
+            failure,
+        });
+        self.publish_completion(mem, head_index, written_length)
+    }
+
+    pub fn inject_used_write_failure(&mut self, point: UsedWriteFailurePoint) {
+        self.used_write_failure = Some(point);
+    }
+
+    fn publish_completion(
+        &mut self,
+        mem: &GuestMemoryMmap,
+        head_index: u16,
+        written_length: u32,
+    ) -> Result<(), VirtioFailure> {
+        let pending = self
+            .pending_completion
+            .ok_or(VirtioFailure::CompletionState)?;
+        if pending.head_index != head_index || pending.written_length != written_length {
+            return Err(VirtioFailure::CompletionState);
+        }
+        let config = self.config()?;
+        let element_address =
+            used_element_address(config, self.next_used_idx).ok_or(VirtioFailure::UsedRingWrite)?;
+        let length_address = element_address
+            .checked_add(USED_LENGTH_OFFSET)
+            .ok_or(VirtioFailure::UsedRingWrite)?;
+        let used_index_address = config
+            .used_range()
+            .start()
+            .checked_add(USED_INDEX_OFFSET)
+            .ok_or(VirtioFailure::UsedRingWrite)?;
+        let next_used_index = self.next_used_idx.wrapping_add(1);
+        self.mark_effects_started()?;
+        mem.write_obj(u32::from(head_index), GuestAddress(element_address))
+            .map_err(|_| VirtioFailure::UsedRingWrite)?;
+        mem.write_obj(written_length, GuestAddress(length_address))
+            .map_err(|_| VirtioFailure::UsedRingWrite)?;
+        if self.used_write_failure.take() == Some(UsedWriteFailurePoint::BeforeIndex) {
+            return Err(VirtioFailure::UsedRingWrite);
+        }
+        mem.write_obj(next_used_index, GuestAddress(used_index_address))
+            .map_err(|_| VirtioFailure::UsedRingWrite)?;
         self.last_avail_idx = self.last_avail_idx.wrapping_add(1);
-        Some(desc_idx)
+        self.next_used_idx = next_used_index;
+        self.pending_completion = None;
+        Ok(())
+    }
+
+    pub fn mark_failed(&mut self, failure: VirtioFailure) {
+        self.failure = Some(failure);
+    }
+
+    pub fn live_state(&self) -> QueueLiveState {
+        let config = self.validated.map(|config| ValidatedQueueLiveConfig {
+            size: config.size(),
+            descriptor_address: config.descriptor_range().start(),
+            driver_address: config.available_range().start(),
+            device_address: config.used_range().start(),
+        });
+        QueueLiveState {
+            config,
+            ready: self.is_ready(),
+            last_avail_idx: self.last_avail_idx,
+            next_used_idx: self.next_used_idx,
+            failure: self.failure.clone(),
+            pending_completion: self.pending_completion,
+            last_request_outcome: self.last_request_outcome.clone(),
+        }
+    }
+
+    fn config(&self) -> Result<ValidatedQueueConfig, VirtioFailure> {
+        if !self.is_ready() {
+            return Err(VirtioFailure::Queue(QueueViolation::NotValidated));
+        }
+        self.validated
+            .ok_or(VirtioFailure::Queue(QueueViolation::NotValidated))
+    }
+
+    fn require_address_mutable(&self) -> Result<(), VirtioFailure> {
+        if self.ready {
+            return Err(VirtioFailure::Transport(
+                TransportViolation::QueueAddressWhileReady,
+            ));
+        }
+        Ok(())
+    }
+
+    fn read_descriptor_table(
+        &self,
+        mem: &GuestMemoryMmap,
+        config: ValidatedQueueConfig,
+    ) -> Result<[VirtqDesc; MAX_QUEUE_SIZE_USIZE], VirtioFailure> {
+        let mut descriptors = [VirtqDesc::default(); MAX_QUEUE_SIZE_USIZE];
+        for index in 0..config.size() {
+            let address = descriptor_address(config, index)
+                .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
+            descriptors[usize::from(index)] = VirtqDesc {
+                addr: read_at(mem, address)?,
+                len: read_at_offset(mem, address, DESCRIPTOR_LENGTH_OFFSET)?,
+                flags: read_at_offset(mem, address, DESCRIPTOR_FLAGS_OFFSET)?,
+                next: read_at_offset(mem, address, DESCRIPTOR_NEXT_OFFSET)?,
+            };
+        }
+        Ok(descriptors)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  VirtioBackend Trait
-// ═══════════════════════════════════════════════════════════════════════
-
-/// Trait for virtio device backends.
-///
-/// Each device type (block, net, rng) implements this trait to handle
-/// device-specific I/O processing, feature negotiation, and config space.
 pub trait VirtioBackend: Send {
-    /// Device type ID (1=net, 2=block, 4=rng).
     fn device_id(&self) -> u32;
-
-    /// Feature bits offered by the device.
     fn device_features(&self) -> u64;
-
-    /// Number of virtqueues this device uses.
     fn num_queues(&self) -> usize;
-
-    /// Process available buffers in the given queue.
-    ///
-    /// Returns `true` if work was done and an interrupt should be raised.
     fn process_queue(
         &mut self,
         queue_idx: usize,
         queue: &mut VirtQueue,
         mem: &GuestMemoryMmap,
-    ) -> bool;
-
-    /// Read from device-specific config space (offset relative to 0x100).
+    ) -> Result<bool, VirtioFailure>;
     fn read_config(&self, offset: u64, data: &mut [u8]);
-
-    /// Write to device-specific config space (offset relative to 0x100).
     fn write_config(&mut self, offset: u64, data: &[u8]);
-
-    /// Downcast to `Any` for backend-specific operations (e.g., snapshot).
     fn as_any(&self) -> &dyn std::any::Any;
-
-    /// Downcast to `Any` for backend-specific operations (e.g., fault injection).
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  VirtioMmioDevice
-// ═══════════════════════════════════════════════════════════════════════
-
-/// A virtio MMIO transport device.
-///
-/// Handles the MMIO register interface and delegates I/O to a backend.
 pub struct VirtioMmioDevice {
-    /// Base address in guest physical memory.
     base_addr: u64,
-    /// IRQ line number.
     irq: u32,
-    /// Device features (offered by backend).
     device_features: u64,
-    /// Driver features (negotiated).
     driver_features: u64,
-    /// Feature selection registers.
     device_features_sel: u32,
     driver_features_sel: u32,
-    /// Device status byte.
     status: u32,
-    /// Interrupt status.
     interrupt_status: u32,
-    /// Config generation counter.
     config_generation: u32,
-    /// Virtqueues.
     queues: Vec<VirtQueue>,
-    /// Currently selected queue index.
     queue_sel: u32,
-    /// Device backend.
     backend: Box<dyn VirtioBackend>,
+    failure: Option<VirtioFailure>,
+    limits: VirtioLimits,
 }
 
-/// VIRTIO_F_VERSION_1 (bit 32) — required for modern (v2) virtio devices.
-/// Without this, Linux's virtio-mmio driver (version 2) rejects the device
-/// with "must provide VIRTIO_F_VERSION_1 feature!".
-const VIRTIO_F_VERSION_1: u64 = 1 << 32;
-
 impl VirtioMmioDevice {
-    /// Create a new virtio MMIO device.
     pub fn new(base_addr: u64, irq: u32, backend: Box<dyn VirtioBackend>) -> Self {
-        // Always include VIRTIO_F_VERSION_1 for modern (v2) MMIO transport.
-        let device_features = backend.device_features() | VIRTIO_F_VERSION_1;
-        let num_queues = backend.num_queues();
-        let queues = (0..num_queues)
-            .map(|_| VirtQueue::new(QUEUE_SIZE_MAX))
-            .collect();
+        Self::with_limits(base_addr, irq, backend, VirtioLimits::default())
+    }
 
+    pub fn with_limits(
+        base_addr: u64,
+        irq: u32,
+        backend: Box<dyn VirtioBackend>,
+        limits: VirtioLimits,
+    ) -> Self {
+        let device_features = backend.device_features() | VIRTIO_F_VERSION_1;
+        let queues = (0..backend.num_queues())
+            .map(|_| VirtQueue::with_limits(MAX_QUEUE_SIZE, limits))
+            .collect();
         Self {
             base_addr,
             irq,
@@ -385,204 +443,345 @@ impl VirtioMmioDevice {
             queues,
             queue_sel: 0,
             backend,
+            failure: None,
+            limits,
         }
     }
 
-    /// Check if this device handles the given guest physical address.
-    pub fn handles(&self, addr: u64) -> bool {
-        addr >= self.base_addr && addr < self.base_addr + VIRTIO_MMIO_DEVICE_SIZE
+    pub fn handles(&self, address: u64) -> bool {
+        self.base_addr
+            .checked_add(VIRTIO_MMIO_DEVICE_SIZE)
+            .is_some_and(|end| address >= self.base_addr && address < end)
     }
 
-    /// Get the IRQ line number.
     pub fn irq(&self) -> u32 {
         self.irq
     }
 
-    /// Get the base address.
     pub fn base_addr(&self) -> u64 {
         self.base_addr
     }
 
-    /// Get the backend (for testing and inspection).
     pub fn backend(&self) -> &dyn VirtioBackend {
         &*self.backend
     }
 
-    /// Get a mutable reference to the backend (for testing and inspection).
     pub fn backend_mut(&mut self) -> &mut dyn VirtioBackend {
         &mut *self.backend
     }
 
-    /// Handle an MMIO read from the guest.
+    pub fn inject_used_write_failure(
+        &mut self,
+        queue_index: usize,
+        point: UsedWriteFailurePoint,
+    ) -> Result<(), VirtioFailure> {
+        let queue = self
+            .queues
+            .get_mut(queue_index)
+            .ok_or(VirtioFailure::BackendQueue)?;
+        queue.inject_used_write_failure(point);
+        Ok(())
+    }
+
+    pub fn record_interrupt_failure(&mut self, queue_index: usize, irq: u32, asserted: bool) {
+        let failure = VirtioFailure::InterruptDelivery { irq, asserted };
+        if let Some(queue) = self.queues.get_mut(queue_index) {
+            queue.mark_failed(failure.clone());
+        }
+        self.record_failure(failure);
+    }
+
+    pub fn live_state(&self) -> VirtioLiveState {
+        VirtioLiveState {
+            status: self.status,
+            interrupt_status: self.interrupt_status,
+            failure: self.failure.clone(),
+            queues: self.queues.iter().map(VirtQueue::live_state).collect(),
+        }
+    }
+
     pub fn read(&self, offset: u64, data: &mut [u8]) {
-        let val: u32 = match offset {
+        data.fill(0);
+        let value = match offset {
             VIRTIO_MMIO_MAGIC_VALUE => MAGIC,
             VIRTIO_MMIO_VERSION => VERSION,
             VIRTIO_MMIO_DEVICE_ID => self.backend.device_id(),
             VIRTIO_MMIO_VENDOR_ID => VENDOR_ID,
-            VIRTIO_MMIO_DEVICE_FEATURES => {
-                let sel = self.device_features_sel;
-                if sel == 0 {
-                    self.device_features as u32
-                } else if sel == 1 {
-                    (self.device_features >> 32) as u32
-                } else {
-                    0
-                }
-            }
-            VIRTIO_MMIO_QUEUE_NUM_MAX => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    self.queues[self.queue_sel as usize].max_size() as u32
-                } else {
-                    0
-                }
-            }
-            VIRTIO_MMIO_QUEUE_READY => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    self.queues[self.queue_sel as usize].is_ready() as u32
-                } else {
-                    0
-                }
-            }
+            VIRTIO_MMIO_DEVICE_FEATURES => self.selected_device_features(),
+            VIRTIO_MMIO_QUEUE_NUM_MAX => self
+                .selected_queue()
+                .map_or(0, |queue| u32::from(queue.max_size())),
+            VIRTIO_MMIO_QUEUE_READY => self
+                .selected_queue()
+                .map_or(0, |queue| u32::from(queue.is_ready())),
             VIRTIO_MMIO_INTERRUPT_STATUS => self.interrupt_status,
             VIRTIO_MMIO_STATUS => self.status,
             VIRTIO_MMIO_CONFIG_GENERATION => self.config_generation,
             _ if offset >= VIRTIO_MMIO_CONFIG => {
-                let cfg_offset = offset - VIRTIO_MMIO_CONFIG;
-                self.backend.read_config(cfg_offset, data);
+                self.backend.read_config(offset - VIRTIO_MMIO_CONFIG, data);
                 return;
             }
             _ => 0,
         };
-
-        // Write the u32 value to data buffer (little-endian)
-        let bytes = val.to_le_bytes();
-        let len = data.len().min(4);
-        data[..len].copy_from_slice(&bytes[..len]);
+        let bytes = value.to_le_bytes();
+        let copy_length = data.len().min(MMIO_REGISTER_BYTES);
+        data[..copy_length].copy_from_slice(&bytes[..copy_length]);
     }
 
-    /// Handle an MMIO write from the guest.
-    pub fn write(&mut self, offset: u64, data: &[u8], _mem: &GuestMemoryMmap) {
-        // Parse the write data as a u32 (little-endian)
-        let mut buf = [0u8; 4];
-        let len = data.len().min(4);
-        buf[..len].copy_from_slice(&data[..len]);
-        let val = u32::from_le_bytes(buf);
+    pub fn write_at(
+        &mut self,
+        address: u64,
+        data: &[u8],
+        mem: &GuestMemoryMmap,
+    ) -> Result<MmioWriteEffect, VirtioFailure> {
+        let offset = address
+            .checked_sub(self.base_addr)
+            .ok_or(VirtioFailure::Transport(TransportViolation::MmioAddress {
+                address,
+            }))?;
+        if offset >= VIRTIO_MMIO_DEVICE_SIZE {
+            return Err(VirtioFailure::Transport(TransportViolation::MmioAddress {
+                address,
+            }));
+        }
+        self.write(offset, data, mem)
+    }
 
-        match offset {
-            VIRTIO_MMIO_DEVICE_FEATURES_SEL => {
-                self.device_features_sel = val;
+    pub fn write(
+        &mut self,
+        offset: u64,
+        data: &[u8],
+        mem: &GuestMemoryMmap,
+    ) -> Result<MmioWriteEffect, VirtioFailure> {
+        if offset >= VIRTIO_MMIO_CONFIG {
+            self.backend.write_config(offset - VIRTIO_MMIO_CONFIG, data);
+            return Ok(MmioWriteEffect::None);
+        }
+        let value = match parse_register(data) {
+            Ok(value) => value,
+            Err(failure) => {
+                self.record_failure(failure.clone());
+                return Err(failure);
             }
-            VIRTIO_MMIO_DRIVER_FEATURES => {
-                let sel = self.driver_features_sel;
-                if sel == 0 {
-                    self.driver_features =
-                        (self.driver_features & 0xFFFF_FFFF_0000_0000) | (val as u64);
-                } else if sel == 1 {
-                    self.driver_features =
-                        (self.driver_features & 0x0000_0000_FFFF_FFFF) | ((val as u64) << 32);
+        };
+        let result = self.write_register(offset, value, mem);
+        if let Err(failure) = &result {
+            self.record_failure(failure.clone());
+        }
+        result
+    }
+
+    pub fn process_queue(&mut self, queue_index: usize, mem: &GuestMemoryMmap) -> bool {
+        if self.status & VIRTIO_STATUS_DRIVER_OK == 0
+            || self.status & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
+            || queue_index >= self.queues.len()
+            || !self.queues[queue_index].is_ready()
+        {
+            return false;
+        }
+        match self
+            .backend
+            .process_queue(queue_index, &mut self.queues[queue_index], mem)
+        {
+            Ok(completed) => {
+                if completed {
+                    self.interrupt_status |= VIRTIO_MMIO_INT_VRING;
                 }
+                completed
             }
-            VIRTIO_MMIO_DRIVER_FEATURES_SEL => {
-                self.driver_features_sel = val;
+            Err(failure) => {
+                self.queues[queue_index].mark_failed(failure.clone());
+                self.record_failure(failure);
+                false
             }
-            VIRTIO_MMIO_QUEUE_SEL => {
-                self.queue_sel = val;
-            }
-            VIRTIO_MMIO_QUEUE_NUM => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    self.queues[self.queue_sel as usize].set_size(val as u16);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_READY => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    self.queues[self.queue_sel as usize].set_ready(val != 0);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DESC_LOW => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.desc_addr & 0xFFFF_FFFF_0000_0000) | (val as u64);
-                    queue.set_desc_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DESC_HIGH => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.desc_addr & 0x0000_0000_FFFF_FFFF) | ((val as u64) << 32);
-                    queue.set_desc_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DRIVER_LOW => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.driver_addr & 0xFFFF_FFFF_0000_0000) | (val as u64);
-                    queue.set_driver_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DRIVER_HIGH => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.driver_addr & 0x0000_0000_FFFF_FFFF) | ((val as u64) << 32);
-                    queue.set_driver_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DEVICE_LOW => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.device_addr & 0xFFFF_FFFF_0000_0000) | (val as u64);
-                    queue.set_device_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_DEVICE_HIGH => {
-                if (self.queue_sel as usize) < self.queues.len() {
-                    let queue = &mut self.queues[self.queue_sel as usize];
-                    let addr = (queue.device_addr & 0x0000_0000_FFFF_FFFF) | ((val as u64) << 32);
-                    queue.set_device_addr(addr);
-                }
-            }
-            VIRTIO_MMIO_QUEUE_NOTIFY => {
-                // Queue notification — driver has added buffers to the available ring.
-                // We don't process inline here; the VM exit handler will call process_queues().
-            }
-            VIRTIO_MMIO_INTERRUPT_ACK => {
-                self.interrupt_status &= !val;
-            }
-            VIRTIO_MMIO_STATUS => {
-                self.status = val;
-                // If driver writes 0, it's a device reset.
-                if val == 0 {
-                    self.reset();
-                }
-            }
-            _ if offset >= VIRTIO_MMIO_CONFIG => {
-                let cfg_offset = offset - VIRTIO_MMIO_CONFIG;
-                self.backend.write_config(cfg_offset, data);
-            }
-            _ => {}
         }
     }
 
-    /// Process all queues and return true if an interrupt should be raised.
     pub fn process_queues(&mut self, mem: &GuestMemoryMmap) -> bool {
-        let mut work_done = false;
-        for idx in 0..self.queues.len() {
-            if self.backend.process_queue(idx, &mut self.queues[idx], mem) {
-                work_done = true;
-            }
+        let mut completed = false;
+        for queue_index in 0..self.queues.len() {
+            completed |= self.process_queue(queue_index, mem);
         }
-        if work_done {
-            self.interrupt_status |= VIRTIO_MMIO_INT_VRING;
-        }
-        work_done
+        completed
     }
 
-    /// Check if an interrupt is pending.
     pub fn interrupt_pending(&self) -> bool {
         self.interrupt_status != 0
     }
 
-    /// Reset the device to initial state.
+    fn write_register(
+        &mut self,
+        offset: u64,
+        value: u32,
+        mem: &GuestMemoryMmap,
+    ) -> Result<MmioWriteEffect, VirtioFailure> {
+        match offset {
+            VIRTIO_MMIO_DEVICE_FEATURES_SEL => self.device_features_sel = value,
+            VIRTIO_MMIO_DRIVER_FEATURES_SEL => self.driver_features_sel = value,
+            VIRTIO_MMIO_DRIVER_FEATURES => self.write_driver_features(value)?,
+            VIRTIO_MMIO_QUEUE_SEL => self.queue_sel = value,
+            VIRTIO_MMIO_QUEUE_NUM => self.selected_queue_mut()?.set_size(value)?,
+            VIRTIO_MMIO_QUEUE_READY => self.write_queue_ready(value, mem)?,
+            VIRTIO_MMIO_QUEUE_DESC_LOW => {
+                self.write_queue_address(value, AddressPart::DescriptorLow)?
+            }
+            VIRTIO_MMIO_QUEUE_DESC_HIGH => {
+                self.write_queue_address(value, AddressPart::DescriptorHigh)?
+            }
+            VIRTIO_MMIO_QUEUE_DRIVER_LOW => {
+                self.write_queue_address(value, AddressPart::DriverLow)?
+            }
+            VIRTIO_MMIO_QUEUE_DRIVER_HIGH => {
+                self.write_queue_address(value, AddressPart::DriverHigh)?
+            }
+            VIRTIO_MMIO_QUEUE_DEVICE_LOW => {
+                self.write_queue_address(value, AddressPart::DeviceLow)?
+            }
+            VIRTIO_MMIO_QUEUE_DEVICE_HIGH => {
+                self.write_queue_address(value, AddressPart::DeviceHigh)?
+            }
+            VIRTIO_MMIO_QUEUE_NOTIFY => return self.notify_effect(value),
+            VIRTIO_MMIO_INTERRUPT_ACK => self.interrupt_status &= !value,
+            VIRTIO_MMIO_STATUS => self.write_status(value)?,
+            _ => {}
+        }
+        Ok(MmioWriteEffect::None)
+    }
+
+    fn write_driver_features(&mut self, value: u32) -> Result<(), VirtioFailure> {
+        if self.status & VIRTIO_STATUS_FEATURES_OK != 0 {
+            return Err(VirtioFailure::Transport(
+                TransportViolation::FeaturesAfterAcceptance,
+            ));
+        }
+        match self.driver_features_sel {
+            0 => {
+                self.driver_features =
+                    (self.driver_features & HIGH_FEATURE_MASK) | u64::from(value);
+            }
+            1 => {
+                self.driver_features = (self.driver_features & LOW_FEATURE_MASK)
+                    | (u64::from(value) << FEATURE_WORD_BITS);
+            }
+            selected => {
+                return Err(VirtioFailure::Transport(
+                    TransportViolation::FeatureSelector { selected },
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn write_queue_ready(
+        &mut self,
+        value: u32,
+        mem: &GuestMemoryMmap,
+    ) -> Result<(), VirtioFailure> {
+        if value != 1 {
+            return Err(VirtioFailure::Transport(TransportViolation::ReadyValue {
+                value,
+            }));
+        }
+        if self.status & VIRTIO_STATUS_FEATURES_OK == 0 {
+            return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
+        }
+        self.selected_queue_mut()?.activate(mem)
+    }
+
+    fn write_status(&mut self, value: u32) -> Result<(), VirtioFailure> {
+        validate_status_transition(
+            self.status,
+            value,
+            self.device_features,
+            self.driver_features,
+        )
+        .map_err(VirtioFailure::Transport)?;
+        if value == 0 {
+            self.reset();
+        } else {
+            self.status = value;
+        }
+        Ok(())
+    }
+
+    fn write_queue_address(&mut self, value: u32, part: AddressPart) -> Result<(), VirtioFailure> {
+        let queue = self.selected_queue_mut()?;
+        let raw = queue.raw_config();
+        match part {
+            AddressPart::DescriptorLow => {
+                queue.set_descriptor_address(join_low(raw.descriptor_address, value))
+            }
+            AddressPart::DescriptorHigh => {
+                queue.set_descriptor_address(join_high(raw.descriptor_address, value))
+            }
+            AddressPart::DriverLow => queue.set_driver_address(join_low(raw.driver_address, value)),
+            AddressPart::DriverHigh => {
+                queue.set_driver_address(join_high(raw.driver_address, value))
+            }
+            AddressPart::DeviceLow => queue.set_device_address(join_low(raw.device_address, value)),
+            AddressPart::DeviceHigh => {
+                queue.set_device_address(join_high(raw.device_address, value))
+            }
+        }
+    }
+
+    fn notify_effect(&self, selected: u32) -> Result<MmioWriteEffect, VirtioFailure> {
+        let index = usize::try_from(selected).map_err(|_| {
+            VirtioFailure::Transport(TransportViolation::QueueSelection {
+                selected,
+                available: self.queues.len(),
+            })
+        })?;
+        let queue = self.queues.get(index).ok_or(VirtioFailure::Transport(
+            TransportViolation::QueueSelection {
+                selected,
+                available: self.queues.len(),
+            },
+        ))?;
+        if self.status & VIRTIO_STATUS_DRIVER_OK == 0 || !queue.is_ready() {
+            return Err(VirtioFailure::Transport(
+                TransportViolation::NotifyQueueNotReady { selected },
+            ));
+        }
+        Ok(MmioWriteEffect::NotifyQueue(index))
+    }
+
+    fn selected_device_features(&self) -> u32 {
+        match self.device_features_sel {
+            0 => self.device_features as u32,
+            1 => (self.device_features >> FEATURE_WORD_BITS) as u32,
+            _ => 0,
+        }
+    }
+
+    fn selected_queue(&self) -> Option<&VirtQueue> {
+        usize::try_from(self.queue_sel)
+            .ok()
+            .and_then(|index| self.queues.get(index))
+    }
+
+    fn selected_queue_mut(&mut self) -> Result<&mut VirtQueue, VirtioFailure> {
+        let available = self.queues.len();
+        let selected = self.queue_sel;
+        let index = usize::try_from(selected).map_err(|_| {
+            VirtioFailure::Transport(TransportViolation::QueueSelection {
+                selected,
+                available,
+            })
+        })?;
+        self.queues.get_mut(index).ok_or(VirtioFailure::Transport(
+            TransportViolation::QueueSelection {
+                selected,
+                available,
+            },
+        ))
+    }
+
+    fn record_failure(&mut self, failure: VirtioFailure) {
+        self.failure = Some(failure);
+        self.status |= VIRTIO_STATUS_DEVICE_NEEDS_RESET;
+    }
+
     fn reset(&mut self) {
         self.driver_features = 0;
         self.device_features_sel = 0;
@@ -590,215 +789,73 @@ impl VirtioMmioDevice {
         self.status = 0;
         self.interrupt_status = 0;
         self.queue_sel = 0;
+        self.failure = None;
         for queue in &mut self.queues {
-            *queue = VirtQueue::new(QUEUE_SIZE_MAX);
+            *queue = VirtQueue::with_limits(MAX_QUEUE_SIZE, self.limits);
         }
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-//  Descriptor Chain Utilities
-// ═══════════════════════════════════════════════════════════════════════
+#[derive(Clone, Copy)]
+enum AddressPart {
+    DescriptorLow,
+    DescriptorHigh,
+    DriverLow,
+    DriverHigh,
+    DeviceLow,
+    DeviceHigh,
+}
 
-/// Iterate over a descriptor chain and collect read/write buffers.
-pub fn walk_descriptor_chain(
-    queue: &VirtQueue,
+fn parse_register(data: &[u8]) -> Result<u32, VirtioFailure> {
+    let bytes: [u8; MMIO_REGISTER_BYTES] = data.try_into().map_err(|_| {
+        VirtioFailure::Transport(TransportViolation::MmioWidth { actual: data.len() })
+    })?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn join_low(current: u64, value: u32) -> u64 {
+    (current & HIGH_FEATURE_MASK) | u64::from(value)
+}
+
+fn join_high(current: u64, value: u32) -> u64 {
+    (current & LOW_FEATURE_MASK) | (u64::from(value) << FEATURE_WORD_BITS)
+}
+
+fn guest_memory_regions(
     mem: &GuestMemoryMmap,
-    head_idx: u16,
-) -> Option<Vec<DescriptorBuffer>> {
-    let mut buffers = Vec::new();
-    let mut idx = head_idx;
-    let mut visited = std::collections::BTreeSet::new();
-
-    loop {
-        if visited.contains(&idx) {
-            return None; // Cycle detected
-        }
-        visited.insert(idx);
-
-        let desc = queue.read_desc(mem, idx)?;
-        if desc.len > 0 {
-            buffers.push(DescriptorBuffer {
-                addr: desc.addr,
-                len: desc.len,
-                write: (desc.flags & VIRTQ_DESC_F_WRITE) != 0,
-            });
-        }
-
-        if (desc.flags & VIRTQ_DESC_F_NEXT) == 0 {
-            break;
-        }
-        idx = desc.next;
+) -> Result<([MemoryRegion; MAX_GUEST_MEMORY_REGIONS], usize), VirtioFailure> {
+    let count = mem.num_regions();
+    if count > MAX_GUEST_MEMORY_REGIONS {
+        return Err(VirtioFailure::Queue(QueueViolation::GuestMemoryRegions {
+            actual: count,
+            maximum: MAX_GUEST_MEMORY_REGIONS,
+        }));
     }
-
-    Some(buffers)
+    let mut regions = [MemoryRegion::default(); MAX_GUEST_MEMORY_REGIONS];
+    for (index, region) in mem.iter().enumerate() {
+        regions[index] = MemoryRegion {
+            start: region.start_addr().raw_value(),
+            length: region.len(),
+        };
+    }
+    Ok((regions, count))
 }
 
-/// A buffer from a descriptor chain.
-#[derive(Clone, Debug)]
-pub struct DescriptorBuffer {
-    pub addr: u64,
-    pub len: u32,
-    pub write: bool, // true = device writes, false = device reads
+fn read_at<T: vm_memory::ByteValued>(
+    mem: &GuestMemoryMmap,
+    address: u64,
+) -> Result<T, VirtioFailure> {
+    mem.read_obj(GuestAddress(address))
+        .map_err(|_| VirtioFailure::GuestMemoryRead)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct DummyBackend {
-        device_id: u32,
-        features: u64,
-        num_queues: usize,
-    }
-
-    impl VirtioBackend for DummyBackend {
-        fn device_id(&self) -> u32 {
-            self.device_id
-        }
-        fn device_features(&self) -> u64 {
-            self.features
-        }
-        fn num_queues(&self) -> usize {
-            self.num_queues
-        }
-        fn process_queue(
-            &mut self,
-            _queue_idx: usize,
-            _queue: &mut VirtQueue,
-            _mem: &GuestMemoryMmap,
-        ) -> bool {
-            false
-        }
-        fn read_config(&self, _offset: u64, data: &mut [u8]) {
-            for byte in data {
-                *byte = 0xAB;
-            }
-        }
-        fn write_config(&mut self, _offset: u64, _data: &[u8]) {}
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
-        }
-    }
-
-    #[test]
-    fn mmio_device_magic_and_version() {
-        let backend = Box::new(DummyBackend {
-            device_id: 2,
-            features: 0,
-            num_queues: 1,
-        });
-        let dev = VirtioMmioDevice::new(0xD000_0000, 5, backend);
-
-        let mut buf = [0u8; 4];
-        dev.read(VIRTIO_MMIO_MAGIC_VALUE, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), MAGIC);
-
-        dev.read(VIRTIO_MMIO_VERSION, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), VERSION);
-    }
-
-    #[test]
-    fn mmio_device_id_and_vendor() {
-        let backend = Box::new(DummyBackend {
-            device_id: 4,
-            features: 0,
-            num_queues: 1,
-        });
-        let dev = VirtioMmioDevice::new(0xD000_0000, 5, backend);
-
-        let mut buf = [0u8; 4];
-        dev.read(VIRTIO_MMIO_DEVICE_ID, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), 4);
-
-        dev.read(VIRTIO_MMIO_VENDOR_ID, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), VENDOR_ID);
-    }
-
-    #[test]
-    fn mmio_device_features() {
-        let backend = Box::new(DummyBackend {
-            device_id: 2,
-            features: 0x0000_0001_0000_0002,
-            num_queues: 1,
-        });
-        let dev = VirtioMmioDevice::new(0xD000_0000, 5, backend);
-
-        let mut buf = [0u8; 4];
-
-        // Select low 32 bits
-        dev.read(VIRTIO_MMIO_DEVICE_FEATURES, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), 0x0000_0002);
-
-        // Select high 32 bits
-        let mut dev = dev;
-        dev.write(
-            VIRTIO_MMIO_DEVICE_FEATURES_SEL,
-            &[1, 0, 0, 0],
-            &GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 1024)]).unwrap(),
-        );
-        dev.read(VIRTIO_MMIO_DEVICE_FEATURES, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), 0x0000_0001);
-    }
-
-    #[test]
-    fn queue_num_max() {
-        let backend = Box::new(DummyBackend {
-            device_id: 1,
-            features: 0,
-            num_queues: 2,
-        });
-        let dev = VirtioMmioDevice::new(0xD000_0000, 5, backend);
-
-        let mut buf = [0u8; 4];
-        dev.read(VIRTIO_MMIO_QUEUE_NUM_MAX, &mut buf);
-        assert_eq!(u32::from_le_bytes(buf), QUEUE_SIZE_MAX as u32);
-    }
-
-    #[test]
-    fn handles_address_range() {
-        let backend = Box::new(DummyBackend {
-            device_id: 2,
-            features: 0,
-            num_queues: 1,
-        });
-        let dev = VirtioMmioDevice::new(0xD000_0000, 5, backend);
-
-        assert!(dev.handles(0xD000_0000));
-        assert!(dev.handles(0xD000_0FFF));
-        assert!(!dev.handles(0xD000_1000));
-        assert!(!dev.handles(0xCFFF_FFFF));
-    }
-
-    #[test]
-    fn virtqueue_new() {
-        let vq = VirtQueue::new(256);
-        assert_eq!(vq.max_size(), 256);
-        assert_eq!(vq.size(), 0);
-        assert!(!vq.is_ready());
-    }
-
-    #[test]
-    fn virtqueue_set_size() {
-        let mut vq = VirtQueue::new(256);
-        vq.set_size(128);
-        assert_eq!(vq.size(), 128);
-
-        // Clamps to max_size
-        vq.set_size(512);
-        assert_eq!(vq.size(), 256);
-    }
-
-    #[test]
-    fn virtqueue_activation() {
-        let mut vq = VirtQueue::new(256);
-        assert!(!vq.is_ready());
-        vq.set_ready(true);
-        assert!(vq.is_ready());
-        vq.set_ready(false);
-        assert!(!vq.is_ready());
-    }
+fn read_at_offset<T: vm_memory::ByteValued>(
+    mem: &GuestMemoryMmap,
+    address: u64,
+    offset: u64,
+) -> Result<T, VirtioFailure> {
+    let field_address = address
+        .checked_add(offset)
+        .ok_or(VirtioFailure::GuestMemoryRead)?;
+    read_at(mem, field_address)
 }

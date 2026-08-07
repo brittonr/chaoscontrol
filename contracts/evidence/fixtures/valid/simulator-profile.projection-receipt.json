@@ -1,0 +1,30 @@
+{
+  "schema": "chaoscontrol.profile-projection-receipt.v1",
+  "profile_id": "in-process-simulator",
+  "source": {
+    "path": "contracts/evidence/examples/register-simulator-profile.ncl",
+    "identity": "blake3:a217670982762ec3556efdd6e970471da35a7e7279528c9eb6951dee61ec8c42"
+  },
+  "contract": {
+    "path": "contracts/evidence/simulator-profile.ncl",
+    "identity": "blake3:9fd2db62d183f0c571f41a88787e8451760527759eb87027132878e8d923fb06"
+  },
+  "imports": [
+    {
+      "path": "contracts/evidence/profile-primitives.ncl",
+      "identity": "blake3:829939b6d573df8a78b59016c6b5eb0ed745333ace8522da076a223eca3eea08"
+    }
+  ],
+  "evaluator": {
+    "name": "nickel-lang-cli nickel 1.15.1 (rev cargore)",
+    "identity": "blake3:283b5e590a77d27ebcb9f338666f4704217650999664d2143099b228dca1602a"
+  },
+  "projection": {
+    "path": "contracts/evidence/fixtures/valid/simulator-profile.valid.json",
+    "identity": "blake3:d9f703ce8b650aabacebc8dd190946922771a88c1e7696cd3bb952c9080a8045"
+  },
+  "non_claims": [
+    "profile conformance is pre-run intent only",
+    "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim"
+  ]
+}

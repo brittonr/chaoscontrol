@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -8,6 +7,7 @@ use crate::{EvidenceError, EvidenceResult};
 
 const MANIFEST_SCOPE: &str = "bounded accepted snapshot-backed replay workload proofs";
 const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
+const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
 const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
@@ -36,28 +36,18 @@ pub struct ReadinessPromotionSummary {
     pub lines: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReportedWorkload {
+    status: String,
+    assertion_id: u64,
+}
+
 pub fn validate_readiness_promotion_files(
     manifest_path: impl AsRef<Path>,
     report_path: impl AsRef<Path>,
 ) -> EvidenceResult<ReadinessPromotionSummary> {
-    let manifest_text = fs::read_to_string(manifest_path.as_ref()).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing file: {} ({err})",
-            manifest_path.as_ref().display()
-        ))
-    })?;
-    let manifest: Value = serde_json::from_str(&manifest_text).map_err(|err| {
-        EvidenceError::new(format!(
-            "invalid JSON in {}: {err}",
-            manifest_path.as_ref().display()
-        ))
-    })?;
-    let report = fs::read_to_string(report_path.as_ref()).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing file: {} ({err})",
-            report_path.as_ref().display()
-        ))
-    })?;
+    let manifest = load_manifest(manifest_path.as_ref())?;
+    let report = load_report(report_path.as_ref())?;
     validate_readiness_promotion(&manifest, &report)
 }
 
@@ -65,43 +55,51 @@ pub fn validate_readiness_promotion(
     manifest: &Value,
     report: &str,
 ) -> EvidenceResult<ReadinessPromotionSummary> {
-    let proofs = manifest_proofs(manifest)?;
-    let supported = report_supported_workloads(report)?;
+    let historical_entries = historical_manifest_entries(manifest)?;
+    let reported = report_workloads(report)?;
 
-    let missing_from_report: Vec<_> = proofs
+    let missing_from_report: Vec<_> = historical_entries
         .keys()
-        .filter(|workload| !supported.contains_key(*workload))
+        .filter(|workload| !reported.contains_key(*workload))
         .cloned()
         .collect();
     require(
         missing_from_report.is_empty(),
         format!(
-            "accepted manifest proofs missing from readiness report: {}",
+            "historical manifest entries missing from readiness report: {}",
             missing_from_report.join(", ")
         ),
     )?;
 
-    let unsupported_in_report: Vec<_> = supported
+    let missing_from_manifest: Vec<_> = reported
         .keys()
-        .filter(|workload| !proofs.contains_key(*workload))
+        .filter(|workload| !historical_entries.contains_key(*workload))
         .cloned()
         .collect();
     require(
-        unsupported_in_report.is_empty(),
+        missing_from_manifest.is_empty(),
         format!(
-            "readiness report promotes workloads missing from manifest: {}",
-            unsupported_in_report.join(", ")
+            "readiness report workloads missing from historical manifest: {}",
+            missing_from_manifest.join(", ")
         ),
     )?;
 
-    for (workload, assertion_id) in &proofs {
-        let report_assertion = supported
+    for (workload, assertion_id) in &historical_entries {
+        let row = reported
             .get(workload)
-            .expect("supported set was already checked against proofs");
+            .expect("reported workload set was checked against the manifest");
         require(
-            report_assertion == assertion_id,
+            row.status == BLOCKED_ASSERTION_IDENTITY_STATUS,
             format!(
-                "{workload}: readiness report assertion {report_assertion} does not match manifest {assertion_id}"
+                "{workload}: legacy schema-v1 manifest entry must remain {BLOCKED_ASSERTION_IDENTITY_STATUS}, found {}",
+                row.status
+            ),
+        )?;
+        require(
+            row.assertion_id == *assertion_id,
+            format!(
+                "{workload}: readiness report assertion {} does not match historical manifest {assertion_id}",
+                row.assertion_id
             ),
         )?;
     }
@@ -121,9 +119,13 @@ pub fn validate_readiness_promotion(
     require_local_rust_product_scope(report)?;
 
     Ok(ReadinessPromotionSummary {
-        lines: proofs
+        lines: historical_entries
             .iter()
-            .map(|(workload, assertion_id)| format!("{workload}: assertion={assertion_id}"))
+            .map(|(workload, assertion_id)| {
+                format!(
+                    "{workload}: status={BLOCKED_ASSERTION_IDENTITY_STATUS}, historical_assertion={assertion_id}"
+                )
+            })
             .collect(),
     })
 }
@@ -132,24 +134,8 @@ pub fn run_readiness_promotion_selftest(
     manifest_path: impl AsRef<Path>,
     report_path: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
-    let manifest_text = fs::read_to_string(manifest_path.as_ref()).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing file: {} ({err})",
-            manifest_path.as_ref().display()
-        ))
-    })?;
-    let manifest: Value = serde_json::from_str(&manifest_text).map_err(|err| {
-        EvidenceError::new(format!(
-            "invalid JSON in {}: {err}",
-            manifest_path.as_ref().display()
-        ))
-    })?;
-    let report = fs::read_to_string(report_path.as_ref()).map_err(|err| {
-        EvidenceError::new(format!(
-            "missing file: {} ({err})",
-            report_path.as_ref().display()
-        ))
-    })?;
+    let manifest = load_manifest(manifest_path.as_ref())?;
+    let report = load_report(report_path.as_ref())?;
 
     validate_readiness_promotion(&manifest, &report)?;
 
@@ -283,19 +269,67 @@ pub fn run_readiness_promotion_selftest(
         "in-process simulator token",
     )?;
 
-    let report_only = report.replacen(
+    let legacy_promotion = report.replacen(
+        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
         "| `raft` | `supported-bounded` | `1806003755` |",
-        "| `new-service` | `supported-bounded` | `12345` |\n| `raft` | `supported-bounded` | `1806003755` |",
         1,
     );
     expect_failure(
-        "report-only promotion",
+        "legacy manifest promotion",
+        &manifest,
+        &legacy_promotion,
+        "legacy schema-v1 manifest entry must remain blocked-assertion-identity",
+    )?;
+
+    let alias_substitution = report.replacen(
+        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
+        "| `raft` | `blocked-assertion-identity` | `1806003756` |",
+        1,
+    );
+    expect_failure(
+        "historical alias substitution",
+        &manifest,
+        &alias_substitution,
+        "does not match historical manifest",
+    )?;
+
+    let report_only = report.replacen(
+        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
+        "| `new-service` | `blocked-assertion-identity` | `12345` | historical |\n| `raft` | `blocked-assertion-identity` | `1806003755` |",
+        1,
+    );
+    expect_failure(
+        "report-only workload",
         &manifest,
         &report_only,
-        "missing from manifest",
+        "missing from historical manifest",
+    )?;
+
+    let missing_workload = report
+        .lines()
+        .filter(|line| !line.starts_with("| `raft` | `blocked-assertion-identity` |"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    expect_failure(
+        "missing historical workload",
+        &manifest,
+        &missing_workload,
+        "historical manifest entries missing from readiness report",
     )?;
 
     Ok(())
+}
+
+fn load_manifest(path: &Path) -> EvidenceResult<Value> {
+    let input =
+        crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
+    crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
+    serde_json::from_str(&input)
+        .map_err(|error| EvidenceError::new(format!("invalid JSON in {}: {error}", path.display())))
+}
+
+fn load_report(path: &Path) -> EvidenceResult<String> {
+    crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
 }
 
 pub fn default_readiness_promotion_paths(root: impl AsRef<Path>) -> (PathBuf, PathBuf) {
@@ -306,7 +340,7 @@ pub fn default_readiness_promotion_paths(root: impl AsRef<Path>) -> (PathBuf, Pa
     )
 }
 
-fn manifest_proofs(manifest: &Value) -> EvidenceResult<BTreeMap<String, u64>> {
+fn historical_manifest_entries(manifest: &Value) -> EvidenceResult<BTreeMap<String, u64>> {
     let object = manifest
         .as_object()
         .ok_or_else(|| EvidenceError::new("manifest must be a JSON object".to_string()))?;
@@ -397,32 +431,51 @@ fn manifest_proofs(manifest: &Value) -> EvidenceResult<BTreeMap<String, u64>> {
     Ok(workloads)
 }
 
-fn report_supported_workloads(report: &str) -> EvidenceResult<BTreeMap<String, u64>> {
+fn report_workloads(report: &str) -> EvidenceResult<BTreeMap<String, ReportedWorkload>> {
     let mut rows = BTreeMap::new();
+    let mut in_workload_table = false;
     for line in report.lines() {
+        if line == "## Bounded replay evidence promotion status" {
+            in_workload_table = true;
+            continue;
+        }
+        if in_workload_table && line.starts_with("## ") {
+            break;
+        }
+        if !in_workload_table {
+            continue;
+        }
         let columns = markdown_columns(line);
         if columns.len() < 3 || columns[0] == "Workload" || columns[0].starts_with('-') {
             continue;
         }
+        require(
+            columns[0].starts_with('`'),
+            format!(
+                "readiness workload row must use a code-formatted name: {}",
+                columns[0]
+            ),
+        )?;
         let workload = strip_code(&columns[0]);
-        let status = strip_code(&columns[1]);
-        if status != "supported-bounded" || !columns[0].starts_with('`') {
-            continue;
-        }
+        let status = strip_code(&columns[1]).to_string();
         let assertion_id = strip_code(&columns[2]).parse::<u64>().map_err(|_| {
             EvidenceError::new(format!(
                 "{workload}: readiness row assertion must be an integer"
             ))
         })?;
         require(
-            rows.insert(workload.to_string(), assertion_id).is_none(),
-            format!("duplicate supported readiness row: {workload}"),
+            rows.insert(
+                workload.to_string(),
+                ReportedWorkload {
+                    status,
+                    assertion_id,
+                },
+            )
+            .is_none(),
+            format!("duplicate readiness workload row: {workload}"),
         )?;
     }
-    require(
-        !rows.is_empty(),
-        "readiness report has no supported-bounded workload rows",
-    )?;
+    require(!rows.is_empty(), "readiness report has no workload rows")?;
     Ok(rows)
 }
 

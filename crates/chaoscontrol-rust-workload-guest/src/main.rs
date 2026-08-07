@@ -3,12 +3,11 @@
 //! This binary intentionally uses the public workload harness surface so the
 //! Nix rail exercises the same shape a downstream Rust project should copy.
 
-use chaoscontrol_sdk::{assert, prelude::*};
+use chaoscontrol_sdk::prelude::*;
 use serde_json::json;
 
 const WORKLOAD: &str = "sample-rust-service";
 const ITERATIONS: usize = 12;
-const RUST_WORKLOAD_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID: u32 = 1_414_213_562;
 
 fn cmdline_value_from(cmdline: &str, name: &str) -> Option<String> {
     let prefix = format!("{name}=");
@@ -116,9 +115,12 @@ fn main() {
         loop {
             probe_iter += 1;
             let jitter = random_choice(4);
-            assert::always_with_id(
+            cc_assert_always_stable!(
+                "org.onixresearch.chaoscontrol.rust-workload",
+                "snapshot-replay-probe",
+                WORKLOAD,
+                "recovery",
                 probe_iter < snapshot_probe_fail_after,
-                RUST_WORKLOAD_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
                 "rust workload snapshot replay probe trips only after restored parent context",
                 &json!({
                     "iteration": probe_iter,

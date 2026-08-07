@@ -211,33 +211,64 @@ cargo run --release --bin chaoscontrol-explore -- resume \
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/
 
-# Finalize only targeted snapshot-backed replay candidates; filenames preserve
-# their checkpoint index (for example bug_2.json), and unrelated snapshot refs
-# are not validated.
+# Finalize only targeted snapshot-backed replay candidates. The checkpoint and
+# every bug identity are validated before filtering or writing any bug file.
 cargo run --release --bin chaoscontrol-explore -- export-bugs \
   --checkpoint results/checkpoint.json --output results/ \
-  --assertion-id 1806003755 --min-replay-parent-depth 1 --max-bugs 1
+  --assertion-id <current-v2-compatibility-id> --min-replay-parent-depth 1 --max-bugs 1
 ```
 
 Output directory contains:
 - `checkpoint.json` — resumable exploration state; checkpoint saves now persist replay parent snapshot refs for bugs when a parent snapshot is available
 - `report.txt` — human-readable report with per-round history
-- `assertions.json` — per-assertion verdicts and hit counts
-- `bug_N.json` — bug reports (consumable by minimize/reproduce)
-- `snapshots/<sha256>.snapshot.bin` — hash-addressed replay parent snapshot artifacts containing zstd-compressed CBOR `SimulationSnapshot` payloads (legacy evidence may still reference the v1 bincode codec) for bugs that need parent context
+- `assertions.json` — a closed v2 summary with exact descriptors, fingerprints, catalog tokens, verdicts, and counters
+- `bug_N.json` — catalog-bound bug reports for minimize/reproduce; ID-only historical bugs are diagnostic-only
+- `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 
+### Assertion identity and migration
+
+Automatic assertion macros use the namespace `build:<package>:<version>`.
+Their logical keys include the exact source file, line, and column. A package
+version change or source move creates a new automatic identity.
+
+Use the `*_stable` assertion macros when an assertion needs an explicit
+namespace and logical key. The namespace and key remain the logical identity.
+Changes to the kind, message, source site, guest, or category change the full
+fingerprint. Two different descriptors for one logical identity are a fatal
+catalog conflict.
+
+The old public `u32` assertion APIs and compatibility wire aliases are removed.
+Use automatic macros or explicit stable namespace/key macros. Old compiled
+clients and unbound assertion events are unsupported and fail closed. Removed
+commands `0x05` and `0x07` return the unknown-command error.
+
+Bounded readers can still identify `legacy_u32` in historical serialized input.
+They quarantine or reject that input. A legacy identity cannot enter strict
+catalogs, counters, readiness, replay, merges, or accepted v2 summaries.
+
+The unbound guidance API and command `0x07` are also removed. Future guidance
+must bind to an exact catalog token and descriptor fingerprint.
+
+The live oracle has no integer recording path. It updates counters only for
+catalog-bound fingerprints. Integer aliases can select one record only after
+the complete structured report and its collision-safe claim validate.
+
+Runtime restore accepts only pristine pre-catalog state or validated structured
+state. Diagnostic legacy and fatal snapshots remain readable but not restorable.
+
+ChaosControl uses BLAKE3 fingerprints to bind canonical descriptor bytes. This
+binding detects known mismatches and collisions. It does not prove that a hash
+collision is impossible.
+
 ### Contract-backed evidence
 
-Nickel contracts live under `contracts/evidence/`. Human-authored run configs
-and dogfood receipts are the review boundary; runtime-emitted bug reports,
-assertion summaries, and checkpoint references remain Rust-owned JSON that is
-validated at the boundary. Raw `run.log` / `reproduce.log` files are debug-only
-and are intentionally excluded from the acceptance record. Replay parent snapshot
-references are Rust-derived, JSON/Nickel-contractable refs (`store`, `digest`,
-`codec`, `schema_version`, and confined `snapshots/...` path); the optional redb
-store/index is host-side only and is not a public evidence format.
+Nickel contracts live under `contracts/evidence/`. Nickel owns human-authored VM run, in-process simulator, campaign, and finite fault-schedule profiles. Rust revalidates each external JSON projection and owns config construction, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay.
+
+Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
+
+Raw `run.log` and `reproduce.log` files are debug-only. They are excluded from the acceptance record. Replay parent snapshot references are Rust-derived refs with a store, digest, codec, schema version, and confined path. The optional redb store or index is host-side only. It is not a public evidence format.
 
 Acceptance statuses are:
 - `accepted` — the receipt and replay evidence are complete and the reported bug reproduces.
@@ -256,21 +287,21 @@ The repeatable KVM smoke gate for this rail is:
 nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 ```
 
-It runs the bounded Raft `snapshot_replay_probe` workload, finalizes checkpoint-held bugs with `export-bugs`, verifies the selected parent snapshot artifact digest, and requires standalone reproduce to write a `replay-verdict.json` with `replay_class = snapshot_backed_reproduced`, `reproduced = true`, `replay_parent_depth > 0`, a valid snapshot ref, and `command.exit_status = 0`. Raw logs remain in the temporary build directory.
+It runs one bounded Raft `snapshot_replay_probe` branch. It validates all checkpoint bugs before filtered export. A Rust validator checks exact bug identity, schema-v2 verdict semantics, current snapshot format, artifact hashes, and replay linkage. Raw logs remain temporary.
 
 For a single operator-facing readiness button, run:
 
 <!-- replay-readiness-status:start -->
-> **Replay readiness:** `replay-readiness status=passed exit=0 static_gates=12/12 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
+> **Replay readiness checks:** `replay-readiness status=passed exit=0 static_gates=12/12 failed_gates=none dogfood=skipped failed_phase=none scope=bounded`
 >
-> This is a bounded committed-evidence signal for ChaosControl's Antithesis-alternative rail: static contracts, accepted proof manifests, and optional selected dogfood evidence. It is not a claim of universal determinism or hosted-product parity.
+> This status reports bounded static gate execution. Historical workload rows remain blocked until fresh admitted v2 KVM evidence exists. A passed status does not promote a workload. It is not a claim of universal determinism.
 <!-- replay-readiness-status:end -->
 
 ```bash
 nix run .#replay-readiness
 ```
 
-This checks the committed contract registry, evidence contracts, accepted proof manifest, consistency-checker fixtures/reports, generated readiness reports, dogfood artifact size budget, and the Nix-generated accepted-verdict wrapper smoke config against `dogfood-results/accepted-dogfood-expectations.json`. CI and dashboards can request a machine-readable operator receipt:
+This checks the contract registry, evidence contracts, historical proof manifest, current promotion classifications, consistency fixtures, generated reports, artifact limits, and dogfood wrapper configuration. CI and dashboards can request a machine-readable operator receipt:
 
 The consistency-checker fixture gate validates typed operation histories and bounded semantic reports under `dogfood-results/consistency-checker-fixtures/`; these reports are semantic workload evidence only and explicitly do not imply deterministic replay proof, assertion-readiness coverage, or hosted-product parity.
 
@@ -376,7 +407,7 @@ nix run .#net-accepted-verdict-dogfood -- \
   --output dogfood-results/net-accepted-verdict-dogfood-<timestamp>
 ```
 
-The Rust workload proof uses the packaged downstream-shaped initrd, a KCOV-enabled kernel, one VM, and the explicit harness assertion ID. This is a slow VM/replay rail and may build a Linux kernel if the KCOV kernel is not already cached:
+The Rust workload proof attempt uses the packaged initrd, a KCOV-enabled kernel, one VM, and the explicit harness assertion identity. This slow rail can build a Linux kernel when no cached kernel exists:
 
 ```bash
 nix run .#rust-workload-accepted-verdict-dogfood -- \
@@ -385,7 +416,7 @@ nix run .#rust-workload-accepted-verdict-dogfood -- \
 
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths.
 
-The current accepted workload-proof coverage is tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. New breadth/readiness claims must add a committed manifest entry plus evidence and pass the aggregate coverage and generated-readiness checks. Oversized snapshot evidence can be stored as `<snapshot>.chunks.json` plus ordered `.partNN` files; the Rust `check-replay-proof-coverage` gate verifies the chunk stream against the logical snapshot digest, and `cargo run -p chaoscontrol-evidence --bin materialize-snapshot-chunks -- <snapshot>.chunks.json` reconstructs the raw `.snapshot.bin` when manual replay needs it.
+Historical workload-proof inventory and current promotion status are tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. The schema-v1 manifest is historical input, not current promotion authority. New claims require admitted v2 identity, committed evidence, and passing coverage and readiness checks. Oversized snapshots can use a chunks manifest plus ordered parts. The coverage gate verifies the stream against its logical digest.
 
 The assertion-readiness report may show zero ordinary assertion blockers after local harness coverage and replay-probe signal separation. Read that as an instrumentation-readiness signal only: it does not establish hosted-product parity, universal determinism, workload onboarding completeness, or operator triage UX readiness without the separate replay/readiness gates above.
 
@@ -658,7 +689,7 @@ snafu = "0.8"             # Error handling
 
 ## Roadmap
 
-Current green baseline: bounded snapshot-backed replay is proven for `raft`, `redb`, `net`, and `rust-workload`; full `nix flake check -L` passes. The current product target remains Rust-only workload support on one machine with multiple local ChaosControl hypervisors.
+Current baseline: replay artifacts for `raft`, `redb`, `net`, and `rust-workload` are historical diagnostics. Fresh admitted v2 KVM evidence is still required. The product target remains Rust-only workload support on one machine with multiple local ChaosControl hypervisors.
 
 ### Current missing features
 
@@ -765,4 +796,5 @@ An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workl
 
 ## References
 
+- [Antithesis documentation index](docs/references/antithesis-documentation.md) — design reference for deterministic simulation, fault injection, assertions, exploration, replay, and debugging.
 - [antithesishq/antithesis-skills](https://github.com/antithesishq/antithesis-skills) — workflow-design prior art for staged agent research, workload onboarding, launch gates, and receipt-first triage. ChaosControl does not depend on Antithesis, Snouty, Docker Compose, Kubernetes, or hosted services.

@@ -4,37 +4,43 @@ Generated from `dogfood-results/accepted-workload-proofs.json` and each committe
 
 ## Summary
 
-This report is an assertion-density and uncovered-catalog view over accepted replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.
+This report is an assertion-density and uncovered-catalog view over historical replay evidence plus explicitly-labeled deterministic local assertion harnesses. It helps decide whether a workload is richly instrumented enough to be a credible Antithesis-alternative rail, but it is not replay proof by itself.
 
-## Accepted proof assertion coverage
+Legacy bare-array assertion artifacts are diagnostic-only. Only an accepted v2 summary with a complete admitted structured catalog can qualify for promotion.
 
-| Workload | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Replay probe failures | Evidence |
-| --- | ---: | ---: | --- | ---: | ---: | ---: | --- |
-| `raft` | `43` | `43` | `11` / `15` / `17` / `0` | `0` | `0` | `1` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
-| `redb` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` | `1` | `dogfood-results/redb-accepted-verdict-dogfood-20260510T191449Z/assertions.json` |
-| `net` | `5` | `5` | `3` / `2` / `0` / `0` | `0` | `0` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
-| `rust-workload` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/assertions.json` |
+## Assertion evidence status
+
+| Workload | Identity status | Cataloged | Exercised | always / sometimes / reachability / unreachable | Uncategorized | Non-passing | Replay probe failures | Evidence |
+| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | --- |
+| `raft` | `legacy-diagnostic` | `43` | `43` | `11` / `15` / `17` / `0` | `0` | `0` | `1` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/assertions.json` |
+| `redb` | `legacy-diagnostic` | `27` | `27` | `17` / `2` / `8` / `0` | `0` | `0` | `1` | `dogfood-results/redb-accepted-verdict-dogfood-20260510T191449Z/assertions.json` |
+| `net` | `legacy-diagnostic` | `5` | `5` | `3` / `2` / `0` / `0` | `0` | `0` | `1` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/assertions.json` |
+| `rust-workload` | `legacy-diagnostic` | `6` | `6` | `3` / `2` / `1` / `0` | `0` | `0` | `1` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/assertions.json` |
 
 ## Promotion guidance
 
-Before promoting a workload beyond a bounded replay proof, review these gaps and either add meaningful assertion categories/coverage or explicitly document why the remaining gaps are acceptable for that workload:
+Before promotion, each workload must have accepted v2 assertion identity. Category or coverage rationale cannot waive this identity requirement.
 
+- raft: identity status `legacy-diagnostic` blocks promotion: assertion-summary: legacy or fatal evidence cannot be promoted. Fresh admitted v2 KVM evidence is required.
 - raft: 0 unhit assertion(s)
 - raft: 0 uncategorized assertion(s)
 - raft: 0 non-passing assertion(s)
+- redb: identity status `legacy-diagnostic` blocks promotion: assertion-summary: legacy or fatal evidence cannot be promoted. Fresh admitted v2 KVM evidence is required.
 - redb: 0 unhit assertion(s)
 - redb: 0 uncategorized assertion(s)
 - redb: 0 non-passing assertion(s)
+- net: identity status `legacy-diagnostic` blocks promotion: assertion-summary: legacy or fatal evidence cannot be promoted. Fresh admitted v2 KVM evidence is required.
 - net: 0 unhit assertion(s)
 - net: 0 uncategorized assertion(s)
 - net: 0 non-passing assertion(s)
+- rust-workload: identity status `legacy-diagnostic` blocks promotion: assertion-summary: legacy or fatal evidence cannot be promoted. Fresh admitted v2 KVM evidence is required.
 - rust-workload: 0 unhit assertion(s)
 - rust-workload: 0 uncategorized assertion(s)
 - rust-workload: 0 non-passing assertion(s)
 
 ## Replay proof signals
 
-Replay-probe failures are intentional snapshot-replay proof signals. They remain checked evidence, but they are not ordinary instrumentation-readiness promotion blockers.
+Historical replay-probe failures remain checked diagnostic evidence. They do not provide current snapshot-replay authority or ordinary instrumentation-readiness promotion.
 
 - net: `net snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=9)
 - raft: `snapshot replay probe trips only after restored parent context` (kind=always, category=replay-probe (inferred), verdict=failed, hit_count=2975)
@@ -43,26 +49,26 @@ Replay-probe failures are intentional snapshot-replay proof signals. They remain
 
 ## Gap details
 
-These details are derived from committed accepted-proof `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures; inferred categories and local-harness coverage are marked, and no fresh VM campaign is required.
+These details are derived from committed historical `assertions.json` artifacts, deterministic report-local category inference, and optional local assertion harness fixtures. Inferred categories and local-harness coverage are marked. No fresh VM campaign is implied.
 
-- No unhit or non-passing assertion details in accepted proof artifacts.
+- No unhit or non-passing assertion details in historical proof artifacts.
 
 ## Local deterministic assertion harness coverage
 
-- raft: `commits advance when quorum healthy` covered by local deterministic harness `crates/chaoscontrol-raft-guest/src/lib.rs::raft_local_assertion_harness_covers_quorum_commit_progress` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `committed data survives restart` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `committed key missing after recovery` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `data survives compaction` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `range scan empty table matches oracle` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `read matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `table len matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
-- redb: `uncommitted data not visible` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (accepted-proof verdict=unexercised, hit_count=0)
+- raft: `commits advance when quorum healthy` covered by local deterministic harness `crates/chaoscontrol-raft-guest/src/lib.rs::raft_local_assertion_harness_covers_quorum_commit_progress` (historical verdict=unexercised, hit_count=0)
+- redb: `committed data survives restart` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `committed key missing after recovery` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `data survives compaction` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `database opens after repair` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `range scan empty table matches oracle` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `read matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `table len matches oracle (no table)` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
+- redb: `uncommitted data not visible` covered by local deterministic harness `crates/chaoscontrol-redb-guest/src/lib.rs::redb_local_assertion_harness_covers_readiness_gap_conditions` (historical verdict=unexercised, hit_count=0)
 
 ## Operator interpretation
 
-Zero ordinary assertion blockers means only that accepted workload artifacts have no unhit, uncategorized, or non-replay-probe failing assertions after deterministic local harness coverage is applied. Read it as an instrumentation-readiness signal only: it does not establish hosted-product parity or promote a workload, device profile, or ChaosControl as a hosted product by itself. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.
+Zero ordinary assertion blockers applies only to accepted v2 assertion evidence after deterministic local harness coverage is applied. Diagnostic-only rows cannot promote. Any future accepted result is an instrumentation-readiness signal only. It does not establish hosted-product parity. Operator/product readiness still requires separate replay, minimization/reproduction, workload onboarding, and triage evidence.
 
 ## Anti-claim
 

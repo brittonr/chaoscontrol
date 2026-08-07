@@ -399,7 +399,7 @@ fn main() {
 
         // Check if we have assertions — if not, check serial for evidence
         // that the guest IS running the assertion code
-        if report.assertions.is_empty() {
+        if report.catalog_size == 0 {
             let output0 = ctrl.vm_mut(0).take_serial_output();
             let output1 = ctrl.vm_mut(1).take_serial_output();
             let has_pongs = output0.contains("[server] Sent PONG");

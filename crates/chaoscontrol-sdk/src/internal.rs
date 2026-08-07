@@ -253,6 +253,21 @@ pub(crate) fn local_emit_assert(params: &LocalAssert<'_>) {
     }
 }
 
+pub(crate) fn local_emit_value(value: &serde_json::Value) {
+    let mode = get_mode();
+    let TransportMode::LocalOutput { writer } = mode else {
+        return;
+    };
+    let Ok(mut record) = serde_json::to_vec(value) else {
+        return;
+    };
+    record.push(b'\n');
+    if let Ok(mut guard) = writer.lock() {
+        let _ = guard.write_all(&record);
+        let _ = guard.flush();
+    }
+}
+
 /// Write a local lifecycle event to the output file.
 pub(crate) fn local_emit_lifecycle(event_name: &str, json_details: &[u8]) {
     let mode = get_mode();

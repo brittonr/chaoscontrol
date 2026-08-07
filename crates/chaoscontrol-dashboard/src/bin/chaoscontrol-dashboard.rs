@@ -6,9 +6,7 @@
 
 use chaoscontrol_explore::checkpoint::load_checkpoint;
 use chaoscontrol_explore::dashboard_types::DashboardState;
-use chaoscontrol_explore::explorer::AssertionDetail;
 use clap::{Parser, Subcommand};
-use std::fs;
 use std::path::Path;
 
 #[derive(Parser)]
@@ -31,6 +29,12 @@ enum Commands {
         /// Port to listen on.
         #[arg(short, long, default_value = "8080")]
         port: u16,
+
+        /// Host to bind (default: 127.0.0.1, loopback only).
+        /// The dashboard has no authentication; bind beyond loopback only
+        /// on trusted networks.
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
 }
 
@@ -40,11 +44,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { corpus, port } => cmd_serve(corpus, port),
+        Commands::Serve { corpus, port, host } => cmd_serve(corpus, port, host),
     }
 }
 
-fn cmd_serve(corpus: String, port: u16) {
+fn cmd_serve(corpus: String, port: u16, host: String) {
     // Validate corpus directory
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: corpus directory not found: {}", corpus);
@@ -66,18 +70,13 @@ fn cmd_serve(corpus: String, port: u16) {
         }
     };
 
-    // Load assertion details (optional)
-    let assertions_path = format!("{}/assertions.json", corpus);
-    let assertion_details: Vec<AssertionDetail> = if Path::new(&assertions_path).exists() {
-        match fs::read_to_string(&assertions_path) {
-            Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
-            Err(_) => Vec::new(),
+    let state = match DashboardState::from_checkpoint(&checkpoint) {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("Error: checkpoint evidence is invalid: {error}");
+            std::process::exit(1);
         }
-    } else {
-        Vec::new()
     };
-
-    let state = DashboardState::from_checkpoint(&checkpoint, assertion_details);
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
     eprintln!("  ChaosControl Dashboard");
@@ -90,7 +89,7 @@ fn cmd_serve(corpus: String, port: u16) {
     eprintln!("  Bugs:      {}", state.bugs.len());
     eprintln!();
 
-    if let Err(e) = chaoscontrol_explore::server::start_standalone(state, port) {
+    if let Err(e) = chaoscontrol_explore::server::start_standalone(state, &host, port) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }

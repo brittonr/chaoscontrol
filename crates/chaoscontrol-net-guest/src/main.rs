@@ -28,7 +28,6 @@ use serde_json::json;
 
 const SERVER_PORT: u16 = 8080;
 const NUM_VMS: usize = 3;
-const NET_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID: u32 = 3_141_592_653;
 
 fn cmdline_value(name: &str) -> Option<String> {
     cmdline_value_from(
@@ -126,10 +125,11 @@ impl Server {
                                 &json!({"pong_count": self.pong_count}),
                             );
                             if self.snapshot_probe {
-                                chaoscontrol_sdk::cc_assert_always_category_with_id!(
+                                chaoscontrol_sdk::cc_assert_always_stable!(
+                                    "org.onixresearch.chaoscontrol.net",
+                                    "snapshot-replay-probe",
                                     "net",
                                     "recovery",
-                                    NET_SNAPSHOT_REPLAY_PROBE_ASSERTION_ID,
                                     self.pong_count < self.snapshot_probe_fail_after,
                                     "net snapshot replay probe trips only after restored parent context",
                                     &json!({

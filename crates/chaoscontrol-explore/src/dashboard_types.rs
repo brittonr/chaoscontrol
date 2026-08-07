@@ -239,37 +239,34 @@ impl DashboardState {
         }
     }
 
-    /// Construct from a saved checkpoint + assertions file.
-    pub fn from_checkpoint(
-        checkpoint: &ExplorationCheckpoint,
-        assertion_details: Vec<AssertionDetail>,
-    ) -> Self {
-        let bugs: Vec<DashboardBug> = checkpoint
-            .bugs
+    /// Construct from a checkpoint after exact report-backed bug validation.
+    pub fn from_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<Self, String> {
+        let restored_bugs = crate::checkpoint::replay_bug_set(
+            &checkpoint.bugs,
+            checkpoint.assertion_report.as_ref(),
+        )
+        .map_err(|error| error.to_string())?;
+        let (assertion_details, assertion_stats) =
+            if let Some(report) = checkpoint.assertion_report.as_ref() {
+                let projection = crate::assertion_report::strict_projection(report)
+                    .map_err(|error| format!("{error:?}"))?;
+                (projection.details, projection.stats)
+            } else {
+                (Vec::new(), AssertionStats::default())
+            };
+        let bugs: Vec<DashboardBug> = restored_bugs
             .iter()
-            .map(|b| DashboardBug {
-                bug_id: b.bug_id,
-                assertion_id: b.assertion_id,
-                assertion_message: b.assertion_location.clone(),
-                round: 0, // not stored in checkpoint
-                tick: b.tick,
-                schedule_length: b.schedule.faults.len(),
+            .map(|bug| DashboardBug {
+                bug_id: bug.bug_id,
+                assertion_id: bug.assertion_id,
+                assertion_message: bug.assertion_location.clone(),
+                round: 0,
+                tick: bug.tick,
+                schedule_length: bug.schedule.faults().len(),
             })
             .collect();
 
-        // Derive assertion stats from details
-        let mut passed = 0usize;
-        let mut failed = 0usize;
-        let mut unexercised = 0usize;
-        for d in &assertion_details {
-            match d.verdict.as_str() {
-                "passed" => passed += 1,
-                "failed" => failed += 1,
-                _ => unexercised += 1,
-            }
-        }
-
-        Self {
+        Ok(Self {
             running: false,
             config: DashboardConfig {
                 num_vms: checkpoint.config.num_vms,
@@ -295,12 +292,7 @@ impl DashboardState {
                 },
             },
             network_stats: DashboardNetworkStats::default(),
-            assertion_stats: AssertionStats {
-                catalog_size: assertion_details.len(),
-                passed,
-                failed,
-                unexercised,
-            },
+            assertion_stats,
             assertion_details,
             round_history: checkpoint.round_history.clone().unwrap_or_default(),
             finish_reason: "completed".to_string(),
@@ -308,7 +300,7 @@ impl DashboardState {
             seeds_total: 0,
             seeds_completed: 0,
             seed_summaries: Vec::new(),
-        }
+        })
     }
 
     /// Update state from a RoundComplete event.
@@ -445,7 +437,11 @@ mod tests {
 
     #[test]
     fn test_dashboard_state_from_checkpoint() {
-        let checkpoint = ExplorationCheckpoint {
+        const ASSERTION_ALIAS: u64 = 99;
+        let identity = crate::test_support::assertion_identity(ASSERTION_ALIAS);
+        let assertion_location = identity.descriptor.message.clone();
+        let assertion_report = crate::test_support::assertion_report(ASSERTION_ALIAS, false);
+        let mut checkpoint = ExplorationCheckpoint {
             config: crate::checkpoint::CheckpointConfig {
                 num_vms: 3,
                 kernel_path: "/path/to/kernel".to_string(),
@@ -470,8 +466,9 @@ mod tests {
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {
                 bug_id: 0,
-                assertion_id: 99,
-                assertion_location: "test assertion".to_string(),
+                assertion_id: ASSERTION_ALIAS,
+                assertion_identity: Some(identity),
+                assertion_location,
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,
                 replay_parent_depth: 0,
@@ -481,6 +478,7 @@ mod tests {
                 scenario_config: None,
                 scenario_summary: None,
             }],
+            assertion_report: Some(assertion_report),
             rounds_completed: 10,
             total_branches_run: 80,
             total_edges: 200,
@@ -505,30 +503,24 @@ mod tests {
             scenario_summary: None,
         };
 
-        let details = vec![AssertionDetail {
-            id: 99,
-            message: "test assertion".to_string(),
-            kind: "always".to_string(),
-            guest: "uncategorized".to_string(),
-            category: "uncategorized".to_string(),
-            verdict: "failed".to_string(),
-            hit_count: 10,
-            true_count: 8,
-            false_count: 2,
-            last_failure_details: None,
-        }];
-
-        let state = DashboardState::from_checkpoint(&checkpoint, details);
+        let state = DashboardState::from_checkpoint(&checkpoint).expect("valid checkpoint");
 
         assert!(!state.running);
         assert_eq!(state.rounds, 10);
         assert_eq!(state.total_branches, 80);
         assert_eq!(state.total_edges, 200);
         assert_eq!(state.bugs.len(), 1);
-        assert_eq!(state.bugs[0].assertion_id, 99);
+        assert_eq!(state.bugs[0].assertion_id, ASSERTION_ALIAS);
         assert_eq!(state.assertion_stats.failed, 1);
         assert_eq!(state.round_history.len(), 1);
         assert_eq!(state.config.num_vms, 3);
+
+        checkpoint.bugs[0]
+            .assertion_identity
+            .as_mut()
+            .expect("bug identity")
+            .catalog_token = chaoscontrol_protocol::identity::AssertionFingerprint::ZERO;
+        assert!(DashboardState::from_checkpoint(&checkpoint).is_err());
     }
 
     #[test]

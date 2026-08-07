@@ -190,9 +190,11 @@ ChaosControl has an opt-in, bounded KVM rail for one exact admitted Onix/Mantle
 kernel-bundle cohort. It builds a repo-owned initrd, verifies expected versus
 measured kernel/initrd BLAKE3 identities before launch, and records structured
 boot, module, BPF, and cleanup observations. Transcript-only markers cannot pass
-this behavior rail. See [the kernel-bundle validation runbook](docs/kernel-bundle-validation.md)
-for supported inputs, positive and negative scenarios, reproduction, retention,
-and non-claims.
+this behavior rail. Bounded Tree observes and revalidates initrd source trees,
+while ChaosControl retains Newc and evidence semantics. See
+[the kernel-bundle validation runbook](docs/kernel-bundle-validation.md) and
+[the Bounded Tree adoption boundary](docs/bounded-tree-adoption.md) for
+supported inputs, reproduction, retention, rollback, and non-claims.
 
 ## CLI Tools
 

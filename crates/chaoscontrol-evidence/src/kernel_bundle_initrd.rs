@@ -1,9 +1,13 @@
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 
+use bounded_tree_cap::{execute as execute_tree_copy, prepare as prepare_tree};
+use bounded_tree_core::{LimitValues, RelativePath, SymlinkPolicy, TreeLimits, TreePlan};
+use cap_std::{ambient_authority, fs::Dir};
 use serde::Serialize;
 
 use crate::{EvidenceError, EvidenceResult};
@@ -45,6 +49,10 @@ const DEFAULT_SYMLINK_MODE: u32 = MODE_SYMLINK | 0o777;
 const DEFAULT_MTIME_SECS: u32 = 1;
 const FILE_COPY_BUFFER_BYTES: usize = 64 * 1024;
 const MAX_INITRD_ENTRIES: usize = 100_000;
+const MAX_INITRD_TREE_DEPTH: u64 = 128;
+const MAX_INITRD_MEMBER_BYTES: u64 = u32::MAX as u64;
+const MAX_INITRD_TREE_BYTES: u64 = u32::MAX as u64;
+const MAX_INITRD_ARCHIVE_BYTES: u64 = u32::MAX as u64;
 const MAX_CLOSURE_LIST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_SCRIPT_BYTES: usize = 16 * 1024;
 const MAX_ARCHIVE_PATH_BYTES: usize = 512;
@@ -390,6 +398,46 @@ fn shell_single_quote(value: &str) -> String {
     value.replace('\'', "'\\''")
 }
 
+fn bounded_tree_limits() -> EvidenceResult<TreeLimits> {
+    TreeLimits::new(LimitValues {
+        entries: u64::try_from(MAX_INITRD_ENTRIES)
+            .map_err(|_| EvidenceError::new("initrd entry bound does not fit u64"))?,
+        depth: MAX_INITRD_TREE_DEPTH,
+        path_bytes: u64::try_from(MAX_ARCHIVE_PATH_BYTES)
+            .map_err(|_| EvidenceError::new("archive path bound does not fit u64"))?,
+        file_bytes: MAX_INITRD_MEMBER_BYTES,
+        total_bytes: MAX_INITRD_TREE_BYTES,
+        symlink_target_bytes: u64::try_from(MAX_SYMLINK_TARGET_BYTES)
+            .map_err(|_| EvidenceError::new("symlink target bound does not fit u64"))?,
+    })
+    .map_err(|error| EvidenceError::new(format!("invalid bounded-tree limits: {error:?}")))
+}
+
+fn prepare_bounded_tree(root: &Path) -> EvidenceResult<(tempfile::TempDir, TreePlan)> {
+    let source = Dir::open_ambient_dir(root, ambient_authority())?;
+    let prepared = prepare_tree(
+        &source,
+        bounded_tree_limits()?,
+        SymlinkPolicy::PreserveInternal,
+    )
+    .map_err(|error| EvidenceError::new(format!("bounded-tree observation failed: {error:?}")))?;
+    let staging = tempfile::tempdir()?;
+    let destination = Dir::open_ambient_dir(staging.path(), ambient_authority())?;
+    execute_tree_copy(&prepared, &destination).map_err(|error| {
+        EvidenceError::new(format!("bounded-tree revalidation failed: {error:?}"))
+    })?;
+    let plan = prepared.plan().clone();
+    Ok((staging, plan))
+}
+
+fn relative_path_buf(path: &RelativePath) -> PathBuf {
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        result.push(std::ffi::OsString::from_vec(component.clone()));
+    }
+    result
+}
+
 struct NewcWriter<W: Write> {
     output: W,
     next_inode: u32,
@@ -413,15 +461,23 @@ impl<W: Write> NewcWriter<W> {
         root: &Path,
     ) -> EvidenceResult<()> {
         let archive_path = archive_path_for_absolute(root)?;
-        let mut entries = collect_tree(root)?;
-        entries.sort();
-        self.add_path(seen, root, &archive_path, false)?;
-        for entry in entries {
-            let rel = entry.strip_prefix(root).map_err(|err| {
-                EvidenceError::new(format!("failed to strip root {}: {err}", root.display()))
-            })?;
-            let child_archive_path = join_archive_path(&archive_path, rel)?;
-            self.add_path(seen, &entry, &child_archive_path, false)?;
+        if !root.is_dir() {
+            return self.add_path(seen, root, &archive_path, false);
+        }
+        let (staging, plan) = prepare_bounded_tree(root)?;
+        self.add_parent_dirs(seen, &archive_path)?;
+        self.add_static_entry(
+            seen,
+            &archive_path,
+            EntryKind::Directory,
+            DEFAULT_DIR_MODE,
+            &[],
+        )?;
+        for member in plan.member_facts() {
+            let relative = relative_path_buf(member.path());
+            let child_archive_path = join_archive_path(&archive_path, &relative)?;
+            let staged_source = staging.path().join(&relative);
+            self.add_path(seen, &staged_source, &child_archive_path, false)?;
         }
         Ok(())
     }
@@ -520,7 +576,7 @@ impl<W: Write> NewcWriter<W> {
         let mut file = File::open(source)?;
         let size = file.metadata()?.len();
         self.write_header(archive_path, mode, size, EntryKind::Regular)?;
-        copy_file_data(&mut file, &mut self.output, &mut self.bytes_written)?;
+        self.copy_file_data(&mut file)?;
         self.write_padding(size)?;
         self.entries_written += 1;
         Ok(())
@@ -539,10 +595,11 @@ impl<W: Write> NewcWriter<W> {
             return Ok(());
         }
         self.check_entry_limit()?;
-        self.write_header(archive_path, mode, data.len() as u64, kind)?;
-        self.output.write_all(data)?;
-        self.bytes_written = self.bytes_written.saturating_add(data.len() as u64);
-        self.write_padding(data.len() as u64)?;
+        let data_bytes = u64::try_from(data.len())
+            .map_err(|_| EvidenceError::new("newc entry length does not fit u64"))?;
+        self.write_header(archive_path, mode, data_bytes, kind)?;
+        self.write_output(data)?;
+        self.write_padding(data_bytes)?;
         self.entries_written += 1;
         Ok(())
     }
@@ -566,30 +623,75 @@ impl<W: Write> NewcWriter<W> {
         file_size: u64,
         kind: EntryKind,
     ) -> EvidenceResult<()> {
+        ensure!(
+            file_size <= MAX_INITRD_MEMBER_BYTES,
+            "newc member exceeded size bound"
+        )?;
         let inode = self.take_inode()?;
-        let namesize = archive_path.len().saturating_add(1);
+        let namesize = archive_path
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| EvidenceError::new("newc name size overflow"))?;
+        ensure!(
+            namesize <= u32::MAX as usize,
+            "newc name exceeded field bound"
+        )?;
         let nlink = if kind == EntryKind::Directory { 2 } else { 1 };
         let header = format!(
             "{NEWC_MAGIC}{inode:08x}{mode:08x}{ROOT_UID:08x}{ROOT_GID:08x}{nlink:08x}{DEFAULT_MTIME_SECS:08x}{file_size:08x}{:08x}{:08x}{:08x}{:08x}{namesize:08x}{:08x}",
             0, 0, 0, 0, 0
         );
-        self.output.write_all(header.as_bytes())?;
-        self.output.write_all(archive_path.as_bytes())?;
-        self.output.write_all(&[0])?;
-        self.bytes_written = self
+        ensure!(
+            header.len() as u64 == NEWC_HEADER_LEN,
+            "newc header length changed"
+        )?;
+        self.write_output(header.as_bytes())?;
+        self.write_output(archive_path.as_bytes())?;
+        self.write_output(&[0])?;
+        let namesize = u64::try_from(namesize)
+            .map_err(|_| EvidenceError::new("newc name size does not fit u64"))?;
+        let header_and_name = NEWC_HEADER_LEN
+            .checked_add(namesize)
+            .ok_or_else(|| EvidenceError::new("newc header accounting overflow"))?;
+        self.write_padding(header_and_name)?;
+        Ok(())
+    }
+
+    fn copy_file_data(&mut self, input: &mut impl Read) -> EvidenceResult<()> {
+        let mut buffer = [0_u8; FILE_COPY_BUFFER_BYTES];
+        loop {
+            let read = input.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            self.write_output(&buffer[..read])?;
+        }
+        Ok(())
+    }
+
+    fn write_output(&mut self, bytes: &[u8]) -> EvidenceResult<()> {
+        let byte_count = u64::try_from(bytes.len())
+            .map_err(|_| EvidenceError::new("newc write length does not fit u64"))?;
+        let next_total = self
             .bytes_written
-            .saturating_add(NEWC_HEADER_LEN)
-            .saturating_add(namesize as u64);
-        self.write_padding(NEWC_HEADER_LEN.saturating_add(namesize as u64))?;
+            .checked_add(byte_count)
+            .ok_or_else(|| EvidenceError::new("newc output byte count overflow"))?;
+        ensure!(
+            next_total <= MAX_INITRD_ARCHIVE_BYTES,
+            "initrd archive exceeded output byte bound"
+        )?;
+        self.output.write_all(bytes)?;
+        self.bytes_written = next_total;
         Ok(())
     }
 
     fn write_padding(&mut self, size: u64) -> EvidenceResult<()> {
         let padding = padding_len(size);
         if padding > 0 {
-            let bytes = vec![0_u8; padding as usize];
-            self.output.write_all(&bytes)?;
-            self.bytes_written = self.bytes_written.saturating_add(padding);
+            let padding = usize::try_from(padding)
+                .map_err(|_| EvidenceError::new("newc padding does not fit usize"))?;
+            let bytes = vec![0_u8; padding];
+            self.write_output(&bytes)?;
         }
         Ok(())
     }
@@ -609,25 +711,6 @@ impl<W: Write> NewcWriter<W> {
             "initrd entry count exceeded bound"
         )
     }
-}
-
-fn collect_tree(root: &Path) -> EvidenceResult<Vec<PathBuf>> {
-    if !root.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut pending = vec![root.to_path_buf()];
-    let mut entries = Vec::new();
-    while let Some(dir) = pending.pop() {
-        for entry in fs::read_dir(&dir)? {
-            let path = entry?.path();
-            let metadata = fs::symlink_metadata(&path)?;
-            entries.push(path.clone());
-            if metadata.file_type().is_dir() {
-                pending.push(path);
-            }
-        }
-    }
-    Ok(entries)
 }
 
 fn archive_regular_mode(metadata: &fs::Metadata, executable_override: bool) -> u32 {
@@ -705,23 +788,6 @@ fn path_to_bytes(path: &Path) -> EvidenceResult<Vec<u8>> {
         .ok_or_else(|| EvidenceError::new(format!("path is not UTF-8: {}", path.display())))
 }
 
-fn copy_file_data<R: Read, W: Write>(
-    input: &mut R,
-    output: &mut W,
-    bytes_written: &mut u64,
-) -> EvidenceResult<()> {
-    let mut buffer = [0_u8; FILE_COPY_BUFFER_BYTES];
-    loop {
-        let read = input.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        output.write_all(&buffer[..read])?;
-        *bytes_written = bytes_written.saturating_add(read as u64);
-    }
-    Ok(())
-}
-
 fn padding_len(size: u64) -> u64 {
     let remainder = size % NEWC_ALIGNMENT;
     if remainder == 0 {
@@ -792,8 +858,56 @@ mod tests {
             .contains("expected kernel release"));
     }
 
+    fn legacy_collect_tree(root: &Path) -> EvidenceResult<Vec<PathBuf>> {
+        let mut pending = vec![root.to_path_buf()];
+        let mut entries = Vec::new();
+        while let Some(dir) = pending.pop() {
+            for entry in fs::read_dir(&dir)? {
+                let path = entry?.path();
+                let metadata = fs::symlink_metadata(&path)?;
+                entries.push(path.clone());
+                if metadata.file_type().is_dir() {
+                    pending.push(path);
+                }
+            }
+        }
+        entries.sort();
+        Ok(entries)
+    }
+
+    fn legacy_archive_tree(root: &Path) -> EvidenceResult<Vec<u8>> {
+        let mut output = Vec::new();
+        {
+            let mut writer = NewcWriter::new(&mut output);
+            let mut seen = BTreeSet::new();
+            let archive_path = archive_path_for_absolute(root)?;
+            writer.add_path(&mut seen, root, &archive_path, false)?;
+            for entry in legacy_collect_tree(root)? {
+                let relative = entry.strip_prefix(root).map_err(|error| {
+                    EvidenceError::new(format!("legacy fixture strip failed: {error}"))
+                })?;
+                let child_archive_path = join_archive_path(&archive_path, relative)?;
+                writer.add_path(&mut seen, &entry, &child_archive_path, false)?;
+            }
+            writer.finish(&mut seen)?;
+        }
+        Ok(output)
+    }
+
+    fn archive_tree(root: &Path) -> EvidenceResult<(Vec<u8>, usize, u64)> {
+        let mut output = Vec::new();
+        let (entries_written, bytes_written) = {
+            let mut writer = NewcWriter::new(&mut output);
+            let mut seen = BTreeSet::new();
+            writer.add_absolute_tree(&mut seen, root)?;
+            writer.finish(&mut seen)?;
+            (writer.entries_written, writer.bytes_written)
+        };
+        Ok((output, entries_written, bytes_written))
+    }
+
     #[test]
-    fn newc_writer_records_regular_files_dirs_and_symlinks() {
+    fn newc_writer_records_regular_files_dirs_and_internal_symlinks_deterministically() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path().join("root");
         let dir = root.join("dir");
@@ -803,23 +917,68 @@ mod tests {
         fs::write(&file, b"payload").expect("write file");
         unix_fs::symlink("dir/file.txt", &link).expect("symlink");
 
-        let mut output = Vec::new();
-        let (entries_written, bytes_written) = {
-            let mut writer = NewcWriter::new(&mut output);
-            let mut seen = BTreeSet::new();
-            writer
-                .add_absolute_tree(&mut seen, &root)
-                .expect("add tree");
-            writer.finish(&mut seen).expect("finish");
-            (writer.entries_written, writer.bytes_written)
-        };
+        let legacy = legacy_archive_tree(&root).expect("legacy archive");
+        let (output, entries_written, bytes_written) = archive_tree(&root).expect("first archive");
+        let (repeated, repeated_entries, repeated_bytes) =
+            archive_tree(&root).expect("repeated archive");
         let archive = String::from_utf8_lossy(&output);
 
+        assert_eq!(output, legacy);
+        assert_eq!(output, repeated);
+        assert_eq!(entries_written, repeated_entries);
+        assert_eq!(bytes_written, repeated_bytes);
         assert!(archive.contains("root/dir/file.txt"));
         assert!(archive.contains("root/link.txt"));
         assert!(archive.contains(NEWC_TRAILER));
         assert!(entries_written >= 4);
         assert_eq!(bytes_written as usize, output.len());
+    }
+
+    #[test]
+    fn newc_writer_rejects_symlink_that_escapes_the_observed_tree() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().join("root");
+        let outside = temp.path().join("outside");
+        fs::create_dir(&root).expect("mkdir root");
+        fs::write(&outside, b"outside").expect("write outside");
+        unix_fs::symlink("../outside", root.join("escape")).expect("symlink");
+
+        let error = archive_tree(&root).expect_err("escaping link rejected");
+
+        assert!(error.message().contains("SymlinkTargetEscapes"));
+    }
+
+    #[test]
+    fn newc_writer_rejects_tree_path_over_the_archive_bound() {
+        const COMPONENT_BYTES: usize = 200;
+        const COMPONENT_COUNT: usize = 3;
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().join("root");
+        let component = "a".repeat(COMPONENT_BYTES);
+        let mut deep = root.clone();
+        for _ in 0..COMPONENT_COUNT {
+            deep.push(&component);
+        }
+        fs::create_dir_all(&deep).expect("mkdir deep tree");
+        fs::write(deep.join("payload"), b"payload").expect("write payload");
+
+        let error = archive_tree(&root).expect_err("overlong path rejected");
+
+        assert!(error.message().contains("PathBytes"));
+    }
+
+    #[test]
+    fn newc_writer_rejects_output_past_the_local_archive_bound() {
+        let mut output = Vec::new();
+        let mut writer = NewcWriter::new(&mut output);
+        writer.bytes_written = MAX_INITRD_ARCHIVE_BYTES;
+
+        let error = writer
+            .write_output(&[1])
+            .expect_err("output bound rejected");
+
+        assert!(error.message().contains("output byte bound"));
+        assert!(output.is_empty());
     }
 
     #[test]

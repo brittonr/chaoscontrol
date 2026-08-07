@@ -1,20 +1,18 @@
 ## Context
 
-`kernel_bundle_initrd.rs` collects absolute trees before `NewcWriter` emits a deterministic initrd. Tree collection and archive encoding currently share one module.
-
-The future dependency can own bounded observation and path admission. ChaosControl must keep CPIO/Newc semantics and kernel evidence.
+`kernel_bundle_initrd.rs` maps absolute closure roots before `NewcWriter` emits a deterministic initrd. Bounded Tree now owns bounded observation, path admission, member facts, and source revalidation. ChaosControl keeps CPIO/Newc semantics and kernel evidence.
 
 ## Decisions
 
 ### Decision: Require completed shared publication
 
-**Choice:** Block implementation until `bounded-tree` has archived its establishment change and published a reviewed immutable Radicle revision.
+**Choice:** Pin the completed Bounded Tree revision `b0fd0103bc9eed2c1b6d852045959462d105d8f1` from its Radicle seed transport. Do not provide a sibling path or mutable fallback.
 
-**Rationale:** A deterministic evidence path cannot depend on mutable sibling source.
+**Rationale:** A deterministic evidence path cannot depend on mutable sibling source. The producer archive and consumer rollback facts are recorded in `docs/bounded-tree-adoption.md`.
 
 ### Decision: Share observation, not archive encoding
 
-**Choice:** Replace local tree collection and file-kind admission with shared observations. Keep archive path mapping, parent insertion, inode assignment, headers, padding, mode normalization, duplicate policy, and byte accounting in `NewcWriter`.
+**Choice:** Open each directory as a capability, prepare a shared observation plan, and copy it to bounded staging with source revalidation. Encode the staged members in shared plan order. Keep archive path mapping, parent insertion, inode assignment, headers, padding, mode normalization, duplicate policy, and byte accounting in `NewcWriter`.
 
 **Rationale:** Those fields define the initrd archive format and ChaosControl compatibility.
 
@@ -42,3 +40,5 @@ The future dependency can own bounded observation and path admission. ChaosContr
 - The Newc writer still owns significant format-specific tree code.
 - The first shared shell supports Unix only, matching current kernel-bundle hosts.
 - Radicle acquisition failures remain visible.
+- Staging adds bounded I/O and temporary disk use before archive encoding.
+- Only relative symlinks that resolve to admitted members are accepted.

@@ -12,6 +12,9 @@ sha2 = "0.10"
 tempfile = "3"
 blake3 = "1.8"
 libc = "0.2"
+bounded-tree-cap = { git = "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git", rev = "b0fd0103bc9eed2c1b6d852045959462d105d8f1" }
+bounded-tree-core = { git = "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git", rev = "b0fd0103bc9eed2c1b6d852045959462d105d8f1" }
+cap-std = "=4.0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }

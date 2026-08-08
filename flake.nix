@@ -2046,9 +2046,6 @@
               # Guest binary (musl static linking)
               pkgs.pkgsCross.musl64.stdenv.cc
 
-              # OpenSpec
-              pkgs.nodejs_22
-
               # Local sibling proof/style tools
               octet.packages.${system}.cargo-tigerstyle
               octet.packages.${system}.tigerstyle-standards

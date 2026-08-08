@@ -7,7 +7,7 @@ result-net
 # Nix build products
 guest/*.gz
 
-# Node.js (OpenSpec CLI)
+# Node.js and Hegel scratch state
 node_modules/
 .npm/
 .hegel/

@@ -47,7 +47,7 @@ Produce:
 - `property-relationships.md`
 - `evaluation.md`
 
-Scratch output is review-needed evidence. Do not copy it into accepted Cairn or OpenSpec requirements without review.
+Scratch output is review-needed evidence. Do not copy it into accepted Cairn requirements without review.
 
 ## Negative paths
 

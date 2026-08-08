@@ -313,7 +313,7 @@ let Registry = {
       owner = "chaoscontrol-explore",
       source_paths = [
         "crates/chaoscontrol-explore/src",
-        "openspec/specs/campaign-persistence/spec.md",
+        ".cairn/specs/campaign-persistence/spec.md",
       ],
       artifact_paths = [
         "future:campaign_progress.json",

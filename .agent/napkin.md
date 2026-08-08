@@ -31,7 +31,6 @@
 
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
-| 2026-04-09 | self | Tried `openspec list` to enumerate active changes | `openspec list` currently errors (`changes.map is not a function`) in this repo; use `openspec new/status/instructions` and direct file reads instead |
 |------|--------|----------------|-------------------|
 | 2026-02-17 | self | Tried `no-kvmclock` kernel param — not a real param | Use KVM visibility control + clocksource=tsc instead |
 | 2026-02-17 | self | AMD CPUs don't have CPUID leaf 0x15 | Must INJECT leaf 0x15 into CPUID entries if missing |

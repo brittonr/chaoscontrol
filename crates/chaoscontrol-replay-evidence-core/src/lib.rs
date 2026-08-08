@@ -5,7 +5,7 @@
 //! validation status values, and the fail-closed validation decisions shared
 //! by `chaoscontrol-explore` (emitter) and `chaoscontrol-evidence` (gates).
 //!
-//! Boundaries (see `openspec/changes/extract-replay-evidence-core/`):
+//! Boundaries (see `.cairn/archive/2026-08-04-extract-replay-evidence-core/`):
 //!
 //! - Pure logic over in-memory DTOs only. No filesystem, VM, clock, process,
 //!   KVM, environment, or receipt-writing effects live here.

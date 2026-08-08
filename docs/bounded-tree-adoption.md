@@ -7,7 +7,7 @@ ChaosControl uses Bounded Tree for deterministic initrd source-tree observation 
 - Radicle repository: `rad://zqhtZvsteJhxCJE96dMAZSZ9y1PX`
 - Git transport: `https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git`
 - Revision: `b0fd0103bc9eed2c1b6d852045959462d105d8f1`
-- Producer archive: `cairn/archive/1970-01-01-establish-bounded-tree`
+- Producer archive: `.cairn/archive/1970-01-01-establish-bounded-tree`
 - ChaosControl pre-adoption revision: `095a172bf9c65c529ff47ceb08c5ebf62e583017`
 
 `Cargo.lock` binds the two Bounded Tree crates to the exact revision. There is no sibling path or mutable branch fallback.

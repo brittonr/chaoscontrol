@@ -28,5 +28,5 @@
 - [x] [parallel] Add guards preventing debug/fallback/incomplete/multi-producer-total-order traces from satisfying exact trace evidence, VM determinism, replay, BPF safety, kernel correctness, security, or release gates. r[ebpf_trace_evidence.evidence]
 - [x] [parallel] Add the cheap pure/schema/layout/source-guard rail and the separate privileged KVM/eBPF behavior rail; missing prerequisites must report blocked. r[ebpf_trace_evidence.verification]
 - [x] [parallel] Document evidence-eligible cohorts, debug mode, ordering limits, loss accounting, target binding, reproduction, cleanup, retention, and non-claims. r[ebpf_trace_evidence.evidence]
-- [ ] [serial] Run focused pure-core, BPF build, collector, CLI, evidence, formatting, clippy, and privileged positive/negative checks. r[ebpf_trace_evidence.verification]
-- [ ] [serial] Run Cairn validation and proposal/design/tasks gates; sync and archive only with current zero-loss exact-cohort capture, divergence, loss, incompatibility, target-exit, and cleanup evidence. r[ebpf_trace_evidence.verification]
+- [x] [serial] Run focused pure-core, BPF build, collector, CLI, evidence, formatting, clippy, and privileged positive/negative checks. r[ebpf_trace_evidence.verification]
+- [x] [serial] Run Cairn validation and proposal/design/tasks gates; sync and archive only with current zero-loss exact-cohort capture, divergence, loss, incompatibility, target-exit, and cleanup evidence. r[ebpf_trace_evidence.verification]

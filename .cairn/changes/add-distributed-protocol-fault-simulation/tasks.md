@@ -1,6 +1,6 @@
 ## Phase 1: Spec foundation
 
-- [ ] [serial] Create the Cairn package foundation for the distributed-protocol fault-simulation rail. r[protocol-fault-sim.contract]
+- [x] [serial] Create the Cairn package foundation for the distributed-protocol fault-simulation rail. r[protocol-fault-sim.contract]
 
 ## Phase 2: Simulation and fault core
 

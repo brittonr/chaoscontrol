@@ -10,6 +10,7 @@ pub mod boundary;
 pub mod fault;
 pub mod kernel;
 pub mod network;
+pub mod protocol_simulation;
 pub mod scheduler;
 pub mod snapshot;
 
@@ -21,5 +22,11 @@ pub use kernel::{
     complete_round, guest_artifact_set_identity, plan_round, simulation_config_identity,
     CanonicalEvent, CanonicalTrace, CoreVmStatus, RoundInput, RoundObservation, RoundPlan,
     SimulationKernelError,
+};
+pub use protocol_simulation::{
+    ProtocolIdentity, ProtocolRngPolicy, ProtocolScheduleRef, ProtocolSchedulerPolicy,
+    ProtocolSimulationConfig, ProtocolSimulationEvidenceClass, ProtocolSimulationReceipt,
+    ProtocolVirtualClockPolicy, PROTOCOL_SIMULATION_CONFIG_SCHEMA,
+    PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
 };
 pub use snapshot::{CoreSnapshotError, SimulationCoreSnapshot, CORE_SNAPSHOT_SCHEMA_VERSION};

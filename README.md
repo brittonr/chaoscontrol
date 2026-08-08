@@ -96,6 +96,11 @@ nix develop -c cargo test -p chaoscontrol-vmm --test deterministic_smp_kvm
 - **Per-round history**: Coverage growth curves, plateau detection,
   bug discovery timeline
 
+### Pure Simulation Core
+- **Machine-independent decisions**: `chaoscontrol-sim-core` owns scheduling, virtual time, network transitions, fault selection, and canonical round traces.
+- **Typed shell boundary**: The core emits commands and validates observations. `chaoscontrol-vmm` retains KVM, device, filesystem, and snapshot effects.
+- **Bound identities**: Round traces bind the seed, deterministic configuration, and exact BLAKE3 guest artifact identities.
+
 ### Determinism Logging
 - **Binary dlog format**: Per-exit event log for diagnosing non-determinism
 - **Structural diff**: Compare two runs ignoring data payloads
@@ -112,7 +117,8 @@ chaoscontrol/
     ├── chaoscontrol-protocol/             # SDK ↔ VMM wire protocol (no_std)
     ├── chaoscontrol-sdk/                  # Guest-side SDK (Antithesis-style)
     ├── chaoscontrol-fault/                # Host-side fault injection engine
-    ├── chaoscontrol-vmm/                  # VMM implementation
+    ├── chaoscontrol-sim-core/             # Pure simulation decisions and traces
+    ├── chaoscontrol-vmm/                  # KVM and machine-effect shell
     ├── chaoscontrol-dashboard/            # Web dashboard backend and static UI
     ├── chaoscontrol-explore/              # Coverage-guided exploration engine
     ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger

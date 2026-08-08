@@ -536,6 +536,7 @@ name = "chaoscontrol-sim-core"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "chaoscontrol-fault",
  "rand",
  "rand_chacha",
  "serde",

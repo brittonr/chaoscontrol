@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Run ChaosControl deterministic simulations from a pure Rust-owned core crate that contains every scheduling, network, fault, clock, and trace decision, while all KVM and machine effects stay behind a narrow shell execution boundary.
+Defines the `deterministic-simulation-kernel` capability.
 
 ## Requirements
 

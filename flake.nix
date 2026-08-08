@@ -1398,6 +1398,7 @@
                 ''
                   cd ${self}
                   check-contract-registry .
+                  check-sim-core-purity .
                   check-evidence-contracts --root .
                   check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json
                   check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json

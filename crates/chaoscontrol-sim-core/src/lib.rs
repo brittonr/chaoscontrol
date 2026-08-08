@@ -7,14 +7,19 @@
 //! the returned commands.
 
 pub mod boundary;
+pub mod fault;
 pub mod kernel;
+pub mod network;
 pub mod scheduler;
+pub mod snapshot;
 
 pub use boundary::{
     validate_exchange, BoundaryError, BoundaryState, CommandExecutor, ExecutionCommand,
     ExitObservation, ValidatedExchange,
 };
 pub use kernel::{
-    complete_round, plan_round, CanonicalEvent, CanonicalTrace, CoreVmStatus, RoundInput,
-    RoundObservation, RoundPlan, SimulationKernelError,
+    complete_round, guest_artifact_set_identity, plan_round, simulation_config_identity,
+    CanonicalEvent, CanonicalTrace, CoreVmStatus, RoundInput, RoundObservation, RoundPlan,
+    SimulationKernelError,
 };
+pub use snapshot::{CoreSnapshotError, SimulationCoreSnapshot, CORE_SNAPSHOT_SCHEMA_VERSION};

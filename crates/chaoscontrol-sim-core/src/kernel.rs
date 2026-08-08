@@ -8,12 +8,16 @@ use std::fmt;
 pub const NANOSECONDS_PER_SIMULATION_TICK: u64 = 1_000_000;
 /// Maximum VMs represented in one pure round plan.
 pub const MAX_SIMULATION_VMS: usize = 256;
+/// Maximum guest artifacts bound to one simulation cohort.
+pub const MAX_GUEST_ARTIFACTS: usize = 16;
 const EVENTS_PER_RUNNING_VM: usize = 2;
 const ROUND_FIXED_EVENTS: usize = 2;
 /// Maximum events retained in one canonical round trace.
 pub const MAX_ROUND_TRACE_EVENTS: usize =
     MAX_SIMULATION_VMS * EVENTS_PER_RUNNING_VM + ROUND_FIXED_EVENTS;
 const TRACE_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.trace.v1";
+const CONFIG_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.config.v1";
+const ARTIFACT_SET_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.artifact-set.v1";
 
 /// Shell-neutral VM state observed before a round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +34,9 @@ pub enum CoreVmStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoundInput {
     pub current_tick: u64,
+    pub seed: u64,
+    pub config_id: [u8; 32],
+    pub guest_artifact_ids: Vec<[u8; 32]>,
     pub vm_statuses: Vec<CoreVmStatus>,
     pub exit_budget: u64,
 }
@@ -57,6 +64,9 @@ pub enum CanonicalEvent {
     RoundPlanned {
         tick: u64,
         virtual_time_ns: u64,
+        seed: u64,
+        config_id: [u8; 32],
+        guest_artifact_set_id: [u8; 32],
     },
     VmScheduled {
         sequence: u64,
@@ -102,6 +112,7 @@ pub enum SimulationKernelError {
     NoVirtualMachines,
     TooManyVirtualMachines { found: usize, maximum: usize },
     InvalidExitBudget,
+    TooManyGuestArtifacts { found: usize, maximum: usize },
     TickExhausted,
     VirtualTimeExhausted,
     SequenceExhausted,
@@ -126,6 +137,25 @@ impl From<BoundaryError> for SimulationKernelError {
 }
 
 /// Select one deterministic round without machine access.
+pub fn simulation_config_identity(vm_count: usize, seed: u64, exit_budget: u64) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(CONFIG_IDENTITY_DOMAIN);
+    hasher.update(&vm_count.to_le_bytes());
+    hasher.update(&seed.to_le_bytes());
+    hasher.update(&exit_budget.to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+pub fn guest_artifact_set_identity(artifact_ids: &[[u8; 32]]) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(ARTIFACT_SET_IDENTITY_DOMAIN);
+    hasher.update(&artifact_ids.len().to_le_bytes());
+    for artifact_id in artifact_ids {
+        hasher.update(artifact_id);
+    }
+    *hasher.finalize().as_bytes()
+}
+
 pub fn plan_round(input: &RoundInput) -> Result<RoundPlan, SimulationKernelError> {
     if input.vm_statuses.is_empty() {
         return Err(SimulationKernelError::NoVirtualMachines);
@@ -138,6 +168,19 @@ pub fn plan_round(input: &RoundInput) -> Result<RoundPlan, SimulationKernelError
     }
     if input.exit_budget == 0 {
         return Err(SimulationKernelError::InvalidExitBudget);
+    }
+    if input.guest_artifact_ids.len() > MAX_GUEST_ARTIFACTS {
+        return Err(SimulationKernelError::TooManyGuestArtifacts {
+            found: input.guest_artifact_ids.len(),
+            maximum: MAX_GUEST_ARTIFACTS,
+        });
+    }
+    let expected_config_id =
+        simulation_config_identity(input.vm_statuses.len(), input.seed, input.exit_budget);
+    if input.config_id != expected_config_id {
+        return Err(SimulationKernelError::Boundary(
+            BoundaryError::ObservationMismatch { field: "config_id" },
+        ));
     }
     let next_tick = input
         .current_tick
@@ -194,6 +237,9 @@ pub fn complete_round(
     events.push(CanonicalEvent::RoundPlanned {
         tick: plan.next_tick,
         virtual_time_ns: plan.virtual_time_ns,
+        seed: input.seed,
+        config_id: input.config_id,
+        guest_artifact_set_id: guest_artifact_set_identity(&input.guest_artifact_ids),
     });
     let mut boundary_state = plan.boundary_state;
     for (index, (command, observed)) in plan
@@ -257,10 +303,16 @@ fn hash_event(hasher: &mut blake3::Hasher, event: &CanonicalEvent) {
         CanonicalEvent::RoundPlanned {
             tick,
             virtual_time_ns,
+            seed,
+            config_id,
+            guest_artifact_set_id,
         } => {
             hasher.update(b"round-planned");
             hasher.update(&tick.to_le_bytes());
             hasher.update(&virtual_time_ns.to_le_bytes());
+            hasher.update(&seed.to_le_bytes());
+            hasher.update(config_id);
+            hasher.update(guest_artifact_set_id);
         }
         CanonicalEvent::VmScheduled {
             sequence,
@@ -302,11 +354,20 @@ mod tests {
 
     const TEST_TICK: u64 = 4;
     const TEST_EXIT_BUDGET: u64 = 3;
+    const TEST_SEED: u64 = 7;
+    const CHANGED_SEED: u64 = TEST_SEED + 1;
+    const TEST_ARTIFACT_BYTE: u8 = 9;
+    const CHANGED_ARTIFACT_BYTE: u8 = TEST_ARTIFACT_BYTE + 1;
+    const BLAKE3_BYTES: usize = 32;
 
     fn input() -> RoundInput {
+        let vm_statuses = vec![CoreVmStatus::Running, CoreVmStatus::Paused];
         RoundInput {
             current_tick: TEST_TICK,
-            vm_statuses: vec![CoreVmStatus::Running, CoreVmStatus::Paused],
+            seed: TEST_SEED,
+            config_id: simulation_config_identity(vm_statuses.len(), TEST_SEED, TEST_EXIT_BUDGET),
+            guest_artifact_ids: vec![[TEST_ARTIFACT_BYTE; BLAKE3_BYTES]],
+            vm_statuses,
             exit_budget: TEST_EXIT_BUDGET,
         }
     }
@@ -333,32 +394,45 @@ mod tests {
     }
 
     #[test]
-    fn changed_input_has_a_first_trace_divergence() {
-        let baseline =
-            complete_round(&input(), plan_round(&input()).unwrap(), &observations()).unwrap();
-        let mut changed = input();
-        changed.exit_budget += 1;
-        let changed_observations = vec![RoundObservation {
-            observation: ExitObservation::VcpuCompleted {
-                sequence: 0,
-                vm_index: 0,
-                exits: TEST_EXIT_BUDGET,
-                halted: false,
-            },
-        }];
-        let candidate = complete_round(
-            &changed,
-            plan_round(&changed).unwrap(),
-            &changed_observations,
+    fn changed_seed_config_or_artifact_has_a_first_trace_divergence() {
+        let baseline_input = input();
+        let baseline = complete_round(
+            &baseline_input,
+            plan_round(&baseline_input).unwrap(),
+            &observations(),
         )
         .unwrap();
-        let first_difference = baseline
-            .events
-            .iter()
-            .zip(&candidate.events)
-            .position(|(left, right)| left != right);
-        assert_eq!(first_difference, Some(1));
-        assert_ne!(baseline.identity(), candidate.identity());
+
+        let mut changed_seed = input();
+        changed_seed.seed = CHANGED_SEED;
+        changed_seed.config_id = simulation_config_identity(
+            changed_seed.vm_statuses.len(),
+            changed_seed.seed,
+            changed_seed.exit_budget,
+        );
+
+        let mut changed_config = input();
+        changed_config.exit_budget += 1;
+        changed_config.config_id = simulation_config_identity(
+            changed_config.vm_statuses.len(),
+            changed_config.seed,
+            changed_config.exit_budget,
+        );
+
+        let mut changed_artifact = input();
+        changed_artifact.guest_artifact_ids = vec![[CHANGED_ARTIFACT_BYTE; BLAKE3_BYTES]];
+
+        for changed in [changed_seed, changed_config, changed_artifact] {
+            let candidate =
+                complete_round(&changed, plan_round(&changed).unwrap(), &observations()).unwrap();
+            let first_difference = baseline
+                .events
+                .iter()
+                .zip(&candidate.events)
+                .position(|(left, right)| left != right);
+            assert_eq!(first_difference, Some(0));
+            assert_ne!(baseline.identity(), candidate.identity());
+        }
     }
 
     #[test]

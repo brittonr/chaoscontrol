@@ -11,14 +11,14 @@ Today a deterministic schedule cannot execute without KVM. The evidence crate's 
 | `scheduler.rs` and `scheduler/core.rs` | Pure core | `chaoscontrol-sim-core::scheduler`; the VMM path is a compatibility re-export. |
 | Round tick, virtual time, VM selection, command sequence, and canonical round trace | Pure core | `chaoscontrol-sim-core::kernel`; the VMM supplies explicit VM status and applies admitted commands. |
 | Execution commands, exit observations, sequence checks, and DTO bounds | Pure core | `chaoscontrol-sim-core::boundary`. |
-| Network routing, seeded packet mutation, delivery ordering, and network fault state | Core candidate | The current implementation remains in `controller.rs` until its fault-outcome coupling is separated. It is not classified as a machine effect. |
-| Fault schedule selection and application planning | Existing pure core dependency | `chaoscontrol-fault`; the simulation core consumes its typed plans rather than duplicating policy. |
-| Scheduler snapshot state and validation | Pure core | Relocated with the scheduler. Complete VM/device snapshot DTOs remain in the shell because they contain KVM ABI and device types. |
+| Network routing, seeded packet mutation, delivery ordering, and network fault state | Pure core | `chaoscontrol-sim-core::network`; the controller keeps compatibility re-exports and applies packet delivery effects. |
+| Fault schedule selection and application planning | Existing pure core dependency | `chaoscontrol-sim-core::fault` exposes the `chaoscontrol-fault` state machine and prevents a second selector in the KVM shell. |
+| Scheduler and network snapshot state and validation | Pure core | Scheduler snapshots moved with the scheduler. `SimulationCoreSnapshot` validates tick and network shape. Complete VM/device snapshots remain in the shell because they contain KVM ABI and device types. |
 | `SimulationController`, VM creation, kernel loading, dlog paths, and orchestration | Imperative shell | `chaoscontrol-vmm::controller`. |
 | `vm.rs`, `cpu.rs`, `memory.rs`, `registers.rs`, `snapshot.rs`, and `devices/` | Imperative shell | KVM ioctls, guest memory/register access, MMIO, interrupts, and capture/restore effects remain in `chaoscontrol-vmm`. |
 | `chaoscontrol-explore` workers and CLI | Imperative shell | Existing VMM paths remain stable through compatibility adapters. |
 
-The remaining extraction boundary is explicit: network decisions must move after their evidence-ledger coupling is split. VM and device snapshot effects cannot move into the pure crate.
+The remaining boundary is explicit: VM and device capture or restore effects cannot move into the pure crate. The shell retains those effects and validates their pure scheduler and network projections before mutation.
 
 ## Decisions
 

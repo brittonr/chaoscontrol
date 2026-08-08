@@ -43,6 +43,7 @@ pub mod sdk_local_report;
 mod sdk_local_verdict;
 pub mod semantic_history;
 pub mod simulator_profile;
+pub use chaoscontrol_smr;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,
     read_history_path as read_consistency_history_path,

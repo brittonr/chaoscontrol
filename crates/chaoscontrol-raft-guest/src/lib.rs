@@ -783,6 +783,280 @@ impl TestCluster {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Implementation-neutral SMR workload adapter
+// ═══════════════════════════════════════════════════════════════════════
+
+use chaoscontrol_smr::{
+    chain_transition, ChainObservation, LifecycleState, ObservationMode, ProposalOutcome,
+    SmrConsumerAdapter, SmrError, SmrWorkloadPlan, TerminalStatus,
+};
+
+/// Thin adapter from the Raft guest's committed application values to the
+/// implementation-neutral SMR workload contract.
+///
+/// The adapter reads only the committed application projection. It does not
+/// expose terms, votes, leaders, quorums, or protocol messages.
+#[derive(Debug, Clone)]
+pub struct RaftSmrAdapter {
+    plan: SmrWorkloadPlan,
+    replica_id: String,
+    lifecycle: LifecycleState,
+    terminal_status: Option<TerminalStatus>,
+    observations: Vec<ChainObservation>,
+    committed_values: Vec<u64>,
+    pending_proposals: Vec<(String, Vec<u8>)>,
+}
+
+impl RaftSmrAdapter {
+    pub fn new(plan: SmrWorkloadPlan, replica_id: impl Into<String>) -> Self {
+        Self {
+            plan,
+            replica_id: replica_id.into(),
+            lifecycle: LifecycleState::Starting,
+            terminal_status: None,
+            observations: Vec::new(),
+            committed_values: Vec::new(),
+            pending_proposals: Vec::new(),
+        }
+    }
+
+    pub fn mark_ready(&mut self) {
+        self.lifecycle = LifecycleState::Ready;
+    }
+
+    pub fn finish(&mut self, status: TerminalStatus) {
+        self.terminal_status = Some(status);
+        self.lifecycle = match status {
+            TerminalStatus::Failed => LifecycleState::Failed,
+            _ => LifecycleState::Stopped,
+        };
+    }
+
+    /// Return bounded pending semantic proposals to the guest shell.
+    pub fn take_pending_proposals(&mut self) -> Vec<(String, Vec<u8>)> {
+        std::mem::take(&mut self.pending_proposals)
+    }
+
+    /// Observe the consumer's committed application path.
+    pub fn observe_committed_values(&mut self, values: &[u64]) -> Result<(), SmrError> {
+        if values.len() < self.committed_values.len() {
+            return Err(SmrError {
+                class: "raft-adapter-rollback",
+                detail: "committed application projection rolled back".to_string(),
+            });
+        }
+        if values
+            .iter()
+            .zip(&self.committed_values)
+            .any(|(current, recorded)| current != recorded)
+        {
+            return Err(SmrError {
+                class: "raft-adapter-divergence",
+                detail: "committed application projection changed an observed value".to_string(),
+            });
+        }
+        let maximum_commands =
+            usize::try_from(self.plan.profile.bounds.maximum_commands).unwrap_or(usize::MAX);
+        if values.len() > maximum_commands {
+            return Err(SmrError {
+                class: "raft-adapter-bound",
+                detail: "committed application projection exceeds maximum_commands".to_string(),
+            });
+        }
+        let mut prior_digest = self.observations.last().map_or_else(
+            || self.plan.genesis_digest.clone(),
+            |item| item.digest.clone(),
+        );
+        for (offset, value) in values[self.committed_values.len()..].iter().enumerate() {
+            let command_index = u64::try_from(self.committed_values.len() + offset)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1);
+            let digest = chain_transition(
+                &self.plan.profile_ref,
+                command_index,
+                &prior_digest,
+                &value.to_be_bytes(),
+            )?;
+            let event_sequence = self
+                .observations
+                .last()
+                .map_or(1, |item| item.event_sequence.saturating_add(1));
+            self.observations.push(ChainObservation {
+                event_sequence,
+                profile_ref: self.plan.profile_ref.clone(),
+                replica_id: self.replica_id.clone(),
+                command_index,
+                prior_digest,
+                digest: digest.clone(),
+                application_state_ref: digest.clone(),
+            });
+            prior_digest = digest;
+        }
+        self.committed_values = values.to_vec();
+        Ok(())
+    }
+}
+
+impl SmrConsumerAdapter for RaftSmrAdapter {
+    fn lifecycle(&self) -> LifecycleState {
+        self.lifecycle
+    }
+
+    fn propose(&mut self, operation_id: &str, command: &[u8]) -> ProposalOutcome {
+        let maximum_commands =
+            usize::try_from(self.plan.profile.bounds.maximum_commands).unwrap_or(usize::MAX);
+        let command_length = u64::try_from(command.len()).unwrap_or(u64::MAX);
+        if operation_id.is_empty()
+            || command.is_empty()
+            || command_length > self.plan.profile.bounds.maximum_command_bytes
+            || self.pending_proposals.len() >= maximum_commands
+        {
+            return ProposalOutcome::DefinitelyRejected;
+        }
+        self.pending_proposals
+            .push((operation_id.to_string(), command.to_vec()));
+        ProposalOutcome::Indefinite
+    }
+
+    fn observations(&self) -> &[ChainObservation] {
+        &self.observations
+    }
+
+    fn observation_mode(&self) -> ObservationMode {
+        self.plan.profile.observation_mode
+    }
+
+    fn dropped_observations(&self) -> u64 {
+        0
+    }
+
+    fn terminal_status(&self) -> Option<TerminalStatus> {
+        self.terminal_status
+    }
+}
+
+impl Node {
+    /// Project committed application values without exposing protocol metadata.
+    pub fn committed_application_values(&self) -> Vec<u64> {
+        self.log
+            .iter()
+            .take(self.commit_index)
+            .map(|entry| entry.value)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod smr_adapter_tests {
+    use super::*;
+    use chaoscontrol_smr::{
+        admit_profile, LivenessProfile, SmrWorkloadProfile, WorkloadBounds, PROFILE_SCHEMA,
+    };
+
+    const REFERENCE: &str =
+        "blake3:0000000000000000000000000000000000000000000000000000000000000000";
+    const MAXIMUM_COMMANDS: u64 = 8;
+    const MAXIMUM_COMMAND_BYTES: u64 = 1_024;
+    const MAXIMUM_CLIENTS: u32 = 2;
+    const MAXIMUM_CONCURRENCY: u32 = 2;
+    const MAXIMUM_VIRTUAL_PROGRESS: u64 = 100;
+    const MAXIMUM_TRACE_EVENTS: u64 = 128;
+    const MAXIMUM_FAULT_ACTIONS: u64 = 16;
+    const MAXIMUM_REPLAY_EVENTS: u64 = 128;
+    const MAXIMUM_EVIDENCE_BYTES: u64 = 65_536;
+    const MAXIMUM_REDUCTION_ATTEMPTS: u64 = 64;
+    const LIVENESS_HORIZON: u64 = 20;
+    const FIRST_VALUE: u64 = 7;
+    const SECOND_VALUE: u64 = 9;
+    const SECOND_COMMIT_INDEX: usize = 2;
+
+    fn plan() -> SmrWorkloadPlan {
+        admit_profile(&SmrWorkloadProfile {
+            schema: PROFILE_SCHEMA.to_string(),
+            profile_id: "raft-smr-adapter".to_string(),
+            initial_state_ref: REFERENCE.to_string(),
+            observation_mode: ObservationMode::Lossless,
+            bounds: WorkloadBounds {
+                maximum_commands: MAXIMUM_COMMANDS,
+                maximum_command_bytes: MAXIMUM_COMMAND_BYTES,
+                maximum_clients: MAXIMUM_CLIENTS,
+                maximum_concurrency: MAXIMUM_CONCURRENCY,
+                maximum_virtual_progress: MAXIMUM_VIRTUAL_PROGRESS,
+                maximum_trace_events: MAXIMUM_TRACE_EVENTS,
+                maximum_fault_actions: MAXIMUM_FAULT_ACTIONS,
+                maximum_replay_events: MAXIMUM_REPLAY_EVENTS,
+                maximum_evidence_bytes: MAXIMUM_EVIDENCE_BYTES,
+                maximum_reduction_attempts: MAXIMUM_REDUCTION_ATTEMPTS,
+            },
+            liveness: LivenessProfile {
+                profile_id: "recovered-quorum".to_string(),
+                required_progress: 1,
+                virtual_progress_horizon: LIVENESS_HORIZON,
+            },
+        })
+        .expect("valid profile")
+    }
+
+    #[test]
+    fn raft_adapter_projects_only_committed_application_values() {
+        let mut node = Node::new(0);
+        node.log = vec![
+            LogEntry {
+                term: 1,
+                value: FIRST_VALUE,
+            },
+            LogEntry {
+                term: 1,
+                value: SECOND_VALUE,
+            },
+        ];
+        node.commit_index = 1;
+        let mut adapter = RaftSmrAdapter::new(plan(), "raft-replica-a");
+        adapter.mark_ready();
+        assert_eq!(
+            adapter.propose("operation-a", b"command-a"),
+            ProposalOutcome::Indefinite
+        );
+        assert_eq!(adapter.take_pending_proposals().len(), 1);
+        adapter
+            .observe_committed_values(&node.committed_application_values())
+            .expect("committed projection");
+        assert_eq!(adapter.observations().len(), 1);
+        node.commit_index = SECOND_COMMIT_INDEX;
+        adapter
+            .observe_committed_values(&node.committed_application_values())
+            .expect("advanced projection");
+        assert_eq!(adapter.observations().len(), SECOND_COMMIT_INDEX);
+    }
+
+    #[test]
+    fn raft_adapter_rejects_changed_or_rolled_back_application_prefix() {
+        let mut adapter = RaftSmrAdapter::new(plan(), "raft-replica-a");
+        assert_eq!(
+            adapter.propose("", b"command-a"),
+            ProposalOutcome::DefinitelyRejected
+        );
+        let oversized_command_length =
+            usize::try_from(MAXIMUM_COMMAND_BYTES).expect("command byte bound") + 1;
+        assert_eq!(
+            adapter.propose("operation-a", &vec![0_u8; oversized_command_length]),
+            ProposalOutcome::DefinitelyRejected
+        );
+        adapter
+            .observe_committed_values(&[FIRST_VALUE, SECOND_VALUE])
+            .expect("initial projection");
+        let changed = adapter
+            .observe_committed_values(&[FIRST_VALUE, FIRST_VALUE])
+            .expect_err("changed projection");
+        assert_eq!(changed.class, "raft-adapter-divergence");
+        let rollback = adapter
+            .observe_committed_values(&[FIRST_VALUE])
+            .expect_err("rollback projection");
+        assert_eq!(rollback.class, "raft-adapter-rollback");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Tests
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -367,6 +367,7 @@ dependencies = [
  "cap-std",
  "chaoscontrol-protocol",
  "chaoscontrol-replay-evidence-core",
+ "chaoscontrol-smr",
  "chaoscontrol-vmm",
  "libc",
  "serde",
@@ -464,6 +465,7 @@ name = "chaoscontrol-raft-guest"
 version = "0.1.0"
 dependencies = [
  "chaoscontrol-sdk",
+ "chaoscontrol-smr",
  "libc",
  "linkme",
  "serde_json",
@@ -526,6 +528,15 @@ dependencies = [
  "libc",
  "linkme",
  "rand",
+ "serde_json",
+]
+
+[[package]]
+name = "chaoscontrol-smr"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
  "serde_json",
 ]
 

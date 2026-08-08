@@ -18,13 +18,54 @@
 
 use chaoscontrol_raft_guest::{
     check_election_safety, check_leader_completeness, check_log_matching, quorum_for, BugMode,
-    LogEntry, Message, Node, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER,
+    LogEntry, Message, Node, RaftSmrAdapter, Role, ELECTION_TIMEOUT_BASE, ELECTION_TIMEOUT_JITTER,
     HEARTBEAT_INTERVAL, NUM_NODES,
 };
 use chaoscontrol_sdk::assert::details;
 use chaoscontrol_sdk::prelude::*;
 use chaoscontrol_sdk::{coverage, kcov, lifecycle, random};
+use chaoscontrol_smr::{
+    admit_profile, validate_history, LivenessProfile, ObservationMode, SafetyVerdict,
+    SmrConsumerAdapter, SmrWorkloadPlan, SmrWorkloadProfile, WorkloadBounds, PROFILE_SCHEMA,
+    SUPPORTED_MAXIMUM_COMMANDS, SUPPORTED_MAXIMUM_EVIDENCE_BYTES, SUPPORTED_MAXIMUM_FAULT_ACTIONS,
+    SUPPORTED_MAXIMUM_REDUCTION_ATTEMPTS, SUPPORTED_MAXIMUM_REPLAY_EVENTS,
+    SUPPORTED_MAXIMUM_TRACE_EVENTS, SUPPORTED_MAXIMUM_VIRTUAL_PROGRESS,
+};
 use serde_json::json;
+
+const RAFT_SMR_INITIAL_STATE_REF: &str =
+    "blake3:0000000000000000000000000000000000000000000000000000000000000000";
+const RAFT_SMR_MAXIMUM_COMMAND_BYTES: u64 = std::mem::size_of::<u64>() as u64;
+const RAFT_SMR_MAXIMUM_CLIENTS: u32 = 9;
+const RAFT_SMR_MAXIMUM_CONCURRENCY: u32 = RAFT_SMR_MAXIMUM_CLIENTS;
+const RAFT_SMR_LIVENESS_HORIZON: u64 = 1_000;
+
+fn raft_smr_plan() -> SmrWorkloadPlan {
+    admit_profile(&SmrWorkloadProfile {
+        schema: PROFILE_SCHEMA.to_string(),
+        profile_id: "raft-guest-smr-chain-v1".to_string(),
+        initial_state_ref: RAFT_SMR_INITIAL_STATE_REF.to_string(),
+        observation_mode: ObservationMode::Lossless,
+        bounds: WorkloadBounds {
+            maximum_commands: SUPPORTED_MAXIMUM_COMMANDS,
+            maximum_command_bytes: RAFT_SMR_MAXIMUM_COMMAND_BYTES,
+            maximum_clients: RAFT_SMR_MAXIMUM_CLIENTS,
+            maximum_concurrency: RAFT_SMR_MAXIMUM_CONCURRENCY,
+            maximum_virtual_progress: SUPPORTED_MAXIMUM_VIRTUAL_PROGRESS,
+            maximum_trace_events: SUPPORTED_MAXIMUM_TRACE_EVENTS,
+            maximum_fault_actions: SUPPORTED_MAXIMUM_FAULT_ACTIONS,
+            maximum_replay_events: SUPPORTED_MAXIMUM_REPLAY_EVENTS,
+            maximum_evidence_bytes: SUPPORTED_MAXIMUM_EVIDENCE_BYTES,
+            maximum_reduction_attempts: SUPPORTED_MAXIMUM_REDUCTION_ATTEMPTS,
+        },
+        liveness: LivenessProfile {
+            profile_id: "raft-guest-recovered-quorum-v1".to_string(),
+            required_progress: 1,
+            virtual_progress_horizon: RAFT_SMR_LIVENESS_HORIZON,
+        },
+    })
+    .expect("the static Raft SMR profile must be valid")
+}
 
 fn role_str(r: Role) -> &'static str {
     match r {
@@ -189,6 +230,89 @@ impl CommittedValues {
     }
 }
 
+struct SmrCheckSummary {
+    pass: bool,
+    adapter_errors: Vec<String>,
+    history_error: Option<String>,
+    violations: usize,
+    observations: usize,
+}
+
+struct RaftSmrRuntime {
+    plan: SmrWorkloadPlan,
+    adapters: Vec<RaftSmrAdapter>,
+    checked_observations: usize,
+    last_pass: bool,
+    last_history_error: Option<String>,
+    last_violations: usize,
+}
+
+impl RaftSmrRuntime {
+    fn new(num_nodes: usize) -> Self {
+        let plan = raft_smr_plan();
+        let adapters = (0..num_nodes)
+            .map(|node_id| {
+                let mut adapter =
+                    RaftSmrAdapter::new(plan.clone(), format!("raft-replica-{node_id}"));
+                adapter.mark_ready();
+                adapter
+            })
+            .collect();
+        Self {
+            plan,
+            adapters,
+            checked_observations: 0,
+            last_pass: true,
+            last_history_error: None,
+            last_violations: 0,
+        }
+    }
+
+    fn check(&mut self, nodes: &[Node]) -> SmrCheckSummary {
+        let mut adapter_errors = Vec::new();
+        for (node, adapter) in nodes.iter().zip(self.adapters.iter_mut()) {
+            let committed = node.committed_application_values();
+            if committed.len() >= adapter.observations().len() {
+                if let Err(error) = adapter.observe_committed_values(&committed) {
+                    adapter_errors.push(format!("replica={} {error}", node.id));
+                }
+            }
+        }
+        let observation_count = self
+            .adapters
+            .iter()
+            .map(|adapter| adapter.observations().len())
+            .sum();
+        if adapter_errors.is_empty() && observation_count != self.checked_observations {
+            let observations = self
+                .adapters
+                .iter()
+                .flat_map(|adapter| adapter.observations().iter().cloned())
+                .collect::<Vec<_>>();
+            match validate_history(&self.plan, &observations) {
+                Ok(report) => {
+                    self.last_pass = report.verdict == SafetyVerdict::Pass;
+                    self.last_history_error = None;
+                    self.last_violations = report.violations.len();
+                }
+                Err(error) => {
+                    self.last_pass = false;
+                    self.last_history_error = Some(error.to_string());
+                    self.last_violations = 0;
+                }
+            }
+            self.checked_observations = observation_count;
+        }
+        SmrCheckSummary {
+            pass: adapter_errors.is_empty() && self.last_pass,
+            adapter_errors,
+            history_error: self.last_history_error.clone(),
+            violations: self.last_violations,
+            observations: observation_count,
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Main
 // ═══════════════════════════════════════════════════════════════════════
@@ -221,6 +345,7 @@ fn main() {
 
     let mut faults = FaultState::new(num_nodes);
     let mut committed_values = CommittedValues::new(num_nodes);
+    let mut smr_runtime = RaftSmrRuntime::new(num_nodes);
     let mut values_proposed = 0u64;
     let mut values_committed = 0usize;
     let mut tick = 0usize;
@@ -328,6 +453,7 @@ fn main() {
             check_safety_invariants(
                 &nodes,
                 &mut committed_values,
+                &mut smr_runtime,
                 values_committed,
                 active,
                 tick,
@@ -917,6 +1043,7 @@ fn main() {
         check_safety_invariants(
             &nodes,
             &mut committed_values,
+            &mut smr_runtime,
             values_committed,
             active,
             tick,
@@ -976,6 +1103,7 @@ fn main() {
 fn check_safety_invariants(
     nodes: &[Node],
     committed_values: &mut CommittedValues,
+    smr_runtime: &mut RaftSmrRuntime,
     _values_committed: usize,
     _active: usize,
     tick: usize,
@@ -1000,6 +1128,21 @@ fn check_safety_invariants(
         "first": integrity_violations.first().map(|(n, idx, old, new)|
             json!({"node": n, "index": idx, "old_value": old, "new_value": new})
         )}),
+    );
+
+    let smr_summary = smr_runtime.check(nodes);
+    cc_assert_always_category!(
+        "raft",
+        "invariant",
+        smr_summary.pass,
+        "SMR chain: committed application histories agree",
+        &json!({
+            "tick": tick,
+            "adapter_errors": smr_summary.adapter_errors,
+            "history_error": smr_summary.history_error,
+            "violations": smr_summary.violations,
+            "observations": smr_summary.observations,
+        }),
     );
 
     // Election safety

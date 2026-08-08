@@ -96,6 +96,11 @@ nix develop -c cargo test -p chaoscontrol-vmm --test deterministic_smp_kvm
 - **Per-round history**: Coverage growth curves, plateau detection,
   bug discovery timeline
 
+### Pure Simulation Core
+- **Machine-independent decisions**: `chaoscontrol-sim-core` owns scheduling, virtual time, network transitions, fault selection, and canonical round traces.
+- **Typed shell boundary**: The core emits commands and validates observations. `chaoscontrol-vmm` retains KVM, device, filesystem, and snapshot effects.
+- **Bound identities**: Round traces bind the seed, deterministic configuration, and exact BLAKE3 guest artifact identities.
+
 ### Determinism Logging
 - **Binary dlog format**: Per-exit event log for diagnosing non-determinism
 - **Structural diff**: Compare two runs ignoring data payloads
@@ -112,7 +117,8 @@ chaoscontrol/
     ├── chaoscontrol-protocol/             # SDK ↔ VMM wire protocol (no_std)
     ├── chaoscontrol-sdk/                  # Guest-side SDK (Antithesis-style)
     ├── chaoscontrol-fault/                # Host-side fault injection engine
-    ├── chaoscontrol-vmm/                  # VMM implementation
+    ├── chaoscontrol-sim-core/             # Pure simulation decisions and traces
+    ├── chaoscontrol-vmm/                  # KVM and machine-effect shell
     ├── chaoscontrol-dashboard/            # Web dashboard backend and static UI
     ├── chaoscontrol-explore/              # Coverage-guided exploration engine
     ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger
@@ -567,6 +573,16 @@ Complete evidence requires an admitted Nickel profile, exact runtime cohort,
 producer and userspace accounting, stable target identity, and cleanup evidence.
 See [`docs/ebpf-trace-evidence.md`](docs/ebpf-trace-evidence.md).
 
+### SpaceWasm MVP differential evidence
+
+`chaoscontrol-wasm-differential` remeasures the exact Mantle reference bundle. It then compares bounded SpaceWasm and Wasmtime observations for the admitted WebAssembly 1.0 core-module corpus.
+
+```bash
+nix build .#checks.x86_64-linux.spacewasm-mvp-differential -L
+```
+
+See [the SpaceWasm MVP differential guide](docs/spacewasm-mvp-differential.md) for the profile, command, evidence fields, and non-claims.
+
 ## Architecture
 
 ### VM Setup (`vm.rs`)
@@ -844,5 +860,8 @@ An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workl
 
 ## References
 
+- [NASA SpaceWasm](https://github.com/nasa/spacewasm) at `e24cf09355a90497148eb5029fdb8e3400bd63e3` — exact experimental core-MVP interpreter used by the bounded diagnostic rail.
+- [`../mantle/`](../mantle/) at `a141fcbaafe41f9a413a81275a33fe915bfca370` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
+- [Wasmtime](https://github.com/bytecodealliance/wasmtime) — independent reference engine for normalized bounded observations; a match does not prove engine equivalence.
 - [Antithesis documentation index](docs/references/antithesis-documentation.md) — design reference for deterministic simulation, fault injection, assertions, exploration, replay, and debugging.
 - [antithesishq/antithesis-skills](https://github.com/antithesishq/antithesis-skills) — workflow-design prior art for staged agent research, workload onboarding, launch gates, and receipt-first triage. ChaosControl does not depend on Antithesis, Snouty, Docker Compose, Kubernetes, or hosted services.

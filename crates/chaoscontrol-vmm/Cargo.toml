@@ -11,6 +11,7 @@ profiling = ["dep:tracing"]
 
 [dependencies]
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
+chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 regex = "1"
 kvm-ioctls = "0.19"

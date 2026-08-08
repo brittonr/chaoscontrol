@@ -25,6 +25,10 @@ name = "check-evidence-contracts"
 path = "src/bin/check-evidence-contracts.rs"
 
 [[bin]]
+name = "check-sim-core-purity"
+path = "src/bin/check-sim-core-purity.rs"
+
+[[bin]]
 name = "check-profile-projections"
 path = "src/bin/check-profile-projections.rs"
 

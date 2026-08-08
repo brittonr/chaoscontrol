@@ -223,6 +223,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-replay-verdict.ncl",
         "examples/raft-smr-workload-profile.ncl",
         "examples/kvm-ebpf-trace-capture-profile.ncl",
+        "examples/spacewasm-mvp-differential-profile.ncl",
     ] {
         let status = Command::new(&command[0])
             .args(&command[1..])
@@ -285,6 +286,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/campaign-profile.implicit-metrics.invalid.ncl",
         "fixtures/invalid/smr-workload-profile.unbounded.invalid.ncl",
         "fixtures/invalid/ebpf-trace-capture-profile.multi-producer-exact.invalid.ncl",
+        "fixtures/invalid/spacewasm-mvp-differential-profile.post-mvp.invalid.ncl",
         "fixtures/invalid/fault-schedule.out-of-range-target.invalid.ncl",
         "fixtures/invalid/fault-schedule.unordered.invalid.ncl",
         "fixtures/invalid/fault-schedule.overlapping-partition.invalid.ncl",

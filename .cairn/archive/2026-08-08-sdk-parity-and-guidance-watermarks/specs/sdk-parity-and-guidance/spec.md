@@ -4,7 +4,7 @@
 
 Track the surface parity between `chaoscontrol-sdk` and the Antithesis Rust SDK, and record the decision on guidance watermarks, without creating parity requirements.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Parity mapping is tracked
 

@@ -580,6 +580,10 @@ impl VirtioMmioDevice {
         &mut *self.backend
     }
 
+    pub fn limits(&self) -> VirtioLimits {
+        self.limits
+    }
+
     pub fn inject_used_write_failure(
         &mut self,
         queue_index: usize,

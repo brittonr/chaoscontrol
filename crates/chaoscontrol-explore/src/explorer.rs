@@ -1027,7 +1027,7 @@ impl Explorer {
             self.assertion_coverage(&result_info)
         };
 
-        let snap = controller.snapshot_all().ok();
+        let snap = self.controller.as_mut().unwrap().snapshot_all().ok();
 
         // Extract base memory images for incremental snapshots.
         // Every subsequent overlay snapshot in this round will share
@@ -1134,11 +1134,13 @@ impl Explorer {
             self.assertion_coverage(&result_info)
         };
         timings.coverage_ms += started.elapsed().as_secs_f64() * 1000.0;
+        let schedule_fingerprint = controller.schedule_fingerprint();
 
         // Use incremental snapshots when base memory is available.
         // This captures only the dirty pages (~1-5% of memory) instead
         // of copying all 256 MB per VM.
         let started = Instant::now();
+        let controller = self.controller.as_mut().unwrap();
         let snap = if !self.memory_bases.is_empty() {
             controller
                 .snapshot_all_incremental()
@@ -1151,8 +1153,6 @@ impl Explorer {
             controller.snapshot_all().ok()
         };
         timings.snapshot_ms += started.elapsed().as_secs_f64() * 1000.0;
-
-        let schedule_fingerprint = controller.schedule_fingerprint();
 
         Ok(BranchResult {
             coverage,
@@ -1239,16 +1239,16 @@ impl Explorer {
             self.assertion_coverage(&result_info)
         };
         timings.coverage_ms += started.elapsed().as_secs_f64() * 1000.0;
+        let schedule_fingerprint = controller.schedule_fingerprint();
 
         let started = Instant::now();
+        let controller = self.controller.as_mut().unwrap();
         let snap = if !self.memory_bases.is_empty() {
             controller.snapshot_all_incremental().ok().map(|(s, _)| s)
         } else {
             controller.snapshot_all().ok()
         };
         timings.snapshot_ms += started.elapsed().as_secs_f64() * 1000.0;
-
-        let schedule_fingerprint = controller.schedule_fingerprint();
 
         Ok(BranchResult {
             coverage,
@@ -1488,7 +1488,7 @@ impl Explorer {
                 id: 0,
                 snapshot: self
                     .controller
-                    .as_ref()
+                    .as_mut()
                     .and_then(|c| c.snapshot_all().ok())
                     .unwrap_or_else(|| {
                         // Fallback: empty snapshot (will trigger re-bootstrap)
@@ -1516,7 +1516,7 @@ impl Explorer {
 
             for &(idx, _) in by_edges.iter().take(recycle_count) {
                 let entry = &entries[idx];
-                if let Some(ref controller) = self.controller {
+                if let Some(ref mut controller) = self.controller {
                     if let Ok(snap) = controller.snapshot_all() {
                         let frontier_entry = FrontierEntry {
                             id: 0,

@@ -949,10 +949,10 @@ impl FaultEngine {
         {
             return Err(FaultTransitionError::SnapshotRngStateMismatch);
         }
-        if !self.schedule.snapshot_is_valid(&snapshot.schedule) {
+        if !snapshot.schedule.is_valid() {
             return Err(FaultTransitionError::SnapshotScheduleCursorMismatch);
         }
-        if self.schedule.identity() != snapshot.schedule_id {
+        if snapshot.schedule.identity() != snapshot.schedule_id {
             return Err(FaultTransitionError::SnapshotScheduleIdentityMismatch);
         }
         let mut scheduled_prefix = Vec::new();
@@ -972,7 +972,7 @@ impl FaultEngine {
                 } => {
                     let entry_index = usize::try_from(entry_index)
                         .map_err(|_| FaultTransitionError::SnapshotAttemptSourceMismatch)?;
-                    let entry = self
+                    let entry = snapshot
                         .schedule
                         .entry(entry_index)
                         .ok_or(FaultTransitionError::SnapshotAttemptSourceMismatch)?;
@@ -1122,7 +1122,7 @@ impl FaultEngine {
     }
 
     fn apply_snapshot(&mut self, snapshot: &EngineSnapshot) {
-        let mut restored_schedule = self.schedule.clone();
+        let mut restored_schedule = FaultSchedule::new();
         restored_schedule.restore(&snapshot.schedule);
         let mut restored_rng = ChaCha20Rng::from_seed(snapshot.rng_seed);
         restored_rng.set_stream(snapshot.rng_stream);
@@ -1285,7 +1285,7 @@ impl FaultEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schedule::FaultScheduleBuilder;
+    use crate::schedule::{FaultScheduleBuilder, ScheduledFault};
 
     fn make_page(command: u8, flags: u8, id: u32) -> HypercallPage {
         let mut page = HypercallPage::zeroed();
@@ -1668,6 +1668,56 @@ mod tests {
         assert!(engine
             .validate_orchestration_snapshot(&engine.snapshot())
             .is_ok());
+    }
+
+    #[test]
+    fn snapshot_restores_complete_schedule_after_counterfactual_rebind() {
+        const SNAPSHOT_FAULT_TIME_NS: u64 = 10;
+        const REBOUND_FAULT_TIME_NS: u64 = 20;
+        let snapshot_schedule = FaultScheduleBuilder::new()
+            .at_ns(SNAPSHOT_FAULT_TIME_NS, Fault::ProcessKill { target: 0 })
+            .build();
+        let rebound_schedule = FaultScheduleBuilder::new()
+            .at_ns(REBOUND_FAULT_TIME_NS, Fault::NetworkHeal)
+            .build();
+        let mut engine = FaultEngine::new(EngineConfig {
+            schedule: Some(snapshot_schedule),
+            ..EngineConfig::default()
+        });
+        engine.begin_run();
+        let snapshot = engine.snapshot();
+        let snapshot_schedule_id = snapshot.schedule_id();
+
+        engine.rebind_fresh_run_at(rebound_schedule, snapshot.run_sequence());
+        assert_ne!(engine.snapshot().schedule_id(), snapshot_schedule_id);
+
+        engine.restore_orchestration(&snapshot).unwrap();
+
+        let restored = engine.snapshot();
+        assert_eq!(restored.schedule_id(), snapshot_schedule_id);
+        assert_eq!(restored.schedule.cursor(), snapshot.schedule.cursor());
+        assert_eq!(restored.schedule.identity(), snapshot.schedule.identity());
+    }
+
+    #[test]
+    fn snapshot_rejects_schedule_content_tampering() {
+        const SCHEDULED_AT_NS: u64 = 10;
+        let schedule = FaultScheduleBuilder::new()
+            .at_ns(SCHEDULED_AT_NS, Fault::ProcessKill { target: 0 })
+            .build();
+        let engine = FaultEngine::new(EngineConfig {
+            schedule: Some(schedule),
+            ..EngineConfig::default()
+        });
+        let mut tampered = engine.snapshot();
+        tampered
+            .schedule
+            .replace_entry(0, ScheduledFault::new(SCHEDULED_AT_NS, Fault::NetworkHeal));
+
+        assert_eq!(
+            engine.validate_orchestration_snapshot(&tampered),
+            Err(FaultTransitionError::SnapshotScheduleIdentityMismatch)
+        );
     }
 
     #[test]

@@ -131,7 +131,61 @@ pub struct BlockSnapshot {
     observation_overflowed: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlockSnapshotValidationError {
+    DeviceSizeOverflow,
+    DeviceSizeMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    FaultAttributionCount,
+    ObservationCapacity,
+    ObservationOverflow,
+    PageIndexOverflow {
+        layer: &'static str,
+        page: usize,
+    },
+    PageOutOfBounds {
+        layer: &'static str,
+        page: usize,
+        base_bytes: usize,
+    },
+    PageLength {
+        layer: &'static str,
+        page: usize,
+        expected: usize,
+        actual: usize,
+    },
+}
+
 impl BlockSnapshot {
+    pub fn device_size(&self) -> Result<u64, BlockSnapshotValidationError> {
+        u64::try_from(self.base.len()).map_err(|_| BlockSnapshotValidationError::DeviceSizeOverflow)
+    }
+
+    pub fn validate_device_size(&self, expected: u64) -> Result<(), BlockSnapshotValidationError> {
+        let actual = self.device_size()?;
+        if actual != expected {
+            return Err(BlockSnapshotValidationError::DeviceSizeMismatch { expected, actual });
+        }
+        Ok(())
+    }
+
+    /// Validate snapshot-owned structure without consulting external evidence.
+    pub fn validate_structure(&self) -> Result<(), BlockSnapshotValidationError> {
+        if self.faults.len() != self.fault_attempt_ids.len() {
+            return Err(BlockSnapshotValidationError::FaultAttributionCount);
+        }
+        if self.fault_observations.len() > MAX_PENDING_BLOCK_OBSERVATIONS {
+            return Err(BlockSnapshotValidationError::ObservationCapacity);
+        }
+        if self.observation_overflowed != 0 {
+            return Err(BlockSnapshotValidationError::ObservationOverflow);
+        }
+        validate_snapshot_overlay("dirty", &self.dirty, self.base.len())?;
+        validate_snapshot_overlay("volatile", &self.volatile, self.base.len())
+    }
+
     /// Validate pending block mechanisms against an authoritative ledger.
     pub fn validate_pending_faults(
         &self,
@@ -181,6 +235,35 @@ impl BlockSnapshot {
         let observations = self.fault_observations.iter().cloned().collect::<Vec<_>>();
         validate_pending_fault_observations(ledger, &observations)
     }
+}
+
+fn validate_snapshot_overlay(
+    layer: &'static str,
+    pages: &BTreeMap<usize, Vec<u8>>,
+    base_bytes: usize,
+) -> Result<(), BlockSnapshotValidationError> {
+    for (&page, data) in pages {
+        let start = page
+            .checked_mul(PAGE_SIZE)
+            .ok_or(BlockSnapshotValidationError::PageIndexOverflow { layer, page })?;
+        if start >= base_bytes {
+            return Err(BlockSnapshotValidationError::PageOutOfBounds {
+                layer,
+                page,
+                base_bytes,
+            });
+        }
+        let expected = PAGE_SIZE.min(base_bytes - start);
+        if data.len() != expected {
+            return Err(BlockSnapshotValidationError::PageLength {
+                layer,
+                page,
+                expected,
+                actual: data.len(),
+            });
+        }
+    }
+    Ok(())
 }
 
 fn block_fault_effect(
@@ -1125,6 +1208,53 @@ mod tests {
 
         // Stats preserved
         assert_eq!(restored.stats().writes, snap.stats.writes);
+    }
+
+    #[test]
+    fn snapshot_structure_accepts_valid_partial_last_page() {
+        let base_bytes = PAGE_SIZE + 1;
+        let mut block = DeterministicBlock::new(base_bytes);
+        block
+            .write(u64::try_from(PAGE_SIZE).expect("page offset"), &[u8::MAX])
+            .expect("write final partial page");
+
+        assert_eq!(block.snapshot().validate_structure(), Ok(()));
+    }
+
+    #[test]
+    fn snapshot_structure_rejects_out_of_range_and_malformed_pages() {
+        let mut out_of_range = DeterministicBlock::new(PAGE_SIZE).snapshot();
+        out_of_range.dirty.insert(1, vec![0; PAGE_SIZE]);
+        assert!(matches!(
+            out_of_range.validate_structure(),
+            Err(BlockSnapshotValidationError::PageOutOfBounds {
+                layer: "dirty",
+                page: 1,
+                base_bytes: PAGE_SIZE,
+            })
+        ));
+
+        let mut malformed = DeterministicBlock::new(PAGE_SIZE).snapshot();
+        malformed
+            .volatile
+            .insert(0, vec![0; PAGE_SIZE.saturating_sub(1)]);
+        assert!(matches!(
+            malformed.validate_structure(),
+            Err(BlockSnapshotValidationError::PageLength {
+                layer: "volatile",
+                page: 0,
+                expected: PAGE_SIZE,
+                actual,
+            }) if actual == PAGE_SIZE.saturating_sub(1)
+        ));
+
+        let snapshot = DeterministicBlock::new(PAGE_SIZE).snapshot();
+        let actual = u64::try_from(PAGE_SIZE).expect("page size fits u64");
+        let expected = actual.saturating_add(1);
+        assert_eq!(
+            snapshot.validate_device_size(expected),
+            Err(BlockSnapshotValidationError::DeviceSizeMismatch { expected, actual })
+        );
     }
 
     #[test]

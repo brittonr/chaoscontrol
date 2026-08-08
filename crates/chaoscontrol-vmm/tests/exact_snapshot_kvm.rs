@@ -12,6 +12,10 @@ const OUTPUT_PORT: u16 = 0x10;
 const FIRST_OUTPUT: u8 = 0x11;
 const SECOND_OUTPUT: u8 = 0x22;
 const THIRD_OUTPUT: u8 = 0x33;
+const SNAPSHOT_XMM_MARKER: u8 = 0xA5;
+const MUTATED_XMM_MARKER: u8 = 0x5A;
+const EVENT_SET: u8 = 1;
+const EVENT_CLEAR: u8 = 0;
 const GUEST_CODE: [u8; 12] = [
     0xB0,
     FIRST_OUTPUT,
@@ -107,6 +111,44 @@ impl ContinuationHarness {
     fn remaining_trace(&mut self) -> Vec<(u16, Vec<u8>)> {
         vec![self.next_output(), self.next_output()]
     }
+
+    fn stage_pending_event_and_extended_state(&self) {
+        let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
+        fpu.xmm[0][0] = SNAPSHOT_XMM_MARKER;
+        self.vcpu.set_fpu(&fpu).expect("stage extended state");
+
+        let mut events = self.vcpu.get_vcpu_events().expect("read vCPU events");
+        events.nmi.pending = EVENT_SET;
+        events.nmi.masked = EVENT_SET;
+        self.vcpu
+            .set_vcpu_events(&events)
+            .expect("stage masked pending NMI");
+    }
+
+    fn mutate_pending_event_and_extended_state(&self) {
+        let mut fpu = self.vcpu.get_fpu().expect("read FPU state");
+        fpu.xmm[0][0] = MUTATED_XMM_MARKER;
+        self.vcpu.set_fpu(&fpu).expect("mutate extended state");
+
+        let mut events = self.vcpu.get_vcpu_events().expect("read vCPU events");
+        events.nmi.pending = EVENT_CLEAR;
+        events.nmi.masked = EVENT_CLEAR;
+        self.vcpu
+            .set_vcpu_events(&events)
+            .expect("clear pending NMI");
+    }
+
+    fn assert_pending_event_and_extended_state_restored(&self) {
+        let fpu = self.vcpu.get_fpu().expect("read restored FPU state");
+        assert_eq!(fpu.xmm[0][0], SNAPSHOT_XMM_MARKER);
+
+        let events = self
+            .vcpu
+            .get_vcpu_events()
+            .expect("read restored vCPU events");
+        assert_eq!(events.nmi.pending, EVENT_SET);
+        assert_eq!(events.nmi.masked, EVENT_SET);
+    }
 }
 
 #[test]
@@ -114,6 +156,7 @@ fn serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence() 
     let mut harness = ContinuationHarness::new();
     assert_eq!(harness.next_output(), (OUTPUT_PORT, vec![FIRST_OUTPUT]));
     harness.complete_pending_exit();
+    harness.stage_pending_event_and_extended_state();
 
     let snapshot = VcpuSnapshot::capture(&harness.vcpu, &harness.msr_indices)
         .expect("capture exact vCPU state");
@@ -123,9 +166,11 @@ fn serialized_vcpu_snapshot_replays_identical_guest_outputs_and_exit_sequence() 
 
     let uninterrupted = harness.remaining_trace();
     harness.complete_pending_exit();
+    harness.mutate_pending_event_and_extended_state();
     decoded
         .restore(&harness.vcpu)
         .expect("restore exact vCPU state");
+    harness.assert_pending_event_and_extended_state_restored();
     let replayed = harness.remaining_trace();
 
     let expected = vec![

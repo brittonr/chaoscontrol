@@ -147,21 +147,23 @@ impl FaultSchedule {
         self.cursor = 0;
     }
 
-    /// Snapshot the schedule state for later restore.
+    /// Snapshot the complete schedule and its progress for later restore.
     pub fn snapshot(&self) -> FaultScheduleSnapshot {
         FaultScheduleSnapshot {
+            faults: self.faults.clone(),
             cursor: self.cursor,
         }
     }
 
-    /// Check whether a snapshot cursor is within this schedule.
+    /// Check whether a snapshot exactly describes this schedule.
     pub fn snapshot_is_valid(&self, snapshot: &FaultScheduleSnapshot) -> bool {
-        snapshot.cursor <= self.faults.len()
+        snapshot.is_valid() && self.faults == snapshot.faults
     }
 
-    /// Restore schedule state from a validated snapshot.
+    /// Restore the complete schedule from a structurally valid snapshot.
     pub fn restore(&mut self, snapshot: &FaultScheduleSnapshot) {
-        assert!(self.snapshot_is_valid(snapshot));
+        assert!(snapshot.is_valid());
+        self.faults.clone_from(&snapshot.faults);
         self.cursor = snapshot.cursor;
     }
 }
@@ -193,13 +195,38 @@ impl Default for FaultSchedule {
     }
 }
 
-/// Snapshot of a [`FaultSchedule`]'s progress.
+/// Exact snapshot of a [`FaultSchedule`] and its progress.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FaultScheduleSnapshot {
+    faults: Vec<ScheduledFault>,
     cursor: usize,
 }
 
 impl FaultScheduleSnapshot {
+    /// Return whether the cursor and canonical ordering are structurally valid.
+    pub(crate) fn is_valid(&self) -> bool {
+        self.cursor <= self.faults.len()
+            && self
+                .faults
+                .iter()
+                .zip(self.faults.iter().skip(1))
+                .all(|(prior, next)| prior.time_ns <= next.time_ns)
+    }
+
+    /// Return the canonical BLAKE3 identity for the captured schedule.
+    pub(crate) fn identity(&self) -> FaultScheduleId {
+        fault_schedule_id(
+            self.faults
+                .iter()
+                .map(|entry| (entry.time_ns, entry.label.as_deref(), &entry.fault)),
+        )
+    }
+
+    /// Return one captured canonical entry by index.
+    pub(crate) fn entry(&self, index: usize) -> Option<&ScheduledFault> {
+        self.faults.get(index)
+    }
+
     /// Return the index of the next canonical schedule entry.
     pub fn cursor(&self) -> usize {
         self.cursor
@@ -208,6 +235,12 @@ impl FaultScheduleSnapshot {
     #[cfg(test)]
     pub(crate) fn set_cursor(&mut self, cursor: usize) {
         self.cursor = cursor;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn replace_entry(&mut self, index: usize, entry: ScheduledFault) {
+        assert!(index < self.faults.len());
+        self.faults[index] = entry;
     }
 }
 

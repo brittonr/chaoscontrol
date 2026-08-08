@@ -1,5 +1,6 @@
 mod virtio_support;
 
+use chaoscontrol_vmm::devices::virtio_chain::VirtqDesc;
 use chaoscontrol_vmm::devices::virtio_mmio::{
     VirtQueue, VirtioBackend, VirtioMmioDevice, VIRTIO_MMIO_MAGIC_VALUE,
     VIRTIO_MMIO_QUEUE_DESC_LOW, VIRTIO_MMIO_QUEUE_DEVICE_LOW, VIRTIO_MMIO_QUEUE_DRIVER_LOW,
@@ -27,6 +28,8 @@ const AHEAD_CURSOR: u16 = 1;
 struct DummyBackend {
     calls: Arc<AtomicUsize>,
 }
+
+struct CompletingBackend;
 
 impl VirtioBackend for DummyBackend {
     fn device_id(&self) -> u32 {
@@ -66,8 +69,55 @@ impl VirtioBackend for DummyBackend {
     }
 }
 
+impl VirtioBackend for CompletingBackend {
+    fn device_id(&self) -> u32 {
+        DUMMY_DEVICE_ID
+    }
+
+    fn device_features(&self) -> u64 {
+        0
+    }
+
+    fn num_queues(&self) -> usize {
+        ONE_QUEUE
+    }
+
+    fn process_queue(
+        &mut self,
+        _queue_idx: usize,
+        queue: &mut VirtQueue,
+        mem: &GuestMemoryMmap,
+    ) -> Result<bool, VirtioFailure> {
+        let Some(available) = queue.plan_next(mem)? else {
+            return Ok(false);
+        };
+        queue.stage_completion(available.head_index, 0)?;
+        queue.mark_backend_started()?;
+        queue.complete(mem, available.head_index, 0)?;
+        Ok(true)
+    }
+
+    fn read_config(&self, _offset: u64, data: &mut [u8]) {
+        data.fill(0);
+    }
+
+    fn write_config(&mut self, _offset: u64, _data: &[u8]) {}
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+
 fn device(calls: Arc<AtomicUsize>) -> VirtioMmioDevice {
     VirtioMmioDevice::new(DEVICE_BASE, DEVICE_IRQ, Box::new(DummyBackend { calls }))
+}
+
+fn completing_device() -> VirtioMmioDevice {
+    VirtioMmioDevice::new(DEVICE_BASE, DEVICE_IRQ, Box::new(CompletingBackend))
 }
 
 #[test]
@@ -247,6 +297,30 @@ fn transport_snapshot_restores_negotiation_queue_geometry_and_cursors() {
         .restore_snapshot(&snapshot, &mem)
         .expect("restore exact transport state");
     assert_eq!(transport.snapshot().unwrap(), snapshot);
+}
+
+#[test]
+fn transport_snapshot_restores_nonzero_cursors_and_pending_interrupt() {
+    let mem = memory();
+    let mut transport = completing_device();
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    write_descriptor(&mem, 0, VirtqDesc::default());
+    publish_head(&mem, 0, AHEAD_CURSOR);
+    assert!(transport.process_queues(&mem));
+    assert!(transport.interrupt_pending());
+
+    let snapshot = transport.snapshot().expect("capture completed request");
+    assert_eq!(snapshot.queues[0].last_avail_idx, AHEAD_CURSOR);
+    assert_eq!(snapshot.queues[0].next_used_idx, AHEAD_CURSOR);
+
+    let mut restored = completing_device();
+    restored
+        .restore_snapshot(&snapshot, &mem)
+        .expect("restore nonzero transport state");
+    assert!(restored.interrupt_pending());
+    assert_eq!(restored.snapshot().unwrap(), snapshot);
 }
 
 #[test]

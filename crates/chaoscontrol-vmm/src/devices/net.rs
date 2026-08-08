@@ -5,7 +5,7 @@
 //! The test harness injects packets into the RX queue and drains the TX
 //! queue to observe what the guest sends.
 
-use super::virtio_types::{DEFAULT_MAX_NET_TX_BYTES, DEFAULT_MAX_NET_TX_PACKETS};
+use super::virtio_types::{VirtioLimits, DEFAULT_MAX_NET_TX_BYTES, DEFAULT_MAX_NET_TX_PACKETS};
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +37,122 @@ pub struct NetSnapshot {
     rx_queue: VecDeque<Vec<u8>>,
     tx_queue: VecDeque<Vec<u8>>,
     stats: NetStats,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetSnapshotQueue {
+    Receive,
+    Transmit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NetSnapshotValidationError {
+    MacMismatch {
+        expected: [u8; 6],
+        actual: [u8; 6],
+    },
+    PacketLimit {
+        queue: NetSnapshotQueue,
+        requested: usize,
+        maximum: usize,
+    },
+    FrameLimit {
+        queue: NetSnapshotQueue,
+        requested: u64,
+        maximum: u64,
+    },
+    ByteLimit {
+        queue: NetSnapshotQueue,
+        requested: u64,
+        maximum: u64,
+    },
+    StatsUnderflow {
+        queue: NetSnapshotQueue,
+    },
+    Arithmetic,
+}
+
+impl NetSnapshot {
+    pub fn mac(&self) -> [u8; 6] {
+        self.mac
+    }
+
+    pub fn validate_mac(&self, expected: [u8; 6]) -> Result<(), NetSnapshotValidationError> {
+        let actual = self.mac();
+        if actual != expected {
+            return Err(NetSnapshotValidationError::MacMismatch { expected, actual });
+        }
+        Ok(())
+    }
+
+    /// Validate retained queue and counter facts before backend mutation.
+    pub fn validate_structure(
+        &self,
+        limits: VirtioLimits,
+    ) -> Result<(), NetSnapshotValidationError> {
+        if self.tx_queue.len() > limits.max_net_tx_packets {
+            return Err(NetSnapshotValidationError::PacketLimit {
+                queue: NetSnapshotQueue::Transmit,
+                requested: self.tx_queue.len(),
+                maximum: limits.max_net_tx_packets,
+            });
+        }
+        let rx_bytes = validate_snapshot_packets(
+            NetSnapshotQueue::Receive,
+            &self.rx_queue,
+            limits.max_net_frame_bytes,
+        )?;
+        let tx_bytes = validate_snapshot_packets(
+            NetSnapshotQueue::Transmit,
+            &self.tx_queue,
+            limits.max_net_frame_bytes,
+        )?;
+        if tx_bytes > limits.max_net_tx_bytes {
+            return Err(NetSnapshotValidationError::ByteLimit {
+                queue: NetSnapshotQueue::Transmit,
+                requested: tx_bytes,
+                maximum: limits.max_net_tx_bytes,
+            });
+        }
+        let rx_packets = u64::try_from(self.rx_queue.len())
+            .map_err(|_| NetSnapshotValidationError::Arithmetic)?;
+        let tx_packets = u64::try_from(self.tx_queue.len())
+            .map_err(|_| NetSnapshotValidationError::Arithmetic)?;
+        if self.stats.rx_packets < rx_packets || self.stats.rx_bytes < rx_bytes {
+            return Err(NetSnapshotValidationError::StatsUnderflow {
+                queue: NetSnapshotQueue::Receive,
+            });
+        }
+        if self.stats.tx_packets < tx_packets || self.stats.tx_bytes < tx_bytes {
+            return Err(NetSnapshotValidationError::StatsUnderflow {
+                queue: NetSnapshotQueue::Transmit,
+            });
+        }
+        Ok(())
+    }
+}
+
+fn validate_snapshot_packets(
+    queue: NetSnapshotQueue,
+    packets: &VecDeque<Vec<u8>>,
+    max_frame_bytes: u64,
+) -> Result<u64, NetSnapshotValidationError> {
+    let mut retained_bytes = 0u64;
+    for packet in packets {
+        let packet_bytes =
+            u64::try_from(packet.len()).map_err(|_| NetSnapshotValidationError::Arithmetic)?;
+        if packet_bytes > max_frame_bytes {
+            return Err(NetSnapshotValidationError::FrameLimit {
+                queue,
+                requested: packet_bytes,
+                maximum: max_frame_bytes,
+            });
+        }
+        retained_bytes = retained_bytes
+            .checked_add(packet_bytes)
+            .ok_or(NetSnapshotValidationError::Arithmetic)?;
+    }
+    Ok(retained_bytes)
 }
 
 /// A simulated network device with explicit RX/TX queues.
@@ -252,6 +368,7 @@ mod tests {
     use super::*;
 
     const TEST_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
+    const OTHER_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x02];
 
     #[test]
     fn new_device_has_empty_queues() {
@@ -338,6 +455,57 @@ mod tests {
         assert_eq!(tx, vec![vec![4, 5, 6]]);
         assert_eq!(*restored.mac(), TEST_MAC);
         assert_eq!(restored.stats().rx_packets, snap.stats.rx_packets);
+    }
+
+    #[test]
+    fn snapshot_structure_accepts_retained_queues() {
+        let mut net = DeterministicNet::new(TEST_MAC);
+        net.inject_packet(vec![1, 2, 3]);
+        net.enqueue_tx(vec![4, 5, 6]).expect("TX packet");
+
+        assert_eq!(
+            net.snapshot().validate_structure(VirtioLimits::default()),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn snapshot_structure_rejects_oversized_packets_and_forged_stats() {
+        let limits = VirtioLimits::default();
+        let oversized_bytes = usize::try_from(limits.max_net_frame_bytes)
+            .expect("frame limit fits usize")
+            .saturating_add(1);
+        let mut oversized = DeterministicNet::new(TEST_MAC).snapshot();
+        oversized.rx_queue.push_back(vec![0; oversized_bytes]);
+        assert!(matches!(
+            oversized.validate_structure(limits),
+            Err(NetSnapshotValidationError::FrameLimit {
+                queue: NetSnapshotQueue::Receive,
+                ..
+            })
+        ));
+
+        let mut forged_stats = DeterministicNet::new(TEST_MAC);
+        forged_stats
+            .enqueue_tx(vec![1])
+            .expect("retained TX packet");
+        let mut forged_stats = forged_stats.snapshot();
+        forged_stats.stats.tx_packets = 0;
+        assert_eq!(
+            forged_stats.validate_structure(limits),
+            Err(NetSnapshotValidationError::StatsUnderflow {
+                queue: NetSnapshotQueue::Transmit,
+            })
+        );
+
+        let wrong_mac = DeterministicNet::new(TEST_MAC).snapshot();
+        assert_eq!(
+            wrong_mac.validate_mac(OTHER_MAC),
+            Err(NetSnapshotValidationError::MacMismatch {
+                expected: OTHER_MAC,
+                actual: TEST_MAC,
+            })
+        );
     }
 
     #[test]

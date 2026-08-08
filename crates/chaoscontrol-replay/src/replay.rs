@@ -51,7 +51,7 @@ pub trait SimulationRunner {
     fn step_round(&mut self) -> Result<RoundResult, ReplayError>;
 
     /// Take a snapshot of all VMs.
-    fn snapshot_all(&self) -> Result<SimulationSnapshot, ReplayError>;
+    fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError>;
 
     /// Restore all VMs from a snapshot.
     fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), ReplayError>;
@@ -139,7 +139,7 @@ impl SimulationRunner for RealSimulationRunner {
         Ok(self.controller.step_round()?)
     }
 
-    fn snapshot_all(&self) -> Result<SimulationSnapshot, ReplayError> {
+    fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
         Ok(self.controller.snapshot_all()?)
     }
 
@@ -891,7 +891,7 @@ mod tests {
             })
         }
 
-        fn snapshot_all(&self) -> Result<SimulationSnapshot, ReplayError> {
+        fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
             use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 
             let mut engine = FaultEngine::new(EngineConfig {

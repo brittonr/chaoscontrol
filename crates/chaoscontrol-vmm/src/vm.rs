@@ -2299,6 +2299,27 @@ impl DeterministicVm {
                         ),
                     });
                 };
+                match &backend {
+                    VirtioBackendSnapshot::Block(snapshot) => {
+                        snapshot
+                            .validate_structure()
+                            .map_err(|error| VmError::Snapshot {
+                                message: format!(
+                                    "live block backend cannot produce an exact snapshot: {error:?}"
+                                ),
+                            })?;
+                    }
+                    VirtioBackendSnapshot::Net(snapshot) => {
+                        snapshot
+                            .validate_structure(device.limits())
+                            .map_err(|error| VmError::Snapshot {
+                                message: format!(
+                                    "live network backend cannot produce an exact snapshot: {error:?}"
+                                ),
+                            })?;
+                    }
+                    VirtioBackendSnapshot::Entropy(_) => {}
+                }
                 Ok(VirtioDeviceSnapshot { transport, backend })
             })
             .collect()
@@ -2341,15 +2362,56 @@ impl DeterministicVm {
                 });
             }
             let backend_matches = match &device_snapshot.backend {
-                VirtioBackendSnapshot::Block(_) => device
-                    .backend()
-                    .as_any()
-                    .is::<crate::devices::virtio_block::VirtioBlock>(
-                ),
-                VirtioBackendSnapshot::Net(_) => device
-                    .backend()
-                    .as_any()
-                    .is::<crate::devices::virtio_net::VirtioNet>(),
+                VirtioBackendSnapshot::Block(block_snapshot) => {
+                    block_snapshot
+                        .validate_structure()
+                        .map_err(|error| VmError::Snapshot {
+                            message: format!(
+                                "invalid block backend snapshot for {identity:?}: {error:?}"
+                            ),
+                        })?;
+                    if let Some(block) = device
+                        .backend()
+                        .as_any()
+                        .downcast_ref::<crate::devices::virtio_block::VirtioBlock>(
+                    ) {
+                        block_snapshot
+                            .validate_device_size(block.disk().size())
+                            .map_err(|error| VmError::Snapshot {
+                                message: format!(
+                                    "block backend topology mismatch for {identity:?}: {error:?}"
+                                ),
+                            })?;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                VirtioBackendSnapshot::Net(net_snapshot) => {
+                    net_snapshot
+                        .validate_structure(device.limits())
+                        .map_err(|error| VmError::Snapshot {
+                            message: format!(
+                                "invalid network backend snapshot for {identity:?}: {error:?}"
+                            ),
+                        })?;
+                    if let Some(net) = device
+                        .backend()
+                        .as_any()
+                        .downcast_ref::<crate::devices::virtio_net::VirtioNet>()
+                    {
+                        net_snapshot
+                            .validate_mac(*net.net().mac())
+                            .map_err(|error| VmError::Snapshot {
+                                message: format!(
+                                    "network backend topology mismatch for {identity:?}: {error:?}"
+                                ),
+                            })?;
+                        true
+                    } else {
+                        false
+                    }
+                }
                 VirtioBackendSnapshot::Entropy(_) => device
                     .backend()
                     .as_any()

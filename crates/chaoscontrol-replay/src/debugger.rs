@@ -424,7 +424,7 @@ mod tests {
             })
         }
 
-        fn snapshot_all(&self) -> Result<SimulationSnapshot, ReplayError> {
+        fn snapshot_all(&mut self) -> Result<SimulationSnapshot, ReplayError> {
             use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 
             let engine = FaultEngine::new(EngineConfig::default());

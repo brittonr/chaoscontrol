@@ -1,12 +1,12 @@
-//! Determinism verification by comparing two execution traces.
+//! Legacy diagnostic comparison of two execution traces.
 //!
 //! The [`DeterminismVerifier`] compares two [`TraceLog`]s event-by-event,
 //! ignoring host-side non-deterministic fields (timestamps, sequence
 //! numbers) and focusing on determinism-relevant data (exit reasons,
 //! I/O ports, data values, interrupt vectors, etc.).
 //!
-//! This is the core CI tool for ChaosControl: run the same VM config
-//! with the same seed twice, collect traces, and verify they match.
+//! This module does not validate capture completeness, cohort identity, or
+//! cleanup. Use `evidence::compare_complete_traces` for bounded evidence.
 
 use crate::collector::TraceLog;
 use crate::events::TraceEvent;
@@ -147,11 +147,10 @@ impl fmt::Display for VerificationResult {
 //  Verifier
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Compares two execution traces for deterministic equivalence.
+/// Compares two legacy debug traces for diagnostic equivalence.
 ///
-/// Two traces are considered deterministic if they contain the same
-/// sequence of events with the same determinism-relevant data. Fields
-/// like host timestamps and per-CPU sequence numbers are ignored.
+/// This comparison ignores host timestamps and per-CPU sequence numbers.
+/// It does not establish capture completeness or a determinism claim.
 ///
 /// # Example
 ///
@@ -162,17 +161,15 @@ impl fmt::Display for VerificationResult {
 /// let trace_a = TraceLog::load("run1.json").unwrap();
 /// let trace_b = TraceLog::load("run2.json").unwrap();
 ///
-/// let result = DeterminismVerifier::compare(&trace_a, &trace_b);
-/// println!("{}", result);
-/// assert!(result.is_deterministic);
+/// let diagnostic = DeterminismVerifier::compare(&trace_a, &trace_b);
+/// println!("legacy diagnostic only: {}", diagnostic);
 /// ```
 pub struct DeterminismVerifier;
 
 impl DeterminismVerifier {
-    /// Compare two traces for deterministic equivalence.
+    /// Compare two traces for legacy diagnostic equivalence.
     ///
-    /// Compares event-by-event, ignoring host_ns and seq (those are
-    /// non-deterministic by nature). Focuses on event type and data.
+    /// This does not check the typed eBPF evidence preconditions.
     pub fn compare(trace_a: &TraceLog, trace_b: &TraceLog) -> VerificationResult {
         Self::compare_events(&trace_a.events, &trace_b.events, trace_a, trace_b)
     }
@@ -311,6 +308,9 @@ mod tests {
 
     fn make_event(kind: EventKind) -> TraceEvent {
         TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 0,
             host_ns: 0,
             pid: 1,
@@ -396,6 +396,9 @@ mod tests {
     #[test]
     fn host_timestamps_ignored() {
         let a = TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 1,
             host_ns: 100_000,
             pid: 1,
@@ -407,6 +410,9 @@ mod tests {
             },
         };
         let b = TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 999,
             host_ns: 999_999_999,
             pid: 1,

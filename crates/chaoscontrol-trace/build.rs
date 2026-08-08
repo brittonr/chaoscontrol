@@ -141,6 +141,16 @@ struct mptcp_sock { };
 #endif /* __VMLINUX_H__ */
 "#;
 
+fn blake3_ref(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+fn read_ref(path: &str) -> String {
+    let bytes =
+        std::fs::read(path).unwrap_or_else(|error| panic!("failed to read {path}: {error}"));
+    blake3_ref(&bytes)
+}
+
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
@@ -154,37 +164,34 @@ fn main() {
     // for the BPF program to compile.  The resulting binary will work
     // when loaded on a real host with BTF support.
     let vmlinux_h = out_dir.join("vmlinux.h");
-    if !vmlinux_h.exists() {
-        // Allow overriding the BTF source via env var (useful for CI/Nix)
-        let btf_path =
-            env::var("VMLINUX_BTF").unwrap_or_else(|_| "/sys/kernel/btf/vmlinux".to_string());
-
-        if PathBuf::from(&btf_path).exists() {
-            let output = Command::new("bpftool")
-                .args(["btf", "dump", "file", &btf_path, "format", "c"])
-                .output()
-                .expect(
-                    "bpftool is required to generate vmlinux.h.\n\
-                     Install via: nix-shell -p bpftools\n\
-                     Or add to your devShell.",
-                );
-            assert!(
-                output.status.success(),
-                "bpftool btf dump failed: {}",
-                String::from_utf8_lossy(&output.stderr)
+    let btf_path =
+        env::var("VMLINUX_BTF").unwrap_or_else(|_| "/sys/kernel/btf/vmlinux".to_string());
+    let btf_source = PathBuf::from(&btf_path);
+    let fallback_types_used = if btf_source.exists() {
+        let output = Command::new("bpftool")
+            .args(["btf", "dump", "file", &btf_path, "format", "c"])
+            .output()
+            .expect(
+                "bpftool is required to generate vmlinux.h.\n\
+                 Install via: nix-shell -p bpftools\n\
+                 Or add to your devShell.",
             );
-            std::fs::write(&vmlinux_h, &output.stdout).expect("failed to write vmlinux.h");
-            eprintln!("Generated vmlinux.h ({} bytes)", output.stdout.len());
-        } else {
-            // No BTF available (e.g. Nix sandbox) — write minimal stub
-            // with the types our BPF program actually references.
-            eprintln!(
-                "WARNING: {} not found, generating minimal vmlinux.h stub",
-                btf_path
-            );
-            std::fs::write(&vmlinux_h, VMLINUX_STUB).expect("failed to write vmlinux.h stub");
-        }
-    }
+        assert!(
+            output.status.success(),
+            "bpftool btf dump failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::write(&vmlinux_h, &output.stdout).expect("failed to write vmlinux.h");
+        eprintln!("Generated vmlinux.h ({} bytes)", output.stdout.len());
+        false
+    } else {
+        eprintln!(
+            "WARNING: {} not found, generating debug-only vmlinux.h stub",
+            btf_path
+        );
+        std::fs::write(&vmlinux_h, VMLINUX_STUB).expect("failed to write vmlinux.h stub");
+        true
+    };
 
     // Step 2: Compile BPF program and generate Rust skeleton
     //
@@ -196,11 +203,15 @@ fn main() {
     // On NixOS, the wrapped clang adds flags incompatible with BPF
     // target. Use the CLANG env var to point to unwrapped clang.
     let skel_output = out_dir.join("kvm_trace.skel.rs");
+    let bpf_object = out_dir.join("kvm_trace.bpf.o");
     let mut builder = libbpf_cargo::SkeletonBuilder::new();
-    builder.source("src/bpf/kvm_trace.bpf.c").clang_args([
-        format!("-I{}", out_dir.display()),
-        "-D__TARGET_ARCH_x86".to_string(),
-    ]);
+    builder
+        .source("src/bpf/kvm_trace.bpf.c")
+        .obj(&bpf_object)
+        .clang_args([
+            format!("-I{}", out_dir.display()),
+            "-D__TARGET_ARCH_x86".to_string(),
+        ]);
 
     // Use unwrapped clang if CLANG env var is set (needed on NixOS)
     if let Ok(clang_path) = env::var("CLANG") {
@@ -213,10 +224,29 @@ fn main() {
              On NixOS, set CLANG to unwrapped clang path.",
     );
 
+    let object_ref = read_ref(bpf_object.to_str().expect("BPF object path must be UTF-8"));
+    let source_ref = read_ref("src/bpf/kvm_trace.bpf.c");
+    let event_schema_ref = read_ref("src/events.rs");
+    let loader_ref = read_ref("src/collector.rs");
+    let btf_source_ref = if fallback_types_used {
+        blake3_ref(VMLINUX_STUB.as_bytes())
+    } else {
+        read_ref(&btf_path)
+    };
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_BPF_OBJECT_REF={object_ref}");
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_BPF_SOURCE_REF={source_ref}");
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_EVENT_SCHEMA_REF={event_schema_ref}");
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_LOADER_REF={loader_ref}");
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_BTF_SOURCE_REF={btf_source_ref}");
+    println!("cargo:rustc-env=CHAOSCONTROL_TRACE_FALLBACK_TYPES_USED={fallback_types_used}");
+
     // The generated skeleton compares libbpf's internal object-builder default
     // to decide whether it must pass open options. The public libbpf API only
     // exposes `Default` for that internal state, so keep the generated code
     // intact and allow the lint at the generated-module boundary.
 
     println!("cargo:rerun-if-changed=src/bpf/kvm_trace.bpf.c");
+    println!("cargo:rerun-if-changed=src/events.rs");
+    println!("cargo:rerun-if-changed=src/collector.rs");
+    println!("cargo:rerun-if-env-changed=VMLINUX_BTF");
 }

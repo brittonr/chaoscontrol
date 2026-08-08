@@ -1322,6 +1322,26 @@
               }
             );
 
+            # Cheap eBPF schema, profile, layout, accounting, and source guard rail.
+            ebpf-trace-evidence =
+              pkgs.runCommand "ebpf-trace-evidence-check"
+                {
+                  nativeBuildInputs = [
+                    chaoscontrol
+                    pkgs.nickel
+                  ];
+                }
+                ''
+                  cd ${self}
+                  ebpf-trace-evidence-selftest
+                  nickel export contracts/evidence/examples/kvm-ebpf-trace-capture-profile.ncl >/dev/null
+                  if nickel export contracts/evidence/fixtures/invalid/ebpf-trace-capture-profile.multi-producer-exact.invalid.ncl >/dev/null 2>&1; then
+                    echo "invalid eBPF trace profile unexpectedly passed" >&2
+                    exit 1
+                  fi
+                  touch $out
+                '';
+
             # A tiny malicious guest must reach the production MMIO path without crashing the VMM.
             virtio-malicious-guest-kvm-smoke = craneLib.cargoTest (
               commonArgs

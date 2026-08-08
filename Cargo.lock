@@ -544,8 +544,12 @@ dependencies = [
 name = "chaoscontrol-trace"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "blake3",
  "clap",
  "env_logger",
+ "kvm-bindings",
+ "kvm-ioctls",
  "libbpf-cargo",
  "libbpf-rs",
  "libc",
@@ -553,6 +557,7 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
+ "vm-memory",
 ]
 
 [[package]]

@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fs;
 use std::path::{Component, Path};
 use std::process::{Command, Stdio};
 
@@ -221,6 +222,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/assertion-summary-null-alias.ncl",
         "examples/raft-replay-verdict.ncl",
         "examples/raft-smr-workload-profile.ncl",
+        "examples/kvm-ebpf-trace-capture-profile.ncl",
     ] {
         let status = Command::new(&command[0])
             .args(&command[1..])
@@ -236,6 +238,34 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             format!("Nickel export failed for {rel}: {status}"),
         )?;
     }
+
+    let ebpf_source = "examples/kvm-ebpf-trace-capture-profile.ncl";
+    let ebpf_projection = "fixtures/valid/ebpf-trace-capture-profile.valid.json";
+    let output = Command::new(&command[0])
+        .args(&command[1..])
+        .args(["--format", "json"])
+        .arg(root.join("contracts/evidence").join(ebpf_source))
+        .current_dir(root)
+        .output()
+        .map_err(|err| EvidenceError::new(format!("failed to export {ebpf_source}: {err}")))?;
+    ensure(
+        output.status.success(),
+        format!("Nickel export failed for {ebpf_source}: {}", output.status),
+    )?;
+    let exported: Value = serde_json::from_slice(&output.stdout).map_err(|err| {
+        EvidenceError::new(format!(
+            "Nickel export for {ebpf_source} is not JSON: {err}"
+        ))
+    })?;
+    let committed_text = fs::read_to_string(root.join("contracts/evidence").join(ebpf_projection))
+        .map_err(|err| EvidenceError::new(format!("failed to read {ebpf_projection}: {err}")))?;
+    let committed: Value = serde_json::from_str(&committed_text)
+        .map_err(|err| EvidenceError::new(format!("invalid committed {ebpf_projection}: {err}")))?;
+    ensure(
+        exported == committed,
+        format!("stale Nickel projection: {ebpf_projection}"),
+    )?;
+
     for rel in [
         "fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
         "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
@@ -254,6 +284,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/campaign-profile.invalid-workers.invalid.ncl",
         "fixtures/invalid/campaign-profile.implicit-metrics.invalid.ncl",
         "fixtures/invalid/smr-workload-profile.unbounded.invalid.ncl",
+        "fixtures/invalid/ebpf-trace-capture-profile.multi-producer-exact.invalid.ncl",
         "fixtures/invalid/fault-schedule.out-of-range-target.invalid.ncl",
         "fixtures/invalid/fault-schedule.unordered.invalid.ncl",
         "fixtures/invalid/fault-schedule.overlapping-partition.invalid.ncl",

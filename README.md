@@ -299,7 +299,7 @@ collision is impossible.
 
 ### Contract-backed evidence
 
-Nickel contracts live under `contracts/evidence/`. Nickel owns human-authored VM run, in-process simulator, campaign, and finite fault-schedule profiles. Rust revalidates each external JSON projection and owns config construction, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay.
+Nickel contracts live under `contracts/evidence/`. Nickel owns human-authored VM run, simulator, campaign, fault-schedule, SMR workload, and eBPF capture profiles. Rust revalidates external projections and owns runtime records, outcomes, reports, receipts, execution, and replay.
 
 Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
 
@@ -544,15 +544,28 @@ The dashboard shows:
 
 Open `http://localhost:8080` in a browser while exploration runs.
 
-### eBPF Tracing
+### eBPF tracing
 
-```bash
-# Live KVM trace (requires sudo)
+```console
+# Collect a legacy debug trace. This is not complete eBPF evidence.
 sudo chaoscontrol-trace live --pid <VMM_PID> --output trace.json
 
-# Verify determinism between two traces
-chaoscontrol-trace verify --trace-a run1.json --trace-b run2.json
+# Run pure evidence fixtures.
+cargo run -q -p chaoscontrol-trace --bin ebpf-trace-evidence-selftest
+
+# Run the strict privileged attachment smoke against an existing VMM TGID.
+sudo cargo run -q -p chaoscontrol-trace \
+  --bin ebpf-trace-evidence-selftest -- \
+  --privileged-smoke-pid <VMM_PID> --require-privileged
+
+# Generate real KVM exit and IRQ trace traffic in one target process.
+sudo cargo test -p chaoscontrol-trace \
+  --test ebpf_kvm_smoke -- --ignored --nocapture
 ```
+
+Complete evidence requires an admitted Nickel profile, exact runtime cohort,
+producer and userspace accounting, stable target identity, and cleanup evidence.
+See [`docs/ebpf-trace-evidence.md`](docs/ebpf-trace-evidence.md).
 
 ## Architecture
 

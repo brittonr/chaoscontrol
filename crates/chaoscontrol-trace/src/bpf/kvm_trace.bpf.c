@@ -17,19 +17,28 @@
 #define EVENT_KVM_PAGE_FAULT 9
 #define EVENT_KVM_CR        10
 #define EVENT_KVM_CPUID     11
+#define EVENT_TYPE_SLOTS    (EVENT_KVM_CPUID + 1)
+#define EVENT_SCHEMA_VERSION 2
+#define EVENT_RECORD_SIZE 64
+#define RING_BUFFER_BYTES (16 * 1024 * 1024)
 
 // Event structure (64 bytes, cache-line aligned)
 struct cc_trace_event {
     __u64 seq;           // monotonic per-CPU sequence number
     __u64 host_ns;       // bpf_ktime_get_ns()
     __u32 event_type;    // EVENT_* constant
-    __u32 pid;           // current PID
+    __u32 pid;           // current TGID
+    __u32 source_cpu;    // source identity for the local sequence
+    __u16 schema_version;
+    __u16 record_size;
     __u64 arg0;          // event-specific
     __u64 arg1;          // event-specific
     __u64 arg2;          // event-specific
     __u64 arg3;          // event-specific
 };
 
+_Static_assert(sizeof(struct cc_trace_event) == EVENT_RECORD_SIZE,
+               "cc_trace_event schema size drift");
 
 // Tracepoint context structures.
 // Field offsets MUST match /sys/kernel/tracing/events/kvm/<name>/format.
@@ -161,8 +170,15 @@ struct {
 } target_pid SEC(".maps");
 
 struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, EVENT_TYPE_SLOTS);
+    __type(key, __u32);
+    __type(value, __u8);
+} enabled_event_types SEC(".maps");
+
+struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 16 * 1024 * 1024); // 16MB
+    __uint(max_entries, RING_BUFFER_BYTES);
 } events SEC(".maps");
 
 struct {
@@ -171,6 +187,19 @@ struct {
     __type(key, __u32);
     __type(value, __u64);
 } event_seq SEC(".maps");
+
+struct producer_accounting {
+    __u64 eligible_attempts;
+    __u64 submitted_records;
+    __u64 reservation_drops;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct producer_accounting);
+} producer_counters SEC(".maps");
 
 // Helper: Check if current PID matches target
 static __always_inline bool is_target(void) {
@@ -189,9 +218,42 @@ static __always_inline __u64 next_seq(void) {
     __u64 *seq = bpf_map_lookup_elem(&event_seq, &key);
     if (!seq)
         return 0;
-    
-    __u64 val = __sync_fetch_and_add(seq, 1);
-    return val;
+
+    return __sync_fetch_and_add(seq, 1);
+}
+
+static __always_inline struct producer_accounting *accounting(void) {
+    __u32 key = 0;
+    return bpf_map_lookup_elem(&producer_counters, &key);
+}
+
+static __always_inline struct cc_trace_event *begin_event(__u32 event_type) {
+    __u8 *enabled = bpf_map_lookup_elem(&enabled_event_types, &event_type);
+    if (!enabled || !*enabled)
+        return 0;
+
+    struct producer_accounting *counts = accounting();
+    if (counts)
+        __sync_fetch_and_add(&counts->eligible_attempts, 1);
+
+    __u64 seq = next_seq();
+    struct cc_trace_event *event = bpf_ringbuf_reserve(&events, sizeof(*event), 0);
+    if (!event) {
+        if (counts)
+            __sync_fetch_and_add(&counts->reservation_drops, 1);
+        return 0;
+    }
+
+    event->seq = seq;
+    event->host_ns = bpf_ktime_get_ns();
+    event->event_type = event_type;
+    event->pid = bpf_get_current_pid_tgid() >> 32;
+    event->source_cpu = bpf_get_smp_processor_id();
+    event->schema_version = EVENT_SCHEMA_VERSION;
+    event->record_size = EVENT_RECORD_SIZE;
+    if (counts)
+        __sync_fetch_and_add(&counts->submitted_records, 1);
+    return event;
 }
 
 // kvm_exit: exit_reason, guest_rip, info1, info2
@@ -200,14 +262,9 @@ int trace_kvm_exit(struct tp_kvm_exit *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_EXIT);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_EXIT;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->exit_reason;
     e->arg1 = ctx->guest_rip;
     e->arg2 = ctx->info1;
@@ -223,14 +280,9 @@ int trace_kvm_entry(struct tp_kvm_entry *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_ENTRY);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_ENTRY;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->vcpu_id;
     e->arg1 = ctx->rip;
     e->arg2 = 0;
@@ -246,14 +298,9 @@ int trace_kvm_pio(struct tp_kvm_pio *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_PIO);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_PIO;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->rw;
     e->arg1 = ctx->port;
     e->arg2 = ctx->size;
@@ -269,14 +316,9 @@ int trace_kvm_mmio(struct tp_kvm_mmio *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_MMIO);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_MMIO;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->type;
     e->arg1 = ctx->len;
     e->arg2 = ctx->gpa;
@@ -292,14 +334,9 @@ int trace_kvm_msr(struct tp_kvm_msr *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_MSR);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_MSR;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->write;
     e->arg1 = ctx->ecx;
     e->arg2 = ctx->data;
@@ -315,14 +352,9 @@ int trace_kvm_inj_virq(struct tp_kvm_inj_virq *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_INJ_VIRQ);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_INJ_VIRQ;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->vector;
     e->arg1 = ctx->soft;
     e->arg2 = ctx->reinjected;
@@ -338,14 +370,9 @@ int trace_kvm_pic_set_irq(struct tp_kvm_pic_set_irq *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_PIC_IRQ);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_PIC_IRQ;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ((__u64)ctx->chip << 32) | ((__u64)ctx->pin << 16) | ((__u64)ctx->elcr << 8) | ctx->imr;
     e->arg1 = ctx->coalesced;
     e->arg2 = 0;
@@ -361,14 +388,9 @@ int trace_kvm_set_irq(struct tp_kvm_set_irq *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_SET_IRQ);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_SET_IRQ;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->gsi;
     e->arg1 = ctx->level;
     e->arg2 = ctx->irq_source_id;
@@ -384,14 +406,9 @@ int trace_kvm_page_fault(struct tp_kvm_page_fault *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_PAGE_FAULT);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_PAGE_FAULT;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->vcpu_id;
     e->arg1 = ctx->guest_rip;
     e->arg2 = ctx->fault_address;
@@ -407,14 +424,9 @@ int trace_kvm_cr(struct tp_kvm_cr *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_CR);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_CR;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ctx->rw;
     e->arg1 = ctx->cr;
     e->arg2 = ctx->val;
@@ -431,14 +443,9 @@ int trace_kvm_cpuid(struct tp_kvm_cpuid *ctx) {
     if (!is_target())
         return 0;
     
-    struct cc_trace_event *e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+    struct cc_trace_event *e = begin_event(EVENT_KVM_CPUID);
     if (!e)
         return 0;
-    
-    e->seq = next_seq();
-    e->host_ns = bpf_ktime_get_ns();
-    e->event_type = EVENT_KVM_CPUID;
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->arg0 = ((__u64)ctx->function << 32) | ctx->index;
     e->arg1 = ctx->rax;
     e->arg2 = ctx->rbx;

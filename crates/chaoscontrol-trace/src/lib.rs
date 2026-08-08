@@ -2,8 +2,8 @@
 //!
 //! This crate provides non-invasive tracing of KVM virtual machines from
 //! the host side using eBPF. It attaches to kernel KVM tracepoints to
-//! observe every VM exit, I/O operation, interrupt injection, MSR access,
-//! and more — without modifying the guest.
+//! observe admitted KVM tracepoint records without modifying the guest.
+//! Complete evidence requires producer and userspace accounting.
 //!
 //! # Architecture
 //!
@@ -26,8 +26,8 @@
 //! │  BPF Ring Buffer → Userspace        │
 //! │  chaoscontrol-trace Collector       │
 //! │    → TraceEvent stream              │
-//! │    → TraceLog (save/load)           │
-//! │    → DeterminismVerifier            │
+//! │    → legacy TraceLog diagnostics    │
+//! │    → typed evidence manifests       │
 //! └─────────────────────────────────────┘
 //! ```
 //!
@@ -50,7 +50,7 @@
 //! }
 //! ```
 //!
-//! ## Determinism verification
+//! ## Legacy debug comparison
 //!
 //! ```no_run
 //! use chaoscontrol_trace::collector::TraceLog;
@@ -59,12 +59,13 @@
 //! let trace_a = TraceLog::load("run1.json").unwrap();
 //! let trace_b = TraceLog::load("run2.json").unwrap();
 //!
-//! let result = DeterminismVerifier::compare(&trace_a, &trace_b);
-//! println!("{}", result);
-//! assert!(result.is_deterministic);
+//! let diagnostic = DeterminismVerifier::compare(&trace_a, &trace_b);
+//! println!("legacy diagnostic only: {}", diagnostic);
+//! // Use evidence::compare_complete_traces for a bounded evidence verdict.
 //! ```
 
 pub mod collector;
 pub mod events;
+pub mod evidence;
 pub mod verified;
 pub mod verifier;

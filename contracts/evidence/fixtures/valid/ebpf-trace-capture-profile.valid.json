@@ -1,0 +1,82 @@
+{
+  "bounds": {
+    "aggregate_window_events": 1024,
+    "maximum_artifact_bytes": 16777216,
+    "maximum_events": 100000,
+    "maximum_polls": 100000,
+    "maximum_queue_events": 100000,
+    "maximum_ring_bytes": 16777216
+  },
+  "build": {
+    "bpf_object_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "bpf_source_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "btf_source_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "compiled_layouts": [
+      {
+        "fields": [
+          {
+            "field": "exit_reason",
+            "offset": 8,
+            "size": 4,
+            "type_name": "unsigned int"
+          }
+        ],
+        "format_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "tracepoint": "kvm:kvm_exit"
+      }
+    ],
+    "event_schema_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fallback_types_used": false,
+    "loader_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "enabled_event_types": [
+    1
+  ],
+  "expected_runtime": {
+    "architecture": "x86_64",
+    "btf_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "kernel_release": "6.12.0-onix",
+    "runtime_layouts": [
+      {
+        "fields": [
+          {
+            "field": "exit_reason",
+            "offset": 8,
+            "size": 4,
+            "type_name": "unsigned int"
+          }
+        ],
+        "format_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "tracepoint": "kvm:kvm_exit"
+      }
+    ]
+  },
+  "filter_semantics": "exact-tgid-plus-stable-process-identity",
+  "non_claims": [
+    "not VM determinism proof",
+    "not replay correctness proof",
+    "not eBPF safety proof",
+    "not kernel correctness proof",
+    "not security proof",
+    "not physical readiness proof",
+    "not release eligibility"
+  ],
+  "ordering_mode": "exact-single-producer",
+  "profile_id": "kvm-ebpf-single-vcpu",
+  "retention": "retain-manifest-and-bounded-event-artifact",
+  "schema": "chaoscontrol.ebpf-trace-capture-profile.v1",
+  "target": {
+    "executable_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "process_start_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "run_id": "kvm-run-0001",
+    "tgid": 4242,
+    "vmm_profile_ref": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "topology": {
+    "affinity_cpus": [
+      2
+    ],
+    "producer_count": 1,
+    "vcpu_count": 1
+  }
+}

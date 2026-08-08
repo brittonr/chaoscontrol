@@ -88,6 +88,7 @@ pub fn event_type_name(et: &EventType) -> &'static str {
         EventType::KvmPageFault => "kvm_page_fault",
         EventType::KvmCr => "kvm_cr",
         EventType::KvmCpuid => "kvm_cpuid",
+        EventType::Unknown => "unknown",
     };
 
     // Postcondition: name is non-empty.
@@ -238,7 +239,7 @@ pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: 
             rcx: arg3 >> 32,
             rdx: arg3 & 0xFFFF_FFFF,
         },
-        None => EventKind::Unknown {
+        Some(EventType::Unknown) | None => EventKind::Unknown {
             event_type,
             arg0,
             arg1,
@@ -258,7 +259,7 @@ pub fn parse_event_kind(event_type: u32, arg0: u64, arg1: u64, arg2: u64, arg3: 
 
 // ─── EventKind equality ─────────────────────────────────────────────
 
-/// Compare two [`EventKind`] values for deterministic equivalence.
+/// Compare two [`EventKind`] values for legacy diagnostic equivalence.
 ///
 /// This is the pure core of the `PartialEq for EventKind` impl,
 /// extracted so that its properties (reflexivity, symmetry) can be

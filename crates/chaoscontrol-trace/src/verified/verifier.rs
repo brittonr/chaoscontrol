@@ -1,4 +1,4 @@
-//! Pure, verifiable functions for determinism verification.
+//! Pure functions for legacy diagnostic event comparison.
 //!
 //! Every function in this module is:
 //! - **Pure**: no I/O, no system calls, no side effects beyond the return value.
@@ -211,10 +211,13 @@ pub fn find_first_divergence(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{EventKind, IoDirection, TraceEvent};
+    use crate::events::{EventKind, IoDirection, TraceEvent, RAW_EVENT_SCHEMA_VERSION};
 
     fn make_event(kind: EventKind) -> TraceEvent {
         TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 0,
             host_ns: 0,
             pid: 1,
@@ -432,6 +435,9 @@ mod tests {
     #[test]
     fn host_timestamps_ignored() {
         let a = vec![TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 1,
             host_ns: 100_000,
             pid: 1,
@@ -443,6 +449,9 @@ mod tests {
             },
         }];
         let b = vec![TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 999,
             host_ns: 999_999_999,
             pid: 1,

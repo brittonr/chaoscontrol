@@ -1,8 +1,8 @@
 //! Standalone KVM trace collector for ChaosControl.
 //!
 //! Attaches to a running ChaosControl VMM process (by PID) and streams
-//! KVM trace events in real time. Can also compare two saved traces
-//! for determinism verification.
+//! KVM trace events in real time. It can compare two legacy debug traces.
+//! Use typed evidence manifests for any bounded comparison claim.
 //!
 //! # Usage
 //!
@@ -13,7 +13,7 @@
 //! # Live trace and save to file
 //! sudo chaoscontrol-trace live --pid 12345 --output trace.json
 //!
-//! # Compare two traces for determinism
+//! # Compare two legacy debug traces (not an evidence verdict)
 //! chaoscontrol-trace verify --trace-a run1.json --trace-b run2.json
 //!
 //! # Show summary of a trace file
@@ -21,11 +21,17 @@
 //! ```
 
 use chaoscontrol_trace::collector::{Collector, CollectorConfig, TraceLog};
-use chaoscontrol_trace::events::EventType;
+use chaoscontrol_trace::events::{EventType, TraceEvent};
+use chaoscontrol_trace::evidence::{
+    admit_capture_profile, compare_trace_manifests, validate_trace_capture, CaptureProfile,
+    ComparisonStatus, EvidenceError, TerminalClass, TraceManifest,
+};
 use chaoscontrol_trace::verifier::DeterminismVerifier;
 use clap::{Parser, Subcommand};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+const NON_PASS_EXIT_STATUS: i32 = 1;
 
 #[derive(Parser)]
 #[command(name = "chaoscontrol-trace")]
@@ -62,7 +68,7 @@ enum Commands {
         quiet: bool,
     },
 
-    /// Compare two traces for deterministic equivalence.
+    /// Compare two legacy debug traces. This does not emit an evidence verdict.
     Verify {
         /// Path to first trace file (JSON).
         #[arg(long)]
@@ -82,6 +88,32 @@ enum Commands {
         /// Path to trace file (JSON).
         #[arg(short, long)]
         trace: String,
+    },
+
+    /// Validate one typed trace manifest and its canonical event artifact.
+    EvidenceCheck {
+        #[arg(long)]
+        profile: String,
+        #[arg(long)]
+        manifest: String,
+        #[arg(long)]
+        events: String,
+    },
+
+    /// Compare two typed trace manifests after all evidence preconditions pass.
+    EvidenceVerify {
+        #[arg(long)]
+        profile: String,
+        #[arg(long)]
+        manifest_a: String,
+        #[arg(long)]
+        events_a: String,
+        #[arg(long)]
+        manifest_b: String,
+        #[arg(long)]
+        events_b: String,
+        #[arg(long)]
+        output: Option<String>,
     },
 }
 
@@ -103,6 +135,19 @@ fn main() {
             filter,
         } => cmd_verify(trace_a, trace_b, filter),
         Commands::Summary { trace } => cmd_summary(trace),
+        Commands::EvidenceCheck {
+            profile,
+            manifest,
+            events,
+        } => cmd_evidence_check(profile, manifest, events),
+        Commands::EvidenceVerify {
+            profile,
+            manifest_a,
+            events_a,
+            manifest_b,
+            events_b,
+            output,
+        } => cmd_evidence_verify(profile, manifest_a, events_a, manifest_b, events_b, output),
     }
 }
 
@@ -167,8 +212,10 @@ fn cmd_live(
         }
     }
 
-    // Final poll to drain any remaining events
-    let _ = collector.poll();
+    // The owned collector quiesces, drains, snapshots counters, and detaches.
+    if let Err(error) = collector.stop() {
+        eprintln!("Collector shutdown failed: {error}");
+    }
     all_events.extend(collector.drain());
 
     eprintln!(
@@ -185,12 +232,18 @@ fn cmd_live(
             eprintln!("Failed to save trace: {}", e);
             std::process::exit(1);
         }
-        eprintln!("Saved {} events", log.len());
+        eprintln!("Saved {} debug events", log.len());
+        eprintln!(
+            "Non-claim: this legacy log is not complete eBPF evidence, VM determinism proof, replay correctness proof, or release eligibility"
+        );
     }
 }
 
 fn cmd_verify(trace_a: String, trace_b: String, filter: Option<String>) {
-    eprintln!("Loading traces...");
+    eprintln!("Loading legacy debug traces...");
+    eprintln!(
+        "Non-claim: this diagnostic cannot produce a complete eBPF evidence or determinism verdict"
+    );
     let log_a = match TraceLog::load(&trace_a) {
         Ok(l) => l,
         Err(e) => {
@@ -219,11 +272,103 @@ fn cmd_verify(trace_a: String, trace_b: String, filter: Option<String>) {
         DeterminismVerifier::compare(&log_a, &log_b)
     };
 
-    println!("{}", result);
+    println!("legacy diagnostic only: {}", result);
 
     if !result.is_deterministic {
         std::process::exit(1);
     }
+}
+
+fn cmd_evidence_check(profile: String, manifest: String, events: String) {
+    let profile: CaptureProfile = load_evidence_json(&profile);
+    let manifest: TraceManifest = load_evidence_json(&manifest);
+    let events: Vec<TraceEvent> = load_evidence_json(&events);
+    let admitted = match admit_capture_profile(&profile) {
+        Ok(admitted) => admitted,
+        Err(error) => evidence_blocked("profile admission", &error.to_string()),
+    };
+    match validate_trace_capture(&admitted, &manifest, &events) {
+        Ok(status) => {
+            println!("trace evidence status: {}", evidence_status(&status));
+            if status != TerminalClass::Complete {
+                std::process::exit(NON_PASS_EXIT_STATUS);
+            }
+        }
+        Err(error) => evidence_validation_failed("capture validation", &error),
+    }
+}
+
+fn cmd_evidence_verify(
+    profile: String,
+    manifest_a: String,
+    events_a: String,
+    manifest_b: String,
+    events_b: String,
+    output: Option<String>,
+) {
+    let profile: CaptureProfile = load_evidence_json(&profile);
+    let manifest_a: TraceManifest = load_evidence_json(&manifest_a);
+    let events_a: Vec<TraceEvent> = load_evidence_json(&events_a);
+    let manifest_b: TraceManifest = load_evidence_json(&manifest_b);
+    let events_b: Vec<TraceEvent> = load_evidence_json(&events_b);
+    let admitted = match admit_capture_profile(&profile) {
+        Ok(admitted) => admitted,
+        Err(error) => evidence_blocked("profile admission", &error.to_string()),
+    };
+    let receipt =
+        match compare_trace_manifests(&admitted, &manifest_a, &manifest_b, &events_a, &events_b) {
+            Ok(receipt) => receipt,
+            Err(error) => evidence_validation_failed("comparison", &error),
+        };
+    let json = serde_json::to_string_pretty(&receipt)
+        .unwrap_or_else(|error| evidence_blocked("receipt serialization", &error.to_string()));
+    if let Some(path) = output {
+        if let Err(error) = std::fs::write(&path, &json) {
+            evidence_blocked("receipt write", &format!("{path}: {error}"));
+        }
+    }
+    println!(
+        "trace evidence status: {}",
+        evidence_status(&receipt.comparison.status)
+    );
+    println!("{json}");
+    if receipt.comparison.status != ComparisonStatus::Match {
+        std::process::exit(NON_PASS_EXIT_STATUS);
+    }
+}
+
+fn load_evidence_json<T: serde::de::DeserializeOwned>(path: &str) -> T {
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|error| evidence_blocked("evidence read", &format!("{path}: {error}")));
+    serde_json::from_str(&text)
+        .unwrap_or_else(|error| evidence_blocked("evidence parse", &format!("{path}: {error}")))
+}
+
+fn evidence_status<T: serde::Serialize>(status: &T) -> String {
+    serde_json::to_string(status)
+        .unwrap_or_else(|_| "\"blocked\"".to_string())
+        .trim_matches('"')
+        .to_string()
+}
+
+fn evidence_validation_failed(stage: &str, error: &EvidenceError) -> ! {
+    let status = if matches!(
+        error.class,
+        "manifest-profile-drift" | "manifest-ordering" | "profile-layout"
+    ) {
+        "incompatible"
+    } else {
+        "blocked"
+    };
+    eprintln!("trace evidence status: {status}");
+    eprintln!("{stage}: {error}");
+    std::process::exit(NON_PASS_EXIT_STATUS)
+}
+
+fn evidence_blocked(stage: &str, detail: &str) -> ! {
+    eprintln!("trace evidence status: blocked");
+    eprintln!("{stage}: {detail}");
+    std::process::exit(NON_PASS_EXIT_STATUS)
 }
 
 fn cmd_summary(trace: String) {
@@ -310,5 +455,36 @@ fn ctrlc_simple(running: &Arc<AtomicBool>) {
         let h = handler as *const () as libc::sighandler_t;
         libc::signal(libc::SIGINT, h);
         libc::signal(libc::SIGTERM, h);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_evidence_statuses_are_stable() {
+        assert_eq!(evidence_status(&TerminalClass::Complete), "complete");
+        assert_eq!(evidence_status(&TerminalClass::Partial), "partial");
+        assert_eq!(
+            evidence_status(&ComparisonStatus::Unsupported),
+            "unsupported"
+        );
+        assert_eq!(
+            evidence_status(&ComparisonStatus::Incompatible),
+            "incompatible"
+        );
+        assert_eq!(evidence_status(&ComparisonStatus::Divergent), "divergent");
+        assert_eq!(evidence_status(&ComparisonStatus::Blocked), "blocked");
+        assert_eq!(
+            evidence_status(&ComparisonStatus::CleanupFailed),
+            "cleanup-failed"
+        );
+    }
+
+    #[test]
+    fn unknown_legacy_filter_is_rejected_from_the_selected_set() {
+        assert!(parse_event_filter("unknown").is_empty());
+        assert_eq!(parse_event_filter("exit"), vec![EventType::KvmExit]);
     }
 }

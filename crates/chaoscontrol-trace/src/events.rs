@@ -11,9 +11,12 @@ use std::fmt;
 //  Raw event (matches BPF struct exactly)
 // ═══════════════════════════════════════════════════════════════════════
 
+pub const RAW_EVENT_SCHEMA_VERSION: u16 = 2;
+pub const RAW_EVENT_SIZE: u16 = 64;
+
 /// Raw 64-byte event as received from the BPF ring buffer.
 ///
-/// Must match `struct trace_event` in `kvm_trace.bpf.c` exactly.
+/// Must match `struct cc_trace_event` in `kvm_trace.bpf.c` exactly.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct RawEvent {
@@ -21,13 +24,16 @@ pub struct RawEvent {
     pub host_ns: u64,
     pub event_type: u32,
     pub pid: u32,
+    pub source_cpu: u32,
+    pub schema_version: u16,
+    pub record_size: u16,
     pub arg0: u64,
     pub arg1: u64,
     pub arg2: u64,
     pub arg3: u64,
 }
 
-const _: () = assert!(std::mem::size_of::<RawEvent>() == 56);
+const _: () = assert!(std::mem::size_of::<RawEvent>() == RAW_EVENT_SIZE as usize);
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Event type constants (must match BPF side)
@@ -48,6 +54,8 @@ pub enum EventType {
     KvmPageFault = 9,
     KvmCr = 10,
     KvmCpuid = 11,
+    /// Diagnostic representation for an unrecognized raw discriminant.
+    Unknown = u32::MAX,
 }
 
 impl EventType {
@@ -79,7 +87,16 @@ impl fmt::Display for EventType {
 /// A parsed, typed trace event with named fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceEvent {
-    /// Monotonic sequence number (per-CPU, may interleave across CPUs).
+    /// Raw schema version admitted by the parser.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u16,
+    /// CPU/source identity for the source-local sequence.
+    #[serde(default)]
+    pub source_cpu: u32,
+    /// Userspace callback delivery provenance. It is not semantic order.
+    #[serde(default)]
+    pub capture_index: u64,
+    /// Monotonic sequence number within `source_cpu`.
     pub seq: u64,
     /// Host monotonic timestamp (nanoseconds, from `bpf_ktime_get_ns`).
     /// NOT deterministic — use only for performance analysis.
@@ -188,6 +205,10 @@ pub enum EventKind {
     },
 }
 
+const fn default_schema_version() -> u16 {
+    RAW_EVENT_SCHEMA_VERSION
+}
+
 impl TraceEvent {
     /// Parse a [`RawEvent`] into a typed [`TraceEvent`].
     ///
@@ -203,6 +224,9 @@ impl TraceEvent {
         );
 
         TraceEvent {
+            schema_version: raw.schema_version,
+            source_cpu: raw.source_cpu,
+            capture_index: 0,
             seq: raw.seq,
             host_ns: raw.host_ns,
             pid: raw.pid,
@@ -224,9 +248,7 @@ impl TraceEvent {
             EventKind::KvmPageFault { .. } => EventType::KvmPageFault,
             EventKind::KvmCr { .. } => EventType::KvmCr,
             EventKind::KvmCpuid { .. } => EventType::KvmCpuid,
-            EventKind::Unknown { event_type, .. } => {
-                EventType::from_u32(*event_type).unwrap_or(EventType::KvmExit)
-            }
+            EventKind::Unknown { .. } => EventType::Unknown,
         }
     }
 
@@ -365,7 +387,7 @@ mod tests {
 
     #[test]
     fn raw_event_size() {
-        assert_eq!(std::mem::size_of::<RawEvent>(), 56);
+        assert_eq!(std::mem::size_of::<RawEvent>(), usize::from(RAW_EVENT_SIZE));
     }
 
     #[test]
@@ -385,6 +407,9 @@ mod tests {
             host_ns: 1_000_000,
             event_type: 1,
             pid: 1234,
+            source_cpu: 0,
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            record_size: RAW_EVENT_SIZE,
             arg0: 12, // HLT
             arg1: 0xdead_beef,
             arg2: 0,
@@ -409,6 +434,9 @@ mod tests {
             host_ns: 0,
             event_type: 3,
             pid: 100,
+            source_cpu: 0,
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            record_size: RAW_EVENT_SIZE,
             arg0: 1, // write
             arg1: 0x3f8,
             arg2: 1,
@@ -429,6 +457,9 @@ mod tests {
     #[test]
     fn determinism_eq_ignores_host_ns() {
         let a = TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 1,
             host_ns: 100,
             pid: 1,
@@ -440,6 +471,9 @@ mod tests {
             },
         };
         let b = TraceEvent {
+            schema_version: RAW_EVENT_SCHEMA_VERSION,
+            source_cpu: 0,
+            capture_index: 0,
             seq: 1,
             host_ns: 999, // different host time
             pid: 1,

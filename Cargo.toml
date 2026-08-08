@@ -2,6 +2,7 @@
 members = [
     "crates/chaoscontrol-protocol",
     "crates/chaoscontrol-replay-evidence-core",
+    "crates/chaoscontrol-sim-core",
     "crates/chaoscontrol-smr",
     "crates/chaoscontrol-sdk",
     "crates/chaoscontrol-fault",
@@ -32,6 +33,8 @@ default_scope = [
     "chaoscontrol-protocol",
     "-p",
     "chaoscontrol-replay-evidence-core",
+    "-p",
+    "chaoscontrol-sim-core",
     "-p",
     "chaoscontrol-smr",
     "-p",

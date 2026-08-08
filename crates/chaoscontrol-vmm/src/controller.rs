@@ -6,6 +6,7 @@
 
 use crate::scheduler::core::ScheduleTrace;
 use crate::scheduler::ScheduleVariant;
+use crate::sim_adapter::KvmVcpuExecutor;
 use crate::snapshot::VmSnapshot;
 use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
@@ -23,6 +24,10 @@ use chaoscontrol_fault::outcomes::{
 };
 use chaoscontrol_fault::report_merge::{merge_oracle_reports, rejected_merge_report};
 use chaoscontrol_fault::schedule::FaultSchedule;
+use chaoscontrol_sim_core::{
+    complete_round, plan_round, CommandExecutor, CoreVmStatus, ExitObservation, RoundInput,
+    RoundObservation,
+};
 use log::{debug, info, warn};
 use rand::RngCore;
 use rand::SeedableRng;
@@ -1548,6 +1553,16 @@ fn fault_vm_status(status: VmStatus) -> FaultVmStatus {
     }
 }
 
+fn core_vm_status(status: VmStatus) -> CoreVmStatus {
+    match status {
+        VmStatus::Running => CoreVmStatus::Running,
+        VmStatus::Paused => CoreVmStatus::Paused,
+        VmStatus::Crashed => CoreVmStatus::Crashed,
+        VmStatus::Restarting { .. } => CoreVmStatus::Restarting,
+        VmStatus::Resuming { .. } => CoreVmStatus::Resuming,
+    }
+}
+
 fn fault_transition_vm_error(error: FaultTransitionError) -> VmError {
     VmError::Snapshot {
         message: format!("fault outcome transition failed: {error}"),
@@ -2035,14 +2050,20 @@ impl SimulationController {
     ) -> Result<RoundResult, VmError> {
         self.ensure_round_can_start()?;
         let starting_tick = self.tick;
-        let next_tick = self.tick.checked_add(1).ok_or_else(|| VmError::Snapshot {
-            message: "simulation tick exhausted".to_string(),
+        let kernel_input = RoundInput {
+            current_tick: self.tick,
+            vm_statuses: self
+                .vms
+                .iter()
+                .map(|slot| core_vm_status(slot.status))
+                .collect(),
+            exit_budget: self.quantum,
+        };
+        let kernel_plan = plan_round(&kernel_input).map_err(|error| VmError::Snapshot {
+            message: format!("simulation kernel rejected round: {error}"),
         })?;
-        let current_time_ns = next_tick
-            .checked_mul(chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK)
-            .ok_or_else(|| VmError::Snapshot {
-                message: "simulation time exhausted".to_string(),
-            })?;
+        let next_tick = kernel_plan.next_tick;
+        let current_time_ns = kernel_plan.virtual_time_ns;
         let had_pending_process_observations = !self.pending_process_observations.is_empty();
         let had_pending_block_observations = self
             .vms
@@ -2114,6 +2135,7 @@ impl SimulationController {
             let outcome_event_start = self.fault_engine.fault_outcomes().events.len();
             let mut vms_running = 0;
             let mut vms_halted = 0;
+            let mut kernel_observations = Vec::with_capacity(kernel_plan.commands.len());
             round_mutation_started = true;
 
             // Emit tick markers into each VM's dlog (for cross-VM correlation).
@@ -2136,7 +2158,33 @@ impl SimulationController {
             for i in 0..self.vms.len() {
                 match self.vms[i].status {
                     VmStatus::Running => {
-                        let (exits, halted) = self.vms[i].vm.run_bounded(self.quantum)?;
+                        let command = kernel_plan
+                            .commands
+                            .get(kernel_observations.len())
+                            .ok_or_else(|| VmError::Snapshot {
+                                message: format!(
+                                    "simulation kernel omitted running VM command for VM {i}"
+                                ),
+                            })?;
+                        let observation = {
+                            let mut executor = KvmVcpuExecutor::new(i, &mut self.vms[i].vm);
+                            executor.execute(command)?
+                        };
+                        let ExitObservation::VcpuCompleted { exits, halted, .. } = observation
+                        else {
+                            return Err(VmError::Snapshot {
+                                message: "KVM vCPU adapter returned an invalid observation"
+                                    .to_string(),
+                            });
+                        };
+                        kernel_observations.push(RoundObservation {
+                            observation: ExitObservation::VcpuCompleted {
+                                sequence: command.sequence(),
+                                vm_index: i,
+                                exits,
+                                halted,
+                            },
+                        });
                         if halted {
                             self.vms[i].status = VmStatus::Paused; // Treat halt as pause
                             vms_halted += 1;
@@ -2239,6 +2287,12 @@ impl SimulationController {
             let messages_delivered = self.deliver_messages();
             let fault_outcomes =
                 self.fault_engine.fault_outcomes().events[outcome_event_start..].to_vec();
+            complete_round(&kernel_input, kernel_plan, &kernel_observations).map_err(|error| {
+                VmError::Snapshot {
+                    message: format!("simulation kernel rejected shell observations: {error}"),
+                }
+            })?;
+
             let mut schedule_traces = Vec::new();
             for (vm_index, slot) in self.vms.iter_mut().enumerate() {
                 let trace = slot.vm.take_schedule_trace()?;

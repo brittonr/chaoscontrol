@@ -30,6 +30,7 @@ pub mod memory;
 pub mod perf;
 pub mod registers;
 pub mod scheduler;
+pub mod sim_adapter;
 pub mod snapshot;
 pub mod verified;
 pub mod vm;

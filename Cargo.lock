@@ -532,6 +532,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-sim-core"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "rand",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chaoscontrol-smr"
 version = "0.1.0"
 dependencies = [
@@ -562,6 +573,7 @@ dependencies = [
  "blake3",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
+ "chaoscontrol-sim-core",
  "crc32fast",
  "env_logger",
  "kvm-bindings",

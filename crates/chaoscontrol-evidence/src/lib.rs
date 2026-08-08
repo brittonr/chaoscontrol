@@ -41,6 +41,7 @@ mod sdk_local_identity_value;
 mod sdk_local_quality;
 pub mod sdk_local_report;
 mod sdk_local_verdict;
+pub mod semantic_history;
 pub mod simulator_profile;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,
@@ -58,6 +59,7 @@ pub use consistency_checker::{
     RegisterWorkloadHistoryAdapter, SingleRegisterChecker,
 };
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
+pub use semantic_history::{semantic_history_selftest, SemanticError as SemanticHistoryError};
 
 // Shared replay/evidence core: the single Rust-owned authority for replay
 // verdict DTOs, snapshot reference DTOs, replay classes, and validation

@@ -2,8 +2,8 @@ use std::path::Path;
 
 use chaoscontrol_evidence::{
     check_consistency_history_path, read_consistency_history_path, read_consistency_report_path,
-    validate_consistency_report, validate_consistency_report_for_history, CheckerVerdict,
-    EvidenceError, EvidenceResult,
+    semantic_history_selftest, validate_consistency_report,
+    validate_consistency_report_for_history, CheckerVerdict, EvidenceError, EvidenceResult,
 };
 
 fn main() {
@@ -72,9 +72,12 @@ fn run() -> EvidenceResult<()> {
         "typed-adapter history did not record adapter provenance",
     )?;
 
+    let semantic_history_id = semantic_history_selftest()
+        .map_err(|error| EvidenceError::new(format!("semantic history fixtures: {error}")))?;
+
     println!(
-        "consistency checker fixtures ok: good={} bad={} adapter={}",
-        good.history_sha256, bad.history_sha256, adapter.history_sha256
+        "consistency checker fixtures ok: good={} bad={} adapter={} semantic={}",
+        good.history_sha256, bad.history_sha256, adapter.history_sha256, semantic_history_id
     );
     Ok(())
 }

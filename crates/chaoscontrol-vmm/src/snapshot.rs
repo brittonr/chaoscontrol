@@ -2,14 +2,16 @@
 
 use crate::devices::block::BlockSnapshot;
 use crate::devices::entropy::EntropySnapshot;
+use crate::devices::net::NetSnapshot;
 use crate::devices::pit::PitSnapshot;
+use crate::devices::virtio_mmio::VirtioMmioSnapshot;
 use crate::scheduler::core::MAX_SCHEDULE_VCPUS;
 use crate::scheduler::SchedulerSnapshot;
 use chaoscontrol_fault::engine::EngineSnapshot;
 use kvm_bindings::{
     kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_mp_state,
-    kvm_pit_state2, kvm_regs, kvm_sregs, kvm_xcrs, KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER,
-    KVM_IRQCHIP_PIC_SLAVE,
+    kvm_msr_entry, kvm_pit_state2, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, kvm_xsave, Msrs,
+    KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
@@ -266,25 +268,194 @@ impl SnapshotMemory {
     }
 }
 
-/// Snapshot of a single virtio device's host-side state.
+pub const SNAPSHOT_STATE_SCHEMA_VERSION: u32 = 2;
+pub const SNAPSHOT_PROFILE_EXACT_X86_KVM_V1: &str = "exact-x86-kvm-v1";
+
+const VIRTIO_NET_DEVICE_ID: u32 = 1;
+const VIRTIO_BLOCK_DEVICE_ID: u32 = 2;
+const VIRTIO_ENTROPY_DEVICE_ID: u32 = 4;
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct VirtioDeviceIdentity {
+    pub base_addr: u64,
+    pub irq: u32,
+    pub device_id: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SnapshotComponent {
+    GuestMemory,
+    InKernelIrqChip,
+    InKernelPit,
+    InKernelClock,
+    VmmDeterminism,
+    Serial,
+    FaultEngine,
+    Scheduler,
+    VcpuArchitecture {
+        vcpu_id: u32,
+    },
+    VcpuEvents {
+        vcpu_id: u32,
+    },
+    VcpuMsrs {
+        vcpu_id: u32,
+    },
+    VcpuXsave {
+        vcpu_id: u32,
+    },
+    VirtioTransport {
+        identity: VirtioDeviceIdentity,
+    },
+    VirtioQueue {
+        identity: VirtioDeviceIdentity,
+        queue_index: u32,
+    },
+    VirtioBackend {
+        identity: VirtioDeviceIdentity,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotTopology {
+    pub vcpu_count: u32,
+    /// Canonical KVM MSR capability inventory required by every vCPU.
+    pub msr_indices: Vec<u32>,
+    pub virtio_devices: Vec<(VirtioDeviceIdentity, u32)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotMetadata {
+    pub state_schema_version: u32,
+    pub completeness_profile: String,
+    pub topology: SnapshotTopology,
+    pub inventory: Vec<SnapshotComponent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SnapshotPreflightError {
+    LegacyOrIncomplete,
+    SchemaVersion { actual: u32 },
+    Profile { actual: String },
+    TopologyMismatch,
+    DuplicateDeviceIdentity(VirtioDeviceIdentity),
+    InventoryMismatch,
+}
+
+pub fn build_snapshot_inventory(topology: &SnapshotTopology) -> Vec<SnapshotComponent> {
+    let mut components = vec![
+        SnapshotComponent::GuestMemory,
+        SnapshotComponent::InKernelIrqChip,
+        SnapshotComponent::InKernelPit,
+        SnapshotComponent::InKernelClock,
+        SnapshotComponent::VmmDeterminism,
+        SnapshotComponent::Serial,
+        SnapshotComponent::FaultEngine,
+        SnapshotComponent::Scheduler,
+    ];
+    for vcpu_id in 0..topology.vcpu_count {
+        components.push(SnapshotComponent::VcpuArchitecture { vcpu_id });
+        components.push(SnapshotComponent::VcpuEvents { vcpu_id });
+        components.push(SnapshotComponent::VcpuMsrs { vcpu_id });
+        components.push(SnapshotComponent::VcpuXsave { vcpu_id });
+    }
+    for (identity, queue_count) in &topology.virtio_devices {
+        components.push(SnapshotComponent::VirtioTransport {
+            identity: identity.clone(),
+        });
+        for queue_index in 0..*queue_count {
+            components.push(SnapshotComponent::VirtioQueue {
+                identity: identity.clone(),
+                queue_index,
+            });
+        }
+        components.push(SnapshotComponent::VirtioBackend {
+            identity: identity.clone(),
+        });
+    }
+    components.sort();
+    components
+}
+
+pub fn validate_snapshot_metadata(
+    metadata: Option<&SnapshotMetadata>,
+    expected_topology: &SnapshotTopology,
+) -> Result<(), SnapshotPreflightError> {
+    let metadata = metadata.ok_or(SnapshotPreflightError::LegacyOrIncomplete)?;
+    if metadata.state_schema_version != SNAPSHOT_STATE_SCHEMA_VERSION {
+        return Err(SnapshotPreflightError::SchemaVersion {
+            actual: metadata.state_schema_version,
+        });
+    }
+    if metadata.completeness_profile != SNAPSHOT_PROFILE_EXACT_X86_KVM_V1 {
+        return Err(SnapshotPreflightError::Profile {
+            actual: metadata.completeness_profile.clone(),
+        });
+    }
+    let mut identities = std::collections::BTreeSet::new();
+    for (identity, _) in &metadata.topology.virtio_devices {
+        if !identities.insert(identity.clone()) {
+            return Err(SnapshotPreflightError::DuplicateDeviceIdentity(
+                identity.clone(),
+            ));
+        }
+    }
+    if &metadata.topology != expected_topology {
+        return Err(SnapshotPreflightError::TopologyMismatch);
+    }
+    if metadata.inventory != build_snapshot_inventory(expected_topology) {
+        return Err(SnapshotPreflightError::InventoryMismatch);
+    }
+    Ok(())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum VirtioBackendSnapshot {
+    Block(Box<BlockSnapshot>),
+    Net(Box<NetSnapshot>),
+    Entropy(Box<EntropySnapshot>),
+}
+
+impl VirtioBackendSnapshot {
+    pub fn device_id(&self) -> u32 {
+        match self {
+            Self::Block(_) => VIRTIO_BLOCK_DEVICE_ID,
+            Self::Net(_) => VIRTIO_NET_DEVICE_ID,
+            Self::Entropy(_) => VIRTIO_ENTROPY_DEVICE_ID,
+        }
+    }
+}
+
+/// Snapshot of a single virtio device's transport and backend state.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VirtioDeviceSnapshot {
-    /// Device type ID (2 = block, 1 = net, 4 = rng).
-    pub device_id: u32,
-    /// Block device data snapshot (only for block devices).
-    pub block_snapshot: Option<BlockSnapshot>,
+    pub transport: VirtioMmioSnapshot,
+    pub backend: VirtioBackendSnapshot,
+}
+
+impl VirtioDeviceSnapshot {
+    pub fn identity(&self) -> VirtioDeviceIdentity {
+        VirtioDeviceIdentity {
+            base_addr: self.transport.base_addr,
+            irq: self.transport.irq,
+            device_id: self.transport.device_id,
+        }
+    }
 }
 
 /// VMM-side state parameters for snapshot capture.
 ///
 /// Groups the non-KVM state to avoid excessive function arguments.
 pub struct CaptureParams {
+    pub topology: SnapshotTopology,
     pub serial_state: vm_superio::SerialState,
     pub entropy: EntropySnapshot,
     pub virtual_tsc: u64,
     pub exit_count: u64,
     pub io_exit_count: u64,
     pub exits_since_last_sdk: u64,
+    pub panic_detected: bool,
+    pub panic_match_state: u64,
     pub pit_snapshot: PitSnapshot,
     pub last_kvm_pit_mode: u8,
     pub fault_engine_snapshot: EngineSnapshot,
@@ -294,7 +465,13 @@ pub struct CaptureParams {
     pub hlt_latched_vcpus: Vec<bool>,
 }
 
-/// Per-vCPU register state for snapshot/restore.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MsrSnapshot {
+    pub index: u32,
+    pub data: u64,
+}
+
+/// Per-vCPU architecture state for snapshot/restore.
 #[derive(Clone, Debug)]
 pub struct VcpuSnapshot {
     pub regs: kvm_regs,
@@ -303,6 +480,10 @@ pub struct VcpuSnapshot {
     pub debug_regs: kvm_debugregs,
     pub lapic: kvm_lapic_state,
     pub xcrs: kvm_xcrs,
+    /// Raw fixed-size KVM XSAVE image. Owned bytes make cloning explicit.
+    pub xsave: Vec<u8>,
+    pub events: kvm_vcpu_events,
+    pub msrs: Vec<MsrSnapshot>,
     /// MP state (RUNNABLE, HALTED, UNINITIALIZED, etc.).
     /// Critical for SMP: without this, KVM doesn't know whether an AP
     /// should be running or waiting for SIPI after restore.
@@ -341,6 +522,12 @@ struct VcpuSnapshotSerde {
     debug_regs: Vec<u8>,
     lapic: Vec<u8>,
     xcrs: Vec<u8>,
+    #[serde(default)]
+    xsave: Vec<u8>,
+    #[serde(default)]
+    events: Vec<u8>,
+    #[serde(default)]
+    msrs: Vec<MsrSnapshot>,
     mp_state: Vec<u8>,
 }
 
@@ -353,6 +540,9 @@ impl From<&VcpuSnapshot> for VcpuSnapshotSerde {
             debug_regs: pod_to_bytes(&snapshot.debug_regs),
             lapic: pod_to_bytes(&snapshot.lapic),
             xcrs: pod_to_bytes(&snapshot.xcrs),
+            xsave: snapshot.xsave.clone(),
+            events: pod_to_bytes(&snapshot.events),
+            msrs: snapshot.msrs.clone(),
             mp_state: pod_to_bytes(&snapshot.mp_state),
         }
     }
@@ -362,6 +552,11 @@ impl TryFrom<VcpuSnapshotSerde> for VcpuSnapshot {
     type Error = String;
 
     fn try_from(value: VcpuSnapshotSerde) -> Result<Self, Self::Error> {
+        if value.xsave.is_empty() || value.events.is_empty() || value.msrs.is_empty() {
+            return Err(
+                "legacy vCPU snapshot lacks XSAVE, event, or required MSR state".to_string(),
+            );
+        }
         Ok(Self {
             regs: pod_from_bytes(&value.regs, "regs")?,
             sregs: pod_from_bytes(&value.sregs, "sregs")?,
@@ -369,6 +564,12 @@ impl TryFrom<VcpuSnapshotSerde> for VcpuSnapshot {
             debug_regs: pod_from_bytes(&value.debug_regs, "debug_regs")?,
             lapic: pod_from_bytes(&value.lapic, "lapic")?,
             xcrs: pod_from_bytes(&value.xcrs, "xcrs")?,
+            xsave: {
+                let _: kvm_xsave = pod_from_bytes(&value.xsave, "xsave")?;
+                value.xsave
+            },
+            events: pod_from_bytes(&value.events, "events")?,
+            msrs: value.msrs,
             mp_state: pod_from_bytes(&value.mp_state, "mp_state")?,
         })
     }
@@ -486,6 +687,8 @@ where
 
 #[derive(Serialize, Deserialize)]
 struct VmSnapshotSerde {
+    #[serde(default)]
+    metadata: Option<SnapshotMetadata>,
     vcpu_snapshots: Vec<VcpuSnapshot>,
     pic_master: Vec<u8>,
     pic_slave: Vec<u8>,
@@ -499,6 +702,10 @@ struct VmSnapshotSerde {
     exit_count: u64,
     io_exit_count: u64,
     exits_since_last_sdk: u64,
+    #[serde(default)]
+    panic_detected: bool,
+    #[serde(default)]
+    panic_match_state: u64,
     pit_snapshot: PitSnapshot,
     last_kvm_pit_mode: u8,
     fault_engine_snapshot: EngineSnapshot,
@@ -512,6 +719,7 @@ struct VmSnapshotSerde {
 impl From<&VmSnapshot> for VmSnapshotSerde {
     fn from(snapshot: &VmSnapshot) -> Self {
         Self {
+            metadata: snapshot.metadata.clone(),
             vcpu_snapshots: snapshot.vcpu_snapshots.clone(),
             pic_master: pod_to_bytes(&snapshot.pic_master),
             pic_slave: pod_to_bytes(&snapshot.pic_slave),
@@ -525,6 +733,8 @@ impl From<&VmSnapshot> for VmSnapshotSerde {
             exit_count: snapshot.exit_count,
             io_exit_count: snapshot.io_exit_count,
             exits_since_last_sdk: snapshot.exits_since_last_sdk,
+            panic_detected: snapshot.panic_detected,
+            panic_match_state: snapshot.panic_match_state,
             pit_snapshot: snapshot.pit_snapshot.clone(),
             last_kvm_pit_mode: snapshot.last_kvm_pit_mode,
             fault_engine_snapshot: snapshot.fault_engine_snapshot.clone(),
@@ -541,6 +751,7 @@ impl TryFrom<VmSnapshotSerde> for VmSnapshot {
 
     fn try_from(value: VmSnapshotSerde) -> Result<Self, Self::Error> {
         Ok(Self {
+            metadata: value.metadata,
             vcpu_snapshots: value.vcpu_snapshots,
             pic_master: pod_from_bytes(&value.pic_master, "pic_master")?,
             pic_slave: pod_from_bytes(&value.pic_slave, "pic_slave")?,
@@ -554,6 +765,8 @@ impl TryFrom<VmSnapshotSerde> for VmSnapshot {
             exit_count: value.exit_count,
             io_exit_count: value.io_exit_count,
             exits_since_last_sdk: value.exits_since_last_sdk,
+            panic_detected: value.panic_detected,
+            panic_match_state: value.panic_match_state,
             pit_snapshot: value.pit_snapshot,
             last_kvm_pit_mode: value.last_kvm_pit_mode,
             fault_engine_snapshot: value.fault_engine_snapshot,
@@ -586,8 +799,36 @@ impl<'de> Deserialize<'de> for VmSnapshot {
 }
 
 impl VcpuSnapshot {
-    /// Capture all register state from a single vCPU.
-    pub fn capture(vcpu: &VcpuFd) -> Result<Self, SnapshotError> {
+    /// Capture all architecture state from a single vCPU.
+    pub fn capture(vcpu: &VcpuFd, msr_indices: &[u32]) -> Result<Self, SnapshotError> {
+        if msr_indices.is_empty() || msr_indices.windows(2).any(|pair| pair[0] >= pair[1]) {
+            return MsrInventorySnafu.fail();
+        }
+        let requested = msr_indices
+            .iter()
+            .map(|index| kvm_msr_entry {
+                index: *index,
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let mut msrs = Msrs::from_entries(&requested).map_err(|_| MsrBufferSnafu.build())?;
+        let read = vcpu.get_msrs(&mut msrs).context(GetMsrsSnafu)?;
+        if read != msr_indices.len() {
+            return MsrCountSnafu {
+                phase: "capture",
+                expected: msr_indices.len(),
+                actual: read,
+            }
+            .fail();
+        }
+        let msrs = msrs
+            .as_slice()
+            .iter()
+            .map(|entry| MsrSnapshot {
+                index: entry.index,
+                data: entry.data,
+            })
+            .collect();
         Ok(Self {
             regs: vcpu.get_regs().context(GetRegsSnafu)?,
             sregs: vcpu.get_sregs().context(GetSregsSnafu)?,
@@ -595,22 +836,78 @@ impl VcpuSnapshot {
             debug_regs: vcpu.get_debug_regs().context(GetDebugRegsSnafu)?,
             lapic: vcpu.get_lapic().context(GetLapicSnafu)?,
             xcrs: vcpu.get_xcrs().context(GetXcrsSnafu)?,
+            xsave: pod_to_bytes(&vcpu.get_xsave().context(GetXsaveSnafu)?),
+            events: vcpu.get_vcpu_events().context(GetVcpuEventsSnafu)?,
+            msrs,
             mp_state: vcpu.get_mp_state().context(GetMpStateSnafu)?,
         })
     }
 
-    /// Restore all register state to a single vCPU.
+    pub fn validate(&self) -> Result<(), SnapshotError> {
+        let _: kvm_xsave =
+            pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
+        if self.msrs.is_empty()
+            || self
+                .msrs
+                .windows(2)
+                .any(|pair| pair[0].index >= pair[1].index)
+        {
+            return MsrInventorySnafu.fail();
+        }
+        Ok(())
+    }
+
+    pub fn validate_msr_inventory(&self, expected: &[u32]) -> Result<(), SnapshotError> {
+        self.validate()?;
+        if self.msrs.len() != expected.len()
+            || self
+                .msrs
+                .iter()
+                .zip(expected)
+                .any(|(entry, expected_index)| entry.index != *expected_index)
+        {
+            return MsrInventorySnafu.fail();
+        }
+        Ok(())
+    }
+
+    /// Restore all architecture state to a single vCPU.
     pub fn restore(&self, vcpu: &VcpuFd) -> Result<(), SnapshotError> {
+        self.validate()?;
+        let entries = self
+            .msrs
+            .iter()
+            .map(|entry| kvm_msr_entry {
+                index: entry.index,
+                data: entry.data,
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let msrs = Msrs::from_entries(&entries).map_err(|_| MsrBufferSnafu.build())?;
         // MP state MUST be set before registers — KVM refuses register
         // writes on vCPUs in UNINITIALIZED state on some host kernels.
         vcpu.set_mp_state(self.mp_state).context(SetMpStateSnafu)?;
         vcpu.set_sregs(&self.sregs).context(SetSregsSnafu)?;
         vcpu.set_regs(&self.regs).context(SetRegsSnafu)?;
+        vcpu.set_xcrs(&self.xcrs).context(SetXcrsSnafu)?;
         vcpu.set_fpu(&self.fpu).context(SetFpuSnafu)?;
+        let xsave: kvm_xsave =
+            pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
+        vcpu.set_xsave(&xsave).context(SetXsaveSnafu)?;
         vcpu.set_debug_regs(&self.debug_regs)
             .context(SetDebugRegsSnafu)?;
         vcpu.set_lapic(&self.lapic).context(SetLapicSnafu)?;
-        vcpu.set_xcrs(&self.xcrs).context(SetXcrsSnafu)?;
+        let written = vcpu.set_msrs(&msrs).context(SetMsrsSnafu)?;
+        if written != entries.len() {
+            return MsrCountSnafu {
+                phase: "restore",
+                expected: entries.len(),
+                actual: written,
+            }
+            .fail();
+        }
+        vcpu.set_vcpu_events(&self.events)
+            .context(SetVcpuEventsSnafu)?;
         Ok(())
     }
 }
@@ -618,6 +915,9 @@ impl VcpuSnapshot {
 /// Complete VM state — everything needed to restore a VM to an exact point.
 #[derive(Clone, Debug)]
 pub struct VmSnapshot {
+    /// Internal fidelity schema and exact component inventory.
+    pub metadata: Option<SnapshotMetadata>,
+
     /// Per-vCPU register state (one entry per vCPU).
     pub vcpu_snapshots: Vec<VcpuSnapshot>,
 
@@ -640,6 +940,8 @@ pub struct VmSnapshot {
     pub exit_count: u64,
     pub io_exit_count: u64,
     pub exits_since_last_sdk: u64,
+    pub panic_detected: bool,
+    pub panic_match_state: u64,
 
     // DeterministicPit state
     pub pit_snapshot: PitSnapshot,
@@ -693,10 +995,19 @@ impl VmSnapshot {
         guest_memory: &GuestMemoryMmap,
         params: CaptureParams,
     ) -> Result<Self, SnapshotError> {
+        let vcpu_count = u32::try_from(vcpus.len()).map_err(|_| SnapshotError::Topology {
+            message: "vCPU count exceeds snapshot schema width".to_string(),
+        })?;
+        if params.topology.vcpu_count != vcpu_count {
+            return Err(SnapshotError::Topology {
+                message: "capture topology has the wrong vCPU count".to_string(),
+            });
+        }
+
         // Capture per-vCPU state
         let mut vcpu_snapshots = Vec::with_capacity(vcpus.len());
         for vcpu in vcpus {
-            vcpu_snapshots.push(VcpuSnapshot::capture(vcpu)?);
+            vcpu_snapshots.push(VcpuSnapshot::capture(vcpu, &params.topology.msr_indices)?);
         }
 
         // Capture in-kernel IRQ chip state (3 chips: PIC master, PIC slave, IOAPIC)
@@ -737,7 +1048,30 @@ impl VmSnapshot {
             vcpu_snapshots[0].regs.rip,
         );
 
+        let mut devices = Vec::with_capacity(params.virtio_snapshots.len());
+        for snapshot in &params.virtio_snapshots {
+            let queue_count = u32::try_from(snapshot.transport.queues.len()).map_err(|_| {
+                SnapshotError::Topology {
+                    message: "virtio queue count exceeds snapshot schema width".to_string(),
+                }
+            })?;
+            devices.push((snapshot.identity(), queue_count));
+        }
+        devices.sort();
+        if devices != params.topology.virtio_devices {
+            return Err(SnapshotError::Topology {
+                message: "capture virtio state conflicts with declared topology".to_string(),
+            });
+        }
+        let metadata = SnapshotMetadata {
+            state_schema_version: SNAPSHOT_STATE_SCHEMA_VERSION,
+            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
+            inventory: build_snapshot_inventory(&params.topology),
+            topology: params.topology,
+        };
+
         Ok(Self {
+            metadata: Some(metadata),
             vcpu_snapshots,
             pic_master,
             pic_slave,
@@ -751,6 +1085,8 @@ impl VmSnapshot {
             exit_count: params.exit_count,
             io_exit_count: params.io_exit_count,
             exits_since_last_sdk: params.exits_since_last_sdk,
+            panic_detected: params.panic_detected,
+            panic_match_state: params.panic_match_state,
             pit_snapshot: params.pit_snapshot,
             last_kvm_pit_mode: params.last_kvm_pit_mode,
             fault_engine_snapshot: params.fault_engine_snapshot,
@@ -835,6 +1171,22 @@ pub enum SnapshotError {
     GetXcrs { source: kvm_ioctls::Error },
     #[snafu(display("Failed to get MP state"))]
     GetMpState { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get vCPU events"))]
+    GetVcpuEvents { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get XSAVE state"))]
+    GetXsave { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to get required MSRs"))]
+    GetMsrs { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to allocate the required MSR buffer"))]
+    MsrBuffer,
+    #[snafu(display("Required MSR inventory is incomplete or reordered"))]
+    MsrInventory,
+    #[snafu(display("Required MSR {phase} count mismatch: expected {expected}, got {actual}"))]
+    MsrCount {
+        phase: &'static str,
+        expected: usize,
+        actual: usize,
+    },
     #[snafu(display("Failed to get IRQ chip"))]
     GetIrqchip { source: kvm_ioctls::Error },
     #[snafu(display("Failed to get PIT"))]
@@ -857,6 +1209,14 @@ pub enum SnapshotError {
     SetXcrs { source: kvm_ioctls::Error },
     #[snafu(display("Failed to set MP state"))]
     SetMpState { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set vCPU events"))]
+    SetVcpuEvents { source: kvm_ioctls::Error },
+    #[snafu(display("Failed to set XSAVE state"))]
+    SetXsave { source: kvm_ioctls::Error },
+    #[snafu(display("Invalid fixed-size XSAVE image"))]
+    XsaveImage,
+    #[snafu(display("Failed to set required MSRs"))]
+    SetMsrs { source: kvm_ioctls::Error },
     #[snafu(display("Failed to set IRQ chip"))]
     SetIrqchip { source: kvm_ioctls::Error },
     #[snafu(display("Failed to set PIT"))]
@@ -867,11 +1227,15 @@ pub enum SnapshotError {
     WriteMemory,
     #[snafu(display("vCPU count mismatch: snapshot has {snapshot}, VM has {current}"))]
     VcpuCountMismatch { snapshot: usize, current: usize },
+    #[snafu(display("Invalid snapshot topology: {message}"))]
+    Topology { message: String },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEST_MSR_INDICES: [u32; 2] = [0x10, 0x1B];
 
     fn make_base(size: usize) -> Vec<u8> {
         (0..size).map(|i| (i % 256) as u8).collect()
@@ -1054,5 +1418,141 @@ mod tests {
         } else {
             panic!("expected Overlay");
         }
+    }
+
+    fn test_topology() -> SnapshotTopology {
+        SnapshotTopology {
+            vcpu_count: 2,
+            msr_indices: TEST_MSR_INDICES.to_vec(),
+            virtio_devices: vec![(
+                VirtioDeviceIdentity {
+                    base_addr: 0xD000_0000,
+                    irq: 5,
+                    device_id: VIRTIO_BLOCK_DEVICE_ID,
+                },
+                1,
+            )],
+        }
+    }
+
+    fn exact_metadata(topology: &SnapshotTopology) -> SnapshotMetadata {
+        SnapshotMetadata {
+            state_schema_version: SNAPSHOT_STATE_SCHEMA_VERSION,
+            completeness_profile: SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
+            topology: topology.clone(),
+            inventory: build_snapshot_inventory(topology),
+        }
+    }
+
+    #[test]
+    fn exact_metadata_accepts_complete_matching_inventory() {
+        let topology = test_topology();
+        let metadata = exact_metadata(&topology);
+        assert_eq!(
+            validate_snapshot_metadata(Some(&metadata), &topology),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn exact_metadata_rejects_legacy_and_missing_components() {
+        let topology = test_topology();
+        assert_eq!(
+            validate_snapshot_metadata(None, &topology),
+            Err(SnapshotPreflightError::LegacyOrIncomplete)
+        );
+
+        let mut metadata = exact_metadata(&topology);
+        metadata.inventory.pop();
+        assert_eq!(
+            validate_snapshot_metadata(Some(&metadata), &topology),
+            Err(SnapshotPreflightError::InventoryMismatch)
+        );
+    }
+
+    #[test]
+    fn exact_metadata_rejects_topology_mismatch_and_duplicate_identity() {
+        let topology = test_topology();
+        let mut wrong_topology = topology.clone();
+        wrong_topology.vcpu_count = 1;
+        let metadata = exact_metadata(&wrong_topology);
+        assert_eq!(
+            validate_snapshot_metadata(Some(&metadata), &topology),
+            Err(SnapshotPreflightError::TopologyMismatch)
+        );
+
+        let mut duplicate_topology = topology.clone();
+        duplicate_topology
+            .virtio_devices
+            .push(duplicate_topology.virtio_devices[0].clone());
+        let metadata = exact_metadata(&duplicate_topology);
+        assert!(matches!(
+            validate_snapshot_metadata(Some(&metadata), &duplicate_topology),
+            Err(SnapshotPreflightError::DuplicateDeviceIdentity(_))
+        ));
+    }
+
+    fn complete_vcpu_snapshot() -> VcpuSnapshot {
+        VcpuSnapshot {
+            regs: Default::default(),
+            sregs: Default::default(),
+            fpu: Default::default(),
+            debug_regs: Default::default(),
+            lapic: Default::default(),
+            xcrs: Default::default(),
+            xsave: pod_to_bytes(&kvm_xsave::default()),
+            events: Default::default(),
+            msrs: TEST_MSR_INDICES
+                .iter()
+                .map(|index| MsrSnapshot {
+                    index: *index,
+                    data: 0,
+                })
+                .collect(),
+            mp_state: Default::default(),
+        }
+    }
+
+    #[test]
+    fn vcpu_snapshot_rejects_missing_required_msr() {
+        let mut snapshot = complete_vcpu_snapshot();
+        assert!(snapshot.validate_msr_inventory(&TEST_MSR_INDICES).is_ok());
+        snapshot.msrs.pop();
+        assert!(matches!(
+            snapshot.validate_msr_inventory(&TEST_MSR_INDICES),
+            Err(SnapshotError::MsrInventory)
+        ));
+
+        let mut malformed_xsave = complete_vcpu_snapshot();
+        malformed_xsave.xsave.pop();
+        assert!(matches!(
+            malformed_xsave.validate(),
+            Err(SnapshotError::XsaveImage)
+        ));
+    }
+
+    #[test]
+    fn vcpu_snapshot_serialization_round_trips_and_rejects_truncation() {
+        let snapshot = complete_vcpu_snapshot();
+        let mut encoded = serde_json::to_vec(&snapshot).unwrap();
+        let decoded: VcpuSnapshot = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(decoded.msrs, snapshot.msrs);
+        encoded.pop();
+        assert!(serde_json::from_slice::<VcpuSnapshot>(&encoded).is_err());
+    }
+
+    #[test]
+    fn legacy_vcpu_snapshot_is_rejected_with_an_explicit_completeness_error() {
+        let snapshot = complete_vcpu_snapshot();
+        let mut value = serde_json::to_value(&snapshot).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("xsave");
+        object.remove("events");
+        object.remove("msrs");
+
+        let error = serde_json::from_value::<VcpuSnapshot>(value).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("legacy vCPU snapshot lacks XSAVE, event, or required MSR state"));
     }
 }

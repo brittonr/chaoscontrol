@@ -58,7 +58,10 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
     let ip = match parse_dashboard_host(host) {
         Some(ip) => ip,
         None => {
-            warn!("Dashboard: invalid host '{}' (expected an IP address)", host);
+            warn!(
+                "Dashboard: invalid host '{}' (expected an IP address)",
+                host
+            );
             return None;
         }
     };

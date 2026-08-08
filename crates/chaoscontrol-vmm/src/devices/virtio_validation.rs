@@ -1,9 +1,9 @@
 //! Pure queue geometry, memory containment, progress, and status validation.
 
 pub use super::virtio_status::{
-    validate_status_transition, VIRTIO_F_VERSION_1, VIRTIO_STATUS_ACKNOWLEDGE,
-    VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_DRIVER, VIRTIO_STATUS_DRIVER_OK,
-    VIRTIO_STATUS_FAILED, VIRTIO_STATUS_FEATURES_OK,
+    validate_restored_status, validate_status_transition, VIRTIO_F_VERSION_1,
+    VIRTIO_STATUS_ACKNOWLEDGE, VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_DRIVER,
+    VIRTIO_STATUS_DRIVER_OK, VIRTIO_STATUS_FAILED, VIRTIO_STATUS_FEATURES_OK,
 };
 use super::virtio_types::{QueueViolation, VirtioLimits};
 
@@ -41,7 +41,7 @@ impl CheckedRange {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RawQueueConfig {
     pub size: u32,
     pub descriptor_address: u64,

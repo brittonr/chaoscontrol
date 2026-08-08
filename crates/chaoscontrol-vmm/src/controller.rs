@@ -3344,11 +3344,11 @@ impl SimulationController {
 
     /// Snapshot all VMs and simulation state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn snapshot_all(&self) -> Result<SimulationSnapshot, VmError> {
+    pub fn snapshot_all(&mut self) -> Result<SimulationSnapshot, VmError> {
         self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
 
-        for slot in &self.vms {
+        for slot in &mut self.vms {
             let vm_snapshot = slot.vm.snapshot()?;
             vm_snapshots.push((vm_snapshot, slot.status));
         }
@@ -3386,12 +3386,12 @@ impl SimulationController {
     /// stored base. Call [`Self::set_memory_bases`] before using this.
     /// Returns the snapshot and total dirty pages across all VMs.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn snapshot_all_incremental(&self) -> Result<(SimulationSnapshot, usize), VmError> {
+    pub fn snapshot_all_incremental(&mut self) -> Result<(SimulationSnapshot, usize), VmError> {
         self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
         let mut total_dirty = 0usize;
 
-        for (i, slot) in self.vms.iter().enumerate() {
+        for (i, slot) in self.vms.iter_mut().enumerate() {
             if let Some(base) = &self.vm_memory_bases[i] {
                 let (snap, dirty) = slot.vm.snapshot_incremental(base)?;
                 total_dirty += dirty;
@@ -3482,6 +3482,16 @@ impl SimulationController {
         }
         self.validate_pending_snapshot(snapshot)?;
 
+        let starting_tick = self.tick;
+        let restore_round = starting_tick.saturating_add(1);
+        let result = self.restore_all_validated(snapshot);
+        if let Err(error) = &result {
+            self.latch_round_failure_at(restore_round, starting_tick, error);
+        }
+        result
+    }
+
+    fn restore_all_validated(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
@@ -3584,7 +3594,9 @@ impl SimulationController {
                 ));
             }
             for device in &vm_snapshot.virtio_snapshots {
-                if let Some(block_snapshot) = &device.block_snapshot {
+                if let crate::snapshot::VirtioBackendSnapshot::Block(block_snapshot) =
+                    &device.backend
+                {
                     block_snapshot
                         .validate_pending_faults(ledger, target)
                         .map_err(fault_transition_vm_error)?;
@@ -3642,6 +3654,19 @@ impl SimulationController {
         }
         self.validate_pending_snapshot(snapshot)?;
 
+        let starting_tick = self.tick;
+        let restore_round = starting_tick.saturating_add(1);
+        let result = self.restore_all_incremental_validated(snapshot);
+        if let Err(error) = &result {
+            self.latch_round_failure_at(restore_round, starting_tick, error);
+        }
+        result
+    }
+
+    fn restore_all_incremental_validated(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), VmError> {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine

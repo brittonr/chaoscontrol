@@ -3,7 +3,7 @@ mod virtio_support;
 use chaoscontrol_vmm::devices::virtio_mmio::{
     VirtQueue, VirtioBackend, VirtioMmioDevice, VIRTIO_MMIO_MAGIC_VALUE,
     VIRTIO_MMIO_QUEUE_DESC_LOW, VIRTIO_MMIO_QUEUE_DEVICE_LOW, VIRTIO_MMIO_QUEUE_DRIVER_LOW,
-    VIRTIO_MMIO_QUEUE_NUM, VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_SEL,
+    VIRTIO_MMIO_QUEUE_NUM, VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_SEL, VIRTIO_MMIO_STATUS,
 };
 use chaoscontrol_vmm::devices::virtio_types::{
     QueueViolation, TransportViolation, VirtioFailure, MAX_QUEUE_SIZE,
@@ -22,6 +22,7 @@ const WIDE_READ_BYTES: usize = 8;
 const MMIO_REGISTER_BYTES: usize = 4;
 const INITIAL_READ_BYTE: u8 = 0xA5;
 const UNKNOWN_REGISTER: u64 = 0x06C;
+const AHEAD_CURSOR: u16 = 1;
 
 struct DummyBackend {
     calls: Arc<AtomicUsize>,
@@ -228,4 +229,40 @@ fn invalid_status_and_queue_selection_are_typed() {
         queue_error,
         VirtioFailure::Transport(TransportViolation::QueueSelection { .. })
     ));
+}
+
+#[test]
+fn transport_snapshot_restores_negotiation_queue_geometry_and_cursors() {
+    let mem = memory();
+    let mut transport = device(Arc::new(AtomicUsize::new(0)));
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    let snapshot = transport.snapshot().expect("capture quiescent transport");
+
+    register(&mut transport, &mem, VIRTIO_MMIO_STATUS, 0).expect("reset transport");
+    assert_ne!(transport.live_state().status, snapshot.status);
+
+    transport
+        .restore_snapshot(&snapshot, &mem)
+        .expect("restore exact transport state");
+    assert_eq!(transport.snapshot().unwrap(), snapshot);
+}
+
+#[test]
+fn transport_snapshot_rejects_queue_cursor_ahead_of_guest_ring() {
+    let mem = memory();
+    let mut transport = device(Arc::new(AtomicUsize::new(0)));
+    negotiate_features(&mut transport, &mem);
+    configure_queue(&mut transport, &mem, 0);
+    finish_driver(&mut transport, &mem);
+    let before = transport.snapshot().expect("capture quiescent transport");
+    let mut corrupted = before.clone();
+    corrupted.queues[0].last_avail_idx = AHEAD_CURSOR;
+
+    assert!(matches!(
+        transport.validate_snapshot(&corrupted, &mem),
+        Err(VirtioFailure::Queue(QueueViolation::AvailableDelta { .. }))
+    ));
+    assert_eq!(transport.snapshot().unwrap(), before);
 }

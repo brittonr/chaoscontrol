@@ -69,6 +69,8 @@ pub enum QueueViolation {
     RingOverlap,
     AvailableDelta { delta: u16, capacity: u16 },
     AvailableHead { head: u16, capacity: u16 },
+    SnapshotCursorWithoutReady { last_avail: u16, next_used: u16 },
+    SnapshotUsedIndexMismatch { snapshot: u16, guest: u16 },
     GuestMemoryRegions { actual: usize, maximum: usize },
     NotValidated,
 }

@@ -127,7 +127,7 @@ use snafu::{ResultExt, Snafu};
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use vm_memory::{Address, Bytes, GuestAddress};
+use vm_memory::{Address, Bytes, GuestAddress, GuestMemoryMmap};
 use vmm_sys_util::eventfd::EventFd;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -176,6 +176,8 @@ const HPET_REG_COUNTER: u64 = 0x0F0;
 
 /// COM1 IRQ line number (standard PC).
 const SERIAL_IRQ: u32 = 4;
+/// UART 16550 input FIFO capacity used by vm-superio.
+const SERIAL_FIFO_CAPACITY: usize = 0x40;
 
 /// Serial crash detection patterns (big-endian u64 sliding windows).
 ///
@@ -399,6 +401,8 @@ pub enum SchedulePoisonStage {
     JournalCommit,
     ExitHandling,
     ScheduleAction,
+    SnapshotQuiesce,
+    SnapshotRestore,
 }
 
 /// Permanent execution poison retained after possible unrecorded guest progress.
@@ -2191,10 +2195,237 @@ impl DeterministicVm {
 
     // ─── Public API: snapshot / restore ──────────────────────────────
 
+    fn snapshot_topology(&self) -> Result<crate::snapshot::SnapshotTopology, VmError> {
+        use crate::snapshot::VirtioDeviceIdentity;
+
+        let vcpu_count = u32::try_from(self.vcpus.len()).map_err(|_| VmError::Snapshot {
+            message: "vCPU count exceeds snapshot schema width".to_string(),
+        })?;
+        let mut msr_indices = self
+            .kvm
+            .get_msr_index_list()
+            .map_err(|error| VmError::Snapshot {
+                message: format!("cannot read the KVM MSR capability inventory: {error}"),
+            })?
+            .as_slice()
+            .to_vec();
+        msr_indices.sort_unstable();
+        msr_indices.dedup();
+        if msr_indices.is_empty() {
+            return Err(VmError::Snapshot {
+                message: "KVM returned an empty MSR capability inventory".to_string(),
+            });
+        }
+        let mut virtio_devices = Vec::with_capacity(self.virtio_devices.len());
+        let mut identities = std::collections::BTreeSet::new();
+        for device in &self.virtio_devices {
+            let queue_count =
+                u32::try_from(device.queue_count()).map_err(|_| VmError::Snapshot {
+                    message: "virtio queue count exceeds snapshot schema width".to_string(),
+                })?;
+            let identity = VirtioDeviceIdentity {
+                base_addr: device.base_addr(),
+                irq: device.irq(),
+                device_id: device.backend().device_id(),
+            };
+            if !identities.insert(identity.clone()) {
+                return Err(VmError::Snapshot {
+                    message: format!("duplicate live virtio identity {identity:?}"),
+                });
+            }
+            virtio_devices.push((identity, queue_count));
+        }
+        virtio_devices.sort();
+        Ok(crate::snapshot::SnapshotTopology {
+            vcpu_count,
+            msr_indices,
+            virtio_devices,
+        })
+    }
+
+    fn complete_pending_kvm_exits_for_snapshot(&mut self) -> Result<(), VmError> {
+        for vcpu_id in 0..self.vcpus.len() {
+            self.vcpus[vcpu_id].set_kvm_immediate_exit(1);
+            let interrupted = match self.vcpus[vcpu_id].run() {
+                Ok(VcpuExit::Intr) => true,
+                Err(error) => error.errno() == libc::EINTR,
+                Ok(_) => false,
+            };
+            self.vcpus[vcpu_id].set_kvm_immediate_exit(0);
+            if !interrupted {
+                return Err(self.latch_schedule_execution_poison(
+                    SchedulePoisonStage::SnapshotQuiesce,
+                    format!("vCPU {vcpu_id} did not stop at the immediate-exit snapshot boundary"),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn capture_virtio_snapshots(
+        &self,
+    ) -> Result<Vec<crate::snapshot::VirtioDeviceSnapshot>, VmError> {
+        use crate::snapshot::{VirtioBackendSnapshot, VirtioDeviceSnapshot};
+
+        self.virtio_devices
+            .iter()
+            .map(|device| {
+                let transport = device.snapshot().map_err(|failure| VmError::Snapshot {
+                    message: format!("virtio transport is not quiescent: {failure:?}"),
+                })?;
+                let backend = if let Some(block) = device
+                    .backend()
+                    .as_any()
+                    .downcast_ref::<crate::devices::virtio_block::VirtioBlock>(
+                ) {
+                    VirtioBackendSnapshot::Block(Box::new(block.disk().snapshot()))
+                } else if let Some(net) = device
+                    .backend()
+                    .as_any()
+                    .downcast_ref::<crate::devices::virtio_net::VirtioNet>()
+                {
+                    VirtioBackendSnapshot::Net(Box::new(net.net().snapshot()))
+                } else if let Some(entropy) = device
+                    .backend()
+                    .as_any()
+                    .downcast_ref::<crate::devices::virtio_entropy::VirtioEntropy>(
+                ) {
+                    VirtioBackendSnapshot::Entropy(Box::new(entropy.entropy().snapshot()))
+                } else {
+                    return Err(VmError::Snapshot {
+                        message: format!(
+                            "virtio device {} has no exact backend snapshot adapter",
+                            device.backend().device_id()
+                        ),
+                    });
+                };
+                Ok(VirtioDeviceSnapshot { transport, backend })
+            })
+            .collect()
+    }
+
+    fn find_virtio_device_index(
+        &self,
+        identity: &crate::snapshot::VirtioDeviceIdentity,
+    ) -> Option<usize> {
+        self.virtio_devices.iter().position(|device| {
+            device.base_addr() == identity.base_addr
+                && device.irq() == identity.irq
+                && device.backend().device_id() == identity.device_id
+        })
+    }
+
+    fn validate_virtio_snapshot(
+        &self,
+        snapshot: &crate::snapshot::VmSnapshot,
+        snapshot_memory: &GuestMemoryMmap,
+    ) -> Result<(), VmError> {
+        use crate::snapshot::VirtioBackendSnapshot;
+
+        for device_snapshot in &snapshot.virtio_snapshots {
+            let identity = device_snapshot.identity();
+            let index =
+                self.find_virtio_device_index(&identity)
+                    .ok_or_else(|| VmError::Snapshot {
+                        message: format!("snapshot has unknown virtio identity {identity:?}"),
+                    })?;
+            let device = &self.virtio_devices[index];
+            device
+                .validate_snapshot(&device_snapshot.transport, snapshot_memory)
+                .map_err(|failure| VmError::Snapshot {
+                    message: format!("invalid virtio transport snapshot: {failure:?}"),
+                })?;
+            if device_snapshot.backend.device_id() != identity.device_id {
+                return Err(VmError::Snapshot {
+                    message: format!("virtio backend type conflicts with identity {identity:?}"),
+                });
+            }
+            let backend_matches = match &device_snapshot.backend {
+                VirtioBackendSnapshot::Block(_) => device
+                    .backend()
+                    .as_any()
+                    .is::<crate::devices::virtio_block::VirtioBlock>(
+                ),
+                VirtioBackendSnapshot::Net(_) => device
+                    .backend()
+                    .as_any()
+                    .is::<crate::devices::virtio_net::VirtioNet>(),
+                VirtioBackendSnapshot::Entropy(_) => device
+                    .backend()
+                    .as_any()
+                    .is::<crate::devices::virtio_entropy::VirtioEntropy>(
+                ),
+            };
+            if !backend_matches {
+                return Err(VmError::Snapshot {
+                    message: format!("virtio backend adapter mismatch for {identity:?}"),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn restore_virtio_snapshot(
+        &mut self,
+        snapshot: &crate::snapshot::VmSnapshot,
+    ) -> Result<(), VmError> {
+        use crate::snapshot::VirtioBackendSnapshot;
+
+        for device_snapshot in &snapshot.virtio_snapshots {
+            let identity = device_snapshot.identity();
+            let index =
+                self.find_virtio_device_index(&identity)
+                    .ok_or_else(|| VmError::Snapshot {
+                        message: format!("snapshot has unknown virtio identity {identity:?}"),
+                    })?;
+            let device = &mut self.virtio_devices[index];
+            device
+                .restore_snapshot(&device_snapshot.transport, self.memory.inner())
+                .map_err(|failure| VmError::Snapshot {
+                    message: format!("virtio transport restore failed: {failure:?}"),
+                })?;
+            match &device_snapshot.backend {
+                VirtioBackendSnapshot::Block(block_snapshot) => {
+                    let block = device
+                        .backend_mut()
+                        .as_any_mut()
+                        .downcast_mut::<crate::devices::virtio_block::VirtioBlock>()
+                        .ok_or_else(|| VmError::Snapshot {
+                            message: "validated block backend disappeared".to_string(),
+                        })?;
+                    *block.disk_mut() =
+                        crate::devices::block::DeterministicBlock::restore(block_snapshot);
+                }
+                VirtioBackendSnapshot::Net(net_snapshot) => {
+                    let net = device
+                        .backend_mut()
+                        .as_any_mut()
+                        .downcast_mut::<crate::devices::virtio_net::VirtioNet>()
+                        .ok_or_else(|| VmError::Snapshot {
+                            message: "validated net backend disappeared".to_string(),
+                        })?;
+                    *net.net_mut() = crate::devices::net::DeterministicNet::restore(net_snapshot);
+                }
+                VirtioBackendSnapshot::Entropy(entropy_snapshot) => {
+                    let entropy = device
+                        .backend_mut()
+                        .as_any_mut()
+                        .downcast_mut::<crate::devices::virtio_entropy::VirtioEntropy>()
+                        .ok_or_else(|| VmError::Snapshot {
+                            message: "validated entropy backend disappeared".to_string(),
+                        })?;
+                    *entropy.entropy_mut() =
+                        crate::devices::entropy::DeterministicEntropy::restore(entropy_snapshot);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Take a snapshot of the current VM state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn snapshot(&self) -> Result<crate::snapshot::VmSnapshot, VmError> {
-        use crate::snapshot::{CaptureParams, VirtioDeviceSnapshot};
+    pub fn snapshot(&mut self) -> Result<crate::snapshot::VmSnapshot, VmError> {
+        use crate::snapshot::CaptureParams;
 
         self.ensure_schedule_execution_healthy()?;
         if self.pending_schedule_reservation.is_some() {
@@ -2204,34 +2435,20 @@ impl DeterministicVm {
             });
         }
 
-        // Snapshot virtio device state (block device data)
-        let virtio_snapshots: Vec<VirtioDeviceSnapshot> = self
-            .virtio_devices
-            .iter()
-            .map(|dev| {
-                let device_id = dev.backend().device_id();
-                let block_snapshot = if device_id == 2 {
-                    dev.backend()
-                        .as_any()
-                        .downcast_ref::<crate::devices::virtio_block::VirtioBlock>()
-                        .map(|vb| vb.disk().snapshot())
-                } else {
-                    None
-                };
-                VirtioDeviceSnapshot {
-                    device_id,
-                    block_snapshot,
-                }
-            })
-            .collect();
+        let topology = self.snapshot_topology()?;
+        self.complete_pending_kvm_exits_for_snapshot()?;
+        let virtio_snapshots = self.capture_virtio_snapshots()?;
 
         let params = CaptureParams {
+            topology,
             serial_state: self.serial.state(),
             entropy: self.entropy.snapshot(),
             virtual_tsc: self.virtual_tsc.read(),
             exit_count: self.exit_count,
             io_exit_count: self.io_exit_count,
             exits_since_last_sdk: self.exits_since_last_sdk,
+            panic_detected: self.panic_detected,
+            panic_match_state: self.panic_match_state,
             pit_snapshot: self.pit.snapshot(),
             last_kvm_pit_mode: self.last_kvm_pit_mode,
             fault_engine_snapshot: self.fault_engine.snapshot(),
@@ -2253,8 +2470,7 @@ impl DeterministicVm {
             }
             .build()
         });
-        // Can't call self.dlog_emit since snapshot takes &self.
-        // Caller should use dlog_emit_snapshot_taken() after snapshot.
+        // Caller emits the snapshot receipt after this capture succeeds.
         result
     }
 
@@ -2268,10 +2484,10 @@ impl DeterministicVm {
     /// Returns the snapshot and the number of dirty pages captured.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn snapshot_incremental(
-        &self,
+        &mut self,
         base: &std::sync::Arc<Vec<u8>>,
     ) -> Result<(crate::snapshot::VmSnapshot, usize), VmError> {
-        use crate::snapshot::{CaptureParams, SnapshotMemory, VirtioDeviceSnapshot};
+        use crate::snapshot::{CaptureParams, SnapshotMemory};
 
         self.ensure_schedule_execution_healthy()?;
         if self.pending_schedule_reservation.is_some() {
@@ -2285,33 +2501,20 @@ impl DeterministicVm {
         let memory = SnapshotMemory::from_dirty(base, &dirty_bitmap, self.memory.inner());
         let dirty_count = memory.dirty_page_count();
 
-        let virtio_snapshots: Vec<VirtioDeviceSnapshot> = self
-            .virtio_devices
-            .iter()
-            .map(|dev| {
-                let device_id = dev.backend().device_id();
-                let block_snapshot = if device_id == 2 {
-                    dev.backend()
-                        .as_any()
-                        .downcast_ref::<crate::devices::virtio_block::VirtioBlock>()
-                        .map(|vb| vb.disk().snapshot())
-                } else {
-                    None
-                };
-                VirtioDeviceSnapshot {
-                    device_id,
-                    block_snapshot,
-                }
-            })
-            .collect();
+        let topology = self.snapshot_topology()?;
+        self.complete_pending_kvm_exits_for_snapshot()?;
+        let virtio_snapshots = self.capture_virtio_snapshots()?;
 
         let params = CaptureParams {
+            topology,
             serial_state: self.serial.state(),
             entropy: self.entropy.snapshot(),
             virtual_tsc: self.virtual_tsc.read(),
             exit_count: self.exit_count,
             io_exit_count: self.io_exit_count,
             exits_since_last_sdk: self.exits_since_last_sdk,
+            panic_detected: self.panic_detected,
+            panic_match_state: self.panic_match_state,
             pit_snapshot: self.pit.snapshot(),
             last_kvm_pit_mode: self.last_kvm_pit_mode,
             fault_engine_snapshot: self.fault_engine.snapshot(),
@@ -2327,12 +2530,15 @@ impl DeterministicVm {
         // overlay memory we already built.
         let mut vcpu_snapshots = Vec::with_capacity(self.vcpus.len());
         for vcpu in &self.vcpus {
-            vcpu_snapshots.push(crate::snapshot::VcpuSnapshot::capture(vcpu).map_err(|e| {
-                SnapshotSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?);
+            vcpu_snapshots.push(
+                crate::snapshot::VcpuSnapshot::capture(vcpu, &params.topology.msr_indices)
+                    .map_err(|e| {
+                        SnapshotSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?,
+            );
         }
 
         let pic_master = {
@@ -2387,7 +2593,14 @@ impl DeterministicVm {
             .build()
         })?;
 
+        let metadata = crate::snapshot::SnapshotMetadata {
+            state_schema_version: crate::snapshot::SNAPSHOT_STATE_SCHEMA_VERSION,
+            completeness_profile: crate::snapshot::SNAPSHOT_PROFILE_EXACT_X86_KVM_V1.to_string(),
+            inventory: crate::snapshot::build_snapshot_inventory(&params.topology),
+            topology: params.topology.clone(),
+        };
         let snap = crate::snapshot::VmSnapshot {
+            metadata: Some(metadata),
             vcpu_snapshots,
             pic_master,
             pic_slave,
@@ -2401,6 +2614,8 @@ impl DeterministicVm {
             exit_count: params.exit_count,
             io_exit_count: params.io_exit_count,
             exits_since_last_sdk: params.exits_since_last_sdk,
+            panic_detected: params.panic_detected,
+            panic_match_state: params.panic_match_state,
             pit_snapshot: params.pit_snapshot,
             last_kvm_pit_mode: params.last_kvm_pit_mode,
             fault_engine_snapshot: params.fault_engine_snapshot,
@@ -2432,6 +2647,11 @@ impl DeterministicVm {
                     .to_string(),
             });
         }
+        let expected_topology = self.snapshot_topology()?;
+        crate::snapshot::validate_snapshot_metadata(snapshot.metadata.as_ref(), &expected_topology)
+            .map_err(|error| VmError::Snapshot {
+                message: format!("snapshot completeness preflight failed: {error:?}"),
+            })?;
         if snapshot.vcpu_snapshots.len() != self.vcpus.len() {
             return Err(VmError::Snapshot {
                 message: format!(
@@ -2441,10 +2661,22 @@ impl DeterministicVm {
                 ),
             });
         }
+        for vcpu_snapshot in &snapshot.vcpu_snapshots {
+            vcpu_snapshot
+                .validate_msr_inventory(&expected_topology.msr_indices)
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("invalid vCPU snapshot: {error}"),
+                })?;
+        }
         snapshot
             .memory
             .validate_for_guest_size(self.memory.size())
             .map_err(|message| VmError::Snapshot { message })?;
+        if snapshot.serial_state.in_buffer.len() > SERIAL_FIFO_CAPACITY {
+            return Err(VmError::Snapshot {
+                message: "snapshot serial input exceeds the UART FIFO capacity".to_string(),
+            });
+        }
         if snapshot.virtio_snapshots.len() != self.virtio_devices.len() {
             return Err(VmError::Snapshot {
                 message: format!(
@@ -2454,18 +2686,39 @@ impl DeterministicVm {
                 ),
             });
         }
-        for (index, (device_snapshot, device)) in snapshot
-            .virtio_snapshots
-            .iter()
-            .zip(&self.virtio_devices)
-            .enumerate()
-        {
-            if device_snapshot.device_id != device.backend().device_id() {
-                return Err(VmError::Snapshot {
-                    message: format!("snapshot virtio device {index} has the wrong device ID"),
-                });
-            }
+        let mut snapshot_topology = crate::snapshot::SnapshotTopology {
+            vcpu_count: expected_topology.vcpu_count,
+            msr_indices: expected_topology.msr_indices.clone(),
+            virtio_devices: snapshot
+                .virtio_snapshots
+                .iter()
+                .map(|device| {
+                    u32::try_from(device.transport.queues.len())
+                        .map(|queue_count| (device.identity(), queue_count))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| VmError::Snapshot {
+                    message: "snapshot virtio queue count exceeds schema width".to_string(),
+                })?,
+        };
+        snapshot_topology.virtio_devices.sort();
+        if snapshot_topology != expected_topology {
+            return Err(VmError::Snapshot {
+                message: "snapshot virtio identities do not match VM topology".to_string(),
+            });
         }
+        let snapshot_memory_bytes = snapshot.memory.materialize();
+        let snapshot_memory =
+            GuestMemoryMmap::from_ranges(&[(GuestAddress(0), snapshot_memory_bytes.len())])
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("cannot allocate snapshot preflight memory: {error}"),
+                })?;
+        snapshot_memory
+            .write_slice(&snapshot_memory_bytes, GuestAddress(0))
+            .map_err(|error| VmError::Snapshot {
+                message: format!("cannot populate snapshot preflight memory: {error}"),
+            })?;
+        self.validate_virtio_snapshot(snapshot, &snapshot_memory)?;
         self.scheduler
             .validate_snapshot(&snapshot.scheduler_snapshot)?;
         if snapshot.hlt_latched_vcpus.len() != self.vcpus.len()
@@ -2493,6 +2746,17 @@ impl DeterministicVm {
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         self.validate_fault_engine_snapshot(snapshot)?;
+        match self.restore_validated(snapshot) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(self.latch_schedule_execution_poison(
+                SchedulePoisonStage::SnapshotRestore,
+                error.to_string(),
+            )),
+        }
+    }
+
+    fn restore_validated(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
+        self.complete_pending_kvm_exits_for_snapshot()?;
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
@@ -2509,14 +2773,9 @@ impl DeterministicVm {
         self.virtual_tsc.set(snapshot.virtual_tsc);
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
-        // Always reset idle counter — branches should start fresh,
-        // not inherit the bootstrap's idle state.
-        self.exits_since_last_sdk = 0;
-
-        // Clear panic detection state so a panic from a previous
-        // branch doesn't carry into a new branch.
-        self.panic_detected = false;
-        self.panic_match_state = 0;
+        self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
+        self.panic_detected = snapshot.panic_detected;
+        self.panic_match_state = snapshot.panic_match_state;
 
         // Restore DeterministicPit state
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
@@ -2543,22 +2802,7 @@ impl DeterministicVm {
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
 
-        // Restore virtio device state (block device data)
-        for (snap, dev) in snapshot
-            .virtio_snapshots
-            .iter()
-            .zip(self.virtio_devices.iter_mut())
-        {
-            if let Some(ref blk_snap) = snap.block_snapshot {
-                if let Some(vb) = dev
-                    .backend_mut()
-                    .as_any_mut()
-                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>()
-                {
-                    *vb.disk_mut() = crate::devices::block::DeterministicBlock::restore(blk_snap);
-                }
-            }
-        }
+        self.restore_virtio_snapshot(snapshot)?;
 
         // Restore serial state with new EventFd and our capturing writer
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
@@ -2615,9 +2859,24 @@ impl DeterministicVm {
         snapshot: &crate::snapshot::VmSnapshot,
         base: &[u8],
     ) -> Result<(), VmError> {
+        self.validate_fault_engine_snapshot(snapshot)?;
+        match self.restore_incremental_validated(snapshot, base) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(self.latch_schedule_execution_poison(
+                SchedulePoisonStage::SnapshotRestore,
+                error.to_string(),
+            )),
+        }
+    }
+
+    fn restore_incremental_validated(
+        &mut self,
+        snapshot: &crate::snapshot::VmSnapshot,
+        base: &[u8],
+    ) -> Result<(), VmError> {
         use crate::snapshot::SnapshotMemory;
 
-        self.validate_fault_engine_snapshot(snapshot)?;
+        self.complete_pending_kvm_exits_for_snapshot()?;
 
         // Step 1: Revert previously-dirtied pages back to base values.
         if !self.last_dirty_page_indices.is_empty() {
@@ -2681,9 +2940,9 @@ impl DeterministicVm {
         self.virtual_tsc.set(snapshot.virtual_tsc);
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
-        self.exits_since_last_sdk = 0;
-        self.panic_detected = false;
-        self.panic_match_state = 0;
+        self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
+        self.panic_detected = snapshot.panic_detected;
+        self.panic_match_state = snapshot.panic_match_state;
         self.pit = DeterministicPit::restore(&snapshot.pit_snapshot);
         self.last_kvm_pit_mode = snapshot.last_kvm_pit_mode;
         self.fault_engine
@@ -2702,21 +2961,7 @@ impl DeterministicVm {
         self.active_vcpu = self.scheduler.active();
         self.configure_progress_source_for_current_turn()?;
 
-        for (snap, dev) in snapshot
-            .virtio_snapshots
-            .iter()
-            .zip(self.virtio_devices.iter_mut())
-        {
-            if let Some(ref blk_snap) = snap.block_snapshot {
-                if let Some(vb) = dev
-                    .backend_mut()
-                    .as_any_mut()
-                    .downcast_mut::<crate::devices::virtio_block::VirtioBlock>()
-                {
-                    *vb.disk_mut() = crate::devices::block::DeterministicBlock::restore(blk_snap);
-                }
-            }
-        }
+        self.restore_virtio_snapshot(snapshot)?;
 
         let serial_evt = EventFd::new(libc::EFD_NONBLOCK)?;
         let serial_trigger = SerialTrigger(serial_evt.try_clone()?);

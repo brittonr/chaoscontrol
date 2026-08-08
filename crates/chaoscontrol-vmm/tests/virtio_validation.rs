@@ -6,10 +6,12 @@ use chaoscontrol_vmm::devices::virtio_request::{
     NetDirection, BLOCK_HEADER_BYTES, BLOCK_SECTOR_BYTES, VIRTIO_BLK_T_OUT,
 };
 use chaoscontrol_vmm::devices::virtio_types::{
-    DescriptorViolation, QueueViolation, RequestViolation, VirtioLimits,
+    DescriptorViolation, QueueViolation, RequestViolation, TransportViolation, VirtioLimits,
 };
 use chaoscontrol_vmm::devices::virtio_validation::{
-    validate_available_delta, validate_queue_config, MemoryRegion, RawQueueConfig,
+    validate_available_delta, validate_queue_config, validate_restored_status, MemoryRegion,
+    RawQueueConfig, VIRTIO_F_VERSION_1, VIRTIO_STATUS_ACKNOWLEDGE, VIRTIO_STATUS_DRIVER,
+    VIRTIO_STATUS_DRIVER_OK, VIRTIO_STATUS_FEATURES_OK,
 };
 
 const MEMORY_BYTES: u64 = 1024 * 1024;
@@ -45,6 +47,26 @@ fn compliant_queue_and_wrapped_progress_validate() {
         .expect("valid queue");
     assert_eq!(config.size(), QUEUE_SIZE);
     assert_eq!(validate_available_delta(u16::MAX, 0, QUEUE_SIZE), Ok(1));
+}
+
+#[test]
+fn restored_status_accepts_complete_state_and_rejects_missing_prerequisites() {
+    let active_status = VIRTIO_STATUS_ACKNOWLEDGE
+        | VIRTIO_STATUS_DRIVER
+        | VIRTIO_STATUS_FEATURES_OK
+        | VIRTIO_STATUS_DRIVER_OK;
+    assert_eq!(
+        validate_restored_status(active_status, VIRTIO_F_VERSION_1, VIRTIO_F_VERSION_1),
+        Ok(())
+    );
+    assert!(matches!(
+        validate_restored_status(
+            VIRTIO_STATUS_DRIVER_OK,
+            VIRTIO_F_VERSION_1,
+            VIRTIO_F_VERSION_1
+        ),
+        Err(TransportViolation::StatusTransition { .. })
+    ));
 }
 
 #[test]

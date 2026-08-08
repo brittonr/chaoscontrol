@@ -38,10 +38,22 @@ A match records tested observational agreement. A divergence records both observ
 
 SpaceWasm is version `0.0.0` with no release and known missing tooling/features. All results remain host-side diagnostic evidence and cannot satisfy VM replay, sandbox, production runtime, package trust, or release gates.
 
+### 9. The exact Mantle producer is a pinned Nix input
+
+The rail consumes Mantle commit `a141fcbaafe41f9a413a81275a33fe915bfca370`. It remeasures manifest BLAKE3 `4ff6a7794cf54fd0000326e7505ba8496f4f3f7c4ddd88d1f876373d652a8b65`, bundle identity `cee7190f2f78321b07f3d1f493baaa5b2cb74d517eb4f229c7e7a6094b877342`, and every declared member before execution. The Nix input follows ChaosControl's existing Crane, Octet, and Tiger Style inputs only where those inputs do not construct the SpaceWasm bundle.
+
+### 10. Resume evidence uses a consumer-owned offline probe
+
+The retained Mantle runner covers the fixed fixture contract but does not expose continuation observations. The Nix rail therefore builds `tools/spacewasm-resume-probe.rs` from the bundle's exact source archive, vendor closure, and Rust toolchain. The probe compares uninterrupted execution with repeated one-instruction segments and requires at least one `OutOfFuel` boundary. It also compares complete-byte and one-byte streaming decode of the same generated module.
+
+### 11. Generated mismatches shrink under one exact predicate
+
+The pure core emits deterministic smaller instruction-module candidates. The shell accepts a candidate only when the runtime pair, profile, and first normalized difference remain unchanged. The report retains the minimized bytes, original and minimized BLAKE3 values, predicate field, and bounded attempt count.
+
 ## Functional core / imperative shell split
 
-- **Pure core**: profile/cohort/case admission, feature-intersection checks, chunk-schedule validation, observation normalization, match/divergence classification, resume-equivalence predicates, shrink-step admission, identity material, retention plans, and evidence DTO construction.
-- **Imperative shell**: bundle remeasurement, corpus generation/mutation, runtime store allocation, SpaceWasm streaming decode/execution, Wasmtime execution, observation capture, shrinker invocation, persistence, and report rendering.
+- **Pure core**: profile, cohort, and case admission; exact-set checks; deterministic MVP generation; normalized observation comparison; first-difference predicates; shrink planning; identity material; and evidence DTO construction.
+- **Imperative shell**: bundle remeasurement, bounded process execution, generated-input retention, SpaceWasm and Wasmtime invocation, shrink-candidate execution, persistence, and report rendering. The separate resume probe owns only the exact SpaceWasm allocation, decode, invocation, and segmented-execution effects needed for its bounded oracle.
 
 ## Risks / Trade-offs
 

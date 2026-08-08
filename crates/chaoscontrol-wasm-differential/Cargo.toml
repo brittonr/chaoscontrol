@@ -1,0 +1,17 @@
+[package]
+name = "chaoscontrol-wasm-differential"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+blake3 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+wait-timeout = "0.2"
+
+[dev-dependencies]
+proptest = "1"

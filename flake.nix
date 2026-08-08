@@ -10,6 +10,12 @@
     };
     octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
+    mantle = {
+      url = "github:OnixResearch/mantle/a141fcbaafe41f9a413a81275a33fe915bfca370";
+      inputs.crane.follows = "crane";
+      inputs.octet.follows = "octet";
+      inputs.tigerstyle.follows = "octet";
+    };
     advisory-db = {
       url = "github:RustSec/advisory-db";
       flake = false;
@@ -24,6 +30,7 @@
       rust-overlay,
       octet,
       trellis,
+      mantle,
       advisory-db,
     }:
     let
@@ -124,6 +131,49 @@
               doCheck = false;
             }
           );
+
+          mantleSpacewasmBundle = mantle.packages.${system}.spacewasm-reference-bundle;
+          mantleSpacewasmToolchain = mantle.packages.${system}.spacewasm-reference-rust-toolchain;
+          spacewasmResumeProbe =
+            pkgs.runCommand "chaoscontrol-spacewasm-resume-probe"
+              {
+                nativeBuildInputs = [
+                  mantleSpacewasmToolchain
+                  pkgs.gnutar
+                  pkgs.gzip
+                ];
+              }
+              ''
+                set -eu
+                export CARGO_HOME="$TMPDIR/cargo-home"
+                export CARGO_NET_OFFLINE=true
+                export CARGO_TARGET_DIR="$TMPDIR/target"
+                sourceRoot="$TMPDIR/spacewasm-source"
+                vendorRoot="$TMPDIR/vendor"
+                mkdir -p "$CARGO_HOME" "$sourceRoot" "$vendorRoot"
+                tar -xzf ${mantleSpacewasmBundle}/source/spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3.tar.gz \
+                  --strip-components=1 -C "$sourceRoot"
+                tar -xf ${mantleSpacewasmBundle}/dependencies/vendor.tar -C "$vendorRoot"
+                mkdir -p "$sourceRoot/.cargo" "$sourceRoot/examples"
+                cat > "$sourceRoot/.cargo/config.toml" <<EOF
+                [source.crates-io]
+                replace-with = "vendored-sources"
+
+                [source.vendored-sources]
+                directory = "$vendorRoot"
+
+                [net]
+                offline = true
+                EOF
+                cp ${./tools/spacewasm-resume-probe.rs} \
+                  "$sourceRoot/examples/chaoscontrol_spacewasm_resume_probe.rs"
+                cd "$sourceRoot"
+                cargo build --locked --offline --release --no-default-features \
+                  --example chaoscontrol_spacewasm_resume_probe
+                mkdir -p "$out/bin"
+                cp "$CARGO_TARGET_DIR/release/examples/chaoscontrol_spacewasm_resume_probe" \
+                  "$out/bin/spacewasm-resume-probe"
+              '';
 
           # --- Guest binary builds (musl static) ---
 
@@ -1417,6 +1467,80 @@
                   check-dogfood-artifact-sizes
                   check-accepted-dogfood-config --config ${acceptedVerdictDogfoodConfig} --expectations ${./dogfood-results/accepted-dogfood-expectations.json}
                   touch $out
+                '';
+
+            # Exact, remeasured SpaceWasm MVP differential evidence against Wasmtime.
+            spacewasm-mvp-differential =
+              pkgs.runCommand "spacewasm-mvp-differential-check"
+                {
+                  nativeBuildInputs = [
+                    chaoscontrol
+                    pkgs.nickel
+                    pkgs.wasmtime
+                    pkgs.b3sum
+                    pkgs.jq
+                    spacewasmResumeProbe
+                  ];
+                }
+                ''
+                  mkdir -p "$out"
+                  nickel export --format json \
+                    ${self}/contracts/evidence/examples/spacewasm-mvp-differential-profile.ncl \
+                    > "$out/profile.json"
+                  cmp "$out/profile.json" \
+                    ${self}/contracts/evidence/examples/spacewasm-mvp-differential-profile.json
+                  if nickel export --format json \
+                    ${self}/contracts/evidence/fixtures/invalid/spacewasm-mvp-differential-profile.post-mvp.invalid.ncl \
+                    > /dev/null 2>&1; then
+                    echo "post-MVP negative profile unexpectedly passed" >&2
+                    exit 1
+                  fi
+                  chaoscontrol-wasm-differential \
+                    --profile "$out/profile.json" \
+                    --bundle ${mantleSpacewasmBundle} \
+                    --wasmtime ${pkgs.wasmtime}/bin/wasmtime \
+                    --out "$out/report.json" \
+                    --artifacts "$out/modules"
+                  jq -e '
+                    [.comparisons[] | select(.case_id == "mvp-positive" or .case_id == "streaming-positive")]
+                    | length == 2
+                    and .[0].module_blake3 == .[1].module_blake3
+                    and all(.[]; .verdict == "match")
+                  ' "$out/report.json" > /dev/null
+                  spacewasm-resume-probe \
+                    "$out/modules/generated-valid-0000.wasm" \
+                    "$out/resume-report.raw.json"
+                  moduleDigest="$(b3sum --no-names "$out/modules/generated-valid-0000.wasm")"
+                  probeDigest="$(b3sum --no-names ${spacewasmResumeProbe}/bin/spacewasm-resume-probe)"
+                  profileIdentity="$(jq -r .profile_identity_blake3 "$out/report.json")"
+                  jq --sort-keys \
+                    --arg moduleDigest "$moduleDigest" \
+                    --arg probeDigest "$probeDigest" \
+                    --arg profileIdentity "$profileIdentity" \
+                    '. + {
+                      module_blake3: $moduleDigest,
+                      probe_blake3: $probeDigest,
+                      profile_identity_blake3: $profileIdentity,
+                      evidence_role: "diagnostic-only",
+                      non_claims: [
+                        "not-portable-interpreter-state",
+                        "not-spacewasm-correctness",
+                        "not-webassembly-conformance"
+                      ]
+                    }' \
+                    "$out/resume-report.raw.json" > "$out/resume-report.json"
+                  jq -e --slurpfile profile "$out/profile.json" '
+                    .source_revision == $profile[0].spacewasm_revision
+                    and .segment_fuel == $profile[0].runtime.spacewasm_resume_segment_fuel
+                    and .maximum_segments == $profile[0].runtime.maximum_resume_segments
+                    and .segments > 1
+                    and .segments <= .maximum_segments
+                    and .stream_chunk_bytes == 1
+                    and .uninterrupted == "finished"
+                    and .segmented == "finished"
+                    and .streaming == "finished"
+                  ' "$out/resume-report.json" > /dev/null
+                  rm "$out/resume-report.raw.json"
                 '';
 
             # CI/dashboard-facing replay readiness receipt plus stable summary line.

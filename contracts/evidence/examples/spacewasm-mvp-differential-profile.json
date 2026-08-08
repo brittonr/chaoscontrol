@@ -1,0 +1,79 @@
+{
+  "bounds": {
+    "maximum_bundle_member_bytes": 805306368,
+    "maximum_bundle_members": 512,
+    "maximum_bundle_total_bytes": 2147483648,
+    "maximum_cases": 16,
+    "maximum_generated_instruction_pairs": 32,
+    "maximum_input_bytes": 1048576,
+    "maximum_output_bytes": 1048576,
+    "maximum_process_milliseconds": 30000,
+    "maximum_shrink_attempts": 32,
+    "wasmtime_fuel": 1024
+  },
+  "bundle_identity_blake3": "cee7190f2f78321b07f3d1f493baaa5b2cb74d517eb4f229c7e7a6094b877342",
+  "bundle_manifest_blake3": "4ff6a7794cf54fd0000326e7505ba8496f4f3f7c4ddd88d1f876373d652a8b65",
+  "chunk_schedules": [
+    "complete",
+    "one-byte"
+  ],
+  "corpus_classes": [
+    "completion",
+    "fuel-exhaustion",
+    "generated-malformed",
+    "generated-valid",
+    "malformed",
+    "streaming-malformed",
+    "streaming-valid",
+    "trap-unreachable"
+  ],
+  "feature_intersection": [
+    "wasm1",
+    "mutable-globals"
+  ],
+  "generated_malformed_cases": 4,
+  "generated_valid_cases": 4,
+  "generator_id": "chaoscontrol-mvp-instruction-v1",
+  "mantle_profile_id": "nasa-spacewasm-e24cf093-reference-v1",
+  "mantle_revision": "a141fcbaafe41f9a413a81275a33fe915bfca370",
+  "module_abi": {
+    "maximum_host_functions": 0,
+    "maximum_imports": 0,
+    "maximum_linear_memory_bytes": 0,
+    "maximum_memories": 0,
+    "maximum_tables": 0,
+    "memory_grow": "not-admitted",
+    "parameter_count": 0,
+    "required_export": "run",
+    "result_count": 0
+  },
+  "non_claims": [
+    "not-flight-qualification",
+    "not-memory-safety",
+    "not-production-readiness",
+    "not-release-eligibility",
+    "not-sandbox-effectiveness",
+    "not-spacewasm-correctness",
+    "not-spacewasm-wasmtime-equivalence",
+    "not-webassembly-conformance"
+  ],
+  "observation_fields": [
+    "outcome",
+    "resource-class",
+    "return-values",
+    "state-identity-blake3",
+    "trap-class"
+  ],
+  "profile_id": "spacewasm-mvp-differential-v1",
+  "runtime": {
+    "host_authority": "none",
+    "maximum_resume_segments": 4096,
+    "spacewasm_resume_segment_fuel": 1,
+    "wasmtime_proposals": "all-proposals-disabled"
+  },
+  "schema": "chaoscontrol.spacewasm-mvp-differential-profile.v1",
+  "seed": 1469598103934665603,
+  "spacewasm_revision": "e24cf09355a90497148eb5029fdb8e3400bd63e3",
+  "spacewasm_runner_blake3": "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221",
+  "wasmtime_version": "wasmtime 41.0.3"
+}

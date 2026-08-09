@@ -12,6 +12,7 @@ pub mod kernel;
 pub mod network;
 pub mod protocol_fault;
 pub mod protocol_receipt;
+pub mod protocol_replay;
 pub mod protocol_simulation;
 pub mod scheduler;
 pub mod snapshot;
@@ -32,6 +33,10 @@ pub use protocol_fault::{
 pub use protocol_receipt::{
     build_protocol_simulation_receipt, protocol_simulation_config_digest,
     validate_protocol_simulation_receipt, ProtocolReceiptError,
+};
+pub use protocol_replay::{
+    compare_protocol_simulation_receipts, ProtocolReplayComparison, ProtocolReplayMismatch,
+    ProtocolReplayMismatchClass,
 };
 pub use protocol_simulation::{
     schedule_next_protocol_event, validate_protocol_effect_requests, verify_repeatable_transition,

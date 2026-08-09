@@ -102,6 +102,103 @@ pub struct ProtocolTransitionInput<I> {
     pub event: I,
 }
 
+/// One effect request surfaced by a protocol adapter.
+///
+/// Admitted requests bind effects to simulation-owned sources. The legacy host
+/// variants exist only so validation and negative fixtures can fail closed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProtocolEffectRequest {
+    VirtualClockRead,
+    SeededRandomRead { stream_id: String },
+    RegisteredIo { hook_id: String },
+    DeclaredFault { hook_id: String },
+    HostWallClockRead,
+    HostRandomRead,
+    UnregisteredExternalIo { operation: String },
+}
+
+/// Forbidden source reported for unsupported protocol-simulation evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProtocolUnboundNondeterminism {
+    HostWallClock,
+    HostRandomness,
+    UnregisteredExternalIo,
+}
+
+/// Fail-closed effect-request validation error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtocolEffectValidationError {
+    EmptyBinding {
+        request_index: usize,
+        field: &'static str,
+    },
+    UnboundNondeterminism {
+        request_index: usize,
+        source: ProtocolUnboundNondeterminism,
+    },
+}
+
+impl fmt::Display for ProtocolEffectValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for ProtocolEffectValidationError {}
+
+/// r[protocol-fault-sim.contract.nondeterminism-fails]
+/// Reject effect requests that bypass simulation-owned deterministic sources.
+pub fn validate_protocol_effect_requests(
+    requests: &[ProtocolEffectRequest],
+) -> Result<(), ProtocolEffectValidationError> {
+    for (request_index, request) in requests.iter().enumerate() {
+        match request {
+            ProtocolEffectRequest::VirtualClockRead => {}
+            ProtocolEffectRequest::SeededRandomRead { stream_id } => {
+                require_effect_binding(request_index, "stream_id", stream_id)?;
+            }
+            ProtocolEffectRequest::RegisteredIo { hook_id }
+            | ProtocolEffectRequest::DeclaredFault { hook_id } => {
+                require_effect_binding(request_index, "hook_id", hook_id)?;
+            }
+            ProtocolEffectRequest::HostWallClockRead => {
+                return Err(ProtocolEffectValidationError::UnboundNondeterminism {
+                    request_index,
+                    source: ProtocolUnboundNondeterminism::HostWallClock,
+                });
+            }
+            ProtocolEffectRequest::HostRandomRead => {
+                return Err(ProtocolEffectValidationError::UnboundNondeterminism {
+                    request_index,
+                    source: ProtocolUnboundNondeterminism::HostRandomness,
+                });
+            }
+            ProtocolEffectRequest::UnregisteredExternalIo { .. } => {
+                return Err(ProtocolEffectValidationError::UnboundNondeterminism {
+                    request_index,
+                    source: ProtocolUnboundNondeterminism::UnregisteredExternalIo,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_effect_binding(
+    request_index: usize,
+    field: &'static str,
+    value: &str,
+) -> Result<(), ProtocolEffectValidationError> {
+    if value.is_empty() {
+        return Err(ProtocolEffectValidationError::EmptyBinding {
+            request_index,
+            field,
+        });
+    }
+    Ok(())
+}
+
 /// A typed protocol fact emitted by a deterministic adapter transition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -126,6 +223,7 @@ pub struct ProtocolTransition<S, E> {
     pub next_state: S,
     pub emitted_events: Vec<E>,
     pub facts: Vec<ProtocolFact>,
+    pub effect_requests: Vec<ProtocolEffectRequest>,
 }
 
 /// r[protocol-fault-sim.contract]
@@ -133,6 +231,8 @@ pub struct ProtocolTransition<S, E> {
 ///
 /// Implementations must depend only on `state` and `input`. They must not read
 /// clocks, randomness, files, environment variables, or external transports.
+/// They must surface each requested effect in `effect_requests`. Validation is
+/// bounded to those surfaced requests and does not detect a hidden side effect.
 pub trait ProtocolAdapter {
     type State: Clone + PartialEq + Eq;
     type Input: Clone + PartialEq + Eq;
@@ -150,7 +250,9 @@ pub trait ProtocolAdapter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolTransitionCheckError<E> {
     FirstRun(E),
+    FirstRunEffect(ProtocolEffectValidationError),
     SecondRun(E),
+    SecondRunEffect(ProtocolEffectValidationError),
     DivergentOutput,
 }
 
@@ -162,8 +264,9 @@ pub type ProtocolTransitionCheckResult<A> = Result<
 
 /// Run one transition twice and reject an adapter that changes its output.
 ///
-/// This check detects visible nondeterminism for the supplied state and input.
-/// It does not prove that an adapter is deterministic for all possible inputs.
+/// This check rejects surfaced host effects and detects visible nondeterminism
+/// for the supplied state and input. It does not detect hidden adapter effects
+/// or prove that an adapter is deterministic for all possible inputs.
 pub fn verify_repeatable_transition<A: ProtocolAdapter>(
     adapter: &A,
     state: &A::State,
@@ -172,9 +275,13 @@ pub fn verify_repeatable_transition<A: ProtocolAdapter>(
     let first = adapter
         .transition(state, input)
         .map_err(ProtocolTransitionCheckError::FirstRun)?;
+    validate_protocol_effect_requests(&first.effect_requests)
+        .map_err(ProtocolTransitionCheckError::FirstRunEffect)?;
     let second = adapter
         .transition(state, input)
         .map_err(ProtocolTransitionCheckError::SecondRun)?;
+    validate_protocol_effect_requests(&second.effect_requests)
+        .map_err(ProtocolTransitionCheckError::SecondRunEffect)?;
     if first != second {
         return Err(ProtocolTransitionCheckError::DivergentOutput);
     }
@@ -415,6 +522,7 @@ mod tests {
     const TEST_LATE_SEQUENCE: u64 = 2;
     const TEST_MAXIMUM_SCHEDULE_STEPS: u64 = 4;
     const TEST_FACT_COUNT: usize = 1;
+    const TEST_FORBIDDEN_EFFECT_COUNT: usize = 3;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct LeaseState {
@@ -462,6 +570,18 @@ mod tests {
                     subject: format!("lease-generation-{next_generation}"),
                     value_ref: format!("node-{node_id}"),
                 }],
+                effect_requests: vec![
+                    ProtocolEffectRequest::VirtualClockRead,
+                    ProtocolEffectRequest::SeededRandomRead {
+                        stream_id: "lease-election".to_string(),
+                    },
+                    ProtocolEffectRequest::RegisteredIo {
+                        hook_id: "protocol-message".to_string(),
+                    },
+                    ProtocolEffectRequest::DeclaredFault {
+                        hook_id: "fault-schedule".to_string(),
+                    },
+                ],
             })
         }
     }
@@ -487,6 +607,31 @@ mod tests {
                 next_state: state.checked_add(calls).expect("fixture state"),
                 emitted_events: Vec::new(),
                 facts: Vec::new(),
+                effect_requests: Vec::new(),
+            })
+        }
+    }
+
+    struct EffectRequestAdapter {
+        request: ProtocolEffectRequest,
+    }
+
+    impl ProtocolAdapter for EffectRequestAdapter {
+        type State = u64;
+        type Input = ();
+        type EmittedEvent = ();
+        type Error = Infallible;
+
+        fn transition(
+            &self,
+            state: &Self::State,
+            _input: &ProtocolTransitionInput<Self::Input>,
+        ) -> Result<ProtocolTransition<Self::State, Self::EmittedEvent>, Self::Error> {
+            Ok(ProtocolTransition {
+                next_state: *state,
+                emitted_events: Vec::new(),
+                facts: Vec::new(),
+                effect_requests: vec![self.request.clone()],
             })
         }
     }
@@ -545,6 +690,72 @@ mod tests {
         assert_eq!(first_schedule, second_schedule);
         assert_eq!(first_schedule.selected.sequence, TEST_EARLY_SEQUENCE);
         assert_eq!(first_schedule.next_state.current_tick, TEST_EARLY_TICK);
+    }
+
+    #[test]
+    fn registered_simulation_effects_are_admitted() {
+        let requests = [
+            ProtocolEffectRequest::VirtualClockRead,
+            ProtocolEffectRequest::SeededRandomRead {
+                stream_id: "election-timeout".to_string(),
+            },
+            ProtocolEffectRequest::RegisteredIo {
+                hook_id: "protocol-message".to_string(),
+            },
+            ProtocolEffectRequest::DeclaredFault {
+                hook_id: "fault-schedule".to_string(),
+            },
+        ];
+        validate_protocol_effect_requests(&requests).expect("registered effects validate");
+
+        let malformed = [ProtocolEffectRequest::RegisteredIo {
+            hook_id: String::new(),
+        }];
+        assert_eq!(
+            validate_protocol_effect_requests(&malformed),
+            Err(ProtocolEffectValidationError::EmptyBinding {
+                request_index: 0,
+                field: "hook_id"
+            })
+        );
+    }
+
+    #[test]
+    fn unbound_nondeterminism_fixtures_fail_as_unsupported_effects() {
+        let fixtures = [
+            (
+                ProtocolEffectRequest::HostWallClockRead,
+                ProtocolUnboundNondeterminism::HostWallClock,
+            ),
+            (
+                ProtocolEffectRequest::HostRandomRead,
+                ProtocolUnboundNondeterminism::HostRandomness,
+            ),
+            (
+                ProtocolEffectRequest::UnregisteredExternalIo {
+                    operation: "host-socket-read".to_string(),
+                },
+                ProtocolUnboundNondeterminism::UnregisteredExternalIo,
+            ),
+        ];
+        assert_eq!(fixtures.len(), TEST_FORBIDDEN_EFFECT_COUNT);
+        let input = ProtocolTransitionInput {
+            step: 0,
+            virtual_tick: 0,
+            event: (),
+        };
+        for (request, source) in fixtures {
+            let adapter = EffectRequestAdapter { request };
+            assert_eq!(
+                verify_repeatable_transition(&adapter, &0, &input),
+                Err(ProtocolTransitionCheckError::FirstRunEffect(
+                    ProtocolEffectValidationError::UnboundNondeterminism {
+                        request_index: 0,
+                        source,
+                    }
+                ))
+            );
+        }
     }
 
     #[test]

@@ -29,12 +29,14 @@ pub use protocol_fault::{
     ProtocolFaultError, ProtocolFaultHook, ScheduledProtocolFault,
 };
 pub use protocol_simulation::{
-    schedule_next_protocol_event, verify_repeatable_transition, PendingProtocolEvent,
-    ProtocolAdapter, ProtocolEventSchedulerState, ProtocolFact, ProtocolFactKind, ProtocolIdentity,
+    schedule_next_protocol_event, validate_protocol_effect_requests, verify_repeatable_transition,
+    PendingProtocolEvent, ProtocolAdapter, ProtocolEffectRequest, ProtocolEffectValidationError,
+    ProtocolEventSchedulerState, ProtocolFact, ProtocolFactKind, ProtocolIdentity,
     ProtocolRngPolicy, ProtocolScheduleDecision, ProtocolScheduleError, ProtocolScheduleRef,
     ProtocolSchedulerPolicy, ProtocolSimulationConfig, ProtocolSimulationEvidenceClass,
     ProtocolSimulationReceipt, ProtocolTransition, ProtocolTransitionCheckError,
-    ProtocolTransitionCheckResult, ProtocolTransitionInput, ProtocolVirtualClockPolicy,
-    PROTOCOL_SIMULATION_CONFIG_SCHEMA, PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
+    ProtocolTransitionCheckResult, ProtocolTransitionInput, ProtocolUnboundNondeterminism,
+    ProtocolVirtualClockPolicy, PROTOCOL_SIMULATION_CONFIG_SCHEMA,
+    PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
 };
 pub use snapshot::{CoreSnapshotError, SimulationCoreSnapshot, CORE_SNAPSHOT_SCHEMA_VERSION};

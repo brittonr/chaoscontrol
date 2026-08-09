@@ -7,7 +7,7 @@
 - [x] [serial] Add protocol-simulation config and receipt DTOs for seed, schedule, clock, RNG, protocol, and artifact digests. r[protocol-fault-sim.contract]
 - [x] [serial] Add pure deterministic transition and scheduling interfaces with repeatability tests. r[protocol-fault-sim.contract]
 - [x] [parallel] Add fault hooks for node loss, message loss, reorder, duplication, and partition. r[protocol-fault-sim.faults]
-- [ ] [parallel] Add negative nondeterminism fixtures proving failure on unbound entropy or wall-clock use. r[protocol-fault-sim.contract]
+- [x] [parallel] Add negative nondeterminism fixtures proving failure on unbound entropy or wall-clock use. r[protocol-fault-sim.contract]
 
 ## Phase 3: Replay and evidence
 

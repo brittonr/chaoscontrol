@@ -31,6 +31,7 @@ pub mod operator_triage;
 pub mod profile_projection;
 mod profile_projection_spec;
 mod profile_projection_verification;
+pub mod protocol_simulation_receipt;
 pub mod readiness_promotion_gate;
 pub mod replay_readiness_surfaces;
 mod replay_verdict_artifact;
@@ -127,6 +128,9 @@ pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,
     render_operator_triage_runbook, render_operator_triage_runbook_path,
     write_operator_triage_runbook_path, TriageReceiptSource,
+};
+pub use protocol_simulation_receipt::{
+    emit_protocol_simulation_receipt_path, validate_protocol_simulation_receipt_path,
 };
 pub use readiness_promotion_gate::{
     default_readiness_promotion_paths, run_readiness_promotion_selftest,

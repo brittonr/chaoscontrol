@@ -18,6 +18,7 @@ cap-std = "=4.0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
+chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
 chaoscontrol-smr = { path = "../chaoscontrol-smr" }
 
 [[bin]]

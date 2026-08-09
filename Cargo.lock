@@ -382,6 +382,7 @@ dependencies = [
  "cap-std",
  "chaoscontrol-protocol",
  "chaoscontrol-replay-evidence-core",
+ "chaoscontrol-sim-core",
  "chaoscontrol-smr",
  "chaoscontrol-vmm",
  "libc",

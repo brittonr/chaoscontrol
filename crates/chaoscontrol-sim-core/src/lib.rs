@@ -14,6 +14,7 @@ pub mod protocol_fault;
 pub mod protocol_receipt;
 pub mod protocol_replay;
 pub mod protocol_simulation;
+pub mod runtime_capacity;
 pub mod scheduler;
 pub mod snapshot;
 
@@ -48,5 +49,13 @@ pub use protocol_simulation::{
     ProtocolTransitionCheckResult, ProtocolTransitionInput, ProtocolUnboundNondeterminism,
     ProtocolVirtualClockPolicy, PROTOCOL_SIMULATION_CONFIG_SCHEMA,
     PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
+};
+pub use runtime_capacity::{
+    plan_runtime_capacity, runtime_capacity_plan_identity, validate_runtime_capacity_observations,
+    CapacityField, CapacityLease, CapacityPoolState, CapacitySlotState, CapacityUsageObservation,
+    RuntimeCapacityClaims, RuntimeCapacityError, RuntimeCapacityLimits,
+    RuntimeCapacityObservationError, RuntimeCapacityObservations, RuntimeCapacityPlan,
+    RuntimeCapacityStartupResult, ScratchClassLimit, RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA,
+    RUNTIME_CAPACITY_PLAN_SCHEMA,
 };
 pub use snapshot::{CoreSnapshotError, SimulationCoreSnapshot, CORE_SNAPSHOT_SCHEMA_VERSION};

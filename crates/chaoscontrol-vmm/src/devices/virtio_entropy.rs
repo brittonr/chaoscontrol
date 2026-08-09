@@ -1,7 +1,9 @@
 //! Bounded virtio-rng shell with transactional deterministic entropy state.
 
 use super::entropy::DeterministicEntropy;
-use super::virtio_buffer::{BoundedBufferAllocator, HostBufferAllocator};
+use super::virtio_buffer::{
+    with_zeroed_scratch, BoundedBufferAllocator, HostBufferAllocator, ScratchPoolObservations,
+};
 use super::virtio_chain::DescriptorBuffer;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::plan_entropy_request;
@@ -20,7 +22,15 @@ pub struct VirtioEntropy {
 
 impl VirtioEntropy {
     pub fn new(entropy: DeterministicEntropy) -> Self {
-        Self::with_allocator(entropy, Box::<HostBufferAllocator>::default())
+        Self::try_new(entropy)
+            .expect("default entropy scratch capacity must allocate before activation")
+    }
+
+    pub fn try_new(entropy: DeterministicEntropy) -> Result<Self, ResourceViolation> {
+        Ok(Self::with_allocator(
+            entropy,
+            Box::new(HostBufferAllocator::try_default()?),
+        ))
     }
 
     pub fn with_allocator(
@@ -42,6 +52,10 @@ impl VirtioEntropy {
         &mut self.entropy
     }
 
+    pub fn scratch_capacity_observations(&self) -> ScratchPoolObservations {
+        self.allocator.observations()
+    }
+
     pub fn inject_failure_after_entropy_commit(&mut self) {
         self.fail_after_entropy_commit = true;
     }
@@ -56,18 +70,20 @@ impl VirtioEntropy {
         };
         let plan = plan_entropy_request(&available.chain, queue.limits())
             .map_err(VirtioFailure::Request)?;
-        let mut scratch = self.allocate_scratch(plan.transfer_bytes, queue)?;
+        let (requested, maximum) = Self::scratch_request(plan.transfer_bytes, queue)?;
         let used_length =
             u32::try_from(plan.transfer_bytes).map_err(|_| VirtioFailure::BackendWrite)?;
         queue.stage_completion(available.head_index, used_length)?;
         queue.mark_backend_started()?;
         let mut candidate_entropy = self.entropy.clone();
-        fill_guest_transactionally(
-            mem,
-            available.chain.buffers(),
-            &mut scratch,
-            &mut candidate_entropy,
-        )?;
+        with_zeroed_scratch(&mut *self.allocator, requested, maximum, |scratch| {
+            fill_guest_transactionally(
+                mem,
+                available.chain.buffers(),
+                scratch,
+                &mut candidate_entropy,
+            )
+        })?;
         self.entropy = candidate_entropy;
         if std::mem::take(&mut self.fail_after_entropy_commit) {
             return Err(VirtioFailure::BackendWrite);
@@ -76,11 +92,10 @@ impl VirtioEntropy {
         Ok(true)
     }
 
-    fn allocate_scratch(
-        &mut self,
+    fn scratch_request(
         transfer_bytes: u64,
         queue: &VirtQueue,
-    ) -> Result<Vec<u8>, VirtioFailure> {
+    ) -> Result<(usize, usize), VirtioFailure> {
         let maximum = queue.limits().scratch_bytes;
         if maximum < MINIMUM_SCRATCH_BYTES {
             return Err(VirtioFailure::Resource(ResourceViolation::ScratchLimit {
@@ -100,9 +115,7 @@ impl VirtioEntropy {
                 maximum,
             })
         })?;
-        self.allocator
-            .zeroed(requested, maximum)
-            .map_err(VirtioFailure::Resource)
+        Ok((requested, maximum))
     }
 }
 

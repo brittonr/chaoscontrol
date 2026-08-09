@@ -1,7 +1,9 @@
 //! Bounded virtio-net RX and TX shells over deterministic queues.
 
 use super::net::{DeterministicNet, NetQueueError};
-use super::virtio_buffer::{BoundedBufferAllocator, HostBufferAllocator};
+use super::virtio_buffer::{
+    with_zeroed_scratch, BoundedBufferAllocator, HostBufferAllocator, ScratchPoolObservations,
+};
 use super::virtio_chain::DescriptorChainPlan;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::{plan_net_request, NetDirection, NET_HEADER_BYTES};
@@ -23,7 +25,15 @@ pub struct VirtioNet {
 
 impl VirtioNet {
     pub fn new(net: DeterministicNet) -> Self {
-        Self::with_allocator(net, Box::<HostBufferAllocator>::default())
+        Self::try_new(net)
+            .expect("default network scratch capacity must allocate before activation")
+    }
+
+    pub fn try_new(net: DeterministicNet) -> Result<Self, ResourceViolation> {
+        Ok(Self::with_allocator(
+            net,
+            Box::new(HostBufferAllocator::try_default()?),
+        ))
     }
 
     pub fn with_allocator(
@@ -39,6 +49,10 @@ impl VirtioNet {
 
     pub fn net_mut(&mut self) -> &mut DeterministicNet {
         &mut self.net
+    }
+
+    pub fn scratch_capacity_observations(&self) -> ScratchPoolObservations {
+        self.allocator.observations()
     }
 
     fn process_tx_one(
@@ -59,26 +73,24 @@ impl VirtioNet {
                 maximum: usize::MAX,
             })
         })?;
-        let mut packet = self
-            .allocator
-            .zeroed(packet_bytes, maximum)
-            .map_err(VirtioFailure::Resource)?;
-        read_tx_packet(mem, &available.chain, &mut packet)?;
         let limits = queue.limits();
-        self.net
-            .validate_tx_retention(
+        let allocator = &mut *self.allocator;
+        let net = &mut self.net;
+        with_zeroed_scratch(allocator, packet_bytes, maximum, |packet| {
+            read_tx_packet(mem, &available.chain, packet)?;
+            net.validate_tx_retention(
                 packet_bytes,
                 limits.max_net_tx_packets,
                 limits.max_net_tx_bytes,
             )
             .map_err(|error| map_queue_error(error, packet_bytes))?;
-        queue.stage_completion(available.head_index, EMPTY_USED_BYTES)?;
-        queue.mark_backend_started()?;
-        self.net
-            .try_enqueue_tx_bounded(packet, limits.max_net_tx_packets, limits.max_net_tx_bytes)
-            .map_err(|error| map_queue_error(error, packet_bytes))?;
-        queue.complete(mem, available.head_index, EMPTY_USED_BYTES)?;
-        Ok(true)
+            queue.stage_completion(available.head_index, EMPTY_USED_BYTES)?;
+            queue.mark_backend_started()?;
+            net.try_enqueue_tx_bounded(packet, limits.max_net_tx_packets, limits.max_net_tx_bytes)
+                .map_err(|error| map_queue_error(error, packet_bytes))?;
+            queue.complete(mem, available.head_index, EMPTY_USED_BYTES)?;
+            Ok(true)
+        })
     }
 
     fn process_rx_one(
@@ -175,6 +187,12 @@ fn map_queue_error(error: NetQueueError, packet_bytes: usize) -> VirtioFailure {
         }
         NetQueueError::ByteLimit { requested, maximum } => {
             VirtioFailure::Resource(ResourceViolation::RetainedByteLimit { requested, maximum })
+        }
+        NetQueueError::FrameLimit { requested, maximum } => {
+            VirtioFailure::Resource(ResourceViolation::ScratchLimit { requested, maximum })
+        }
+        NetQueueError::SlotExhausted => {
+            VirtioFailure::Resource(ResourceViolation::RetainedPacketSlotsExhausted)
         }
         NetQueueError::Allocation => VirtioFailure::Resource(ResourceViolation::Allocation {
             requested: packet_bytes,

@@ -110,8 +110,12 @@ pub enum RequestViolation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResourceViolation {
     ScratchLimit { requested: usize, maximum: usize },
+    ScratchExhausted,
+    ScratchLease { slot: usize },
+    ScratchLeak { count: usize },
     Allocation { requested: usize },
     RetainedPacketLimit { requested: usize, maximum: usize },
+    RetainedPacketSlotsExhausted,
     RetainedByteLimit { requested: u64, maximum: u64 },
 }
 

@@ -42,6 +42,11 @@ use chaoscontrol_protocol::{
     HypercallPage, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT, HYPERCALL_PAGE_ADDR,
     HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
 };
+use chaoscontrol_sim_core::{
+    plan_runtime_capacity, CapacityUsageObservation, RuntimeCapacityClaims, RuntimeCapacityLimits,
+    RuntimeCapacityObservations, RuntimeCapacityPlan, RuntimeCapacityStartupResult,
+    ScratchClassLimit, RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA,
+};
 
 use kvm_bindings::{
     kvm_clock_data, kvm_enable_cap, kvm_fpu, kvm_guest_debug, kvm_pit_config, kvm_regs,
@@ -241,6 +246,10 @@ const VIRTIO_MMIO_IRQ_1: u32 = 6;
 const VIRTIO_MMIO_BASE_2: u64 = 0xD000_2000;
 /// IRQ line for virtio MMIO device 2 (entropy/rng).
 const VIRTIO_MMIO_IRQ_2: u32 = 7;
+const VIRTIO_SCRATCH_DEVICE_COUNT: usize = 3;
+const BYTES_PER_MIB_USIZE: usize = 1024 * 1024;
+const BYTES_PER_MIB_U64: u64 = 1024 * 1024;
+const DEFAULT_EMPTY_DISK_BYTES: usize = 16 * BYTES_PER_MIB_USIZE;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Configuration
@@ -325,6 +334,45 @@ pub struct VmConfig {
     ///
     /// Off by default — adds ~50ms per snapshot for 256 MB guests.
     pub dlog_memory_hash: bool,
+}
+
+fn capacity_usage(
+    observations: crate::devices::virtio_buffer::ScratchPoolObservations,
+) -> CapacityUsageObservation {
+    CapacityUsageObservation {
+        allocated_slots: observations.allocated_slots,
+        allocated_bytes: observations.allocated_bytes,
+        in_use: observations.in_use,
+        high_water: observations.high_water,
+        exhaustion_count: observations.exhaustion_count,
+        release_count: observations.release_count,
+    }
+}
+
+fn runtime_capacity_limits(config: &VmConfig) -> Result<RuntimeCapacityLimits, VmError> {
+    let packet_slot_bytes = usize::try_from(
+        crate::devices::virtio_types::DEFAULT_MAX_NET_FRAME_BYTES,
+    )
+    .map_err(|_| VmError::RuntimeCapacity {
+        message: "default network frame limit does not fit usize".to_string(),
+    })?;
+    let retained_packet_bytes =
+        usize::try_from(crate::devices::virtio_types::DEFAULT_MAX_NET_TX_BYTES).map_err(|_| {
+            VmError::RuntimeCapacity {
+                message: "default retained network byte limit does not fit usize".to_string(),
+            }
+        })?;
+    Ok(RuntimeCapacityLimits {
+        journal_record_slots: config.smp_schedule_journal_limit,
+        scratch_classes: vec![ScratchClassLimit {
+            slot_bytes: crate::devices::virtio_types::DEFAULT_SCRATCH_BYTES,
+            slots: VIRTIO_SCRATCH_DEVICE_COUNT,
+        }],
+        packet_slots: crate::devices::virtio_types::DEFAULT_MAX_NET_TX_PACKETS,
+        packet_slot_bytes,
+        retained_packet_bytes,
+        queue_metadata_slots: crate::devices::virtio_types::DEFAULT_MAX_NET_TX_PACKETS,
+    })
 }
 
 impl Default for VmConfig {
@@ -474,6 +522,9 @@ pub enum VmError {
 
     #[snafu(display("Deterministic progress capability unavailable: {message}"))]
     ProgressCapability { message: String },
+
+    #[snafu(display("Runtime capacity admission failed before activation: {message}"))]
+    RuntimeCapacity { message: String },
 
     #[snafu(display(
         "Deterministic schedule execution is permanently poisoned at {stage:?}: {detail}"
@@ -741,6 +792,9 @@ pub struct DeterministicVm {
     // Fault injection engine (SDK hypercall handler + property oracle)
     fault_engine: FaultEngine,
 
+    // Startup-admitted capacity for selected deterministic runtime paths.
+    runtime_capacity_plan: RuntimeCapacityPlan,
+
     // Virtio MMIO devices
     virtio_devices: Vec<VirtioMmioDevice>,
 
@@ -909,6 +963,13 @@ impl DeterministicVm {
     /// console. The VM is ready for [`load_kernel`](Self::load_kernel)
     /// after construction.
     pub fn new(config: VmConfig) -> Result<Self, VmError> {
+        let runtime_capacity_limits = runtime_capacity_limits(&config)?;
+        let runtime_capacity_plan =
+            plan_runtime_capacity(&runtime_capacity_limits).map_err(|error| {
+                VmError::RuntimeCapacity {
+                    message: format!("{error:?}"),
+                }
+            })?;
         let kvm = Kvm::new().context(KvmCreateSnafu)?;
         let vm = kvm.create_vm().context(VmCreateSnafu)?;
 
@@ -1211,6 +1272,7 @@ impl DeterministicVm {
             schedule_execution_poison: None,
             hlt_latched_vcpus: vec![false; num_vcpus],
             fault_engine,
+            runtime_capacity_plan,
             virtio_devices,
             instruction_counter,
             pmu_counter_base_progress: 0,
@@ -1231,6 +1293,82 @@ impl DeterministicVm {
             dlog_register_interval: config.dlog_register_interval,
             dlog_memory_hash: config.dlog_memory_hash,
             last_dirty_page_indices: Vec::new(),
+        })
+    }
+
+    pub fn runtime_capacity_plan(&self) -> &RuntimeCapacityPlan {
+        &self.runtime_capacity_plan
+    }
+
+    pub fn runtime_capacity_observations(&self) -> Result<RuntimeCapacityObservations, VmError> {
+        let mut scratch_pools = Vec::with_capacity(VIRTIO_SCRATCH_DEVICE_COUNT);
+        let mut network = None;
+        for device in &self.virtio_devices {
+            if let Some(block) = device
+                .backend()
+                .as_any()
+                .downcast_ref::<crate::devices::virtio_block::VirtioBlock>()
+            {
+                scratch_pools.push(capacity_usage(block.scratch_capacity_observations()));
+            } else if let Some(net) = device
+                .backend()
+                .as_any()
+                .downcast_ref::<crate::devices::virtio_net::VirtioNet>()
+            {
+                scratch_pools.push(capacity_usage(net.scratch_capacity_observations()));
+                network = Some(net.net().capacity_observations());
+            } else if let Some(entropy) = device
+                .backend()
+                .as_any()
+                .downcast_ref::<crate::devices::virtio_entropy::VirtioEntropy>(
+            ) {
+                scratch_pools.push(capacity_usage(entropy.scratch_capacity_observations()));
+            }
+        }
+        if scratch_pools.len() != VIRTIO_SCRATCH_DEVICE_COUNT {
+            return Err(VmError::RuntimeCapacity {
+                message: "live virtio scratch-pool inventory is incomplete".to_string(),
+            });
+        }
+        let network = network.ok_or_else(|| VmError::RuntimeCapacity {
+            message: "live network packet-pool inventory is missing".to_string(),
+        })?;
+        let leaked_scratch_slots = scratch_pools.iter().try_fold(0usize, |total, pool| {
+            total
+                .checked_add(pool.in_use)
+                .ok_or_else(|| VmError::RuntimeCapacity {
+                    message: "scratch leak counter overflow".to_string(),
+                })
+        })?;
+        let packet_allocated_bytes = network
+            .allocated_slots
+            .checked_mul(network.slot_bytes)
+            .ok_or_else(|| VmError::RuntimeCapacity {
+                message: "packet allocation observation overflow".to_string(),
+            })?;
+        let retained_packet_bytes =
+            usize::try_from(network.retained_bytes).map_err(|_| VmError::RuntimeCapacity {
+                message: "retained packet observation does not fit usize".to_string(),
+            })?;
+        Ok(RuntimeCapacityObservations {
+            schema: RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA.to_string(),
+            plan: self.runtime_capacity_plan.clone(),
+            startup_result: RuntimeCapacityStartupResult::Admitted,
+            scratch_pools,
+            packet_pool: CapacityUsageObservation {
+                allocated_slots: network.allocated_slots,
+                allocated_bytes: packet_allocated_bytes,
+                in_use: network.in_use,
+                high_water: network.high_water,
+                exhaustion_count: network.exhaustion_count,
+                release_count: network.release_count,
+            },
+            queue_metadata_slots: network.queue_metadata_slots,
+            queue_metadata_high_water: network.high_water,
+            retained_packet_bytes,
+            leaked_scratch_slots,
+            leaked_packet_slots: network.in_use,
+            claims: RuntimeCapacityClaims::default(),
         })
     }
 
@@ -1262,27 +1400,54 @@ impl DeterministicVm {
                     message: e.to_string(),
                 })?
             }
-            None => DeterministicBlock::new(16 * 1024 * 1024),
+            None => DeterministicBlock::new(DEFAULT_EMPTY_DISK_BYTES),
         };
         info!(
             "  Block device: {} bytes ({} MB)",
             disk.size(),
-            disk.size() / (1024 * 1024)
+            disk.size() / BYTES_PER_MIB_U64
         );
-        let blk_backend = Box::new(VirtioBlock::new(disk));
+        let blk_backend =
+            Box::new(
+                VirtioBlock::try_new(disk).map_err(|error| VmError::RuntimeCapacity {
+                    message: format!("virtio block scratch startup failed: {error:?}"),
+                })?,
+            );
         let blk_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_0, VIRTIO_MMIO_IRQ_0, blk_backend);
         devices.push(blk_device);
 
         // Device 1: virtio-net (unique MAC per VM)
         let mac = [0x52, 0x54, 0x00, 0x12, 0x34, vm_id as u8];
-        let net = DeterministicNet::new(mac);
-        let net_backend = Box::new(VirtioNet::new(net));
+        let packet_slot_bytes = usize::try_from(
+            crate::devices::virtio_types::DEFAULT_MAX_NET_FRAME_BYTES,
+        )
+        .map_err(|_| VmError::RuntimeCapacity {
+            message: "default network frame limit does not fit usize".to_string(),
+        })?;
+        let net = DeterministicNet::try_new(
+            mac,
+            crate::devices::virtio_types::DEFAULT_MAX_NET_TX_PACKETS,
+            packet_slot_bytes,
+        )
+        .map_err(|error| VmError::RuntimeCapacity {
+            message: format!("network packet startup allocation failed: {error:?}"),
+        })?;
+        let net_backend =
+            Box::new(
+                VirtioNet::try_new(net).map_err(|error| VmError::RuntimeCapacity {
+                    message: format!("virtio network scratch startup failed: {error:?}"),
+                })?,
+            );
         let net_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_1, VIRTIO_MMIO_IRQ_1, net_backend);
         devices.push(net_device);
 
         // Device 2: virtio-rng
         let entropy = DeterministicEntropy::new(seed);
-        let rng_backend = Box::new(VirtioEntropy::new(entropy));
+        let rng_backend = Box::new(VirtioEntropy::try_new(entropy).map_err(|error| {
+            VmError::RuntimeCapacity {
+                message: format!("virtio entropy scratch startup failed: {error:?}"),
+            }
+        })?);
         let rng_device = VirtioMmioDevice::new(VIRTIO_MMIO_BASE_2, VIRTIO_MMIO_IRQ_2, rng_backend);
         devices.push(rng_device);
 
@@ -4740,6 +4905,14 @@ mod tests {
         // Device 2: entropy @ 0xD000_2000 IRQ 7
         assert_eq!(devices[2].base_addr(), VIRTIO_MMIO_BASE_2);
         assert_eq!(devices[2].irq(), VIRTIO_MMIO_IRQ_2);
+
+        let observations = vm
+            .runtime_capacity_observations()
+            .expect("runtime capacity observations");
+        chaoscontrol_sim_core::validate_runtime_capacity_observations(&observations)
+            .expect("runtime capacity observations validate");
+        assert_eq!(observations.leaked_scratch_slots, 0);
+        assert_eq!(observations.leaked_packet_slots, 0);
     }
 
     #[test]
@@ -4986,6 +5159,30 @@ mod tests {
             config.smp_schedule_journal_limit,
             DEFAULT_SCHEDULE_JOURNAL_LIMIT
         );
+    }
+
+    #[test]
+    fn runtime_capacity_plan_is_admitted_before_vm_activation() {
+        let config = VmConfig::default();
+        let limits = runtime_capacity_limits(&config).expect("default runtime limits");
+        let plan = plan_runtime_capacity(&limits).expect("default runtime capacity plan");
+        assert_eq!(plan.journal_record_slots, DEFAULT_SCHEDULE_JOURNAL_LIMIT);
+        assert_eq!(plan.scratch_slots, VIRTIO_SCRATCH_DEVICE_COUNT);
+        assert_eq!(
+            plan.packet_slots,
+            crate::devices::virtio_types::DEFAULT_MAX_NET_TX_PACKETS
+        );
+
+        let mut invalid = config;
+        invalid.smp_schedule_journal_limit = 0;
+        let invalid_limits =
+            runtime_capacity_limits(&invalid).expect("invalid limits are representable");
+        assert!(matches!(
+            plan_runtime_capacity(&invalid_limits),
+            Err(chaoscontrol_sim_core::RuntimeCapacityError::Zero {
+                field: chaoscontrol_sim_core::CapacityField::JournalRecordSlots,
+            })
+        ));
     }
 
     #[test]

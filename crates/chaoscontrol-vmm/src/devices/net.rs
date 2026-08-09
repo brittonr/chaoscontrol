@@ -12,6 +12,8 @@ use std::collections::VecDeque;
 pub enum NetQueueError {
     PacketLimit { requested: usize, maximum: usize },
     ByteLimit { requested: u64, maximum: u64 },
+    FrameLimit { requested: usize, maximum: usize },
+    SlotExhausted,
     Arithmetic,
     Allocation,
     PostCommit,
@@ -172,15 +174,46 @@ fn validate_snapshot_packets(
 /// assert_eq!(pkt.len(), 64);
 /// ```
 #[derive(Clone, Debug)]
+struct TxPacketSlot {
+    bytes: Vec<u8>,
+    length: usize,
+    in_use: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NetworkCapacityObservations {
+    pub allocated_slots: usize,
+    pub slot_bytes: usize,
+    pub queue_metadata_slots: usize,
+    pub in_use: usize,
+    pub high_water: usize,
+    pub exhaustion_count: u64,
+    pub release_count: u64,
+    pub retained_bytes: u64,
+}
+
+#[derive(Clone, Debug)]
 pub struct DeterministicNet {
     /// MAC address of the virtual NIC.
     mac: [u8; 6],
     /// Packets waiting to be delivered to the guest.
     rx_queue: VecDeque<Vec<u8>>,
-    /// Packets transmitted by the guest.
-    tx_queue: VecDeque<Vec<u8>>,
+    /// Slot indices for packets transmitted by the guest.
+    tx_queue: VecDeque<usize>,
+    /// Startup-allocated storage for retained TX packets.
+    tx_slots: Vec<TxPacketSlot>,
+    /// Free startup-allocated TX packet slots.
+    free_tx_slots: Vec<usize>,
+    /// Maximum bytes that one TX packet slot can retain.
+    tx_slot_bytes: usize,
     /// Bytes retained in `tx_queue` and not yet drained by the host.
     tx_queued_bytes: u64,
+    /// Highest concurrent TX packet-slot use.
+    tx_slot_high_water: usize,
+    /// Failed TX packet-slot acquisitions.
+    tx_slot_exhaustion_count: u64,
+    /// TX packet slots returned during drains.
+    tx_slot_release_count: u64,
     /// Cumulative statistics.
     stats: NetStats,
     /// Live-only injection for a failure after queue processing starts.
@@ -190,14 +223,66 @@ pub struct DeterministicNet {
 impl DeterministicNet {
     /// Create a new simulated NIC with the given MAC address.
     pub fn new(mac: [u8; 6]) -> Self {
-        Self {
+        let slot_bytes = usize::try_from(super::virtio_types::DEFAULT_MAX_NET_FRAME_BYTES)
+            .expect("default network frame limit must fit usize");
+        Self::try_new(mac, DEFAULT_MAX_NET_TX_PACKETS, slot_bytes)
+            .expect("default TX packet capacity must allocate before activation")
+    }
+
+    pub fn try_new(
+        mac: [u8; 6],
+        tx_packet_slots: usize,
+        tx_slot_bytes: usize,
+    ) -> Result<Self, NetQueueError> {
+        Self::try_new_with(mac, tx_packet_slots, tx_slot_bytes, allocate_packet_slot)
+    }
+
+    fn try_new_with(
+        mac: [u8; 6],
+        tx_packet_slots: usize,
+        tx_slot_bytes: usize,
+        mut allocate: impl FnMut(usize) -> Result<Vec<u8>, NetQueueError>,
+    ) -> Result<Self, NetQueueError> {
+        if tx_packet_slots == 0 || tx_slot_bytes == 0 {
+            return Err(NetQueueError::FrameLimit {
+                requested: 0,
+                maximum: tx_slot_bytes,
+            });
+        }
+        let mut tx_slots = Vec::new();
+        tx_slots
+            .try_reserve_exact(tx_packet_slots)
+            .map_err(|_| NetQueueError::Allocation)?;
+        for _ in 0..tx_packet_slots {
+            let bytes = allocate(tx_slot_bytes)?;
+            if bytes.len() != tx_slot_bytes {
+                return Err(NetQueueError::Allocation);
+            }
+            tx_slots.push(TxPacketSlot {
+                bytes,
+                length: 0,
+                in_use: false,
+            });
+        }
+        let mut free_tx_slots = Vec::new();
+        free_tx_slots
+            .try_reserve_exact(tx_packet_slots)
+            .map_err(|_| NetQueueError::Allocation)?;
+        free_tx_slots.extend((0..tx_packet_slots).rev());
+        Ok(Self {
             mac,
             rx_queue: VecDeque::new(),
-            tx_queue: VecDeque::new(),
+            tx_queue: VecDeque::with_capacity(tx_packet_slots),
+            tx_slots,
+            free_tx_slots,
+            tx_slot_bytes,
             tx_queued_bytes: 0,
+            tx_slot_high_water: 0,
+            tx_slot_exhaustion_count: 0,
+            tx_slot_release_count: 0,
             stats: NetStats::default(),
             fail_after_next_tx_enqueue: false,
-        }
+        })
     }
 
     /// The MAC address assigned to this virtual NIC.
@@ -245,19 +330,42 @@ impl DeterministicNet {
     /// Record a packet only when the retained queue stays within both limits.
     pub fn try_enqueue_tx_bounded(
         &mut self,
-        data: Vec<u8>,
+        data: impl AsRef<[u8]>,
         max_packets: usize,
         max_bytes: u64,
     ) -> Result<(), NetQueueError> {
+        let data = data.as_ref();
         let (requested_bytes, tx_bytes, tx_packets) =
             self.tx_retention_values(data.len(), max_packets, max_bytes)?;
-        if self.tx_queue.try_reserve(1).is_err() {
-            return Err(NetQueueError::Allocation);
+        if data.len() > self.tx_slot_bytes {
+            return Err(NetQueueError::FrameLimit {
+                requested: data.len(),
+                maximum: self.tx_slot_bytes,
+            });
         }
+        let Some(slot_index) = self.free_tx_slots.pop() else {
+            self.tx_slot_exhaustion_count = self
+                .tx_slot_exhaustion_count
+                .checked_add(1)
+                .ok_or(NetQueueError::Arithmetic)?;
+            return Err(NetQueueError::SlotExhausted);
+        };
+        let Some(slot) = self.tx_slots.get_mut(slot_index) else {
+            self.free_tx_slots.push(slot_index);
+            return Err(NetQueueError::SlotExhausted);
+        };
+        if slot.in_use {
+            self.free_tx_slots.push(slot_index);
+            return Err(NetQueueError::SlotExhausted);
+        }
+        slot.bytes[..data.len()].copy_from_slice(data);
+        slot.length = data.len();
+        slot.in_use = true;
         self.stats.tx_bytes = tx_bytes;
         self.stats.tx_packets = tx_packets;
         self.tx_queued_bytes = requested_bytes;
-        self.tx_queue.push_back(data);
+        self.tx_queue.push_back(slot_index);
+        self.tx_slot_high_water = self.tx_slot_high_water.max(self.tx_queue.len());
         if std::mem::take(&mut self.fail_after_next_tx_enqueue) {
             return Err(NetQueueError::PostCommit);
         }
@@ -310,7 +418,7 @@ impl DeterministicNet {
     }
 
     /// Record a host-controlled packet with the default retained limits.
-    pub fn enqueue_tx(&mut self, data: Vec<u8>) -> Result<(), NetQueueError> {
+    pub fn enqueue_tx(&mut self, data: impl AsRef<[u8]>) -> Result<(), NetQueueError> {
         self.try_enqueue_tx_bounded(data, DEFAULT_MAX_NET_TX_PACKETS, DEFAULT_MAX_NET_TX_BYTES)
     }
 
@@ -324,8 +432,18 @@ impl DeterministicNet {
 
     /// Drain all packets transmitted by the guest, returning them in order.
     pub fn drain_tx(&mut self) -> Vec<Vec<u8>> {
+        let mut packets = Vec::with_capacity(self.tx_queue.len());
+        while let Some(slot_index) = self.tx_queue.pop_front() {
+            let slot = &mut self.tx_slots[slot_index];
+            packets.push(slot.bytes[..slot.length].to_vec());
+            slot.bytes[..slot.length].fill(0);
+            slot.length = 0;
+            slot.in_use = false;
+            self.free_tx_slots.push(slot_index);
+            self.tx_slot_release_count = self.tx_slot_release_count.saturating_add(1);
+        }
         self.tx_queued_bytes = 0;
-        self.tx_queue.drain(..).collect()
+        packets
     }
 
     /// Current network statistics.
@@ -333,27 +451,59 @@ impl DeterministicNet {
         &self.stats
     }
 
+    pub fn capacity_observations(&self) -> NetworkCapacityObservations {
+        NetworkCapacityObservations {
+            allocated_slots: self.tx_slots.len(),
+            slot_bytes: self.tx_slot_bytes,
+            queue_metadata_slots: self.tx_queue.capacity(),
+            in_use: self.tx_queue.len(),
+            high_water: self.tx_slot_high_water,
+            exhaustion_count: self.tx_slot_exhaustion_count,
+            release_count: self.tx_slot_release_count,
+            retained_bytes: self.tx_queued_bytes,
+        }
+    }
+
     /// Capture a snapshot of the full device state.
     pub fn snapshot(&self) -> NetSnapshot {
+        let tx_queue = self
+            .tx_queue
+            .iter()
+            .map(|slot_index| {
+                let slot = &self.tx_slots[*slot_index];
+                slot.bytes[..slot.length].to_vec()
+            })
+            .collect();
         NetSnapshot {
             mac: self.mac,
             rx_queue: self.rx_queue.clone(),
-            tx_queue: self.tx_queue.clone(),
+            tx_queue,
             stats: self.stats.clone(),
         }
     }
 
     /// Restore a device from a previously captured snapshot.
     pub fn restore(snapshot: &NetSnapshot) -> Self {
-        Self {
-            mac: snapshot.mac,
-            rx_queue: snapshot.rx_queue.clone(),
-            tx_queue: snapshot.tx_queue.clone(),
-            tx_queued_bytes: retained_bytes(&snapshot.tx_queue),
-            stats: snapshot.stats.clone(),
-            fail_after_next_tx_enqueue: false,
+        let mut restored = Self::new(snapshot.mac);
+        restored.rx_queue = snapshot.rx_queue.clone();
+        for packet in &snapshot.tx_queue {
+            restored
+                .enqueue_tx(packet)
+                .expect("validated snapshot must fit default TX capacity");
         }
+        restored.stats = snapshot.stats.clone();
+        restored.tx_queued_bytes = retained_bytes(&snapshot.tx_queue);
+        restored
     }
+}
+
+fn allocate_packet_slot(requested: usize) -> Result<Vec<u8>, NetQueueError> {
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(requested)
+        .map_err(|_| NetQueueError::Allocation)?;
+    bytes.resize(requested, 0);
+    Ok(bytes)
 }
 
 fn retained_bytes(queue: &VecDeque<Vec<u8>>) -> u64 {
@@ -369,6 +519,19 @@ mod tests {
 
     const TEST_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
     const OTHER_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x02];
+    const TEST_PACKET_SLOTS: usize = 2;
+    const TEST_PACKET_SLOT_BYTES: usize = 64;
+
+    #[test]
+    fn packet_slot_startup_allocation_failure_is_typed() {
+        let result = DeterministicNet::try_new_with(
+            TEST_MAC,
+            TEST_PACKET_SLOTS,
+            TEST_PACKET_SLOT_BYTES,
+            |_| Err(NetQueueError::Allocation),
+        );
+        assert!(matches!(result, Err(NetQueueError::Allocation)));
+    }
 
     #[test]
     fn new_device_has_empty_queues() {
@@ -404,6 +567,32 @@ mod tests {
 
         // Queue is empty after drain
         assert!(net.drain_tx().is_empty());
+    }
+
+    #[test]
+    fn packet_slots_report_high_water_exhaustion_release_and_leaks() {
+        const TEST_MAX_PACKETS: usize = TEST_PACKET_SLOTS + 1;
+        const TEST_MAX_BYTES: u64 = 1_024;
+        let mut net =
+            DeterministicNet::try_new(TEST_MAC, TEST_PACKET_SLOTS, TEST_PACKET_SLOT_BYTES)
+                .expect("packet slots");
+        net.try_enqueue_tx_bounded([1], TEST_MAX_PACKETS, TEST_MAX_BYTES)
+            .expect("first slot");
+        net.try_enqueue_tx_bounded([2], TEST_MAX_PACKETS, TEST_MAX_BYTES)
+            .expect("second slot");
+        assert_eq!(
+            net.try_enqueue_tx_bounded([3], TEST_MAX_PACKETS, TEST_MAX_BYTES),
+            Err(NetQueueError::SlotExhausted)
+        );
+        let active = net.capacity_observations();
+        assert_eq!(active.in_use, TEST_PACKET_SLOTS);
+        assert_eq!(active.high_water, TEST_PACKET_SLOTS);
+        assert_eq!(active.exhaustion_count, 1);
+        assert_eq!(net.drain_tx(), vec![vec![1], vec![2]]);
+        let drained = net.capacity_observations();
+        assert_eq!(drained.in_use, 0);
+        assert_eq!(drained.release_count, TEST_PACKET_SLOTS as u64);
+        assert_eq!(drained.retained_bytes, 0);
     }
 
     #[test]

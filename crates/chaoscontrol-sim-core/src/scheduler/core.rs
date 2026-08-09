@@ -989,11 +989,15 @@ impl ScheduleJournal {
                 maximum: DEFAULT_SCHEDULE_JOURNAL_LIMIT,
             });
         }
+        let mut records = Vec::new();
+        records
+            .try_reserve_exact(limit)
+            .map_err(|_| ScheduleError::JournalAllocationFailed)?;
         Ok(Self {
             limit,
             initial_state: initial_state.clone(),
             state: initial_state,
-            records: Vec::new(),
+            records,
             reservation: None,
             next_reservation_id: 0,
         })
@@ -1007,9 +1011,7 @@ impl ScheduleJournal {
         if self.records.len() >= self.limit {
             return Err(ScheduleError::JournalCapacityExceeded { limit: self.limit });
         }
-        self.records
-            .try_reserve(1)
-            .map_err(|_| ScheduleError::JournalAllocationFailed)?;
+        debug_assert!(self.records.capacity() >= self.limit);
         let id = self.next_reservation_id;
         self.next_reservation_id =
             self.next_reservation_id
@@ -1042,6 +1044,19 @@ impl ScheduleJournal {
         Ok(())
     }
 
+    /// Reset an idle journal while retaining its startup-allocated record storage.
+    pub fn reset(&mut self, initial_state: ScheduleState) -> Result<(), ScheduleError> {
+        if self.reservation.is_some() {
+            return Err(ScheduleError::ReservationOutstanding);
+        }
+        validate_state(&initial_state)?;
+        self.initial_state = initial_state.clone();
+        self.state = initial_state;
+        self.records.clear();
+        debug_assert!(self.records.capacity() >= self.limit);
+        Ok(())
+    }
+
     /// Current state after all committed records.
     pub fn state(&self) -> &ScheduleState {
         &self.state
@@ -1065,9 +1080,11 @@ impl ScheduleJournal {
         let trace = ScheduleTrace {
             initial_state: self.initial_state.clone(),
             initial_state_id: self.initial_state.identity(),
-            records: std::mem::take(&mut self.records),
+            records: self.records.clone(),
         };
+        self.records.clear();
         self.initial_state = self.state.clone();
+        debug_assert!(self.records.capacity() >= self.limit);
         Ok(trace)
     }
 
@@ -1731,6 +1748,25 @@ mod tests {
         );
         assert_eq!(journal, before);
         assert_eq!(journal.state(), &committed_state);
+    }
+
+    #[test]
+    fn journal_reservation_commit_and_drain_preserve_startup_capacity() {
+        let state = exact_state();
+        let planned = transition(&state, &progress_event(&state, 1)).unwrap();
+        let mut journal = ScheduleJournal::new(state, JOURNAL_LIMIT).unwrap();
+        let startup_capacity = journal.records.capacity();
+        assert!(startup_capacity >= JOURNAL_LIMIT);
+
+        let reservation = journal.reserve().unwrap();
+        assert_eq!(journal.records.capacity(), startup_capacity);
+        journal.commit(reservation, planned.record).unwrap();
+        assert_eq!(journal.records.capacity(), startup_capacity);
+        let trace = journal.drain().unwrap();
+        assert_eq!(trace.records.len(), JOURNAL_LIMIT);
+        assert_eq!(journal.records.capacity(), startup_capacity);
+        journal.reset(trace.initial_state).unwrap();
+        assert_eq!(journal.records.capacity(), startup_capacity);
     }
 
     #[test]

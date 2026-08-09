@@ -5,7 +5,9 @@ use super::virtio_block_io::{
     block_data_buffers, preflight_guest_reads, read_header, transfer_disk_to_guest,
     transfer_guest_to_disk,
 };
-use super::virtio_buffer::{BoundedBufferAllocator, HostBufferAllocator};
+use super::virtio_buffer::{
+    with_zeroed_scratch, BoundedBufferAllocator, HostBufferAllocator, ScratchPoolObservations,
+};
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::{plan_block_request, validated_block_status, BlockOperation};
 use super::virtio_types::{ResourceViolation, VirtioFailure};
@@ -29,7 +31,14 @@ pub struct VirtioBlock {
 
 impl VirtioBlock {
     pub fn new(disk: DeterministicBlock) -> Self {
-        Self::with_allocator(disk, Box::<HostBufferAllocator>::default())
+        Self::try_new(disk).expect("default block scratch capacity must allocate before activation")
+    }
+
+    pub fn try_new(disk: DeterministicBlock) -> Result<Self, ResourceViolation> {
+        Ok(Self::with_allocator(
+            disk,
+            Box::new(HostBufferAllocator::try_default()?),
+        ))
     }
 
     pub fn with_allocator(
@@ -50,6 +59,10 @@ impl VirtioBlock {
 
     pub fn disk_mut(&mut self) -> &mut DeterministicBlock {
         &mut self.disk
+    }
+
+    pub fn scratch_capacity_observations(&self) -> ScratchPoolObservations {
+        self.allocator.observations()
     }
 
     fn process_one(
@@ -77,33 +90,37 @@ impl VirtioBlock {
                 }
             };
         let data = block_data_buffers(&available.chain)?;
-        let mut scratch = self.allocate_scratch(plan.transfer_bytes, queue)?;
-        if plan.operation == BlockOperation::Write {
-            preflight_guest_reads(mem, data, &mut scratch)?;
-        }
-        let used_length = match plan.operation {
-            BlockOperation::Read => u32::try_from(
-                plan.transfer_bytes
-                    .checked_add(u64::from(STATUS_USED_BYTES))
-                    .ok_or(VirtioFailure::BackendRead)?,
-            )
-            .map_err(|_| VirtioFailure::BackendRead)?,
-            BlockOperation::Write => STATUS_USED_BYTES,
-        };
-        queue.stage_completion(available.head_index, used_length)?;
-        queue.mark_backend_started()?;
-        match plan.operation {
-            BlockOperation::Write => {
-                transfer_guest_to_disk(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?;
+        let (requested, maximum) = Self::scratch_request(plan.transfer_bytes, queue)?;
+        let allocator = &mut *self.allocator;
+        let disk = &mut self.disk;
+        with_zeroed_scratch(allocator, requested, maximum, |scratch| {
+            if plan.operation == BlockOperation::Write {
+                preflight_guest_reads(mem, data, scratch)?;
             }
-            BlockOperation::Read => {
-                transfer_disk_to_guest(mem, &mut self.disk, data, plan.disk_offset, &mut scratch)?
+            let used_length = match plan.operation {
+                BlockOperation::Read => u32::try_from(
+                    plan.transfer_bytes
+                        .checked_add(u64::from(STATUS_USED_BYTES))
+                        .ok_or(VirtioFailure::BackendRead)?,
+                )
+                .map_err(|_| VirtioFailure::BackendRead)?,
+                BlockOperation::Write => STATUS_USED_BYTES,
+            };
+            queue.stage_completion(available.head_index, used_length)?;
+            queue.mark_backend_started()?;
+            match plan.operation {
+                BlockOperation::Write => {
+                    transfer_guest_to_disk(mem, disk, data, plan.disk_offset, scratch)?;
+                }
+                BlockOperation::Read => {
+                    transfer_disk_to_guest(mem, disk, data, plan.disk_offset, scratch)?
+                }
             }
-        }
-        mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
-            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
-        queue.complete(mem, available.head_index, used_length)?;
-        Ok(true)
+            mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
+                .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
+            queue.complete(mem, available.head_index, used_length)?;
+            Ok(true)
+        })
     }
 
     fn complete_request_error(
@@ -124,11 +141,10 @@ impl VirtioBlock {
         Ok(true)
     }
 
-    fn allocate_scratch(
-        &mut self,
+    fn scratch_request(
         transfer_bytes: u64,
         queue: &VirtQueue,
-    ) -> Result<Vec<u8>, VirtioFailure> {
+    ) -> Result<(usize, usize), VirtioFailure> {
         let maximum = queue.limits().scratch_bytes;
         if maximum < MINIMUM_SCRATCH_BYTES {
             return Err(VirtioFailure::Resource(ResourceViolation::ScratchLimit {
@@ -148,9 +164,7 @@ impl VirtioBlock {
                 maximum,
             })
         })?;
-        self.allocator
-            .zeroed(requested, maximum)
-            .map_err(VirtioFailure::Resource)
+        Ok((requested, maximum))
     }
 }
 

@@ -48,6 +48,14 @@ ChaosControl therefore keeps a replay-stable HLT latch and clears it only after 
 The portable claim is bounded to KVM hosts that support exact guest debug single-step.
 PMU acceleration has a narrower, host-specific capability profile.
 
+### Runtime capacity
+
+ChaosControl admits selected runtime capacity before VM activation. The plan covers schedule records, virtio scratch buffers, retained TX packet slots, and TX queue metadata.
+
+The pure core validates the plan and its BLAKE3 identity. The VM reports bounded startup, usage, high-water, exhaustion, release, and leak observations.
+
+This evidence does not claim deterministic latency, complete process-wide allocation removal, zero-copy I/O, or host memory guarantees. See [deterministic runtime capacity](docs/runtime-capacity.md).
+
 Run the focused KVM evidence test with:
 
 ```bash

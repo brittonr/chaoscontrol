@@ -68,7 +68,6 @@ impl Default for SchedulerConfig {
 pub struct VcpuScheduler {
     admitted_num_vcpus: usize,
     admitted_progress_mode: ProgressMode,
-    admitted_journal_limit: usize,
     journal: ScheduleJournal,
 }
 
@@ -99,7 +98,6 @@ impl VcpuScheduler {
         Ok(Self {
             admitted_num_vcpus: config.num_vcpus,
             admitted_progress_mode: progress_mode,
-            admitted_journal_limit: journal_limit,
             journal,
         })
     }
@@ -221,9 +219,7 @@ impl VcpuScheduler {
     /// Restore exact state only after complete validation succeeds.
     pub fn restore(&mut self, snapshot: &SchedulerSnapshot) -> Result<(), ScheduleError> {
         self.validate_snapshot(snapshot)?;
-        let candidate = ScheduleJournal::new(snapshot.state.clone(), self.admitted_journal_limit)?;
-        self.journal = candidate;
-        Ok(())
+        self.journal.reset(snapshot.state.clone())
     }
 
     /// Apply an explicit seeded policy variant through the pure core.
@@ -236,8 +232,7 @@ impl VcpuScheduler {
             seed: variant.scheduler_seed,
         };
         let configured = reconfigure_policy(state, &config)?;
-        self.journal = ScheduleJournal::new(configured, self.admitted_journal_limit)?;
-        Ok(())
+        self.journal.reset(configured)
     }
 }
 

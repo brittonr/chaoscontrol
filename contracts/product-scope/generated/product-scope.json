@@ -1,0 +1,412 @@
+{
+  "authority": {
+    "replay_manifest": "dogfood-results/accepted-workload-proofs.json",
+    "test_inventory_command": "cargo test --workspace --all-targets -- --list",
+    "workspace_manifest": "Cargo.toml"
+  },
+  "capabilities": [
+    {
+      "boundary": "One machine with local ChaosControl hypervisors and bounded retained evidence.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/replay-readiness-status.md"
+      ],
+      "evidence": {
+        "id": "replay-readiness-local-multi-hypervisor",
+        "source": "docs/replay-readiness-status.md",
+        "state": "passed"
+      },
+      "id": "local-multi-hypervisor-control-plane",
+      "name": "Local multi-hypervisor control plane",
+      "non_claims": [
+        "No hosted service support.",
+        "No cross-machine scheduler support.",
+        "No universal determinism claim."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "supported",
+      "status_label": "supported-bounded-local"
+    },
+    {
+      "boundary": "Rust scaffolds, local dry-runs, and bounded KVM campaigns remain experimental until fresh v2 proof exists.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/replay-readiness-status.md"
+      ],
+      "evidence": {
+        "id": "fresh-v2-workload-proof",
+        "source": "dogfood-results/accepted-workload-proofs.json",
+        "state": "missing"
+      },
+      "id": "rust-workload-authoring",
+      "name": "Rust workload authoring",
+      "non_claims": [
+        "No accepted fresh v2 workload proof.",
+        "No non-Rust SDK support."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "state": "experimental",
+      "status_label": "experimental-rust-only"
+    },
+    {
+      "boundary": "Host-side Wasm generation and differential evidence for an exact admitted cohort.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "wasm-component-materialized-corpus",
+        "source": ".cairn/changes/add-adversarial-wasm-component-rail/",
+        "state": "missing"
+      },
+      "id": "adversarial-wasm-component-rail",
+      "name": "Adversarial Wasm component rail",
+      "non_claims": [
+        "No language-agnostic guest SDK.",
+        "No production Wasm host support.",
+        "No semantic equivalence claim."
+      ],
+      "owner": "chaoscontrol-wasm-differential",
+      "state": "experimental",
+      "status_label": "experimental-host-side-evidence"
+    },
+    {
+      "boundary": "Consumer campaign work starts only after an immutable OnixOS producer contract exists.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "published-onixos-network-policy-contract",
+        "source": ".cairn/changes/add-identity-aware-connectivity-campaign/",
+        "state": "blocked"
+      },
+      "id": "identity-aware-connectivity-campaign",
+      "name": "Identity-aware connectivity campaign",
+      "non_claims": [
+        "No OnixOS policy ownership.",
+        "No physical-network proof.",
+        "No packet-absence policy oracle."
+      ],
+      "owner": "chaoscontrol-sim-core",
+      "state": "blocked",
+      "status_label": "blocked-producer-contract"
+    },
+    {
+      "boundary": "One admitted KVM worker and one explicit required behavior matrix.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "complete-kvm-release-matrix",
+        "source": ".cairn/changes/add-kvm-release-evidence-rail/",
+        "state": "missing"
+      },
+      "id": "kvm-release-evidence-rail",
+      "name": "KVM release evidence rail",
+      "non_claims": [
+        "No universal host equivalence.",
+        "No hosted KVM service."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "experimental",
+      "status_label": "experimental-kvm-release-rail"
+    },
+    {
+      "boundary": "Bounded model-based tests for selected pure cores.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "bounded-property-lanes",
+        "source": ".cairn/changes/expand-state-machine-property-coverage/",
+        "state": "missing"
+      },
+      "id": "state-machine-property-coverage",
+      "name": "State-machine property coverage",
+      "non_claims": [
+        "No formal proof.",
+        "No replacement for KVM tests."
+      ],
+      "owner": "chaoscontrol-sim-core",
+      "state": "experimental",
+      "status_label": "experimental-property-rail"
+    },
+    {
+      "boundary": "Storage-neutral BLAKE3 references with a separately selected adapter.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "materialized-object-reference-migration",
+        "source": ".cairn/changes/externalize-large-dogfood-artifacts/",
+        "state": "blocked"
+      },
+      "id": "external-dogfood-artifacts",
+      "name": "External dogfood artifact storage",
+      "non_claims": [
+        "No storage durability claim.",
+        "No deletion before complete materialization."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "deferred",
+      "status_label": "deferred-storage-adapter-selection"
+    },
+    {
+      "boundary": "Internal ownership migration with frozen public APIs and schemas.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "module-parity-and-direction-gates",
+        "source": ".cairn/changes/modularize-vmm-and-evidence-shells/",
+        "state": "missing"
+      },
+      "id": "vmm-evidence-module-boundaries",
+      "name": "VMM and evidence module boundaries",
+      "non_claims": [
+        "No new VMM feature.",
+        "No safety proof from smaller files."
+      ],
+      "owner": "chaoscontrol-vmm",
+      "state": "experimental",
+      "status_label": "experimental-architecture-migration"
+    },
+    {
+      "boundary": "Fresh strict-identity KVM proof for the named workload and artifact cohort.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "fresh-v2-workload-proof",
+        "source": ".cairn/changes/promote-fresh-v2-workload-proofs/",
+        "state": "missing"
+      },
+      "id": "fresh-v2-workload-proofs",
+      "name": "Fresh v2 workload proofs",
+      "non_claims": [
+        "No universal KVM determinism.",
+        "No authority from legacy assertion IDs."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "experimental",
+      "status_label": "experimental-fresh-proof-cohort"
+    },
+    {
+      "boundary": "Typed direct process requests with ChaosControl-owned authorization and evidence.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "bounded-exec-command-parity",
+        "source": ".cairn/changes/replace-free-form-operator-commands/",
+        "state": "missing"
+      },
+      "id": "typed-operator-commands",
+      "name": "Typed operator commands",
+      "non_claims": [
+        "No sandbox claim.",
+        "No executable trust claim."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "experimental",
+      "status_label": "experimental-typed-command-migration"
+    },
+    {
+      "boundary": "Product policy and structured automation move to focused Rust owners.",
+      "documentation_targets": [
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "python-rust-parity-and-removal",
+        "source": ".cairn/changes/replace-python-product-automation/",
+        "state": "missing"
+      },
+      "id": "rust-owned-product-automation",
+      "name": "Rust-owned product automation",
+      "non_claims": [
+        "No orchestration correctness proof.",
+        "No audit completeness claim."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "experimental",
+      "status_label": "experimental-rust-automation-migration"
+    },
+    {
+      "boundary": "Current product scope is local and single-machine.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/replay-readiness-status.md"
+      ],
+      "evidence": {
+        "id": "scope-reopening-required",
+        "source": "README.md",
+        "state": "not-required"
+      },
+      "id": "hosted-service",
+      "name": "Hosted ChaosControl service",
+      "non_claims": [
+        "No SaaS support.",
+        "No shared remote queue.",
+        "No hosted operator interface."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "non-goal",
+      "status_label": "non-goal-current-scope"
+    },
+    {
+      "boundary": "Current scheduler support stays on one machine.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/replay-readiness-status.md"
+      ],
+      "evidence": {
+        "id": "scope-reopening-required",
+        "source": "README.md",
+        "state": "not-required"
+      },
+      "id": "cross-machine-scheduling",
+      "name": "Cross-machine scheduling",
+      "non_claims": [
+        "No fleet scheduler.",
+        "No cross-host artifact authority."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "state": "non-goal",
+      "status_label": "non-goal-current-scope"
+    },
+    {
+      "boundary": "The workload SDK remains Rust-only.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md"
+      ],
+      "evidence": {
+        "id": "scope-reopening-required",
+        "source": "README.md",
+        "state": "not-required"
+      },
+      "id": "non-rust-sdk",
+      "name": "Non-Rust workload SDK",
+      "non_claims": [
+        "No Go SDK.",
+        "No Java SDK.",
+        "No Python SDK.",
+        "No C SDK."
+      ],
+      "owner": "chaoscontrol-sdk",
+      "state": "non-goal",
+      "status_label": "non-goal-current-scope"
+    }
+  ],
+  "change_intents": [
+    {
+      "change": "add-adversarial-wasm-component-rail",
+      "evidence_prerequisite": "A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass.",
+      "non_claims": [
+        "No workload SDK promotion.",
+        "No Wasm semantic equivalence claim."
+      ],
+      "owner": "chaoscontrol-wasm-differential",
+      "target_state": "experimental"
+    },
+    {
+      "change": "add-identity-aware-connectivity-campaign",
+      "evidence_prerequisite": "An immutable published OnixOS network-policy contract must exist.",
+      "non_claims": [
+        "No OnixOS policy ownership.",
+        "No physical-network proof."
+      ],
+      "owner": "chaoscontrol-sim-core",
+      "target_state": "blocked"
+    },
+    {
+      "change": "add-kvm-release-evidence-rail",
+      "evidence_prerequisite": "Every required KVM matrix row and the bounded release receipt must pass.",
+      "non_claims": [
+        "No universal host equivalence.",
+        "No hosted KVM service."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    },
+    {
+      "change": "enforce-product-scope-and-doc-freshness",
+      "evidence_prerequisite": "The Nickel registry, Rust validator, generated documents, and CI gate must pass.",
+      "non_claims": [
+        "Generated facts do not prove correctness or release eligibility."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "supported"
+    },
+    {
+      "change": "expand-state-machine-property-coverage",
+      "evidence_prerequisite": "The bounded fast and deep property lanes must preserve named counterexamples.",
+      "non_claims": [
+        "No formal proof.",
+        "No replacement for KVM tests."
+      ],
+      "owner": "chaoscontrol-sim-core",
+      "target_state": "experimental"
+    },
+    {
+      "change": "externalize-large-dogfood-artifacts",
+      "evidence_prerequisite": "A reviewed storage adapter and complete dual-materialization migration must pass.",
+      "non_claims": [
+        "No storage durability claim.",
+        "No early artifact deletion."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "deferred"
+    },
+    {
+      "change": "modularize-vmm-and-evidence-shells",
+      "evidence_prerequisite": "Behavior, API, schema, dependency-direction, and unsafe-owner parity must pass.",
+      "non_claims": [
+        "No new VMM feature.",
+        "No safety proof from file size."
+      ],
+      "owner": "chaoscontrol-vmm",
+      "target_state": "experimental"
+    },
+    {
+      "change": "promote-fresh-v2-workload-proofs",
+      "evidence_prerequisite": "Fresh strict-identity snapshot-backed KVM proofs must pass for the named cohort.",
+      "non_claims": [
+        "No universal KVM determinism.",
+        "No legacy identity promotion."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    },
+    {
+      "change": "replace-free-form-operator-commands",
+      "evidence_prerequisite": "The pinned bounded-exec revision and typed command parity gates must pass.",
+      "non_claims": [
+        "No sandbox claim.",
+        "No executable trust claim."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    },
+    {
+      "change": "replace-python-product-automation",
+      "evidence_prerequisite": "Positive and negative Python-to-Rust parity must pass before Python removal.",
+      "non_claims": [
+        "No orchestration correctness proof.",
+        "No audit completeness claim."
+      ],
+      "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    }
+  ],
+  "prohibited_current_claims": [
+    "hosted ChaosControl service is supported",
+    "cross-machine scheduling is supported",
+    "non-Rust workload SDKs are supported",
+    "universal determinism is proven"
+  ],
+  "schema_version": 1
+}

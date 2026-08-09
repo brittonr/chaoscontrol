@@ -7,6 +7,16 @@ distributed systems where reproducibility is essential.
 
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
+<!-- product-scope-facts:start -->
+> **Product scope:** 1 supported, 8 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
+>
+> The workspace has 19 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
+>
+> The selected Cargo command owns the test inventory. This projection does not copy a test count. The authority is `cargo test --workspace --all-targets -- --list`.
+>
+> Generated facts do not prove correctness, release eligibility, hosted support, or universal determinism.
+<!-- product-scope-facts:end -->
+
 ## Features
 
 ### Deterministic Execution
@@ -171,7 +181,7 @@ nix develop
 # Build VMM + tools
 cargo build
 
-# Run tests (827 unit + doc tests)
+# Run the current test inventory
 cargo test
 
 # Build guest binaries (statically linked, musl)

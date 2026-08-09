@@ -28,6 +28,7 @@ pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
 mod non_null_option;
 pub mod operator_triage;
+pub mod product_scope;
 pub mod profile_projection;
 mod profile_projection_spec;
 mod profile_projection_verification;
@@ -128,6 +129,15 @@ pub use operator_triage::{
     check_operator_triage_runbook_path, committed_operator_triage_runbook_path,
     render_operator_triage_runbook, render_operator_triage_runbook_path,
     write_operator_triage_runbook_path, TriageReceiptSource,
+};
+pub use product_scope::{
+    check_product_scope, parse_product_scope_registry, render_product_scope_readme_block,
+    render_product_scope_status, validate_active_change_intents, validate_current_claim_text,
+    validate_document_claim, validate_product_scope_registry, CapabilityScope, ChangeScopeIntent,
+    DocumentClaim, EvidencePrerequisite, EvidenceState, ProductScopeRegistry, RepositoryFacts,
+    ScopeAuthority, ScopeState, PRODUCT_SCOPE_README_END, PRODUCT_SCOPE_README_START,
+    PRODUCT_SCOPE_REGISTRY_JSON, PRODUCT_SCOPE_REGISTRY_SOURCE, PRODUCT_SCOPE_STATUS_DOC,
+    PRODUCT_SCOPE_SUCCESS,
 };
 pub use protocol_simulation_receipt::{
     emit_protocol_simulation_receipt_path, validate_protocol_simulation_receipt_path,

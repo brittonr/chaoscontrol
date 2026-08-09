@@ -34,6 +34,10 @@ name = "check-profile-projections"
 path = "src/bin/check-profile-projections.rs"
 
 [[bin]]
+name = "check-product-scope"
+path = "src/bin/check-product-scope.rs"
+
+[[bin]]
 name = "check-replay-proof-coverage"
 path = "src/bin/check-replay-proof-coverage.rs"
 

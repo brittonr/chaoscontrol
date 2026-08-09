@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 const CAPACITY_PLAN_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.runtime-capacity.plan.v1\0";
 pub const RUNTIME_CAPACITY_PLAN_SCHEMA: &str = "chaoscontrol.runtime-capacity-plan.v1";
 pub const MAX_RUNTIME_JOURNAL_RECORD_SLOTS: usize =
-    crate::scheduler::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
+    crate::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 pub const MAX_RUNTIME_SCRATCH_CLASSES: usize = 8;
 pub const MAX_RUNTIME_SCRATCH_SLOTS: usize = 64;
 pub const MAX_RUNTIME_SCRATCH_SLOT_BYTES: usize = 2 * 1024 * 1024;

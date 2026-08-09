@@ -17,4 +17,4 @@
 
 ## Phase 4: Verification
 
-- [ ] [serial] Verify with pure simulation tests, fault-cover fixtures, Cairn validation, and Nix checks. r[protocol-fault-sim.replay]
+- [x] [serial] Verify with pure simulation tests, fault-cover fixtures, Cairn validation, and Nix checks. r[protocol-fault-sim.replay]

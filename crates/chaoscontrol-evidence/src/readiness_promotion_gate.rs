@@ -12,7 +12,7 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
 ];
-const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
+const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 8] = [
     ("Rust workload authoring", "experimental-rust-only"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
@@ -20,6 +20,10 @@ const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 7] = [
     (
         "Local multi-hypervisor control plane",
         "supported-bounded-local",
+    ),
+    (
+        "Adapter-based distributed protocol simulation",
+        "adapter-protocol-simulation",
     ),
     (
         "FoundationDB-style in-process deterministic simulator",
@@ -115,6 +119,7 @@ pub fn validate_readiness_promotion(
         )?;
     }
     require_bounded_matrix_surface(report)?;
+    require_protocol_simulation_surface(report)?;
     require_in_process_simulator_surface(report)?;
     require_local_rust_product_scope(report)?;
 
@@ -247,6 +252,39 @@ pub fn run_readiness_promotion_selftest(
         &manifest,
         &arbitrary_determinism_overclaim,
         "Arbitrary guest/device determinism",
+    )?;
+
+    let protocol_simulation_overclaim = report.replace(
+        "| Adapter-based distributed protocol simulation | `adapter-protocol-simulation` |",
+        "| Adapter-based distributed protocol simulation | `supported-bounded` |",
+    );
+    expect_failure(
+        "protocol simulation overclaim",
+        &manifest,
+        &protocol_simulation_overclaim,
+        "Adapter-based distributed protocol simulation",
+    )?;
+
+    let protocol_simulation_missing_boundary = report.replace(
+        "It does not prove VM replay, arbitrary protocol correctness, or Celld-equivalent behavior.",
+        "It proves VM replay, arbitrary protocol correctness, and Celld-equivalent behavior.",
+    );
+    expect_failure(
+        "protocol simulation boundary missing",
+        &manifest,
+        &protocol_simulation_missing_boundary,
+        "protocol-simulation token",
+    )?;
+
+    let protocol_simulation_conflation = report.replace(
+        "separate from VM snapshot replay proof and in-process simulator evidence",
+        "the same evidence as VM snapshot replay proof and in-process simulator evidence",
+    );
+    expect_failure(
+        "protocol simulation evidence conflation",
+        &manifest,
+        &protocol_simulation_conflation,
+        "protocol-simulation token",
     )?;
 
     let simulator_overclaim = report.replace(
@@ -531,6 +569,42 @@ fn require_bounded_matrix_surface(report: &str) -> EvidenceResult<()> {
             format!(
                 "Arbitrary guest/device determinism row contains forbidden overclaim {forbidden:?}"
             ),
+        )?;
+    }
+    Ok(())
+}
+
+fn require_protocol_simulation_surface(report: &str) -> EvidenceResult<()> {
+    let line = experimental_surface_line(report, "Adapter-based distributed protocol simulation")?;
+    for token in [
+        "`adapter-protocol-simulation`",
+        "adapter-based protocol-simulation receipts",
+        "bounded partition-failure replay fixture",
+        "seed, schedule, config, artifacts, history, and output",
+        "adapter-based protocol-simulation evidence only",
+        "separate from VM snapshot replay proof and in-process simulator evidence",
+        "does not prove VM replay",
+        "arbitrary protocol correctness",
+        "Celld-equivalent behavior",
+        "negative nondeterminism and fault fixtures",
+        "separate VMM and in-process evidence",
+    ] {
+        require(
+            line.contains(token),
+            format!("Adapter-based distributed protocol simulation row missing protocol-simulation token {token:?}"),
+        )?;
+    }
+    for forbidden in [
+        "`supported-bounded`",
+        "is vm replay proof",
+        "proves vm replay",
+        "proves arbitrary protocol correctness",
+        "celld-equivalent behavior achieved",
+        "same evidence as vm snapshot replay proof",
+    ] {
+        require(
+            !line.to_ascii_lowercase().contains(forbidden),
+            format!("Adapter-based distributed protocol simulation row contains forbidden overclaim {forbidden:?}"),
         )?;
     }
     Ok(())

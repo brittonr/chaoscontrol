@@ -13,7 +13,7 @@
 
 - [x] [serial] Emit reproducibility receipts binding config, history, fault schedule, and digests. r[protocol-fault-sim.replay]
 - [x] [serial] Prove a single failing schedule reproduces from seed and schedule. r[protocol-fault-sim.replay]
-- [ ] [serial] Add readiness wording and gates that keep protocol-simulation evidence separate from VMM and in-process evidence. r[protocol-fault-sim.evidence-boundary]
+- [x] [serial] Add readiness wording and gates that keep protocol-simulation evidence separate from VMM and in-process evidence. r[protocol-fault-sim.evidence-boundary]
 
 ## Phase 4: Verification
 

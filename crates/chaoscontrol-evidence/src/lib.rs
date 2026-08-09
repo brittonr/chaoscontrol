@@ -230,7 +230,7 @@ pub struct ExperimentalReplaySurface {
     pub promotion_evidence: &'static str,
 }
 
-pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
+pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 9] = [
     ExperimentalReplaySurface {
         surface: "Rust workload authoring",
         status: "experimental-rust-only",
@@ -266,6 +266,12 @@ pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 8] = [
         status: "supported-bounded-local",
         reason: "Current evidence includes bounded local sequential scheduler execution, a durable local multi-hypervisor campaign receipt, a real KVM multi-hypervisor smoke rail, worker resource budgets, artifact roots/indexes, queue-state transitions, run receipts, bug follow-up jobs, and local artifact retention. This is a supported one-machine local control-plane workflow only; it is not a hosted service, shared remote queue, cross-machine scheduler, universal fleet-scale throughput claim, or full Antithesis-style product replacement.",
         promotion_evidence: "Keep the committed single-machine multi-hypervisor control-plane receipt, KVM smoke rail, worker budgets, artifact roots/indexes, queue-state transitions, run receipts, bug follow-up jobs, local artifact retention, and anti-overclaim gates green without raw-log scraping or hosted/cross-machine claims.",
+    },
+    ExperimentalReplaySurface {
+        surface: "Adapter-based distributed protocol simulation",
+        status: "adapter-protocol-simulation",
+        reason: "Current evidence includes adapter-based protocol-simulation receipts and one bounded partition-failure replay fixture. Receipts bind the seed, schedule, config, artifacts, history, and output. This is adapter-based protocol-simulation evidence only. It is separate from VM snapshot replay proof and in-process simulator evidence. It does not prove VM replay, arbitrary protocol correctness, or Celld-equivalent behavior.",
+        promotion_evidence: "Require committed receipts for supported adapters, negative nondeterminism and fault fixtures, and stable mismatch checks. Keep separate VMM and in-process evidence before broader promotion.",
     },
     ExperimentalReplaySurface {
         surface: "FoundationDB-style in-process deterministic simulator",

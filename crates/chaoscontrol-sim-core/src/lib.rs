@@ -24,9 +24,12 @@ pub use kernel::{
     SimulationKernelError,
 };
 pub use protocol_simulation::{
-    ProtocolIdentity, ProtocolRngPolicy, ProtocolScheduleRef, ProtocolSchedulerPolicy,
-    ProtocolSimulationConfig, ProtocolSimulationEvidenceClass, ProtocolSimulationReceipt,
-    ProtocolVirtualClockPolicy, PROTOCOL_SIMULATION_CONFIG_SCHEMA,
-    PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
+    schedule_next_protocol_event, verify_repeatable_transition, PendingProtocolEvent,
+    ProtocolAdapter, ProtocolEventSchedulerState, ProtocolFact, ProtocolFactKind, ProtocolIdentity,
+    ProtocolRngPolicy, ProtocolScheduleDecision, ProtocolScheduleError, ProtocolScheduleRef,
+    ProtocolSchedulerPolicy, ProtocolSimulationConfig, ProtocolSimulationEvidenceClass,
+    ProtocolSimulationReceipt, ProtocolTransition, ProtocolTransitionCheckError,
+    ProtocolTransitionCheckResult, ProtocolTransitionInput, ProtocolVirtualClockPolicy,
+    PROTOCOL_SIMULATION_CONFIG_SCHEMA, PROTOCOL_SIMULATION_RECEIPT_SCHEMA,
 };
 pub use snapshot::{CoreSnapshotError, SimulationCoreSnapshot, CORE_SNAPSHOT_SCHEMA_VERSION};

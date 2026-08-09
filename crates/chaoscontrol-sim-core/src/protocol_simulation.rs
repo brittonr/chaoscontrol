@@ -4,7 +4,8 @@
 //! read configuration, execute a protocol, write receipts, or claim VM replay.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 /// Schema for an admitted adapter-based protocol-simulation run configuration.
 pub const PROTOCOL_SIMULATION_CONFIG_SCHEMA: &str = "chaoscontrol.protocol-simulation-config.v1";
@@ -91,6 +92,208 @@ pub struct ProtocolSimulationReceipt {
     pub history_digest: String,
     pub output_digest: String,
     pub evidence_class: ProtocolSimulationEvidenceClass,
+}
+
+/// One deterministic adapter input at an exact protocol-simulation step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolTransitionInput<I> {
+    pub step: u64,
+    pub virtual_tick: u64,
+    pub event: I,
+}
+
+/// A typed protocol fact emitted by a deterministic adapter transition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProtocolFact {
+    pub kind: ProtocolFactKind,
+    pub subject: String,
+    pub value_ref: String,
+}
+
+/// Supported fact classes for ownership, replication, and reacquisition adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProtocolFactKind {
+    Ownership,
+    Replication,
+    Reacquisition,
+}
+
+/// Pure result of one adapter transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolTransition<S, E> {
+    pub next_state: S,
+    pub emitted_events: Vec<E>,
+    pub facts: Vec<ProtocolFact>,
+}
+
+/// r[protocol-fault-sim.contract]
+/// Pure adapter boundary for one supported distributed protocol.
+///
+/// Implementations must depend only on `state` and `input`. They must not read
+/// clocks, randomness, files, environment variables, or external transports.
+pub trait ProtocolAdapter {
+    type State: Clone + PartialEq + Eq;
+    type Input: Clone + PartialEq + Eq;
+    type EmittedEvent: Clone + PartialEq + Eq;
+    type Error;
+
+    fn transition(
+        &self,
+        state: &Self::State,
+        input: &ProtocolTransitionInput<Self::Input>,
+    ) -> Result<ProtocolTransition<Self::State, Self::EmittedEvent>, Self::Error>;
+}
+
+/// Failure from the bounded two-run adapter repeatability check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtocolTransitionCheckError<E> {
+    FirstRun(E),
+    SecondRun(E),
+    DivergentOutput,
+}
+
+/// Result of one bounded adapter repeatability check.
+pub type ProtocolTransitionCheckResult<A> = Result<
+    ProtocolTransition<<A as ProtocolAdapter>::State, <A as ProtocolAdapter>::EmittedEvent>,
+    ProtocolTransitionCheckError<<A as ProtocolAdapter>::Error>,
+>;
+
+/// Run one transition twice and reject an adapter that changes its output.
+///
+/// This check detects visible nondeterminism for the supplied state and input.
+/// It does not prove that an adapter is deterministic for all possible inputs.
+pub fn verify_repeatable_transition<A: ProtocolAdapter>(
+    adapter: &A,
+    state: &A::State,
+    input: &ProtocolTransitionInput<A::Input>,
+) -> ProtocolTransitionCheckResult<A> {
+    let first = adapter
+        .transition(state, input)
+        .map_err(ProtocolTransitionCheckError::FirstRun)?;
+    let second = adapter
+        .transition(state, input)
+        .map_err(ProtocolTransitionCheckError::SecondRun)?;
+    if first != second {
+        return Err(ProtocolTransitionCheckError::DivergentOutput);
+    }
+    Ok(first)
+}
+
+/// One protocol event admitted to the deterministic scheduler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingProtocolEvent<E> {
+    pub sequence: u64,
+    pub ready_tick: u64,
+    pub target: String,
+    pub event: E,
+}
+
+/// Pure scheduler state. The shell retains clocks, queues, and transport effects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolEventSchedulerState<E> {
+    pub next_step: u64,
+    pub current_tick: u64,
+    pub policy: ProtocolSchedulerPolicy,
+    pub pending: Vec<PendingProtocolEvent<E>>,
+}
+
+/// One deterministic scheduler selection and its resulting pure state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolScheduleDecision<E> {
+    pub selected: PendingProtocolEvent<E>,
+    pub next_state: ProtocolEventSchedulerState<E>,
+}
+
+/// Fail-closed scheduler errors for malformed or exhausted state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtocolScheduleError {
+    InvalidMaximumSteps,
+    StepLimitReached { completed: u64, maximum: u64 },
+    PendingEventLimitExceeded { found: usize, maximum: u64 },
+    NoPendingEvents,
+    DuplicateSequence { sequence: u64 },
+    EmptyTarget { sequence: u64 },
+    StepCounterExhausted,
+}
+
+impl fmt::Display for ProtocolScheduleError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for ProtocolScheduleError {}
+
+/// r[protocol-fault-sim.contract]
+/// Select the earliest event by ready tick, sequence, and target.
+pub fn schedule_next_protocol_event<E: Clone>(
+    state: &ProtocolEventSchedulerState<E>,
+) -> Result<ProtocolScheduleDecision<E>, ProtocolScheduleError> {
+    let maximum_steps = state.policy.maximum_steps;
+    if maximum_steps == 0 {
+        return Err(ProtocolScheduleError::InvalidMaximumSteps);
+    }
+    if state.next_step >= maximum_steps {
+        return Err(ProtocolScheduleError::StepLimitReached {
+            completed: state.next_step,
+            maximum: maximum_steps,
+        });
+    }
+    if u64::try_from(state.pending.len()).unwrap_or(u64::MAX) > maximum_steps {
+        return Err(ProtocolScheduleError::PendingEventLimitExceeded {
+            found: state.pending.len(),
+            maximum: maximum_steps,
+        });
+    }
+    if state.pending.is_empty() {
+        return Err(ProtocolScheduleError::NoPendingEvents);
+    }
+
+    let mut sequences = BTreeSet::new();
+    for pending in &state.pending {
+        if pending.target.is_empty() {
+            return Err(ProtocolScheduleError::EmptyTarget {
+                sequence: pending.sequence,
+            });
+        }
+        if !sequences.insert(pending.sequence) {
+            return Err(ProtocolScheduleError::DuplicateSequence {
+                sequence: pending.sequence,
+            });
+        }
+    }
+
+    let selected_index = state
+        .pending
+        .iter()
+        .enumerate()
+        .min_by(|(_, left), (_, right)| {
+            (left.ready_tick, left.sequence, left.target.as_str()).cmp(&(
+                right.ready_tick,
+                right.sequence,
+                right.target.as_str(),
+            ))
+        })
+        .map(|(index, _)| index)
+        .ok_or(ProtocolScheduleError::NoPendingEvents)?;
+    let next_step = state
+        .next_step
+        .checked_add(1)
+        .ok_or(ProtocolScheduleError::StepCounterExhausted)?;
+    let mut pending = state.pending.clone();
+    let selected = pending.remove(selected_index);
+    let next_state = ProtocolEventSchedulerState {
+        next_step,
+        current_tick: state.current_tick.max(selected.ready_tick),
+        policy: state.policy.clone(),
+        pending,
+    };
+    Ok(ProtocolScheduleDecision {
+        selected,
+        next_state,
+    })
 }
 
 #[cfg(test)]
@@ -199,5 +402,202 @@ mod tests {
         let mut overclaim = serde_json::to_value(receipt()).expect("receipt value");
         overclaim["evidence_class"] = serde_json::Value::String("vm_snapshot_replay".to_string());
         assert!(serde_json::from_value::<ProtocolSimulationReceipt>(overclaim).is_err());
+    }
+
+    use std::cell::Cell;
+    use std::convert::Infallible;
+
+    const TEST_NODE_ID: u64 = 5;
+    const TEST_INITIAL_GENERATION: u64 = 11;
+    const TEST_EARLY_TICK: u64 = 3;
+    const TEST_LATE_TICK: u64 = 9;
+    const TEST_EARLY_SEQUENCE: u64 = 1;
+    const TEST_LATE_SEQUENCE: u64 = 2;
+    const TEST_MAXIMUM_SCHEDULE_STEPS: u64 = 4;
+    const TEST_FACT_COUNT: usize = 1;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct LeaseState {
+        owner: Option<u64>,
+        generation: u64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum LeaseInput {
+        Acquire { node_id: u64 },
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum LeaseEffect {
+        BroadcastOwner { node_id: u64 },
+    }
+
+    struct LeaseAdapter;
+
+    impl ProtocolAdapter for LeaseAdapter {
+        type State = LeaseState;
+        type Input = LeaseInput;
+        type EmittedEvent = LeaseEffect;
+        type Error = Infallible;
+
+        fn transition(
+            &self,
+            state: &Self::State,
+            input: &ProtocolTransitionInput<Self::Input>,
+        ) -> Result<ProtocolTransition<Self::State, Self::EmittedEvent>, Self::Error> {
+            let LeaseInput::Acquire { node_id } = &input.event;
+            let node_id = *node_id;
+            let next_generation = state
+                .generation
+                .checked_add(1)
+                .expect("fixture generation stays bounded");
+            Ok(ProtocolTransition {
+                next_state: LeaseState {
+                    owner: Some(node_id),
+                    generation: next_generation,
+                },
+                emitted_events: vec![LeaseEffect::BroadcastOwner { node_id }],
+                facts: vec![ProtocolFact {
+                    kind: ProtocolFactKind::Ownership,
+                    subject: format!("lease-generation-{next_generation}"),
+                    value_ref: format!("node-{node_id}"),
+                }],
+            })
+        }
+    }
+
+    struct AlternatingAdapter {
+        calls: Cell<u64>,
+    }
+
+    impl ProtocolAdapter for AlternatingAdapter {
+        type State = u64;
+        type Input = ();
+        type EmittedEvent = ();
+        type Error = Infallible;
+
+        fn transition(
+            &self,
+            state: &Self::State,
+            _input: &ProtocolTransitionInput<Self::Input>,
+        ) -> Result<ProtocolTransition<Self::State, Self::EmittedEvent>, Self::Error> {
+            let calls = self.calls.get();
+            self.calls.set(calls.checked_add(1).expect("call count"));
+            Ok(ProtocolTransition {
+                next_state: state.checked_add(calls).expect("fixture state"),
+                emitted_events: Vec::new(),
+                facts: Vec::new(),
+            })
+        }
+    }
+
+    fn scheduler_state() -> ProtocolEventSchedulerState<String> {
+        ProtocolEventSchedulerState {
+            next_step: 0,
+            current_tick: 0,
+            policy: ProtocolSchedulerPolicy {
+                policy_id: "deterministic-ready-order-v1".to_string(),
+                maximum_steps: TEST_MAXIMUM_SCHEDULE_STEPS,
+            },
+            pending: vec![
+                PendingProtocolEvent {
+                    sequence: TEST_LATE_SEQUENCE,
+                    ready_tick: TEST_LATE_TICK,
+                    target: "node-b".to_string(),
+                    event: "replicate".to_string(),
+                },
+                PendingProtocolEvent {
+                    sequence: TEST_EARLY_SEQUENCE,
+                    ready_tick: TEST_EARLY_TICK,
+                    target: "node-a".to_string(),
+                    event: "acquire".to_string(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn identical_transition_and_schedule_inputs_repeat_exactly() {
+        let state = LeaseState {
+            owner: None,
+            generation: TEST_INITIAL_GENERATION,
+        };
+        let input = ProtocolTransitionInput {
+            step: 0,
+            virtual_tick: TEST_EARLY_TICK,
+            event: LeaseInput::Acquire {
+                node_id: TEST_NODE_ID,
+            },
+        };
+        let first_transition = verify_repeatable_transition(&LeaseAdapter, &state, &input)
+            .expect("pure lease transition");
+        let second_transition = verify_repeatable_transition(&LeaseAdapter, &state, &input)
+            .expect("repeated pure lease transition");
+        assert_eq!(first_transition, second_transition);
+        assert_eq!(first_transition.next_state.owner, Some(TEST_NODE_ID));
+        assert_eq!(first_transition.facts.len(), TEST_FACT_COUNT);
+
+        let schedule = scheduler_state();
+        let first_schedule =
+            schedule_next_protocol_event(&schedule).expect("first schedule decision");
+        let second_schedule =
+            schedule_next_protocol_event(&schedule).expect("repeated schedule decision");
+        assert_eq!(first_schedule, second_schedule);
+        assert_eq!(first_schedule.selected.sequence, TEST_EARLY_SEQUENCE);
+        assert_eq!(first_schedule.next_state.current_tick, TEST_EARLY_TICK);
+    }
+
+    #[test]
+    fn nondeterministic_adapter_and_malformed_schedule_fail_closed() {
+        let adapter = AlternatingAdapter {
+            calls: Cell::new(0),
+        };
+        let input = ProtocolTransitionInput {
+            step: 0,
+            virtual_tick: 0,
+            event: (),
+        };
+        assert_eq!(
+            verify_repeatable_transition(&adapter, &0, &input),
+            Err(ProtocolTransitionCheckError::DivergentOutput)
+        );
+
+        let mut duplicate = scheduler_state();
+        duplicate.pending[1].sequence = TEST_LATE_SEQUENCE;
+        assert_eq!(
+            schedule_next_protocol_event(&duplicate),
+            Err(ProtocolScheduleError::DuplicateSequence {
+                sequence: TEST_LATE_SEQUENCE
+            })
+        );
+
+        let mut exhausted = scheduler_state();
+        exhausted.next_step = TEST_MAXIMUM_SCHEDULE_STEPS;
+        assert_eq!(
+            schedule_next_protocol_event(&exhausted),
+            Err(ProtocolScheduleError::StepLimitReached {
+                completed: TEST_MAXIMUM_SCHEDULE_STEPS,
+                maximum: TEST_MAXIMUM_SCHEDULE_STEPS
+            })
+        );
+
+        let mut too_many = scheduler_state();
+        too_many.policy.maximum_steps = 1;
+        assert_eq!(
+            schedule_next_protocol_event(&too_many),
+            Err(ProtocolScheduleError::PendingEventLimitExceeded {
+                found: too_many.pending.len(),
+                maximum: 1
+            })
+        );
+
+        let mut empty_target = scheduler_state();
+        empty_target.pending[0].target.clear();
+        assert_eq!(
+            schedule_next_protocol_event(&empty_target),
+            Err(ProtocolScheduleError::EmptyTarget {
+                sequence: TEST_LATE_SEQUENCE
+            })
+        );
     }
 }

@@ -44,13 +44,10 @@ Negative tests cover zero limits, one-past-cap limits, contradictions, arithmeti
 | Cairn validate and proposal, design, and tasks gates | Pass. |
 | `nix build .#checks.x86_64-linux.dependency-policy --no-link -L` | Pass after the stale named license and source entries were restored. |
 | `nix build .#checks.x86_64-linux.dependency-audit --no-link -L` | Pass: zero vulnerabilities. |
-| `nix flake check -L` | Blocked by the pre-existing Tiger Style focused rail. |
+| `nix build .#checks.x86_64-linux.tigerstyle-chaoscontrol-focused --no-link -L` | Pass: 1,869 advisory findings and zero errors. |
+| `nix flake check -L` | Pass: all checks passed. |
 
-The Tiger Style rail reports 380 findings and two errors in `chaoscontrol-fault` and generated `chaoscontrol-trace` code.
-
-The same focused rail fails with the same 380 findings and two errors on unchanged `main` at `fa69c65`. The runtime-capacity files do not appear in the finding index.
-
-This baseline blocker prevents the final task, spec sync, and archive. The implementation remains on its isolated change branch.
+The first Tiger Style run exposed denied findings in macro-generated Serde defaults, generated libbpf code, and one negative predicate name. The repair adds explicit default constructors, scopes the generated-code exception, and uses a positive boundary name. It does not weaken the global lint profile.
 
 ## Allocation probe
 

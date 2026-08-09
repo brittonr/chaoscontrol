@@ -16,4 +16,4 @@
 - [x] [depends:runtime-capacity-journal] `[runtime-capacity-observation]` Add bounded plan, allocation, high-water, exhaustion, release, and leak observations. r[chaoscontrol.runtime_capacity.observation]
 - [x] [parallel] Add negative allocation-failure, exhaustion, stale-lease, duplicate-return, leaked-slot, and post-commit-fault tests. r[chaoscontrol.runtime_capacity.verification]
 - [x] [parallel] Add a deterministic probe that rejects allocator calls in selected steady-state journal, scratch, and packet operations. r[chaoscontrol.runtime_capacity.verification]
-- [ ] [serial] Run focused core and VMM tests, deterministic replay checks, formatting, Clippy, Cairn checks, and relevant Nix checks. r[chaoscontrol.runtime_capacity.verification]
+- [x] [serial] Run focused core and VMM tests, deterministic replay checks, formatting, Clippy, Cairn checks, and relevant Nix checks. r[chaoscontrol.runtime_capacity.verification]

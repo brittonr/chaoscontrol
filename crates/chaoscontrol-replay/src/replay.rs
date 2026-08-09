@@ -523,7 +523,7 @@ fn replay_fault_ledger_prefix(
         .ok_or_else(|| ReplayError::InvalidState {
             message: "checkpoint fault-stage prefix exceeds the recorded trace".to_string(),
         })?;
-    let mut ledger = FaultOutcomeLedger::default();
+    let mut ledger = FaultOutcomeLedger::new();
     for event in events {
         let attempt = if event.kind == FaultStageKind::Selected {
             Some(
@@ -1075,7 +1075,7 @@ mod tests {
         recording.fault_run_id =
             fault_run_id(recording.seed, recording.fault_run_sequence, schedule_id);
         recording.checkpoints = CheckpointStore::new();
-        let mut ledger = FaultOutcomeLedger::default();
+        let mut ledger = FaultOutcomeLedger::new();
         for tick in 1..=round_count {
             let attempt = mock_attempt(tick, recording.seed, schedule_id);
             ledger = transition_fault_outcome(
@@ -1110,7 +1110,7 @@ mod tests {
         let attempt = applied_mock_attempt(schedule.identity());
         let effect = FaultPlanEffect::ProcessKill { target: 0 };
         let mut ledger = transition_fault_outcome(
-            &FaultOutcomeLedger::default(),
+            &FaultOutcomeLedger::new(),
             Some(&attempt),
             attempt.id,
             FaultStageKind::Selected,

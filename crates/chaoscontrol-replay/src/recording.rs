@@ -209,6 +209,22 @@ mod recorded_schedule_rounds {
     }
 }
 
+fn empty_fault_stage_events() -> Vec<FaultStageEvent> {
+    Vec::new()
+}
+
+fn empty_fault_round_deltas() -> Vec<FaultRoundTraceDelta> {
+    Vec::new()
+}
+
+fn empty_fault_outcome_ledger() -> FaultOutcomeLedger {
+    FaultOutcomeLedger::new()
+}
+
+fn empty_recorded_schedule_rounds() -> Vec<RecordedScheduleRound> {
+    Vec::new()
+}
+
 /// A recorded execution session.
 ///
 /// r[impl chaoscontrol.fault_outcomes.compatibility]
@@ -235,16 +251,19 @@ pub struct Recording {
     /// Events that occurred. `FaultFired` is a projection of `Selected` only.
     pub events: Vec<RecordedEvent>,
     /// Canonical bounded fault-stage trace.
-    #[serde(default)]
+    #[serde(default = "empty_fault_stage_events")]
     pub fault_stage_events: Vec<FaultStageEvent>,
     /// Non-empty per-round slices of the canonical fault-stage trace.
-    #[serde(default)]
+    #[serde(default = "empty_fault_round_deltas")]
     pub fault_round_deltas: Vec<FaultRoundTraceDelta>,
     /// Authoritative ledger that supplies the canonical trace.
-    #[serde(default, with = "recorded_fault_ledger")]
+    #[serde(default = "empty_fault_outcome_ledger", with = "recorded_fault_ledger")]
     pub fault_outcome_ledger: FaultOutcomeLedger,
     /// Bounded exact SMP traces grouped by simulation round.
-    #[serde(default, with = "recorded_schedule_rounds")]
+    #[serde(
+        default = "empty_recorded_schedule_rounds",
+        with = "recorded_schedule_rounds"
+    )]
     pub schedule_rounds: Vec<RecordedScheduleRound>,
     /// Final oracle report.
     #[serde(skip)] // OracleReport doesn't implement Serialize
@@ -399,7 +418,7 @@ impl Recorder {
                 events: Vec::new(),
                 fault_stage_events: Vec::new(),
                 fault_round_deltas: Vec::new(),
-                fault_outcome_ledger: FaultOutcomeLedger::default(),
+                fault_outcome_ledger: FaultOutcomeLedger::new(),
                 schedule_rounds: Vec::new(),
                 oracle_report: None,
                 total_ticks: 0,

@@ -3818,8 +3818,8 @@ impl DeterministicVm {
                 | Ok(VcpuExit::Hypercall(_))
                 | Ok(VcpuExit::Debug(_))
         );
-        let no_guest_progress = !interrupted && !guest_progress_observed;
-        if num_vcpus > 1 && no_guest_progress {
+        let exact_progress_boundary_missing = !interrupted && !guest_progress_observed;
+        if num_vcpus > 1 && exact_progress_boundary_missing {
             return Err(self.poison_after_possible_guest_progress(
                 reservation.take(),
                 SchedulePoisonStage::KvmRunResult,
@@ -3827,7 +3827,7 @@ impl DeterministicVm {
             ));
         }
         let retired_hlt = matches!(&run_result, Ok(VcpuExit::Hlt));
-        let progress_observation = if num_vcpus <= 1 || no_guest_progress {
+        let progress_observation = if num_vcpus <= 1 || exact_progress_boundary_missing {
             ExecutionProgressObservation::NoGuestProgress
         } else if interrupted && !pmu_overflow_attributed {
             ExecutionProgressObservation::HostInterrupt

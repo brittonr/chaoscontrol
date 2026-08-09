@@ -1462,11 +1462,15 @@ pub enum FaultAuthoritativeStage {
     Observed,
 }
 
+fn no_applicable_effect() -> Option<FaultPlanEffect> {
+    None
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FaultAttemptState {
     pub attempt: FaultAttempt,
     pub stage: FaultAuthoritativeStage,
-    #[serde(default)]
+    #[serde(default = "no_applicable_effect")]
     pub applicable_effect: Option<FaultPlanEffect>,
     pub observed_operations: BTreeSet<FaultOperationId>,
 }
@@ -1476,6 +1480,13 @@ pub struct FaultOutcomeLedger {
     pub attempts: BTreeMap<FaultAttemptId, FaultAttemptState>,
     pub events: Vec<FaultStageEvent>,
     pub counters: FaultStageCounters,
+}
+
+impl FaultOutcomeLedger {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

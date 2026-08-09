@@ -27,6 +27,9 @@ use crate::evidence::{
 
 #[allow(clippy::all)]
 #[allow(dead_code)]
+// libbpf-cargo owns this generated skeleton and emits ObjectBuilder::default().
+#[allow(unknown_lints)]
+#[allow(explicit_defaults)]
 mod bpf {
     include!(concat!(env!("OUT_DIR"), "/kvm_trace.skel.rs"));
 }

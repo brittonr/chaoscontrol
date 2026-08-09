@@ -49,11 +49,31 @@ crate = "chaoscontrol-replay"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-replay-evidence-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-sim-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-trace"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
 crate = "chaoscontrol-vmm"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-wasm-differential"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "bounded-tree-cap"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "bounded-tree-core"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
@@ -77,4 +97,6 @@ highlight = "all"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+  "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git",
+]

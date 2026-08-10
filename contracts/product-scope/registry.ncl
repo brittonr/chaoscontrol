@@ -303,6 +303,13 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["No universal KVM determinism.", "No legacy identity promotion."],
     },
     {
+      change = "refresh-spacewasm-bundle-admission",
+      owner = "chaoscontrol-wasm-differential",
+      target_state = "experimental",
+      evidence_prerequisite = "The exact pinned Mantle bundle, refreshed profile projections, and focused differential rail must pass.",
+      non_claims = ["No SpaceWasm correctness claim.", "No runtime equivalence claim."],
+    },
+    {
       change = "replace-free-form-operator-commands",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",

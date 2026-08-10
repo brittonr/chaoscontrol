@@ -382,6 +382,16 @@
       "target_state": "experimental"
     },
     {
+      "change": "refresh-spacewasm-bundle-admission",
+      "evidence_prerequisite": "The exact pinned Mantle bundle, refreshed profile projections, and focused differential rail must pass.",
+      "non_claims": [
+        "No SpaceWasm correctness claim.",
+        "No runtime equivalence claim."
+      ],
+      "owner": "chaoscontrol-wasm-differential",
+      "target_state": "experimental"
+    },
+    {
       "change": "replace-free-form-operator-commands",
       "evidence_prerequisite": "The pinned bounded-exec revision and typed command parity gates must pass.",
       "non_claims": [

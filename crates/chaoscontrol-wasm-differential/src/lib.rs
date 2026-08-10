@@ -870,8 +870,10 @@ mod tests {
     const MANTLE_REVISION: &str = "a141fcbaafe41f9a413a81275a33fe915bfca370";
     const SPACEWASM_REVISION: &str = "e24cf09355a90497148eb5029fdb8e3400bd63e3";
     const MANIFEST_DIGEST: &str =
-        "4ff6a7794cf54fd0000326e7505ba8496f4f3f7c4ddd88d1f876373d652a8b65";
+        "39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2";
     const BUNDLE_IDENTITY: &str =
+        "c4826bb63fa9eef1fa619e0f0c4c2c35dd10ca92a8d4999fec10c55e92b692b7";
+    const STALE_BUNDLE_IDENTITY: &str =
         "cee7190f2f78321b07f3d1f493baaa5b2cb74d517eb4f229c7e7a6094b877342";
     const RUNNER_DIGEST: &str = "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221";
     const MAX_INSTRUCTION_PAIRS: usize = 32;
@@ -1071,6 +1073,12 @@ mod tests {
             bundle_identity_blake3: String::from(BUNDLE_IDENTITY),
         };
         assert_eq!(validate_bundle_manifest(&profile, &manifest), Ok(()));
+
+        let mut stale_profile = profile.clone();
+        stale_profile.bundle_identity_blake3 = String::from(STALE_BUNDLE_IDENTITY);
+        assert!(validate_bundle_manifest(&stale_profile, &manifest)
+            .unwrap_err()
+            .contains("identity"));
 
         let mut stale = manifest;
         stale.bundle_identity_blake3 = String::from(MANIFEST_DIGEST);

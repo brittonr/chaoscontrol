@@ -8,8 +8,8 @@ The Nickel profile binds these inputs:
 
 - Mantle commit `a141fcbaafe41f9a413a81275a33fe915bfca370`;
 - NASA SpaceWasm commit `e24cf09355a90497148eb5029fdb8e3400bd63e3`;
-- Mantle bundle identity `cee7190f2f78321b07f3d1f493baaa5b2cb74d517eb4f229c7e7a6094b877342`;
-- exact bundle manifest and member BLAKE3 values;
+- Mantle bundle identity `c4826bb63fa9eef1fa619e0f0c4c2c35dd10ca92a8d4999fec10c55e92b692b7`;
+- bundle manifest BLAKE3 `39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2` and exact member BLAKE3 values;
 - SpaceWasm runner BLAKE3 `be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221`;
 - Wasmtime `41.0.3` from the ChaosControl Nix lock;
 - the `wasm1` and `mutable-globals` feature intersection;

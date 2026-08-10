@@ -22,11 +22,27 @@ use crate::{ensure, EvidenceError, EvidenceResult};
 
 const HASH_BUFFER_BYTES: usize = 8_192;
 
+/// Captured process data and its structured observation.
+#[derive(Debug)]
+pub struct CapturedPlanCommand {
+    pub observation: CommandObservation,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
 /// Execute one admitted command through the pinned bounded process mechanism.
 pub(crate) fn run_plan_command(
     plan: &CommandPlan,
     execution_root: &Path,
 ) -> EvidenceResult<CommandObservation> {
+    Ok(run_plan_command_captured(plan, execution_root)?.observation)
+}
+
+/// Execute one admitted command and retain its bounded output for a Rust shell.
+pub fn run_plan_command_captured(
+    plan: &CommandPlan,
+    execution_root: &Path,
+) -> EvidenceResult<CapturedPlanCommand> {
     let executable = PathBuf::from(&plan.executable.path);
     let executable_blake3 = hash_file_bounded(&executable, plan.executable.maximum_bytes)?;
     ensure(
@@ -84,7 +100,7 @@ pub(crate) fn run_plan_command(
         .map_err(|error| EvidenceError::new(format!("bounded-exec failed: {error}")))?;
     let command_identity_blake3 = command_identity(plan).map_err(EvidenceError::new)?;
     let completion = completion_name(output.completion);
-    Ok(CommandObservation {
+    let observation = CommandObservation {
         schema: "chaoscontrol.typed-command-observation.v1",
         mechanism_revision: crate::typed_operator_command::MECHANISM_REVISION,
         command_identity_blake3,
@@ -101,10 +117,15 @@ pub(crate) fn run_plan_command(
         teardown: "completed",
         stdout: stream_observation(&output.stdout),
         stderr: stream_observation(&output.stderr),
+    };
+    Ok(CapturedPlanCommand {
+        observation,
+        stdout: output.stdout.bytes,
+        stderr: output.stderr.bytes,
     })
 }
 
-pub(crate) fn observe_executable_reference(
+pub fn observe_executable_reference(
     path: &Path,
     maximum_bytes: u64,
 ) -> EvidenceResult<ExecutableRef> {

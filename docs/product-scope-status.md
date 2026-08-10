@@ -18,7 +18,7 @@ The Cargo workspace has 20 explicit crates. The source is `Cargo.toml`.
 | VMM and evidence module boundaries | `experimental` | `experimental-architecture-migration` | `chaoscontrol-vmm` | `missing` from `.cairn/changes/modularize-vmm-and-evidence-shells/` | Internal ownership migration with frozen public APIs and schemas. |
 | Fresh v2 workload proofs | `supported` | `supported-bounded-fresh-v2-cohort` | `chaoscontrol-evidence` | `passed` from `docs/replay-proof-coverage.md` | Fresh strict-identity KVM proof is supported for the named workload and artifact cohort. |
 | Typed operator commands | `supported` | `supported-bounded-direct-execution` | `chaoscontrol-evidence` | `passed` from `docs/typed-operator-commands.md` | Typed direct process requests with ChaosControl-owned authorization and evidence. |
-| Rust-owned product automation | `experimental` | `experimental-rust-automation-migration` | `chaoscontrol-evidence` | `missing` from `.cairn/changes/replace-python-product-automation/` | Product policy and structured automation move to focused Rust owners. |
+| Rust-owned product automation | `experimental` | `experimental-rust-owned-automation` | `chaoscontrol-evidence` | `passed` from `docs/rust-product-automation.md` | Product policy and structured automation use focused Rust cores and shells. |
 | Hosted ChaosControl service | `non-goal` | `non-goal-current-scope` | `chaoscontrol-evidence` | `not-required` from `README.md` | Current product scope is local and single-machine. |
 | Cross-machine scheduling | `non-goal` | `non-goal-current-scope` | `chaoscontrol-evidence` | `not-required` from `README.md` | Current scheduler support stays on one machine. |
 | Non-Rust workload SDK | `non-goal` | `non-goal-current-scope` | `chaoscontrol-sdk` | `not-required` from `README.md` | The workload SDK remains Rust-only. |
@@ -35,7 +35,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
-| `replace-free-form-operator-commands` | `supported` | `chaoscontrol-evidence` | The pinned bounded-exec revision and typed command parity gates must pass. |
+| `replace-python-product-automation` | `experimental` | `chaoscontrol-evidence` | Positive and negative Python-to-Rust parity must pass before Python removal. |
 
 ## Roadmap by scope state
 
@@ -52,7 +52,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 - `kvm-release-evidence-rail`: One admitted KVM worker and one explicit required behavior matrix. Evidence is `passed`.
 - `state-machine-property-coverage`: Bounded model-based tests for selected pure cores. Evidence is `missing`.
 - `vmm-evidence-module-boundaries`: Internal ownership migration with frozen public APIs and schemas. Evidence is `missing`.
-- `rust-owned-product-automation`: Product policy and structured automation move to focused Rust owners. Evidence is `missing`.
+- `rust-owned-product-automation`: Product policy and structured automation use focused Rust cores and shells. Evidence is `passed`.
 
 ### Deferred
 

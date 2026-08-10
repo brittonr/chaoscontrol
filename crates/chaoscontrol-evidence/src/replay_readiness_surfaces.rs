@@ -3919,37 +3919,46 @@ pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceR
     let flake_text = std::fs::read_to_string(root.join("flake.nix"))?;
     validate_gate_metadata(&flake_text)?;
     validate_renderer_equivalence(root)?;
-    let missing = flake_text.replace("                  (\"readiness-promotion\", \"check-readiness-promotion-gate --root .\", os.environ[\"READINESS_PROMOTION_STATUS\"]),\n", "");
-    match validate_gate_metadata(&missing) {
-        Err(err) if err.message().contains("missing from receipt metadata") => {}
+    let missing_execution = flake_text.replace(
+        "              run_gate readiness-promotion readiness_promotion_status check-readiness-promotion-gate --root .\n",
+        "",
+    );
+    match validate_gate_metadata(&missing_execution) {
+        Err(err) if err.message().contains("without executed run_gate") => {}
         Err(err) => {
             return Err(EvidenceError::new(format!(
-                "unexpected missing-gate error: {}",
+                "unexpected missing-execution error: {}",
                 err.message()
             )))
         }
         Ok(_) => {
             return Err(EvidenceError::new(
-                "missing receipt gate fixture unexpectedly passed",
+                "missing executed gate fixture unexpectedly passed",
             ))
         }
     }
-    let extra = flake_text.replace("              ]\n              receipt = {", "                  (\"phantom-gate\", \"python scripts/phantom.py\", os.environ[\"CONTRACT_REGISTRY_STATUS\"]),\n              ]\n              receipt = {");
-    match validate_gate_metadata(&extra) {
-        Err(err) if err.message().contains("without executed run_gate") => Ok(()),
+    let extra_execution = flake_text.replace(
+        "              echo \"replay readiness checks passed\"",
+        "              run_gate phantom-gate phantom_status check-phantom-gate\n              echo \"replay readiness checks passed\"",
+    );
+    match validate_gate_metadata(&extra_execution) {
+        Err(err) if err.message().contains("missing from receipt metadata") => Ok(()),
         Err(err) => Err(EvidenceError::new(format!(
-            "unexpected extra-gate error: {}",
+            "unexpected extra-execution error: {}",
             err.message()
         ))),
         Ok(_) => Err(EvidenceError::new(
-            "extra receipt gate fixture unexpectedly passed",
+            "extra executed gate fixture unexpectedly passed",
         )),
     }
 }
 
 pub fn validate_gate_metadata(flake_text: &str) -> EvidenceResult<Vec<String>> {
     let executed = executed_static_gate_names(flake_text)?;
-    let receipt = receipt_static_gate_names(flake_text)?;
+    let receipt = validate_unique_nonempty(
+        crate::rust_automation::readiness_receipt::gate_names(),
+        "receipt static gate metadata entries",
+    )?;
     let executed_set = executed.iter().collect::<BTreeSet<_>>();
     let receipt_set = receipt.iter().collect::<BTreeSet<_>>();
     let missing = executed
@@ -4266,24 +4275,6 @@ fn executed_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
         }
     }
     validate_unique_nonempty(names, "replay-readiness run_gate entries")
-}
-
-fn receipt_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
-    let block = between(
-        flake_text,
-        "              gates = [",
-        "              ]\n              receipt = {",
-    )?;
-    let mut names = Vec::new();
-    for line in block.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("(\"") {
-            if let Some((name, _)) = rest.split_once("\",") {
-                names.push(name.to_string());
-            }
-        }
-    }
-    validate_unique_nonempty(names, "receipt static gate metadata entries")
 }
 
 fn validate_unique_nonempty(names: Vec<String>, label: &str) -> EvidenceResult<Vec<String>> {

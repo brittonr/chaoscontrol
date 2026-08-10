@@ -45,6 +45,7 @@ mod replay_readiness_publication;
 mod replay_readiness_render;
 pub mod replay_readiness_surfaces;
 mod replay_verdict_artifact;
+pub mod rust_automation;
 mod sdk_local_catalog;
 mod sdk_local_event;
 mod sdk_local_identity;
@@ -64,6 +65,24 @@ pub fn execute_typed_operator_command(
     typed_operator_command::validate_plan(plan).map_err(EvidenceError::new)?;
     replay_readiness_orchestration::run_plan_command(plan, execution_root.as_ref())
 }
+
+/// Execute one validated typed command and retain its bounded output.
+pub fn execute_typed_operator_command_captured(
+    plan: &typed_operator_command::CommandPlan,
+    execution_root: impl AsRef<std::path::Path>,
+) -> EvidenceResult<replay_readiness_orchestration::CapturedPlanCommand> {
+    typed_operator_command::validate_plan(plan).map_err(EvidenceError::new)?;
+    replay_readiness_orchestration::run_plan_command_captured(plan, execution_root.as_ref())
+}
+
+/// Measure one executable for a typed plan before process creation.
+pub fn observe_typed_executable(
+    path: impl AsRef<std::path::Path>,
+    maximum_bytes: u64,
+) -> EvidenceResult<typed_operator_command::ExecutableRef> {
+    replay_readiness_orchestration::observe_executable_reference(path.as_ref(), maximum_bytes)
+}
+
 pub use chaoscontrol_smr;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,

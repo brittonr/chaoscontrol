@@ -430,10 +430,9 @@
               runtimeInputs = [
                 chaoscontrol
                 pkgs.coreutils
-                pkgs.python3
               ];
               text = ''
-                python ${./scripts/accepted-snapshot-verdict-dogfood.py} ${pkgs.lib.escapeShellArgs args} "$@"
+                exec accepted-snapshot-verdict-dogfood ${pkgs.lib.escapeShellArgs args} "$@"
               '';
             };
 
@@ -647,7 +646,6 @@
             runtimeInputs = [
               chaoscontrol
               pkgs.coreutils
-              pkgs.python3
             ];
             text = ''
               usage() {
@@ -710,30 +708,9 @@
                 --dlog-dir "$out/dlogs" \
                 "''${extra_args[@]}"
 
-              python3 - "$out/matrix-receipt.json" "$out/summary.txt" <<'PY'
-              import json
-              import sys
-              receipt_path, summary_path = sys.argv[1:]
-              receipt = json.loads(open(receipt_path, encoding="utf-8").read())
-              rows = receipt.get("rows", [])
-              passed = receipt.get("passed") is True
-              lines = [
-                  f"vm determinism matrix: {'pass' if passed else 'fail'}",
-                  f"matrix_id: {receipt.get('matrix_id')}",
-                  f"gate: {receipt.get('gate')}",
-                  f"rows: {len(rows)}",
-                  f"scope: {receipt.get('scope')}",
-              ]
-              for row in rows:
-                  profile = row.get("profile", {})
-                  report = row.get("report", {})
-                  lines.append(
-                      f"- {profile.get('row_id')}: status={row.get('status')} passed={report.get('passed')} runs={report.get('runs')} product={profile.get('local_product_profile')} workers={profile.get('worker_count')} workload={profile.get('workload')} kernel={profile.get('kernel_fingerprint')} initrd={profile.get('initrd_fingerprint')} device={profile.get('device_profile')} clock={profile.get('clock_profile')} controller={profile.get('controller_profile')} hypervisor={profile.get('hypervisor_profile')} mismatches={len(report.get('mismatches', []))}"
-                  )
-              with open(summary_path, "w", encoding="utf-8") as fh:
-                  fh.write("\n".join(lines) + "\n")
-              print("\n".join(lines))
-              PY
+              render-vm-determinism-matrix-summary \
+                "$out/matrix-receipt.json" \
+                "$out/summary.txt"
               printf 'vm determinism matrix receipt: %s\n' "$out/matrix-receipt.json"
               printf 'vm determinism matrix summary: %s\n' "$out/summary.txt"
             '';
@@ -745,7 +722,6 @@
               chaoscontrol
               pkgs.coreutils
               pkgs.nickel
-              pkgs.python3
             ];
             text = ''
               usage() {
@@ -848,104 +824,7 @@
                 ARTIFACT_SIZES_STATUS="$artifact_sizes_status" \
                 ACCEPTED_DOGFOOD_CONFIG_STATUS="$accepted_dogfood_config_status" \
                 DOGFOOD_EXPECTATIONS="${./dogfood-results/accepted-dogfood-expectations.json}" \
-                python - "$receipt" <<'PY'
-              import json
-              import os
-              import sys
-              from pathlib import Path
-
-              out = Path(sys.argv[1])
-              dogfood = os.environ["DOGFOOD"] or None
-              dogfood_output = os.environ["DOGFOOD_OUTPUT"] or None
-              dogfood_summary_raw = os.environ["DOGFOOD_SUMMARY_JSON"] or "null"
-              try:
-                  dogfood_summary = json.loads(dogfood_summary_raw)
-              except json.JSONDecodeError as exc:
-                  raise SystemExit(f"invalid DOGFOOD_SUMMARY_JSON: {exc}")
-              if dogfood_summary is not None and not isinstance(dogfood_summary, dict):
-                  raise SystemExit("DOGFOOD_SUMMARY_JSON must be an object or null")
-
-              def load_expectation(workload):
-                  if not workload:
-                      return None
-                  with Path(os.environ["DOGFOOD_EXPECTATIONS"]).open() as handle:
-                      root = json.load(handle)
-                  value = (root.get("workloads") or {}).get(workload)
-                  if value is None:
-                      raise SystemExit(f"missing dogfood expectation for {workload}")
-                  return value
-
-              def expectation_status(expectation, summary):
-                  if expectation is None or summary is None:
-                      return "not-applicable" if expectation is None else "not-observed"
-                  expected = expectation.get("expected") or {}
-                  mismatches = []
-                  if summary.get("accepted") is not expected.get("accepted"):
-                      mismatches.append("accepted")
-                  verdict = summary.get("verdict") if isinstance(summary.get("verdict"), dict) else {}
-                  if verdict.get("replay_class") != expected.get("replay_class"):
-                      mismatches.append("replay_class")
-                  depth = verdict.get("replay_parent_depth")
-                  min_depth = expected.get("min_replay_parent_depth")
-                  if isinstance(min_depth, int) and (not isinstance(depth, int) or depth < min_depth):
-                      mismatches.append("replay_parent_depth")
-                  seed = summary.get("seed")
-                  allowed_seeds = expected.get("allowed_seeds")
-                  if isinstance(allowed_seeds, list) and seed not in allowed_seeds:
-                      mismatches.append("seed")
-                  fail_after = summary.get("snapshot_probe_fail_after")
-                  fail_after_values = expected.get("fail_after_values")
-                  if isinstance(fail_after_values, list) and fail_after not in fail_after_values:
-                      mismatches.append("fail_after")
-                  if mismatches:
-                      return "mismatched:" + ",".join(mismatches)
-                  return "matched"
-
-              dogfood_expectation = load_expectation(dogfood)
-              dogfood_expectation_status = expectation_status(dogfood_expectation, dogfood_summary)
-
-              gates = [
-                  ("contract-registry", "check-contract-registry .", os.environ["CONTRACT_REGISTRY_STATUS"]),
-                  ("evidence-contracts", "check-evidence-contracts --root .", os.environ["EVIDENCE_CONTRACTS_STATUS"]),
-                  ("replay-proof-coverage", "check-replay-proof-coverage .", os.environ["REPLAY_PROOF_COVERAGE_STATUS"]),
-                  ("readiness-promotion", "check-readiness-promotion-gate --root .", os.environ["READINESS_PROMOTION_STATUS"]),
-                  ("readiness-surface-drift", "check-readiness-surface-drift .", os.environ["READINESS_SURFACE_DRIFT_STATUS"]),
-                  ("readiness-report", "generate-replay-readiness-report --check .", os.environ["READINESS_REPORT_STATUS"]),
-                  ("assertion-readiness-report", "generate-assertion-readiness-report --check .", os.environ["ASSERTION_REPORT_STATUS"]),
-                  ("assertion-readiness-boundary", "check-assertion-readiness-boundary .", os.environ["ASSERTION_PROMOTION_STATUS"]),
-                  ("sdk-local-report-tracks", "check-sdk-local-report-tracks", os.environ["SDK_LOCAL_REPORT_TRACKS_STATUS"]),
-                  ("sdk-assertion-quality", "check-sdk-assertion-quality", os.environ["SDK_ASSERTION_QUALITY_STATUS"]),
-                  ("consistency-checker-fixtures", "check-consistency-fixtures .", os.environ["CONSISTENCY_FIXTURES_STATUS"]),
-                  ("dogfood-artifact-sizes", "check-dogfood-artifact-sizes", os.environ["ARTIFACT_SIZES_STATUS"]),
-                  ("accepted-dogfood-config", "check-accepted-dogfood-config --config <nix-generated>", os.environ["ACCEPTED_DOGFOOD_CONFIG_STATUS"]),
-              ]
-              receipt = {
-                  "schema_version": 1,
-                  "command": "replay-readiness",
-                  "status": os.environ["STATUS"],
-                  "exit_code": int(os.environ["EXIT_CODE"]),
-                  "failed_phase": os.environ["FAILED_PHASE"] or None,
-                  "started_at": os.environ["STARTED_AT"],
-                  "finished_at": os.environ["FINISHED_AT"],
-                  "static_gates": [
-                      {"name": name, "command": command, "status": status}
-                      for name, command, status in gates
-                  ],
-                  "dogfood": {
-                      "selected_workload": dogfood,
-                      "status": os.environ["DOGFOOD_STATUS"],
-                      "output": dogfood_output,
-                      "summary": dogfood_summary,
-                      "expectation": dogfood_expectation,
-                      "expectation_status": dogfood_expectation_status,
-                      "evidence_curation": "explicit-follow-up",
-                  },
-                  "scope": "bounded committed replay/evidence readiness; not universal determinism or hosted-product parity",
-              }
-              tmp = out.with_suffix(out.suffix + ".tmp")
-              tmp.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-              tmp.replace(out)
-              PY
+                materialize-replay-readiness-receipt "$receipt"
               }
 
               run_gate() {
@@ -1008,8 +887,8 @@
                 if [ -z "$dogfood_output" ]; then
                   return 0
                 fi
-                if dogfood_summary_json="$(python ${./scripts/summarize-accepted-dogfood-output.py} --json "$dogfood_output")"; then
-                  python ${./scripts/summarize-accepted-dogfood-output.py} "$dogfood_output"
+                if dogfood_summary_json="$(summarize-accepted-dogfood-output --json "$dogfood_output")"; then
+                  summarize-accepted-dogfood-output "$dogfood_output"
                 else
                   rc=$?
                   dogfood_summary_json="null"
@@ -1083,8 +962,8 @@
           scaffoldRustWorkload = pkgs.writeShellApplication {
             name = "scaffold-rust-workload";
             runtimeInputs = [
+              chaoscontrol
               pkgs.coreutils
-              pkgs.python3
             ];
             text = ''
               usage() {
@@ -1104,40 +983,9 @@
                 echo "destination already exists: $dest" >&2
                 exit 1
               fi
-              mkdir -p "$(dirname "$dest")"
-              cp -R ${./docs/templates/rust-workload} "$dest"
-              chmod -R u+w "$dest"
-              python - "$dest" "$workload" "${self}" <<'PY'
-              import json, pathlib, sys
-              dest = pathlib.Path(sys.argv[1])
-              workload = sys.argv[2]
-              source_root = pathlib.Path(sys.argv[3])
-              package = workload.replace('_', '-').lower() + "-chaos-workload"
-              replacements = {
-                  "../../../crates/chaoscontrol-sdk": str(source_root / "crates/chaoscontrol-sdk"),
-                  "my-service-chaos-workload": package,
-                  "my-service": workload,
-              }
-              for path in dest.rglob("*"):
-                  if path.is_file() and path.suffix in {".md", ".rs", ".toml"}:
-                      text = path.read_text()
-                      for old, new in replacements.items():
-                          text = text.replace(old, new)
-                      path.write_text(text)
-              manifest = {
-                  "schema": "chaoscontrol.rust_workload_scaffold.v1",
-                  "workload": workload,
-                  "template_source": "docs/templates/rust-workload",
-                  "local_dry_run": f"CHAOSCONTROL_SDK_LOCAL_OUTPUT=/tmp/{workload}.sdk.jsonl cargo run --bin {package}",
-                  "local_report": f"summarize-sdk-local-output --input /tmp/{workload}.sdk.jsonl --output /tmp/{workload}.local-report.json",
-                  "quality_gate": f"check-sdk-assertion-quality --input /tmp/{workload}.local-report.json",
-                  "bounded_vm_campaign": "nix run github:your-org/chaoscontrol#explore-rust-workload -- /tmp/cc-rust-workload-vm",
-                  "promotion_boundary": "local assertion quality is not snapshot-backed replay proof; require accepted replay verdict artifacts before support promotion",
-              }
-              (dest / "chaoscontrol-scaffold.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-              PY
-              echo "scaffolded Rust workload at: $dest"
-              echo "manifest: $dest/chaoscontrol-scaffold.json"
+              CHAOSCONTROL_SCAFFOLD_TEMPLATE=${./docs/templates/rust-workload} \
+                CHAOSCONTROL_SOURCE_ROOT=${self} \
+                exec scaffold-rust-workload "$dest" "$workload"
             '';
           };
 
@@ -1282,12 +1130,12 @@
           localMultiHypervisorKvmSmoke = pkgs.writeShellApplication {
             name = "local-multi-hypervisor-kvm-smoke";
             runtimeInputs = [
+              chaoscontrol
               replayReadiness
               replayReadinessSchedulerReceipt
-              pkgs.python3
             ];
             text = ''
-              exec python ${./scripts/local-multi-hypervisor-kvm-smoke.py} \
+              exec local-multi-hypervisor-kvm-smoke \
                 --replay-readiness ${replayReadiness}/bin/replay-readiness \
                 --scheduler-receipt ${replayReadinessSchedulerReceipt}/bin/replay-readiness-scheduler-receipt \
                 "$@"
@@ -1611,13 +1459,13 @@
               pkgs.runCommand "dependency-audit-check"
                 {
                   nativeBuildInputs = [
+                    chaoscontrol
                     pkgs.cargo-audit
-                    pkgs.python3
                   ];
                 }
                 ''
                   cargo-audit audit --no-fetch --stale --db ${advisory-db} --file ${self}/Cargo.lock --json > "$TMPDIR/audit.json"
-                  python ${self}/scripts/check-cargo-audit-report.py \
+                  check-cargo-audit-report \
                     --report "$TMPDIR/audit.json" \
                     --allowlist ${self}/audits/cargo-audit-warning-allowlist.json
                   mkdir -p "$out"
@@ -1648,6 +1496,47 @@
                   check-contract-registry .
                   check-sim-core-purity .
                   check-architecture-boundaries .
+                  check-rust-product-automation-source .
+                  check-cargo-audit-report --selftest
+                  summarize-accepted-dogfood-output \
+                    ${self}/dogfood-results/raft-fresh-v2-proof-20260809 \
+                    > "$TMPDIR/dogfood-summary.txt"
+                  summarize-accepted-dogfood-output \
+                    --json \
+                    ${self}/dogfood-results/raft-fresh-v2-proof-20260809 \
+                    > "$TMPDIR/dogfood-summary.json"
+                  mkdir "$TMPDIR/malformed-summary"
+                  printf '{invalid\n' > "$TMPDIR/malformed-summary/accepted-snapshot-verdict-summary.json"
+                  if summarize-accepted-dogfood-output "$TMPDIR/malformed-summary"; then
+                    echo "malformed dogfood summary unexpectedly passed" >&2
+                    exit 1
+                  fi
+                  cp -R ${self}/dogfood-results/raft-20260506-131815 "$TMPDIR/materialize-dogfood"
+                  chmod -R u+w "$TMPDIR/materialize-dogfood"
+                  materialize-dogfood-receipt \
+                    "$TMPDIR/materialize-dogfood" \
+                    --git-revision fixture \
+                    --replay-status accepted \
+                    --replay-message no-bug \
+                    --replay-exit-status 0
+                  test -s "$TMPDIR/materialize-dogfood/run-config.json"
+                  test -s "$TMPDIR/materialize-dogfood/receipt.json"
+                  CHAOSCONTROL_SCAFFOLD_TEMPLATE=${self}/docs/templates/rust-workload \
+                    CHAOSCONTROL_SOURCE_ROOT=${self} \
+                    scaffold-rust-workload "$TMPDIR/scaffold" parity-fixture
+                  test -s "$TMPDIR/scaffold/chaoscontrol-scaffold.json"
+                  if CHAOSCONTROL_SCAFFOLD_TEMPLATE=${self}/docs/templates/rust-workload \
+                    CHAOSCONTROL_SOURCE_ROOT=${self} \
+                    scaffold-rust-workload "$TMPDIR/scaffold" parity-fixture; then
+                    echo "existing scaffold destination unexpectedly passed" >&2
+                    exit 1
+                  fi
+                  if CHAOSCONTROL_SCAFFOLD_TEMPLATE=${self}/docs/templates/rust-workload \
+                    CHAOSCONTROL_SOURCE_ROOT=${self} \
+                    scaffold-rust-workload ${self}/write-must-fail parity-fixture; then
+                    echo "read-only scaffold destination unexpectedly passed" >&2
+                    exit 1
+                  fi
                   check-evidence-contracts --root .
                   check-kvm-release-matrix --root .
                   check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json
@@ -1841,53 +1730,13 @@
             vm-determinism-drift-receipt =
               pkgs.runCommand "vm-determinism-drift-receipt-check"
                 {
-                  nativeBuildInputs = [ pkgs.python3 ];
+                  nativeBuildInputs = [ chaoscontrol ];
                 }
                 ''
                   mkdir -p "$out"
-                  python - <<'PY' > "$out/summary.txt"
-                  import json
-                  from pathlib import Path
-
-                  receipt_path = Path("${./dogfood-results/vm-determinism-drift-latest/receipt.json}")
-                  receipt = json.loads(receipt_path.read_text())
-                  expected_cases = {
-                      "single-vm-1vcpu",
-                      "single-vm-2vcpu",
-                      "controller-3vm-1vcpu",
-                      "controller-3vm-2vcpu",
-                  }
-
-                  def require(condition, message):
-                      if not condition:
-                          raise SystemExit(message)
-
-                  require(receipt.get("schema_version") == 1, "schema_version must be 1")
-                  require(receipt.get("gate") == "vm-determinism-drift", "unexpected gate")
-                  require(str(receipt.get("kernel_crc32", "")).startswith("crc32:"), "missing kernel_crc32")
-                  require(str(receipt.get("initrd_crc32", "")).startswith("crc32:"), "missing initrd_crc32")
-
-                  cases = receipt.get("cases")
-                  require(isinstance(cases, list) and cases, "cases must be a non-empty list")
-                  seen = {case.get("name") for case in cases}
-                  require(seen == expected_cases, f"unexpected cases: {sorted(seen)}")
-
-                  for case in cases:
-                      name = case.get("name")
-                      require(case.get("runs") == 5, f"{name}: expected 5 runs")
-                      require(case.get("passed") is True, f"{name}: not passed")
-                      require(case.get("mismatches") == [], f"{name}: mismatches present")
-                      require(case.get("dlog_structural_match") is True, f"{name}: dlog structural mismatch")
-                      require(case.get("dlog_mismatches") == [], f"{name}: dlog mismatches present")
-                      require(case.get("dlog_divergences") == [], f"{name}: dlog divergences present")
-                      observations = case.get("observations")
-                      require(isinstance(observations, list), f"{name}: observations must be a list")
-                      require(len(observations) == case.get("runs"), f"{name}: observation count != runs")
-
-                  print("vm-determinism-drift receipt: pass")
-                  for case in cases:
-                      print(f"{case['name']}: {case['runs']} runs, mismatches=0, dlog_structural_match=true")
-                  PY
+                  check-vm-determinism-drift-receipt \
+                    ${./dogfood-results/vm-determinism-drift-latest/receipt.json} \
+                    > "$out/summary.txt"
                   cp ${./dogfood-results/vm-determinism-drift-latest/receipt.json} "$out/receipt.json"
                   test -s "$out/summary.txt"
                   test -s "$out/receipt.json"

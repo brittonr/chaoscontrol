@@ -19,6 +19,7 @@ use chaoscontrol_vmm::determinism_gate::{
     RunFingerprint, RunObservation, VmFingerprint,
 };
 use chaoscontrol_vmm::dlog::{dlog_diff_structural, DiffResult, DlogRecord, DlogTag};
+use chaoscontrol_vmm::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use crc32fast::Hasher;
 use std::env;
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 const DEFAULT_RUNS: usize = 10;
-const SINGLE_VM_MAX_EXITS: u64 = 70_000;
+const SINGLE_VM_MAX_EXITS: u64 = DEFAULT_SCHEDULE_JOURNAL_LIMIT as u64;
 const CONTROLLER_TICKS: u64 = 10;
 const CONTROLLER_SEED: u64 = 42;
 const DLOG_REGISTER_INTERVAL: u64 = 100;

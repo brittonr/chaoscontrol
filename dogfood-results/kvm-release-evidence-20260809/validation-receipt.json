@@ -1,0 +1,98 @@
+{
+  "schema": "chaoscontrol.kvm-release-validation.v1",
+  "source": {
+    "revision": "62af4500e16dc73948277c87b79d8c26f06e46c7",
+    "dirty": false
+  },
+  "matrix_profile": "required-kvm-release-v1",
+  "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
+  "runner_revision": "chaoscontrol-evidence-0.1.0@62af4500e16dc73948277c87b79d8c26f06e46c7",
+  "worker": {
+    "architecture": "x86_64",
+    "kernel_release": "6.18.41",
+    "kvm_api_version": 12,
+    "capabilities": [
+      "kvm",
+      "x86_64-linux"
+    ]
+  },
+  "started_unix_seconds": 1786326129,
+  "finished_unix_seconds": 1786326422,
+  "checked_unix_seconds": 1786326560,
+  "terminal_class": "release-eligible",
+  "rows": [
+    {
+      "id": "build-release-binaries",
+      "kind": "cohort-binary-build",
+      "status": "passed",
+      "command_identity": "blake3:246ecdbd69c4797bf33ea25eca0cf1dc587894e37e40d05f87e132d12c7a6568",
+      "artifact_set_identity": "blake3:439b7ea068b64a395f700111e40c050f30bef753c0d39034512fc3e00e64c7b1",
+      "artifact_count": 62,
+      "artifact_bytes": 127206664
+    },
+    {
+      "id": "build-raft-guest",
+      "kind": "cohort-guest-build",
+      "status": "passed",
+      "command_identity": "blake3:208aa832269fb3b1ee713827a00e73138eb5bb08194a90f4305f12fab9dc235d",
+      "artifact_set_identity": "blake3:1511a21eedd4f134964d9e938c3c3885ff79add8dec390bf802d8b7030ea7c4a",
+      "artifact_count": 3,
+      "artifact_bytes": 472463
+    },
+    {
+      "id": "deterministic-smp",
+      "kind": "deterministic-smp",
+      "status": "passed",
+      "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
+      "artifact_set_identity": "blake3:076ee8fc81811a85c87aa8f0f7070d0e2f789925bff88c7d93905dbec9e487c4",
+      "artifact_count": 2,
+      "artifact_bytes": 537
+    },
+    {
+      "id": "serialized-snapshot-replay",
+      "kind": "serialized-snapshot-replay",
+      "status": "passed",
+      "command_identity": "blake3:0758db17baad94f711089936e5686f5e0a6e90fee0f3df0b5bc5645409d9e909",
+      "artifact_set_identity": "blake3:392f87cc30c2d20d51d5ef26fd3bada505831d2af7a4369c97571bb04c5522fa",
+      "artifact_count": 2,
+      "artifact_bytes": 391
+    },
+    {
+      "id": "virtio-malformed-input",
+      "kind": "virtio-malformed-input",
+      "status": "passed",
+      "command_identity": "blake3:a2be7bc2ccc018d2221292347c0d85a536fe3c8c6b34ca3fa1bc36cd460db7fd",
+      "artifact_set_identity": "blake3:b187adcff55b96c22f2bd3c7a31c75e51f14cb064f39ade713b7674525ee66ee",
+      "artifact_count": 2,
+      "artifact_bytes": 385
+    },
+    {
+      "id": "admitted-drift",
+      "kind": "admitted-drift",
+      "status": "passed",
+      "command_identity": "blake3:8aa3dfc1614052336fa89878e7612af8d424e2532f52c5861d883fc7da3d9f45",
+      "artifact_set_identity": "blake3:d145fc4acb19ca7bc10fdeb934fd692d1b78a737ab7f7eb5c8ca6f2c8cefddd8",
+      "artifact_count": 9,
+      "artifact_bytes": 38643369
+    },
+    {
+      "id": "fresh-workload-replay",
+      "kind": "fresh-workload-replay",
+      "status": "passed",
+      "command_identity": "blake3:fa364537ff1b194dc46564e542cbc8198cef636e1687487314598b9f56a57826",
+      "artifact_set_identity": "blake3:2bdffaaaab7a92d6948619a966b9a65bd2d245ada4dfa238cbb853b61963cab4",
+      "artifact_count": 29,
+      "artifact_bytes": 115974330
+    }
+  ],
+  "full_receipt_identity": "blake3:ef9ebf8bc77a1193e26411aedf1cf14777d7c456354ebca10ed738850d7a3ff3",
+  "raw_receipt_retention": "primary-worktree .pi evidence; raw row artifacts are not committed",
+  "bounded_claim": "This receipt establishes that the exact source revision passed the required matrix on the recorded admitted worker with the recorded commands, bounds, and artifact identities.",
+  "non_claims": [
+    "The receipt does not prove worker integrity.",
+    "The receipt does not prove all-host equivalence.",
+    "The receipt does not prove universal determinism.",
+    "The receipt does not prove workload correctness.",
+    "The receipt does not prove production availability."
+  ]
+}

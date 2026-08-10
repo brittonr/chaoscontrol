@@ -55,7 +55,9 @@ The worker writes:
 - `release-summary.md` for review;
 - bounded stdout, stderr, and row artifacts.
 
-Raw worker files are CI artifacts. They are not a source of product truth.
+The validated run for source `62af4500e16dc73948277c87b79d8c26f06e46c7` is summarized in `dogfood-results/kvm-release-evidence-20260809/validation-receipt.json`. It binds the full local receipt by BLAKE3.
+
+Raw worker files remain under the primary worktree's `.pi` evidence area. They are not a source of product truth.
 
 ## Claim boundary
 

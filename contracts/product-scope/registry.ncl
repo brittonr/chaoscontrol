@@ -90,8 +90,8 @@ let ProductScope = import "product-scope.ncl" in
       status_label = "experimental-kvm-release-rail",
       evidence = {
         id = "complete-kvm-release-matrix",
-        state = "missing",
-        source = ".cairn/changes/add-kvm-release-evidence-rail/",
+        state = "passed",
+        source = "dogfood-results/kvm-release-evidence-20260809/validation-receipt.json",
       },
       boundary = "One admitted KVM worker and one explicit required behavior matrix.",
       documentation_targets = ["docs/product-scope-status.md"],

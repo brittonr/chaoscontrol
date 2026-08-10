@@ -43,6 +43,7 @@ jobs:
             target/replay-readiness-check/replay-readiness-summary.txt
             target/replay-readiness-check/replay-readiness-dashboard.html
 
+  # r[impl chaoscontrol.kvm_release_rail.ci]
   kvm-release:
     name: Required bounded KVM release matrix
     if: github.event_name != 'pull_request'

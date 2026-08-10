@@ -426,6 +426,7 @@ let Registry = {
         "contracts/kvm-release/matrix.json",
         "target/kvm-release/release-receipt.json",
         "target/kvm-release/release-summary.md",
+        "dogfood-results/kvm-release-evidence-20260809/validation-receipt.json",
       ],
       validation_commands = [
         "check-kvm-release-matrix --root .",

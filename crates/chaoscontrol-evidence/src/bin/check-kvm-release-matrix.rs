@@ -6,11 +6,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chaoscontrol_evidence::kvm_release::{
     artifact_set_identity, command_identity, matrix_identity, validate_matrix, validate_receipt,
-    ArtifactIdentity, Blocker, KvmReleaseMatrix, KvmReleaseReceipt, ReleaseClass, RowReceipt,
-    RowStatus, SourceFacts, WorkerFacts, RECEIPT_SCHEMA_VERSION, REQUIRED_WORKER_ARCH,
+    ArtifactIdentity, Blocker, KvmReleaseMatrix, KvmReleaseReceipt, ReleaseClass, RowKind,
+    RowReceipt, RowStatus, SourceFacts, WorkerFacts, RECEIPT_SCHEMA_VERSION, REQUIRED_WORKER_ARCH,
 };
 use serde::{Deserialize, Serialize};
 
+// The portable and KVM workflow lanes call this checker separately.
+// r[impl chaoscontrol.kvm_release_rail.ci]
 const SUCCESS_EXIT_CODE: i32 = 0;
 const FAILURE_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 2;
@@ -46,6 +48,7 @@ struct Config {
     receipt: Option<PathBuf>,
     expected_revision: Option<String>,
     now_unix_seconds: Option<u64>,
+    curated_output: Option<PathBuf>,
     write_fixtures: bool,
 }
 
@@ -55,6 +58,36 @@ struct FixtureCase {
     now_unix_seconds: u64,
     expected_blocker: Option<Blocker>,
     receipt: KvmReleaseReceipt,
+}
+
+#[derive(Debug, Serialize)]
+struct CuratedValidationReceipt {
+    schema: &'static str,
+    source: SourceFacts,
+    matrix_profile: String,
+    matrix_identity: String,
+    runner_revision: String,
+    worker: WorkerFacts,
+    started_unix_seconds: u64,
+    finished_unix_seconds: u64,
+    checked_unix_seconds: u64,
+    terminal_class: ReleaseClass,
+    rows: Vec<CuratedRow>,
+    full_receipt_identity: String,
+    raw_receipt_retention: &'static str,
+    bounded_claim: String,
+    non_claims: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CuratedRow {
+    id: String,
+    kind: RowKind,
+    status: RowStatus,
+    command_identity: String,
+    artifact_set_identity: String,
+    artifact_count: usize,
+    artifact_bytes: u64,
 }
 
 fn main() {
@@ -75,7 +108,7 @@ fn main() {
 }
 
 fn usage() -> &'static str {
-    "usage: check-kvm-release-matrix [--root PATH] [--matrix PATH] [--write-fixtures] [--receipt PATH --expected-revision REV [--now UNIX_SECONDS]]"
+    "usage: check-kvm-release-matrix [--root PATH] [--matrix PATH] [--write-fixtures] [--receipt PATH --expected-revision REV [--now UNIX_SECONDS] [--curated-out PATH]]"
 }
 
 fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
@@ -84,6 +117,7 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     let mut receipt = None;
     let mut expected_revision = None;
     let mut now_unix_seconds = None;
+    let mut curated_output = None;
     let mut write_fixtures = false;
     let mut index = 0;
     while index < args.len() {
@@ -117,6 +151,14 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
                 );
                 index += 2;
             }
+            "--curated-out" => {
+                curated_output = Some(PathBuf::from(required_value(
+                    &args,
+                    index,
+                    "--curated-out",
+                )?));
+                index += 2;
+            }
             "--write-fixtures" => {
                 write_fixtures = true;
                 index += 1;
@@ -131,12 +173,16 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     if receipt.is_some() != expected_revision.is_some() {
         return Err("--receipt and --expected-revision must be supplied together".to_string());
     }
+    if curated_output.is_some() && receipt.is_none() {
+        return Err("--curated-out requires --receipt and --expected-revision".to_string());
+    }
     Ok(Config {
         root,
         matrix,
         receipt,
         expected_revision,
         now_unix_seconds,
+        curated_output,
         write_fixtures,
     })
 }
@@ -167,7 +213,8 @@ fn run(config: Config) -> Result<(), String> {
     if let (Some(receipt_path), Some(expected_revision)) =
         (config.receipt.as_ref(), config.expected_revision.as_deref())
     {
-        let receipt = read_json::<KvmReleaseReceipt>(&resolve_path(&root, receipt_path))?;
+        let resolved_receipt = resolve_path(&root, receipt_path);
+        let receipt = read_json::<KvmReleaseReceipt>(&resolved_receipt)?;
         let now = match config.now_unix_seconds {
             Some(now) => now,
             None => unix_seconds()?,
@@ -178,6 +225,14 @@ fn run(config: Config) -> Result<(), String> {
                 "receipt is blocked: {}",
                 decision.reasons.join("; ")
             ));
+        }
+        if let Some(curated_output) = config.curated_output.as_ref() {
+            write_curated_receipt(
+                &resolve_path(&root, curated_output),
+                &resolved_receipt,
+                &receipt,
+                now,
+            )?;
         }
     }
 
@@ -421,6 +476,59 @@ fn fixture_case(matrix: &KvmReleaseMatrix) -> FixtureCase {
 fn set_blocked(fixture: &mut FixtureCase, blocker: Blocker) {
     fixture.expected_blocker = Some(blocker);
     fixture.receipt.terminal_class = ReleaseClass::Blocked;
+}
+
+fn write_curated_receipt(
+    output: &Path,
+    full_receipt_path: &Path,
+    receipt: &KvmReleaseReceipt,
+    checked_unix_seconds: u64,
+) -> Result<(), String> {
+    let full_receipt = fs::read(full_receipt_path).map_err(|error| {
+        format!(
+            "failed to read full receipt {}: {error}",
+            full_receipt_path.display()
+        )
+    })?;
+    let rows = receipt
+        .rows
+        .iter()
+        .map(|row| {
+            let artifact_bytes = row
+                .artifacts
+                .iter()
+                .try_fold(0_u64, |total, artifact| total.checked_add(artifact.bytes));
+            artifact_bytes
+                .map(|artifact_bytes| CuratedRow {
+                    id: row.id.clone(),
+                    kind: row.kind,
+                    status: row.status,
+                    command_identity: row.command_identity.clone(),
+                    artifact_set_identity: row.artifact_set_identity.clone(),
+                    artifact_count: row.artifacts.len(),
+                    artifact_bytes,
+                })
+                .ok_or_else(|| format!("artifact bytes overflow for row {}", row.id))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let curated = CuratedValidationReceipt {
+        schema: "chaoscontrol.kvm-release-validation.v1",
+        source: receipt.source.clone(),
+        matrix_profile: receipt.matrix_profile.clone(),
+        matrix_identity: receipt.matrix_identity.clone(),
+        runner_revision: receipt.runner_revision.clone(),
+        worker: receipt.worker.clone(),
+        started_unix_seconds: receipt.started_unix_seconds,
+        finished_unix_seconds: receipt.finished_unix_seconds,
+        checked_unix_seconds,
+        terminal_class: receipt.terminal_class,
+        rows,
+        full_receipt_identity: format!("blake3:{}", blake3::hash(&full_receipt).to_hex()),
+        raw_receipt_retention: "primary-worktree .pi evidence; raw row artifacts are not committed",
+        bounded_claim: receipt.bounded_claim.clone(),
+        non_claims: receipt.non_claims.clone(),
+    };
+    write_json(output.to_path_buf(), &curated)
 }
 
 fn write_json(path: PathBuf, value: &impl Serialize) -> Result<(), String> {

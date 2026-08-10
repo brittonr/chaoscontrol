@@ -99,8 +99,8 @@
       ],
       "evidence": {
         "id": "complete-kvm-release-matrix",
-        "source": ".cairn/changes/add-kvm-release-evidence-rail/",
-        "state": "missing"
+        "source": "dogfood-results/kvm-release-evidence-20260809/validation-receipt.json",
+        "state": "passed"
       },
       "id": "kvm-release-evidence-rail",
       "name": "KVM release evidence rail",

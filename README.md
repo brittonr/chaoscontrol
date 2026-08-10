@@ -361,7 +361,7 @@ nix run .#kvm-release-matrix -- \
   --expected-revision "$revision"
 ```
 
-Every required row must pass. Missing, stale, dirty, skipped, unsupported, timed-out, failed, or tampered evidence blocks the verdict. See [the KVM release evidence guide](docs/kvm-release-evidence.md).
+Every required row must pass. Missing, stale, dirty, skipped, unsupported, timed-out, failed, or tampered evidence blocks the verdict. The validated seven-row run is summarized in `dogfood-results/kvm-release-evidence-20260809/validation-receipt.json`. See [the KVM release evidence guide](docs/kvm-release-evidence.md).
 
 For a single operator-facing readiness button, run:
 

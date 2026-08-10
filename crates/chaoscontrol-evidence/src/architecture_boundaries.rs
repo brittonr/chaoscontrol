@@ -2,6 +2,7 @@
 
 // r[impl chaoscontrol.architecture_modules.boundary]
 // r[impl chaoscontrol.architecture_modules.validation]
+// r[impl chaoscontrol.architecture_modules.migration]
 
 /// One forbidden dependency found in a pure core.
 #[derive(Debug, Clone, PartialEq, Eq)]

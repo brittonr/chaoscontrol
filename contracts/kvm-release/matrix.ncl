@@ -112,7 +112,18 @@ let RequiredCapabilities = ["kvm", "x86_64-linux"] in
       required_capabilities = RequiredCapabilities,
       command = {
         program = "nix",
-        args = ["run", ".#vm-determinism-drift", "--", "--out", "%ROW_OUT%/drift", "--runs", "2"],
+        args = [
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/drift",
+          "--runs",
+          "2",
+          "--",
+          "--case",
+          "controller-3vm-2vcpu",
+        ],
       },
       limits = {
         timeout_seconds = DriftTimeoutSeconds,

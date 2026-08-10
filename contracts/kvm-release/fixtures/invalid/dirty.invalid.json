@@ -5,7 +5,7 @@
   "receipt": {
     "schema_version": 1,
     "matrix_profile": "required-kvm-release-v1",
-    "matrix_identity": "blake3:e0a4307cb0162b561e8aba4b031a0ee40368afc54db578604d7acca22d5ca4aa",
+    "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
     "source": {
       "revision": "fixture-revision",
       "dirty": true
@@ -239,7 +239,10 @@
             "--out",
             "%ROW_OUT%/drift",
             "--runs",
-            "2"
+            "2",
+            "--",
+            "--case",
+            "controller-3vm-2vcpu"
           ]
         },
         "executed_argv": [
@@ -250,9 +253,12 @@
           "--out",
           "%ROW_OUT%/drift",
           "--runs",
-          "2"
+          "2",
+          "--",
+          "--case",
+          "controller-3vm-2vcpu"
         ],
-        "command_identity": "blake3:4722f5f8ae34a1925544683fc3dcf81dc9fb21803d959842271814188435ab3a",
+        "command_identity": "blake3:8aa3dfc1614052336fa89878e7612af8d424e2532f52c5861d883fc7da3d9f45",
         "started_unix_seconds": 100,
         "finished_unix_seconds": 101,
         "status": "passed",

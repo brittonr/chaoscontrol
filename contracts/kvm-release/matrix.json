@@ -167,7 +167,10 @@
           "--out",
           "%ROW_OUT%/drift",
           "--runs",
-          "2"
+          "2",
+          "--",
+          "--case",
+          "controller-3vm-2vcpu"
         ],
         "program": "nix"
       },

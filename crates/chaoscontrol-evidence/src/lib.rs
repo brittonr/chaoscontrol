@@ -22,6 +22,7 @@ pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
+pub mod fresh;
 pub mod in_process_simulator;
 mod json_preflight;
 pub mod kernel_bundle_initrd;
@@ -209,6 +210,11 @@ pub use sdk_local_report::{
 };
 
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
+const GIT_REVISION_HEX_LENGTH: usize = 40;
+const SHA256_HEX_LENGTH: usize = 64;
+const REQUIRED_RUNTIME_ARTIFACT_ROLES: [&str; 3] = ["host-binary", "guest-kernel", "guest-initrd"];
+const FRESH_PROOF_RECEIPT_SCHEMA_VERSION: u64 = 1;
+const REQUIRED_FRESH_PROOF_NON_CLAIMS: usize = 4;
 
 pub const ACCEPTED_PROOF_SCHEMA_VERSION: u64 = 1;
 pub const CHUNK_MANIFEST_SCHEMA_VERSION: u64 = 1;
@@ -243,9 +249,9 @@ pub struct ExperimentalReplaySurface {
 pub const EXPERIMENTAL_REPLAY_SURFACES: [ExperimentalReplaySurface; 9] = [
     ExperimentalReplaySurface {
         surface: "Rust workload authoring",
-        status: "experimental-rust-only",
-        reason: "New Rust workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. Non-Rust SDKs are not current product blockers.",
-        promotion_evidence: "Committed Rust workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that Rust workload.",
+        status: "supported-bounded-rust-cohort",
+        reason: "The admitted downstream-shaped Rust cohort has a fresh strict-identity KVM proof and a bounded onboarding recipe. New or changed workload code needs its own proof.",
+        promotion_evidence: "Keep the admitted cohort receipt, accepted verdict, manifest entry, snapshot artifact, and replay/assertion readiness checks green.",
     },
     ExperimentalReplaySurface {
         surface: "Schedule-only replay",
@@ -640,6 +646,8 @@ pub fn run_materialize_snapshot_chunks_selftest() -> EvidenceResult<()> {
     )
 }
 
+// r[impl chaoscontrol.fresh_workload_proofs.raft_first]
+// r[impl chaoscontrol.fresh_workload_proofs.coverage]
 pub fn validate_replay_proof_coverage(
     root: impl AsRef<Path>,
 ) -> EvidenceResult<Vec<ReplayProofCoverageLine>> {
@@ -653,7 +661,11 @@ pub fn validate_replay_proof_coverage(
     manifest
         .proofs
         .iter()
-        .map(|proof| validate_workload_proof(root, proof))
+        .map(|proof| {
+            validate_workload_proof(root, proof).map_err(|error| {
+                EvidenceError::new(format!("{}: {}", proof.workload, error.message()))
+            })
+        })
         .collect()
 }
 
@@ -809,7 +821,7 @@ pub fn render_replay_readiness_status(root: impl AsRef<Path>) -> EvidenceResult<
             promoted_workloads.join(", ")
         ));
     }
-    output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration; remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.\n\n");
+    output.push_str("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported baseline covers the admitted Rust cohort and durable one-machine multi-hypervisor orchestration. Remaining gaps include broader workload admission, bounded determinism and fault coverage, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope.\n\n");
     output.push_str("This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.\n\n");
     output.push_str("## Bounded replay evidence promotion status\n\n");
     output.push_str("| Workload | Status | Assertion ID | Historical verdict | Replay parent depth | export/reproduce exit | Evidence |\n");
@@ -1030,7 +1042,7 @@ pub fn render_assertion_readiness_status(root: impl AsRef<Path>) -> EvidenceResu
         }
     }
     output.push_str("\n## Replay proof signals\n\n");
-    output.push_str("Historical replay-probe failures remain checked diagnostic evidence. They do not provide current snapshot-replay authority or ordinary instrumentation-readiness promotion.\n\n");
+    output.push_str("Replay-probe failures are controlled proof signals, not ordinary application failures. Fresh authority requires strict identity, receipt, snapshot, and replay validation; legacy signals remain diagnostic-only.\n\n");
     let mut replay_probe_signals = rows
         .iter()
         .flat_map(|row| row.replay_probe_signals.iter())
@@ -1350,19 +1362,24 @@ fn validate_assertion_readiness(
 
 pub fn run_assertion_readiness_promotion_selftest(root: impl AsRef<Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
-    let error = check_assertion_readiness_promotion(root)
-        .expect_err("historical diagnostic artifacts must block promotion");
-    ensure(
-        error.message().contains("fresh admitted v2 KVM evidence"),
-        "assertion-readiness selftest did not reach the v2 identity blocker",
+    check_assertion_readiness_promotion(root)?;
+
+    let manifest = AcceptedWorkloadProofs::from_path(
+        root.join("dogfood-results/accepted-workload-proofs.json"),
     )?;
-    for workload in REQUIRED_WORKLOADS {
-        ensure(
-            error.message().contains(workload),
-            format!("assertion-readiness selftest omitted blocked workload {workload}"),
-        )?;
-    }
-    Ok(())
+    let report = bounded_file::read_bounded_regular_file(
+        &root.join(ASSERTION_READINESS_STATUS_DOC),
+        MAX_EVIDENCE_JSON_BYTES,
+    )?;
+    let downgraded = report.replacen("`accepted-v2`", "`legacy-diagnostic`", 1);
+    let error = validate_assertion_readiness_promotion(root, &manifest, &downgraded)
+        .expect_err("downgraded identity must block promotion");
+    ensure(
+        error
+            .message()
+            .contains("report identity status legacy-diagnostic"),
+        "assertion-readiness selftest did not reject downgraded identity",
+    )
 }
 
 fn compare_assertion_field(
@@ -1780,6 +1797,12 @@ fn effective_assertion_category(
     message: &str,
     artifact_category: Option<String>,
 ) -> EffectiveAssertionCategory {
+    if message.contains("snapshot replay probe") {
+        return EffectiveAssertionCategory {
+            name: "replay-probe".to_string(),
+            inferred: true,
+        };
+    }
     if let Some(category) = artifact_category.filter(|category| category != "uncategorized") {
         return EffectiveAssertionCategory {
             name: category,
@@ -1943,6 +1966,7 @@ fn validate_workload_replay_artifacts(
     let bug_path = evidence_dir.join(&proof.bug);
     let verdict_path = evidence_dir.join(&proof.verdict);
     let snapshot_path = evidence_dir.join(&proof.snapshot);
+    let assertions_path = evidence_dir.join("assertions.json");
 
     let summary: AcceptedVerdictSummary = load_json(root, &summary_path)?;
     let bug_value: serde_json::Value = load_json(root, &bug_path)?;
@@ -2015,6 +2039,17 @@ fn validate_workload_replay_artifacts(
         verdict.snapshot.reference.digest == expected_digest,
         format!("{}: snapshot digest mismatch", proof.workload),
     )?;
+    if verdict.schema_version == REPLAY_VERDICT_SCHEMA_VERSION {
+        validate_fresh_proof_receipt(
+            root,
+            proof,
+            &verdict,
+            &assertions_path,
+            &bug_path,
+            &verdict_path,
+            &expected_digest,
+        )?;
+    }
 
     Ok(ReplayArtifactReview {
         line: ReplayProofCoverageLine {
@@ -2030,6 +2065,156 @@ fn validate_workload_replay_artifacts(
         verdict,
         verdict_value,
     })
+}
+
+// r[impl chaoscontrol.fresh_workload_proofs.profile]
+fn validate_fresh_proof_receipt(
+    root: &Path,
+    proof: &AcceptedWorkloadProof,
+    verdict: &ReplayVerdict,
+    assertions_path: &Path,
+    bug_path: &Path,
+    verdict_path: &Path,
+    snapshot_digest: &str,
+) -> EvidenceResult<()> {
+    let receipt_name = proof.receipt.as_deref().ok_or_else(|| {
+        EvidenceError::new(format!(
+            "{}: fresh proof receipt is required",
+            proof.workload
+        ))
+    })?;
+    let receipt_path = root.join(&proof.evidence_dir).join(receipt_name);
+    let receipt: serde_json::Value = load_json(root, &receipt_path)?;
+    let cohort: serde_json::Value = load_json(
+        root,
+        &root.join("contracts/fresh-workload-proofs/cohort.json"),
+    )?;
+    let expected_profile = cohort["workloads"]
+        .as_array()
+        .and_then(|workloads| {
+            workloads
+                .iter()
+                .find(|profile| profile["workload"].as_str() == Some(&proof.workload))
+        })
+        .ok_or_else(|| {
+            EvidenceError::new(format!(
+                "{}: workload is absent from proof cohort",
+                proof.workload
+            ))
+        })?;
+    let runtime_artifacts_complete =
+        receipt["runtime_artifacts"]
+            .as_array()
+            .is_some_and(|artifacts| {
+                REQUIRED_RUNTIME_ARTIFACT_ROLES.iter().all(|required_role| {
+                    artifacts.iter().any(|artifact| {
+                        artifact["role"].as_str() == Some(required_role)
+                            && artifact["path"]
+                                .as_str()
+                                .is_some_and(|path| !path.is_empty())
+                            && artifact["sha256"].as_str().is_some_and(valid_sha256)
+                    })
+                })
+            });
+    let profile_complete = receipt["cohort_id"] == cohort["cohort_id"]
+        && receipt["workload"] == expected_profile["workload"]
+        && receipt["assertion"] == expected_profile["assertion"]
+        && receipt["bounds"] == expected_profile["bounds"]
+        && receipt["execution"] == cohort["execution"]
+        && receipt["snapshot_policy"] == cohort["snapshot_policy"]
+        && receipt["replay_policy"] == cohort["replay_policy"]
+        && receipt["status"].as_str() == Some("accepted")
+        && receipt["schema_version"].as_u64() == Some(FRESH_PROOF_RECEIPT_SCHEMA_VERSION)
+        && runtime_artifacts_complete;
+    let source_revision = receipt["source_revision"].as_str().unwrap_or_default();
+    let source_revision_matches = receipt["source_revision"] == cohort["source_revision"]
+        && source_revision.len() == GIT_REVISION_HEX_LENGTH
+        && source_revision
+            .chars()
+            .all(|character| character.is_ascii_hexdigit());
+    let kvm_available = receipt["kvm_observation"]["readable"].as_bool() == Some(true)
+        && receipt["kvm_observation"]["writable"].as_bool() == Some(true);
+    let artifact_hashes_match = validate_fresh_receipt_artifacts(
+        proof,
+        &receipt,
+        assertions_path,
+        bug_path,
+        verdict_path,
+        snapshot_digest,
+    )?;
+    let facts = fresh::proof::Facts {
+        workload: proof.workload.clone(),
+        profile_complete,
+        source_revision_matches,
+        kvm_available,
+        bug_found: true,
+        verdict_schema_version: verdict.schema_version as u32,
+        catalog_status: fresh::proof::CatalogStatus::AcceptedV2,
+        assertion_identity_matches: true,
+        snapshot_codec: verdict.snapshot.reference.codec.clone(),
+        snapshot_schema_version: verdict.snapshot.reference.schema_version,
+        snapshot_reference_matches: verdict.snapshot.reference.path == proof.snapshot,
+        replay_class: verdict.replay_class.clone(),
+        reproduced: verdict.reproduced,
+        artifact_hashes_match,
+        receipt_complete: receipt["non_claims"]
+            .as_array()
+            .is_some_and(|claims| claims.len() >= REQUIRED_FRESH_PROOF_NON_CLAIMS),
+        claim_text: receipt["scope"].as_str().unwrap_or_default().to_string(),
+    };
+    let decision = fresh::proof::classify(&facts);
+    ensure(
+        decision.status == fresh::proof::Status::PromotedBounded,
+        format!(
+            "{}: fresh proof blocked by {:?}",
+            proof.workload, decision.blockers
+        ),
+    )
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == SHA256_HEX_LENGTH && hex.chars().all(|ch| ch.is_ascii_hexdigit())
+    })
+}
+
+fn validate_fresh_receipt_artifacts(
+    proof: &AcceptedWorkloadProof,
+    receipt: &serde_json::Value,
+    assertions_path: &Path,
+    bug_path: &Path,
+    verdict_path: &Path,
+    snapshot_digest: &str,
+) -> EvidenceResult<bool> {
+    let artifacts = receipt["artifacts"]
+        .as_array()
+        .ok_or_else(|| EvidenceError::new("fresh proof receipt artifacts must be an array"))?;
+    let expected = [
+        (
+            format!("{}/assertions.json", proof.evidence_dir),
+            format!("sha256:{}", sha256_file(assertions_path)?),
+        ),
+        (
+            format!("{}/{}", proof.evidence_dir, proof.bug),
+            format!("sha256:{}", sha256_file(bug_path)?),
+        ),
+        (
+            format!("{}/{}", proof.evidence_dir, proof.verdict),
+            format!("sha256:{}", sha256_file(verdict_path)?),
+        ),
+        (
+            format!("{}/{}", proof.evidence_dir, proof.snapshot),
+            snapshot_digest.to_string(),
+        ),
+    ];
+    if artifacts.len() != expected.len() {
+        return Ok(false);
+    }
+    Ok(expected.iter().all(|(path, digest)| {
+        artifacts.iter().any(|artifact| {
+            artifact["path"].as_str() == Some(path) && artifact["sha256"].as_str() == Some(digest)
+        })
+    }))
 }
 
 fn load_json<T>(root: &Path, path: &Path) -> EvidenceResult<T>
@@ -2259,6 +2444,8 @@ pub struct AcceptedWorkloadProof {
     pub bug: String,
     pub verdict: String,
     pub snapshot: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -2279,6 +2466,9 @@ impl AcceptedWorkloadProof {
             !self.snapshot.is_empty(),
             "proof snapshot must be non-empty",
         )?;
+        if let Some(receipt) = &self.receipt {
+            ensure(!receipt.is_empty(), "proof receipt must be non-empty")?;
+        }
         Ok(())
     }
 }

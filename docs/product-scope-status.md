@@ -9,14 +9,14 @@ The Cargo workspace has 19 explicit crates. The source is `Cargo.toml`.
 | Capability | State | Status label | Owner | Evidence | Boundary |
 | --- | --- | --- | --- | --- | --- |
 | Local multi-hypervisor control plane | `supported` | `supported-bounded-local` | `chaoscontrol-evidence` | `passed` from `docs/replay-readiness-status.md` | One machine with local ChaosControl hypervisors and bounded retained evidence. |
-| Rust workload authoring | `experimental` | `experimental-rust-only` | `chaoscontrol-sdk` | `missing` from `dogfood-results/accepted-workload-proofs.json` | Rust scaffolds, local dry-runs, and bounded KVM campaigns remain experimental until fresh v2 proof exists. |
+| Rust workload authoring | `supported` | `supported-bounded-rust-cohort` | `chaoscontrol-sdk` | `passed` from `dogfood-results/accepted-workload-proofs.json` | Rust onboarding is supported for the admitted downstream-shaped workload cohort and its bounded KVM recipe. |
 | Adversarial Wasm component rail | `experimental` | `experimental-host-side-evidence` | `chaoscontrol-wasm-differential` | `missing` from `.cairn/changes/add-adversarial-wasm-component-rail/` | Host-side Wasm generation and differential evidence for an exact admitted cohort. |
 | Identity-aware connectivity campaign | `blocked` | `blocked-producer-contract` | `chaoscontrol-sim-core` | `blocked` from `.cairn/changes/add-identity-aware-connectivity-campaign/` | Consumer campaign work starts only after an immutable OnixOS producer contract exists. |
 | KVM release evidence rail | `experimental` | `experimental-kvm-release-rail` | `chaoscontrol-evidence` | `missing` from `.cairn/changes/add-kvm-release-evidence-rail/` | One admitted KVM worker and one explicit required behavior matrix. |
 | State-machine property coverage | `experimental` | `experimental-property-rail` | `chaoscontrol-sim-core` | `missing` from `.cairn/changes/expand-state-machine-property-coverage/` | Bounded model-based tests for selected pure cores. |
 | External dogfood artifact storage | `deferred` | `deferred-storage-adapter-selection` | `chaoscontrol-evidence` | `blocked` from `.cairn/changes/externalize-large-dogfood-artifacts/` | Storage-neutral BLAKE3 references with a separately selected adapter. |
 | VMM and evidence module boundaries | `experimental` | `experimental-architecture-migration` | `chaoscontrol-vmm` | `missing` from `.cairn/changes/modularize-vmm-and-evidence-shells/` | Internal ownership migration with frozen public APIs and schemas. |
-| Fresh v2 workload proofs | `experimental` | `experimental-fresh-proof-cohort` | `chaoscontrol-evidence` | `missing` from `.cairn/changes/promote-fresh-v2-workload-proofs/` | Fresh strict-identity KVM proof for the named workload and artifact cohort. |
+| Fresh v2 workload proofs | `supported` | `supported-bounded-fresh-v2-cohort` | `chaoscontrol-evidence` | `passed` from `docs/replay-proof-coverage.md` | Fresh strict-identity KVM proof is supported for the named workload and artifact cohort. |
 | Typed operator commands | `experimental` | `experimental-typed-command-migration` | `chaoscontrol-evidence` | `missing` from `.cairn/changes/replace-free-form-operator-commands/` | Typed direct process requests with ChaosControl-owned authorization and evidence. |
 | Rust-owned product automation | `experimental` | `experimental-rust-automation-migration` | `chaoscontrol-evidence` | `missing` from `.cairn/changes/replace-python-product-automation/` | Product policy and structured automation move to focused Rust owners. |
 | Hosted ChaosControl service | `non-goal` | `non-goal-current-scope` | `chaoscontrol-evidence` | `not-required` from `README.md` | Current product scope is local and single-machine. |
@@ -41,15 +41,15 @@ The selected Cargo command owns the test inventory. This projection does not cop
 ### Supported
 
 - `local-multi-hypervisor-control-plane`: One machine with local ChaosControl hypervisors and bounded retained evidence. Evidence is `passed`.
+- `rust-workload-authoring`: Rust onboarding is supported for the admitted downstream-shaped workload cohort and its bounded KVM recipe. Evidence is `passed`.
+- `fresh-v2-workload-proofs`: Fresh strict-identity KVM proof is supported for the named workload and artifact cohort. Evidence is `passed`.
 
 ### Experimental
 
-- `rust-workload-authoring`: Rust scaffolds, local dry-runs, and bounded KVM campaigns remain experimental until fresh v2 proof exists. Evidence is `missing`.
 - `adversarial-wasm-component-rail`: Host-side Wasm generation and differential evidence for an exact admitted cohort. Evidence is `missing`.
 - `kvm-release-evidence-rail`: One admitted KVM worker and one explicit required behavior matrix. Evidence is `missing`.
 - `state-machine-property-coverage`: Bounded model-based tests for selected pure cores. Evidence is `missing`.
 - `vmm-evidence-module-boundaries`: Internal ownership migration with frozen public APIs and schemas. Evidence is `missing`.
-- `fresh-v2-workload-proofs`: Fresh strict-identity KVM proof for the named workload and artifact cohort. Evidence is `missing`.
 - `typed-operator-commands`: Typed direct process requests with ChaosControl-owned authorization and evidence. Evidence is `missing`.
 - `rust-owned-product-automation`: Product policy and structured automation move to focused Rust owners. Evidence is `missing`.
 

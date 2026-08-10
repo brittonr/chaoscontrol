@@ -12,8 +12,9 @@ const REQUIRED_ANTI_CLAIM_FRAGMENTS: [&str; 2] = [
     "does not prove global deterministic hypervisor correctness",
     "proves only the named workload",
 ];
+const SUPPORTED_BOUNDED_STATUS: &str = "supported-bounded";
 const REQUIRED_EXPERIMENTAL_SURFACES: [(&str, &str); 8] = [
-    ("Rust workload authoring", "experimental-rust-only"),
+    ("Rust workload authoring", "supported-bounded-rust-cohort"),
     ("Schedule-only replay", "gap-evidence-only"),
     ("Arbitrary guest/device determinism", "bounded-matrix-rail"),
     ("Hosted/fleet triage UI", "non-goal-current-scope"),
@@ -46,6 +47,12 @@ struct ReportedWorkload {
     assertion_id: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManifestWorkload {
+    assertion_id: u64,
+    has_fresh_receipt: bool,
+}
+
 pub fn validate_readiness_promotion_files(
     manifest_path: impl AsRef<Path>,
     report_path: impl AsRef<Path>,
@@ -59,10 +66,10 @@ pub fn validate_readiness_promotion(
     manifest: &Value,
     report: &str,
 ) -> EvidenceResult<ReadinessPromotionSummary> {
-    let historical_entries = historical_manifest_entries(manifest)?;
+    let manifest_entries = manifest_workload_entries(manifest)?;
     let reported = report_workloads(report)?;
 
-    let missing_from_report: Vec<_> = historical_entries
+    let missing_from_report: Vec<_> = manifest_entries
         .keys()
         .filter(|workload| !reported.contains_key(*workload))
         .cloned()
@@ -70,40 +77,45 @@ pub fn validate_readiness_promotion(
     require(
         missing_from_report.is_empty(),
         format!(
-            "historical manifest entries missing from readiness report: {}",
+            "manifest entries missing from readiness report: {}",
             missing_from_report.join(", ")
         ),
     )?;
 
     let missing_from_manifest: Vec<_> = reported
         .keys()
-        .filter(|workload| !historical_entries.contains_key(*workload))
+        .filter(|workload| !manifest_entries.contains_key(*workload))
         .cloned()
         .collect();
     require(
         missing_from_manifest.is_empty(),
         format!(
-            "readiness report workloads missing from historical manifest: {}",
+            "readiness report workloads missing from manifest: {}",
             missing_from_manifest.join(", ")
         ),
     )?;
 
-    for (workload, assertion_id) in &historical_entries {
+    for (workload, entry) in &manifest_entries {
         let row = reported
             .get(workload)
             .expect("reported workload set was checked against the manifest");
+        let expected_status = if entry.has_fresh_receipt {
+            SUPPORTED_BOUNDED_STATUS
+        } else {
+            BLOCKED_ASSERTION_IDENTITY_STATUS
+        };
         require(
-            row.status == BLOCKED_ASSERTION_IDENTITY_STATUS,
+            row.status == expected_status,
             format!(
-                "{workload}: legacy schema-v1 manifest entry must remain {BLOCKED_ASSERTION_IDENTITY_STATUS}, found {}",
-                row.status
+                "{workload}: readiness status {}, expected {expected_status} for receipt state {}",
+                row.status, entry.has_fresh_receipt
             ),
         )?;
         require(
-            row.assertion_id == *assertion_id,
+            row.assertion_id == entry.assertion_id,
             format!(
-                "{workload}: readiness report assertion {} does not match historical manifest {assertion_id}",
-                row.assertion_id
+                "{workload}: readiness report assertion {} does not match manifest {}",
+                row.assertion_id, entry.assertion_id
             ),
         )?;
     }
@@ -124,11 +136,17 @@ pub fn validate_readiness_promotion(
     require_local_rust_product_scope(report)?;
 
     Ok(ReadinessPromotionSummary {
-        lines: historical_entries
+        lines: manifest_entries
             .iter()
-            .map(|(workload, assertion_id)| {
+            .map(|(workload, entry)| {
+                let status = if entry.has_fresh_receipt {
+                    SUPPORTED_BOUNDED_STATUS
+                } else {
+                    BLOCKED_ASSERTION_IDENTITY_STATUS
+                };
                 format!(
-                    "{workload}: status={BLOCKED_ASSERTION_IDENTITY_STATUS}, historical_assertion={assertion_id}"
+                    "{workload}: status={status}, assertion={}",
+                    entry.assertion_id
                 )
             })
             .collect(),
@@ -181,8 +199,8 @@ pub fn run_readiness_promotion_selftest(
     )?;
 
     let missing_fresh_surface = report.replace(
+        "| Rust workload authoring | `supported-bounded-rust-cohort` |",
         "| Rust workload authoring | `experimental-rust-only` |",
-        "| Rust workload authoring | `supported-bounded` |",
     );
     expect_failure(
         "fresh Rust workload overclaim",
@@ -307,52 +325,52 @@ pub fn run_readiness_promotion_selftest(
         "in-process simulator token",
     )?;
 
-    let legacy_promotion = report.replacen(
-        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
-        "| `raft` | `supported-bounded` | `1806003755` |",
-        1,
-    );
+    let mut missing_receipt = manifest.clone();
+    missing_receipt["proofs"][0]
+        .as_object_mut()
+        .expect("proof is an object")
+        .remove("receipt");
     expect_failure(
-        "legacy manifest promotion",
-        &manifest,
-        &legacy_promotion,
-        "legacy schema-v1 manifest entry must remain blocked-assertion-identity",
+        "receipt-less promotion",
+        &missing_receipt,
+        &report,
+        "expected blocked-assertion-identity",
     )?;
 
     let alias_substitution = report.replacen(
-        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
-        "| `raft` | `blocked-assertion-identity` | `1806003756` |",
+        "| `raft` | `supported-bounded` | `3463273124` |",
+        "| `raft` | `supported-bounded` | `3463273125` |",
         1,
     );
     expect_failure(
-        "historical alias substitution",
+        "fresh alias substitution",
         &manifest,
         &alias_substitution,
-        "does not match historical manifest",
+        "does not match manifest",
     )?;
 
     let report_only = report.replacen(
-        "| `raft` | `blocked-assertion-identity` | `1806003755` |",
-        "| `new-service` | `blocked-assertion-identity` | `12345` | historical |\n| `raft` | `blocked-assertion-identity` | `1806003755` |",
+        "| `raft` | `supported-bounded` | `3463273124` |",
+        "| `new-service` | `supported-bounded` | `12345` | fresh |\n| `raft` | `supported-bounded` | `3463273124` |",
         1,
     );
     expect_failure(
         "report-only workload",
         &manifest,
         &report_only,
-        "missing from historical manifest",
+        "missing from manifest",
     )?;
 
     let missing_workload = report
         .lines()
-        .filter(|line| !line.starts_with("| `raft` | `blocked-assertion-identity` |"))
+        .filter(|line| !line.starts_with("| `raft` | `supported-bounded` |"))
         .collect::<Vec<_>>()
         .join("\n");
     expect_failure(
-        "missing historical workload",
+        "missing fresh workload",
         &manifest,
         &missing_workload,
-        "historical manifest entries missing from readiness report",
+        "manifest entries missing from readiness report",
     )?;
 
     Ok(())
@@ -378,7 +396,9 @@ pub fn default_readiness_promotion_paths(root: impl AsRef<Path>) -> (PathBuf, Pa
     )
 }
 
-fn historical_manifest_entries(manifest: &Value) -> EvidenceResult<BTreeMap<String, u64>> {
+fn manifest_workload_entries(
+    manifest: &Value,
+) -> EvidenceResult<BTreeMap<String, ManifestWorkload>> {
     let object = manifest
         .as_object()
         .ok_or_else(|| EvidenceError::new("manifest must be a JSON object".to_string()))?;
@@ -463,7 +483,17 @@ fn historical_manifest_entries(manifest: &Value) -> EvidenceResult<BTreeMap<Stri
                 format!("{workload}: proof.{field} must be non-empty"),
             )?;
         }
-        workloads.insert(workload.to_string(), assertion_id);
+        let has_fresh_receipt = proof
+            .get("receipt")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.is_empty());
+        workloads.insert(
+            workload.to_string(),
+            ManifestWorkload {
+                assertion_id,
+                has_fresh_receipt,
+            },
+        );
     }
 
     Ok(workloads)
@@ -652,8 +682,8 @@ fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
     let summary = report;
     for token in [
         "Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors",
-        "supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration",
-        "remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene",
+        "supported baseline covers the admitted Rust cohort and durable one-machine multi-hypervisor orchestration",
+        "Remaining gaps include broader workload admission, bounded determinism and fault coverage, local triage depth, and local artifact hygiene",
         "Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope",
         "Rust workload authoring",
         "Local multi-hypervisor control plane",

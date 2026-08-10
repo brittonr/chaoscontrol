@@ -1,0 +1,926 @@
+{
+  "schema": "chaoscontrol.assertion-summary.v2",
+  "catalog_status": "accepted",
+  "collision_safe_evidence": true,
+  "assertions": [
+    {
+      "id": 4149728441,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "org.onixresearch.chaoscontrol.redb",
+          "logical_key": {
+            "type": "stable",
+            "key": "snapshot-replay-probe"
+          },
+          "compatibility_id": 4149728441,
+          "kind": "always",
+          "message": "redb snapshot replay probe trips only after restored parent context",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 686,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "recovery"
+        },
+        "fingerprint": "03eb00a01d5d9d47ab84530faca2b7ef68460abfb158206ada8b16db0bf7e649",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006f72672e6f6e697872657365617263682e6368616f73636f6e74726f6c2e7265646202160002736e617073686f742d7265706c61792d70726f6265030100000443007265646220736e617073686f74207265706c61792070726f6265207472697073206f6e6c7920616674657220726573746f72656420706172656e7420636f6e74657874052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400ae0200000704000d000000080400726564620908007265636f766572790a0400b9d457f7",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "redb snapshot replay probe trips only after restored parent context",
+      "kind": "always",
+      "guest": "redb",
+      "category": "recovery",
+      "verdict": "failed",
+      "hit_count": 1,
+      "true_count": 0,
+      "false_count": 1,
+      "last_failure_details": "{\"fail_after\":1,\"iter\":1}"
+    },
+    {
+      "id": 4183004122,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:158:17"
+          },
+          "compatibility_id": 4183004122,
+          "kind": "always",
+          "message": "committed data survives restart",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 158,
+          "source_column": 17,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "0b3cf01bccdd85af5702c353d14a6ba2448b0bab038dd4782542809b4af5b121",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3135383a313703010000041f00636f6d6d697474656420646174612073757276697665732072657374617274052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604009e0000000704001100000008040072656462090900696e76617269616e740a0400da9353f9",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "committed data survives restart",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1332498654,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:498:21"
+          },
+          "compatibility_id": 1332498654,
+          "kind": "always",
+          "message": "data survives compaction",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 498,
+          "source_column": 21,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "2a5db5b028e5245de2149c7318781b8fc7754a347419ee1002714ac9e991c62c",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3439383a3231030100000418006461746120737572766976657320636f6d70616374696f6e052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400f20100000704001500000008040072656462090900696e76617269616e740a0400de506c4f",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "data survives compaction",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 875174004,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:624:17"
+          },
+          "compatibility_id": 875174004,
+          "kind": "reachable",
+          "message": "op: savepoint",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 624,
+          "source_column": 17,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "4c210fb67bdf3ddfa48f48829411c1515ccb64bedd3d0f3f671a907ef8d869e5",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3632343a313703010002040d006f703a2073617665706f696e74052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604007002000007040011000000080400726564620909006f7065726174696f6e0a040074182a34",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: savepoint",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4170964693,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:310:21"
+          },
+          "compatibility_id": 4170964693,
+          "kind": "always",
+          "message": "read matches oracle",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 310,
+          "source_column": 21,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "54bc0bcc7465e92903ccd56204b8b1cda662d662dae62fb1d125593176f8a3cf",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3331303a32310301000004130072656164206d617463686573206f7261636c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400360100000704001500000008040072656462090900696e76617269616e740a0400d5de9bf8",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "read matches oracle",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 296995187,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:519:13"
+          },
+          "compatibility_id": 296995187,
+          "kind": "always",
+          "message": "table len matches oracle (no table)",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 519,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "58b095bfb494df025810bc0cc782dcc92827cba28b4c54101d0dca32e11dd3b2",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3531393a3133030100000423007461626c65206c656e206d617463686573206f7261636c6520286e6f207461626c6529052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400070200000704000d00000008040072656462090900696e76617269616e740a040073c9b311",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "table len matches oracle (no table)",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3253211420,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:276:5"
+          },
+          "compatibility_id": 3253211420,
+          "kind": "reachable",
+          "message": "op: read",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 276,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "5c515c5b9660d434de771fc106b4185cb3439c7b1a29267a07d27ec8f4b71232",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3237363a35030100020408006f703a2072656164052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604001401000007040005000000080400726564620909006f7065726174696f6e0a04001c11e8c1",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: read",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1170022529,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:290:13"
+          },
+          "compatibility_id": 1170022529,
+          "kind": "always",
+          "message": "read matches oracle (no table)",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 290,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "5e2bff434a0d25f9eee50b46b3cadafda09266ac44deb94c876ff04999acc7f9",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3239303a313303010000041e0072656164206d617463686573206f7261636c6520286e6f207461626c6529052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400220100000704000d00000008040072656462090900696e76617269616e740a04008120bd45",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "read matches oracle (no table)",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3984792159,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:185:5"
+          },
+          "compatibility_id": 3984792159,
+          "kind": "reachable",
+          "message": "op: insert",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 185,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "6ba478b47b99fcd82b02a43f30e4700022e3a2f505c332c6c6a754695d7a49da",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3138353a3503010002040a006f703a20696e73657274052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400b900000007040005000000080400726564620909006f7065726174696f6e0a04005f1a83ed",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: insert",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1826397693,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:166:17"
+          },
+          "compatibility_id": 1826397693,
+          "kind": "always",
+          "message": "committed key missing after recovery",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 166,
+          "source_column": 17,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "6d7997a3c9467b6fab8fab27a0f2ed745433ee97f3833bb6fd60e564f1aae881",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3136363a313703010000042400636f6d6d6974746564206b6579206d697373696e67206166746572207265636f76657279052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400a60000000704001100000008040072656462090900696e76617269616e740a0400fd9ddc6c",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "committed key missing after recovery",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2502051314,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:330:13"
+          },
+          "compatibility_id": 2502051314,
+          "kind": "always",
+          "message": "read matches oracle (none)",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 330,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "72368d20a2a48ed7821010d8d314565e277f9f71520e1db8bd70dc802e1191f2",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3333303a313303010000041a0072656164206d617463686573206f7261636c6520286e6f6e6529052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604004a0100000704000d00000008040072656462090900696e76617269616e740a0400f2452295",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "read matches oracle (none)",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 666717064,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:122:21"
+          },
+          "compatibility_id": 666717064,
+          "kind": "always",
+          "message": "database opens after repair",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 122,
+          "source_column": 21,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "746a191e403241fb455c4bf176dd1a8473734d99cdf81d4f2a084b81da5e828c",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3132323a323103010000041b006461746162617365206f70656e7320616674657220726570616972052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604007a0000000704001500000008040072656462090900696e76617269616e740a0400884bbd27",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "database opens after repair",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3189465693,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:650:17"
+          },
+          "compatibility_id": 3189465693,
+          "kind": "reachable",
+          "message": "op: rollback",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 650,
+          "source_column": 17,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "8ee6b63ae8d406bbe5e2b92e8960997776bf66448d0f30c6431d76918385e789",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3635303a313703010002040c006f703a20726f6c6c6261636b052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604008a02000007040011000000080400726564620909006f7065726174696f6e0a04005d621bbe",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: rollback",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3683484742,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:465:9"
+          },
+          "compatibility_id": 3683484742,
+          "kind": "always",
+          "message": "range scan entry matches oracle",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 465,
+          "source_column": 9,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "8feb9f542a465b0a17706aa807700963bdae8d5e671993bc35abcb701b95af28",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3436353a3903010000041f0072616e6765207363616e20656e747279206d617463686573206f7261636c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400d10100000704000900000008040072656462090900696e76617269616e740a040046848ddb",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "range scan entry matches oracle",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1432146092,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:346:5"
+          },
+          "compatibility_id": 1432146092,
+          "kind": "reachable",
+          "message": "op: delete",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 346,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "944fa1fee921db19ea1b64d808fe8448be8a334582d16d1a9bc5dc75c9f71400",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3334363a3503010002040a006f703a2064656c657465052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604005a01000007040005000000080400726564620909006f7065726174696f6e0a0400acd05c55",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: delete",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1704945435,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:404:5"
+          },
+          "compatibility_id": 1704945435,
+          "kind": "reachable",
+          "message": "op: range scan",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 404,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "a6638968e2053c598503fc3bc165a7ba208206d331f67c9d2a80196d097ffce4",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3430343a3503010002040e006f703a2072616e6765207363616e052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604009401000007040005000000080400726564620909006f7065726174696f6e0a04001b679f65",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: range scan",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4011644660,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:319:21"
+          },
+          "compatibility_id": 4011644660,
+          "kind": "always",
+          "message": "uncommitted data not visible",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 319,
+          "source_column": 21,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "a7691395efd47c812b5c28bdde09665439f3fea68962fa28e3a47212675fda7a",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3331393a323103010000041c00756e636f6d6d69747465642064617461206e6f742076697369626c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72730604003f0100000704001500000008040072656462090900696e76617269616e740a0400f4d61cef",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "uncommitted data not visible",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4131267799,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:385:25"
+          },
+          "compatibility_id": 4131267799,
+          "kind": "always",
+          "message": "delete removes key",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 385,
+          "source_column": 25,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "bb832d592d57c396128c914a12c63001f5f42ae0627926ba5ba5c82bc652cc94",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3338353a32350301000004120064656c6574652072656d6f766573206b6579052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400810100000704001900000008040072656462090900696e76617269616e740a0400d7243ef6",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "delete removes key",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3918949916,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:422:13"
+          },
+          "compatibility_id": 3918949916,
+          "kind": "always",
+          "message": "range scan empty table matches oracle",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 422,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "c15be98acc6ab36383c3e0f12cad901166b06f2fd0beec1bb7ea54db443eaa4d",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3432323a31330301000004250072616e6765207363616e20656d707479207461626c65206d617463686573206f7261636c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400a60100000704000d00000008040072656462090900696e76617269616e740a04001c6e96e9",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "range scan empty table matches oracle",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 4276840229,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:482:5"
+          },
+          "compatibility_id": 4276840229,
+          "kind": "reachable",
+          "message": "op: compact",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 482,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "cec33b90ab86ed9973b72056b50a2ccde824e57784866ec526a054f489fbdbe3",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3438323a3503010002040b006f703a20636f6d70616374052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400e201000007040005000000080400726564620909006f7065726174696f6e0a04002567ebfe",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: compact",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 523554046,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:458:5"
+          },
+          "compatibility_id": 523554046,
+          "kind": "always",
+          "message": "range scan length matches oracle",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 458,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "e244f744a46186e07f1df62cdc8acfe97c663904ca55fec0dc00b575fc85de30",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3435383a350301000004200072616e6765207363616e206c656e677468206d617463686573206f7261636c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400ca0100000704000500000008040072656462090900696e76617269616e740a0400fecc341f",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "range scan length matches oracle",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3586379808,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:215:13"
+          },
+          "compatibility_id": 3586379808,
+          "kind": "sometimes",
+          "message": "commit succeeds",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 215,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "e318c77c0bb5e45ed03b29a122017fde22a3afd6ae0db849121dd017f736ad2e",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3231353a313303010001040f00636f6d6d6974207375636365656473052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400d70000000704000d000000080400726564620909006f7065726174696f6e0a040020d0c3d5",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "commit succeeds",
+      "kind": "sometimes",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2978809801,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:531:13"
+          },
+          "compatibility_id": 2978809801,
+          "kind": "always",
+          "message": "table len matches oracle",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 531,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "e6b4ea856bb2e975b173763ab32488b1b23b525ae994797e88d1348ab1460cbf",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3533313a3133030100000418007461626c65206c656e206d617463686573206f7261636c65052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400130200000704000d00000008040072656462090900696e76617269616e740a0400c9078db1",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "table len matches oracle",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 2068280537,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:112:21"
+          },
+          "compatibility_id": 2068280537,
+          "kind": "always",
+          "message": "database opens after repair",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 112,
+          "source_column": 21,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "f78f28f7752ba5283eade63f7ceb60f1e724988404e8e3782930473a8b612ee7",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3131323a323103010000041b006461746162617365206f70656e7320616674657220726570616972052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400700000000704001500000008040072656462090900696e76617269616e740a0400d974477b",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "database opens after repair",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 909740281,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:226:5"
+          },
+          "compatibility_id": 909740281,
+          "kind": "reachable",
+          "message": "op: batch insert",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 226,
+          "source_column": 5,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "3bd3bbc239023374390931ec531c9a0cf68e3c3075ee2513860889fde262564e",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3232363a35030100020410006f703a20626174636820696e73657274052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400e200000007040005000000080400726564620909006f7065726174696f6e0a0400f9883936",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "op: batch insert",
+      "kind": "reachable",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "passed",
+      "hit_count": 2,
+      "true_count": 2,
+      "false_count": 0
+    },
+    {
+      "id": 500036695,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:102:13"
+          },
+          "compatibility_id": 500036695,
+          "kind": "always",
+          "message": "database opens successfully",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 102,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "invariant"
+        },
+        "fingerprint": "5ef4c0e26a2acf5c2f057b09959feff92466838a103e9eabbbcb3ed64055b8ae",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3130323a313303010000041b006461746162617365206f70656e73207375636365737366756c6c79052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400660000000704000d00000008040072656462090900696e76617269616e740a040057f4cd1d",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "database opens successfully",
+      "kind": "always",
+      "guest": "redb",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 1,
+      "true_count": 1,
+      "false_count": 0
+    },
+    {
+      "id": 3742114909,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-redb-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-redb-guest/src/main.rs:265:13"
+          },
+          "compatibility_id": 3742114909,
+          "kind": "sometimes",
+          "message": "large batch committed",
+          "source_file": "crates/chaoscontrol-redb-guest/src/main.rs",
+          "source_line": 265,
+          "source_column": 13,
+          "guest": "redb",
+          "category": "operation"
+        },
+        "fingerprint": "8e3d6dd89e1ddb76a1d2d1b6afa05249556c9859ba48ea8456adcec34265246f",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0123006275696c643a6368616f73636f6e74726f6c2d726564622d67756573743a302e312e30023200016372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e72733a3236353a3133030100010415006c6172676520626174636820636f6d6d6974746564052a006372617465732f6368616f73636f6e74726f6c2d726564622d67756573742f7372632f6d61696e2e7273060400090100000704000d000000080400726564620909006f7065726174696f6e0a04005d240cdf",
+        "catalog_tokens": [
+          "dd8b467c5d16def587b783f9fb31eaddd7a4529de7cfec649ddf321d787274c8"
+        ]
+      },
+      "message": "large batch committed",
+      "kind": "sometimes",
+      "guest": "redb",
+      "category": "operation",
+      "verdict": "passed",
+      "hit_count": 1,
+      "true_count": 1,
+      "false_count": 0
+    }
+  ]
+}

@@ -29,7 +29,7 @@
       "status_label": "supported-bounded-local"
     },
     {
-      "boundary": "Rust scaffolds, local dry-runs, and bounded KVM campaigns remain experimental until fresh v2 proof exists.",
+      "boundary": "Rust onboarding is supported for the admitted downstream-shaped workload cohort and its bounded KVM recipe.",
       "documentation_targets": [
         "README.md",
         "docs/product-scope-status.md",
@@ -38,17 +38,17 @@
       "evidence": {
         "id": "fresh-v2-workload-proof",
         "source": "dogfood-results/accepted-workload-proofs.json",
-        "state": "missing"
+        "state": "passed"
       },
       "id": "rust-workload-authoring",
       "name": "Rust workload authoring",
       "non_claims": [
-        "No accepted fresh v2 workload proof.",
+        "No proof for arbitrary scaffold code.",
         "No non-Rust SDK support."
       ],
       "owner": "chaoscontrol-sdk",
-      "state": "experimental",
-      "status_label": "experimental-rust-only"
+      "state": "supported",
+      "status_label": "supported-bounded-rust-cohort"
     },
     {
       "boundary": "Host-side Wasm generation and differential evidence for an exact admitted cohort.",
@@ -173,14 +173,14 @@
       "status_label": "experimental-architecture-migration"
     },
     {
-      "boundary": "Fresh strict-identity KVM proof for the named workload and artifact cohort.",
+      "boundary": "Fresh strict-identity KVM proof is supported for the named workload and artifact cohort.",
       "documentation_targets": [
         "docs/product-scope-status.md"
       ],
       "evidence": {
         "id": "fresh-v2-workload-proof",
-        "source": ".cairn/changes/promote-fresh-v2-workload-proofs/",
-        "state": "missing"
+        "source": "docs/replay-proof-coverage.md",
+        "state": "passed"
       },
       "id": "fresh-v2-workload-proofs",
       "name": "Fresh v2 workload proofs",
@@ -189,8 +189,8 @@
         "No authority from legacy assertion IDs."
       ],
       "owner": "chaoscontrol-evidence",
-      "state": "experimental",
-      "status_label": "experimental-fresh-proof-cohort"
+      "state": "supported",
+      "status_label": "supported-bounded-fresh-v2-cohort"
     },
     {
       "boundary": "Typed direct process requests with ChaosControl-owned authorization and evidence.",

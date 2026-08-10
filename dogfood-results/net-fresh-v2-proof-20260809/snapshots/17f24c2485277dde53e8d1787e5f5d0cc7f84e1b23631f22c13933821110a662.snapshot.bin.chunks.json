@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "original_path": "17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin",
+  "original_size": 57204113,
+  "original_sha256": "17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662",
+  "chunks": [
+    {
+      "path": "snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin.part00",
+      "size": 20971520,
+      "sha256": "9a103b5c79a730eb4d4980189e53c1f642ac70d8a8c5768029768b58198ba3fd"
+    },
+    {
+      "path": "snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin.part01",
+      "size": 20971520,
+      "sha256": "b43839f6fcee42d59ef54264f1c4f86af731445ca916b118ae9300682e7af2b8"
+    },
+    {
+      "path": "snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin.part02",
+      "size": 15261073,
+      "sha256": "32db129cd4298c9bd4bb52743753e9e36c16d296aae8b55eab6c6856bd062ca0"
+    }
+  ]
+}

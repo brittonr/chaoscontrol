@@ -65,18 +65,14 @@ struct Server {
     listen_handle: TcpHandle,
     /// Number of pings received and responded to.
     pong_count: usize,
-    snapshot_probe: bool,
-    snapshot_probe_fail_after: usize,
 }
 
 impl Server {
-    fn new(net: &mut GuestNetwork, snapshot_probe: bool, snapshot_probe_fail_after: usize) -> Self {
+    fn new(net: &mut GuestNetwork) -> Self {
         let handle = net.tcp_listen(SERVER_PORT);
         Self {
             listen_handle: handle,
             pong_count: 0,
-            snapshot_probe,
-            snapshot_probe_fail_after,
         }
     }
 
@@ -124,20 +120,6 @@ impl Server {
                                 "server handles multiple pings",
                                 &json!({"pong_count": self.pong_count}),
                             );
-                            if self.snapshot_probe {
-                                chaoscontrol_sdk::cc_assert_always_stable!(
-                                    "org.onixresearch.chaoscontrol.net",
-                                    "snapshot-replay-probe",
-                                    "net",
-                                    "recovery",
-                                    self.pong_count < self.snapshot_probe_fail_after,
-                                    "net snapshot replay probe trips only after restored parent context",
-                                    &json!({
-                                        "pong_count": self.pong_count,
-                                        "fail_after": self.snapshot_probe_fail_after,
-                                    }),
-                                );
-                            }
                         }
                     }
                 }
@@ -322,10 +304,26 @@ fn main() {
     println!("VM{}: setup complete, entering main loop", my_id);
 
     if my_id == 0 {
-        let mut server = Server::new(&mut net, snapshot_probe, snapshot_probe_fail_after);
+        let mut server = Server::new(&mut net);
+        let mut probe_iteration = 0_usize;
         loop {
             net.poll();
             server.tick(&mut net);
+            if snapshot_probe {
+                probe_iteration = probe_iteration.saturating_add(1);
+                chaoscontrol_sdk::cc_assert_always_stable!(
+                    "org.onixresearch.chaoscontrol.net",
+                    "snapshot-replay-probe",
+                    "net",
+                    "recovery",
+                    snapshot_probe_passes(probe_iteration, snapshot_probe_fail_after),
+                    "net snapshot replay probe trips only after restored parent context",
+                    &json!({
+                        "iteration": probe_iteration,
+                        "fail_after": snapshot_probe_fail_after,
+                    }),
+                );
+            }
         }
     } else {
         let mut client = Client::new(&mut net, my_id);
@@ -336,9 +334,29 @@ fn main() {
     }
 }
 
+fn snapshot_probe_passes(iteration: usize, fail_after: usize) -> bool {
+    iteration < fail_after
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_probe_has_an_explicit_failure_boundary() {
+        const FIRST_ITERATION: usize = 1;
+        const FAIL_AFTER_FIRST_ITERATION: usize = 1;
+        const FAIL_AFTER_SECOND_ITERATION: usize = 2;
+
+        assert!(!snapshot_probe_passes(
+            FIRST_ITERATION,
+            FAIL_AFTER_FIRST_ITERATION
+        ));
+        assert!(snapshot_probe_passes(
+            FIRST_ITERATION,
+            FAIL_AFTER_SECOND_ITERATION
+        ));
+    }
 
     #[test]
     fn parses_cmdline_value() {

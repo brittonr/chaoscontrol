@@ -1,0 +1,42 @@
+{
+  "workload": "net",
+  "seed": 42,
+  "snapshot_probe_fail_after": 1,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 2074476939,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_1.json",
+      "assertion_id": 2074476939,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_2.json",
+      "assertion_id": 2074476939,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    }
+  ],
+  "verdict": {
+    "path": "dogfood-results/net-fresh-v2-proof-20260809/replay-verdict-bug0.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 1,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "dogfood-results/net-fresh-v2-proof-20260809/bug_0.json",
+  "accepted_verdict": "dogfood-results/net-fresh-v2-proof-20260809/replay-verdict-bug0.json",
+  "receipt": "dogfood-results/net-fresh-v2-proof-20260809/proof-receipt.json"
+}

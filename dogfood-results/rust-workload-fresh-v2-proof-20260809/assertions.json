@@ -1,0 +1,212 @@
+{
+  "schema": "chaoscontrol.assertion-summary.v2",
+  "catalog_status": "accepted",
+  "collision_safe_evidence": true,
+  "assertions": [
+    {
+      "id": 3143219316,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "org.onixresearch.chaoscontrol.rust-workload",
+          "logical_key": {
+            "type": "stable",
+            "key": "snapshot-replay-probe"
+          },
+          "compatibility_id": 3143219316,
+          "kind": "always",
+          "message": "rust workload snapshot replay probe trips only after restored parent context",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 118,
+          "source_column": 13,
+          "guest": "sample-rust-service",
+          "category": "recovery"
+        },
+        "fingerprint": "a35dbaded69e6b17eba3d8b65629b2cb7b1c4ed248fae939972f56eac6078754",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012b006f72672e6f6e697872657365617263682e6368616f73636f6e74726f6c2e727573742d776f726b6c6f616402160002736e617073686f742d7265706c61792d70726f626503010000044c007275737420776f726b6c6f616420736e617073686f74207265706c61792070726f6265207472697073206f6e6c7920616674657220726573746f72656420706172656e7420636f6e746578740533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e7273060400760000000704000d00000008130073616d706c652d727573742d736572766963650908007265636f766572790a040074b859bb",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "rust workload snapshot replay probe trips only after restored parent context",
+      "kind": "always",
+      "guest": "sample-rust-service",
+      "category": "recovery",
+      "verdict": "failed",
+      "hit_count": 13,
+      "true_count": 0,
+      "false_count": 13,
+      "last_failure_details": "{\"fail_after\":1,\"iteration\":25,\"jitter\":3,\"workload\":\"sample-rust-service\"}"
+    },
+    {
+      "id": 1575330391,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-rust-workload-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-rust-workload-guest/src/main.rs:90:5"
+          },
+          "compatibility_id": 1575330391,
+          "kind": "sometimes",
+          "message": "at least one write succeeds",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 90,
+          "source_column": 5,
+          "guest": "sample-rust-service",
+          "category": "operation"
+        },
+        "fingerprint": "1b93b14482e0aa39a2f206ca591dfbab949a318e56b7ac3dd855132118e2a934",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012c006275696c643a6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573743a302e312e30023900016372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72733a39303a3503010001041b006174206c65617374206f6e652077726974652073756363656564730533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72730604005a0000000704000500000008130073616d706c652d727573742d736572766963650909006f7065726174696f6e0a040057a2e55d",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "at least one write succeeds",
+      "kind": "sometimes",
+      "guest": "sample-rust-service",
+      "category": "operation",
+      "verdict": "passed",
+      "hit_count": 1,
+      "true_count": 1,
+      "false_count": 0
+    },
+    {
+      "id": 1905082018,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-rust-workload-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-rust-workload-guest/src/main.rs:81:13"
+          },
+          "compatibility_id": 1905082018,
+          "kind": "always",
+          "message": "operation counters stay bounded",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 81,
+          "source_column": 13,
+          "guest": "sample-rust-service",
+          "category": "invariant"
+        },
+        "fingerprint": "51c656d09b73737c0fe9edd7373fdbecab7a5e7ede21bf8c757e7784ad9f3033",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012c006275696c643a6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573743a302e312e30023a00016372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72733a38313a313303010000041f006f7065726174696f6e20636f756e74657273207374617920626f756e6465640533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e7273060400510000000704000d00000008130073616d706c652d727573742d73657276696365090900696e76617269616e740a0400a23e8d71",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "operation counters stay bounded",
+      "kind": "always",
+      "guest": "sample-rust-service",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 12,
+      "true_count": 12,
+      "false_count": 0
+    },
+    {
+      "id": 1077029074,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-rust-workload-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-rust-workload-guest/src/main.rs:78:17"
+          },
+          "compatibility_id": 1077029074,
+          "kind": "reachable",
+          "message": "read branch exercised",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 78,
+          "source_column": 17,
+          "guest": "sample-rust-service",
+          "category": "branch"
+        },
+        "fingerprint": "a812692fc242a0bdf1fc007351bf502b8585b4856ead19eeabb4782b13cc3154",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012c006275696c643a6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573743a302e312e30023a00016372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72733a37383a31370301000204150072656164206272616e6368206578657263697365640533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72730604004e0000000704001100000008130073616d706c652d727573742d736572766963650906006272616e63680a0400d2283240",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "read branch exercised",
+      "kind": "reachable",
+      "guest": "sample-rust-service",
+      "category": "branch",
+      "verdict": "passed",
+      "hit_count": 3,
+      "true_count": 3,
+      "false_count": 0
+    },
+    {
+      "id": 1354346286,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-rust-workload-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-rust-workload-guest/src/main.rs:74:17"
+          },
+          "compatibility_id": 1354346286,
+          "kind": "sometimes",
+          "message": "write succeeds",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 74,
+          "source_column": 17,
+          "guest": "sample-rust-service",
+          "category": "operation"
+        },
+        "fingerprint": "adbb6abc31742d3fba24eae59d3be79b3d122146faf117c73bff9e0986177f2d",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012c006275696c643a6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573743a302e312e30023a00016372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72733a37343a313703010001040e0077726974652073756363656564730533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72730604004a0000000704001100000008130073616d706c652d727573742d736572766963650909006f7065726174696f6e0a04002eafb950",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "write succeeds",
+      "kind": "sometimes",
+      "guest": "sample-rust-service",
+      "category": "operation",
+      "verdict": "passed",
+      "hit_count": 4,
+      "true_count": 4,
+      "false_count": 0
+    },
+    {
+      "id": 2232426356,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-rust-workload-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-rust-workload-guest/src/main.rs:65:13"
+          },
+          "compatibility_id": 2232426356,
+          "kind": "always",
+          "message": "choice remains in range",
+          "source_file": "crates/chaoscontrol-rust-workload-guest/src/main.rs",
+          "source_line": 65,
+          "source_column": 13,
+          "guest": "sample-rust-service",
+          "category": "invariant"
+        },
+        "fingerprint": "b813a560aca711173622fe782ad26f5857564784ce26af5038eedacc35ce6fdb",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a012c006275696c643a6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573743a302e312e30023a00016372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e72733a36353a31330301000004170063686f6963652072656d61696e7320696e2072616e67650533006372617465732f6368616f73636f6e74726f6c2d727573742d776f726b6c6f61642d67756573742f7372632f6d61696e2e7273060400410000000704000d00000008130073616d706c652d727573742d73657276696365090900696e76617269616e740a0400741f1085",
+        "catalog_tokens": [
+          "3dfc2aca5853dd8a2cee772f8f20bd3c7a4abc9e2fe281c80969939119a13d7e"
+        ]
+      },
+      "message": "choice remains in range",
+      "kind": "always",
+      "guest": "sample-rust-service",
+      "category": "invariant",
+      "verdict": "passed",
+      "hit_count": 12,
+      "true_count": 12,
+      "false_count": 0
+    }
+  ]
+}

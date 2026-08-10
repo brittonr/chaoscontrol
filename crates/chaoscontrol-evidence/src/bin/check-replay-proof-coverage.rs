@@ -2,20 +2,21 @@ use std::path::PathBuf;
 
 use chaoscontrol_evidence::{
     check_replay_proof_coverage_doc, render_replay_proof_coverage,
-    render_replay_proof_coverage_doc, review_replay_proof_coverage,
+    render_replay_proof_coverage_doc, review_replay_proof_coverage, validate_replay_proof_coverage,
     write_replay_proof_coverage_doc, REPLAY_PROOF_COVERAGE_DOC,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Coverage,
+    Strict,
     CheckDoc,
     PrintDoc,
     WriteDoc,
 }
 
 fn usage() -> &'static str {
-    "usage: check-replay-proof-coverage [--check-doc|--print-doc|--write-doc] [ROOT]\n\nValidates committed replay proof coverage. Doc modes derive docs/replay-proof-coverage.md from the accepted workload proof manifest."
+    "usage: check-replay-proof-coverage [--strict|--check-doc|--print-doc|--write-doc] [ROOT]\n\nReviews committed replay proof coverage. --strict requires every row to have fresh admitted identity. Doc modes derive docs/replay-proof-coverage.md from the accepted workload proof manifest."
 }
 
 fn parse_args() -> Result<(Mode, PathBuf), String> {
@@ -27,6 +28,7 @@ fn parse_args() -> Result<(Mode, PathBuf), String> {
                 println!("{}", usage());
                 std::process::exit(0);
             }
+            "--strict" => mode = Mode::Strict,
             "--check-doc" => mode = Mode::CheckDoc,
             "--print-doc" => mode = Mode::PrintDoc,
             "--write-doc" => mode = Mode::WriteDoc,
@@ -48,6 +50,8 @@ fn main() {
 
     let result = match mode {
         Mode::Coverage => review_replay_proof_coverage(&root)
+            .map(|lines| print!("{}", render_replay_proof_coverage(&lines))),
+        Mode::Strict => validate_replay_proof_coverage(&root)
             .map(|lines| print!("{}", render_replay_proof_coverage(&lines))),
         Mode::CheckDoc => check_replay_proof_coverage_doc(&root)
             .map(|()| println!("replay proof coverage doc ok: {REPLAY_PROOF_COVERAGE_DOC}")),

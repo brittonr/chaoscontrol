@@ -4,9 +4,9 @@ Generated from `dogfood-results/accepted-workload-proofs.json`. Do not hand-edit
 
 ## Summary
 
-ChaosControl currently has no workload with fresh admitted v2 KVM evidence. Historical replay artifacts remain diagnostic and blocked from current promotion.
+ChaosControl currently supports bounded snapshot-backed replay proof claims for: `raft`, `redb`, `net`, `rust-workload`.
 
-Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported local control-plane baseline now covers durable one-machine multi-hypervisor orchestration; remaining product gaps are Rust workload authoring/onboarding, bounded determinism/fault coverage expansion, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope even though their claims remain forbidden overclaims.
+Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors. The supported baseline covers the admitted Rust cohort and durable one-machine multi-hypervisor orchestration. Remaining gaps include broader workload admission, bounded determinism and fault coverage, local triage depth, and local artifact hygiene. Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope.
 
 This status is evidence-backed but narrow: it is not a mathematical determinism proof, not a universal hypervisor/device/timing proof, and not a full Antithesis-style product replacement claim.
 
@@ -14,10 +14,10 @@ This status is evidence-backed but narrow: it is not a mathematical determinism 
 
 | Workload | Status | Assertion ID | Historical verdict | Replay parent depth | export/reproduce exit | Evidence |
 | --- | --- | ---: | --- | ---: | --- | --- |
-| `raft` | `blocked-assertion-identity` | `1806003755` | `snapshot_backed_reproduced` | `2` | `0` / `0` | `dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/` |
-| `redb` | `blocked-assertion-identity` | `2718281828` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/redb-accepted-verdict-dogfood-20260510T191449Z/` |
-| `net` | `blocked-assertion-identity` | `3141592653` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-accepted-verdict-dogfood-20260509T015147Z/` |
-| `rust-workload` | `blocked-assertion-identity` | `1414213562` | `snapshot_backed_reproduced` | `2` | `0` / `0` | `dogfood-results/rust-workload-accepted-verdict-dogfood-20260511T163054Z/` |
+| `raft` | `supported-bounded` | `3463273124` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/raft-fresh-v2-proof-20260809/` |
+| `redb` | `supported-bounded` | `4149728441` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/redb-fresh-v2-proof-20260809/` |
+| `net` | `supported-bounded` | `2074476939` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/net-fresh-v2-proof-20260809/` |
+| `rust-workload` | `supported-bounded` | `3143219316` | `snapshot_backed_reproduced` | `1` | `0` / `0` | `dogfood-results/rust-workload-fresh-v2-proof-20260809/` |
 
 `blocked-assertion-identity` means that the retained replay files predate admitted v2 structured assertion identity. Numeric alias agreement cannot promote them. Fresh KVM evidence must bind the selected alias and complete catalog through an accepted v2 summary.
 
@@ -25,7 +25,7 @@ This status is evidence-backed but narrow: it is not a mathematical determinism 
 
 | Surface | Status | Why it is not promoted | Required promotion evidence |
 | --- | --- | --- | --- |
-| Rust workload authoring | `experimental-rust-only` | New Rust workloads need their own bounded probe, accepted verdict, manifest entry, and committed raw or chunked snapshot artifact before promotion. Non-Rust SDKs are not current product blockers. | Committed Rust workload recipe, accepted-verdict wrapper expectation, manifest entry, snapshot artifact, and replay/assertion readiness checks for that Rust workload. |
+| Rust workload authoring | `supported-bounded-rust-cohort` | The admitted downstream-shaped Rust cohort has a fresh strict-identity KVM proof and a bounded onboarding recipe. New or changed workload code needs its own proof. | Keep the admitted cohort receipt, accepted verdict, manifest entry, snapshot artifact, and replay/assertion readiness checks green. |
 | Schedule-only replay | `gap-evidence-only` | Depth-zero replay results classify replay gaps; they do not prove snapshot-backed replay coverage. | A reproduced bug with `replay_parent_depth > 0`, valid snapshot ref/artifact or chunks, and `snapshot_backed_reproduced` verdict. |
 | Arbitrary guest/device determinism | `bounded-matrix-rail` | Current evidence includes a bounded hide-TSC device/profile matrix rail (`nix run .#vm-determinism-matrix`) that emits a `matrix-receipt.json` from listed VM determinism observations. Matrix rows bind named single-machine multi-hypervisor product profiles, worker counts, workload identity, kernel/initrd fingerprints, device profile, clock profile, and controller configuration. This is matrix-scoped evidence only; unlisted guests, devices, clock profiles, and timing behaviors remain unproven, and the rail is not a universal hypervisor/device/timing determinism proof. | Committed device/profile matrix receipts for each promoted row, visible failing/unsupported rows with bounded mismatch details, negative drift evidence for unsupported profiles, and promotion-gate checks that reject converting the bounded matrix rail into an arbitrary or universal determinism claim. |
 | Operator triage UX | `local-runbook` | Current evidence includes a committed local operator triage runbook generated from replay-readiness receipts and historical diagnostic artifacts. Its blocked sections do not run reproduction or minimization for ID-only bugs. It is not a hosted service or fleet workflow. | A promotable local triage path requires fresh admitted v2 KVM evidence, exact bug/report identity binding, replay and minimization commands, and operator decisions without raw-log scraping. |

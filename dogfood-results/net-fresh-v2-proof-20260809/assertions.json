@@ -1,0 +1,178 @@
+{
+  "schema": "chaoscontrol.assertion-summary.v2",
+  "catalog_status": "accepted",
+  "collision_safe_evidence": true,
+  "assertions": [
+    {
+      "id": 2074476939,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "org.onixresearch.chaoscontrol.net",
+          "logical_key": {
+            "type": "stable",
+            "key": "snapshot-replay-probe"
+          },
+          "compatibility_id": 2074476939,
+          "kind": "always",
+          "message": "net snapshot replay probe trips only after restored parent context",
+          "source_file": "crates/chaoscontrol-net-guest/src/main.rs",
+          "source_line": 314,
+          "source_column": 17,
+          "guest": "net",
+          "category": "recovery"
+        },
+        "fingerprint": "fb66d11c9467cd405437d8bb93458acf0b0f99c796f5cba1b618193d80ef94bb",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0121006f72672e6f6e697872657365617263682e6368616f73636f6e74726f6c2e6e657402160002736e617073686f742d7265706c61792d70726f6265030100000442006e657420736e617073686f74207265706c61792070726f6265207472697073206f6e6c7920616674657220726573746f72656420706172656e7420636f6e746578740529006372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72730604003a010000070400110000000803006e65740908007265636f766572790a04008b01a67b",
+        "catalog_tokens": [
+          "7aa8c47025471222a53059cd593d69153c6382966b602391344e67edb99f30f7"
+        ]
+      },
+      "message": "net snapshot replay probe trips only after restored parent context",
+      "kind": "always",
+      "guest": "net",
+      "category": "recovery",
+      "verdict": "failed",
+      "hit_count": 102,
+      "true_count": 0,
+      "false_count": 102,
+      "last_failure_details": "{\"fail_after\":1,\"iteration\":102}"
+    },
+    {
+      "id": 1961642757,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-net-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-net-guest/src/main.rs:220:25"
+          },
+          "compatibility_id": 1961642757,
+          "kind": "sometimes",
+          "message": "client gets 3+ pongs",
+          "source_file": "crates/chaoscontrol-net-guest/src/main.rs",
+          "source_line": 220,
+          "source_column": 25,
+          "guest": "net",
+          "category": "operation"
+        },
+        "fingerprint": "14f9a66a7cda713185860f448d7776996b8c10e4f4506ae3900c589d2e0ae29a",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006275696c643a6368616f73636f6e74726f6c2d6e65742d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72733a3232303a323503010001041400636c69656e74206765747320332b20706f6e67730529006372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e7273060400dc000000070400190000000803006e65740909006f7065726174696f6e0a0400054bec74",
+        "catalog_tokens": [
+          "7aa8c47025471222a53059cd593d69153c6382966b602391344e67edb99f30f7"
+        ]
+      },
+      "message": "client gets 3+ pongs",
+      "kind": "sometimes",
+      "guest": "net",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 165522304,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-net-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-net-guest/src/main.rs:210:25"
+          },
+          "compatibility_id": 165522304,
+          "kind": "always",
+          "message": "client receives correct pong",
+          "source_file": "crates/chaoscontrol-net-guest/src/main.rs",
+          "source_line": 210,
+          "source_column": 25,
+          "guest": "net",
+          "category": "operation"
+        },
+        "fingerprint": "16d13db01bb7562740af8408474aa3bfe3f4a23525ee3ca648485d2345c243df",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006275696c643a6368616f73636f6e74726f6c2d6e65742d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72733a3231303a323503010000041c00636c69656e7420726563656976657320636f727265637420706f6e670529006372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e7273060400d2000000070400190000000803006e65740909006f7065726174696f6e0a040080abdd09",
+        "catalog_tokens": [
+          "7aa8c47025471222a53059cd593d69153c6382966b602391344e67edb99f30f7"
+        ]
+      },
+      "message": "client receives correct pong",
+      "kind": "always",
+      "guest": "net",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 1458528886,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-net-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-net-guest/src/main.rs:106:29"
+          },
+          "compatibility_id": 1458528886,
+          "kind": "always",
+          "message": "server responds to ping",
+          "source_file": "crates/chaoscontrol-net-guest/src/main.rs",
+          "source_line": 106,
+          "source_column": 29,
+          "guest": "net",
+          "category": "operation"
+        },
+        "fingerprint": "5b7a098d73b8aadbbe3cc074d5d74574b681047407f0860c3edc02469e4d3bdb",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006275696c643a6368616f73636f6e74726f6c2d6e65742d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72733a3130363a32390301000004170073657276657220726573706f6e647320746f2070696e670529006372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72730604006a0000000704001d0000000803006e65740909006f7065726174696f6e0a04007662ef56",
+        "catalog_tokens": [
+          "7aa8c47025471222a53059cd593d69153c6382966b602391344e67edb99f30f7"
+        ]
+      },
+      "message": "server responds to ping",
+      "kind": "always",
+      "guest": "net",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    },
+    {
+      "id": 3396027441,
+      "identity": {
+        "descriptor": {
+          "identity_version": 1,
+          "namespace": "build:chaoscontrol-net-guest:0.1.0",
+          "logical_key": {
+            "type": "automatic",
+            "source_site": "crates/chaoscontrol-net-guest/src/main.rs:116:29"
+          },
+          "compatibility_id": 3396027441,
+          "kind": "sometimes",
+          "message": "server handles multiple pings",
+          "source_file": "crates/chaoscontrol-net-guest/src/main.rs",
+          "source_line": 116,
+          "source_column": 29,
+          "guest": "net",
+          "category": "operation"
+        },
+        "fingerprint": "7a37bf104bcb97ee152f2f92917c04b74180c19d43c602762a2c705ef438668e",
+        "canonical_descriptor": "6368616f73636f6e74726f6c2e617373657274696f6e2d64657363726970746f722e763100010a0122006275696c643a6368616f73636f6e74726f6c2d6e65742d67756573743a302e312e30023100016372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e72733a3131363a323903010001041d007365727665722068616e646c6573206d756c7469706c652070696e67730529006372617465732f6368616f73636f6e74726f6c2d6e65742d67756573742f7372632f6d61696e2e7273060400740000000704001d0000000803006e65740909006f7065726174696f6e0a040031446bca",
+        "catalog_tokens": [
+          "7aa8c47025471222a53059cd593d69153c6382966b602391344e67edb99f30f7"
+        ]
+      },
+      "message": "server handles multiple pings",
+      "kind": "sometimes",
+      "guest": "net",
+      "category": "operation",
+      "verdict": "unexercised",
+      "hit_count": 0,
+      "true_count": 0,
+      "false_count": 0
+    }
+  ]
+}

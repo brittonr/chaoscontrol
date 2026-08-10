@@ -1,0 +1,212 @@
+{
+  "cohort_id": "fresh-v2-workload-proofs-20260809",
+  "execution": {
+    "backend": "linux-kvm",
+    "device": "/dev/kvm",
+    "required_access": "read-write"
+  },
+  "non_claims": [
+    "A promoted row does not prove workload correctness.",
+    "A promoted row does not prove universal hypervisor determinism.",
+    "A promoted row does not prove host equivalence.",
+    "A promoted row does not establish release eligibility."
+  ],
+  "receipt_policy": {
+    "artifact_digest": "sha256",
+    "raw_logs": "local-debug-only",
+    "required": true
+  },
+  "replay_policy": {
+    "exact_assertion_identity": true,
+    "exact_snapshot_reference": true,
+    "required_class": "snapshot_backed_reproduced",
+    "verdict_schema_version": 2
+  },
+  "schema_version": 1,
+  "snapshot_policy": {
+    "codec": "simulation-snapshot-cbor-zstd-v2",
+    "digest": "sha256",
+    "minimum_replay_parent_depth": 1,
+    "schema_version": 2
+  },
+  "source_revision": "c6e51c072840caf2679e5c6936dcba8e444f73a3",
+  "workloads": [
+    {
+      "artifacts": [
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-explore",
+          "role": "host-binary"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-kernel-virtio-net",
+          "role": "guest-kernel"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "initrd-raft",
+          "role": "guest-initrd"
+        }
+      ],
+      "assertion": {
+        "category": "invariant",
+        "compatibility_id": 3463273124,
+        "guest": "raft",
+        "logical_key": "snapshot-replay-probe.v1",
+        "message": "snapshot replay probe trips only after restored parent context",
+        "namespace": "org.onixresearch.chaoscontrol.raft"
+      },
+      "bounds": {
+        "bootstrap_ticks": 10000,
+        "branches": 2,
+        "export_timeout_seconds": 300,
+        "max_attempts": 1,
+        "memory_mib": 256,
+        "replay_timeout_seconds": 300,
+        "rounds": 3,
+        "run_timeout_seconds": 240,
+        "snapshot_probe_fail_after": 1,
+        "ticks": 80,
+        "vms": 3
+      },
+      "cmdline_template": "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}",
+      "order": 1,
+      "workload": "raft"
+    },
+    {
+      "artifacts": [
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-explore",
+          "role": "host-binary"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-kernel",
+          "role": "guest-kernel"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "initrd-redb",
+          "role": "guest-initrd"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "redb-disk-image",
+          "role": "guest-disk"
+        }
+      ],
+      "assertion": {
+        "category": "recovery",
+        "compatibility_id": 4149728441,
+        "guest": "redb",
+        "logical_key": "snapshot-replay-probe",
+        "message": "redb snapshot replay probe trips only after restored parent context",
+        "namespace": "org.onixresearch.chaoscontrol.redb"
+      },
+      "bounds": {
+        "bootstrap_ticks": 10000,
+        "branches": 2,
+        "export_timeout_seconds": 300,
+        "max_attempts": 6,
+        "memory_mib": 256,
+        "replay_timeout_seconds": 300,
+        "rounds": 3,
+        "run_timeout_seconds": 240,
+        "snapshot_probe_fail_after": 1,
+        "ticks": 80,
+        "vms": 1
+      },
+      "cmdline_template": "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}",
+      "order": 2,
+      "workload": "redb"
+    },
+    {
+      "artifacts": [
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-explore",
+          "role": "host-binary"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-kernel-virtio-net",
+          "role": "guest-kernel"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "initrd-net",
+          "role": "guest-initrd"
+        }
+      ],
+      "assertion": {
+        "category": "recovery",
+        "compatibility_id": 2074476939,
+        "guest": "net",
+        "logical_key": "snapshot-replay-probe",
+        "message": "net snapshot replay probe trips only after restored parent context",
+        "namespace": "org.onixresearch.chaoscontrol.net"
+      },
+      "bounds": {
+        "bootstrap_ticks": 10000,
+        "branches": 3,
+        "export_timeout_seconds": 300,
+        "max_attempts": 1,
+        "memory_mib": 256,
+        "replay_timeout_seconds": 300,
+        "rounds": 4,
+        "run_timeout_seconds": 240,
+        "snapshot_probe_fail_after": 1,
+        "ticks": 120,
+        "vms": 3
+      },
+      "cmdline_template": "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}",
+      "order": 3,
+      "workload": "net"
+    },
+    {
+      "artifacts": [
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-explore",
+          "role": "host-binary"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "chaoscontrol-kernel-kcov",
+          "role": "guest-kernel"
+        },
+        {
+          "digest_policy": "sha256-runtime-observation",
+          "nix_output": "initrd-rust-workload",
+          "role": "guest-initrd"
+        }
+      ],
+      "assertion": {
+        "category": "recovery",
+        "compatibility_id": 3143219316,
+        "guest": "sample-rust-service",
+        "logical_key": "snapshot-replay-probe",
+        "message": "rust workload snapshot replay probe trips only after restored parent context",
+        "namespace": "org.onixresearch.chaoscontrol.rust-workload"
+      },
+      "bounds": {
+        "bootstrap_ticks": 10000,
+        "branches": 2,
+        "export_timeout_seconds": 300,
+        "max_attempts": 6,
+        "memory_mib": 128,
+        "replay_timeout_seconds": 300,
+        "rounds": 3,
+        "run_timeout_seconds": 240,
+        "snapshot_probe_fail_after": 1,
+        "ticks": 80,
+        "vms": 1
+      },
+      "cmdline_template": "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}",
+      "order": 4,
+      "workload": "rust-workload"
+    }
+  ]
+}

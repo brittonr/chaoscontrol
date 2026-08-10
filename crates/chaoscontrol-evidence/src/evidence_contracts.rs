@@ -749,17 +749,23 @@ pub fn validate_replay_verdict_with_options(
         if check_files {
             let path_str = item["path"].as_str().unwrap();
             let path = root.join(path_str);
-            ensure(
-                path.exists(),
-                format!("replay-verdict artifact missing: {path_str}"),
-            )?;
-            let maximum_bytes = if path_str.ends_with(".snapshot.bin") {
-                MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES
+            let actual_digest = if path.exists() {
+                let maximum_bytes = if path_str.ends_with(".snapshot.bin") {
+                    MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES
+                } else {
+                    crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES
+                };
+                sha256_file(&path, maximum_bytes)?
+            } else if path_str.ends_with(".snapshot.bin") {
+                let (digest, _) = crate::snapshot_artifact_sha256(root, &path)?;
+                format!("sha256:{digest}")
             } else {
-                crate::DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES
+                return Err(EvidenceError::new(format!(
+                    "replay-verdict artifact missing: {path_str}"
+                )));
             };
             ensure(
-                sha256_file(&path, maximum_bytes)? == item["sha256"].as_str().unwrap(),
+                actual_digest == item["sha256"].as_str().unwrap(),
                 format!("replay-verdict artifact hash mismatch: {path_str}"),
             )?;
         }

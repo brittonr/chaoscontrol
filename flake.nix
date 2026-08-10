@@ -361,6 +361,11 @@
               branches,
               ticks,
               memoryMb,
+              cohortProfile,
+              evidencePrefix,
+              runTimeout,
+              exportTimeout,
+              replayTimeout,
               failAfterValues ? defaultSnapshotProbeFailAfterValues,
               maxAttempts ? null,
               expectation ? null,
@@ -370,6 +375,16 @@
               args = [
                 "--workload"
                 workload
+                "--cohort"
+                "${./contracts/fresh-workload-proofs/cohort.json}"
+                "--evidence-prefix"
+                evidencePrefix
+                "--run-timeout"
+                (toString runTimeout)
+                "--export-timeout"
+                (toString exportTimeout)
+                "--repro-timeout"
+                (toString replayTimeout)
                 "--explore"
                 "${chaoscontrol}/bin/chaoscontrol-explore"
                 "--kernel"
@@ -420,74 +435,118 @@
             builtins.readFile ./dogfood-results/accepted-dogfood-expectations.json
           );
           acceptedVerdictDogfoodExpectationWorkloads = acceptedVerdictDogfoodExpectations.workloads;
+          freshWorkloadProofCohort = builtins.fromJSON (
+            builtins.readFile ./contracts/fresh-workload-proofs/cohort.json
+          );
+          freshWorkloadProofProfiles = builtins.listToAttrs (
+            map (profile: {
+              name = profile.workload;
+              value = profile;
+            }) freshWorkloadProofCohort.workloads
+          );
 
           acceptedVerdictDogfoodWorkloads = {
-            raft = {
-              name = "raft-accepted-verdict-dogfood";
-              workload = "raft";
-              kernel = mkChaosKernel { virtioNet = true; };
-              initrd = initrd-raft;
-              assertionId = 3463273124;
-              cmdlineTemplate = "raft_bug=snapshot_replay_probe raft_snapshot_probe_fail_after={fail_after}";
-              vms = 3;
-              rounds = 3;
-              branches = 2;
-              ticks = 80;
-              memoryMb = 256;
-              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.raft.runner.fail_after_values;
-              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.raft.runner.max_attempts;
-              expectation = acceptedVerdictDogfoodExpectationWorkloads.raft;
-            };
-            redb = {
-              name = "redb-accepted-verdict-dogfood";
-              workload = "redb";
-              kernel = mkChaosKernel { };
-              initrd = initrd-redb;
-              diskImage = redb-disk-image;
-              assertionId = 4149728441;
-              cmdlineTemplate = "redb_bug=snapshot_replay_probe redb_snapshot_probe_fail_after={fail_after}";
-              vms = 1;
-              rounds = 3;
-              branches = 2;
-              ticks = 80;
-              memoryMb = 256;
-              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.redb.runner.fail_after_values;
-              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.redb.runner.max_attempts;
-              expectation = acceptedVerdictDogfoodExpectationWorkloads.redb;
-            };
-            net = {
-              name = "net-accepted-verdict-dogfood";
-              workload = "net";
-              kernel = mkChaosKernel { virtioNet = true; };
-              initrd = initrd-net;
-              assertionId = 2074476939;
-              cmdlineTemplate = "net_bug=snapshot_replay_probe net_snapshot_probe_fail_after={fail_after}";
-              vms = 3;
-              rounds = 4;
-              branches = 3;
-              ticks = 120;
-              memoryMb = 256;
-              failAfterValues = acceptedVerdictDogfoodExpectationWorkloads.net.runner.fail_after_values;
-              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads.net.runner.max_attempts;
-              expectation = acceptedVerdictDogfoodExpectationWorkloads.net;
-            };
-            rust-workload = {
-              name = "rust-workload-accepted-verdict-dogfood";
-              workload = "rust-workload";
-              kernel = mkChaosKernel { kcov = true; };
-              initrd = initrd-rust-workload;
-              assertionId = 3143219316;
-              cmdlineTemplate = "rust_workload_bug=snapshot_replay_probe rust_workload_snapshot_probe_fail_after={fail_after}";
-              vms = 1;
-              rounds = 3;
-              branches = 2;
-              ticks = 80;
-              memoryMb = 128;
-              failAfterValues =
-                acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.fail_after_values;
-              maxAttempts = acceptedVerdictDogfoodExpectationWorkloads."rust-workload".runner.max_attempts;
-              expectation = acceptedVerdictDogfoodExpectationWorkloads."rust-workload";
-            };
+            raft =
+              let
+                profile = freshWorkloadProofProfiles.raft;
+              in
+              {
+                name = "raft-accepted-verdict-dogfood";
+                workload = profile.workload;
+                kernel = mkChaosKernel { virtioNet = true; };
+                initrd = initrd-raft;
+                assertionId = profile.assertion.compatibility_id;
+                cmdlineTemplate = profile.cmdline_template;
+                vms = profile.bounds.vms;
+                rounds = profile.bounds.rounds;
+                branches = profile.bounds.branches;
+                ticks = profile.bounds.ticks;
+                memoryMb = profile.bounds.memory_mib;
+                runTimeout = profile.bounds.run_timeout_seconds;
+                exportTimeout = profile.bounds.export_timeout_seconds;
+                replayTimeout = profile.bounds.replay_timeout_seconds;
+                cohortProfile = profile;
+                evidencePrefix = "dogfood-results/raft-fresh-v2-proof-20260809";
+                failAfterValues = [ profile.bounds.snapshot_probe_fail_after ];
+                maxAttempts = profile.bounds.max_attempts;
+                expectation = acceptedVerdictDogfoodExpectationWorkloads.raft;
+              };
+            redb =
+              let
+                profile = freshWorkloadProofProfiles.redb;
+              in
+              {
+                name = "redb-accepted-verdict-dogfood";
+                workload = profile.workload;
+                kernel = mkChaosKernel { };
+                initrd = initrd-redb;
+                diskImage = redb-disk-image;
+                assertionId = profile.assertion.compatibility_id;
+                cmdlineTemplate = profile.cmdline_template;
+                vms = profile.bounds.vms;
+                rounds = profile.bounds.rounds;
+                branches = profile.bounds.branches;
+                ticks = profile.bounds.ticks;
+                memoryMb = profile.bounds.memory_mib;
+                runTimeout = profile.bounds.run_timeout_seconds;
+                exportTimeout = profile.bounds.export_timeout_seconds;
+                replayTimeout = profile.bounds.replay_timeout_seconds;
+                cohortProfile = profile;
+                evidencePrefix = "dogfood-results/redb-fresh-v2-proof-20260809";
+                failAfterValues = [ profile.bounds.snapshot_probe_fail_after ];
+                maxAttempts = profile.bounds.max_attempts;
+                expectation = acceptedVerdictDogfoodExpectationWorkloads.redb;
+              };
+            net =
+              let
+                profile = freshWorkloadProofProfiles.net;
+              in
+              {
+                name = "net-accepted-verdict-dogfood";
+                workload = profile.workload;
+                kernel = mkChaosKernel { virtioNet = true; };
+                initrd = initrd-net;
+                assertionId = profile.assertion.compatibility_id;
+                cmdlineTemplate = profile.cmdline_template;
+                vms = profile.bounds.vms;
+                rounds = profile.bounds.rounds;
+                branches = profile.bounds.branches;
+                ticks = profile.bounds.ticks;
+                memoryMb = profile.bounds.memory_mib;
+                runTimeout = profile.bounds.run_timeout_seconds;
+                exportTimeout = profile.bounds.export_timeout_seconds;
+                replayTimeout = profile.bounds.replay_timeout_seconds;
+                cohortProfile = profile;
+                evidencePrefix = "dogfood-results/net-fresh-v2-proof-20260809";
+                failAfterValues = [ profile.bounds.snapshot_probe_fail_after ];
+                maxAttempts = profile.bounds.max_attempts;
+                expectation = acceptedVerdictDogfoodExpectationWorkloads.net;
+              };
+            rust-workload =
+              let
+                profile = freshWorkloadProofProfiles."rust-workload";
+              in
+              {
+                name = "rust-workload-accepted-verdict-dogfood";
+                workload = profile.workload;
+                kernel = mkChaosKernel { kcov = true; };
+                initrd = initrd-rust-workload;
+                assertionId = profile.assertion.compatibility_id;
+                cmdlineTemplate = profile.cmdline_template;
+                vms = profile.bounds.vms;
+                rounds = profile.bounds.rounds;
+                branches = profile.bounds.branches;
+                ticks = profile.bounds.ticks;
+                memoryMb = profile.bounds.memory_mib;
+                runTimeout = profile.bounds.run_timeout_seconds;
+                exportTimeout = profile.bounds.export_timeout_seconds;
+                replayTimeout = profile.bounds.replay_timeout_seconds;
+                cohortProfile = profile;
+                evidencePrefix = "dogfood-results/rust-workload-fresh-v2-proof-20260809";
+                failAfterValues = [ profile.bounds.snapshot_probe_fail_after ];
+                maxAttempts = profile.bounds.max_attempts;
+                expectation = acceptedVerdictDogfoodExpectationWorkloads."rust-workload";
+              };
           };
 
           acceptedVerdictDogfood = pkgs.lib.mapAttrs (
@@ -1042,12 +1101,14 @@
               mkdir -p "$(dirname "$dest")"
               cp -R ${./docs/templates/rust-workload} "$dest"
               chmod -R u+w "$dest"
-              python - "$dest" "$workload" <<'PY'
+              python - "$dest" "$workload" "${self}" <<'PY'
               import json, pathlib, sys
               dest = pathlib.Path(sys.argv[1])
               workload = sys.argv[2]
+              source_root = pathlib.Path(sys.argv[3])
               package = workload.replace('_', '-').lower() + "-chaos-workload"
               replacements = {
+                  "../../../crates/chaoscontrol-sdk": str(source_root / "crates/chaoscontrol-sdk"),
                   "my-service-chaos-workload": package,
                   "my-service": workload,
               }
@@ -1071,6 +1132,88 @@
               PY
               echo "scaffolded Rust workload at: $dest"
               echo "manifest: $dest/chaoscontrol-scaffold.json"
+            '';
+          };
+
+          freshRustWorkloadProof = pkgs.writeShellApplication {
+            name = "fresh-rust-workload-proof";
+            runtimeInputs = [
+              pkgs.cargo
+              pkgs.coreutils
+              pkgs.rustc
+              scaffoldRustWorkload
+              acceptedVerdictDogfood.rust-workload
+            ];
+            text = ''
+              usage() {
+                cat <<'EOF'
+              usage: fresh-rust-workload-proof --scaffold DIR --output DIR [--name NAME]
+
+              Creates and builds a Rust workload scaffold, then runs the bounded
+              downstream-shaped KVM snapshot/replay rail. The KVM result is a
+              cohort-scoped onboarding classification, not proof for arbitrary
+              scaffold code.
+              EOF
+              }
+
+              scaffold=""
+              output=""
+              name="my-service"
+              while [ "$#" -gt 0 ]; do
+                case "$1" in
+                  -h|--help)
+                    usage
+                    exit 0
+                    ;;
+                  --scaffold)
+                    scaffold="$2"
+                    shift 2
+                    ;;
+                  --output)
+                    output="$2"
+                    shift 2
+                    ;;
+                  --name)
+                    name="$2"
+                    shift 2
+                    ;;
+                  *)
+                    echo "unknown argument: $1" >&2
+                    usage >&2
+                    exit 2
+                    ;;
+                esac
+              done
+              if [ -z "$scaffold" ] || [ -z "$output" ]; then
+                usage >&2
+                exit 2
+              fi
+
+              scaffold-rust-workload "$scaffold" "$name"
+              cargo build --manifest-path "$scaffold/Cargo.toml"
+
+              success_status=0
+              no_bug_status=2
+              set +e
+              rust-workload-accepted-verdict-dogfood \
+                --output "$output" \
+                --evidence-prefix "$output"
+              proof_status="$?"
+              set -e
+              case "$proof_status" in
+                "$success_status")
+                  echo "promotion classification: promoted-bounded"
+                  echo "evidence: $output/accepted-snapshot-verdict-summary.json"
+                  ;;
+                "$no_bug_status")
+                  echo "promotion classification: diagnostic-no-bug"
+                  echo "evidence: $output/attempts-summary.json"
+                  ;;
+                *)
+                  echo "promotion classification: blocked (rail exit $proof_status)" >&2
+                  exit "$proof_status"
+                  ;;
+              esac
             '';
           };
 
@@ -1230,6 +1373,7 @@
             accepted-verdict-dogfood-config = acceptedVerdictDogfoodConfig;
             replay-readiness = replayReadiness;
             scaffold-rust-workload = scaffoldRustWorkload;
+            fresh-rust-workload-proof = freshRustWorkloadProof;
             vm-determinism-matrix = vmDeterminismMatrix;
             replay-readiness-summary = replayReadinessSummary;
             replay-readiness-dashboard = replayReadinessDashboard;
@@ -1474,6 +1618,12 @@
                   check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json
                   check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json
                   check-profile-admission schedule contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json contracts/evidence/fixtures/valid/fault-schedule-profile.projection-receipt.json
+                  nickel export --format json contracts/fresh-workload-proofs/cohort.ncl > "$TMPDIR/fresh-workload-proof-cohort.json"
+                  cmp "$TMPDIR/fresh-workload-proof-cohort.json" contracts/fresh-workload-proofs/cohort.json
+                  if nickel export contracts/fresh-workload-proofs/fixtures/invalid/missing-non-claim.invalid.ncl >/dev/null 2>&1; then
+                    echo "invalid fresh workload proof cohort unexpectedly passed" >&2
+                    exit 1
+                  fi
                   check-replay-proof-coverage .
                   check-replay-proof-coverage --check-doc .
                   materialize-snapshot-chunks --selftest
@@ -2008,6 +2158,7 @@
             redb-accepted-verdict-dogfood = mkApp "Run the accepted-verdict redb dogfood proof rail." "${acceptedVerdictDogfood.redb}/bin/redb-accepted-verdict-dogfood";
             net-accepted-verdict-dogfood = mkApp "Run the accepted-verdict network dogfood proof rail." "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
             rust-workload-accepted-verdict-dogfood = mkApp "Run the accepted-verdict rust-workload dogfood proof rail." "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
+            fresh-rust-workload-proof = mkApp "Build a Rust scaffold and run the bounded onboarding proof classification." "${freshRustWorkloadProof}/bin/fresh-rust-workload-proof";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";

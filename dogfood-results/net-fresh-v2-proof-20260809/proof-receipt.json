@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "accepted",
+  "scope": "bounded snapshot-backed replay proof for the recorded workload and cohort",
+  "cohort_id": "fresh-v2-workload-proofs-20260809",
+  "source_revision": "c6e51c072840caf2679e5c6936dcba8e444f73a3",
+  "workload": "net",
+  "assertion": {
+    "category": "recovery",
+    "compatibility_id": 2074476939,
+    "guest": "net",
+    "logical_key": "snapshot-replay-probe",
+    "message": "net snapshot replay probe trips only after restored parent context",
+    "namespace": "org.onixresearch.chaoscontrol.net"
+  },
+  "bounds": {
+    "bootstrap_ticks": 10000,
+    "branches": 3,
+    "export_timeout_seconds": 300,
+    "max_attempts": 1,
+    "memory_mib": 256,
+    "replay_timeout_seconds": 300,
+    "rounds": 4,
+    "run_timeout_seconds": 240,
+    "snapshot_probe_fail_after": 1,
+    "ticks": 120,
+    "vms": 3
+  },
+  "execution": {
+    "backend": "linux-kvm",
+    "device": "/dev/kvm",
+    "required_access": "read-write"
+  },
+  "kvm_observation": {
+    "readable": true,
+    "writable": true
+  },
+  "runtime_artifacts": [
+    {
+      "role": "host-binary",
+      "path": "/nix/store/jc5m6ckqlxhc263xfsfcx2acdx7zkd4q-chaoscontrol-0.1.0/bin/chaoscontrol-explore",
+      "sha256": "sha256:8e115b5ba79a3b32f32cb896dfc2b0a071701a783ac1b55fdaaf0c9363c026ee"
+    },
+    {
+      "role": "guest-kernel",
+      "path": "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+      "sha256": "sha256:2d154b6ab66dfefbd3aa4ca20a1499caf1d46a301dbbcb5ba2fb221ffbf91fd9"
+    },
+    {
+      "role": "guest-initrd",
+      "path": "/nix/store/c386gpcvs7z3fisk1lh9pr2vvr69h2m0-chaoscontrol-initrd-net",
+      "sha256": "sha256:8430ec38dbef5c74533b53baee23d3bf643a099a7690d6241be836fa20ab24f5"
+    }
+  ],
+  "snapshot_policy": {
+    "codec": "simulation-snapshot-cbor-zstd-v2",
+    "digest": "sha256",
+    "minimum_replay_parent_depth": 1,
+    "schema_version": 2
+  },
+  "replay_policy": {
+    "exact_assertion_identity": true,
+    "exact_snapshot_reference": true,
+    "required_class": "snapshot_backed_reproduced",
+    "verdict_schema_version": 2
+  },
+  "artifacts": [
+    {
+      "path": "dogfood-results/net-fresh-v2-proof-20260809/assertions.json",
+      "sha256": "sha256:84ff473c8c212efc417d5e4792c8c2a0737174e6562ad6d59a11f8ce3804d68d"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v2-proof-20260809/bug_0.json",
+      "sha256": "sha256:d93b8bd3b4790a7636a20a81d06d7616da9422a314a73bd4d868ca69725c8c32"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v2-proof-20260809/replay-verdict-bug0.json",
+      "sha256": "sha256:9dd796bdc54b225d777e85671159feef61e36b28409ebc19701fd299dddea1d7"
+    },
+    {
+      "path": "dogfood-results/net-fresh-v2-proof-20260809/snapshots/17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662.snapshot.bin",
+      "sha256": "sha256:17f24c2485277dde53e8d1787e5f5d0cc7f84e1b23631f22c13933821110a662"
+    }
+  ],
+  "non_claims": [
+    "A promoted row does not prove workload correctness.",
+    "A promoted row does not prove universal hypervisor determinism.",
+    "A promoted row does not prove host equivalence.",
+    "A promoted row does not establish release eligibility."
+  ]
+}

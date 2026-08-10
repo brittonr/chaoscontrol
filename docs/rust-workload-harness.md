@@ -104,6 +104,20 @@ That writes the explorer output directory plus `evidence-classification.json`.
 The campaign output is VM execution evidence; standalone replay proof remains a
 separate classification that must be backed by replay/minimization artifacts.
 
+For the one-command bounded onboarding classification, run:
+
+```bash
+nix run .#fresh-rust-workload-proof -- \
+  --scaffold /tmp/my-service \
+  --output /tmp/my-service-proof \
+  --name my-service
+```
+
+The command creates and builds the scaffold. It then runs the packaged,
+downstream-shaped Rust KVM workload through replay classification. The KVM
+result applies only to that packaged cohort. It does not prove arbitrary
+scaffold code.
+
 For the accepted snapshot-backed replay proof rail, run the dedicated dogfood
 wrapper:
 
@@ -116,6 +130,6 @@ This reuses `scripts/accepted-snapshot-verdict-dogfood.py` with the
 KCOV-enabled kernel, `.#initrd-rust-workload`, assertion alias `3143219316`, and
 `rust_workload_bug=snapshot_replay_probe`. It is intentionally a slower VM and
 replay rail: if the KCOV kernel is not cached, Nix may build Linux before the
-run starts. Acceptance still requires filtered `export-bugs`, a valid persisted
-parent snapshot artifact, and a replay verdict with
-`replay_class = snapshot_backed_reproduced`.
+run starts. Acceptance still requires filtered `export-bugs`, exact schema-v2 assertion
+identity, the current CBOR snapshot format, a valid persisted parent snapshot,
+a linked proof receipt, and `replay_class = snapshot_backed_reproduced`.

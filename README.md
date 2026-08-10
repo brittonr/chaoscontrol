@@ -8,7 +8,7 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 <!-- product-scope-facts:start -->
-> **Product scope:** 1 supported, 8 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
+> **Product scope:** 3 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
 > The workspace has 19 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
 >
@@ -475,7 +475,9 @@ nix run .#rust-workload-accepted-verdict-dogfood -- \
 
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths. See [`docs/snapshot-fidelity.md`](docs/snapshot-fidelity.md) for the exact state boundary, restore rules, and compatibility policy.
 
-Historical workload-proof inventory and current promotion status are tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. The schema-v1 manifest is historical input, not current promotion authority. New claims require admitted v2 identity, committed evidence, and passing coverage and readiness checks. Oversized snapshots can use a chunks manifest plus ordered parts. The coverage gate verifies the stream against its logical digest.
+Historical workload-proof inventory and current promotion status are tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. Legacy schema-v1 rows are historical input, not current promotion authority. New claims require the typed cohort in `contracts/fresh-workload-proofs/cohort.ncl`, admitted v2 identity, committed evidence, and passing coverage and readiness checks. Oversized snapshots can use a chunks manifest plus ordered parts. The coverage gate verifies the stream against its logical digest.
+
+Rust workload authoring is `supported-bounded-rust-cohort` for the admitted downstream-shaped cohort. Run `nix run .#fresh-rust-workload-proof -- --scaffold /tmp/my-service --output /tmp/my-service-proof --name my-service` for this bounded onboarding flow. It builds the scaffold and runs the KVM replay cohort. Its result is cohort-scoped. It is not proof for arbitrary scaffold code.
 
 The assertion-readiness report may show zero ordinary assertion blockers after local harness coverage and replay-probe signal separation. Read that as an instrumentation-readiness signal only: it does not establish hosted-product parity, universal determinism, workload onboarding completeness, or operator triage UX readiness without the separate replay/readiness gates above.
 

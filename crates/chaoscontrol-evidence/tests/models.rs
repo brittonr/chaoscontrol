@@ -14,11 +14,10 @@ use chaoscontrol_evidence::{
     render_replay_proof_coverage_doc, render_replay_readiness_dashboard,
     render_replay_readiness_multi_hypervisor_campaign_dashboard,
     render_replay_readiness_readme_status_block, render_replay_readiness_status,
-    review_replay_proof_coverage, run_assertion_readiness_promotion_selftest,
-    run_dogfood_guards_selftest, run_materialize_snapshot_chunks_selftest,
-    run_readiness_promotion_selftest, run_readiness_surface_drift_selftest,
-    sample_replay_readiness_decision_receipt, sample_replay_readiness_fleet_scheduler_plan,
-    sample_replay_readiness_fleet_scheduler_receipt,
+    run_assertion_readiness_promotion_selftest, run_dogfood_guards_selftest,
+    run_materialize_snapshot_chunks_selftest, run_readiness_promotion_selftest,
+    run_readiness_surface_drift_selftest, sample_replay_readiness_decision_receipt,
+    sample_replay_readiness_fleet_scheduler_plan, sample_replay_readiness_fleet_scheduler_receipt,
     sample_replay_readiness_hosted_shared_state_plan,
     sample_replay_readiness_hosted_shared_state_receipt,
     sample_replay_readiness_multi_hypervisor_campaign_plan,
@@ -40,7 +39,7 @@ use chaoscontrol_evidence::{
 };
 use support::write_strict_replay_artifacts;
 
-const HISTORICAL_WORKLOAD_COUNT: usize = 4;
+const COMMITTED_WORKLOAD_COUNT: usize = 4;
 
 fn repo_file(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -64,33 +63,27 @@ fn parses_committed_accepted_workload_manifest() {
 }
 
 #[test]
-fn rejects_all_four_committed_legacy_identity_proofs() {
+fn promotes_all_four_committed_fresh_identity_proofs() {
     let boundary = check_assertion_readiness_boundary("../..").expect("boundary check passes");
     assert!(boundary
         .iter()
-        .all(|line| line.contains("identity_status=legacy-diagnostic")));
+        .all(|line| line.contains("identity_status=accepted-v2")));
 
-    let review = review_replay_proof_coverage("../..").expect("historical artifacts review");
-    assert_eq!(review.len(), HISTORICAL_WORKLOAD_COUNT);
-    assert!(review
+    let coverage = validate_replay_proof_coverage("../..").expect("fresh artifacts promote");
+    assert_eq!(coverage.len(), COMMITTED_WORKLOAD_COUNT);
+    assert!(coverage
         .iter()
-        .all(|line| line.replay_class == "blocked-assertion-identity"));
+        .all(|line| line.replay_class == "snapshot_backed_reproduced"));
 
-    let error = validate_replay_proof_coverage("../..")
-        .expect_err("historical ID-only artifacts cannot promote");
-    assert!(error
-        .message()
-        .contains("legacy assertion ID-only evidence cannot promote"));
-
-    let rendered = render_replay_proof_coverage_doc("../..").expect("diagnostic doc renders");
+    let rendered = render_replay_proof_coverage_doc("../..").expect("coverage doc renders");
     assert_eq!(
-        rendered.matches("`blocked-assertion-identity`").count(),
-        HISTORICAL_WORKLOAD_COUNT
+        rendered.matches("`snapshot_backed_reproduced`").count(),
+        COMMITTED_WORKLOAD_COUNT
     );
     for workload in ["Raft", "redb", "net", "rust-workload"] {
         assert!(rendered.contains(&format!("| {workload} |")));
     }
-    assert!(!rendered.contains("| `supported-bounded` |"));
+    assert!(!rendered.contains("`blocked-assertion-identity` |"));
 }
 
 #[test]
@@ -101,7 +94,7 @@ fn validates_committed_replay_proof_coverage_doc() {
         std::fs::read_to_string(repo_file("docs/replay-proof-coverage.md"))
             .expect("read replay proof coverage doc")
     );
-    assert!(rendered.contains("dogfood-results/raft-accepted-verdict-dogfood-20260509T030143Z/"));
+    assert!(rendered.contains("dogfood-results/raft-fresh-v2-proof-20260809/"));
     check_replay_proof_coverage_doc("../..").expect("committed doc is fresh");
 }
 
@@ -132,7 +125,7 @@ fn renders_committed_replay_readiness_status() {
     );
     assert!(rendered.contains("Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors"));
     assert!(rendered.contains("Hosted services, cross-machine fleet scheduling, and non-Rust SDKs are out of current product scope"));
-    assert!(rendered.contains("Rust workload authoring | `experimental-rust-only`"));
+    assert!(rendered.contains("Rust workload authoring | `supported-bounded-rust-cohort`"));
     assert!(rendered.contains("Operator triage UX | `local-runbook`"));
     assert!(rendered.contains("Hosted/fleet triage UI | `non-goal-current-scope`"));
     assert!(rendered.contains("Local multi-hypervisor control plane | `supported-bounded-local`"));
@@ -232,10 +225,10 @@ fn renders_committed_operator_triage_runbook() {
             .expect("read operator triage runbook")
     );
     assert!(rendered.contains("Do not scrape `run.log`, `reproduce.log`, or temporary VM logs"));
-    assert!(rendered.contains("blocked assertion identity"));
-    assert!(rendered.contains("Do not reproduce, minimize, or promote this ID-only carrier"));
-    assert!(!rendered.contains("--verdict-output target/operator-triage/raft-replay-verdict.json"));
-    assert!(!rendered.contains("minimize --bug dogfood-results/raft-accepted-verdict-dogfood"));
+    assert!(rendered.contains("exact admitted v2 assertion identity"));
+    assert!(rendered.contains("--verdict-output target/operator-triage/raft-replay-verdict.json"));
+    assert!(rendered.contains("minimize --bug dogfood-results/raft-fresh-v2-proof-20260809"));
+    assert!(!rendered.contains("blocked assertion identity"));
 }
 
 #[test]
@@ -1291,17 +1284,17 @@ fn rejects_missing_assertions_for_assertion_readiness_status() {
 }
 
 #[test]
-fn committed_readiness_gate_accepts_explicit_legacy_quarantine() {
+fn committed_readiness_gate_accepts_fresh_bounded_promotion() {
     let summary = validate_readiness_promotion_files(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
     )
-    .expect("historical workload rows remain blocked");
+    .expect("fresh workload rows promote");
 
     assert!(summary
         .lines
         .iter()
-        .all(|line| line.contains("status=blocked-assertion-identity")));
+        .all(|line| line.contains("status=supported-bounded")));
     run_readiness_promotion_selftest(
         "../../dogfood-results/accepted-workload-proofs.json",
         "../../docs/replay-readiness-status.md",
@@ -1310,13 +1303,13 @@ fn committed_readiness_gate_accepts_explicit_legacy_quarantine() {
 }
 
 #[test]
-fn committed_assertion_readiness_gate_requires_fresh_v2_evidence() {
-    let error = check_assertion_readiness_promotion("../..")
-        .expect_err("historical bare arrays cannot promote");
-    for workload in ["raft", "redb", "net", "rust-workload"] {
-        assert!(error.message().contains(workload));
-    }
-    assert!(error.message().contains("fresh admitted v2 KVM evidence"));
+fn committed_assertion_readiness_gate_accepts_fresh_v2_evidence() {
+    let lines =
+        check_assertion_readiness_promotion("../..").expect("fresh accepted-v2 identities promote");
+    assert_eq!(lines.len(), COMMITTED_WORKLOAD_COUNT);
+    assert!(lines
+        .iter()
+        .all(|line| line.contains("identity_status=accepted-v2")));
     run_assertion_readiness_promotion_selftest("../..").expect("selftest passes");
 }
 
@@ -1579,6 +1572,19 @@ fn write_valid_minimal_coverage_fixture(root: &std::path::Path) {
     write_summary(&evidence_dir.join("summary-redb.json"), "redb", 2);
     let digest = "sha256:181b5fc5c39e672546f5611977eabee17a4ef4dc262fd1d74d7d07d250e2fd81";
     write_strict_replay_artifacts(&evidence_dir, digest);
+    for verdict_name in ["verdict.json", "verdict-redb.json"] {
+        let verdict_path = evidence_dir.join(verdict_name);
+        let mut verdict: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&verdict_path).expect("read fixture verdict"),
+        )
+        .expect("parse fixture verdict");
+        verdict["schema_version"] = serde_json::json!(1);
+        std::fs::write(
+            verdict_path,
+            serde_json::to_vec_pretty(&verdict).expect("serialize fixture verdict"),
+        )
+        .expect("write fixture verdict");
+    }
 }
 
 fn write_assertions(path: &std::path::Path) {

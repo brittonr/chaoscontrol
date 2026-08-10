@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "original_path": "36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9.snapshot.bin",
+  "original_size": 23728077,
+  "original_sha256": "36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9",
+  "chunks": [
+    {
+      "path": "snapshots/36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9.snapshot.bin.part00",
+      "size": 20971520,
+      "sha256": "a310a83a21fc0cd80a784544b16a83ea801203eda99485c8468339bc6c76daff"
+    },
+    {
+      "path": "snapshots/36400b0af56e8792c2c6729eaabbcd870650dcf5ad0a05aaff6cee5e36e5a9f9.snapshot.bin.part01",
+      "size": 2756557,
+      "sha256": "b3fe8bbbcc4379f383a36fe34110ecd169dfa00c4e22a17efc7131e24a9fbc0f"
+    }
+  ]
+}

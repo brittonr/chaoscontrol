@@ -2699,7 +2699,14 @@ impl SimulationSnapshot {
         chaoscontrol_fault::engine::validate_orchestration_engine_snapshot(
             &self.fault_engine_snapshot,
         )
-        .map_err(|error| format!("invalid controller orchestration snapshot: {error:?}"))?;
+        .map_err(|error| {
+            format!(
+                "invalid controller orchestration snapshot: {error:?}; {}",
+                chaoscontrol_fault::engine::engine_snapshot_validation_diagnostic(
+                    &self.fault_engine_snapshot,
+                )
+            )
+        })?;
         for (index, (snapshot, _)) in self.vm_snapshots.iter().enumerate() {
             snapshot.validate_assertion_identity().map_err(|error| {
                 format!(

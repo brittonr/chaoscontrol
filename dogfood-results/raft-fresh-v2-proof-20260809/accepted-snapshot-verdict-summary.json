@@ -1,0 +1,91 @@
+{
+  "workload": "raft",
+  "seed": 42,
+  "snapshot_probe_fail_after": 1,
+  "run_exit_status": 1,
+  "export_exit_status": 0,
+  "reproduce_exit_status": 0,
+  "bugs": [
+    {
+      "file": "bug_0.json",
+      "assertion_id": 1343285588,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_1.json",
+      "assertion_id": 2168331750,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_2.json",
+      "assertion_id": 3383364242,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_3.json",
+      "assertion_id": 4111840024,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_4.json",
+      "assertion_id": 3463273124,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_5.json",
+      "assertion_id": 1343285588,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_6.json",
+      "assertion_id": 2168331750,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_7.json",
+      "assertion_id": 3383364242,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_8.json",
+      "assertion_id": 4111840024,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    },
+    {
+      "file": "bug_9.json",
+      "assertion_id": 3463273124,
+      "replay_parent_depth": 1,
+      "has_snapshot_ref": true,
+      "has_assertion_identity": true
+    }
+  ],
+  "verdict": {
+    "path": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug4.json",
+    "replay_class": "snapshot_backed_reproduced",
+    "reproduced": true,
+    "replay_parent_depth": 1,
+    "snapshot_status": "valid"
+  },
+  "accepted": true,
+  "accepted_bug": "dogfood-results/raft-fresh-v2-proof-20260809/bug_4.json",
+  "accepted_verdict": "dogfood-results/raft-fresh-v2-proof-20260809/replay-verdict-bug4.json",
+  "receipt": "dogfood-results/raft-fresh-v2-proof-20260809/proof-receipt.json"
+}

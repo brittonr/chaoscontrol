@@ -72,6 +72,9 @@ pub enum FaultSelectionError {
     #[snafu(display("same-run schedule replacement follows fault selection"))]
     ScheduleMutationAfterSelection,
 
+    #[snafu(display("counterfactual run setup state could not be preserved"))]
+    SetupStateMismatch,
+
     #[snafu(display("fault outcome transition failed: {source}"))]
     OutcomeTransition { source: FaultTransitionError },
 }
@@ -410,7 +413,13 @@ impl FaultEngine {
             .run_sequence
             .checked_add(1)
             .ok_or(FaultSelectionError::RunSequenceExhausted)?;
+        let preserve_setup_complete = self.setup_complete;
         self.oracle.begin_run();
+        if preserve_setup_complete {
+            self.oracle
+                .record_setup_complete()
+                .map_err(|_| FaultSelectionError::SetupStateMismatch)?;
+        }
         self.schedule = schedule;
         self.schedule.reset();
         self.schedule_id = self.schedule.identity();
@@ -1982,6 +1991,9 @@ mod tests {
         let attempts = engine.poll_fault_attempts(0).unwrap();
 
         assert!(engine.is_setup_complete());
+        engine
+            .validate_orchestration_snapshot(&engine.snapshot())
+            .expect("counterfactual setup state remains restorable");
         assert_eq!(attempts.len(), 1);
         assert!(matches!(
             attempts[0].source,

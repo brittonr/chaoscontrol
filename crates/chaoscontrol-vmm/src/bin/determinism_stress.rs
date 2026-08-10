@@ -231,10 +231,17 @@ fn run_single_vm(
     extra_cmdline: Option<&str>,
     hide_tsc: bool,
 ) -> VmFingerprint {
+    let schedule_journal_limit =
+        usize::try_from(max_exits).expect("the bounded exit count must fit the host address width");
+    assert!(
+        schedule_journal_limit > 0,
+        "the exit bound must be positive"
+    );
     let config = VmConfig {
         num_vcpus,
         dlog_path,
         dlog_register_interval: DLOG_REGISTER_INTERVAL,
+        smp_schedule_journal_limit: schedule_journal_limit,
         extra_cmdline: extra_cmdline.map(str::to_string),
         cpu: chaoscontrol_vmm::cpu::CpuConfig {
             hide_tsc,

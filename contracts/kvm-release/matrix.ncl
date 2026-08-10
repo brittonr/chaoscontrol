@@ -32,7 +32,7 @@ let RequiredCapabilities = ["kvm", "x86_64-linux"] in
       required_capabilities = RequiredCapabilities,
       command = {
         program = "nix",
-        args = ["build", ".#chaoscontrol", "--out-link", "%ROW_OUT%/chaoscontrol"],
+        args = ["build", ".#default", "--out-link", "%ROW_OUT%/chaoscontrol"],
       },
       limits = {
         timeout_seconds = BuildTimeoutSeconds,

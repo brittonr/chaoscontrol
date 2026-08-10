@@ -5,7 +5,7 @@
   "receipt": {
     "schema_version": 1,
     "matrix_profile": "required-kvm-release-v1",
-    "matrix_identity": "blake3:125f78da9db13489fb54c898a2ae6ea1895c4b238d1c6e7b09ade52a2b3f40e4",
+    "matrix_identity": "blake3:e0a4307cb0162b561e8aba4b031a0ee40368afc54db578604d7acca22d5ca4aa",
     "source": {
       "revision": "fixture-revision",
       "dirty": false
@@ -34,7 +34,7 @@
           "program": "nix",
           "args": [
             "build",
-            ".#chaoscontrol",
+            ".#default",
             "--out-link",
             "%ROW_OUT%/chaoscontrol"
           ]
@@ -42,11 +42,11 @@
         "executed_argv": [
           "nix",
           "build",
-          ".#chaoscontrol",
+          ".#default",
           "--out-link",
           "%ROW_OUT%/chaoscontrol"
         ],
-        "command_identity": "blake3:91b2517e4f71f1032c36497560ea7594bd4fc4325f2a9ebb2d165ff27589774e",
+        "command_identity": "blake3:246ecdbd69c4797bf33ea25eca0cf1dc587894e37e40d05f87e132d12c7a6568",
         "started_unix_seconds": 100,
         "finished_unix_seconds": 101,
         "status": "unsupported",

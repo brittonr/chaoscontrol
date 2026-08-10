@@ -20,7 +20,7 @@
       "command": {
         "args": [
           "build",
-          ".#chaoscontrol",
+          ".#default",
           "--out-link",
           "%ROW_OUT%/chaoscontrol"
         ],

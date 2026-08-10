@@ -323,7 +323,7 @@ collision is impossible.
 
 ### Contract-backed evidence
 
-Nickel contracts live under `contracts/evidence/`. Nickel owns human-authored VM run, simulator, campaign, fault-schedule, SMR workload, and eBPF capture profiles. Rust revalidates external projections and owns runtime records, outcomes, reports, receipts, execution, and replay.
+Nickel contracts live under `contracts/evidence/` and `contracts/kvm-release/`. Nickel owns human-authored VM run, simulator, campaign, fault-schedule, SMR workload, eBPF capture, and KVM release profiles. Rust revalidates external projections and owns runtime records, outcomes, reports, receipts, execution, and replay.
 
 Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
 
@@ -347,6 +347,21 @@ nix build .#checks.x86_64-linux.snapshot-replay-smoke --no-link -L
 ```
 
 It runs one bounded Raft `snapshot_replay_probe` branch. It validates all checkpoint bugs before filtered export. A Rust validator checks exact bug identity, schema-v2 verdict semantics, current snapshot format, artifact hashes, and replay linkage. Raw logs remain temporary.
+
+### Required KVM release matrix
+
+Portable CI does not establish KVM behavior. The separate KVM release lane runs the typed matrix in `contracts/kvm-release/matrix.ncl` on an admitted worker.
+
+```bash
+revision="$(git rev-parse HEAD)"
+nix run .#kvm-release-matrix -- \
+  --root . \
+  --matrix contracts/kvm-release/matrix.json \
+  --out target/kvm-release \
+  --expected-revision "$revision"
+```
+
+Every required row must pass. Missing, stale, dirty, skipped, unsupported, timed-out, failed, or tampered evidence blocks the verdict. See [the KVM release evidence guide](docs/kvm-release-evidence.md).
 
 For a single operator-facing readiness button, run:
 

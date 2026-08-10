@@ -34,7 +34,7 @@ let Registry = {
 {
   schema_version = "1",
 
-  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, and receipt-review inputs. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
+  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, KVM release-matrix, and receipt-review inputs. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
 
   families = [
     {
@@ -411,6 +411,41 @@ let Registry = {
       ],
       freshness = "Completed seeds, failures, bugs, checkpoints, and reports are validated after execution and never merged into authored profiles.",
       rationale = "Campaign reports describe observations and completion state, not reviewable pre-run intent.",
+    },
+    {
+      id = "kvm-release-matrix",
+      ownership = "nickel-authored",
+      owner = "contracts/kvm-release/profile.ncl",
+      source_paths = [
+        "contracts/kvm-release/profile.ncl",
+        "contracts/kvm-release/matrix.ncl",
+        "crates/chaoscontrol-evidence/src/kvm_release",
+        "crates/chaoscontrol-evidence/src/bin/run-kvm-release-matrix.rs",
+      ],
+      artifact_paths = [
+        "contracts/kvm-release/matrix.json",
+        "target/kvm-release/release-receipt.json",
+        "target/kvm-release/release-summary.md",
+      ],
+      validation_commands = [
+        "check-kvm-release-matrix --root .",
+        "run-kvm-release-matrix --root . --matrix contracts/kvm-release/matrix.json --dry-run",
+        "cargo test -p chaoscontrol-evidence kvm_release",
+      ],
+      fixture_coverage = [
+        "contracts/kvm-release/fixtures/valid/complete-receipt.valid.json",
+        "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl",
+        "contracts/kvm-release/fixtures/invalid/missing-row.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/stale.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/skipped.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/unsupported.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/timed-out.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/tampered.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/dirty.invalid.json",
+        "contracts/kvm-release/fixtures/invalid/overclaim.invalid.json",
+      ],
+      freshness = "The worker binds the selected source revision, matrix identity, admitted host facts, exact commands, finite limits, row outcomes, and retained BLAKE3 artifact identities in one time-bounded receipt.",
+      rationale = "Humans review the required KVM release cohort in Nickel while Rust observes the worker and classifies runtime evidence without promoting skipped or unsupported rows.",
     },
     {
       id = "raw-runtime-logs",

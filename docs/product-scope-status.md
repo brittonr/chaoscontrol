@@ -35,6 +35,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
+| `add-kvm-release-evidence-rail` | `experimental` | `chaoscontrol-evidence` | Every required KVM matrix row and the bounded release receipt must pass. |
 
 ## Roadmap by scope state
 

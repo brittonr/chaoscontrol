@@ -4,9 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+env:
+  KVM_RECEIPT_RETENTION_DAYS: 14
 
 jobs:
-  check:
+  portable-checks:
+    name: Portable checks (no KVM behavior claim)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,3 +42,50 @@ jobs:
             target/replay-readiness-check/replay-readiness-receipt.json
             target/replay-readiness-check/replay-readiness-summary.txt
             target/replay-readiness-check/replay-readiness-dashboard.html
+
+  kvm-release:
+    name: Required bounded KVM release matrix
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64, chaoscontrol-kvm]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate the matrix without KVM execution
+        run: |
+          nix develop -c cargo run -q -p chaoscontrol-evidence \
+            --bin check-kvm-release-matrix -- --root .
+          nix develop -c cargo run -q -p chaoscontrol-evidence \
+            --bin run-kvm-release-matrix -- \
+            --root . \
+            --matrix contracts/kvm-release/matrix.json \
+            --dry-run
+      - name: Run the required KVM matrix
+        run: |
+          nix develop -c cargo run -q -p chaoscontrol-evidence \
+            --bin run-kvm-release-matrix -- \
+            --root . \
+            --matrix contracts/kvm-release/matrix.json \
+            --out target/kvm-release \
+            --expected-revision "$GITHUB_SHA"
+      - name: Validate the emitted release receipt
+        run: |
+          nix develop -c cargo run -q -p chaoscontrol-evidence \
+            --bin check-kvm-release-matrix -- \
+            --root . \
+            --receipt target/kvm-release/release-receipt.json \
+            --expected-revision "$GITHUB_SHA"
+      - name: Upload the bounded KVM release receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kvm-release-receipt
+          retention-days: ${{ env.KVM_RECEIPT_RETENTION_DAYS }}
+          if-no-files-found: error
+          path: |
+            target/kvm-release/release-receipt.json
+            target/kvm-release/release-summary.md
+            target/kvm-release/*/stdout.log
+            target/kvm-release/*/stderr.log

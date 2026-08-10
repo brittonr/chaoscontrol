@@ -1,0 +1,329 @@
+{
+  "expected_revision": "fixture-revision",
+  "now_unix_seconds": 101,
+  "expected_blocker": "dirty-source",
+  "receipt": {
+    "schema_version": 1,
+    "matrix_profile": "required-kvm-release-v1",
+    "matrix_identity": "blake3:125f78da9db13489fb54c898a2ae6ea1895c4b238d1c6e7b09ade52a2b3f40e4",
+    "source": {
+      "revision": "fixture-revision",
+      "dirty": true
+    },
+    "runner_revision": "fixture-runner",
+    "worker": {
+      "architecture": "x86_64",
+      "kernel_release": "fixture-kernel",
+      "kvm_api_version": 12,
+      "capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ]
+    },
+    "started_unix_seconds": 100,
+    "finished_unix_seconds": 101,
+    "rows": [
+      {
+        "id": "build-release-binaries",
+        "kind": "cohort-binary-build",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "nix",
+          "args": [
+            "build",
+            ".#chaoscontrol",
+            "--out-link",
+            "%ROW_OUT%/chaoscontrol"
+          ]
+        },
+        "executed_argv": [
+          "nix",
+          "build",
+          ".#chaoscontrol",
+          "--out-link",
+          "%ROW_OUT%/chaoscontrol"
+        ],
+        "command_identity": "blake3:91b2517e4f71f1032c36497560ea7594bd4fc4325f2a9ebb2d165ff27589774e",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "build-raft-guest",
+        "kind": "cohort-guest-build",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "nix",
+          "args": [
+            "build",
+            ".#initrd-raft",
+            "--out-link",
+            "%ROW_OUT%/initrd-raft"
+          ]
+        },
+        "executed_argv": [
+          "nix",
+          "build",
+          ".#initrd-raft",
+          "--out-link",
+          "%ROW_OUT%/initrd-raft"
+        ],
+        "command_identity": "blake3:208aa832269fb3b1ee713827a00e73138eb5bb08194a90f4305f12fab9dc235d",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "deterministic-smp",
+        "kind": "deterministic-smp",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "cargo",
+          "args": [
+            "test",
+            "-p",
+            "chaoscontrol-vmm",
+            "--test",
+            "deterministic_smp_kvm"
+          ]
+        },
+        "executed_argv": [
+          "cargo",
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "deterministic_smp_kvm"
+        ],
+        "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "serialized-snapshot-replay",
+        "kind": "serialized-snapshot-replay",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "cargo",
+          "args": [
+            "test",
+            "-p",
+            "chaoscontrol-vmm",
+            "--test",
+            "exact_snapshot_kvm"
+          ]
+        },
+        "executed_argv": [
+          "cargo",
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "exact_snapshot_kvm"
+        ],
+        "command_identity": "blake3:0758db17baad94f711089936e5686f5e0a6e90fee0f3df0b5bc5645409d9e909",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "virtio-malformed-input",
+        "kind": "virtio-malformed-input",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "cargo",
+          "args": [
+            "test",
+            "-p",
+            "chaoscontrol-vmm",
+            "--test",
+            "virtio_kvm_smoke",
+            "--",
+            "--ignored"
+          ]
+        },
+        "executed_argv": [
+          "cargo",
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "virtio_kvm_smoke",
+          "--",
+          "--ignored"
+        ],
+        "command_identity": "blake3:a2be7bc2ccc018d2221292347c0d85a536fe3c8c6b34ca3fa1bc36cd460db7fd",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "admitted-drift",
+        "kind": "admitted-drift",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "nix",
+          "args": [
+            "run",
+            ".#vm-determinism-drift",
+            "--",
+            "--out",
+            "%ROW_OUT%/drift",
+            "--runs",
+            "2"
+          ]
+        },
+        "executed_argv": [
+          "nix",
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/drift",
+          "--runs",
+          "2"
+        ],
+        "command_identity": "blake3:4722f5f8ae34a1925544683fc3dcf81dc9fb21803d959842271814188435ab3a",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      },
+      {
+        "id": "fresh-workload-replay",
+        "kind": "fresh-workload-replay",
+        "required_capabilities": [
+          "kvm",
+          "x86_64-linux"
+        ],
+        "command": {
+          "program": "nix",
+          "args": [
+            "run",
+            ".#raft-accepted-verdict-dogfood",
+            "--",
+            "--output",
+            "%ROW_OUT%/fresh",
+            "--max-attempts",
+            "1",
+            "--start-seed",
+            "0"
+          ]
+        },
+        "executed_argv": [
+          "nix",
+          "run",
+          ".#raft-accepted-verdict-dogfood",
+          "--",
+          "--output",
+          "%ROW_OUT%/fresh",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ],
+        "command_identity": "blake3:fa364537ff1b194dc46564e542cbc8198cef636e1687487314598b9f56a57826",
+        "started_unix_seconds": 100,
+        "finished_unix_seconds": 101,
+        "status": "passed",
+        "exit_code": 0,
+        "artifacts": [
+          {
+            "path": "stdout.log",
+            "bytes": 0,
+            "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+          }
+        ],
+        "artifact_set_identity": "blake3:738620cc7c402efd47df9a3e93c87cf511c95f54260ab520666499b8ba144c98",
+        "notes": []
+      }
+    ],
+    "bounded_claim": "This receipt establishes that the exact source revision passed the required matrix on the recorded admitted worker with the recorded commands, bounds, and artifact identities.",
+    "non_claims": [
+      "The receipt does not prove worker integrity.",
+      "The receipt does not prove all-host equivalence.",
+      "The receipt does not prove universal determinism.",
+      "The receipt does not prove workload correctness.",
+      "The receipt does not prove production availability."
+    ],
+    "terminal_class": "blocked"
+  }
+}

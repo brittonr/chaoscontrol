@@ -1,0 +1,227 @@
+{
+  "bounded_claim": "This receipt establishes that the exact source revision passed the required matrix on the recorded admitted worker with the recorded commands, bounds, and artifact identities.",
+  "claims_pmu_support": false,
+  "max_receipt_age_seconds": 86400,
+  "non_claims": [
+    "The receipt does not prove worker integrity.",
+    "The receipt does not prove all-host equivalence.",
+    "The receipt does not prove universal determinism.",
+    "The receipt does not prove workload correctness.",
+    "The receipt does not prove production availability."
+  ],
+  "profile_id": "required-kvm-release-v1",
+  "required_worker_arch": "x86_64",
+  "required_worker_capabilities": [
+    "kvm",
+    "x86_64-linux"
+  ],
+  "rows": [
+    {
+      "command": {
+        "args": [
+          "build",
+          ".#chaoscontrol",
+          "--out-link",
+          "%ROW_OUT%/chaoscontrol"
+        ],
+        "program": "nix"
+      },
+      "id": "build-release-binaries",
+      "kind": "cohort-binary-build",
+      "limits": {
+        "max_artifact_bytes": 1073741824,
+        "max_artifacts": 4096,
+        "timeout_seconds": 1800
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log",
+        "chaoscontrol/**"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "build",
+          ".#initrd-raft",
+          "--out-link",
+          "%ROW_OUT%/initrd-raft"
+        ],
+        "program": "nix"
+      },
+      "id": "build-raft-guest",
+      "kind": "cohort-guest-build",
+      "limits": {
+        "max_artifact_bytes": 1073741824,
+        "max_artifacts": 4096,
+        "timeout_seconds": 1800
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log",
+        "initrd-raft/**"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "deterministic_smp_kvm"
+        ],
+        "program": "cargo"
+      },
+      "id": "deterministic-smp",
+      "kind": "deterministic-smp",
+      "limits": {
+        "max_artifact_bytes": 67108864,
+        "max_artifacts": 4096,
+        "timeout_seconds": 300
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "exact_snapshot_kvm"
+        ],
+        "program": "cargo"
+      },
+      "id": "serialized-snapshot-replay",
+      "kind": "serialized-snapshot-replay",
+      "limits": {
+        "max_artifact_bytes": 67108864,
+        "max_artifacts": 4096,
+        "timeout_seconds": 300
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "virtio_kvm_smoke",
+          "--",
+          "--ignored"
+        ],
+        "program": "cargo"
+      },
+      "id": "virtio-malformed-input",
+      "kind": "virtio-malformed-input",
+      "limits": {
+        "max_artifact_bytes": 67108864,
+        "max_artifacts": 4096,
+        "timeout_seconds": 300
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/drift",
+          "--runs",
+          "2"
+        ],
+        "program": "nix"
+      },
+      "id": "admitted-drift",
+      "kind": "admitted-drift",
+      "limits": {
+        "max_artifact_bytes": 1073741824,
+        "max_artifacts": 4096,
+        "timeout_seconds": 1800
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log",
+        "drift/**"
+      ]
+    },
+    {
+      "command": {
+        "args": [
+          "run",
+          ".#raft-accepted-verdict-dogfood",
+          "--",
+          "--output",
+          "%ROW_OUT%/fresh",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ],
+        "program": "nix"
+      },
+      "id": "fresh-workload-replay",
+      "kind": "fresh-workload-replay",
+      "limits": {
+        "max_artifact_bytes": 1073741824,
+        "max_artifacts": 4096,
+        "timeout_seconds": 3600
+      },
+      "required": true,
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "retained_artifacts": [
+        "stdout.log",
+        "stderr.log",
+        "fresh/**"
+      ]
+    }
+  ],
+  "schema_version": 1
+}

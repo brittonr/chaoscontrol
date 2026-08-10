@@ -385,6 +385,7 @@ dependencies = [
  "chaoscontrol-sim-core",
  "chaoscontrol-smr",
  "chaoscontrol-vmm",
+ "kvm-ioctls",
  "libc",
  "serde",
  "serde_json",

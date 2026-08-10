@@ -1614,6 +1614,7 @@
                   check-contract-registry .
                   check-sim-core-purity .
                   check-evidence-contracts --root .
+                  check-kvm-release-matrix --root .
                   check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json
                   check-profile-admission simulator contracts/evidence/fixtures/valid/simulator-profile.valid.json contracts/evidence/fixtures/valid/simulator-profile.projection-receipt.json
                   check-profile-admission campaign contracts/evidence/fixtures/valid/campaign-profile.valid.json contracts/evidence/fixtures/valid/campaign-profile.projection-receipt.json
@@ -2159,6 +2160,8 @@
             net-accepted-verdict-dogfood = mkApp "Run the accepted-verdict network dogfood proof rail." "${acceptedVerdictDogfood.net}/bin/net-accepted-verdict-dogfood";
             rust-workload-accepted-verdict-dogfood = mkApp "Run the accepted-verdict rust-workload dogfood proof rail." "${acceptedVerdictDogfood.rust-workload}/bin/rust-workload-accepted-verdict-dogfood";
             fresh-rust-workload-proof = mkApp "Build a Rust scaffold and run the bounded onboarding proof classification." "${freshRustWorkloadProof}/bin/fresh-rust-workload-proof";
+            check-kvm-release-matrix = mkApp "Validate the typed KVM release matrix and adversarial receipt fixtures." "${chaoscontrol}/bin/check-kvm-release-matrix";
+            kvm-release-matrix = mkApp "Run the required bounded KVM release matrix and emit one receipt." "${chaoscontrol}/bin/run-kvm-release-matrix";
             replay-readiness = mkApp "Run committed replay readiness gates and optionally one dogfood rail." "${replayReadiness}/bin/replay-readiness";
             vm-determinism-drift = mkApp "Run the bounded hide-tsc VM determinism drift gate and emit a receipt." "${vmDeterminismDrift}/bin/vm-determinism-drift";
             vm-determinism-matrix = mkApp "Run the bounded hide-tsc VM determinism matrix rail and emit receipts." "${vmDeterminismMatrix}/bin/vm-determinism-matrix";

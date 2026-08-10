@@ -27,6 +27,7 @@ pub mod in_process_simulator;
 mod json_preflight;
 pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
+pub mod kvm_release;
 mod non_null_option;
 pub mod operator_triage;
 pub mod product_scope;

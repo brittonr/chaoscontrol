@@ -20,7 +20,7 @@ This map assigns one owner to each migrated state and invariant. A core computes
 | `replay_readiness_loader` | Confined input loading and parse diagnostics | Explicit paths | Parsed in-memory facts | File reads only | Missing, malformed, and confined-path tests |
 | `replay_readiness_orchestration` | Explicit command and follow-up ordering | Checked plans and supplied command results | Execution receipts | Process execution and clock observation | Success, timeout, cancellation, and partial-result tests |
 | `replay_readiness_render` | Markdown, HTML, and summary projection from validated render models | Validated render model | Text bytes | None | Golden compatibility fixtures |
-| `replay_readiness_publication` | Exact destination and atomic publication sequence | Rendered bytes and explicit path | Publication result | Directory creation and file writes | Permission, interrupted write, and replacement tests |
+| `replay_readiness_publication` | Exact destination and bounded publication sequence | Rendered bytes and explicit path | Publication result | Directory creation and file writes | Exact-byte and invalid-destination tests |
 
 ## Dependency direction
 
@@ -31,6 +31,8 @@ pure core -> typed plan or render model -> effect shell -> observation -> pure c
 ```
 
 Core modules must not use filesystem, environment, process, clock, output, KVM, thread, or ambient mutable state APIs. Evidence renderers must not recompute eligibility. Shell modules must not mutate owned state without a checked plan.
+
+`replay_readiness_surfaces` remains the public compatibility facade. It delegates summary classification, JSON loading, command and clock effects, README rendering, and selected publication paths to the owners above. Existing public paths do not change.
 
 ## Compatibility boundary
 

@@ -1,142 +1,24 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::replay_readiness_core;
+use crate::replay_readiness_loader::load_json;
+use crate::replay_readiness_orchestration::{run_plan_command, unix_seconds};
+use crate::replay_readiness_publication::write_bytes;
+pub use crate::replay_readiness_render::{
+    render_readme_status_block, README_END_MARKER, README_START_MARKER,
+};
 use crate::{ensure, EvidenceError, EvidenceResult};
-
-pub const README_START_MARKER: &str = "<!-- replay-readiness-status:start -->";
-pub const README_END_MARKER: &str = "<!-- replay-readiness-status:end -->";
-
-/// Execute one operator-authored plan command.
-///
-/// TRUST BOUNDARY: plan commands are code. A scheduler plan file has
-/// the same trust level as a Makefile or a shell script. Plan validators
-/// check shape only; no validator restricts command content. Execute
-/// only plans written by the local operator. Never execute plans derived
-/// from receipts, artifacts, or input produced by another machine.
-///
-/// Uses `sh -c`, not a login shell, so execution does not source
-/// profile files such as `/etc/profile` or `~/.profile`.
-fn run_plan_command(command: &str) -> std::io::Result<std::process::ExitStatus> {
-    Command::new("sh").arg("-c").arg(command).status()
-}
 
 pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
     summarize_receipt(&load_json(path.as_ref())?)
 }
 
 pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
-    let command = str_field(receipt.get("command"), "receipt.command")?;
-    ensure(
-        command == "replay-readiness",
-        format!("receipt.command: expected replay-readiness, got {command:?}"),
-    )?;
-    let status = str_field(receipt.get("status"), "receipt.status")?;
-    ensure(
-        matches!(status, "passed" | "failed"),
-        format!("receipt.status: unsupported value {status:?}"),
-    )?;
-    let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
-    ensure(
-        !gates.is_empty(),
-        "receipt.static_gates: expected non-empty list",
-    )?;
-
-    let mut passed_gates = 0usize;
-    let mut failed_gates = Vec::new();
-    for (idx, gate) in gates.iter().enumerate() {
-        let name = token_field(
-            gate.get("name"),
-            &format!("receipt.static_gates[{idx}].name"),
-        )?;
-        let gate_status = str_field(
-            gate.get("status"),
-            &format!("receipt.static_gates[{idx}].status"),
-        )?;
-        match gate_status {
-            "pass" => passed_gates += 1,
-            "fail" => failed_gates.push(name.to_string()),
-            "pending" | "running" => {}
-            other => {
-                return Err(EvidenceError::new(format!(
-                    "receipt.static_gates[{idx}].status: unsupported value {other:?}"
-                )))
-            }
-        }
-    }
-
-    let dogfood = object_field(receipt.get("dogfood"), "receipt.dogfood")?;
-    let selected = optional_token(
-        dogfood.get("selected_workload"),
-        "receipt.dogfood.selected_workload",
-    )?;
-    let dogfood_status = str_field(dogfood.get("status"), "receipt.dogfood.status")?;
-    ensure(
-        matches!(dogfood_status, "skipped" | "pass" | "fail" | "running"),
-        format!("receipt.dogfood.status: unsupported value {dogfood_status:?}"),
-    )?;
-    let failed_phase = optional_token(receipt.get("failed_phase"), "receipt.failed_phase")?;
-    let exit_code = int_field(receipt.get("exit_code"), "receipt.exit_code")?;
-    let scope = str_field(receipt.get("scope"), "receipt.scope")?;
-    let scope_token = if scope.contains("bounded") && scope.contains("not universal") {
-        "bounded"
-    } else {
-        "check-scope"
-    };
-
-    let mut dogfood_label = selected
-        .map(|s| format!("{s}:{dogfood_status}"))
-        .unwrap_or_else(|| dogfood_status.to_string());
-    if let Some(summary) = dogfood.get("summary").filter(|v| !v.is_null()) {
-        object_field(Some(summary), "receipt.dogfood.summary")?;
-        let accepted = bool_field(summary.get("accepted"), "receipt.dogfood.summary.accepted")?;
-        let seed = optional_int(summary.get("seed"), "receipt.dogfood.summary.seed")?;
-        let fail_after = optional_int(
-            summary.get("snapshot_probe_fail_after"),
-            "receipt.dogfood.summary.snapshot_probe_fail_after",
-        )?;
-        let (replay_class, depth) =
-            if let Some(verdict) = summary.get("verdict").filter(|v| !v.is_null()) {
-                object_field(Some(verdict), "receipt.dogfood.summary.verdict")?;
-                (
-                    token_field(
-                        verdict.get("replay_class"),
-                        "receipt.dogfood.summary.verdict.replay_class",
-                    )?
-                    .to_string(),
-                    optional_int(
-                        verdict.get("replay_parent_depth"),
-                        "receipt.dogfood.summary.verdict.replay_parent_depth",
-                    )?,
-                )
-            } else {
-                ("none".to_string(), None)
-            };
-        dogfood_label.push_str(&format!(
-            ":accepted={}:seed={}:fail_after={}:class={}:depth={}",
-            if accepted { "true" } else { "false" },
-            seed.map(|v| v.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            fail_after
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            replay_class,
-            depth
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "none".to_string())
-        ));
-    }
-    let failed_label = failed_phase.unwrap_or("none");
-    let failed_gates_label = if failed_gates.is_empty() {
-        "none".to_string()
-    } else {
-        failed_gates.join(",")
-    };
-    Ok(format!("replay-readiness status={status} exit={exit_code} static_gates={passed_gates}/{} failed_gates={failed_gates_label} dogfood={dogfood_label} failed_phase={failed_label} scope={scope_token}", gates.len()))
+    replay_readiness_core::summarize_receipt(receipt)
 }
 
 pub fn write_dashboard_path(
@@ -146,12 +28,7 @@ pub fn write_dashboard_path(
     let receipt = load_json(receipt_path.as_ref())?;
     let summary = summarize_receipt(&receipt)?;
     let html = render_dashboard(&receipt, &summary)?;
-    let output_path = output_path.as_ref();
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(output_path, html)?;
-    Ok(())
+    write_bytes(output_path.as_ref(), html.as_bytes())
 }
 
 pub fn write_fleet_triage_index_path(
@@ -159,12 +36,7 @@ pub fn write_fleet_triage_index_path(
     output_path: impl AsRef<Path>,
 ) -> EvidenceResult<()> {
     let html = render_fleet_triage_index_path(receipt_paths)?;
-    let output_path = output_path.as_ref();
-    if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(output_path, html)?;
-    Ok(())
+    write_bytes(output_path.as_ref(), html.as_bytes())
 }
 
 pub fn render_fleet_triage_index_path(
@@ -3883,18 +3755,6 @@ fn validate_multi_hypervisor_follow_up_job(
     Ok(())
 }
 
-#[allow(unknown_lints)]
-#[allow(
-    ambient_clock,
-    reason = "receipt writer shell timestamps bounded local scheduler evidence"
-)]
-fn unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(0)
-}
-
 pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<String> {
     let status = str_field(receipt.get("status"), "receipt.status")?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
@@ -4025,10 +3885,6 @@ pub fn update_readme_status_path(
         std::fs::write(readme_path, updated)?;
     }
     Ok(summary)
-}
-
-pub fn render_readme_status_block(summary_line: &str) -> String {
-    format!("{README_START_MARKER}\n> **Replay readiness checks:** `{summary_line}`\n>\n> This status reports bounded static gate execution. Historical workload rows remain blocked until fresh admitted v2 KVM evidence exists. A passed status does not promote a workload. It is not a claim of universal determinism.\n{README_END_MARKER}")
 }
 
 pub fn replace_readme_marker_block(readme_text: &str, replacement: &str) -> EvidenceResult<String> {
@@ -4433,12 +4289,6 @@ fn render_gate_rows(gates: &[Value]) -> EvidenceResult<String> {
     Ok(rows.join("\n"))
 }
 
-fn load_json(path: &Path) -> EvidenceResult<Value> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
-    serde_json::from_str(&text).map_err(Into::into)
-}
-
 fn str_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {
     match value.and_then(Value::as_str) {
         Some(text) if !text.is_empty() => Ok(text),
@@ -4455,13 +4305,6 @@ fn token_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a 
         format!("{field}: expected whitespace-free string"),
     )?;
     Ok(text)
-}
-
-fn optional_token<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<Option<&'a str>> {
-    match value {
-        None | Some(Value::Null) => Ok(None),
-        other => token_field(other, field).map(Some),
-    }
 }
 
 fn object_field<'a>(
@@ -4483,19 +4326,6 @@ fn int_field(value: Option<&Value>, field: &str) -> EvidenceResult<i64> {
     value
         .and_then(Value::as_i64)
         .ok_or_else(|| EvidenceError::new(format!("{field}: expected integer")))
-}
-
-fn optional_int(value: Option<&Value>, field: &str) -> EvidenceResult<Option<i64>> {
-    match value {
-        None | Some(Value::Null) => Ok(None),
-        other => int_field(other, field).map(Some),
-    }
-}
-
-fn bool_field(value: Option<&Value>, field: &str) -> EvidenceResult<bool> {
-    value
-        .and_then(Value::as_bool)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected boolean")))
 }
 
 fn json_display(value: &Value) -> String {

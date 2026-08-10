@@ -66,6 +66,7 @@
             let
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isArchitectureFixture = pkgs.lib.hasPrefix "contracts/architecture-modules/fixtures/" relPath;
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
@@ -74,6 +75,7 @@
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
+            || isArchitectureFixture
             || isPropertyCoverageFixture
             || isKvmReleaseMatrix
             || isAssertionReadinessFixture
@@ -1645,6 +1647,7 @@
                   cd ${self}
                   check-contract-registry .
                   check-sim-core-purity .
+                  check-architecture-boundaries
                   check-evidence-contracts --root .
                   check-kvm-release-matrix --root .
                   check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json

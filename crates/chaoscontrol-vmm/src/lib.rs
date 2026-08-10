@@ -22,6 +22,7 @@
 
 pub mod acpi;
 pub mod controller;
+pub(crate) mod controller_core;
 pub mod cpu;
 pub mod determinism_gate;
 pub mod devices;
@@ -32,5 +33,7 @@ pub mod registers;
 pub mod scheduler;
 pub mod sim_adapter;
 pub mod snapshot;
+pub(crate) mod unsafe_owner;
 pub mod verified;
 pub mod vm;
+pub(crate) mod vm_core;

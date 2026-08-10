@@ -4,6 +4,14 @@
 //! in a single deterministic simulation, handling fault injection, network
 //! routing, and deterministic scheduling.
 
+pub use crate::controller_core::VmStatus;
+use crate::controller_core::{
+    all_setup_complete, checked_usize, checked_usize_u64, core_vm_status,
+    device_disappeared_application_error, fault_vm_status, internal_application_error,
+    next_operation, non_runnable_application_error, plan_completion,
+    target_state_application_error, u32_targets_to_usize, validate_process_snapshot_effect,
+    CompletionFacts, FaultApplicationError,
+};
 use crate::scheduler::core::ScheduleTrace;
 use crate::scheduler::ScheduleVariant;
 use crate::sim_adapter::KvmVcpuExecutor;
@@ -13,13 +21,11 @@ use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::oracle::OracleReport;
 use chaoscontrol_fault::outcomes::{
     checked_ns_to_tsc_delta, plan_fault_application, preflight_fault_application_events_with_limit,
-    preflight_fault_observation_events_with_limit, validate_pending_fault_effect,
-    validate_pending_fault_observations, FaultApplicationFailureDisposition,
-    FaultApplicationFailureReason, FaultApplicationPolicy, FaultAttempt, FaultAttemptId,
-    FaultAuthoritativeStage, FaultMechanism, FaultObservation, FaultObservationEffect,
-    FaultObservationSubsystem, FaultOutcomeLedger, FaultPlan, FaultPlanEffect, FaultPlanningFacts,
-    FaultStageEvent, FaultStageKind, FaultTransitionError, FaultVmStatus, VmFaultFacts,
-    MAX_FAULT_OUTCOME_EVENTS,
+    preflight_fault_observation_events_with_limit, validate_pending_fault_observations,
+    FaultApplicationPolicy, FaultAttempt, FaultAttemptId, FaultAuthoritativeStage, FaultMechanism,
+    FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultPlan,
+    FaultPlanEffect, FaultPlanningFacts, FaultStageEvent, FaultStageKind, FaultTransitionError,
+    VmFaultFacts, MAX_FAULT_OUTCOME_EVENTS,
 };
 use chaoscontrol_fault::report_merge::{merge_oracle_reports, rejected_merge_report};
 use chaoscontrol_sim_core::fault::{EngineConfig, FaultEngine, FaultSchedule};
@@ -62,17 +68,6 @@ fn route_network_packet(
     network
         .try_send_packet(from, to, packet, current_tick)
         .map_err(|reason| VmError::NetworkPacketNonRunnable { from, to, reason })
-}
-
-fn all_setup_complete(statuses: impl Iterator<Item = bool>) -> bool {
-    let mut saw_vm = false;
-    for status in statuses {
-        saw_vm = true;
-        if !status {
-            return false;
-        }
-    }
-    saw_vm
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -172,93 +167,12 @@ pub struct VmSlot {
     pub process_fault_attempt: Option<FaultAttemptId>,
 }
 
-/// Current status of a VM.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum VmStatus {
-    /// VM is running normally.
-    Running,
-    /// VM is paused (ProcessPause fault active), will auto-resume.
-    Paused,
-    /// VM has crashed because a ProcessKill effect was applied.
-    Crashed,
-    /// Crashed VM will restart after this simulation tick.
-    Restarting { restart_at_tick: u64 },
-    /// Paused VM will resume (without restore) at this tick.
-    Resuming { resume_at_tick: u64 },
-}
-
 //  Simulation Controller
 // ═══════════════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FaultApplicationError {
-    reason: FaultApplicationFailureReason,
-    disposition: FaultApplicationFailureDisposition,
-}
-
-fn fault_vm_status(status: VmStatus) -> FaultVmStatus {
-    match status {
-        VmStatus::Running => FaultVmStatus::Running,
-        VmStatus::Paused => FaultVmStatus::Paused,
-        VmStatus::Crashed => FaultVmStatus::Crashed,
-        VmStatus::Restarting { .. } => FaultVmStatus::Restarting,
-        VmStatus::Resuming { .. } => FaultVmStatus::Resuming,
-    }
-}
-
-fn core_vm_status(status: VmStatus) -> CoreVmStatus {
-    match status {
-        VmStatus::Running => CoreVmStatus::Running,
-        VmStatus::Paused => CoreVmStatus::Paused,
-        VmStatus::Crashed => CoreVmStatus::Crashed,
-        VmStatus::Restarting { .. } => CoreVmStatus::Restarting,
-        VmStatus::Resuming { .. } => CoreVmStatus::Resuming,
-    }
-}
 
 fn fault_transition_vm_error(error: FaultTransitionError) -> VmError {
     VmError::Snapshot {
         message: format!("fault outcome transition failed: {error}"),
-    }
-}
-
-fn checked_usize(value: u32) -> Result<usize, FaultApplicationError> {
-    usize::try_from(value).map_err(|_| internal_application_error())
-}
-
-fn checked_usize_u64(value: u64) -> Result<usize, FaultApplicationError> {
-    usize::try_from(value).map_err(|_| internal_application_error())
-}
-
-fn u32_targets_to_usize(values: &[u32]) -> Result<Vec<usize>, FaultApplicationError> {
-    values.iter().copied().map(checked_usize).collect()
-}
-
-fn internal_application_error() -> FaultApplicationError {
-    FaultApplicationError {
-        reason: FaultApplicationFailureReason::InternalInvariant,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
-    }
-}
-
-fn target_state_application_error() -> FaultApplicationError {
-    FaultApplicationError {
-        reason: FaultApplicationFailureReason::TargetStateChanged,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
-    }
-}
-
-fn device_disappeared_application_error() -> FaultApplicationError {
-    FaultApplicationError {
-        reason: FaultApplicationFailureReason::DeviceDisappeared,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
-    }
-}
-
-fn non_runnable_application_error() -> FaultApplicationError {
-    FaultApplicationError {
-        reason: FaultApplicationFailureReason::BackendRejected,
-        disposition: FaultApplicationFailureDisposition::NonRunnable,
     }
 }
 
@@ -306,56 +220,6 @@ pub struct SimulationController {
     round_poison: Option<ControllerRoundPoison>,
 }
 
-fn validate_process_snapshot_effect(
-    ledger: &FaultOutcomeLedger,
-    target: u32,
-    status: VmStatus,
-    attempt_id: Option<FaultAttemptId>,
-    has_pending_observation: bool,
-) -> Result<(), FaultTransitionError> {
-    let effect = match (status, attempt_id) {
-        (VmStatus::Crashed, Some(attempt_id)) => {
-            Some((attempt_id, FaultPlanEffect::ProcessKill { target }))
-        }
-        (VmStatus::Restarting { restart_at_tick }, Some(attempt_id)) => Some((
-            attempt_id,
-            FaultPlanEffect::ProcessRestart {
-                target,
-                restart_at_tick,
-            },
-        )),
-        (VmStatus::Resuming { resume_at_tick }, Some(attempt_id)) => Some((
-            attempt_id,
-            FaultPlanEffect::ProcessPause {
-                target,
-                resume_at_tick,
-            },
-        )),
-        (VmStatus::Running | VmStatus::Paused, Some(attempt_id)) if has_pending_observation => {
-            let state = ledger
-                .attempts
-                .get(&attempt_id)
-                .ok_or(FaultTransitionError::UnknownAttempt)?;
-            match state.applicable_effect.as_ref() {
-                Some(FaultPlanEffect::ProcessRestart {
-                    target: effect_target,
-                    ..
-                }) if *effect_target == target => None,
-                _ => return Err(FaultTransitionError::SnapshotPendingStateMismatch),
-            }
-        }
-        (VmStatus::Restarting { .. } | VmStatus::Resuming { .. }, None)
-        | (VmStatus::Running | VmStatus::Paused, Some(_)) => {
-            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
-        }
-        (VmStatus::Running | VmStatus::Paused | VmStatus::Crashed, None) => None,
-    };
-    if let Some((attempt_id, effect)) = effect {
-        validate_pending_fault_effect(ledger, attempt_id, &effect)?;
-    }
-    Ok(())
-}
-
 impl SimulationController {
     fn controller_round_poison_error(&self) -> Option<VmError> {
         self.round_poison
@@ -397,11 +261,19 @@ impl SimulationController {
         mutation_started: bool,
         result: Result<T, VmError>,
     ) -> Result<T, VmError> {
-        if mutation_started {
+        let plan = plan_completion(CompletionFacts {
+            mutation_started,
+            operation_failed: result.is_err(),
+            poison_already_latched: self.round_poison.is_some(),
+        });
+        if plan.latch_first_failure {
             if let Err(error) = &result {
                 self.latch_round_failure_at(round, starting_tick, error);
+            } else {
+                unreachable!("failed completion plan needs an error");
             }
         }
+        debug_assert!(plan.return_original_result);
         result
     }
 
@@ -417,7 +289,7 @@ impl SimulationController {
                 stage: poison.stage,
                 detail: format!("VM {vm_index}: {}", poison.detail),
             };
-            let round = self.tick.saturating_add(1);
+            let round = next_operation(self.tick);
             self.latch_round_failure_at(round, self.tick, &error);
             return self.ensure_controller_healthy();
         }
@@ -2746,7 +2618,10 @@ mod tests {
     use crate::devices::block::DeterministicBlock;
     use crate::devices::virtio_block::VirtioBlock;
     use chaoscontrol_fault::faults::{FaultCategory, FaultVariant, GpRegister};
-    use chaoscontrol_fault::outcomes::transition_fault_outcome;
+    use chaoscontrol_fault::outcomes::{
+        transition_fault_outcome, FaultApplicationFailureDisposition,
+        FaultApplicationFailureReason, FaultOutcomeLedger,
+    };
     use chaoscontrol_fault::schedule::FaultScheduleBuilder;
 
     #[test]

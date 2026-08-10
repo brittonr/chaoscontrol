@@ -59,29 +59,13 @@ use linux_loader::configurator::{BootConfigurator, BootParams};
 use linux_loader::loader::bootparam::boot_params;
 use linux_loader::loader::elf::Elf;
 
+use crate::unsafe_owner::SendTimerId;
+use crate::vm_core::{
+    capture_serial_bounded, hlt_snapshot_is_valid, plan_poison, plan_teardown,
+    plan_vcpu_construction, sanitize_serial_for_terminal, serial_snapshot_fits,
+    validate_snapshot_count,
+};
 use chaoscontrol_fault::faults::GpRegister;
-
-/// Wrapper for `libc::timer_t` to make it `Send`.
-///
-/// `timer_t` is `*mut c_void` which is `!Send`. The POSIX timer is
-/// only used from the thread that created it (via `init_thread_timer`),
-/// and ownership transfers between threads happen only when the
-/// controller moves between the pool and scoped thread spawns.
-struct SendTimerId(libc::timer_t);
-
-impl Drop for SendTimerId {
-    fn drop(&mut self) {
-        // SAFETY: the wrapper uniquely owns a timer returned by `timer_create`.
-        unsafe {
-            libc::timer_delete(self.0);
-        }
-    }
-}
-
-// SAFETY: The timer is created per-thread and only accessed from the
-// owning thread. Transfer between threads is guarded by the scoped
-// thread join (controller moves into thread, then back out).
-unsafe impl Send for SendTimerId {}
 
 /// Read a general-purpose register from KVM regs.
 fn gp_register_get(regs: &kvm_regs, reg: GpRegister) -> u64 {
@@ -614,72 +598,6 @@ impl vm_superio::Trigger for SerialTrigger {
     }
 }
 
-/// Maximum bytes retained by the serial capture buffer.
-///
-/// The guest controls serial output. Without a cap, a guest that prints
-/// in a loop grows host memory without limit. 4 MiB keeps ample boot and
-/// debug context while bounding worst-case retention per VM.
-const MAX_SERIAL_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
-
-/// Bytes retained after an overflow drain.
-///
-/// Draining to half capacity on overflow amortizes the front-drain cost:
-/// one O(cap) drain per `SERIAL_CAPTURE_RETAINED_BYTES` incoming bytes
-/// instead of one drain per write.
-const SERIAL_CAPTURE_RETAINED_BYTES: usize = MAX_SERIAL_CAPTURE_BYTES / 2;
-
-/// Append `incoming` to `buf`, retaining at most `MAX_SERIAL_CAPTURE_BYTES`
-/// of the most recent output. Returns the number of oldest bytes dropped.
-///
-/// Pure core of [`CapturingWriter`]: no I/O, no locks, no clocks.
-fn capture_serial_bounded(buf: &mut Vec<u8>, incoming: &[u8]) -> usize {
-    if incoming.len() >= MAX_SERIAL_CAPTURE_BYTES {
-        let dropped = buf.len() + (incoming.len() - MAX_SERIAL_CAPTURE_BYTES);
-        buf.clear();
-        buf.extend_from_slice(&incoming[incoming.len() - MAX_SERIAL_CAPTURE_BYTES..]);
-        return dropped;
-    }
-    let mut dropped = 0;
-    if buf.len() + incoming.len() > MAX_SERIAL_CAPTURE_BYTES {
-        // Drop the oldest bytes so the append fits. Retain at most
-        // SERIAL_CAPTURE_RETAINED_BYTES to amortize the drain cost.
-        let room_target = MAX_SERIAL_CAPTURE_BYTES - incoming.len();
-        let target = buf
-            .len()
-            .min(SERIAL_CAPTURE_RETAINED_BYTES)
-            .min(room_target);
-        dropped = buf.len() - target;
-        buf.drain(..dropped);
-    }
-    buf.extend_from_slice(incoming);
-    debug_assert!(buf.len() <= MAX_SERIAL_CAPTURE_BYTES);
-    dropped
-}
-
-/// Placeholder byte for terminal-control bytes in sanitized output.
-const SERIAL_SANITIZE_REPLACEMENT: u8 = b'.';
-
-/// Replace terminal-control bytes with a placeholder.
-///
-/// The guest controls serial output. Raw guest bytes can carry ANSI
-/// escape sequences that rewrite the operator's terminal or trigger
-/// terminal-emulator bugs. Newline, carriage return, and tab pass
-/// through. Every other C0 control byte (ESC included) and DEL become
-/// [`SERIAL_SANITIZE_REPLACEMENT`]. Bytes 0x80..=0xFF pass through so
-/// UTF-8 text stays intact.
-///
-/// Pure core of the [`CapturingWriter`] stdout path: no I/O.
-fn sanitize_serial_for_terminal(bytes: &[u8]) -> Vec<u8> {
-    bytes
-        .iter()
-        .map(|&b| match b {
-            b'\n' | b'\r' | b'\t' => b,
-            0x00..=0x1F | 0x7F => SERIAL_SANITIZE_REPLACEMENT,
-            _ => b,
-        })
-        .collect()
-}
-
 /// A writer that outputs to stdout AND captures bytes in a shared buffer.
 ///
 /// Used as the output sink for the serial port so that serial output is
@@ -1071,14 +989,13 @@ impl DeterministicVm {
 
         // Create vCPUs AFTER irqchip (so each gets an in-kernel LAPIC).
         // Only one vCPU runs at a time — deterministic serialized scheduling.
-        let num_vcpus = config.num_vcpus.max(1);
-        if num_vcpus > MAX_SCHEDULE_VCPUS {
-            return Err(ScheduleError::TooManyVcpus {
-                found: num_vcpus,
-                limit: MAX_SCHEDULE_VCPUS,
-            }
-            .into());
-        }
+        let num_vcpus =
+            plan_vcpu_construction(config.num_vcpus, MAX_SCHEDULE_VCPUS).map_err(|error| {
+                ScheduleError::TooManyVcpus {
+                    found: error.found,
+                    limit: error.limit,
+                }
+            })?;
 
         let cpuid = cpu::filter_cpuid(&kvm, &config.cpu)?;
         let mut vcpus = Vec::with_capacity(num_vcpus);
@@ -2879,12 +2796,12 @@ impl DeterministicVm {
             .map_err(|error| VmError::Snapshot {
                 message: format!("snapshot completeness preflight failed: {error:?}"),
             })?;
-        if snapshot.vcpu_snapshots.len() != self.vcpus.len() {
+        if let Err((snapshot_count, current_count)) =
+            validate_snapshot_count(snapshot.vcpu_snapshots.len(), self.vcpus.len())
+        {
             return Err(VmError::Snapshot {
                 message: format!(
-                    "snapshot vCPU count {} differs from VM count {}",
-                    snapshot.vcpu_snapshots.len(),
-                    self.vcpus.len()
+                    "snapshot vCPU count {snapshot_count} differs from VM count {current_count}"
                 ),
             });
         }
@@ -2899,17 +2816,17 @@ impl DeterministicVm {
             .memory
             .validate_for_guest_size(self.memory.size())
             .map_err(|message| VmError::Snapshot { message })?;
-        if snapshot.serial_state.in_buffer.len() > SERIAL_FIFO_CAPACITY {
+        if !serial_snapshot_fits(snapshot.serial_state.in_buffer.len(), SERIAL_FIFO_CAPACITY) {
             return Err(VmError::Snapshot {
                 message: "snapshot serial input exceeds the UART FIFO capacity".to_string(),
             });
         }
-        if snapshot.virtio_snapshots.len() != self.virtio_devices.len() {
+        if let Err((snapshot_count, current_count)) =
+            validate_snapshot_count(snapshot.virtio_snapshots.len(), self.virtio_devices.len())
+        {
             return Err(VmError::Snapshot {
                 message: format!(
-                    "snapshot virtio count {} differs from VM count {}",
-                    snapshot.virtio_snapshots.len(),
-                    self.virtio_devices.len()
+                    "snapshot virtio count {snapshot_count} differs from VM count {current_count}"
                 ),
             });
         }
@@ -2948,13 +2865,11 @@ impl DeterministicVm {
         self.validate_virtio_snapshot(snapshot, &snapshot_memory)?;
         self.scheduler
             .validate_snapshot(&snapshot.scheduler_snapshot)?;
-        if snapshot.hlt_latched_vcpus.len() != self.vcpus.len()
-            || snapshot
-                .hlt_latched_vcpus
-                .iter()
-                .zip(&snapshot.scheduler_snapshot.state.runnable_vcpus)
-                .any(|(latched, runnable)| *latched && *runnable)
-        {
+        if !hlt_snapshot_is_valid(
+            &snapshot.hlt_latched_vcpus,
+            &snapshot.scheduler_snapshot.state.runnable_vcpus,
+            self.vcpus.len(),
+        ) {
             return Err(VmError::Snapshot {
                 message: "snapshot HLT latches conflict with scheduler state".to_string(),
             });
@@ -3351,8 +3266,12 @@ impl DeterministicVm {
         debug_assert!(self.vcpus.len() > 1);
         debug_assert!(reservation.is_some() || self.scheduler.reservation_outstanding());
         debug_assert!(self.scheduler.reservation_outstanding());
+        let plan = plan_poison();
         let _consumed_reservation_token = reservation;
-        self.pending_schedule_reservation = None;
+        if plan.clear_pending_reservation {
+            self.pending_schedule_reservation = None;
+        }
+        debug_assert!(plan.latch_permanent_poison);
         self.latch_schedule_execution_poison(stage, detail)
     }
 
@@ -3361,7 +3280,11 @@ impl DeterministicVm {
         stage: SchedulePoisonStage,
         detail: impl Into<String>,
     ) -> VmError {
-        self.pending_schedule_reservation = None;
+        let plan = plan_poison();
+        if plan.clear_pending_reservation {
+            self.pending_schedule_reservation = None;
+        }
+        debug_assert!(plan.latch_permanent_poison);
         self.latch_schedule_execution_poison(stage, detail)
     }
 
@@ -3575,9 +3498,9 @@ impl DeterministicVm {
                     tv_nsec: if us > 0 { us * 1000 } else { 0 },
                 },
             };
-            // SAFETY: tid.0 is a valid POSIX timer created in init_thread_timer().
+            // SAFETY: the explicit owner holds a valid timer_create result.
             unsafe {
-                libc::timer_settime(tid.0, 0, &ts, std::ptr::null_mut());
+                libc::timer_settime(tid.raw(), 0, &ts, std::ptr::null_mut());
             }
             return;
         }
@@ -3618,7 +3541,7 @@ impl DeterministicVm {
                 let mut timer_id: libc::timer_t = std::ptr::null_mut();
                 let result = libc::timer_create(libc::CLOCK_MONOTONIC, &mut event, &mut timer_id);
                 if result == 0 {
-                    self.thread_timer = Some(SendTimerId(timer_id));
+                    self.thread_timer = Some(SendTimerId::from_created(timer_id));
                 } else {
                     log::warn!(
                         "timer_create failed (errno={}); single-vCPU watchdog uses ITIMER_REAL",
@@ -4718,14 +4641,13 @@ impl DeterministicVm {
 
 impl Drop for DeterministicVm {
     fn drop(&mut self) {
-        // Disarm the single-vCPU watchdog before this VM is destroyed.
-        self.disarm_preemption_timer();
-        // Destroy per-thread POSIX timer if created.
-        if let Some(tid) = self.thread_timer.take() {
-            // SAFETY: tid.0 was created by timer_create in init_thread_timer.
-            unsafe {
-                libc::timer_delete(tid.0);
-            }
+        let plan = plan_teardown(self.thread_timer.is_some());
+        if plan.disarm_watchdog {
+            self.disarm_preemption_timer();
+        }
+        if plan.release_thread_timer {
+            // Taking the unique owner invokes exactly one timer_delete in its Drop.
+            drop(self.thread_timer.take());
         }
     }
 }
@@ -4734,6 +4656,7 @@ impl Drop for DeterministicVm {
 mod tests {
     use super::*;
     use crate::devices::virtio_types::VirtioFailure;
+    use crate::vm_core::MAX_SERIAL_CAPTURE_BYTES;
 
     #[test]
     fn serial_capture_small_writes_accumulate() {

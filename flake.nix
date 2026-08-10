@@ -1647,7 +1647,7 @@
                   cd ${self}
                   check-contract-registry .
                   check-sim-core-purity .
-                  check-architecture-boundaries
+                  check-architecture-boundaries .
                   check-evidence-contracts --root .
                   check-kvm-release-matrix --root .
                   check-profile-admission run contracts/evidence/fixtures/valid/run-profile.valid.json contracts/evidence/fixtures/valid/run-profile.projection-receipt.json

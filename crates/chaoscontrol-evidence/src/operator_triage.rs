@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::replay_readiness_surfaces::{sample_replay_readiness_receipt, summarize_receipt};
+use crate::replay_readiness_core::summarize_receipt;
+use crate::replay_readiness_surfaces::sample_replay_readiness_receipt;
 use crate::{
     ensure, AcceptedVerdictSummary, AcceptedWorkloadProof, AcceptedWorkloadProofs, BugRecord,
     EvidenceError, EvidenceResult, ReplayVerdict, REQUIRED_REPLAY_CLASS,

@@ -33,10 +33,29 @@ The migrated VMM surface has one manual unsafe trait implementation:
 crates/chaoscontrol-vmm/src/vm.rs: unsafe impl Send for SendTimerId
 ```
 
-`SendTimerId` owns only a POSIX timer identifier. The controller transfers it into a scoped timer thread and joins that thread before it reuses or destroys the timer. The migration must keep creation, transfer, cancellation, join, and deletion under one explicit owner.
+`SendTimerId` owns only a POSIX timer identifier. The controller transfers it into a scoped timer thread and joins that thread before it reuses or destroys the timer. After migration, `crates/chaoscontrol-vmm/src/unsafe_owner.rs` is the explicit owner of transfer and deletion.
 
 The SDK has separate manual `Send` and `Sync` implementations. They are outside this migration and do not transfer authority to the VMM modules.
 
 ## Baseline claim
 
 This record establishes only observed pre-migration tests, source shape, and public compatibility surfaces. It does not prove safety, behavior completeness, or absence of defects.
+
+## Post-migration comparison
+
+The migration moved owned logic into `vm_core`, `controller_core`, the replay-readiness owner modules, and `unsafe_owner`.
+
+| Former shell | Rust lines after migration | Code lines after migration | Code-line reduction |
+| --- | ---: | ---: | ---: |
+| `vm.rs` | 4,849 | 4,069 | 30 |
+| `controller.rs` | 4,856 | 4,224 | 106 |
+| `replay_readiness_surfaces.rs` | 4,369 | 4,242 | 148 |
+
+Post-migration focused results:
+
+- VMM library: 486 passed, 9 ignored.
+- Evidence library: 113 passed.
+- Architecture boundary checker: 4 pure cores passed; `unsafe_owner.rs` was the only manual unsafe-trait owner.
+- Focused Clippy passed with warnings denied.
+
+The line counts show ownership movement only. They do not measure complexity, safety, or correctness.

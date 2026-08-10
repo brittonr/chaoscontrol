@@ -14,11 +14,10 @@ const VMM_SOURCE_PATH: &str = "crates/chaoscontrol-vmm/src";
 const UNSAFE_OWNER_FILE: &str = "unsafe_owner.rs";
 
 fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("evidence crate must be under repository crates directory")
-        .to_path_buf()
+    std::env::args_os()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn load_source(root: &Path, relative_path: &str) -> Result<String, String> {

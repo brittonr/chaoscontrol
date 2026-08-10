@@ -22,3 +22,23 @@ pub(crate) fn unix_seconds() -> u64 {
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trusted_command_success_is_observed() {
+        let status = run_plan_command("exit 0").expect("execute successful command");
+        assert!(status.success());
+    }
+
+    #[test]
+    fn trusted_command_failure_is_not_promoted() {
+        const EXPECTED_FAILURE_CODE: i32 = 7;
+        const FAILURE_COMMAND: &str = "exit 7";
+        let status = run_plan_command(FAILURE_COMMAND).expect("execute failed command");
+        assert!(!status.success());
+        assert_eq!(status.code(), Some(EXPECTED_FAILURE_CODE));
+    }
+}

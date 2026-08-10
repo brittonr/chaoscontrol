@@ -56,11 +56,11 @@ pub(crate) fn hlt_snapshot_is_valid(
     current_vcpu_count: usize,
 ) -> bool {
     let count_matches = latches.len() == current_vcpu_count;
-    let no_conflict = latches
+    let latches_compatible = latches
         .iter()
         .zip(runnable_vcpus)
         .all(|(latched, runnable)| !*latched || !*runnable);
-    count_matches && no_conflict
+    count_matches && latches_compatible
 }
 
 /// Checked mutation plan after exact schedule evidence can no longer be proved.

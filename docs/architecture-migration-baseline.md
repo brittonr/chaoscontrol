@@ -56,6 +56,9 @@ Post-migration focused results:
 - VMM library: 486 passed, 9 ignored.
 - Evidence library: 113 passed.
 - Architecture boundary checker: 4 pure cores passed; `unsafe_owner.rs` was the only manual unsafe-trait owner.
-- Focused Clippy passed with warnings denied.
+- Focused and workspace Clippy passed with warnings denied.
+- Workspace tests, including admitted KVM scheduling and snapshot tests, passed.
+- The focused Nix evidence-contract and Tiger Style checks passed.
+- Full `nix flake check -L` reached the unrelated SpaceWasm rail and stopped on its pinned Mantle manifest mismatch. The same focused SpaceWasm check fails on unchanged `origin/main` with expected `4ff6a779...` and actual `39e4790a...`.
 
 The line counts show ownership movement only. They do not measure complexity, safety, or correctness.

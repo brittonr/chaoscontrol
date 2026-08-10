@@ -4646,8 +4646,9 @@ impl Drop for DeterministicVm {
             self.disarm_preemption_timer();
         }
         if plan.release_thread_timer {
-            // Taking the unique owner invokes exactly one timer_delete in its Drop.
-            drop(self.thread_timer.take());
+            // Taking the unique owner invokes exactly one timer_delete at scope exit.
+            let released_timer = self.thread_timer.take();
+            debug_assert!(released_timer.is_some());
         }
     }
 }

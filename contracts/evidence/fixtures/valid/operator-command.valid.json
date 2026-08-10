@@ -1,0 +1,36 @@
+{
+  "accepted_exit_codes": [
+    0
+  ],
+  "args": [
+    "--receipt",
+    "target/replay-readiness.json"
+  ],
+  "environment": {
+    "entries": [],
+    "mode": "clear"
+  },
+  "evidence_eligible": true,
+  "executable": {
+    "blake3": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "maximum_bytes": 16777216,
+    "path": "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-chaoscontrol/bin/replay-readiness"
+  },
+  "limits": {
+    "poll_interval_ms": 10,
+    "stderr_max_bytes": 1048576,
+    "stdin_max_bytes": 1024,
+    "stdout_max_bytes": 1048576,
+    "teardown_timeout_ms": 1000,
+    "timeout_ms": 30000
+  },
+  "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+  "reject_stderr_truncation": true,
+  "reject_stdout_truncation": true,
+  "schema": "chaoscontrol.typed-command-plan.v1",
+  "stdin": {
+    "mode": "null"
+  },
+  "termination_scope": "process-group",
+  "working_directory": "."
+}

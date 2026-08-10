@@ -195,12 +195,14 @@
     {
       "boundary": "Typed direct process requests with ChaosControl-owned authorization and evidence.",
       "documentation_targets": [
-        "docs/product-scope-status.md"
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/typed-operator-commands.md"
       ],
       "evidence": {
         "id": "bounded-exec-command-parity",
-        "source": ".cairn/changes/replace-free-form-operator-commands/",
-        "state": "missing"
+        "source": "docs/typed-operator-commands.md",
+        "state": "passed"
       },
       "id": "typed-operator-commands",
       "name": "Typed operator commands",
@@ -209,8 +211,8 @@
         "No executable trust claim."
       ],
       "owner": "chaoscontrol-evidence",
-      "state": "experimental",
-      "status_label": "experimental-typed-command-migration"
+      "state": "supported",
+      "status_label": "supported-bounded-direct-execution"
     },
     {
       "boundary": "Product policy and structured automation move to focused Rust owners.",
@@ -399,7 +401,7 @@
         "No executable trust claim."
       ],
       "owner": "chaoscontrol-evidence",
-      "target_state": "experimental"
+      "target_state": "supported"
     },
     {
       "change": "replace-python-product-automation",

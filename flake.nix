@@ -1778,133 +1778,18 @@
                   replay-readiness-scheduler-receipt --check "$out/scheduler-receipt.json" > "$out/scheduler-receipt-summary.txt"
                   in-process-simulator-receipt --sample --output "$out/in-process-simulator-receipt.json" > "$out/in-process-simulator-summary.txt"
                   in-process-simulator-receipt --check "$out/in-process-simulator-receipt.json" >> "$out/in-process-simulator-summary.txt"
-                  cat > "$out/scheduler-execution-plan.json" <<EOF
-                  {
-                    "schema_version": 1,
-                    "command": "replay-readiness-scheduler-receipt",
-                    "status": "planned",
-                    "generated_at": "2026-05-11T00:00:00Z",
-                    "scope": "bounded local replay run manifest; not a hosted service, not a fleet-scale scheduler, not a shared queue, and not product-parity evidence",
-                    "raw_log_scraping": false,
-                    "source_decision_receipt": "$out/decision-receipt.json",
-                    "schedule": { "mode": "manual-batch", "max_runs": 2, "concurrency": 1 },
-                    "run_plan": [
-                      {
-                        "run_id": "local-run-static-0001",
-                        "workload": "static-readiness",
-                        "command": "replay-readiness --receipt '$out/scheduled-run-1.json'",
-                        "receipt_path": "$out/scheduled-run-1.json",
-                        "decision_policy": "record-local-decision"
-                      },
-                      {
-                        "run_id": "local-run-static-0002",
-                        "workload": "static-readiness",
-                        "command": "replay-readiness --receipt '$out/scheduled-run-2.json'",
-                        "receipt_path": "$out/scheduled-run-2.json",
-                        "decision_policy": "record-local-decision"
-                      }
-                    ],
-                    "anti_claims": [
-                      "This is not a hosted service.",
-                      "This is not a fleet-scale scheduler and not a shared queue.",
-                      "This scheduler receipt uses no raw-log scraping and does not prove product parity."
-                    ]
-                  }
-                  EOF
+                  replay-readiness-scheduler-receipt \
+                    --materialize-ci-plans "$out" \
+                    --replay-readiness "$(command -v replay-readiness)"
                   replay-readiness-scheduler-receipt --run-plan "$out/scheduler-execution-plan.json" --output "$out/scheduler-execution-receipt.json" > "$out/scheduler-execution-summary.txt"
                   replay-readiness-scheduler-receipt --check-execution "$out/scheduler-execution-receipt.json" >> "$out/scheduler-execution-summary.txt"
-                  cat > "$out/fleet-scheduler-plan.json" <<EOF
-                  {
-                    "schema_version": 1,
-                    "queue": {
-                      "queue_id": "fleet-queue-local-check",
-                      "lease_timeout_seconds": 900,
-                      "max_concurrency": 2,
-                      "state_path": "$out/fleet-scheduler-state.json",
-                      "entries": [
-                        {"queue_entry_id": "queue-static-0001", "run_id": "fleet-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-1.json'", "receipt_path": "$out/fleet-scheduled-run-1.json"},
-                        {"queue_entry_id": "queue-static-0002", "run_id": "fleet-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/fleet-scheduled-run-2.json'", "receipt_path": "$out/fleet-scheduled-run-2.json"}
-                      ]
-                    },
-                    "workers": [{"worker_id": "worker-a"}, {"worker_id": "worker-b"}],
-                    "operator_decisions": ["$out/decision-receipt.json"]
-                  }
-                  EOF
                   replay-readiness-scheduler-receipt --run-fleet-plan "$out/fleet-scheduler-plan.json" --output "$out/fleet-scheduler-receipt.json" > "$out/fleet-scheduler-summary.txt"
                   replay-readiness-scheduler-receipt --check-fleet "$out/fleet-scheduler-receipt.json" >> "$out/fleet-scheduler-summary.txt"
-                  cat > "$out/local-multi-hypervisor-campaign-plan.json" <<EOF
-                  {
-                    "schema_version": 1,
-                    "campaign_id": "local-multi-hypervisor-check",
-                    "max_hypervisors": 2,
-                    "state_path": "$out/local-multi-hypervisor-campaign-state.json",
-                    "artifact_index_path": "$out/local-multi-hypervisor-artifact-index.json",
-                    "follow_up_policy": {"enabled": false, "reproduce": false, "minimize": false},
-                    "hypervisors": [
-                      {"hypervisor_worker_id": "local-hv-a", "node_id": "local-node-a", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "$out/local-hv-a"},
-                      {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "$out/local-hv-b"}
-                    ],
-                    "queue": {
-                      "entries": [
-                        {"queue_entry_id": "mhq-static-0001", "run_id": "mh-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/local-multi-hypervisor-run-1.json'", "receipt_path": "$out/local-multi-hypervisor-run-1.json"},
-                        {"queue_entry_id": "mhq-static-0002", "run_id": "mh-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/local-multi-hypervisor-run-2.json'", "receipt_path": "$out/local-multi-hypervisor-run-2.json"}
-                      ]
-                    },
-                    "operator_decisions": ["$out/decision-receipt.json"]
-                  }
-                  EOF
                   replay-readiness-scheduler-receipt --run-multi-hypervisor-plan "$out/local-multi-hypervisor-campaign-plan.json" --output "$out/local-multi-hypervisor-campaign-receipt.json" > "$out/local-multi-hypervisor-campaign-summary.txt"
                   replay-readiness-scheduler-receipt --check-multi-hypervisor "$out/local-multi-hypervisor-campaign-receipt.json" >> "$out/local-multi-hypervisor-campaign-summary.txt"
                   replay-readiness-scheduler-receipt --render-multi-hypervisor-dashboard "$out/local-multi-hypervisor-campaign-receipt.json" --output "$out/local-multi-hypervisor-dashboard.html" >> "$out/local-multi-hypervisor-campaign-summary.txt"
-                  cat > "$out/hosted-shared-state-plan.json" <<EOF
-                  {
-                    "schema_version": 1,
-                    "machines": [
-                      {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
-                      {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
-                    ],
-                    "hypervisor_workers": [
-                      {"hypervisor_worker_id": "hv-a", "machine_id": "machine-a"},
-                      {"hypervisor_worker_id": "hv-b", "machine_id": "machine-b"}
-                    ],
-                    "queue": {
-                      "queue_id": "hosted-shared-state-check",
-                      "state_path": "$out/hosted-shared-queue-state.json",
-                      "entries": [
-                        {"queue_entry_id": "hosted-static-0001", "run_id": "hosted-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/hosted-run-1.json'", "receipt_path": "$out/hosted-run-1.json", "decision_action": "reproduce"},
-                        {"queue_entry_id": "hosted-static-0002", "run_id": "hosted-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/hosted-run-2.json'", "receipt_path": "$out/hosted-run-2.json", "decision_action": "triage"}
-                      ]
-                    },
-                    "decision_store": {"store_id": "hosted-shared-decision-store-check", "path": "$out/hosted-shared-decision-store.json"}
-                  }
-                  EOF
                   replay-readiness-scheduler-receipt --run-hosted-shared-state-plan "$out/hosted-shared-state-plan.json" --output "$out/hosted-shared-state-receipt.json" > "$out/hosted-shared-state-summary.txt"
                   replay-readiness-scheduler-receipt --check-hosted-shared-state "$out/hosted-shared-state-receipt.json" >> "$out/hosted-shared-state-summary.txt"
-                  cat > "$out/networked-hosted-scheduler-plan.json" <<EOF
-                  {
-                    "schema_version": 1,
-                    "harness_id": "networked-hosted-check",
-                    "transport": "loopback-tcp",
-                    "machines": [
-                      {"machine_id": "machine-a", "writer_id": "writer-machine-a"},
-                      {"machine_id": "machine-b", "writer_id": "writer-machine-b"}
-                    ],
-                    "worker_sessions": [
-                      {"worker_session_id": "session-a", "hypervisor_worker_id": "hv-a", "machine_id": "machine-a", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1000"},
-                      {"worker_session_id": "session-b", "hypervisor_worker_id": "hv-b", "machine_id": "machine-b", "started_by": "independent-process", "heartbeat_revision": 1, "last_heartbeat": "unix:1001"}
-                    ],
-                    "queue": {
-                      "queue_id": "networked-hosted-check",
-                      "adapter": "shared-loopback-file",
-                      "state_snapshot_path": "$out/networked-hosted-queue-state.json",
-                      "entries": [
-                        {"queue_entry_id": "networked-static-0001", "run_id": "networked-run-static-0001", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/networked-run-1.json'", "receipt_path": "$out/networked-run-1.json", "decision_action": "reproduce"},
-                        {"queue_entry_id": "networked-static-0002", "run_id": "networked-run-static-0002", "workload": "static-readiness", "command": "replay-readiness --receipt '$out/networked-run-2.json'", "receipt_path": "$out/networked-run-2.json", "decision_action": "triage"}
-                      ]
-                    },
-                    "decision_store": {"store_id": "networked-hosted-decision-store-check", "adapter": "shared-loopback-file", "state_snapshot_path": "$out/networked-hosted-decision-store.json"}
-                  }
-                  EOF
                   replay-readiness-scheduler-receipt --run-networked-hosted-plan "$out/networked-hosted-scheduler-plan.json" --output "$out/networked-hosted-scheduler-receipt.json" > "$out/networked-hosted-scheduler-summary.txt"
                   replay-readiness-scheduler-receipt --check-networked-hosted "$out/networked-hosted-scheduler-receipt.json" >> "$out/networked-hosted-scheduler-summary.txt"
                   test -s "$receipt"

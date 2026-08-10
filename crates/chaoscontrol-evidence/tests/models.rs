@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod support;
 
@@ -45,6 +45,51 @@ fn repo_file(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join(relative)
+}
+
+fn typed_copy_command(source: &Path, target: &Path) -> serde_json::Value {
+    const EXECUTABLE_MAX_BYTES: u64 = 67_108_864;
+    const TIMEOUT_MS: u64 = 30_000;
+    const INPUT_MAX_BYTES: u64 = 1_024;
+    const OUTPUT_MAX_BYTES: u64 = 1_048_576;
+    const POLL_INTERVAL_MS: u64 = 10;
+    const TEARDOWN_TIMEOUT_MS: u64 = 1_000;
+    let fixture = support::fixture_spec(
+        "copy",
+        &source.display().to_string(),
+        &target.display().to_string(),
+    );
+    serde_json::json!({
+        "schema": chaoscontrol_evidence::typed_operator_command::PLAN_SCHEMA,
+        "mechanism_revision": chaoscontrol_evidence::typed_operator_command::MECHANISM_REVISION,
+        "executable": {
+            "path": fixture.executable.display().to_string(),
+            "blake3": fixture.executable_blake3,
+            "maximum_bytes": EXECUTABLE_MAX_BYTES
+        },
+        "args": fixture.args,
+        "working_directory": ".",
+        "environment": {"mode": "clear", "entries": fixture.environment},
+        "stdin": {"mode": "null"},
+        "limits": {
+            "timeout_ms": TIMEOUT_MS,
+            "stdin_max_bytes": INPUT_MAX_BYTES,
+            "stdout_max_bytes": OUTPUT_MAX_BYTES,
+            "stderr_max_bytes": OUTPUT_MAX_BYTES,
+            "poll_interval_ms": POLL_INTERVAL_MS,
+            "teardown_timeout_ms": TEARDOWN_TIMEOUT_MS
+        },
+        "accepted_exit_codes": [0],
+        "reject_stdout_truncation": true,
+        "reject_stderr_truncation": true,
+        "termination_scope": "process-group",
+        "evidence_eligible": true
+    })
+}
+
+#[test]
+fn typed_command_fixture_child() {
+    support::run_child();
 }
 
 #[test]
@@ -394,18 +439,12 @@ fn executes_bounded_fleet_scheduler_worker_loop_receipt() {
     let state_path = temp.path().join("fleet-state.json");
     let mut plan = sample_replay_readiness_fleet_scheduler_plan();
     plan["queue"]["state_path"] = serde_json::json!(state_path.display().to_string());
-    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
-        "cp {} {}",
-        receipt_fixture.display(),
-        run_receipt_a.display()
-    ));
+    plan["queue"]["entries"][0]["command_plan"] =
+        typed_copy_command(&receipt_fixture, &run_receipt_a);
     plan["queue"]["entries"][0]["receipt_path"] =
         serde_json::json!(run_receipt_a.display().to_string());
-    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
-        "cp {} {}",
-        receipt_fixture.display(),
-        run_receipt_b.display()
-    ));
+    plan["queue"]["entries"][1]["command_plan"] =
+        typed_copy_command(&receipt_fixture, &run_receipt_b);
     plan["queue"]["entries"][1]["receipt_path"] =
         serde_json::json!(run_receipt_b.display().to_string());
 
@@ -432,6 +471,16 @@ fn executes_bounded_fleet_scheduler_worker_loop_receipt() {
         serde_json::from_slice(&std::fs::read(&output_path).expect("read generated receipt"))
             .expect("generated receipt json");
     assert_eq!(receipt["runs"][0]["status"], "passed");
+    assert!(receipt["runs"][0]["command"].is_string());
+    assert!(receipt["runs"][0]["command_plan"].is_object());
+    assert_eq!(
+        receipt["runs"][0]["command_observation"]["mechanism_revision"],
+        chaoscontrol_evidence::typed_operator_command::MECHANISM_REVISION
+    );
+    assert_eq!(
+        receipt["runs"][0]["command_observation"]["teardown"],
+        "completed"
+    );
     assert_eq!(
         receipt["queue"]["state_path"],
         state_path.display().to_string()
@@ -619,17 +668,9 @@ fn executes_networked_hosted_scheduler_harness() {
     plan["queue"]["state_snapshot_path"] = serde_json::json!(queue_state.display().to_string());
     plan["decision_store"]["state_snapshot_path"] =
         serde_json::json!(decision_store.display().to_string());
-    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
-        "cp '{}' '{}'",
-        receipt_template.display(),
-        run_1.display()
-    ));
+    plan["queue"]["entries"][0]["command_plan"] = typed_copy_command(&receipt_template, &run_1);
     plan["queue"]["entries"][0]["receipt_path"] = serde_json::json!(run_1.display().to_string());
-    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
-        "cp '{}' '{}'",
-        receipt_template.display(),
-        run_2.display()
-    ));
+    plan["queue"]["entries"][1]["command_plan"] = typed_copy_command(&receipt_template, &run_2);
     plan["queue"]["entries"][1]["receipt_path"] = serde_json::json!(run_2.display().to_string());
 
     let plan_path = temp.path().join("networked-plan.json");
@@ -662,6 +703,12 @@ fn executes_networked_hosted_scheduler_harness() {
         .as_str()
         .expect("queue digest")
         .starts_with("sha256:"));
+    assert!(receipt["queue"]["entries"][0]["command"].is_string());
+    assert!(receipt["queue"]["entries"][0]["command_plan"].is_object());
+    assert_eq!(
+        receipt["queue"]["entries"][0]["command_observation"]["teardown"],
+        "completed"
+    );
 }
 
 #[test]
@@ -681,17 +728,9 @@ fn executes_hosted_shared_state_loopback_harness() {
     .expect("write receipt template");
     plan["queue"]["state_path"] = serde_json::json!(queue_state.display().to_string());
     plan["decision_store"]["path"] = serde_json::json!(decision_store.display().to_string());
-    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
-        "cp '{}' '{}'",
-        receipt_template.display(),
-        run_1.display()
-    ));
+    plan["queue"]["entries"][0]["command_plan"] = typed_copy_command(&receipt_template, &run_1);
     plan["queue"]["entries"][0]["receipt_path"] = serde_json::json!(run_1.display().to_string());
-    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
-        "cp '{}' '{}'",
-        receipt_template.display(),
-        run_2.display()
-    ));
+    plan["queue"]["entries"][1]["command_plan"] = typed_copy_command(&receipt_template, &run_2);
     plan["queue"]["entries"][1]["receipt_path"] = serde_json::json!(run_2.display().to_string());
     let plan_path = temp.path().join("hosted-plan.json");
     let output_path = temp.path().join("hosted-receipt.json");
@@ -715,6 +754,16 @@ fn executes_hosted_shared_state_loopback_harness() {
     assert!(run_2.exists());
     assert!(queue_state.exists());
     assert!(decision_store.exists());
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&output_path).expect("read hosted scheduler receipt"),
+    )
+    .expect("hosted scheduler receipt json");
+    assert!(receipt["queue"]["entries"][0]["command"].is_string());
+    assert!(receipt["queue"]["entries"][0]["command_plan"].is_object());
+    assert_eq!(
+        receipt["queue"]["entries"][0]["command_observation"]["cancellation"],
+        "not-requested"
+    );
 }
 
 #[test]
@@ -799,18 +848,12 @@ fn executes_local_multi_hypervisor_campaign_receipt() {
     let state_path = temp.path().join("multi-hypervisor-state.json");
     let mut plan = sample_replay_readiness_multi_hypervisor_campaign_plan();
     plan["state_path"] = serde_json::json!(state_path.display().to_string());
-    plan["queue"]["entries"][0]["command"] = serde_json::json!(format!(
-        "cp {} {}",
-        receipt_fixture.display(),
-        run_receipt_a.display()
-    ));
+    plan["queue"]["entries"][0]["command_plan"] =
+        typed_copy_command(&receipt_fixture, &run_receipt_a);
     plan["queue"]["entries"][0]["receipt_path"] =
         serde_json::json!(run_receipt_a.display().to_string());
-    plan["queue"]["entries"][1]["command"] = serde_json::json!(format!(
-        "cp {} {}",
-        receipt_fixture.display(),
-        run_receipt_b.display()
-    ));
+    plan["queue"]["entries"][1]["command_plan"] =
+        typed_copy_command(&receipt_fixture, &run_receipt_b);
     plan["queue"]["entries"][1]["receipt_path"] =
         serde_json::json!(run_receipt_b.display().to_string());
 
@@ -834,6 +877,12 @@ fn executes_local_multi_hypervisor_campaign_receipt() {
         serde_json::from_slice(&std::fs::read(&output_path).expect("read generated receipt"))
             .expect("generated receipt json");
     assert_eq!(receipt["runs"][0]["status"], "passed");
+    assert!(receipt["runs"][0]["command"].is_string());
+    assert!(receipt["runs"][0]["command_plan"].is_object());
+    assert_eq!(
+        receipt["runs"][0]["command_observation"]["disposition"],
+        "succeeded"
+    );
     assert_eq!(receipt["runs"][0]["hypervisor_worker_id"], "local-hv-a");
     assert_eq!(receipt["runs"][1]["hypervisor_worker_id"], "local-hv-b");
     assert_eq!(

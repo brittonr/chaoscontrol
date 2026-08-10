@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -36,34 +35,55 @@ def parse_workloads(raw: str) -> list[str]:
     return workloads
 
 
+def build_commands(
+    *, out: Path, replay_readiness: str, workloads: list[str], dogfood_extra: list[str]
+) -> list[list[str]]:
+    commands = []
+    for idx, workload in enumerate(workloads, start=1):
+        commands.append(
+            [
+                replay_readiness,
+                "--receipt",
+                str(out / "run-receipts" / f"{idx:02d}-{workload}-replay-readiness.json"),
+                "--dogfood",
+                workload,
+                "--",
+                "--output",
+                str(out / "dogfood" / f"{idx:02d}-{workload}"),
+                *dogfood_extra,
+            ]
+        )
+    return commands
+
+
+def materialize_command_plan(scheduler_receipt: str, output: Path, command: list[str]) -> dict[str, object]:
+    invocation = [
+        scheduler_receipt,
+        "--materialize-command-plan",
+        str(output),
+        "--executable",
+        command[0],
+    ]
+    for argument in command[1:]:
+        invocation.extend(["--argument", argument])
+    completed = run(invocation)
+    if completed.returncode != 0:
+        raise SystemExit(completed.stdout)
+    return json.loads(output.read_text())
+
+
 def build_plan(
-    *,
-    out: Path,
-    replay_readiness: str,
-    workloads: list[str],
-    dogfood_extra: list[str],
+    *, out: Path, workloads: list[str], command_plans: list[dict[str, object]]
 ) -> dict[str, object]:
     entries = []
     for idx, workload in enumerate(workloads, start=1):
         receipt = out / "run-receipts" / f"{idx:02d}-{workload}-replay-readiness.json"
-        dogfood_out = out / "dogfood" / f"{idx:02d}-{workload}"
-        command = [
-            replay_readiness,
-            "--receipt",
-            str(receipt),
-            "--dogfood",
-            workload,
-            "--",
-            "--output",
-            str(dogfood_out),
-            *dogfood_extra,
-        ]
         entries.append(
             {
                 "queue_entry_id": f"kvm-mhq-{idx:04d}",
                 "run_id": f"kvm-mh-run-{idx:04d}",
                 "workload": workload,
-                "command": " ".join(shlex.quote(part) for part in command),
+                "command_plan": command_plans[idx - 1],
                 "receipt_path": str(receipt),
             }
         )
@@ -135,7 +155,21 @@ def main() -> int:
         dogfood_extra = dogfood_extra[1:]
 
     workloads = parse_workloads(args.workloads)
-    plan = build_plan(out=out, replay_readiness=args.replay_readiness, workloads=workloads, dogfood_extra=dogfood_extra)
+    commands = build_commands(
+        out=out,
+        replay_readiness=args.replay_readiness,
+        workloads=workloads,
+        dogfood_extra=dogfood_extra,
+    )
+    command_plans = [
+        materialize_command_plan(
+            args.scheduler_receipt,
+            out / f"command-plan-{idx:02d}.json",
+            command,
+        )
+        for idx, command in enumerate(commands, start=1)
+    ]
+    plan = build_plan(out=out, workloads=workloads, command_plans=command_plans)
     plan_path = out / "campaign-plan.json"
     receipt_path = out / "campaign-receipt.json"
     plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")

@@ -34,7 +34,7 @@ let Registry = {
 {
   schema_version = "1",
 
-  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, KVM release-matrix, and receipt-review inputs. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
+  policy = "Nickel owns bounded human-authored run, simulator, campaign, finite-schedule, typed operator-command, KVM release-matrix, and receipt-review inputs. Rust owns config construction, external-input revalidation, progress, traces, checkpoints, outcomes, reports, receipts, execution, and replay. Raw logs, secrets, cryptographic internals, wire-discriminant ownership, distributed behavior semantics, and hot-path constants are excluded from Nickel ownership.",
 
   families = [
     {
@@ -66,6 +66,31 @@ let Registry = {
       ],
       freshness = "The checked projection binds the Nickel source, shared contract, evaluator identity, profile identity, and JSON with BLAKE3 before runtime admission.",
       rationale = "Humans author bounded VM exploration intent; Rust revalidates the projection and owns construction and execution.",
+    },
+    {
+      id = "typed-operator-command",
+      ownership = "nickel-authored",
+      owner = "contracts/evidence/operator-command.ncl",
+      source_paths = [
+        "contracts/evidence/profile-primitives.ncl",
+        "contracts/evidence/operator-command.ncl",
+        "contracts/evidence/examples/typed-operator-command.ncl",
+      ],
+      artifact_paths = [
+        "contracts/evidence/fixtures/valid/operator-command.valid.json",
+      ],
+      validation_commands = [
+        "check-evidence-contracts --root .",
+        "nickel export contracts/evidence/examples/typed-operator-command.ncl",
+        "cargo test -p chaoscontrol-evidence typed_operator_command",
+      ],
+      fixture_coverage = [
+        "contracts/evidence/fixtures/valid/operator-command.valid.json",
+        "contracts/evidence/fixtures/invalid/operator-command.free-form.invalid.ncl",
+        "contracts/evidence/fixtures/invalid/operator-command.traversal.invalid.ncl",
+      ],
+      freshness = "The checked Nickel projection must match the committed JSON and deserialize into the Rust DTO before process creation.",
+      rationale = "Nickel owns reviewed command intent. Rust revalidates identity and policy, then bounded-exec owns process mechanics.",
     },
     {
       id = "simulator-profile",

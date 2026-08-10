@@ -449,6 +449,38 @@ let Registry = {
       rationale = "Humans review the required KVM release cohort in Nickel while Rust observes the worker and classifies runtime evidence without promoting skipped or unsupported rows.",
     },
     {
+      id = "state-machine-property-profiles",
+      ownership = "nickel-authored",
+      owner = "contracts/property-coverage/profile.ncl",
+      source_paths = [
+        "contracts/property-coverage/profile.ncl",
+        "contracts/property-coverage/profiles.ncl",
+        "crates/chaoscontrol-property-suite/src",
+      ],
+      artifact_paths = [
+        "contracts/property-coverage/profiles.json",
+        "target/property-coverage/fast-receipt.json",
+        "target/property-coverage/deep-receipt.json",
+        "dogfood-results/state-machine-property-coverage-20260809/fast-receipt.json",
+        "dogfood-results/state-machine-property-coverage-20260809/deep-receipt.json",
+      ],
+      validation_commands = [
+        "nix build .#checks.x86_64-linux.property-coverage -L",
+        "cargo test -p chaoscontrol-property-suite",
+        "cargo run -p chaoscontrol-property-suite --bin run-property-lane -- --lane deep --output target/property-coverage/deep-receipt.json",
+      ],
+      fixture_coverage = [
+        "contracts/property-coverage/fixtures/invalid/zero-steps.invalid.ncl",
+        "contracts/property-coverage/fixtures/invalid/overclaim.invalid.ncl",
+        "contracts/property-coverage/fixtures/regressions/scheduler-stale-event.json",
+        "contracts/property-coverage/fixtures/regressions/fault-assertion-invalid-continuation.json",
+        "contracts/property-coverage/fixtures/regressions/virtio-capacity-status.json",
+        "contracts/property-coverage/fixtures/regressions/evidence-complete-tampered.json",
+      ],
+      freshness = "Each receipt binds the selected profile, named seeds, finite sequence and shrink bounds, suite counts, rejection counts, claim boundary, and minimized counterexamples when present.",
+      rationale = "Nickel owns reviewable bounded profiles while Rust owns generation, reference models, execution, shrinking, and observed counterexamples.",
+    },
+    {
       id = "raw-runtime-logs",
       ownership = "excluded",
       owner = "operator/debug tooling",

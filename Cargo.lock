@@ -469,6 +469,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-property-suite"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-evidence",
+ "chaoscontrol-fault",
+ "chaoscontrol-protocol",
+ "chaoscontrol-vmm",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chaoscontrol-protocol"
 version = "0.1.0"
 dependencies = [

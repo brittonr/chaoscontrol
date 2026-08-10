@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "schema_version": 1,
+    "id": "deep",
+    "target_models": [
+      "scheduler-snapshot",
+      "fault-assertion",
+      "virtio",
+      "evidence"
+    ],
+    "seed_policy": "named-explicit",
+    "seeds": [
+      0,
+      1,
+      17,
+      65537,
+      20260809,
+      3735928559
+    ],
+    "sequence_count": 512,
+    "max_steps": 256,
+    "max_shrink_attempts": 1024,
+    "max_retained_counterexamples": 32,
+    "max_runtime_seconds": 1800,
+    "claim": "Bounded model agreement for the named deep-lane seeds and limits.",
+    "non_claims": [
+      "This profile is not a formal proof.",
+      "This profile does not prove whole-system correctness.",
+      "This profile does not prove exhaustive state coverage.",
+      "This profile does not prove KVM behavior.",
+      "This profile does not prove the absence of defects."
+    ]
+  },
+  "suites": [
+    {
+      "suite": "scheduler-snapshot",
+      "sequences": 3072,
+      "steps": 394752,
+      "rejected_commands": 197202
+    },
+    {
+      "suite": "fault-assertion",
+      "sequences": 3072,
+      "steps": 394752,
+      "rejected_commands": 132411
+    },
+    {
+      "suite": "virtio",
+      "sequences": 3072,
+      "steps": 394752,
+      "rejected_commands": 231977
+    },
+    {
+      "suite": "evidence",
+      "sequences": 3072,
+      "steps": 394752,
+      "rejected_commands": 52489
+    }
+  ],
+  "total_sequences": 12288,
+  "total_steps": 1579008,
+  "rejected_commands": 614079,
+  "counterexamples": [],
+  "bounded_claim": "Bounded model agreement for the named deep-lane seeds and limits.",
+  "non_claims": [
+    "This profile is not a formal proof.",
+    "This profile does not prove whole-system correctness.",
+    "This profile does not prove exhaustive state coverage.",
+    "This profile does not prove KVM behavior.",
+    "This profile does not prove the absence of defects."
+  ]
+}

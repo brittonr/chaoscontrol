@@ -1,0 +1,12 @@
+[
+  "BlockActive",
+  "BlockActive",
+  "Wake",
+  { "OverlayWrite": { "page": 0, "byte": 17 } },
+  "Save",
+  "ValidProgress",
+  { "OverlayWrite": { "page": 1, "byte": 29 } },
+  "Restore",
+  "StaleProgress",
+  "ValidProgress"
+]

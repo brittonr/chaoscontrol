@@ -10,7 +10,7 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
 <!-- product-scope-facts:start -->
 > **Product scope:** 3 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
-> The workspace has 19 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
+> The workspace has 20 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
 >
 > The selected Cargo command owns the test inventory. This projection does not copy a test count. The authority is `cargo test --workspace --all-targets -- --list`.
 >
@@ -362,6 +362,16 @@ nix run .#kvm-release-matrix -- \
 ```
 
 Every required row must pass. Missing, stale, dirty, skipped, unsupported, timed-out, failed, or tampered evidence blocks the verdict. The validated seven-row run is summarized in `dogfood-results/kvm-release-evidence-20260809/validation-receipt.json`. See [the KVM release evidence guide](docs/kvm-release-evidence.md).
+
+### State-machine property lanes
+
+Portable CI runs bounded generated command sequences against independent scheduler, snapshot, fault, assertion, virtio, and evidence models. A scheduled deep lane uses larger finite limits. Both lanes retain typed receipts and stable minimized regression fixtures.
+
+```bash
+nix build .#checks.x86_64-linux.property-coverage -L
+```
+
+These lanes report only bounded model agreement. They do not prove complete correctness or KVM behavior. See [the state-machine property guide](docs/state-machine-property-coverage.md).
 
 For a single operator-facing readiness button, run:
 

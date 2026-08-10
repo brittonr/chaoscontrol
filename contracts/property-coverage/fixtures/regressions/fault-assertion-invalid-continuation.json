@@ -1,0 +1,11 @@
+[
+  { "Drain": { "time_ns": 80 } },
+  "DuplicateSubset",
+  "SaveOracle",
+  "AssertTrue",
+  "RestoreOracle",
+  "MergeReport",
+  "AssertWrongToken",
+  "AssertTrue",
+  "MergeReport"
+]

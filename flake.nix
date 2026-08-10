@@ -66,12 +66,16 @@
             let
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
+              isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
               isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
+            || isPropertyCoverageFixture
+            || isKvmReleaseMatrix
             || isAssertionReadinessFixture
             || isDogfoodCheckpointFixture
             || isDogfoodAssertionHarnessFixture
@@ -1515,6 +1519,34 @@
                 cargoExtraArgs = "--lib";
               }
             );
+
+            # r[impl chaoscontrol.state_machine_properties.fast_lane]
+            # Portable bounded model agreement and Nickel profile projection.
+            property-coverage =
+              pkgs.runCommand "property-coverage-check"
+                {
+                  nativeBuildInputs = [
+                    chaoscontrol
+                    pkgs.nickel
+                  ];
+                }
+                ''
+                  cd ${self}
+                  mkdir -p "$out"
+                  nickel export --format json contracts/property-coverage/profiles.ncl > "$out/profiles.json"
+                  cmp "$out/profiles.json" contracts/property-coverage/profiles.json
+                  for invalid in \
+                    contracts/property-coverage/fixtures/invalid/zero-steps.invalid.ncl \
+                    contracts/property-coverage/fixtures/invalid/overclaim.invalid.ncl
+                  do
+                    if nickel export "$invalid" >/dev/null 2>&1; then
+                      echo "invalid property profile unexpectedly passed: $invalid" >&2
+                      exit 1
+                    fi
+                  done
+                  run-property-lane --lane fast --output "$out/fast-receipt.json"
+                  cmp "$out/fast-receipt.json" dogfood-results/state-machine-property-coverage-20260809/fast-receipt.json
+                '';
 
             # Cheap eBPF schema, profile, layout, accounting, and source guard rail.
             ebpf-trace-evidence =

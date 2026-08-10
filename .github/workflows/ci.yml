@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
 
 env:
   KVM_RECEIPT_RETENTION_DAYS: 14
@@ -25,6 +27,7 @@ jobs:
             .#checks.x86_64-linux.package \
             .#checks.x86_64-linux.clippy \
             .#checks.x86_64-linux.tests \
+            .#checks.x86_64-linux.property-coverage \
             .#checks.x86_64-linux.profiling \
             .#checks.x86_64-linux.rustdoc \
             --no-link -L
@@ -34,14 +37,47 @@ jobs:
           nix build .#checks.x86_64-linux.replay-readiness \
             --out-link target/replay-readiness-check -L
           cat target/replay-readiness-check/replay-readiness-summary.txt
-      - name: Upload replay readiness receipt and dashboard
+      # r[impl chaoscontrol.property_coverage.ci]
+      # r[impl chaoscontrol.state_machine_properties.fast_lane]
+      - name: Run bounded fast state-machine properties
+        run: |
+          nix develop -c cargo run -q -p chaoscontrol-property-suite \
+            --bin run-property-lane -- \
+            --lane fast \
+            --output target/property-coverage/fast-receipt.json
+      - name: Upload portable validation receipts
         uses: actions/upload-artifact@v4
         with:
-          name: replay-readiness-receipt
+          name: portable-validation-receipts
           path: |
             target/replay-readiness-check/replay-readiness-receipt.json
             target/replay-readiness-check/replay-readiness-summary.txt
             target/replay-readiness-check/replay-readiness-dashboard.html
+            target/property-coverage/fast-receipt.json
+
+  # r[impl chaoscontrol.state_machine_properties.deep_lane]
+  deep-state-machine-properties:
+    name: Scheduled bounded deep state-machine properties
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Run bounded deep state-machine properties
+        run: |
+          nix develop -c cargo run -q -p chaoscontrol-property-suite \
+            --bin run-property-lane -- \
+            --lane deep \
+            --output target/property-coverage/deep-receipt.json
+          cmp target/property-coverage/deep-receipt.json \
+            dogfood-results/state-machine-property-coverage-20260809/deep-receipt.json
+      - name: Upload deep property receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-state-machine-property-receipt
+          path: target/property-coverage/deep-receipt.json
 
   # r[impl chaoscontrol.kvm_release_rail.ci]
   kvm-release:

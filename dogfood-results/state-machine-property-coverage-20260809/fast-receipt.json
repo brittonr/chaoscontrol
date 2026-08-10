@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "profile": {
+    "schema_version": 1,
+    "id": "fast",
+    "target_models": [
+      "scheduler-snapshot",
+      "fault-assertion",
+      "virtio",
+      "evidence"
+    ],
+    "seed_policy": "named-explicit",
+    "seeds": [
+      0,
+      1,
+      17,
+      20260809
+    ],
+    "sequence_count": 64,
+    "max_steps": 64,
+    "max_shrink_attempts": 128,
+    "max_retained_counterexamples": 16,
+    "max_runtime_seconds": 120,
+    "claim": "Bounded model agreement for the named fast-lane seeds and limits.",
+    "non_claims": [
+      "This profile is not a formal proof.",
+      "This profile does not prove whole-system correctness.",
+      "This profile does not prove exhaustive state coverage.",
+      "This profile does not prove KVM behavior.",
+      "This profile does not prove the absence of defects."
+    ]
+  },
+  "suites": [
+    {
+      "suite": "scheduler-snapshot",
+      "sequences": 256,
+      "steps": 8320,
+      "rejected_commands": 4172
+    },
+    {
+      "suite": "fault-assertion",
+      "sequences": 256,
+      "steps": 8320,
+      "rejected_commands": 2580
+    },
+    {
+      "suite": "virtio",
+      "sequences": 256,
+      "steps": 8320,
+      "rejected_commands": 4799
+    },
+    {
+      "suite": "evidence",
+      "sequences": 256,
+      "steps": 8320,
+      "rejected_commands": 1208
+    }
+  ],
+  "total_sequences": 1024,
+  "total_steps": 33280,
+  "rejected_commands": 12759,
+  "counterexamples": [],
+  "bounded_claim": "Bounded model agreement for the named fast-lane seeds and limits.",
+  "non_claims": [
+    "This profile is not a formal proof.",
+    "This profile does not prove whole-system correctness.",
+    "This profile does not prove exhaustive state coverage.",
+    "This profile does not prove KVM behavior.",
+    "This profile does not prove the absence of defects."
+  ]
+}

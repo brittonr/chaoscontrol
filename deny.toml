@@ -69,6 +69,14 @@ crate = "chaoscontrol-wasm-differential"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "bounded-exec"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "bounded-exec-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "bounded-tree-cap"
 allow = ["AGPL-3.0-or-later"]
 
@@ -98,5 +106,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
+  "https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git",
   "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git",
 ]

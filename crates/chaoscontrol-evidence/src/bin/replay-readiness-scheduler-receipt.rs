@@ -29,12 +29,17 @@ use chaoscontrol_evidence::{
 };
 
 fn usage() -> &'static str {
-    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor --output PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor-plan --output PATH\n       replay-readiness-scheduler-receipt --run-multi-hypervisor-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-multi-hypervisor PATH\n       replay-readiness-scheduler-receipt --render-multi-hypervisor-dashboard PATH --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state-plan --output PATH\n       replay-readiness-scheduler-receipt --run-hosted-shared-state-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-hosted-shared-state PATH"
+    "usage: replay-readiness-scheduler-receipt --sample --output PATH\n       replay-readiness-scheduler-receipt --check PATH\n       replay-readiness-scheduler-receipt --run-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --materialize-ci-plans DIR --replay-readiness PATH\n       replay-readiness-scheduler-receipt --materialize-command-plan PATH --executable PATH [--argument VALUE ...]\n       replay-readiness-scheduler-receipt --check-execution PATH\n       replay-readiness-scheduler-receipt --sample-fleet --output PATH\n       replay-readiness-scheduler-receipt --sample-fleet-plan --output PATH\n       replay-readiness-scheduler-receipt --run-fleet-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-fleet PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor --output PATH\n       replay-readiness-scheduler-receipt --sample-multi-hypervisor-plan --output PATH\n       replay-readiness-scheduler-receipt --run-multi-hypervisor-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-multi-hypervisor PATH\n       replay-readiness-scheduler-receipt --render-multi-hypervisor-dashboard PATH --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state --output PATH\n       replay-readiness-scheduler-receipt --sample-hosted-shared-state-plan --output PATH\n       replay-readiness-scheduler-receipt --run-hosted-shared-state-plan PLAN --output PATH\n       replay-readiness-scheduler-receipt --check-hosted-shared-state PATH"
 }
 
 #[derive(Default)]
 struct Args {
     output: Option<PathBuf>,
+    ci_plan_output: Option<PathBuf>,
+    command_plan_output: Option<PathBuf>,
+    replay_readiness: Option<PathBuf>,
+    executable: Option<PathBuf>,
+    arguments: Vec<String>,
     check: Option<PathBuf>,
     run_plan: Option<PathBuf>,
     run_fleet_plan: Option<PathBuf>,
@@ -67,6 +72,20 @@ fn main() {
 
 fn run() -> EvidenceResult<()> {
     let args = parse_args()?;
+    if args.replay_readiness.is_some() && args.ci_plan_output.is_none() {
+        return Err(chaoscontrol_evidence::EvidenceError::new(format!(
+            "--replay-readiness requires --materialize-ci-plans\n{}",
+            usage()
+        )));
+    }
+    if (args.executable.is_some() || !args.arguments.is_empty())
+        && args.command_plan_output.is_none()
+    {
+        return Err(chaoscontrol_evidence::EvidenceError::new(format!(
+            "--executable and --argument require --materialize-command-plan\n{}",
+            usage()
+        )));
+    }
     let mode_count = args.sample as usize
         + args.sample_fleet as usize
         + args.sample_fleet_plan as usize
@@ -78,6 +97,8 @@ fn run() -> EvidenceResult<()> {
         + args.sample_networked_hosted_plan as usize
         + args.check.is_some() as usize
         + args.run_plan.is_some() as usize
+        + args.ci_plan_output.is_some() as usize
+        + args.command_plan_output.is_some() as usize
         + args.check_execution.is_some() as usize
         + args.run_fleet_plan.is_some() as usize
         + args.check_fleet.is_some() as usize
@@ -95,7 +116,26 @@ fn run() -> EvidenceResult<()> {
         )));
     }
 
-    if args.sample {
+    if let Some(output_path) = args.command_plan_output {
+        let executable = args.executable.ok_or_else(|| {
+            chaoscontrol_evidence::EvidenceError::new(
+                "--materialize-command-plan requires --executable PATH",
+            )
+        })?;
+        chaoscontrol_evidence::write_typed_command_plan(&output_path, executable, args.arguments)?;
+        println!("wrote typed command plan to {}", output_path.display());
+    } else if let Some(output_root) = args.ci_plan_output {
+        let executable = args.replay_readiness.ok_or_else(|| {
+            chaoscontrol_evidence::EvidenceError::new(
+                "--materialize-ci-plans requires --replay-readiness PATH",
+            )
+        })?;
+        let count = chaoscontrol_evidence::write_ci_scheduler_plans(&output_root, executable)?;
+        println!(
+            "wrote {count} typed replay-readiness CI plans to {}",
+            output_root.display()
+        );
+    } else if args.sample {
         let output = require_output(args.output)?;
         write_replay_readiness_scheduler_receipt_path(&output)?;
         println!(
@@ -250,6 +290,35 @@ fn parse_args() -> EvidenceResult<Args> {
                 std::process::exit(0);
             }
             "--output" => parsed.output = Some(next_path(&mut args, "--output")?),
+            "--materialize-ci-plans" => {
+                parsed.ci_plan_output = Some(next_path(&mut args, "--materialize-ci-plans")?);
+            }
+            "--materialize-command-plan" => {
+                parsed.command_plan_output =
+                    Some(next_path(&mut args, "--materialize-command-plan")?);
+            }
+            "--executable" => {
+                parsed.executable = Some(next_path(&mut args, "--executable")?);
+            }
+            "--argument" => {
+                parsed.arguments.push(
+                    args.next()
+                        .ok_or_else(|| {
+                            chaoscontrol_evidence::EvidenceError::new(
+                                "--argument requires one UTF-8 value",
+                            )
+                        })?
+                        .into_string()
+                        .map_err(|_| {
+                            chaoscontrol_evidence::EvidenceError::new(
+                                "--argument requires one UTF-8 value",
+                            )
+                        })?,
+                );
+            }
+            "--replay-readiness" => {
+                parsed.replay_readiness = Some(next_path(&mut args, "--replay-readiness")?);
+            }
             "--check" => parsed.check = Some(next_path(&mut args, "--check")?),
             "--run-plan" => parsed.run_plan = Some(next_path(&mut args, "--run-plan")?),
             "--check-execution" => {

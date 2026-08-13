@@ -6,11 +6,12 @@ use sha2::{Digest, Sha256};
 
 use crate::replay_readiness_core;
 use crate::replay_readiness_loader::load_json;
-use crate::replay_readiness_orchestration::{run_plan_command, unix_seconds};
+use crate::replay_readiness_orchestration::unix_seconds;
 use crate::replay_readiness_publication::write_bytes;
 pub use crate::replay_readiness_render::{
     render_readme_status_block, README_END_MARKER, README_START_MARKER,
 };
+use crate::typed_operator_command::{command_display, parse_plan, CommandPlan};
 use crate::{ensure, EvidenceError, EvidenceResult};
 
 pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
@@ -348,9 +349,9 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
             &format!("scheduler.run_plan[{idx}].workload"),
         )?;
         workloads.insert(workload.to_string());
-        str_field(
-            run.get("command"),
-            &format!("scheduler.run_plan[{idx}].command"),
+        typed_command_field(
+            run.get("command_plan"),
+            &format!("scheduler.run_plan[{idx}].command_plan"),
         )?;
         str_field(
             run.get("receipt_path"),
@@ -435,9 +436,9 @@ pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResu
             run.get("workload"),
             &format!("scheduler.run_plan[{idx}].workload"),
         )?;
-        let command = str_field(
-            run.get("command"),
-            &format!("scheduler.run_plan[{idx}].command"),
+        let (command, command_observation) = execute_typed_command_field(
+            run.get("command_plan"),
+            &format!("scheduler.run_plan[{idx}].command_plan"),
         )?;
         let receipt_path = str_field(
             run.get("receipt_path"),
@@ -448,27 +449,28 @@ pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResu
             &format!("scheduler.run_plan[{idx}].decision_policy"),
         )?;
         let run_started = unix_seconds();
-        let status = run_plan_command(command)
-            .map_err(|err| EvidenceError::new(format!("scheduler run {run_id}: {err}")))?;
-        let exit_code = status.code().unwrap_or(125);
-        let receipt_summary = if exit_code == 0 {
+        let exit_code = command_observation.exit_code.unwrap_or(125);
+        let succeeded = command_observation.disposition == "succeeded";
+        let receipt_summary = if succeeded {
             Some(summarize_receipt_path(receipt_path)?)
         } else {
             None
         };
-        if exit_code != 0 {
+        if !succeeded {
             failures += 1;
         }
         runs.push(json!({
             "run_id": run_id,
             "workload": workload,
-            "command": command,
+            "command": command_display(&command),
+            "command_plan": command,
+            "command_observation": command_observation,
             "receipt_path": receipt_path,
             "decision_policy": decision_policy,
             "started_at_unix": run_started,
             "finished_at_unix": unix_seconds(),
             "exit_code": exit_code,
-            "status": if exit_code == 0 { "passed" } else { "failed" },
+            "status": if succeeded { "passed" } else { "failed" },
             "receipt_summary": receipt_summary,
         }));
     }
@@ -754,9 +756,9 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
             entry.get("workload"),
             &format!("fleet_scheduler_plan.queue.entries[{idx}].workload"),
         )?;
-        let command = str_field(
-            entry.get("command"),
-            &format!("fleet_scheduler_plan.queue.entries[{idx}].command"),
+        let (command, command_observation) = execute_typed_command_field(
+            entry.get("command_plan"),
+            &format!("fleet_scheduler_plan.queue.entries[{idx}].command_plan"),
         )?;
         let receipt_path = str_field(
             entry.get("receipt_path"),
@@ -764,30 +766,25 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         )?;
         let worker_id = worker_ids[idx % (max_concurrency as usize)];
         let lease_id = format!("lease-{queue_entry_id}");
-        let status = run_plan_command(command)
-            .map_err(|err| EvidenceError::new(format!("fleet scheduler run {run_id}: {err}")))?;
-        let exit_code = status.code().unwrap_or(125);
-        let run_status = if exit_code == 0 { "passed" } else { "failed" };
-        if exit_code != 0 {
+        let exit_code = command_observation.exit_code.unwrap_or(125);
+        let succeeded = command_observation.disposition == "succeeded";
+        let run_status = if succeeded { "passed" } else { "failed" };
+        if !succeeded {
             failures += 1;
         }
-        let receipt_summary = if exit_code == 0 {
+        let receipt_summary = if succeeded {
             Some(summarize_receipt_path(receipt_path)?)
         } else {
             None
         };
-        let entry_state = if exit_code == 0 {
-            "completed"
-        } else {
-            "failed"
-        };
+        let entry_state = if succeeded { "completed" } else { "failed" };
         receipt_entries.push(json!({
             "queue_entry_id": queue_entry_id,
             "run_id": run_id,
             "workload": workload,
             "state": entry_state
         }));
-        if exit_code == 0 {
+        if succeeded {
             completed_runs.push(Value::String(run_id.to_string()));
         }
         let state_snapshot = json!({
@@ -808,7 +805,9 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
             "queue_entry_id": queue_entry_id,
             "worker_id": worker_id,
             "workload": workload,
-            "command": command,
+            "command": command_display(&command),
+            "command_plan": command,
+            "command_observation": command_observation,
             "lease_id": lease_id,
             "receipt_path": receipt_path,
             "receipt_summary": receipt_summary,
@@ -871,8 +870,8 @@ pub fn sample_fleet_scheduler_plan() -> Value {
             "lease_timeout_seconds": 900,
             "max_concurrency": 2,
             "entries": [
-                {"queue_entry_id": "queue-raft-0001", "run_id": "fleet-run-raft-0001", "workload": "raft", "command": "replay-readiness-summary --sample --output target/fleet/raft-replay-readiness.json", "receipt_path": "target/fleet/raft-replay-readiness.json"},
-                {"queue_entry_id": "queue-redb-0001", "run_id": "fleet-run-redb-0001", "workload": "redb", "command": "replay-readiness-summary --sample --output target/fleet/redb-replay-readiness.json", "receipt_path": "target/fleet/redb-replay-readiness.json"}
+                {"queue_entry_id": "queue-raft-0001", "run_id": "fleet-run-raft-0001", "workload": "raft", "command_plan": sample_typed_command("replay-readiness-summary", &["--sample", "--output", "target/fleet/raft-replay-readiness.json"]), "receipt_path": "target/fleet/raft-replay-readiness.json"},
+                {"queue_entry_id": "queue-redb-0001", "run_id": "fleet-run-redb-0001", "workload": "redb", "command_plan": sample_typed_command("replay-readiness-summary", &["--sample", "--output", "target/fleet/redb-replay-readiness.json"]), "receipt_path": "target/fleet/redb-replay-readiness.json"}
             ]
         },
         "workers": [
@@ -1366,9 +1365,9 @@ pub fn execute_hosted_shared_state_receipt(
             entry.get("workload"),
             &format!("hosted_shared_state_plan.queue.entries[{idx}].workload"),
         )?;
-        let command = str_field(
-            entry.get("command"),
-            &format!("hosted_shared_state_plan.queue.entries[{idx}].command"),
+        let (command, command_observation) = execute_typed_command_field(
+            entry.get("command_plan"),
+            &format!("hosted_shared_state_plan.queue.entries[{idx}].command_plan"),
         )?;
         let receipt_path = str_field(
             entry.get("receipt_path"),
@@ -1382,19 +1381,13 @@ pub fn execute_hosted_shared_state_receipt(
             .get(machine_id)
             .expect("worker machines were validated");
         let lease_id = format!("lease-{queue_entry_id}");
-        let status = run_plan_command(command).map_err(|err| {
-            EvidenceError::new(format!("hosted shared-state run {run_id}: {err}"))
-        })?;
-        let exit_code = status.code().unwrap_or(125);
-        let run_status = if exit_code == 0 {
-            "completed"
-        } else {
-            "failed"
-        };
-        if exit_code != 0 {
+        let exit_code = command_observation.exit_code.unwrap_or(125);
+        let succeeded = command_observation.disposition == "succeeded";
+        let run_status = if succeeded { "completed" } else { "failed" };
+        if !succeeded {
             failures += 1;
         }
-        let receipt_summary = if exit_code == 0 {
+        let receipt_summary = if succeeded {
             summarize_receipt_path(receipt_path)?
         } else {
             format!("replay-readiness status=failed exit_code={exit_code}")
@@ -1404,6 +1397,10 @@ pub fn execute_hosted_shared_state_receipt(
             "run_id": run_id,
             "workload": workload,
             "state": run_status,
+            "command": command_display(&command),
+            "command_plan": command,
+            "command_observation": command_observation,
+            "exit_code": exit_code,
             "lease": {
                 "lease_id": lease_id,
                 "lease_epoch": (idx + 1) as u64,
@@ -1508,8 +1505,8 @@ pub fn sample_hosted_shared_state_plan() -> Value {
         "queue": {
             "queue_id": "hosted-queue-0001",
             "entries": [
-                {"queue_entry_id": "hosted-q-raft-0001", "run_id": "hosted-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/hosted/raft-replay-readiness.json", "receipt_path": "target/hosted/raft-replay-readiness.json", "decision_action": "reproduce"},
-                {"queue_entry_id": "hosted-q-redb-0001", "run_id": "hosted-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/hosted/redb-replay-readiness.json", "receipt_path": "target/hosted/redb-replay-readiness.json", "decision_action": "triage"}
+                {"queue_entry_id": "hosted-q-raft-0001", "run_id": "hosted-run-raft-0001", "workload": "raft", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/hosted/raft-replay-readiness.json"]), "receipt_path": "target/hosted/raft-replay-readiness.json", "decision_action": "reproduce"},
+                {"queue_entry_id": "hosted-q-redb-0001", "run_id": "hosted-run-redb-0001", "workload": "redb", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/hosted/redb-replay-readiness.json"]), "receipt_path": "target/hosted/redb-replay-readiness.json", "decision_action": "triage"}
             ]
         },
         "decision_store": {"store_id": "hosted-decision-store-0001"}
@@ -2067,9 +2064,9 @@ pub fn execute_networked_hosted_scheduler_receipt(
             entry.get("workload"),
             &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].workload"),
         )?;
-        let command = str_field(
-            entry.get("command"),
-            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].command"),
+        let (command, command_observation) = execute_typed_command_field(
+            entry.get("command_plan"),
+            &format!("networked_hosted_scheduler_plan.queue.entries[{idx}].command_plan"),
         )?;
         let receipt_path = str_field(
             entry.get("receipt_path"),
@@ -2085,19 +2082,13 @@ pub fn execute_networked_hosted_scheduler_receipt(
         let writer_id = machine_writer
             .get(machine_id)
             .expect("machine id validated for session");
-        let status = run_plan_command(command).map_err(|err| {
-            EvidenceError::new(format!("networked hosted scheduler run {run_id}: {err}"))
-        })?;
-        let exit_code = status.code().unwrap_or(125);
-        let state = if exit_code == 0 {
-            "completed"
-        } else {
-            "failed"
-        };
-        if exit_code != 0 {
+        let exit_code = command_observation.exit_code.unwrap_or(125);
+        let succeeded = command_observation.disposition == "succeeded";
+        let state = if succeeded { "completed" } else { "failed" };
+        if !succeeded {
             failures += 1;
         }
-        let receipt_summary = if exit_code == 0 {
+        let receipt_summary = if succeeded {
             summarize_receipt_path(receipt_path)?
         } else {
             format!("replay-readiness status=failed exit_code={exit_code}")
@@ -2108,7 +2099,9 @@ pub fn execute_networked_hosted_scheduler_receipt(
             "run_id": run_id,
             "workload": workload,
             "state": state,
-            "command": command,
+            "command": command_display(&command),
+            "command_plan": command,
+            "command_observation": command_observation,
             "exit_code": exit_code,
             "lease": {
                 "lease_id": format!("lease-{queue_entry_id}"),
@@ -2244,8 +2237,8 @@ pub fn sample_networked_hosted_scheduler_plan() -> Value {
             "state_snapshot_path": "target/networked-hosted/queue-state.json",
             "state_snapshot_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
             "entries": [
-                {"queue_entry_id": "net-q-raft-0001", "run_id": "net-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/networked-hosted/raft-replay-readiness.json", "receipt_path": "target/networked-hosted/raft-replay-readiness.json"},
-                {"queue_entry_id": "net-q-redb-0001", "run_id": "net-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/networked-hosted/redb-replay-readiness.json", "receipt_path": "target/networked-hosted/redb-replay-readiness.json"}
+                {"queue_entry_id": "net-q-raft-0001", "run_id": "net-run-raft-0001", "workload": "raft", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/networked-hosted/raft-replay-readiness.json"]), "receipt_path": "target/networked-hosted/raft-replay-readiness.json"},
+                {"queue_entry_id": "net-q-redb-0001", "run_id": "net-run-redb-0001", "workload": "redb", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/networked-hosted/redb-replay-readiness.json"]), "receipt_path": "target/networked-hosted/redb-replay-readiness.json"}
             ]
         },
         "decision_store": {"store_id": "networked-decision-store-0001", "adapter": "shared-loopback-file", "state_snapshot_path": "target/networked-hosted/decision-store.json", "state_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
@@ -2889,9 +2882,9 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             entry.get("workload"),
             &format!("multi_hypervisor_plan.queue.entries[{idx}].workload"),
         )?;
-        let command = str_field(
-            entry.get("command"),
-            &format!("multi_hypervisor_plan.queue.entries[{idx}].command"),
+        let (command, command_observation) = execute_typed_command_field(
+            entry.get("command_plan"),
+            &format!("multi_hypervisor_plan.queue.entries[{idx}].command_plan"),
         )?;
         let receipt_path = str_field(
             entry.get("receipt_path"),
@@ -2907,21 +2900,19 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             .cloned()
             .unwrap_or_default();
         let lease_id = format!("lease-{campaign_id}-{queue_entry_id}");
-        let status = run_plan_command(command).map_err(|err| {
-            EvidenceError::new(format!("multi-hypervisor campaign run {run_id}: {err}"))
-        })?;
-        let exit_code = status.code().unwrap_or(125);
-        let run_status = if exit_code == 0 { "passed" } else { "failed" };
-        if exit_code != 0 {
+        let exit_code = command_observation.exit_code.unwrap_or(125);
+        let succeeded = command_observation.disposition == "succeeded";
+        let run_status = if succeeded { "passed" } else { "failed" };
+        if !succeeded {
             failures += 1;
         }
-        let receipt_summary = if exit_code == 0 {
+        let receipt_summary = if succeeded {
             Some(summarize_receipt_path(receipt_path)?)
         } else {
             None
         };
-        receipt_entries.push(json!({"queue_entry_id": queue_entry_id, "run_id": run_id, "workload": workload, "state": if exit_code == 0 {"completed"} else {"failed"}, "lease_id": lease_id, "hypervisor_worker_id": hypervisor_worker_id}));
-        if exit_code == 0 {
+        receipt_entries.push(json!({"queue_entry_id": queue_entry_id, "run_id": run_id, "workload": workload, "state": if succeeded {"completed"} else {"failed"}, "lease_id": lease_id, "hypervisor_worker_id": hypervisor_worker_id}));
+        if succeeded {
             completed_runs.push(Value::String(run_id.to_string()));
         }
         let state_snapshot = json!({
@@ -2971,7 +2962,9 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             "queue_entry_id": queue_entry_id,
             "hypervisor_worker_id": hypervisor_worker_id,
             "workload": workload,
-            "command": command,
+            "command": command_display(&command),
+            "command_plan": command,
+            "command_observation": command_observation,
             "lease_id": lease_id,
             "artifact_root": artifact_root,
             "receipt_path": receipt_path,
@@ -3043,8 +3036,8 @@ pub fn sample_multi_hypervisor_campaign_plan() -> Value {
             {"hypervisor_worker_id": "local-hv-b", "node_id": "local-node-b", "resource_budget": {"vcpus": 2, "memory_mib": 1024}, "artifact_root": "target/multi-hypervisor/local-hv-b"}
         ],
         "queue": {"entries": [
-            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "command": "replay-readiness --receipt target/multi-hypervisor/raft-replay-readiness.json", "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "expected_bug_artifacts": ["target/multi-hypervisor/local-hv-a/bug-raft.json"]},
-            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "command": "replay-readiness --receipt target/multi-hypervisor/redb-replay-readiness.json", "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "expected_bug_artifacts": []}
+            {"queue_entry_id": "mhq-raft-0001", "run_id": "mh-run-raft-0001", "workload": "raft", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/multi-hypervisor/raft-replay-readiness.json"]), "receipt_path": "target/multi-hypervisor/raft-replay-readiness.json", "expected_bug_artifacts": ["target/multi-hypervisor/local-hv-a/bug-raft.json"]},
+            {"queue_entry_id": "mhq-redb-0001", "run_id": "mh-run-redb-0001", "workload": "redb", "command_plan": sample_typed_command("replay-readiness", &["--receipt", "target/multi-hypervisor/redb-replay-readiness.json"]), "receipt_path": "target/multi-hypervisor/redb-replay-readiness.json", "expected_bug_artifacts": []}
         ]},
         "operator_decisions": ["target/decision-receipt.json"]
     })
@@ -3926,37 +3919,46 @@ pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceR
     let flake_text = std::fs::read_to_string(root.join("flake.nix"))?;
     validate_gate_metadata(&flake_text)?;
     validate_renderer_equivalence(root)?;
-    let missing = flake_text.replace("                  (\"readiness-promotion\", \"check-readiness-promotion-gate --root .\", os.environ[\"READINESS_PROMOTION_STATUS\"]),\n", "");
-    match validate_gate_metadata(&missing) {
-        Err(err) if err.message().contains("missing from receipt metadata") => {}
+    let missing_execution = flake_text.replace(
+        "              run_gate readiness-promotion readiness_promotion_status check-readiness-promotion-gate --root .\n",
+        "",
+    );
+    match validate_gate_metadata(&missing_execution) {
+        Err(err) if err.message().contains("without executed run_gate") => {}
         Err(err) => {
             return Err(EvidenceError::new(format!(
-                "unexpected missing-gate error: {}",
+                "unexpected missing-execution error: {}",
                 err.message()
             )))
         }
         Ok(_) => {
             return Err(EvidenceError::new(
-                "missing receipt gate fixture unexpectedly passed",
+                "missing executed gate fixture unexpectedly passed",
             ))
         }
     }
-    let extra = flake_text.replace("              ]\n              receipt = {", "                  (\"phantom-gate\", \"python scripts/phantom.py\", os.environ[\"CONTRACT_REGISTRY_STATUS\"]),\n              ]\n              receipt = {");
-    match validate_gate_metadata(&extra) {
-        Err(err) if err.message().contains("without executed run_gate") => Ok(()),
+    let extra_execution = flake_text.replace(
+        "              echo \"replay readiness checks passed\"",
+        "              run_gate phantom-gate phantom_status check-phantom-gate\n              echo \"replay readiness checks passed\"",
+    );
+    match validate_gate_metadata(&extra_execution) {
+        Err(err) if err.message().contains("missing from receipt metadata") => Ok(()),
         Err(err) => Err(EvidenceError::new(format!(
-            "unexpected extra-gate error: {}",
+            "unexpected extra-execution error: {}",
             err.message()
         ))),
         Ok(_) => Err(EvidenceError::new(
-            "extra receipt gate fixture unexpectedly passed",
+            "extra executed gate fixture unexpectedly passed",
         )),
     }
 }
 
 pub fn validate_gate_metadata(flake_text: &str) -> EvidenceResult<Vec<String>> {
     let executed = executed_static_gate_names(flake_text)?;
-    let receipt = receipt_static_gate_names(flake_text)?;
+    let receipt = validate_unique_nonempty(
+        crate::rust_automation::readiness_receipt::gate_names(),
+        "receipt static gate metadata entries",
+    )?;
     let executed_set = executed.iter().collect::<BTreeSet<_>>();
     let receipt_set = receipt.iter().collect::<BTreeSet<_>>();
     let missing = executed
@@ -4030,6 +4032,42 @@ pub fn sample_decision_receipt() -> Value {
     })
 }
 
+fn sample_typed_command(program: &str, args: &[&str]) -> Value {
+    const SAMPLE_EXECUTABLE_MAX_BYTES: u64 = 16_777_216;
+    const SAMPLE_TIMEOUT_MS: u64 = 30_000;
+    const SAMPLE_INPUT_MAX_BYTES: u64 = 1_024;
+    const SAMPLE_OUTPUT_MAX_BYTES: u64 = 1_048_576;
+    const SAMPLE_POLL_INTERVAL_MS: u64 = 10;
+    const SAMPLE_TEARDOWN_TIMEOUT_MS: u64 = 1_000;
+    const SAMPLE_DIGEST: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    json!({
+        "schema": crate::typed_operator_command::PLAN_SCHEMA,
+        "mechanism_revision": crate::typed_operator_command::MECHANISM_REVISION,
+        "executable": {
+            "path": format!("/nix/store/sample-chaoscontrol/bin/{program}"),
+            "blake3": SAMPLE_DIGEST,
+            "maximum_bytes": SAMPLE_EXECUTABLE_MAX_BYTES
+        },
+        "args": args,
+        "working_directory": ".",
+        "environment": {"mode": "clear", "entries": []},
+        "stdin": {"mode": "null"},
+        "limits": {
+            "timeout_ms": SAMPLE_TIMEOUT_MS,
+            "stdin_max_bytes": SAMPLE_INPUT_MAX_BYTES,
+            "stdout_max_bytes": SAMPLE_OUTPUT_MAX_BYTES,
+            "stderr_max_bytes": SAMPLE_OUTPUT_MAX_BYTES,
+            "poll_interval_ms": SAMPLE_POLL_INTERVAL_MS,
+            "teardown_timeout_ms": SAMPLE_TEARDOWN_TIMEOUT_MS
+        },
+        "accepted_exit_codes": [0],
+        "reject_stdout_truncation": true,
+        "reject_stderr_truncation": true,
+        "termination_scope": "process-group",
+        "evidence_eligible": true
+    })
+}
+
 pub fn sample_scheduler_receipt() -> Value {
     json!({
         "schema_version": 1,
@@ -4048,14 +4086,14 @@ pub fn sample_scheduler_receipt() -> Value {
             {
                 "run_id": "local-run-raft-0001",
                 "workload": "raft",
-                "command": "replay-readiness --dogfood raft --receipt target/raft-replay-readiness.json",
+                "command_plan": sample_typed_command("replay-readiness", &["--dogfood", "raft", "--receipt", "target/raft-replay-readiness.json"]),
                 "receipt_path": "target/raft-replay-readiness.json",
                 "decision_policy": "record-local-decision"
             },
             {
                 "run_id": "local-run-redb-0001",
                 "workload": "redb",
-                "command": "replay-readiness --dogfood redb --receipt target/redb-replay-readiness.json",
+                "command_plan": sample_typed_command("replay-readiness", &["--dogfood", "redb", "--receipt", "target/redb-replay-readiness.json"]),
                 "receipt_path": "target/redb-replay-readiness.json",
                 "decision_policy": "record-local-decision"
             }
@@ -4239,24 +4277,6 @@ fn executed_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
     validate_unique_nonempty(names, "replay-readiness run_gate entries")
 }
 
-fn receipt_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
-    let block = between(
-        flake_text,
-        "              gates = [",
-        "              ]\n              receipt = {",
-    )?;
-    let mut names = Vec::new();
-    for line in block.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("(\"") {
-            if let Some((name, _)) = rest.split_once("\",") {
-                names.push(name.to_string());
-            }
-        }
-    }
-    validate_unique_nonempty(names, "receipt static gate metadata entries")
-}
-
 fn validate_unique_nonempty(names: Vec<String>, label: &str) -> EvidenceResult<Vec<String>> {
     ensure(!names.is_empty(), format!("no {label} found"))?;
     let set = names.iter().collect::<BTreeSet<_>>();
@@ -4287,6 +4307,24 @@ fn render_gate_rows(gates: &[Value]) -> EvidenceResult<String> {
         rows.push(format!("<tr><td>{}</td><td><span class=\"pill {}\">{}</span></td><td><code>{}</code></td></tr>", esc(name), token_class(status), esc(status), esc(command)));
     }
     Ok(rows.join("\n"))
+}
+
+fn typed_command_field(value: Option<&Value>, field: &str) -> EvidenceResult<CommandPlan> {
+    let value =
+        value.ok_or_else(|| EvidenceError::new(format!("{field}: missing typed command")))?;
+    parse_plan(value).map_err(|error| EvidenceError::new(format!("{field}: {error}")))
+}
+
+fn execute_typed_command_field(
+    value: Option<&Value>,
+    field: &str,
+) -> EvidenceResult<(
+    CommandPlan,
+    crate::typed_operator_command::CommandObservation,
+)> {
+    let command = typed_command_field(value, field)?;
+    let observation = crate::execute_typed_operator_command(&command, Path::new("."))?;
+    Ok((command, observation))
 }
 
 fn str_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {

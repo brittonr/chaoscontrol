@@ -8,7 +8,7 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 <!-- product-scope-facts:start -->
-> **Product scope:** 3 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
+> **Product scope:** 4 supported, 5 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
 > The workspace has 20 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
 >
@@ -283,7 +283,7 @@ Output directory contains:
 - `assertions.json` — a closed v2 summary with exact descriptors, fingerprints, catalog tokens, verdicts, and counters
 - `bug_N.json` — catalog-bound bug reports for minimize/reproduce; ID-only historical bugs are diagnostic-only
 - `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
-- `run-config.json` and `receipt.json` — contract-backed review inputs generated with `scripts/materialize-dogfood-receipt.py`
+- `run-config.json` and `receipt.json` — contract-backed review inputs generated with `materialize-dogfood-receipt`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
 
 ### Assertion identity and migration
@@ -450,6 +450,10 @@ nix run .#local-multi-hypervisor-kvm-smoke
 ```
 
 That rail drives at least two replay-readiness dogfood workloads through the bounded local multi-hypervisor campaign runner, persists queue state and per-run receipts, and validates the campaign receipt. It covers local multi-hypervisor KVM proof only; it is not a hosted service, shared remote queue, cross-machine scheduler, or Antithesis parity claim.
+
+Replay-readiness scheduler plans now use typed executable, argument, environment, input, limit, and teardown facts. Rust passes the executable and arguments directly to the pinned `bounded-exec` mechanism. Legacy command text remains diagnostic-only and cannot execute. See [`docs/typed-operator-commands.md`](docs/typed-operator-commands.md).
+
+Compiled Rust tools also own dogfood, receipt, summary, audit, scaffold, and local KVM product automation. See [`docs/rust-product-automation.md`](docs/rust-product-automation.md).
 
 GitHub Actions builds that check, prints the saved summary line, and uploads `replay-readiness-receipt.json`, `replay-readiness-summary.txt`, `replay-readiness-dashboard.html`, `operator-triage-runbook.md`, `fleet-triage-index.html`, `decision-receipt.json`, and `decision-receipt-summary.txt` as the `replay-readiness-receipt` artifact.
 

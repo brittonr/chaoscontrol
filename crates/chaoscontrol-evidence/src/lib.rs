@@ -37,6 +37,7 @@ mod profile_projection_spec;
 mod profile_projection_verification;
 pub mod protocol_simulation_receipt;
 pub mod readiness_promotion_gate;
+mod replay_readiness_ci_plans;
 mod replay_readiness_core;
 mod replay_readiness_loader;
 mod replay_readiness_orchestration;
@@ -44,6 +45,7 @@ mod replay_readiness_publication;
 mod replay_readiness_render;
 pub mod replay_readiness_surfaces;
 mod replay_verdict_artifact;
+pub mod rust_automation;
 mod sdk_local_catalog;
 mod sdk_local_event;
 mod sdk_local_identity;
@@ -53,6 +55,34 @@ pub mod sdk_local_report;
 mod sdk_local_verdict;
 pub mod semantic_history;
 pub mod simulator_profile;
+pub mod typed_operator_command;
+
+/// Execute one validated typed operator command through the pinned process mechanism.
+pub fn execute_typed_operator_command(
+    plan: &typed_operator_command::CommandPlan,
+    execution_root: impl AsRef<std::path::Path>,
+) -> EvidenceResult<typed_operator_command::CommandObservation> {
+    typed_operator_command::validate_plan(plan).map_err(EvidenceError::new)?;
+    replay_readiness_orchestration::run_plan_command(plan, execution_root.as_ref())
+}
+
+/// Execute one validated typed command and retain its bounded output.
+pub fn execute_typed_operator_command_captured(
+    plan: &typed_operator_command::CommandPlan,
+    execution_root: impl AsRef<std::path::Path>,
+) -> EvidenceResult<replay_readiness_orchestration::CapturedPlanCommand> {
+    typed_operator_command::validate_plan(plan).map_err(EvidenceError::new)?;
+    replay_readiness_orchestration::run_plan_command_captured(plan, execution_root.as_ref())
+}
+
+/// Measure one executable for a typed plan before process creation.
+pub fn observe_typed_executable(
+    path: impl AsRef<std::path::Path>,
+    maximum_bytes: u64,
+) -> EvidenceResult<typed_operator_command::ExecutableRef> {
+    replay_readiness_orchestration::observe_executable_reference(path.as_ref(), maximum_bytes)
+}
+
 pub use chaoscontrol_smr;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,
@@ -154,6 +184,7 @@ pub use readiness_promotion_gate::{
     default_readiness_promotion_paths, run_readiness_promotion_selftest,
     validate_readiness_promotion, validate_readiness_promotion_files,
 };
+pub use replay_readiness_ci_plans::{write_ci_scheduler_plans, write_typed_command_plan};
 pub use replay_readiness_surfaces::{
     check_readiness_surface_drift,
     execute_fleet_scheduler_receipt_path as execute_replay_readiness_fleet_scheduler_receipt_path,

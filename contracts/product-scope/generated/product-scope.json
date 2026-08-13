@@ -195,12 +195,14 @@
     {
       "boundary": "Typed direct process requests with ChaosControl-owned authorization and evidence.",
       "documentation_targets": [
-        "docs/product-scope-status.md"
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/typed-operator-commands.md"
       ],
       "evidence": {
         "id": "bounded-exec-command-parity",
-        "source": ".cairn/changes/replace-free-form-operator-commands/",
-        "state": "missing"
+        "source": "docs/typed-operator-commands.md",
+        "state": "passed"
       },
       "id": "typed-operator-commands",
       "name": "Typed operator commands",
@@ -209,18 +211,20 @@
         "No executable trust claim."
       ],
       "owner": "chaoscontrol-evidence",
-      "state": "experimental",
-      "status_label": "experimental-typed-command-migration"
+      "state": "supported",
+      "status_label": "supported-bounded-direct-execution"
     },
     {
-      "boundary": "Product policy and structured automation move to focused Rust owners.",
+      "boundary": "Product policy and structured automation use focused Rust cores and shells.",
       "documentation_targets": [
-        "docs/product-scope-status.md"
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/rust-product-automation.md"
       ],
       "evidence": {
         "id": "python-rust-parity-and-removal",
-        "source": ".cairn/changes/replace-python-product-automation/",
-        "state": "missing"
+        "source": "docs/rust-product-automation.md",
+        "state": "passed"
       },
       "id": "rust-owned-product-automation",
       "name": "Rust-owned product automation",
@@ -230,7 +234,7 @@
       ],
       "owner": "chaoscontrol-evidence",
       "state": "experimental",
-      "status_label": "experimental-rust-automation-migration"
+      "status_label": "experimental-rust-owned-automation"
     },
     {
       "boundary": "Current product scope is local and single-machine.",
@@ -399,7 +403,7 @@
         "No executable trust claim."
       ],
       "owner": "chaoscontrol-evidence",
-      "target_state": "experimental"
+      "target_state": "supported"
     },
     {
       "change": "replace-python-product-automation",

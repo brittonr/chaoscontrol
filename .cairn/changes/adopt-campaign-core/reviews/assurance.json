@@ -1,0 +1,36 @@
+{
+  "schema_version": "cairn.semantic-review.review-receipt.v1",
+  "review_kind": "plan",
+  "decision": "approved",
+  "reviewed_inputs": [
+    {
+      "path": "proposal.md",
+      "hash": "c925e83fe5639eeed19bdd8f71719b76bd12ac054545d4d7133e331f9015f1e9"
+    },
+    {
+      "path": "specs/campaign-core-adoption/spec.md",
+      "hash": "c077a786ed5309f514586cb608ef284638a0a0db5ab77ee481cb1e231fc35856"
+    },
+    {
+      "path": "design.md",
+      "hash": "97f636e10db6ec3109b88c2a9063272fdc770f755c3136bd9c3e46cdc8ae1c92"
+    },
+    {
+      "path": "risk.md",
+      "hash": "765895ae38a00691bf13858ad947d96249d0236444b9f5f1b859a170f0510493"
+    },
+    {
+      "path": "tasks.md",
+      "hash": "2af721b52542813a55add746248b0ab90d70f4dcd9ae23d11ba723113026ebba"
+    },
+    {
+      "path": "verification.md",
+      "hash": "26444c0ea50c2953c83b4934046b6a5dcbc05120ec65dbceb172e268c5b19882"
+    }
+  ],
+  "reviewer": {
+    "source": "agentic",
+    "id": "pi-chaoscontrol-campaign-policy-plan-review"
+  },
+  "findings": []
+}

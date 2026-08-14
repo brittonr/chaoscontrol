@@ -1,0 +1,7 @@
+{
+  "workflow_profile": {
+    "id": "assurance",
+    "source": "change_create",
+    "version": 1
+  }
+}

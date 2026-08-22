@@ -4,6 +4,8 @@
 
 Trellis and Choregraph own protocol semantics and projection. Lattice owns protocol runtime state, persistence, adapters, retries, and observations. ChaosControl owns deterministic execution and fault evidence for exact supplied workloads.
 
+The published protocol-observation cohort mechanism owns opaque envelopes, logical-boundary cohort assembly, completeness accounting, stable novelty identities, and oracle handoff. This campaign owns the selected adapters and protocol result meaning.
+
 The campaign must detect protocol-state violations. Delivery or process output alone cannot distinguish a safe blocked state from a false success.
 
 ## Success Contract

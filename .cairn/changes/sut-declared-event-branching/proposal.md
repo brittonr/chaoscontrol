@@ -6,7 +6,7 @@ The explorer forks from coverage-improving snapshots and from `random_choice()` 
 
 ## What Changes
 
-- Add an SDK surface for guest-declared event markers with stable identity.
+- Add an SDK surface for guest-declared event markers with stable identity and optional canonical state or logical-position refs.
 - Have the VMM offer a snapshot at each declared marker to the frontier as a parent candidate.
 - Branch at replay-derived and targeted marker instances when the marker is rare or newly observed.
 - Bind the marker, the owning process or guest, the tick, and the snapshot into bug and replay evidence.
@@ -15,7 +15,7 @@ The explorer forks from coverage-improving snapshots and from `random_choice()` 
 
 - **SDK**: declared event marker API with stable identity.
 - **VMM or explorer**: marker-driven frontier entry and parent snapshot capture.
-- **Evidence**: markers enter fingerprints and replay verdicts.
+- **Evidence**: markers, optional state or logical-position refs, snapshots, fingerprints, and replay verdicts remain linked.
 - **Testing**: positive rare-event branching and negative never-reached and identity-conflict cases.
 
 ## Non-Goals

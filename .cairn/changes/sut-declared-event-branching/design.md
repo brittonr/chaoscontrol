@@ -8,7 +8,7 @@ The SDK already emits reachable, sometimes, and always assertion kinds with vers
 
 ### 1. A declared marker is an assertion-family event
 
-The new SDK surface is a marker with a stable logical key in the existing assertion identity namespace. It records that control reached an interesting state. It can carry structured details. It does not pass or fail on its own.
+The new SDK surface is a marker with a stable logical key in the existing assertion identity namespace. It records that control reached an interesting state. It can carry structured details plus optional canonical state and logical-position refs. Those instance refs do not change the marker's logical identity. The marker does not pass or fail on its own.
 
 ### 2. Markers produce frontier entries
 
@@ -20,7 +20,7 @@ Marker count per run is bounded. Repeated identical markers at the same state co
 
 ### 4. Evidence binds markers
 
-Bug reports and replay verdicts record the marker identity, the owning guest or process, the tick, and the parent snapshot reference. A reproduced marker-linked bug requires a valid parent snapshot.
+Bug reports and replay verdicts record the marker identity, owning guest or process, tick, optional state and logical-position refs, and parent snapshot reference. A reproduced marker-linked bug requires every present ref and the parent snapshot to validate.
 
 ### 5. Missing markers fail closed
 

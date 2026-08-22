@@ -7,7 +7,7 @@ We cannot measure whether exploration improves, and we cannot validate the finda
 ## What Changes
 
 - Add a versioned corpus of named workload entries with known bugs.
-- Cover three classes: an interleaving race, a liveness failure, and a rare bug with a measured base probability.
+- Cover four classes: an interleaving race, a liveness failure, a rare bug with a measured base probability, and a protocol-state bug with an independent oracle.
 - Add a Nickel contract for corpus manifests and a shell runner that asserts the expected verdict per entry.
 - Emit a receipt per entry binding the config digest, round identity, and verdict.
 

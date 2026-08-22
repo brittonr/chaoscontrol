@@ -7,7 +7,7 @@
 ## Phase 1: Shared repository and pure core
 
 - [ ] [serial] Establish the `bounded-input` repository, AGPL package artifacts, independent crate manifests, and immutable publication workflow. r[shared.bounded_input.repository]
-- [ ] [serial] Define caller-owned typed limits, typed violations, and pure counter and transition logic. r[shared.bounded_input.policy] r[shared.bounded_input.boundary]
+- [ ] [serial] Define caller-owned typed limits, typed violations, and pure counter and transition logic. r[shared.bounded_input.policy]
 - [ ] [parallel] Add plain positive and negative assertions for every byte, structure, allocation, and arithmetic boundary. r[shared.bounded_input.validation]
 
 ## Phase 2: JSON and file mechanisms

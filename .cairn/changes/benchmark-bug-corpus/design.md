@@ -14,11 +14,14 @@ Each entry carries buildable workload source, a property, an expected verdict, a
 
 A Nickel contract defines the corpus schema: entry id, entry class, expected verdict, rarity profile, and runtime bounds. Rust reads the exported JSON projection. This follows the repo rule that human-authored configuration and receipts are Nickel-backed.
 
-### 3. Three entry classes match known bug families
+### 3. Four entry classes match known bug families
 
 - An interleaving entry reproduces only under a specific schedule, in the async-heartbeat class.
 - A liveness entry reproduces only under a specific sequence, in the stuck-progress class.
 - A rarity entry has a measured base probability over a seeded distribution, used to validate the findability model.
+- A protocol-state entry reaches a rare coordinated cohort and fails an independently evaluated protocol property.
+
+The protocol-state entry binds the protocol-observation profile, cohort, oracle, marker, expected failure, and negative control. It measures findability with and without stable protocol novelty guidance. A runtime self-report cannot supply its only expected verdict.
 
 ### 4. The runner is bounded and receipts bind
 

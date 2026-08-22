@@ -8,7 +8,7 @@ Let a workload declare states the harness should treat as exploration branch poi
 
 ### Requirement: Guests can declare branch events
 
-r[chaoscontrol.event_branching.marker_api] The SDK MUST provide a declared event marker with a stable logical key, an optional structured detail value, and membership in the existing assertion identity namespace.
+r[chaoscontrol.event_branching.marker_api] The SDK MUST provide a declared event marker with a stable logical key, an optional structured detail value, optional canonical state and logical-position refs, and membership in the existing assertion identity namespace. Instance refs MUST NOT change the marker's logical identity.
 
 #### Scenario: Marker with identity
 - GIVEN a guest declares a marker with a stable key
@@ -36,7 +36,7 @@ r[chaoscontrol.event_branching.frontier_entry] When the VMM observes a declared 
 
 ### Requirement: Evidence binds markers to snapshots
 
-r[chaoscontrol.event_branching.evidence_binding] Bug reports and replay verdicts that reference a declared marker MUST record the marker identity, owning guest or process, tick, and a valid parent snapshot reference.
+r[chaoscontrol.event_branching.evidence_binding] Bug reports and replay verdicts that reference a declared marker MUST record the marker identity, owning guest or process, tick, optional canonical state and logical-position refs, and a valid parent snapshot reference. Every present ref MUST validate.
 
 #### Scenario: Marker-linked bug reproduces
 - GIVEN a bug linked to a declared marker with a valid parent snapshot

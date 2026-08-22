@@ -57,6 +57,25 @@ r[chaoscontrol.benchmark.rarity] The rarity entry MUST expose a seeded distribut
 - WHEN the corpus validates the rarity entry
 - THEN the measured probability MUST be reported with the run count used to measure it.
 
+### Requirement: The protocol-state entry uses an independent oracle
+
+r[chaoscontrol.benchmark.protocol_state] The corpus MUST include a protocol-state entry that reaches a rare coordinated protocol-observation cohort. The entry MUST bind an independent consumer oracle, a stable protocol novelty identity, an expected failure, and a negative control. The runtime under test MUST NOT supply the only expected verdict.
+
+#### Scenario: Rare protocol cohort reproduces
+- GIVEN the protocol-state entry reaches its admitted coordinated cohort
+- WHEN the independent oracle evaluates the projections
+- THEN the expected protocol failure occurs and binds the cohort, oracle, novelty, and marker refs.
+
+#### Scenario: Runtime reports success
+- GIVEN the runtime self-reports success while the independent oracle projection violates the property
+- WHEN the runner asserts the verdict
+- THEN the entry fails with the independent oracle result.
+
+#### Scenario: Protocol negative control runs
+- GIVEN the negative protocol variant does not contain the defect
+- WHEN the same cohort and oracle profile runs
+- THEN the entry passes without changing the oracle identity.
+
 ### Requirement: The runner is bounded and binds receipts
 
 r[chaoscontrol.benchmark.runner] The runner MUST execute each entry under declared bounds, MUST assert the expected verdict, and MUST emit a receipt binding the config digest, round identities, and verdict.

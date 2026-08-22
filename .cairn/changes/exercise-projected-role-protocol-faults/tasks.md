@@ -2,7 +2,7 @@
 
 ## Dependencies, adapters, and baseline
 
-- [ ] [serial] Wait for immutable Choregraph and Lattice protocol cohorts, then pin repository revisions, schemas, artifacts, fixtures, adapters, and source-manifest BLAKE3 identities. r[chaoscontrol.role_protocol.cohorts]
+- [ ] [depends:protocol-observation-cohorts] Wait for immutable Choregraph and Lattice protocol cohorts, then pin the published observation contract, repository revisions, schemas, artifacts, fixtures, adapters, and source-manifest BLAKE3 identities. r[chaoscontrol.role_protocol.cohorts]
 - [ ] [serial] Record baseline network, process-restart, snapshot, replay, assertion, observation, evidence, Cairn, and Nix results before core changes. r[chaoscontrol.role_protocol.validation]
 - [ ] [serial] Define versioned narrow adapters for selected Choregraph global and local artifacts plus Lattice session, envelope, persistence, outcome, and recovery data. r[chaoscontrol.role_protocol.cohorts]
 - [ ] [parallel] Add positive adapter fixtures and negative stale revision, schema drift, unknown field, missing identity, wrong role, and unsupported-version fixtures. r[chaoscontrol.role_protocol.cohorts] r[chaoscontrol.role_protocol.validation]
@@ -26,7 +26,7 @@
 - [ ] [parallel] Add deterministic loss, delay, duplication, reordering, corruption, partition, bandwidth, and heal schedules where supported. r[chaoscontrol.role_protocol.faults]
 - [ ] [parallel] Add role termination and restart schedules before persistence, before dispatch, before observation, before commit, around choice labels, and before recovery. r[chaoscontrol.role_protocol.faults]
 - [ ] [serial] Preserve selected, applicable, applied, observed, healed, failed, and indeterminate stages for every selected fault. r[chaoscontrol.role_protocol.faults]
-- [ ] [serial] Add required producer sequence, loss, overflow, truncation, final-drain, detach, and cleanup accounting. r[chaoscontrol.role_protocol.observation]
+- [ ] [serial] Map required producer sequence, loss, overflow, truncation, final-drain, detach, and cleanup accounting into admitted protocol-observation cohorts. r[chaoscontrol.role_protocol.observation]
 - [ ] [serial] Add snapshot-backed replay for at least one selected protocol fault outcome and reject replay that dispatches protocol effects. r[chaoscontrol.role_protocol.replay]
 
 ## Evidence and rails

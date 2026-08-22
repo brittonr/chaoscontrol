@@ -1,0 +1,35 @@
+# Completion gates: adopt differential-execution-core
+
+Environment: ChaosControl dev shell, rustc 1.98.0 (after rust-overlay 2026-08-22 update).
+
+## Gates run
+
+1. `cargo test -p chaoscontrol-wasm-differential`
+   - 12 passed; 0 failed. Includes 5 new adoption fixtures:
+     - `harness_independence_gate_admits_two_distinct_engines`
+     - `harness_independence_gate_rejects_duplicate_and_single_backend`
+     - `harness_case_identity_is_bound_and_reproducible`
+     - `harness_verdicts_preserve_prior_agreement_and_divergence`
+     - `harness_oracle_classifies_exact_and_drifted_fixtures`
+   - Transcript: `adoption-fixtures.txt`
+2. `cargo clippy -p chaoscontrol-wasm-differential --all-targets -- -D warnings`
+   - Clean; finished without warnings.
+3. `cargo check --workspace`
+   - Finished; no errors introduced by the DEH dependency or toolchain bump.
+4. `cairn validate --root .`
+   - Recorded separately; repo remains valid.
+
+## Dependency
+
+- `differential-execution-core` pinned at
+  `https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git?rev=cad5a7cb6c6502b0ec5dc76c51e03352260d8efd`.
+- Requires rustc 1.96.0+; ChaosControl rust-overlay updated to 2026-08-22 (rustc 1.98.0).
+
+## Boundary
+
+- The crate's `NormalizedObservation`/`CaseComparison`/`ComparisonVerdict` remain the
+  shell-facing report projection.
+- DEH admission, independence, comparison, and oracle classification live behind the
+  new `admit_diff_case`/`admit_diff_observation`/`compare_through_harness`/
+  `classify_through_harness` adapter in `lib.rs`.
+- Agreement is parity only; no engine is attributed as correct.

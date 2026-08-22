@@ -649,6 +649,7 @@ name = "chaoscontrol-wasm-differential"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "differential-execution-core",
  "proptest",
  "serde",
  "serde_json",
@@ -826,6 +827,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "10d60334b3b2e7c9d91ef8150abfb6fa4c1c39ebbcf4a81c2e346aad939fee3e"
 dependencies = [
  "thiserror",
+]
+
+[[package]]
+name = "differential-execution-core"
+version = "0.1.0"
+source = "git+https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git?rev=cad5a7cb6c6502b0ec5dc76c51e03352260d8efd#cad5a7cb6c6502b0ec5dc76c51e03352260d8efd"
+dependencies = [
+ "blake3",
+ "serde",
 ]
 
 [[package]]

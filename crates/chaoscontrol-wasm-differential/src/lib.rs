@@ -723,6 +723,183 @@ pub fn profile_identity(profile: &DifferentialProfile) -> Result<String, String>
     Ok(blake3::hash(&bytes).to_hex().to_string())
 }
 
+// --- differential-execution-core adapter --------------------------------
+//
+// The SpaceWasm rail routes its per-case verdict through the reviewed
+// `differential-execution-core` boundary: case + observation admission with
+// explicit identities and bounds, independent-backend admission, pairwise
+// comparison, and optional oracle classification. The crate keeps its own
+// `NormalizedObservation`/`CaseComparison` types as the shell-facing report
+// projection; this adapter is the only DEH-touching surface.
+
+const DIFF_DOMAIN: &[u8] = b"chaoscontrol.spacewasm.differential.v1";
+const DIFF_VALUE_SCHEMA: &[u8] = b"spacewasm-normalized-outcome-v1";
+const DIFF_ADAPTER: &[u8] = b"chaoscontrol-wasm-differential-adapter-v1";
+const DIFF_BACKEND_COHORT: &[u8] = b"wasm-engines";
+const DIFF_RUNTIME_COHORT: &[u8] = b"spacewasm-differential-v1";
+const DIFF_RESOURCES: &[u8] = b"bounded-host";
+const DIFF_EFFECTS: &[u8] = b"wasm-core-exec";
+const DIFF_NORMALIZATION: &[u8] = b"spacewasm-normalization-v1";
+const DIFF_NO_FINAL_STATE: &[u8] = b"no-final-state";
+const DIFF_MAX_EVENTS: u32 = 64;
+const DIFF_MAX_VALUE_BYTES: u32 = 1_048_576;
+const DIFF_MAX_SET_METADATA: u32 = 16;
+
+/// One serializable canonical value frame for the harness value surface.
+#[derive(serde::Serialize)]
+struct CanonicalOutcome {
+    outcome: String,
+    return_values: Vec<String>,
+    trap_class: Option<String>,
+    resource_class: Option<String>,
+}
+
+/// Admits one complete differential case from the module identity.
+pub fn admit_diff_case(
+    module_blake3: &str,
+    case_kind: CaseKind,
+) -> Result<differential_execution_core::ExecutionCase, String> {
+    let module = module_blake3.as_bytes();
+    let kind = match case_kind {
+        CaseKind::Execute => b"execute".as_slice(),
+        CaseKind::Reject => b"reject".as_slice(),
+    };
+    let identity = |label: &[u8], parts: &[&[u8]]| {
+        differential_execution_core::Identity::derive(DIFF_DOMAIN, parts)
+            .map_err(|error| format!("derive {label:?}: {error:?}"))
+    };
+    let draft = differential_execution_core::CaseDraft {
+        program: Some(identity(b"program", &[module])?),
+        arguments: Some(identity(b"arguments", &[module, kind])?),
+        initial_state: Some(identity(b"initial-state", &[module])?),
+        effects: Some(identity(b"effects", &[DIFF_EFFECTS])?),
+        backend_cohort: Some(identity(b"backend-cohort", &[DIFF_BACKEND_COHORT])?),
+        runtime_cohort: Some(identity(b"runtime-cohort", &[DIFF_RUNTIME_COHORT])?),
+        resources: Some(identity(b"resources", &[DIFF_RESOURCES])?),
+        adapter_contract: Some(identity(b"adapter-contract", &[DIFF_ADAPTER])?),
+        normalization: Some(identity(b"normalization", &[DIFF_NORMALIZATION])?),
+    };
+    differential_execution_core::admit_case(draft)
+        .map_err(|error| format!("admit case: {error:?}"))
+}
+
+/// Admits one engine observation for an already-admitted case.
+pub fn admit_diff_observation(
+    case: &differential_execution_core::ExecutionCase,
+    engine: &str,
+    observation: &NormalizedObservation,
+) -> Result<differential_execution_core::AdmittedObservation, String> {
+    let identity = |label: &[u8], parts: &[&[u8]]| {
+        differential_execution_core::Identity::derive(DIFF_DOMAIN, parts)
+            .map_err(|error| format!("derive {label:?}: {error:?}"))
+    };
+    let canonical = CanonicalOutcome {
+        outcome: format!("{:?}", observation.outcome),
+        return_values: observation.return_values.clone(),
+        trap_class: observation.trap_class.clone(),
+        resource_class: observation.resource_class.clone(),
+    };
+    let value_bytes = serde_json::to_vec(&canonical)
+        .map_err(|error| format!("serialize canonical outcome: {error}"))?;
+    let final_state = match &observation.state_identity_blake3 {
+        Some(state) => identity(b"final-state", &[state.as_bytes()])?,
+        None => identity(b"final-state", &[DIFF_NO_FINAL_STATE])?,
+    };
+    let resource = match &observation.resource_class {
+        Some(class) => differential_execution_core::ResourceOutcome {
+            class: identity(b"resource-class", &[class.as_bytes()])?,
+            detail: identity(b"resource-detail", &[b"bounded-host"])?,
+        },
+        None => differential_execution_core::ResourceOutcome {
+            class: identity(b"resource-class", &[b"none"])?,
+            detail: identity(b"resource-detail", &[b"bounded-host"])?,
+        },
+    };
+    let profiles = differential_execution_core::ObservationProfiles::from(case.profiles());
+    let raw = differential_execution_core::NormalizedObservation {
+        case: case.identity(),
+        profiles,
+        backend_implementation: identity(b"backend-implementation", &[engine.as_bytes()])?,
+        adapter_implementation: identity(b"adapter-implementation", &[DIFF_ADAPTER])?,
+        value: differential_execution_core::CanonicalValue {
+            schema: identity(b"value-schema", &[DIFF_VALUE_SCHEMA])?,
+            bytes: value_bytes,
+        },
+        events: Vec::new(),
+        trap: match &observation.trap_class {
+            Some(class) => differential_execution_core::OptionalOutcome::Present(
+                identity(b"trap", &[class.as_bytes()])?,
+            ),
+            None => differential_execution_core::OptionalOutcome::Absent,
+        },
+        interrupt: differential_execution_core::OptionalOutcome::Absent,
+        resource,
+        final_state,
+        set_metadata: Vec::new(),
+    };
+    let bounds = differential_execution_core::ObservationBounds::new(
+        DIFF_MAX_EVENTS,
+        DIFF_MAX_VALUE_BYTES,
+        DIFF_MAX_SET_METADATA,
+    )
+    .map_err(|error| format!("observation bounds rejected: {error:?}"))?;
+    differential_execution_core::admit_observation(case, raw, bounds)
+        .map_err(|error| format!("admit observation: {error:?}"))
+}
+
+/// One reviewed harness verdict for a case; the crate report projection stays
+/// the shell-facing surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HarnessVerdict {
+    /// Lowercase harness case identity.
+    pub case_identity_hex: String,
+    /// Pairwise agreement or divergence from the reviewed core.
+    pub verdict: differential_execution_core::ComparisonVerdict,
+    /// First bounded mismatch surface, when divergent.
+    pub mismatch: Option<differential_execution_core::MismatchPath>,
+}
+
+/// Admits both engine observations and returns the reviewed pairwise verdict.
+pub fn compare_through_harness(
+    module_blake3: &str,
+    case_kind: CaseKind,
+    spacewasm: &NormalizedObservation,
+    wasmtime: &NormalizedObservation,
+) -> Result<HarnessVerdict, String> {
+    let case = admit_diff_case(module_blake3, case_kind)?;
+    let left = admit_diff_observation(&case, "spacewasm", spacewasm)?;
+    let right = admit_diff_observation(&case, "wasmtime", wasmtime)?;
+    differential_execution_core::admit_independent_backends(Some(&left), Some(&right))
+        .map_err(|error| format!("independence admission failed: {error:?}"))?;
+    let report = differential_execution_core::compare_pairwise(&left, &right);
+    Ok(HarnessVerdict {
+        case_identity_hex: case.identity().to_hex(),
+        verdict: report.verdict,
+        mismatch: report.mismatch,
+    })
+}
+
+/// Classifies both engine observations against an exact external fixture.
+pub fn classify_through_harness(
+    module_blake3: &str,
+    case_kind: CaseKind,
+    expected: &NormalizedObservation,
+    left: &NormalizedObservation,
+    right: &NormalizedObservation,
+) -> Result<differential_execution_core::OracleReport, String> {
+    let case = admit_diff_case(module_blake3, case_kind)?;
+    let expected_obs = admit_diff_observation(&case, "oracle", expected)?;
+    let left_obs = admit_diff_observation(&case, "spacewasm", left)?;
+    let right_obs = admit_diff_observation(&case, "wasmtime", right)?;
+    let fixture = differential_execution_core::OracleFixture {
+        case: case.identity(),
+        normalization: case.profiles().normalization,
+        expected: expected_obs,
+    };
+    differential_execution_core::classify_with_oracle(&left_obs, &right_obs, &fixture)
+        .map_err(|error| format!("oracle classification rejected: {error:?}"))
+}
+
 fn first_difference(
     spacewasm: &NormalizedObservation,
     wasmtime: &NormalizedObservation,
@@ -1131,5 +1308,152 @@ mod tests {
             prop_assert_eq!(malformed[0], INVALID_MAGIC_BYTE);
             prop_assert_eq!(&malformed[1..], &module[1..]);
         }
+    }
+
+    // --- differential-execution-core adoption fixtures ---
+
+    const DIFF_MODULE_BLAKE3: &str =
+        "39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2";
+
+    fn matched_pair() -> (NormalizedObservation, NormalizedObservation) {
+        (
+            completed("spacewasm"),
+            completed("wasmtime"),
+        )
+    }
+
+    fn diverging_pair() -> (NormalizedObservation, NormalizedObservation) {
+        (
+            completed("spacewasm"),
+            trapped("wasmtime", "unreachable"),
+        )
+    }
+
+    #[test]
+    fn harness_independence_gate_admits_two_distinct_engines() {
+        let (spacewasm, wasmtime) = matched_pair();
+        let case = admit_diff_case(DIFF_MODULE_BLAKE3, CaseKind::Execute)
+            .expect("admit differential case");
+        let left = admit_diff_observation(&case, "spacewasm", &spacewasm)
+            .expect("admit spacewasm observation");
+        let right = admit_diff_observation(&case, "wasmtime", &wasmtime)
+            .expect("admit wasmtime observation");
+        differential_execution_core::admit_independent_backends(Some(&left), Some(&right))
+            .expect("two distinct engines must admit");
+    }
+
+    #[test]
+    fn harness_independence_gate_rejects_duplicate_and_single_backend() {
+        let (spacewasm, _) = matched_pair();
+        let case = admit_diff_case(DIFF_MODULE_BLAKE3, CaseKind::Execute)
+            .expect("admit differential case");
+        let left = admit_diff_observation(&case, "spacewasm", &spacewasm)
+            .expect("admit spacewasm observation");
+        let duplicate = admit_diff_observation(&case, "spacewasm", &spacewasm)
+            .expect("admit duplicate spacewasm observation");
+
+        let duplicate_error = differential_execution_core::admit_independent_backends(
+            Some(&left),
+            Some(&duplicate),
+        )
+        .expect_err("duplicate implementation must fail");
+        assert!(matches!(
+            duplicate_error,
+            differential_execution_core::IndependenceError::DuplicateImplementation
+        ));
+
+        let single_error = differential_execution_core::admit_independent_backends(
+            Some(&left),
+            None,
+        )
+        .expect_err("single backend must fail");
+        assert!(matches!(
+            single_error,
+            differential_execution_core::IndependenceError::OneBackend
+        ));
+    }
+
+    #[test]
+    fn harness_case_identity_is_bound_and_reproducible() {
+        let (spacewasm, wasmtime) = matched_pair();
+        let first = compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
+            .expect("first comparison");
+        let second = compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
+            .expect("second comparison");
+        assert_eq!(first.case_identity_hex.len(), 64);
+        assert_eq!(first.case_identity_hex, second.case_identity_hex);
+    }
+
+    #[test]
+    fn harness_verdicts_preserve_prior_agreement_and_divergence() {
+        let (spacewasm, wasmtime) = matched_pair();
+        let agreement = compare_through_harness(
+            DIFF_MODULE_BLAKE3,
+            CaseKind::Execute,
+            &spacewasm,
+            &wasmtime,
+        )
+        .expect("agreement comparison");
+        assert!(matches!(
+            agreement.verdict,
+            differential_execution_core::ComparisonVerdict::Agreement
+        ));
+        assert!(agreement.mismatch.is_none());
+
+        let (spacewasm_d, wasmtime_d) = diverging_pair();
+        let divergence = compare_through_harness(
+            DIFF_MODULE_BLAKE3,
+            CaseKind::Execute,
+            &spacewasm_d,
+            &wasmtime_d,
+        )
+        .expect("divergence comparison");
+        assert!(matches!(
+            divergence.verdict,
+            differential_execution_core::ComparisonVerdict::Divergence
+        ));
+        let mismatch = divergence
+            .mismatch
+            .expect("forced divergence must name a mismatch surface");
+        assert!(matches!(
+            mismatch.surface,
+            differential_execution_core::MismatchSurface::Trap
+                | differential_execution_core::MismatchSurface::ValueBytes
+        ));
+    }
+
+    #[test]
+    fn harness_oracle_classifies_exact_and_drifted_fixtures() {
+        let (matched, _) = matched_pair();
+        let oracle = classify_through_harness(
+            DIFF_MODULE_BLAKE3,
+            CaseKind::Execute,
+            &matched,
+            &matched,
+            &matched,
+        )
+        .expect("exact oracle classification");
+        assert!(matches!(
+            oracle.left,
+            differential_execution_core::OracleClassification::ExactMatch
+        ));
+        assert!(matches!(
+            oracle.right,
+            differential_execution_core::OracleClassification::ExactMatch
+        ));
+
+        let (_, diverging_wasmtime) = diverging_pair();
+        let drifted = classify_through_harness(
+            DIFF_MODULE_BLAKE3,
+            CaseKind::Execute,
+            &matched,
+            &matched,
+            &diverging_wasmtime,
+        )
+        .expect("drifted oracle classification");
+        assert!(matches!(
+            drifted.right,
+            differential_execution_core::OracleClassification::Mismatch
+        ));
     }
 }

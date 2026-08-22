@@ -1,0 +1,31 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target-chaos/debug/deps/chaoscontrol_wasm_differential-4260b304e59f0e97)
+
+running 12 tests
+test tests::bundle_drift_and_evidence_overclaim_are_rejected ... ok
+test tests::harness_independence_gate_admits_two_distinct_engines ... ok
+test tests::harness_case_identity_is_bound_and_reproducible ... ok
+test tests::harness_independence_gate_rejects_duplicate_and_single_backend ... ok
+test tests::harness_oracle_classifies_exact_and_drifted_fixtures ... ok
+test tests::generated_shrink_plan_is_deterministic_and_strictly_smaller ... ok
+test tests::harness_verdicts_preserve_prior_agreement_and_divergence ... ok
+test tests::normalization_rejects_unknown_spacewasm_result_codes ... ok
+test tests::timeout_and_resource_exhaustion_remain_distinct ... ok
+test tests::valid_profile_and_generated_modules_are_deterministic ... ok
+test tests::invalid_profile_and_mismatch_fail_closed_with_first_difference ... ok
+test tests::generated_modules_are_bounded_and_magic_corruption_is_exact ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/home/brittonr/.cargo-target-chaos/debug/deps/chaoscontrol_wasm_differential-d5fd5ab9bef4fc19)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests chaoscontrol_wasm_differential
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

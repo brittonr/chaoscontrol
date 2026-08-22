@@ -12,6 +12,7 @@ serde_json = "1"
 tempfile = "3"
 thiserror = "2"
 wait-timeout = "0.2"
+differential-execution-core = { git = "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git", rev = "cad5a7cb6c6502b0ec5dc76c51e03352260d8efd" }
 
 [dev-dependencies]
 proptest = "1"

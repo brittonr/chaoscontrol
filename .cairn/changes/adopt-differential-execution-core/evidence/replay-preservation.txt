@@ -1,0 +1,39 @@
+# Replay preservation: live SpaceWasm differential rail through DEH
+
+Command:
+
+```sh
+nix build -L --no-link .#checks.x86_64-linux.spacewasm-mvp-differential
+```
+
+Result after routing every per-case verdict through
+`differential-execution-core` (`admit_independent_backends` +
+`compare_pairwise`):
+
+```
+spacewasm-mvp-differential-check> spacewasm differential match: cases=14 mismatches=0 report_identity_blake3=770c58499a4bd0969edfdc7a549a284a4f046ad9f83aa4be515e021b2e1861bb
+spacewasm-mvp-differential-check> spacewasm resume equivalence ok: segments=33 streaming=finished
+```
+
+- 14 comparisons across the fixed and generated corpus classes.
+- Zero normalized mismatches.
+- The report identity `770c5849...` is byte-identical to the run recorded
+  before the verdict path was rewired, proving per-case verdict and report
+  preservation at the live-corpus level.
+
+## Bundle pin refresh
+
+The pre-existing blocker was a stale profile pin against the pinned Mantle
+bundle (`a141fcba...`):
+
+| Field | Old pin | Refreshed pin |
+| --- | --- | --- |
+| `bundle_manifest_blake3` | `39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2` | `13058ea2d9913348a203cceff7b58d98b6446610ac80518dc3359b8d7ee57472` |
+| `bundle_identity_blake3` | `c4826bb63fa9eef1fa619e0f0c4c2c35dd10ca92a8d4999fec10c55e92b692b7` | `260f66f8df52b89f5673cbf3f2702d49d3413d45d47ab2baca994185d29e5cb3` |
+
+Verified before refreshing: the identical failure reproduces on the
+pre-change tree (`git worktree` at `f9f1778`), the refreshed manifest digest
+was recomputed directly from the built bundle's `manifest.json`
+(`b3sum` = `13058ea2...`, matching the failing check's reported actual), and
+the host-runner member digest still matches the committed
+`spacewasm_runner_blake3` (`be8aeb69...`), so no engine artifact moved.

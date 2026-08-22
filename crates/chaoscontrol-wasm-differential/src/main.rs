@@ -333,13 +333,15 @@ fn execute_corpus(
         };
         let raw = run_wasmtime(profile, wasmtime, &module_path, fuel)?;
         let wasmtime_observation = normalize_tool(WASMTIME_ENGINE, case.kind, &raw);
-        comparisons.push(compare_case(
+        let comparison = compare_case(
             String::from(case.case_id),
             case.kind,
             module_digest,
             spacewasm,
             wasmtime_observation,
-        ));
+        )
+        .map_err(Error::Invalid)?;
+        comparisons.push(comparison);
     }
 
     let runner_path = bundle.join(HOST_RUNNER_PATH);
@@ -451,13 +453,14 @@ fn run_generated_case(
         profile.bounds.wasmtime_fuel,
     )?;
     let wasmtime_observation = normalize_tool(WASMTIME_ENGINE, case.kind, &raw);
-    Ok(compare_case(
+    compare_case(
         String::from(case.case_id),
         case.kind,
         blake3::hash(case.module).to_hex().to_string(),
         spacewasm,
         wasmtime_observation,
-    ))
+    )
+    .map_err(Error::Invalid)
 }
 
 fn minimize_generated_mismatch(

@@ -11,8 +11,8 @@
     "maximum_shrink_attempts": 32,
     "wasmtime_fuel": 1024
   },
-  "bundle_identity_blake3": "c4826bb63fa9eef1fa619e0f0c4c2c35dd10ca92a8d4999fec10c55e92b692b7",
-  "bundle_manifest_blake3": "39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2",
+  "bundle_identity_blake3": "260f66f8df52b89f5673cbf3f2702d49d3413d45d47ab2baca994185d29e5cb3",
+  "bundle_manifest_blake3": "13058ea2d9913348a203cceff7b58d98b6446610ac80518dc3359b8d7ee57472",
   "chunk_schedules": [
     "complete",
     "one-byte"

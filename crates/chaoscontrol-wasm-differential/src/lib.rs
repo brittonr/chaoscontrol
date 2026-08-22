@@ -637,14 +637,19 @@ pub fn compare_case(
     module_blake3: String,
     spacewasm: NormalizedObservation,
     wasmtime: NormalizedObservation,
-) -> CaseComparison {
-    let first_difference = first_difference(&spacewasm, &wasmtime);
+) -> Result<CaseComparison, String> {
+    let harness =
+        compare_through_harness(&module_blake3, case_kind, &spacewasm, &wasmtime)?;
+    let first_difference = match harness.verdict {
+        differential_execution_core::ComparisonVerdict::Agreement => None,
+        _ => first_difference(&spacewasm, &wasmtime),
+    };
     let verdict = if first_difference.is_none() {
         ComparisonVerdict::Match
     } else {
         ComparisonVerdict::Mismatch
     };
-    CaseComparison {
+    Ok(CaseComparison {
         case_id,
         case_kind,
         module_blake3,
@@ -653,7 +658,7 @@ pub fn compare_case(
         verdict,
         first_difference,
         minimization: None,
-    }
+    })
 }
 
 pub fn same_mismatch_predicate(left: &CaseComparison, right: &CaseComparison) -> bool {
@@ -1182,7 +1187,8 @@ mod tests {
             String::from(MANIFEST_DIGEST),
             completed("spacewasm"),
             trapped("wasmtime", "unreachable"),
-        );
+        )
+        .expect("harness comparison");
         assert_eq!(comparison.verdict, ComparisonVerdict::Mismatch);
         let same_predicate = compare_case(
             String::from("same-predicate"),
@@ -1190,7 +1196,8 @@ mod tests {
             String::from(MANIFEST_DIGEST),
             completed("spacewasm"),
             trapped("wasmtime", "unreachable"),
-        );
+        )
+        .expect("harness comparison");
         assert!(same_mismatch_predicate(&comparison, &same_predicate));
         assert_eq!(
             comparison.first_difference.expect("difference").field,

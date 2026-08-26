@@ -113,6 +113,29 @@
       "status_label": "experimental-kvm-release-rail"
     },
     {
+      "boundary": "One exact x86 KVM cohort with content-bound closure, pure preflight, and detached restore observations.",
+      "documentation_targets": [
+        "README.md",
+        "docs/product-scope-status.md",
+        "docs/portable-snapshot-descriptors.md"
+      ],
+      "evidence": {
+        "id": "snapshot-descriptor-contracts",
+        "source": "docs/portable-snapshot-descriptors.md",
+        "state": "passed"
+      },
+      "id": "portable-snapshot-descriptors",
+      "name": "Portable exact-snapshot descriptors",
+      "non_claims": [
+        "No restore or artifact-access authority.",
+        "No cross-architecture or cross-topology portability.",
+        "No Molten world-commit semantics."
+      ],
+      "owner": "chaoscontrol-snapshot-descriptor",
+      "state": "experimental",
+      "status_label": "experimental-exact-cohort-contract"
+    },
+    {
       "boundary": "Bounded model-based tests for selected pure cores.",
       "documentation_targets": [
         "docs/product-scope-status.md"
@@ -383,6 +406,16 @@
         "No legacy identity promotion."
       ],
       "owner": "chaoscontrol-evidence",
+      "target_state": "experimental"
+    },
+    {
+      "change": "publish-portable-snapshot-descriptors",
+      "evidence_prerequisite": "Descriptor identity, closure, exact preflight, restore receipt, contract freshness, and consumer fixtures must pass.",
+      "non_claims": [
+        "No restore authority.",
+        "No cross-cohort portability or world-commit claim."
+      ],
+      "owner": "chaoscontrol-snapshot-descriptor",
       "target_state": "experimental"
     },
     {

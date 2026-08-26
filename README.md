@@ -8,9 +8,9 @@ distributed systems where reproducibility is essential.
 This is just an experiment with Claude + Pi.dev. Use at your own risk
 
 <!-- product-scope-facts:start -->
-> **Product scope:** 4 supported, 5 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
+> **Product scope:** 4 supported, 6 experimental, 1 deferred, 1 blocked, and 3 non-goal capabilities.
 >
-> The workspace has 20 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
+> The workspace has 21 crates from `Cargo.toml`. The replay manifest has 4 historical workload rows.
 >
 > The selected Cargo command owns the test inventory. This projection does not copy a test count. The authority is `cargo test --workspace --all-targets -- --list`.
 >
@@ -140,6 +140,7 @@ chaoscontrol/
     ├── chaoscontrol-dashboard/            # Web dashboard backend and static UI
     ├── chaoscontrol-explore/              # Coverage-guided exploration engine
     ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger
+    ├── chaoscontrol-snapshot-descriptor/  # Pure portable snapshot identity and preflight
     ├── chaoscontrol-evidence/             # Typed evidence/readiness models and gates
     ├── chaoscontrol-trace/                # eBPF/ftrace tracing
     ├── chaoscontrol-guest/                # Minimal SDK-instrumented guest binary
@@ -503,6 +504,8 @@ nix run .#rust-workload-accepted-verdict-dogfood -- \
 ```
 
 Replay verdict classes are stable strings: `snapshot_backed_reproduced`, `snapshot_backed_not_reproduced`, `schedule_only_replay_gap`, `missing_snapshot_ref`, `missing_snapshot_artifact`, `invalid_snapshot_digest`, `no_bug_found`, and `replay_error`. Only `snapshot_backed_reproduced` is accepted as proof of the selected snapshot-backed replay rail. It does not prove global deterministic hypervisor correctness across arbitrary workloads, devices, host timing, or all replay paths. See [`docs/snapshot-fidelity.md`](docs/snapshot-fidelity.md) for the exact state boundary, restore rules, and compatibility policy.
+
+External consumers can use the stable exact-cohort descriptor in [`docs/portable-snapshot-descriptors.md`](docs/portable-snapshot-descriptors.md). The descriptor excludes host locators and grants no restore authority.
 
 Historical workload-proof inventory and current promotion status are tracked in `docs/replay-proof-coverage.md`, `docs/replay-readiness-status.md`, `docs/assertion-readiness-status.md`, and `dogfood-results/accepted-workload-proofs.json`. Legacy schema-v1 rows are historical input, not current promotion authority. New claims require the typed cohort in `contracts/fresh-workload-proofs/cohort.ncl`, admitted v2 identity, committed evidence, and passing coverage and readiness checks. Oversized snapshots can use a chunks manifest plus ordered parts. The coverage gate verifies the stream against its logical digest.
 

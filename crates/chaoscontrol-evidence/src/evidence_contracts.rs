@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub const EVIDENCE_CONTRACTS_SUCCESS: &str =
-    "evidence contracts ok: Nickel profiles, projection freshness, receipts, positive fixtures, negative fixtures";
+    "evidence contracts ok: Nickel profiles, snapshot descriptors, projection freshness, receipts, positive fixtures, negative fixtures";
 
 const STATUSES: [&str; 5] = [
     "accepted",
@@ -40,6 +40,7 @@ pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'stat
     run_nickel_examples(root)?;
     crate::profile_projection::check_profile_projections(root, false)?;
     crate::product_scope::check_product_scope(root, false)?;
+    crate::snapshot_descriptor::contracts::check_snapshot_descriptor_contracts(root, false)?;
     check_evidence_contract_fixtures(root)?;
     Ok(EVIDENCE_CONTRACTS_SUCCESS)
 }

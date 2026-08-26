@@ -20,6 +20,7 @@ cap-std = "=4.0.2"
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }
 chaoscontrol-replay-evidence-core = { path = "../chaoscontrol-replay-evidence-core" }
+chaoscontrol-snapshot-descriptor = { path = "../chaoscontrol-snapshot-descriptor" }
 chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
 chaoscontrol-smr = { path = "../chaoscontrol-smr" }
 
@@ -46,6 +47,14 @@ path = "src/bin/check-replay-proof-coverage.rs"
 [[bin]]
 name = "materialize-snapshot-chunks"
 path = "src/bin/materialize-snapshot-chunks.rs"
+
+[[bin]]
+name = "check-snapshot-descriptor-contracts"
+path = "src/bin/check-snapshot-descriptor-contracts.rs"
+
+[[bin]]
+name = "snapshot-descriptor-fixture"
+path = "src/bin/snapshot-descriptor-fixture.rs"
 
 [[bin]]
 name = "generate-replay-readiness-report"

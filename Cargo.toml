@@ -2,6 +2,7 @@
 members = [
     "crates/chaoscontrol-protocol",
     "crates/chaoscontrol-replay-evidence-core",
+    "crates/chaoscontrol-snapshot-descriptor",
     "crates/chaoscontrol-sim-core",
     "crates/chaoscontrol-smr",
     "crates/chaoscontrol-wasm-differential",
@@ -35,6 +36,8 @@ default_scope = [
     "chaoscontrol-protocol",
     "-p",
     "chaoscontrol-replay-evidence-core",
+    "-p",
+    "chaoscontrol-snapshot-descriptor",
     "-p",
     "chaoscontrol-sim-core",
     "-p",

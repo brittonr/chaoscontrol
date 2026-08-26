@@ -1,0 +1,29 @@
+{
+  "schema": "chaoscontrol-snapshot-descriptor-freshness-v1",
+  "files": [
+    {
+      "path": "contracts/evidence/examples/snapshot-descriptor.ncl",
+      "blake3": "765a5f1694be0d39a59d02827af2f3989c9326be3b1651269c324e2881f6b72c"
+    },
+    {
+      "path": "contracts/evidence/fixtures/valid/snapshot-descriptor.valid.json",
+      "blake3": "a56260911d9a386a72f73ca8c426b50b82747bcca2f69ae72c01ee7bd3dccbf6"
+    },
+    {
+      "path": "contracts/evidence/schema/snapshot-descriptor-v1.schema.json",
+      "blake3": "5de94e27c2ce54ec27d4630854b82f21c83746d15744d05f04651fd571198f4f"
+    },
+    {
+      "path": "contracts/evidence/snapshot-descriptor.ncl",
+      "blake3": "bcb8b9815f034f3cda0c12d8995aa11b6c9d3d683be8a0d68eac93ea4f521569"
+    },
+    {
+      "path": "crates/chaoscontrol-snapshot-descriptor/src/model.rs",
+      "blake3": "ed5c0b74a2d09c9b4765eb10a3b99565af28bf355d40e11757954b93d1e09b08"
+    },
+    {
+      "path": "crates/chaoscontrol-snapshot-descriptor/src/observations.rs",
+      "blake3": "23cbe5983a048c851f079c9646b01c5bf9b2b4968eba5d7ff580c55ff321efba"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 workspace-package-set	Cargo.toml	strict
 package	crates/chaoscontrol-protocol/Cargo.toml	Apache-2.0
 package	crates/chaoscontrol-replay-evidence-core/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-snapshot-descriptor/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-sim-core/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-smr/Cargo.toml	Apache-2.0
 package	crates/chaoscontrol-wasm-differential/Cargo.toml	AGPL-3.0-or-later

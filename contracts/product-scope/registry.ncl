@@ -98,6 +98,25 @@ let ProductScope = import "product-scope.ncl" in
       non_claims = ["No universal host equivalence.", "No hosted KVM service."],
     },
     {
+      id = "portable-snapshot-descriptors",
+      name = "Portable exact-snapshot descriptors",
+      owner = "chaoscontrol-snapshot-descriptor",
+      state = "experimental",
+      status_label = "experimental-exact-cohort-contract",
+      evidence = {
+        id = "snapshot-descriptor-contracts",
+        state = "passed",
+        source = "docs/portable-snapshot-descriptors.md",
+      },
+      boundary = "One exact x86 KVM cohort with content-bound closure, pure preflight, and detached restore observations.",
+      documentation_targets = ["README.md", "docs/product-scope-status.md", "docs/portable-snapshot-descriptors.md"],
+      non_claims = [
+        "No restore or artifact-access authority.",
+        "No cross-architecture or cross-topology portability.",
+        "No Molten world-commit semantics.",
+      ],
+    },
+    {
       id = "state-machine-property-coverage",
       name = "State-machine property coverage",
       owner = "chaoscontrol-sim-core",
@@ -301,6 +320,13 @@ let ProductScope = import "product-scope.ncl" in
       target_state = "experimental",
       evidence_prerequisite = "Fresh strict-identity snapshot-backed KVM proofs must pass for the named cohort.",
       non_claims = ["No universal KVM determinism.", "No legacy identity promotion."],
+    },
+    {
+      change = "publish-portable-snapshot-descriptors",
+      owner = "chaoscontrol-snapshot-descriptor",
+      target_state = "experimental",
+      evidence_prerequisite = "Descriptor identity, closure, exact preflight, restore receipt, contract freshness, and consumer fixtures must pass.",
+      non_claims = ["No restore authority.", "No cross-cohort portability or world-commit claim."],
     },
     {
       change = "refresh-spacewasm-bundle-admission",

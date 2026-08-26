@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chaoscontrol-snapshot-descriptor-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "descriptor_version",
+    "completeness_profile",
+    "state_schema_version",
+    "architecture",
+    "runtime",
+    "topology",
+    "state_owners",
+    "guest_artifacts",
+    "payload"
+  ],
+  "properties": {
+    "schema": { "const": "chaoscontrol-snapshot-descriptor-v1" },
+    "descriptor_version": { "const": 1 },
+    "completeness_profile": { "const": "exact-x86-kvm-v1" },
+    "state_schema_version": { "const": 2 },
+    "architecture": { "const": "x86_64" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "topology": { "$ref": "#/$defs/topology" },
+    "state_owners": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/stateOwner" }
+    },
+    "guest_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/guestArtifact" }
+    },
+    "payload": { "$ref": "#/$defs/payloadClosure" }
+  },
+  "$defs": {
+    "taggedDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "hex"],
+      "properties": {
+        "algorithm": { "enum": ["blake3", "sha256"] },
+        "hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "length_bytes", "codec"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/taggedDigest" },
+        "length_bytes": { "type": "integer", "minimum": 1 },
+        "codec": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_build",
+        "kvm_operations",
+        "scheduler_profile",
+        "time_profile",
+        "entropy_profile"
+      ],
+      "properties": {
+        "runtime_build": { "$ref": "#/$defs/taggedDigest" },
+        "kvm_operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "scheduler_profile": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "time_profile": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "entropy_profile": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "deviceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_address", "irq", "device_id"],
+      "properties": {
+        "base_address": { "type": "integer", "minimum": 0 },
+        "irq": { "type": "integer", "minimum": 0 },
+        "device_id": { "enum": [1, 2, 4] }
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "queue_count", "backend"],
+      "properties": {
+        "identity": { "$ref": "#/$defs/deviceIdentity" },
+        "queue_count": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "backend": { "enum": ["network", "block", "entropy"] }
+      }
+    },
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vcpu_count", "memory_bytes", "msr_indices", "devices"],
+      "properties": {
+        "vcpu_count": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "memory_bytes": { "type": "integer", "minimum": 1 },
+        "msr_indices": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "devices": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/device" }
+        }
+      }
+    },
+    "stateOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_id", "schema_id"],
+      "properties": {
+        "owner_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "schema_id": { "const": "chaoscontrol-state-owner-v1" }
+      }
+    },
+    "guestArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content"],
+      "properties": {
+        "role": { "enum": ["kernel", "initrd", "disk-image", "guest-binary"] },
+        "content": { "$ref": "#/$defs/content" }
+      }
+    },
+    "closureMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "role", "content"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 0 },
+        "role": { "enum": ["snapshot-payload", "snapshot-chunk"] },
+        "content": { "$ref": "#/$defs/content" }
+      }
+    },
+    "payloadClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "logical_payload", "manifest", "members"],
+      "properties": {
+        "kind": { "enum": ["monolithic", "chunked"] },
+        "logical_payload": { "$ref": "#/$defs/content" },
+        "manifest": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/content" }
+          ]
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/closureMember" }
+        }
+      }
+    }
+  }
+}

@@ -1482,6 +1482,26 @@
               }
             );
 
+            # Portable exact-snapshot descriptor, projection, and consumer fixture.
+            snapshot-descriptor-contracts =
+              pkgs.runCommand "snapshot-descriptor-contracts-check"
+                {
+                  nativeBuildInputs = [
+                    chaoscontrol
+                    pkgs.nickel
+                  ];
+                }
+                ''
+                  cd ${self}
+                  check-snapshot-descriptor-contracts --root . --check
+                  snapshot-descriptor-fixture --out "$TMPDIR/snapshot-descriptor-fixture"
+                  test -s "$TMPDIR/snapshot-descriptor-fixture/snapshot-descriptor.monolithic.json"
+                  test -s "$TMPDIR/snapshot-descriptor-fixture/snapshot-descriptor.chunked.json"
+                  test -s "$TMPDIR/snapshot-descriptor-fixture/snapshot-restore-receipt.json"
+                  test -s "$TMPDIR/snapshot-descriptor-fixture/molten-shaped-snapshot-reference.json"
+                  touch "$out"
+                '';
+
             # Nickel-backed evidence contracts and committed dogfood receipt data.
             evidence-contracts =
               pkgs.runCommand "evidence-contracts-check"

@@ -4,7 +4,7 @@ Generated from `contracts/product-scope/registry.ncl` and named repository facts
 
 ## Architecture facts
 
-The Cargo workspace has 20 explicit crates. The source is `Cargo.toml`.
+The Cargo workspace has 21 explicit crates. The source is `Cargo.toml`.
 
 | Capability | State | Status label | Owner | Evidence | Boundary |
 | --- | --- | --- | --- | --- | --- |
@@ -13,6 +13,7 @@ The Cargo workspace has 20 explicit crates. The source is `Cargo.toml`.
 | Adversarial Wasm component rail | `experimental` | `experimental-host-side-evidence` | `chaoscontrol-wasm-differential` | `missing` from `.cairn/changes/add-adversarial-wasm-component-rail/` | Host-side Wasm generation and differential evidence for an exact admitted cohort. |
 | Identity-aware connectivity campaign | `blocked` | `blocked-producer-contract` | `chaoscontrol-sim-core` | `blocked` from `.cairn/changes/add-identity-aware-connectivity-campaign/` | Consumer campaign work starts only after an immutable OnixOS producer contract exists. |
 | KVM release evidence rail | `experimental` | `experimental-kvm-release-rail` | `chaoscontrol-evidence` | `passed` from `dogfood-results/kvm-release-evidence-20260809/validation-receipt.json` | One admitted KVM worker and one explicit required behavior matrix. |
+| Portable exact-snapshot descriptors | `experimental` | `experimental-exact-cohort-contract` | `chaoscontrol-snapshot-descriptor` | `passed` from `docs/portable-snapshot-descriptors.md` | One exact x86 KVM cohort with content-bound closure, pure preflight, and detached restore observations. |
 | State-machine property coverage | `experimental` | `experimental-property-rail` | `chaoscontrol-sim-core` | `missing` from `.cairn/changes/expand-state-machine-property-coverage/` | Bounded model-based tests for selected pure cores. |
 | External dogfood artifact storage | `deferred` | `deferred-storage-adapter-selection` | `chaoscontrol-evidence` | `blocked` from `.cairn/changes/externalize-large-dogfood-artifacts/` | Storage-neutral BLAKE3 references with a separately selected adapter. |
 | VMM and evidence module boundaries | `experimental` | `experimental-architecture-migration` | `chaoscontrol-vmm` | `missing` from `.cairn/changes/modularize-vmm-and-evidence-shells/` | Internal ownership migration with frozen public APIs and schemas. |
@@ -35,6 +36,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
+| `publish-portable-snapshot-descriptors` | `experimental` | `chaoscontrol-snapshot-descriptor` | Descriptor identity, closure, exact preflight, restore receipt, contract freshness, and consumer fixtures must pass. |
 | `replace-python-product-automation` | `experimental` | `chaoscontrol-evidence` | Positive and negative Python-to-Rust parity must pass before Python removal. |
 
 ## Roadmap by scope state
@@ -50,6 +52,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 
 - `adversarial-wasm-component-rail`: Host-side Wasm generation and differential evidence for an exact admitted cohort. Evidence is `missing`.
 - `kvm-release-evidence-rail`: One admitted KVM worker and one explicit required behavior matrix. Evidence is `passed`.
+- `portable-snapshot-descriptors`: One exact x86 KVM cohort with content-bound closure, pure preflight, and detached restore observations. Evidence is `passed`.
 - `state-machine-property-coverage`: Bounded model-based tests for selected pure cores. Evidence is `missing`.
 - `vmm-evidence-module-boundaries`: Internal ownership migration with frozen public APIs and schemas. Evidence is `missing`.
 - `rust-owned-product-automation`: Product policy and structured automation use focused Rust cores and shells. Evidence is `passed`.

@@ -15,6 +15,9 @@
 ## AGPL-3.0-or-later host and controller surfaces
 
 - `crates/chaoscontrol-fault/**`
+- `crates/chaoscontrol-replay-evidence-core/**`
+- `crates/chaoscontrol-snapshot-descriptor/**`
+- `crates/chaoscontrol-sim-core/**`
 - `crates/chaoscontrol-vmm/**`
 - `crates/chaoscontrol-trace/**`
 - `crates/chaoscontrol-explore/**`

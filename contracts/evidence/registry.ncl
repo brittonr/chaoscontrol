@@ -307,6 +307,33 @@ let Registry = {
       rationale = "Replay parent snapshots are runtime-derived evidence artifacts that must be hash-addressed and path-confined without making redb or raw logs a public boundary.",
     },
     {
+      id = "portable-snapshot-descriptor",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-snapshot-descriptor",
+      source_paths = [
+        "crates/chaoscontrol-snapshot-descriptor/src",
+        "crates/chaoscontrol-evidence/src/snapshot_descriptor",
+        "contracts/evidence/snapshot-descriptor.ncl",
+      ],
+      artifact_paths = [
+        "contracts/evidence/fixtures/valid/snapshot-descriptor.valid.json",
+        "contracts/evidence/schema/snapshot-descriptor-v1.schema.json",
+        "contracts/evidence/snapshot-descriptor.freshness.json",
+      ],
+      validation_commands = [
+        "cargo test -p chaoscontrol-snapshot-descriptor",
+        "check-snapshot-descriptor-contracts --root . --check",
+        "snapshot-descriptor-fixture --out target/snapshot-descriptor-fixture",
+      ],
+      fixture_coverage = [
+        "contracts/evidence/fixtures/valid/snapshot-descriptor.valid.json",
+        "contracts/evidence/fixtures/invalid/snapshot-descriptor.schema.invalid.ncl",
+        "crates/chaoscontrol-snapshot-descriptor/tests/negative.rs",
+      ],
+      freshness = "Rust DTOs own descriptor meaning. The BLAKE3 freshness manifest binds the Rust field owners, JSON schema, Nickel review contract, and generated valid fixture.",
+      rationale = "External consumers need exact cohort, closure, and preflight facts without importing host locators, storage authority, or world-commit semantics.",
+    },
+    {
       id = "replay-verdict",
       ownership = "rust-derived",
       owner = "chaoscontrol-explore replay_verdict",

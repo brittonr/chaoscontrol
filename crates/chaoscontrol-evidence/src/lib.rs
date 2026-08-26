@@ -55,6 +55,7 @@ pub mod sdk_local_report;
 mod sdk_local_verdict;
 pub mod semantic_history;
 pub mod simulator_profile;
+pub mod snapshot_descriptor;
 pub mod typed_operator_command;
 
 /// Execute one validated typed operator command through the pinned process mechanism.

@@ -1202,27 +1202,13 @@ impl NetworkFabric {
     pub fn clear_partitions(&mut self) -> bool {
         self.partitions.clear();
         self.partition_attempt_ids.clear();
-        for rate in &mut self.loss_rate_ppm {
-            *rate = 0;
-        }
-        for rate in &mut self.corruption_rate_ppm {
-            *rate = 0;
-        }
-        for win in &mut self.reorder_window {
-            *win = 0;
-        }
-        for j in &mut self.jitter {
-            *j = 0;
-        }
-        for bw in &mut self.bandwidth_bps {
-            *bw = 0;
-        }
-        for t in &mut self.next_free_tick {
-            *t = 0;
-        }
-        for rate in &mut self.duplicate_rate_ppm {
-            *rate = 0;
-        }
+        self.loss_rate_ppm.fill(0);
+        self.corruption_rate_ppm.fill(0);
+        self.reorder_window.fill(0);
+        self.jitter.fill(0);
+        self.bandwidth_bps.fill(0);
+        self.next_free_tick.fill(0);
+        self.duplicate_rate_ppm.fill(0);
         self.jitter_attempt_ids.fill(None);
         self.bandwidth_attempt_ids.fill(None);
         self.loss_attempt_ids.fill(None);

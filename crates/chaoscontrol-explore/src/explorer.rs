@@ -1473,7 +1473,7 @@ impl Explorer {
             .collect();
 
         // Sort by rare edge count descending
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_by_key(|item| std::cmp::Reverse(item.1));
 
         // Take up to max_frontier / 2 entries
         let recycle_count = scored.len().min(self.config.max_frontier / 2).max(1);
@@ -1512,7 +1512,7 @@ impl Explorer {
                 .enumerate()
                 .map(|(i, e)| (i, e.new_edges))
                 .collect();
-            by_edges.sort_by(|a, b| b.1.cmp(&a.1));
+            by_edges.sort_by_key(|item| std::cmp::Reverse(item.1));
 
             for &(idx, _) in by_edges.iter().take(recycle_count) {
                 let entry = &entries[idx];

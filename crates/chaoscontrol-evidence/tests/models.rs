@@ -48,7 +48,6 @@ fn repo_file(relative: &str) -> PathBuf {
 }
 
 fn typed_copy_command(source: &Path, target: &Path) -> serde_json::Value {
-    const EXECUTABLE_MAX_BYTES: u64 = 67_108_864;
     const TIMEOUT_MS: u64 = 30_000;
     const INPUT_MAX_BYTES: u64 = 1_024;
     const OUTPUT_MAX_BYTES: u64 = 1_048_576;
@@ -65,7 +64,7 @@ fn typed_copy_command(source: &Path, target: &Path) -> serde_json::Value {
         "executable": {
             "path": fixture.executable.display().to_string(),
             "blake3": fixture.executable_blake3,
-            "maximum_bytes": EXECUTABLE_MAX_BYTES
+            "maximum_bytes": fixture.executable_size
         },
         "args": fixture.args,
         "working_directory": ".",

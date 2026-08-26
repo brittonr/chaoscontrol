@@ -672,7 +672,7 @@ impl TestCluster {
             let node = &mut self.nodes[active];
 
             // Drain inbox
-            let inbox: Vec<(usize, Message)> = node.inbox.drain(..).collect();
+            let inbox = std::mem::take(&mut node.inbox);
             for (from, msg) in inbox {
                 let replies = node.handle_message(from, msg, jitter);
                 for (to, reply) in replies {

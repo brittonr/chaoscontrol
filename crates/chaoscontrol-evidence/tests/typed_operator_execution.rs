@@ -13,7 +13,6 @@ use chaoscontrol_evidence::typed_operator_command::{
     TerminationScope, MECHANISM_REVISION, PLAN_SCHEMA,
 };
 
-const EXECUTABLE_MAX_BYTES: u64 = 67_108_864;
 const DEFAULT_TIMEOUT_MS: u64 = 1_000;
 const INPUT_MAX_BYTES: u64 = 1_024;
 const DEFAULT_OUTPUT_MAX_BYTES: u64 = 4_096;
@@ -33,7 +32,7 @@ fn fixture_plan(action: &str, first: &str, second: &str) -> CommandPlan {
         executable: ExecutableRef {
             path: fixture.executable.display().to_string(),
             blake3: fixture.executable_blake3,
-            maximum_bytes: EXECUTABLE_MAX_BYTES,
+            maximum_bytes: fixture.executable_size,
         },
         args: fixture.args,
         working_directory: ".".to_string(),

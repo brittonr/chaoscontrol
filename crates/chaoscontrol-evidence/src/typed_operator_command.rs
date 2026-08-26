@@ -18,6 +18,7 @@ use serde_json::Value;
 pub const PLAN_SCHEMA: &str = "chaoscontrol.typed-command-plan.v1";
 pub const MECHANISM_REVISION: &str = "29dac88ecded94457572db3fdfaaaab95fa91525";
 const BLAKE3_HEX_LENGTH: usize = 64;
+const HEX_CHARACTERS_PER_BYTE: usize = 2;
 const HEX_RADIX: u32 = 16;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -226,10 +227,15 @@ pub fn stdin_bytes(spec: &StdinSpec) -> Result<Vec<u8>, String> {
         StdinSpec::Null => Ok(Vec::new()),
         StdinSpec::Bytes { hex, blake3 } => {
             require(valid_blake3(blake3), "stdin BLAKE3 identity is invalid")?;
-            require(hex.len() % 2 == 0, "stdin hex has an odd length")?;
+            require(
+                hex.len() % HEX_CHARACTERS_PER_BYTE == 0,
+                "stdin hex has an odd length",
+            )?;
             let bytes = hex
                 .as_bytes()
-                .chunks_exact(2)
+                .as_chunks::<HEX_CHARACTERS_PER_BYTE>()
+                .0
+                .iter()
                 .map(|pair| {
                     let text = std::str::from_utf8(pair)
                         .map_err(|_| String::from("stdin hex is not UTF-8"))?;

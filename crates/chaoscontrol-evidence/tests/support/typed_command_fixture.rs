@@ -13,6 +13,7 @@ const CHILD_ARGUMENT_COUNT: usize = 3;
 pub(crate) struct FixtureSpec {
     pub(crate) executable: PathBuf,
     pub(crate) executable_blake3: String,
+    pub(crate) executable_size: u64,
     pub(crate) args: Vec<String>,
     pub(crate) environment: Vec<EnvironmentEntry>,
 }
@@ -23,6 +24,7 @@ pub(crate) fn fixture_spec(action: &str, first: &str, second: &str) -> FixtureSp
     FixtureSpec {
         executable,
         executable_blake3: blake3::hash(&bytes).to_hex().to_string(),
+        executable_size: u64::try_from(bytes.len()).expect("fixture executable length fits u64"),
         args: vec![
             "--exact".to_string(),
             CHILD_TEST_NAME.to_string(),

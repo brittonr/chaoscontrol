@@ -4050,14 +4050,12 @@ impl DeterministicVm {
                         HPET_REG_COUNTER => {
                             // Main counter: deterministic value from vTSC.
                             // HPET at ~100 MHz = TSC / 30 at 3 GHz.
+                            const HPET_FREQUENCY_KHZ: u64 = 100_000;
                             let tsc = self.virtual_tsc.read();
-                            let tsc_khz = self.virtual_tsc.tsc_khz() as u64;
-                            if tsc_khz > 0 {
-                                // 100 MHz HPET = tsc * 100_000 / tsc_khz
-                                tsc as u128 as u64 * 100_000 / tsc_khz
-                            } else {
-                                0
-                            }
+                            let tsc_khz = u64::from(self.virtual_tsc.tsc_khz());
+                            tsc.saturating_mul(HPET_FREQUENCY_KHZ)
+                                .checked_div(tsc_khz)
+                                .unwrap_or_default()
                         }
                         _ => 0,
                     };

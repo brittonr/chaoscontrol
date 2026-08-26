@@ -39,7 +39,9 @@ impl AssertionFingerprint {
         let mut bytes = [0_u8; ASSERTION_FINGERPRINT_BYTES];
         for (index, pair) in value
             .as_bytes()
-            .chunks_exact(HEX_CHARACTERS_PER_BYTE)
+            .as_chunks::<HEX_CHARACTERS_PER_BYTE>()
+            .0
+            .iter()
             .enumerate()
         {
             bytes[index] = (hex_nibble(pair[0])? << HEX_HIGH_NIBBLE_SHIFT) | hex_nibble(pair[1])?;

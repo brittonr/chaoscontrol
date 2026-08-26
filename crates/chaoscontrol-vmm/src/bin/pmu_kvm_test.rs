@@ -117,7 +117,7 @@ fn main() {
 
     println!("\nTop deltas:");
     let mut sorted_hist: Vec<(i64, usize)> = delta_hist.into_iter().collect();
-    sorted_hist.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted_hist.sort_by_key(|item| std::cmp::Reverse(item.1));
     for (delta, count) in sorted_hist.iter().take(8) {
         println!(
             "  Δ={:>+6}: {} ({:.1}%)",

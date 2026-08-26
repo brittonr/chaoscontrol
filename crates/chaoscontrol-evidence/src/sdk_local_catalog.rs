@@ -7,7 +7,10 @@ use chaoscontrol_protocol::identity::{
 };
 use serde::Deserialize;
 
-const MAX_CANONICAL_HEX_BYTES: usize = MAX_ASSERTION_CANONICAL_BYTES * 2;
+const HEX_CHARACTERS_PER_BYTE: usize = 2;
+const HEX_HIGH_NIBBLE_SHIFT: u32 = 4;
+const HEX_ALPHA_DIGIT_OFFSET: u8 = 10;
+const MAX_CANONICAL_HEX_BYTES: usize = MAX_ASSERTION_CANONICAL_BYTES * HEX_CHARACTERS_PER_BYTE;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,14 +137,14 @@ fn decode_hex(value: &str, line_index: usize) -> EvidenceResult<Vec<u8>> {
             "canonical descriptor hex exceeds the byte limit",
         );
     }
-    if !value.len().is_multiple_of(2) {
+    if !value.len().is_multiple_of(HEX_CHARACTERS_PER_BYTE) {
         return line_error(line_index, "canonical descriptor hex length is invalid");
     }
-    let mut output = Vec::with_capacity(value.len() / 2);
-    for pair in value.as_bytes().chunks_exact(2) {
+    let mut output = Vec::with_capacity(value.len() / HEX_CHARACTERS_PER_BYTE);
+    for pair in value.as_bytes().as_chunks::<HEX_CHARACTERS_PER_BYTE>().0 {
         let high = hex_nibble(pair[0])?;
         let low = hex_nibble(pair[1])?;
-        output.push((high << 4) | low);
+        output.push((high << HEX_HIGH_NIBBLE_SHIFT) | low);
     }
     Ok(output)
 }
@@ -149,7 +152,7 @@ fn decode_hex(value: &str, line_index: usize) -> EvidenceResult<Vec<u8>> {
 fn hex_nibble(value: u8) -> EvidenceResult<u8> {
     match value {
         b'0'..=b'9' => Ok(value - b'0'),
-        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'a'..=b'f' => Ok(value - b'a' + HEX_ALPHA_DIGIT_OFFSET),
         _ => Err(EvidenceError::new(
             "canonical descriptor contains invalid hex",
         )),

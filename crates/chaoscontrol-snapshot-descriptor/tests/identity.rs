@@ -1,3 +1,12 @@
+#![allow(
+    unknown_lints,
+    reason = "stable builds must accept lint names that Octet registers only during its analysis pass"
+)]
+#![allow(
+    non_trait_imports,
+    reason = "identity fixtures name the complete public descriptor API under test in one integration crate"
+)]
+
 mod support;
 
 use chaoscontrol_snapshot_descriptor::{

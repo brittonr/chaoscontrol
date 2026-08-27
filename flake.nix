@@ -1795,6 +1795,18 @@
 
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = octet.checks.${system}.policy-registry;
+            snapshot-descriptor-octet-deny-all =
+              (octet.lib.mkConsumerCheck {
+                inherit system;
+                src = tigerstyleSrc;
+                cargoLock = ./Cargo.lock;
+                packages = [ "chaoscontrol-snapshot-descriptor" ];
+                cargoExtraArgs = "--all-targets --all-features";
+                nativeBuildInputs = [ pkgs.stdenv.cc ];
+              }).overrideAttrs
+                (_previous: {
+                  DYLINT_RUSTFLAGS = "--deny warnings";
+                });
             tigerstyle-chaoscontrol-focused = octet.lib.mkConsumerCheck {
               inherit system;
               src = tigerstyleSrc;

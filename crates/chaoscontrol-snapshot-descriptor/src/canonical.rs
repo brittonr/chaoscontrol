@@ -1,3 +1,10 @@
+#![allow(
+    non_trait_imports,
+    reason = "canonical framing composes the closed snapshot DTO vocabulary at one identity boundary"
+)]
+
+mod hex;
+
 use sha2::Digest as _;
 
 use crate::model::{
@@ -12,11 +19,6 @@ use crate::validation::{validate_descriptor, DescriptorError};
 const DESCRIPTOR_IDENTITY_DOMAIN: &str = "chaoscontrol.snapshot-descriptor.identity.v1";
 const DESTINATION_IDENTITY_DOMAIN: &str = "chaoscontrol.snapshot-destination.identity.v1";
 const PREFLIGHT_IDENTITY_DOMAIN: &str = "chaoscontrol.snapshot-preflight.identity.v1";
-const HEX_ALPHABET_BYTES: usize = 16;
-const HEX_CHARACTERS_PER_BYTE: usize = 2;
-const HEX_HIGH_NIBBLE_SHIFT: u32 = 4;
-const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
-const HEX_DIGITS: &[u8; HEX_ALPHABET_BYTES] = b"0123456789abcdef";
 
 struct Framer {
     hasher: blake3::Hasher,
@@ -72,7 +74,7 @@ pub fn digest_bytes(algorithm: DigestAlgorithm, bytes: &[u8]) -> TaggedDigest {
         DigestAlgorithm::Blake3 => blake3::hash(bytes).to_hex().to_string(),
         DigestAlgorithm::Sha256 => {
             let digest = sha2::Sha256::digest(bytes);
-            hex_lower(digest.as_slice())
+            hex::lower(digest.as_slice())
         }
     };
     TaggedDigest { algorithm, hex }
@@ -224,20 +226,6 @@ fn usize_to_u64(value: usize) -> u64 {
     {
         u64::from(u16::from_ne_bytes(value.to_ne_bytes()))
     }
-}
-
-fn hex_lower(bytes: &[u8]) -> String {
-    let capacity = bytes.len().saturating_mul(HEX_CHARACTERS_PER_BYTE);
-    let mut output = String::with_capacity(capacity);
-    for byte in bytes {
-        output.push(char::from(
-            HEX_DIGITS[usize::from(byte >> HEX_HIGH_NIBBLE_SHIFT)],
-        ));
-        output.push(char::from(
-            HEX_DIGITS[usize::from(byte & HEX_LOW_NIBBLE_MASK)],
-        ));
-    }
-    output
 }
 
 fn digest_algorithm_name(value: DigestAlgorithm) -> &'static str {

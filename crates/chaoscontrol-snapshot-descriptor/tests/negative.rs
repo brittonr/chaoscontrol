@@ -1,3 +1,12 @@
+#![allow(
+    unknown_lints,
+    reason = "stable builds must accept lint names that Octet registers only during its analysis pass"
+)]
+#![allow(
+    non_trait_imports,
+    reason = "hostile fixtures name the exact public denial API and shared fixture constructors under test"
+)]
+
 mod support;
 
 use chaoscontrol_snapshot_descriptor::{

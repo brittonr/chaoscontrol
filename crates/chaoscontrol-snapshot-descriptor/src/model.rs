@@ -1,3 +1,8 @@
+#![allow(
+    non_trait_imports,
+    reason = "the model module owns one closed public descriptor vocabulary with explicit imported derive and field types"
+)]
+
 use serde::{Deserialize, Serialize};
 
 pub const DESCRIPTOR_SCHEMA: &str = "chaoscontrol-snapshot-descriptor-v1";

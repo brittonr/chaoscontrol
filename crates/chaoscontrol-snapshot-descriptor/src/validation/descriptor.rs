@@ -1,14 +1,26 @@
+#![allow(
+    non_trait_imports,
+    reason = "complete descriptor validation must compare every named model field against one closed cohort contract"
+)]
+#![allow(
+    path_segment_repetition,
+    reason = "qualified validation helpers preserve the distinction between descriptor and observation validation"
+)]
+
+mod closure;
+
+pub use closure::validate_payload_closure;
+
 use std::collections::BTreeSet;
 
 use crate::model::{
-    ClosureKind, ClosureRole, ContentIdentity, DeviceBackend, DeviceCohort, DigestAlgorithm,
-    GuestArtifactRole, PayloadClosure, SnapshotDescriptor, SnapshotTopology, StateOwner,
-    TaggedDigest, CHUNK_MANIFEST_CODEC, CURRENT_PAYLOAD_CODEC, DESCRIPTOR_SCHEMA,
+    ContentIdentity, DeviceBackend, DeviceCohort, DigestAlgorithm, GuestArtifactRole,
+    SnapshotDescriptor, SnapshotTopology, StateOwner, TaggedDigest, DESCRIPTOR_SCHEMA,
     DESCRIPTOR_VERSION, EXACT_ARCHITECTURE, EXACT_SNAPSHOT_PROFILE, EXACT_STATE_SCHEMA_VERSION,
-    FIXED_STATE_OWNERS, MAX_CLOSURE_MEMBERS, MAX_DEVICES, MAX_DEVICE_QUEUES, MAX_GUEST_ARTIFACTS,
-    MAX_KVM_OPERATIONS, MAX_MEMORY_BYTES, MAX_MSR_INDICES, MAX_STATE_OWNERS, MAX_TEXT_BYTES,
-    MAX_VCPUS, REQUIRED_KVM_OPERATIONS, SNAPSHOT_CHUNK_CODEC, STATE_OWNER_SCHEMA,
-    VIRTIO_BLOCK_DEVICE_ID, VIRTIO_ENTROPY_DEVICE_ID, VIRTIO_NETWORK_DEVICE_ID,
+    FIXED_STATE_OWNERS, MAX_DEVICES, MAX_DEVICE_QUEUES, MAX_GUEST_ARTIFACTS, MAX_KVM_OPERATIONS,
+    MAX_MEMORY_BYTES, MAX_MSR_INDICES, MAX_STATE_OWNERS, MAX_TEXT_BYTES, MAX_VCPUS,
+    REQUIRED_KVM_OPERATIONS, STATE_OWNER_SCHEMA, VIRTIO_BLOCK_DEVICE_ID, VIRTIO_ENTROPY_DEVICE_ID,
+    VIRTIO_NETWORK_DEVICE_ID,
 };
 use crate::validation::DescriptorError;
 
@@ -191,80 +203,6 @@ fn validate_guest_artifacts(descriptor: &SnapshotDescriptor) -> Result<(), Descr
     }
     for artifact in artifacts {
         validate_content(&artifact.content)?;
-    }
-    Ok(())
-}
-
-// r[impl chaoscontrol.snapshot_descriptor.closure]
-pub fn validate_payload_closure(closure: &PayloadClosure) -> Result<(), DescriptorError> {
-    validate_content(&closure.logical_payload)?;
-    require_equal(
-        "payload-codec",
-        &closure.logical_payload.codec,
-        CURRENT_PAYLOAD_CODEC,
-    )?;
-    if closure.members.is_empty() || closure.members.len() > MAX_CLOSURE_MEMBERS {
-        return invalid("closure-members", "closure is empty or too large");
-    }
-    match closure.kind {
-        ClosureKind::Monolithic => validate_monolithic(closure),
-        ClosureKind::Chunked => validate_chunked(closure),
-    }
-}
-
-fn validate_monolithic(closure: &PayloadClosure) -> Result<(), DescriptorError> {
-    if closure.manifest.is_some() || closure.members.len() != 1 {
-        return invalid(
-            "monolithic-closure",
-            "monolithic closure must contain one payload member",
-        );
-    }
-    let member = &closure.members[0];
-    if member.order != 0
-        || member.role != ClosureRole::SnapshotPayload
-        || member.content != closure.logical_payload
-    {
-        return invalid(
-            "monolithic-closure",
-            "monolithic payload member does not match logical payload",
-        );
-    }
-    Ok(())
-}
-
-fn validate_chunked(closure: &PayloadClosure) -> Result<(), DescriptorError> {
-    let manifest = closure.manifest.as_ref().ok_or_else(|| {
-        DescriptorError::new("chunk-manifest", "chunk manifest is missing".into())
-    })?;
-    validate_content(manifest)?;
-    require_equal(
-        "chunk-manifest-codec",
-        &manifest.codec,
-        CHUNK_MANIFEST_CODEC,
-    )?;
-    let mut total = 0_u64;
-    for (index, member) in closure.members.iter().enumerate() {
-        let order = u32::try_from(index)
-            .map_err(|_| DescriptorError::new("chunk-order", "chunk order exceeds u32".into()))?;
-        if member.order != order || member.role != ClosureRole::SnapshotChunk {
-            return invalid(
-                "chunk-order",
-                "chunk members are missing, reordered, or have the wrong role",
-            );
-        }
-        validate_content(&member.content)?;
-        require_equal("chunk-codec", &member.content.codec, SNAPSHOT_CHUNK_CODEC)?;
-        total = total
-            .checked_add(member.content.length_bytes)
-            .ok_or_else(|| {
-                DescriptorError::new("chunk-length", "chunk length sum overflowed".into())
-            })?;
-    }
-    if total != closure.logical_payload.length_bytes {
-        return invalid(
-            "chunk-length",
-            "chunk lengths do not cover the logical payload",
-        );
     }
     Ok(())
 }

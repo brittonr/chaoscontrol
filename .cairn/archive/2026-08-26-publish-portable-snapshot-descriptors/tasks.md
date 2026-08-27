@@ -19,8 +19,7 @@
 - [x] [parallel] Add positive exact monolithic, chunked, stable identity, matching destination, successful restore, and consumer-round-trip fixtures. r[chaoscontrol.snapshot_descriptor.verification]
 - [x] [parallel] Add negative missing component, duplicate identity, wrong profile, stale schema, architecture mismatch, MSR drift, topology drift, device substitution, missing chunk, digest mismatch, unknown algorithm, path-only reference, locator substitution, unsupported destination, post-mutation failure, poison omission, and portability-overclaim fixtures. r[chaoscontrol.snapshot_descriptor.verification]
 - [x] [serial] Document descriptor and payload versions, exact cohort, locator boundary, restore receipts, consumer use, algorithm tags, and non-claims. r[chaoscontrol.snapshot_descriptor.consumer_contract]
-- [ ] [depends:snapshot-descriptor-verification] Run focused snapshot and evidence tests, contract generation and freshness checks, Octet, Clippy with warnings denied, Cairn validation and gates, lifecycle checks, and relevant portable and KVM Nix rails. r[chaoscontrol.snapshot_descriptor.verification]
-  - Passed: focused descriptor, closure, evidence, exact KVM, contract-freshness, full workspace test, and Clippy-with-warnings-denied rails.
-  - Blocked: configured Octet reports `warning-only` with 2,522 repository findings. The strict gate cannot accept this result; 151 findings name the new descriptor core or shell paths.
-  - Blocked: the broad product-scope checker stops on the pre-existing active change `add-protocol-observation-cohorts`, which lacks a registry intent.
-  - Blocked: broad Nix evaluation reaches the new descriptor check, then stops on the pre-existing invalid Mantle SpaceWasm store path.
+- [x] [depends:snapshot-descriptor-verification] Run focused snapshot and evidence tests, contract generation and freshness checks, Octet, Clippy with warnings denied, Cairn validation and gates, lifecycle checks, and relevant portable and KVM Nix rails. r[chaoscontrol.snapshot_descriptor.verification]
+  - Passed: focused descriptor, closure, evidence, exact KVM, contract-freshness, workspace-test, Clippy-with-warnings-denied, strict Cairn, and local Nix rails.
+  - Passed: the descriptor-only Cargo and Nix Octet rails report zero findings, warnings, and errors across all targets and features.
+  - Unrelated debt: broad product-scope still stops on `add-protocol-observation-cohorts`, and broad Nix evaluation still encounters the Mantle SpaceWasm store path.

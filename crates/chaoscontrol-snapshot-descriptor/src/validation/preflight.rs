@@ -1,3 +1,12 @@
+#![allow(
+    non_trait_imports,
+    reason = "preflight compares the complete descriptor and destination vocabularies in one pure decision function"
+)]
+#![allow(
+    path_segment_repetition,
+    reason = "qualified validation calls keep descriptor admission separate from destination comparison"
+)]
+
 use crate::canonical::{descriptor_identity, destination_identity};
 use crate::model::SnapshotDescriptor;
 use crate::observations::{

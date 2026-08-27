@@ -1,3 +1,8 @@
+#![allow(
+    non_trait_imports,
+    reason = "the validation facade exports the closed descriptor validators and one shared diagnostic type"
+)]
+
 mod descriptor;
 mod observations;
 mod preflight;

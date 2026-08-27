@@ -19,11 +19,11 @@
     },
     {
       "path": "crates/chaoscontrol-snapshot-descriptor/src/model.rs",
-      "blake3": "ed5c0b74a2d09c9b4765eb10a3b99565af28bf355d40e11757954b93d1e09b08"
+      "blake3": "9972afaa330aa963234331f22cbfa763f001ecfafe904abaa34bbeff66a74f3d"
     },
     {
       "path": "crates/chaoscontrol-snapshot-descriptor/src/observations.rs",
-      "blake3": "23cbe5983a048c851f079c9646b01c5bf9b2b4968eba5d7ff580c55ff321efba"
+      "blake3": "17ef821ec1e68c5d1ff3c1499a2a218f804a074b2b2f76921fe975e675c614d6"
     }
   ]
 }

@@ -1,3 +1,8 @@
+#![allow(
+    non_trait_imports,
+    reason = "receipt and locator validators compose one closed set of descriptor observation DTOs and bounds"
+)]
+
 use crate::model::{
     DigestAlgorithm, TaggedDigest, EXACT_SNAPSHOT_PROFILE, MAX_CONTINUATION_STEPS,
     MAX_LOCATOR_BYTES, MAX_LOCATOR_HINTS, MAX_RESTORE_PHASES, RESTORE_NON_CLAIMS,

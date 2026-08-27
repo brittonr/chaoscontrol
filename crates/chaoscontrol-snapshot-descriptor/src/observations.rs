@@ -1,3 +1,8 @@
+#![allow(
+    non_trait_imports,
+    reason = "detached observation records compose the descriptor-owned cohort and content DTOs without effects"
+)]
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::{ContentIdentity, RuntimeCohort, SnapshotTopology, TaggedDigest};

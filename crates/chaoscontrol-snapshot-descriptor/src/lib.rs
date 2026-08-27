@@ -1,3 +1,8 @@
+#![allow(
+    unknown_lints,
+    reason = "stable builds must accept lint names that Octet registers only during its analysis pass"
+)]
+
 //! Pure portable descriptor contracts for exact ChaosControl snapshots.
 //!
 //! This crate owns deterministic descriptor identity, closure admission,

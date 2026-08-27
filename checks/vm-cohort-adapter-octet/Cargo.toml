@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = ["."]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["ChaosControl Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3"
+publish = false
+
+[workspace.dependencies]
+blake3 = { version = "1.8.2", default-features = false }
+clap = { version = "4.5", features = ["derive"] }
+kvm-bindings = "0.10"
+kvm-ioctls = "0.19"
+libc = "0.2"
+memfd = "0.6"
+memmap2 = "0.9"
+serde = { version = "1", default-features = false, features = ["alloc", "derive", "rc"] }
+serde_json = "1"
+
+[workspace.lints.rust]
+missing_docs = "deny"
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+module_name_repetitions = "allow"
+
+[workspace.metadata.octet]
+default_scope = ["--workspace"]
+cargo_check_args = ["--all-targets", "--all-features"]
+
+[package]
+name = "chaoscontrol-vm-cohort-adapter"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+blake3 = "1.8"
+chaoscontrol-vmm = { path = "@CHAOSCONTROL_SRC@/crates/chaoscontrol-vmm" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Keep ChaosControl's reviewed loader-compatible vm-memory implementation.
+vm-memory = "=0.17.1"
+vm-cohort-conformance = { path = "@VM_COHORT_SRC@/crates/vm-cohort-conformance" }
+vm-cohort-core = { path = "@VM_COHORT_SRC@/crates/vm-cohort-core" }
+vm-cohort-kvm = { path = "@VM_COHORT_SRC@/crates/vm-cohort-kvm" }
+
+[dev-dependencies]
+chaoscontrol-fault = { path = "@CHAOSCONTROL_SRC@/crates/chaoscontrol-fault" }
+chaoscontrol-sim-core = { path = "@CHAOSCONTROL_SRC@/crates/chaoscontrol-sim-core" }
+kvm-bindings = "0.10"
+kvm-ioctls = "0.19"
+vm-superio = "0.8"

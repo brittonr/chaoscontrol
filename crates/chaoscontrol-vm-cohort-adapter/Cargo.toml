@@ -1,0 +1,23 @@
+[package]
+name = "chaoscontrol-vm-cohort-adapter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "AGPL-3.0-or-later"
+description = "ChaosControl-owned adapter over exact VM Cohort mechanics"
+
+[dependencies]
+blake3 = "1.8"
+chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+vm-cohort-conformance = { git = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3", rev = "ab123e3673b6dd616b3df5d044026b5e85755149", version = "0.1.0" }
+vm-cohort-core = { git = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3", rev = "ab123e3673b6dd616b3df5d044026b5e85755149", version = "0.1.0" }
+vm-cohort-kvm = { git = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3", rev = "ab123e3673b6dd616b3df5d044026b5e85755149", version = "0.1.0" }
+
+[dev-dependencies]
+chaoscontrol-fault = { path = "../chaoscontrol-fault" }
+chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
+kvm-bindings = "0.10"
+kvm-ioctls = "0.19"
+vm-superio = "0.8"

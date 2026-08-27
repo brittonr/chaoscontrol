@@ -1,0 +1,53 @@
+{
+  "authority": {
+    "consumer_policy_leak": false,
+    "evidence_authority_granted": false,
+    "fault_authority_granted": false,
+    "product_policy_owner": "chaoscontrol",
+    "release_authority_granted": false,
+    "replay_authority_granted": false,
+    "shared_mechanics_owner": "vm-cohort"
+  },
+  "mapping": {
+    "adapter": true,
+    "exact_snapshot": true,
+    "initialized_disk": true,
+    "initialized_memory": true,
+    "runtime": true,
+    "topology": true
+  },
+  "non_claims": [
+    "Behavioral parity does not prove either implementation correct.",
+    "KVM smoke does not prove guest correctness or universal determinism.",
+    "VM Cohort receipts do not grant product authority.",
+    "Cleanup observations do not prove data erasure.",
+    "The diagnostic rollback path is not a supported release fallback."
+  ],
+  "schema_version": 1,
+  "selection": {
+    "automatic_fallback": false,
+    "legacy_status": "diagnostic-rollback-only",
+    "mechanism": "vm-cohort"
+  },
+  "source": {
+    "cargo_lock_matches": true,
+    "cargo_url": "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
+    "moving_ref": false,
+    "nix_input_matches": true,
+    "nix_url": "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149",
+    "revision": "ab123e3673b6dd616b3df5d044026b5e85755149",
+    "rid": "rad:z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
+    "sibling_path_fallback": false
+  },
+  "verification": {
+    "cleanup_uncertainty": "passed",
+    "exact_mapping": "passed",
+    "exact_restore": "passed",
+    "focused_clippy": "passed",
+    "focused_octet": "passed",
+    "kvm_smoke": "passed",
+    "parity": "passed",
+    "partial_creation_cleanup": "passed",
+    "source_agreement": "passed"
+  }
+}

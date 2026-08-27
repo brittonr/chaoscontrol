@@ -10,6 +10,10 @@
     };
     octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
+    vm-cohort-src = {
+      url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149";
+      flake = false;
+    };
     mantle = {
       url = "github:OnixResearch/mantle/a141fcbaafe41f9a413a81275a33fe915bfca370";
       inputs.crane.follows = "crane";
@@ -30,6 +34,7 @@
       rust-overlay,
       octet,
       trellis,
+      vm-cohort-src,
       mantle,
       advisory-db,
     }:
@@ -46,6 +51,61 @@
             inherit system;
             overlays = [ (import rust-overlay) ];
           };
+
+          vmCohortRevision = "ab123e3673b6dd616b3df5d044026b5e85755149";
+          vmCohortDependencyCheck =
+            assert pkgs.lib.assertMsg (
+              vm-cohort-src.rev == vmCohortRevision
+            ) "ChaosControl VM Cohort Nix input revision drifted";
+            pkgs.runCommand "chaoscontrol-vm-cohort-dependency"
+              {
+                nativeBuildInputs = [ pkgs.ripgrep ];
+                src = self;
+              }
+              ''
+                set -euo pipefail
+                cd "$src"
+                expected="${vmCohortRevision}"
+                dependency_count=3
+                manifest=crates/chaoscontrol-vm-cohort-adapter/Cargo.toml
+                test "$(rg -o "$expected" "$manifest" | wc -l)" -eq "$dependency_count"
+                lock_source="source = \"git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=$expected#$expected\""
+                test "$(rg -F -c "$lock_source" Cargo.lock)" -eq "$dependency_count"
+                test "$(rg -c '^vm-cohort-(conformance|core|kvm) = \{ git = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3", rev = "'"$expected"'"' "$manifest")" -eq "$dependency_count"
+                if rg -n '^vm-cohort-(conformance|core|kvm) = .*\b(branch|tag|path)\s*=' "$manifest"; then
+                  echo "VM Cohort Cargo dependencies include a moving ref or path fallback" >&2
+                  exit 1
+                fi
+                test -f ${vm-cohort-src}/crates/vm-cohort-core/src/lib.rs
+                test -f ${vm-cohort-src}/crates/vm-cohort-kvm/src/lib.rs
+                test -f ${vm-cohort-src}/crates/vm-cohort-conformance/src/lib.rs
+                if rg -n 'chaoscontrol_(fault|replay|explore|evidence)|chaoscontrol-fault|chaoscontrol-replay' \
+                  ${vm-cohort-src}/crates; then
+                  echo "ChaosControl policy types leaked into VM Cohort" >&2
+                  exit 1
+                fi
+                touch "$out"
+              '';
+          vmCohortAdoptionContractCheck =
+            pkgs.runCommand "chaoscontrol-vm-cohort-adoption-contract"
+              {
+                nativeBuildInputs = [ pkgs.nickel ];
+                src = self;
+              }
+              ''
+                set -euo pipefail
+                cd "$src"
+                observed="$TMPDIR/vm-cohort-adoption.json"
+                nickel export --format json contracts/vm-cohort-adoption/adoption.ncl > "$observed"
+                cmp "$observed" contracts/vm-cohort-adoption/adoption.json
+                for invalid in contracts/vm-cohort-adoption/fixtures/invalid/*.ncl; do
+                  if nickel export --format json "$invalid" >/dev/null 2>&1; then
+                    echo "invalid VM Cohort adoption profile passed: $invalid" >&2
+                    exit 1
+                  fi
+                done
+                touch "$out"
+              '';
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
@@ -101,6 +161,18 @@
             src = ./.;
             filter = path: type: (sourceFilter path type) || builtins.baseNameOf path == "dylint.toml";
           };
+          vmCohortAdapterOctetWorkspace =
+            pkgs.runCommand "chaoscontrol-vm-cohort-adapter-octet-workspace" { }
+              ''
+                mkdir -p "$out/src"
+                cp ${./checks/vm-cohort-adapter-octet/Cargo.toml} "$out/Cargo.toml"
+                cp ${./checks/vm-cohort-adapter-octet/Cargo.lock} "$out/Cargo.lock"
+                cp ${./checks/vm-cohort-adapter-octet/dylint.toml} "$out/dylint.toml"
+                cp -R ${./crates/chaoscontrol-vm-cohort-adapter/src}/. "$out/src/"
+                substituteInPlace "$out/Cargo.toml" \
+                  --replace-fail '@CHAOSCONTROL_SRC@' '${self}' \
+                  --replace-fail '@VM_COHORT_SRC@' '${vm-cohort-src}'
+              '';
 
           # Common build arguments shared across all crane invocations
           commonArgs = {
@@ -1344,6 +1416,10 @@
             # Build the full workspace
             package = chaoscontrol;
 
+            # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
+            vm-cohort-dependency = vmCohortDependencyCheck;
+            vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;
+
             # Clippy — deny warnings
             clippy = craneLib.cargoClippy (
               commonArgs
@@ -1795,6 +1871,18 @@
 
             # Track the local sibling proof/style repos used by this workspace.
             tigerstyle-policy-registry = octet.checks.${system}.policy-registry;
+            vm-cohort-adapter-octet-deny-all =
+              (octet.lib.mkConsumerCheck {
+                inherit system;
+                src = vmCohortAdapterOctetWorkspace;
+                cargoLock = ./checks/vm-cohort-adapter-octet/Cargo.lock;
+                packages = [ "chaoscontrol-vm-cohort-adapter" ];
+                cargoExtraArgs = "--all-targets --all-features";
+                nativeBuildInputs = [ pkgs.stdenv.cc ];
+              }).overrideAttrs
+                (_previous: {
+                  DYLINT_RUSTFLAGS = "--deny warnings";
+                });
             snapshot-descriptor-octet-deny-all =
               (octet.lib.mkConsumerCheck {
                 inherit system;

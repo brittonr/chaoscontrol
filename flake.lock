@@ -742,7 +742,8 @@
         "nixpkgs": "nixpkgs_2",
         "octet": "octet",
         "rust-overlay": "rust-overlay_5",
-        "trellis": "trellis"
+        "trellis": "trellis",
+        "vm-cohort-src": "vm-cohort-src"
       }
     },
     "rust-overlay": {
@@ -1180,6 +1181,23 @@
         "rev": "46ab2d92b9cfd2cfc4e631a56f3e667ee7263685",
         "type": "git",
         "url": "file:../trellis"
+      }
+    },
+    "vm-cohort-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787846226,
+        "narHash": "sha256-biZOLH/7TyFQzpslbLX4J+XELkkvvOefa+NaW5pVjkg=",
+        "ref": "refs/heads/main",
+        "rev": "ab123e3673b6dd616b3df5d044026b5e85755149",
+        "revCount": 7,
+        "type": "git",
+        "url": "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3"
+      },
+      "original": {
+        "rev": "ab123e3673b6dd616b3df5d044026b5e85755149",
+        "type": "git",
+        "url": "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3"
       }
     },
     "wasi-virt": {

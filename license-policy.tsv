@@ -15,6 +15,7 @@ package	crates/chaoscontrol-redb-guest/Cargo.toml	Apache-2.0
 package	crates/chaoscontrol-rust-workload-guest/Cargo.toml	Apache-2.0
 package	crates/chaoscontrol-fault/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-vmm/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-vm-cohort-adapter/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-trace/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-explore/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-dashboard/Cargo.toml	AGPL-3.0-or-later
@@ -32,6 +33,7 @@ artifact	crates/chaoscontrol-redb-guest/LICENSE	Apache License
 artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	Apache License
 artifact	crates/chaoscontrol-fault/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-vmm/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-vm-cohort-adapter/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-trace/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-explore/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-dashboard/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
@@ -39,11 +41,11 @@ artifact	crates/chaoscontrol-replay/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-evidence/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 contains	docs/licensing.md	Processing a workload does not by itself relicense unrelated workload source or output
 contains	deny.toml	crate = "chaoscontrol-vmm"
-forbid-any	crates/chaoscontrol-protocol/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-sdk/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-guest-net/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-raft-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-net-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-redb-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-rust-workload-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-protocol/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-sdk/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-guest-net/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-raft-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-net-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-redb-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
+forbid-any	crates/chaoscontrol-rust-workload-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence

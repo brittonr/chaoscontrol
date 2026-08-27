@@ -65,6 +65,10 @@ crate = "chaoscontrol-vmm"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-vm-cohort-adapter"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-wasm-differential"
 allow = ["AGPL-3.0-or-later"]
 

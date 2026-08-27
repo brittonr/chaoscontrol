@@ -19,6 +19,7 @@
 - `crates/chaoscontrol-snapshot-descriptor/**`
 - `crates/chaoscontrol-sim-core/**`
 - `crates/chaoscontrol-vmm/**`
+- `crates/chaoscontrol-vm-cohort-adapter/**`
 - `crates/chaoscontrol-trace/**`
 - `crates/chaoscontrol-explore/**`
 - `crates/chaoscontrol-dashboard/**`

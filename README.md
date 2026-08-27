@@ -91,6 +91,16 @@ nix develop -c cargo test -p chaoscontrol-vmm --test deterministic_smp_kvm
   via `Arc`; only dirty 4 KB pages are cloned — a 512 MB disk with 1 MB
   of writes costs ~1 MB per snapshot, not 512 MB
 
+### Shared cohort mechanics
+
+ChaosControl selects VM Cohort for retained initialized bases, private overlays, clone lifecycle, KVM descriptors, and cleanup.
+
+ChaosControl keeps snapshot, fault, scheduler, assertion, coverage, exploration, replay, guest, evidence, and release meaning.
+
+The old duplicate path is diagnostic rollback only. It is not an automatic or release fallback.
+
+See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapping, parity, verification, and non-claims.
+
 ### Deterministic Devices
 - **Entropy**: Seeded ChaCha20 PRNG replacing hardware RNG, with
   snapshot/restore and reseed for exploration
@@ -137,6 +147,7 @@ chaoscontrol/
     ├── chaoscontrol-fault/                # Host-side fault injection engine
     ├── chaoscontrol-sim-core/             # Pure simulation decisions and traces
     ├── chaoscontrol-vmm/                  # KVM and machine-effect shell
+    ├── chaoscontrol-vm-cohort-adapter/    # VM Cohort consumer and exact restore adapter
     ├── chaoscontrol-dashboard/            # Web dashboard backend and static UI
     ├── chaoscontrol-explore/              # Coverage-guided exploration engine
     ├── chaoscontrol-replay/               # Recording, replay, time-travel debugger
@@ -912,6 +923,7 @@ An Apache guest/SDK crate must not depend on an AGPL host crate. Running a workl
 
 ## References
 
+- [VM Cohort](rad:z2QJLUqyAZnnHPiZQ1BFjLsX9ush3) at `ab123e3673b6dd616b3df5d044026b5e85755149` — product-neutral retained-base, private-overlay, KVM clone, lifecycle, cleanup, and conformance mechanics.
 - [NASA SpaceWasm](https://github.com/nasa/spacewasm) at `e24cf09355a90497148eb5029fdb8e3400bd63e3` — exact experimental core-MVP interpreter used by the bounded diagnostic rail.
 - [`../mantle/`](../mantle/) at `a141fcbaafe41f9a413a81275a33fe915bfca370` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.
 - [Wasmtime](https://github.com/bytecodealliance/wasmtime) — independent reference engine for normalized bounded observations; a match does not prove engine equivalence.

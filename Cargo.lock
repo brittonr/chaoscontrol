@@ -628,6 +628,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-vm-cohort-adapter"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "chaoscontrol-fault",
+ "chaoscontrol-sim-core",
+ "chaoscontrol-vmm",
+ "kvm-bindings",
+ "kvm-ioctls",
+ "serde",
+ "serde_json",
+ "vm-cohort-conformance",
+ "vm-cohort-core",
+ "vm-cohort-kvm",
+ "vm-superio",
+]
+
+[[package]]
 name = "chaoscontrol-vmm"
 version = "0.1.0"
 dependencies = [
@@ -1364,6 +1382,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "memfd"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad38eb12aea514a0466ea40a80fd8cc83637065948eb4a426e4aa46261175227"
+dependencies = [
+ "rustix",
+]
+
+[[package]]
 name = "memmap2"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2088,6 +2115,42 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vm-cohort-conformance"
+version = "0.1.0"
+source = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e3673b6dd616b3df5d044026b5e85755149"
+dependencies = [
+ "blake3",
+ "serde",
+ "vm-cohort-core",
+ "vm-cohort-kvm",
+]
+
+[[package]]
+name = "vm-cohort-core"
+version = "0.1.0"
+source = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e3673b6dd616b3df5d044026b5e85755149"
+dependencies = [
+ "blake3",
+ "serde",
+]
+
+[[package]]
+name = "vm-cohort-kvm"
+version = "0.1.0"
+source = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e3673b6dd616b3df5d044026b5e85755149"
+dependencies = [
+ "blake3",
+ "kvm-bindings",
+ "kvm-ioctls",
+ "libc",
+ "memfd",
+ "memmap2",
+ "serde",
+ "serde_json",
+ "vm-cohort-core",
+]
 
 [[package]]
 name = "vm-memory"

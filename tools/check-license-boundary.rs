@@ -189,6 +189,14 @@ fn run_self_tests() {
     assert!(validate_package_license(direct_manifest, "", "MPL-2.0").is_ok());
     assert!(validate_package_license(direct_manifest, "", "AGPL-3.0-or-later").is_err());
 
+    let stale_apache_manifest = "[package]\nname = \"owned\"\nlicense = \"Apache-2.0\"\n";
+    assert!(validate_package_license(stale_apache_manifest, "", "AGPL-3.0-or-later").is_err());
+    let third_party_manifest = "[package]\nname = \"third-party\"\nlicense = \"Apache-2.0\"\n";
+    assert!(validate_package_license(third_party_manifest, "", "Apache-2.0").is_ok());
+    assert!(validate_package_license(third_party_manifest, "", "AGPL-3.0-or-later").is_err());
+    assert!(validate_contains("template license: AGPL-3.0-or-later", "AGPL-3.0-or-later").is_ok());
+    assert!(validate_contains("template license: Apache-2.0", "AGPL-3.0-or-later").is_err());
+
     let inherited_manifest = "[package]\nname = \"shell\"\nlicense.workspace = true\n";
     let workspace_manifest = "[workspace.package]\nlicense = \"AGPL-3.0-or-later\"\n";
     assert!(

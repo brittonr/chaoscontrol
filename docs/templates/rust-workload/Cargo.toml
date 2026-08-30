@@ -2,6 +2,7 @@
 name = "my-service-chaos-workload"
 version = "0.1.0"
 edition = "2021"
+license = "AGPL-3.0-or-later"
 publish = false
 
 # Keep this copyable template out of ChaosControl's own workspace when checked in.

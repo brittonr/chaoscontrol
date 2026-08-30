@@ -1,18 +1,12 @@
 # kind	path	expected value or marker
 workspace-package-set	Cargo.toml	strict
-package	crates/chaoscontrol-protocol/Cargo.toml	Apache-2.0
+package	crates/chaoscontrol-protocol/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-replay-evidence-core/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-snapshot-descriptor/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-sim-core/Cargo.toml	AGPL-3.0-or-later
-package	crates/chaoscontrol-smr/Cargo.toml	Apache-2.0
+package	crates/chaoscontrol-smr/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-wasm-differential/Cargo.toml	AGPL-3.0-or-later
-package	crates/chaoscontrol-sdk/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-guest/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-guest-net/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-raft-guest/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-net-guest/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-redb-guest/Cargo.toml	Apache-2.0
-package	crates/chaoscontrol-rust-workload-guest/Cargo.toml	Apache-2.0
+package	crates/chaoscontrol-sdk/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-fault/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-vmm/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-vm-cohort-adapter/Cargo.toml	AGPL-3.0-or-later
@@ -21,16 +15,23 @@ package	crates/chaoscontrol-explore/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-dashboard/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-replay/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-evidence/Cargo.toml	AGPL-3.0-or-later
-artifact	LICENSES/Apache-2.0.txt	Apache License
+package	crates/chaoscontrol-property-suite/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-raft-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-guest-net/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-net-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-redb-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-rust-workload-guest/Cargo.toml	AGPL-3.0-or-later
+artifact	LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	LICENSES/AGPL-3.0-or-later.txt	GNU AFFERO GENERAL PUBLIC LICENSE
-artifact	crates/chaoscontrol-protocol/LICENSE	Apache License
-artifact	crates/chaoscontrol-sdk/LICENSE	Apache License
-artifact	crates/chaoscontrol-guest/LICENSE	Apache License
-artifact	crates/chaoscontrol-guest-net/LICENSE	Apache License
-artifact	crates/chaoscontrol-raft-guest/LICENSE	Apache License
-artifact	crates/chaoscontrol-net-guest/LICENSE	Apache License
-artifact	crates/chaoscontrol-redb-guest/LICENSE	Apache License
-artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	Apache License
+artifact	LICENSES/Apache-2.0.txt	Apache License
+artifact	crates/chaoscontrol-protocol/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-replay-evidence-core/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-snapshot-descriptor/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-sim-core/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-smr/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-wasm-differential/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-sdk/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-fault/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-vmm/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-vm-cohort-adapter/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
@@ -39,13 +40,19 @@ artifact	crates/chaoscontrol-explore/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-dashboard/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-replay/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
 artifact	crates/chaoscontrol-evidence/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-property-suite/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-raft-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-guest-net/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-net-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-redb-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	crates/chaoscontrol-rust-workload-guest/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+artifact	docs/templates/rust-workload/LICENSE	GNU AFFERO GENERAL PUBLIC LICENSE
+contains	docs/templates/rust-workload/Cargo.toml	license = "AGPL-3.0-or-later"
+contains	docs/templates/rust-workload/README.md	This repository-owned template is `AGPL-3.0-or-later`
+contains	docs/templates/rust-workload/src/main.rs	SPDX-License-Identifier: AGPL-3.0-or-later
+contains	docs/templates/rust-workload/src/service.rs	SPDX-License-Identifier: AGPL-3.0-or-later
 contains	docs/licensing.md	Processing a workload does not by itself relicense unrelated workload source or output
+contains	docs/licensing.md	third-party Cargo and Nix dependencies
+contains	docs/licensing.md	c169afc3d37698f816b54238c03fbc36d3ea1aa3
 contains	deny.toml	crate = "chaoscontrol-vmm"
-forbid-any	crates/chaoscontrol-protocol/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-sdk/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-guest-net/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-raft-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-net-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-redb-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence
-forbid-any	crates/chaoscontrol-rust-workload-guest/Cargo.toml	chaoscontrol-fault,chaoscontrol-vmm,chaoscontrol-vm-cohort-adapter,chaoscontrol-trace,chaoscontrol-explore,chaoscontrol-dashboard,chaoscontrol-replay,chaoscontrol-evidence

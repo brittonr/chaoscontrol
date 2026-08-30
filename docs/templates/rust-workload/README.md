@@ -2,6 +2,8 @@
 
 Copy this directory into a Rust service to add a local ChaosControl harness.
 
+This repository-owned template is `AGPL-3.0-or-later`. See `LICENSE` before you copy or modify its source. Copying the template does not relicense unrelated service code or runtime output.
+
 Start with the external harness. Use in-process instrumentation only when the driver cannot observe an important service invariant.
 
 You can copy the template manually or use the scaffold app, which also writes a `chaoscontrol-scaffold.json` manifest containing the exact local dry-run, report, assertion-quality, VM campaign, and promotion-boundary commands:

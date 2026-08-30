@@ -26,8 +26,8 @@ confidence-threshold = 0.8
 [licenses.private]
 ignore = false
 
-# Repository-owned host/control-plane packages intentionally use AGPL without
-# allowing arbitrary third-party AGPL dependencies.
+# Every repository-owned package uses AGPL. Keep these exceptions explicit so
+# unrelated third-party AGPL dependencies still require review.
 [[licenses.exceptions]]
 crate = "chaoscontrol-dashboard"
 allow = ["AGPL-3.0-or-later"]
@@ -45,6 +45,34 @@ crate = "chaoscontrol-fault"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-guest-net"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-net-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-property-suite"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-protocol"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-raft-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-redb-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-replay"
 allow = ["AGPL-3.0-or-later"]
 
@@ -53,7 +81,23 @@ crate = "chaoscontrol-replay-evidence-core"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-rust-workload-guest"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-sdk"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-sim-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-smr"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
+crate = "chaoscontrol-snapshot-descriptor"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
@@ -61,11 +105,11 @@ crate = "chaoscontrol-trace"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
-crate = "chaoscontrol-vmm"
+crate = "chaoscontrol-vm-cohort-adapter"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
-crate = "chaoscontrol-vm-cohort-adapter"
+crate = "chaoscontrol-vmm"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]

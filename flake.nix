@@ -1416,6 +1416,18 @@
             # Build the full workspace
             package = chaoscontrol;
 
+            # Repository-owned package, artifact, template, prior-grant, and
+            # third-party license boundary.
+            license-boundary = pkgs.runCommand "chaoscontrol-license-boundary"
+              {
+                nativeBuildInputs = [ rustToolchain ];
+              }
+              ''
+                rustc ${self}/tools/check-license-boundary.rs -o check-license-boundary
+                ./check-license-boundary ${self}
+                touch "$out"
+              '';
+
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
             vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;

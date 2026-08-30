@@ -127,6 +127,9 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
   [`docs/fallback-assertion-transport.md`](docs/fallback-assertion-transport.md).
 - **Per-round history**: Coverage growth curves, plateau detection,
   bug discovery timeline
+- **History phenomena checker**: A pure bounded core classifies aborted,
+  intermediate, garbage, stale, lost-write, and write-cycle observations. See
+  [`docs/history-phenomena.md`](docs/history-phenomena.md).
 
 ### Pure Simulation Core
 - **Machine-independent decisions**: `chaoscontrol-sim-core` owns scheduling, virtual time, network transitions, fault selection, and canonical round traces.

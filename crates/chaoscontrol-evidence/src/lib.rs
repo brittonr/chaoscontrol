@@ -31,6 +31,7 @@ pub mod kernel_bundle_validation;
 pub mod kvm_release;
 mod non_null_option;
 pub mod operator_triage;
+pub mod phenomena_shell;
 pub mod product_scope;
 pub mod profile_projection;
 mod profile_projection_spec;
@@ -101,6 +102,11 @@ pub use consistency_checker::{
     RegisterWorkloadHistoryAdapter, SingleRegisterChecker,
 };
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
+pub use phenomena_shell::{
+    adapt_consistency_history, check_consistency_phenomena_path, check_phenomena_history_path,
+    read_phenomena_history_path, validate_phenomena_history_path, write_phenomena_report_path,
+    MAX_PHENOMENA_HISTORY_BYTES,
+};
 pub use semantic_history::{semantic_history_selftest, SemanticError as SemanticHistoryError};
 
 // Shared replay/evidence core: the single Rust-owned authority for replay

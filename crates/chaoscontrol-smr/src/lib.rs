@@ -8,6 +8,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub mod phenomena;
+
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.smr-workload-profile.v1";
 pub const RECEIPT_SCHEMA: &str = "chaoscontrol.smr-workload-receipt.v1";
 pub const GENESIS_DOMAIN: &[u8] = b"chaoscontrol.smr-chain.genesis.v1\0";

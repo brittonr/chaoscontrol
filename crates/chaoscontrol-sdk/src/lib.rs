@@ -63,6 +63,7 @@ pub mod details;
 pub mod lifecycle;
 pub mod prelude;
 pub mod random;
+pub mod resources;
 mod transport;
 #[cfg(feature = "full")]
 pub mod workload;

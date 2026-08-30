@@ -690,6 +690,8 @@ pub struct DeterministicVm {
     /// Index of the currently active vCPU (0 = BSP).
     active_vcpu: usize,
     memory: GuestMemoryManager,
+    /// Current memory ceiling exposed through the guest SDK.
+    memory_ceiling_bytes: u64,
 
     // Determinism state
     virtual_tsc: VirtualTsc,
@@ -724,6 +726,8 @@ pub struct DeterministicVm {
     schedule_execution_poison: Option<ScheduleExecutionPoison>,
     /// HLT observations that KVM leaves encoded as runnable MP state.
     hlt_latched_vcpus: Vec<bool>,
+    /// vCPUs made non-runnable by an active fault window.
+    forced_stalled_vcpus: std::collections::BTreeSet<usize>,
 
     /// Optional guest-only PMU overflow accelerator.
     instruction_counter: Option<crate::perf::InstructionCounter>,
@@ -893,6 +897,9 @@ impl DeterministicVm {
 
         // Create guest memory
         let memory = GuestMemoryManager::new(config.memory_size)?;
+        let memory_ceiling_bytes = u64::try_from(memory.size()).map_err(|_| VmError::Snapshot {
+            message: "guest memory size exceeds resource-observation bounds".to_string(),
+        })?;
 
         // Register guest memory with KVM.
         // Enable dirty page logging unconditionally — the hardware tracks
@@ -1179,6 +1186,7 @@ impl DeterministicVm {
             vcpus,
             active_vcpu,
             memory,
+            memory_ceiling_bytes,
             virtual_tsc,
             entropy,
             pit,
@@ -1188,6 +1196,7 @@ impl DeterministicVm {
             pending_schedule_reservation: None,
             schedule_execution_poison: None,
             hlt_latched_vcpus: vec![false; num_vcpus],
+            forced_stalled_vcpus: std::collections::BTreeSet::new(),
             fault_engine,
             runtime_capacity_plan,
             virtio_devices,
@@ -1569,7 +1578,7 @@ impl DeterministicVm {
     /// real-time TSC drift with our deterministic counter so every
     /// guest execution slice starts at an exact, reproducible value.
     fn sync_tsc_to_guest(&self) -> Result<(), VmError> {
-        self.write_tsc_to_guest(self.virtual_tsc.read())
+        self.write_tsc_to_guest(self.virtual_tsc.guest_read())
     }
 
     fn setup_boot_params(&self, initrd_info: Option<(u64, u64)>) -> Result<(), VmError> {
@@ -1888,6 +1897,46 @@ impl DeterministicVm {
     /// Get a reference to the guest memory manager.
     pub fn memory(&self) -> &GuestMemoryManager {
         &self.memory
+    }
+
+    /// Return the current guest-visible memory ceiling.
+    pub fn memory_ceiling_bytes(&self) -> u64 {
+        self.memory_ceiling_bytes
+    }
+
+    /// Set the guest-visible memory ceiling without changing mapped memory.
+    pub fn set_memory_ceiling_bytes(&mut self, limit_bytes: u64) -> Result<(), VmError> {
+        let baseline_bytes = u64::try_from(self.memory.size()).map_err(|_| VmError::Snapshot {
+            message: "guest memory size exceeds resource-observation bounds".to_string(),
+        })?;
+        if limit_bytes == 0 || limit_bytes > baseline_bytes {
+            return Err(VmError::Snapshot {
+                message: format!("memory ceiling {limit_bytes} is outside 1..={baseline_bytes}"),
+            });
+        }
+        self.memory_ceiling_bytes = limit_bytes;
+        Ok(())
+    }
+
+    /// Mark one vCPU stalled or runnable through the deterministic scheduler.
+    pub fn set_vcpu_stalled(&mut self, vcpu: usize, stalled: bool) -> Result<(), VmError> {
+        if vcpu >= self.vcpus.len() {
+            return Err(VmError::Snapshot {
+                message: format!("vCPU {vcpu} is outside the VM topology"),
+            });
+        }
+        if stalled {
+            self.forced_stalled_vcpus.insert(vcpu);
+        } else {
+            self.forced_stalled_vcpus.remove(&vcpu);
+        }
+        self.refresh_runnable_state()?;
+        Ok(())
+    }
+
+    /// Return whether one vCPU is held by a fault window.
+    pub fn vcpu_is_stalled(&self, vcpu: usize) -> bool {
+        self.forced_stalled_vcpus.contains(&vcpu)
     }
 
     /// Get the KVM dirty page bitmap and atomically reset it.
@@ -2911,8 +2960,16 @@ impl DeterministicVm {
         // Restore deterministic entropy PRNG state
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
 
-        // Restore VMM-side counters
+        // Restore VMM-side counters. Controller-owned active fault windows
+        // are reapplied after this base VM restore.
         self.virtual_tsc.set(snapshot.virtual_tsc);
+        self.virtual_tsc.set_frozen(false);
+        self.virtual_tsc.set_jitter_bound(0);
+        self.forced_stalled_vcpus.clear();
+        self.memory_ceiling_bytes =
+            u64::try_from(self.memory.size()).map_err(|_| VmError::Snapshot {
+                message: "guest memory size exceeds resource-observation bounds".to_string(),
+            })?;
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
         self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
@@ -3080,6 +3137,13 @@ impl DeterministicVm {
         // Step 4: Restore VMM-side state (same as full restore).
         self.entropy = DeterministicEntropy::restore(&snapshot.entropy);
         self.virtual_tsc.set(snapshot.virtual_tsc);
+        self.virtual_tsc.set_frozen(false);
+        self.virtual_tsc.set_jitter_bound(0);
+        self.forced_stalled_vcpus.clear();
+        self.memory_ceiling_bytes =
+            u64::try_from(self.memory.size()).map_err(|_| VmError::Snapshot {
+                message: "guest memory size exceeds resource-observation bounds".to_string(),
+            })?;
         self.exit_count = snapshot.exit_count;
         self.io_exit_count = snapshot.io_exit_count;
         self.exits_since_last_sdk = snapshot.exits_since_last_sdk;
@@ -3218,7 +3282,9 @@ impl DeterministicVm {
             .enumerate()
             .map(|(vcpu, fd)| {
                 let kvm_runnable = Self::vcpu_fd_is_runnable(vcpu, fd)?;
-                Ok(kvm_runnable && !self.hlt_latched_vcpus[vcpu])
+                Ok(kvm_runnable
+                    && !self.hlt_latched_vcpus[vcpu]
+                    && !self.forced_stalled_vcpus.contains(&vcpu))
             })
             .collect()
     }
@@ -4621,8 +4687,14 @@ impl DeterministicVm {
             return; // Guest memory read failed — silently ignore
         }
 
-        // Dispatch to the fault engine
-        let (result, status) = self.fault_engine.handle_hypercall(&page);
+        // Resource observations are VM-owned because they describe this
+        // exact guest's admitted execution surface.
+        let (result, status) = if page.command == chaoscontrol_protocol::CMD_RESOURCE_MEMORY_CEILING
+        {
+            (self.memory_ceiling_bytes, chaoscontrol_protocol::STATUS_OK)
+        } else {
+            self.fault_engine.handle_hypercall(&page)
+        };
 
         // Write result and status back to the guest page
         let result_bytes = result.to_le_bytes();

@@ -25,6 +25,11 @@ const MAX_CHECKPOINT_BUGS: usize = 4_096;
 const MAX_SERIALIZABLE_FAULTS: usize = 4_096;
 const MAX_CHECKPOINT_ROUND_HISTORY: usize = 1_000_000;
 const MAX_CHECKPOINT_DEDUP_KEYS: usize = 65_536;
+const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
+
+const fn default_memory_pressure_duration_ticks() -> u64 {
+    DEFAULT_MEMORY_PRESSURE_DURATION_TICKS
+}
 
 /// Errors from checkpoint operations.
 #[derive(Debug, Snafu)]
@@ -182,6 +187,8 @@ pub enum SerializableFault {
     MemoryPressure {
         target: usize,
         limit_bytes: u64,
+        #[serde(default = "default_memory_pressure_duration_ticks")]
+        duration_ticks: u64,
     },
     InjectInterrupt {
         target: usize,
@@ -315,9 +322,11 @@ impl From<&Fault> for SerializableFault {
             Fault::MemoryPressure {
                 target,
                 limit_bytes,
+                duration_ticks,
             } => SerializableFault::MemoryPressure {
                 target: *target,
                 limit_bytes: *limit_bytes,
+                duration_ticks: *duration_ticks,
             },
             Fault::InjectInterrupt { target, irq } => SerializableFault::InjectInterrupt {
                 target: *target,
@@ -467,9 +476,11 @@ impl From<&SerializableFault> for Fault {
             SerializableFault::MemoryPressure {
                 target,
                 limit_bytes,
+                duration_ticks,
             } => Fault::MemoryPressure {
                 target: *target,
                 limit_bytes: *limit_bytes,
+                duration_ticks: *duration_ticks,
             },
             SerializableFault::InjectInterrupt { target, irq } => Fault::InjectInterrupt {
                 target: *target,

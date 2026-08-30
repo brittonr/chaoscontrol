@@ -66,6 +66,7 @@ pub use crate::{
 
 // ── Lifecycle ────────────────────────────────────────────────────────
 pub use crate::lifecycle::{send_event, setup_complete};
+pub use crate::resources::memory_ceiling_bytes;
 
 // ── Random ───────────────────────────────────────────────────────────
 pub use crate::random::{fill_bytes, get_random, random_choice};

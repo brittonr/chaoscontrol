@@ -394,9 +394,11 @@ fn hash_resource_fault(hasher: &mut blake3::Hasher, fault: &Fault) {
         Fault::MemoryPressure {
             target,
             limit_bytes,
+            duration_ticks,
         } => {
             hash_usize(hasher, *target);
             hasher.update(&limit_bytes.to_le_bytes());
+            hasher.update(&duration_ticks.to_le_bytes());
         }
         _ => unreachable!("resource category must contain a resource fault"),
     }
@@ -496,10 +498,15 @@ pub enum FaultVmStatus {
 pub struct VmFaultFacts {
     pub status: FaultVmStatus,
     pub vcpu_count: u32,
+    pub memory_size_bytes: u64,
     pub block_device_size_bytes: Option<u64>,
     pub has_initial_snapshot: bool,
     pub supports_irq: bool,
     pub supports_nmi: bool,
+    pub supports_clock_freeze: bool,
+    pub supports_clock_jitter: bool,
+    pub supports_cpu_stall: bool,
+    pub supports_memory_pressure: bool,
     pub virtual_tsc: u64,
     pub tsc_khz: u32,
 }
@@ -545,6 +552,10 @@ pub enum FaultMechanism {
     BlockFsyncFlush,
     BlockPartialRead,
     CpuRegisterBitflip,
+    VirtualClockFreeze,
+    VirtualClockJitter,
+    CpuStall,
+    MemoryPressure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -569,7 +580,11 @@ impl FaultPlan {
             | FaultPlanEffect::VirtualClockJump { .. }
             | FaultPlanEffect::IrqInjection { .. }
             | FaultPlanEffect::NmiInjection { .. }
-            | FaultPlanEffect::CpuRegisterBitflip { .. } => SINGLE_IMMEDIATE_OBSERVATION,
+            | FaultPlanEffect::CpuRegisterBitflip { .. }
+            | FaultPlanEffect::VirtualClockFreeze { .. }
+            | FaultPlanEffect::VirtualClockJitter { .. }
+            | FaultPlanEffect::CpuStall { .. }
+            | FaultPlanEffect::MemoryPressure { .. } => SINGLE_IMMEDIATE_OBSERVATION,
             _ => 0,
         }
     }
@@ -687,6 +702,26 @@ pub enum FaultPlanEffect {
         register: GpRegister,
         bit: u8,
     },
+    VirtualClockFreeze {
+        target: u32,
+        frozen_tsc: u64,
+        release_at_tick: u64,
+    },
+    VirtualClockJitter {
+        target: u32,
+        bound_tsc: u64,
+    },
+    CpuStall {
+        target: u32,
+        vcpu: u32,
+        release_at_tick: u64,
+    },
+    MemoryPressure {
+        target: u32,
+        limit_bytes: u64,
+        baseline_bytes: u64,
+        release_at_tick: u64,
+    },
 }
 
 impl FaultPlanEffect {
@@ -718,6 +753,10 @@ impl FaultPlanEffect {
             Self::BlockFsyncFlush { .. } => FaultMechanism::BlockFsyncFlush,
             Self::BlockPartialRead { .. } => FaultMechanism::BlockPartialRead,
             Self::CpuRegisterBitflip { .. } => FaultMechanism::CpuRegisterBitflip,
+            Self::VirtualClockFreeze { .. } => FaultMechanism::VirtualClockFreeze,
+            Self::VirtualClockJitter { .. } => FaultMechanism::VirtualClockJitter,
+            Self::CpuStall { .. } => FaultMechanism::CpuStall,
+            Self::MemoryPressure { .. } => FaultMechanism::MemoryPressure,
         }
     }
 
@@ -746,7 +785,11 @@ impl FaultPlanEffect {
             | Self::IrqInjection { .. }
             | Self::NmiInjection { .. }
             | Self::BlockFsyncFlush { .. }
-            | Self::CpuRegisterBitflip { .. } => FaultEffectTiming::Immediate,
+            | Self::CpuRegisterBitflip { .. }
+            | Self::VirtualClockFreeze { .. }
+            | Self::VirtualClockJitter { .. }
+            | Self::CpuStall { .. }
+            | Self::MemoryPressure { .. } => FaultEffectTiming::Immediate,
             _ => FaultEffectTiming::Armed,
         }
     }
@@ -754,30 +797,83 @@ impl FaultPlanEffect {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FaultRejectionReason {
-    TooManyVms { count: u64, max: u64 },
-    MissingVm { target: u64 },
-    VmNotRunning { target: u32, status: FaultVmStatus },
-    VmNotCrashed { target: u32, status: FaultVmStatus },
-    MissingInitialSnapshot { target: u32 },
-    MissingBlockDevice { target: u32 },
-    InvalidVcpu { target: u32, vcpu: u64, count: u32 },
-    InvalidRegisterBit { bit: u8 },
-    InvalidRate { rate_ppm: u32 },
+    TooManyVms {
+        count: u64,
+        max: u64,
+    },
+    MissingVm {
+        target: u64,
+    },
+    VmNotRunning {
+        target: u32,
+        status: FaultVmStatus,
+    },
+    VmNotCrashed {
+        target: u32,
+        status: FaultVmStatus,
+    },
+    MissingInitialSnapshot {
+        target: u32,
+    },
+    MissingBlockDevice {
+        target: u32,
+    },
+    InvalidVcpu {
+        target: u32,
+        vcpu: u64,
+        count: u32,
+    },
+    InvalidRegisterBit {
+        bit: u8,
+    },
+    InvalidRate {
+        rate_ppm: u32,
+    },
     ZeroDuration,
     ZeroClockDelta,
-    ClockDeltaRoundsToZero { value_ns: i64, tsc_khz: u32 },
-    DurationExceedsPolicy { value: u64, max: u64 },
-    DurationRoundsToZero { value_ns: u64 },
+    ClockDeltaRoundsToZero {
+        value_ns: i64,
+        tsc_khz: u32,
+    },
+    DurationExceedsPolicy {
+        value: u64,
+        max: u64,
+    },
+    DurationRoundsToZero {
+        value_ns: u64,
+    },
     EmptyRange,
-    RangeOverflow { offset: u64, len: u64 },
-    RangeOutOfBounds { offset: u64, len: u64, size: u64 },
+    RangeOverflow {
+        offset: u64,
+        len: u64,
+    },
+    RangeOutOfBounds {
+        offset: u64,
+        len: u64,
+        size: u64,
+    },
     EmptyPartitionSide,
-    TooManyPartitionMembers { count: u64, max: u32 },
-    DuplicatePartitionMember { target: u32 },
-    OverlappingPartitionMember { target: u32 },
-    InvalidIrq { irq: u32 },
+    TooManyPartitionMembers {
+        count: u64,
+        max: u32,
+    },
+    DuplicatePartitionMember {
+        target: u32,
+    },
+    OverlappingPartitionMember {
+        target: u32,
+    },
+    InvalidIrq {
+        irq: u32,
+    },
+    InvalidMemoryLimit {
+        limit_bytes: u64,
+        baseline_bytes: u64,
+    },
     ArithmeticOverflow,
-    UnsupportedCapability { variant: FaultVariant },
+    UnsupportedCapability {
+        variant: FaultVariant,
+    },
 }
 
 pub fn plan_fault_application(
@@ -790,10 +886,10 @@ pub fn plan_fault_application(
         FaultCategory::Network => plan_network_fault(&attempt.fault, facts, policy)?,
         FaultCategory::Disk => plan_disk_fault(&attempt.fault, facts, policy)?,
         FaultCategory::Process => plan_process_fault(&attempt.fault, facts, policy)?,
-        FaultCategory::Clock => plan_clock_fault(&attempt.fault, facts)?,
-        FaultCategory::Resource => plan_resource_fault(&attempt.fault)?,
+        FaultCategory::Clock => plan_clock_fault(&attempt.fault, facts, policy)?,
+        FaultCategory::Resource => plan_resource_fault(&attempt.fault, facts, policy)?,
         FaultCategory::Interrupt => plan_interrupt_fault(&attempt.fault, facts)?,
-        FaultCategory::Cpu => plan_cpu_fault(&attempt.fault, facts)?,
+        FaultCategory::Cpu => plan_cpu_fault(&attempt.fault, facts, policy)?,
     };
     Ok(FaultPlan {
         attempt_id: attempt.id,
@@ -1047,6 +1143,7 @@ fn plan_process_fault(
 fn plan_clock_fault(
     fault: &Fault,
     facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
 ) -> Result<FaultPlanEffect, FaultRejectionReason> {
     match fault {
         Fault::ClockSkew { target, offset_ns } => {
@@ -1095,20 +1192,80 @@ fn plan_clock_fault(
                 target_tsc,
             })
         }
-        Fault::ClockFreeze { .. } | Fault::ClockJitter { .. } => {
-            Err(FaultRejectionReason::UnsupportedCapability {
-                variant: fault.variant(),
+        Fault::ClockFreeze {
+            target,
+            duration_ticks,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            let vm = &facts.vms[target as usize];
+            if !vm.supports_clock_freeze {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            checked_duration_ticks(*duration_ticks, policy, false)?;
+            let release_at_tick = facts
+                .current_tick
+                .checked_add(*duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::VirtualClockFreeze {
+                target,
+                frozen_tsc: vm.virtual_tsc,
+                release_at_tick,
+            })
+        }
+        Fault::ClockJitter { target, bound_tsc } => {
+            let target = checked_running_target(*target, facts)?;
+            if !facts.vms[target as usize].supports_clock_jitter {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            Ok(FaultPlanEffect::VirtualClockJitter {
+                target,
+                bound_tsc: *bound_tsc,
             })
         }
         _ => unreachable!("clock planner must receive a clock fault"),
     }
 }
 
-fn plan_resource_fault(fault: &Fault) -> Result<FaultPlanEffect, FaultRejectionReason> {
+fn plan_resource_fault(
+    fault: &Fault,
+    facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
+) -> Result<FaultPlanEffect, FaultRejectionReason> {
     match fault {
-        Fault::MemoryPressure { .. } => Err(FaultRejectionReason::UnsupportedCapability {
-            variant: fault.variant(),
-        }),
+        Fault::MemoryPressure {
+            target,
+            limit_bytes,
+            duration_ticks,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            let vm = &facts.vms[target as usize];
+            if !vm.supports_memory_pressure {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            if *limit_bytes == 0 || *limit_bytes >= vm.memory_size_bytes {
+                return Err(FaultRejectionReason::InvalidMemoryLimit {
+                    limit_bytes: *limit_bytes,
+                    baseline_bytes: vm.memory_size_bytes,
+                });
+            }
+            checked_duration_ticks(*duration_ticks, policy, false)?;
+            let release_at_tick = facts
+                .current_tick
+                .checked_add(*duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::MemoryPressure {
+                target,
+                limit_bytes: *limit_bytes,
+                baseline_bytes: vm.memory_size_bytes,
+                release_at_tick,
+            })
+        }
         _ => unreachable!("resource planner must receive a resource fault"),
     }
 }
@@ -1147,6 +1304,7 @@ fn plan_interrupt_fault(
 fn plan_cpu_fault(
     fault: &Fault,
     facts: &FaultPlanningFacts,
+    policy: &FaultApplicationPolicy,
 ) -> Result<FaultPlanEffect, FaultRejectionReason> {
     match fault {
         Fault::CpuBitflip {
@@ -1167,9 +1325,29 @@ fn plan_cpu_fault(
                 bit: *bit,
             })
         }
-        Fault::CpuStall { .. } => Err(FaultRejectionReason::UnsupportedCapability {
-            variant: fault.variant(),
-        }),
+        Fault::CpuStall {
+            target,
+            vcpu,
+            duration_ticks,
+        } => {
+            let target = checked_running_target(*target, facts)?;
+            let vcpu = checked_vcpu(target, *vcpu, facts)?;
+            if !facts.vms[target as usize].supports_cpu_stall {
+                return Err(FaultRejectionReason::UnsupportedCapability {
+                    variant: fault.variant(),
+                });
+            }
+            checked_duration_ticks(*duration_ticks, policy, false)?;
+            let release_at_tick = facts
+                .current_tick
+                .checked_add(*duration_ticks)
+                .ok_or(FaultRejectionReason::ArithmeticOverflow)?;
+            Ok(FaultPlanEffect::CpuStall {
+                target,
+                vcpu,
+                release_at_tick,
+            })
+        }
         _ => unreachable!("CPU planner must receive a CPU fault"),
     }
 }
@@ -1234,6 +1412,26 @@ fn checked_rate(rate_ppm: u32) -> Result<u32, FaultRejectionReason> {
         return Err(FaultRejectionReason::InvalidRate { rate_ppm });
     }
     Ok(rate_ppm)
+}
+
+fn checked_duration_ticks(
+    value: u64,
+    policy: &FaultApplicationPolicy,
+    zero_is_disable: bool,
+) -> Result<(), FaultRejectionReason> {
+    if value == 0 {
+        if zero_is_disable {
+            return Ok(());
+        }
+        return Err(FaultRejectionReason::ZeroDuration);
+    }
+    if value > policy.max_duration_ticks {
+        return Err(FaultRejectionReason::DurationExceedsPolicy {
+            value,
+            max: policy.max_duration_ticks,
+        });
+    }
+    Ok(())
 }
 
 fn checked_duration_ns(
@@ -1365,6 +1563,10 @@ pub enum FaultObservationEffect {
     ProcessRestarted,
     VirtualClockChanged,
     CpuRegisterChanged,
+    VirtualClockFrozen,
+    VirtualClockJitterConfigured,
+    CpuStallActivated,
+    MemoryCeilingChanged,
     InterruptInjected,
     NmiInjected,
 }
@@ -2064,6 +2266,53 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
                 && checked_signed_add(*basis_tsc, *tsc_delta).ok() == Some(*target_tsc)
         }
         (
+            Fault::ClockFreeze {
+                target: fault_target,
+                duration_ticks,
+            },
+            FaultPlanEffect::VirtualClockFreeze {
+                target: planned_target,
+                release_at_tick,
+                ..
+            },
+        ) => {
+            let selected_tick = attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            target(*fault_target) == Some(*planned_target)
+                && *duration_ticks > 0
+                && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
+        }
+        (
+            Fault::ClockJitter {
+                target: fault_target,
+                bound_tsc: fault_bound,
+            },
+            FaultPlanEffect::VirtualClockJitter {
+                target: planned_target,
+                bound_tsc: planned_bound,
+            },
+        ) => target(*fault_target) == Some(*planned_target) && fault_bound == planned_bound,
+        (
+            Fault::MemoryPressure {
+                target: fault_target,
+                limit_bytes: fault_limit,
+                duration_ticks,
+            },
+            FaultPlanEffect::MemoryPressure {
+                target: planned_target,
+                limit_bytes: planned_limit,
+                baseline_bytes,
+                release_at_tick,
+            },
+        ) => {
+            let selected_tick = attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            target(*fault_target) == Some(*planned_target)
+                && fault_limit == planned_limit
+                && *planned_limit > 0
+                && *planned_limit < *baseline_bytes
+                && *duration_ticks > 0
+                && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
+        }
+        (
             Fault::InjectInterrupt {
                 target: fault_target,
                 irq: fault_irq,
@@ -2085,6 +2334,24 @@ fn plan_effect_matches_attempt(attempt: &FaultAttempt, effect: &FaultPlanEffect)
         ) => {
             target(*fault_target) == Some(*planned_target)
                 && u32::try_from(*fault_vcpu).ok() == Some(*planned_vcpu)
+        }
+        (
+            Fault::CpuStall {
+                target: fault_target,
+                vcpu: fault_vcpu,
+                duration_ticks,
+            },
+            FaultPlanEffect::CpuStall {
+                target: planned_target,
+                vcpu: planned_vcpu,
+                release_at_tick,
+            },
+        ) => {
+            let selected_tick = attempt.selected_at_ns / NANOSECONDS_PER_SIMULATION_TICK;
+            target(*fault_target) == Some(*planned_target)
+                && u32::try_from(*fault_vcpu).ok() == Some(*planned_vcpu)
+                && *duration_ticks > 0
+                && selected_tick.checked_add(*duration_ticks) == Some(*release_at_tick)
         }
         (
             Fault::CpuBitflip {
@@ -2248,8 +2515,15 @@ fn observation_effect_subsystem(effect: FaultObservationEffect) -> FaultObservat
         FaultObservationEffect::ProcessSkipped | FaultObservationEffect::ProcessRestarted => {
             FaultObservationSubsystem::Process
         }
-        FaultObservationEffect::VirtualClockChanged => FaultObservationSubsystem::VirtualClock,
-        FaultObservationEffect::CpuRegisterChanged => FaultObservationSubsystem::Cpu,
+        FaultObservationEffect::VirtualClockChanged
+        | FaultObservationEffect::VirtualClockFrozen
+        | FaultObservationEffect::VirtualClockJitterConfigured => {
+            FaultObservationSubsystem::VirtualClock
+        }
+        FaultObservationEffect::CpuRegisterChanged | FaultObservationEffect::CpuStallActivated => {
+            FaultObservationSubsystem::Cpu
+        }
+        FaultObservationEffect::MemoryCeilingChanged => FaultObservationSubsystem::Scheduler,
         FaultObservationEffect::InterruptInjected | FaultObservationEffect::NmiInjected => {
             FaultObservationSubsystem::Interrupt
         }
@@ -2320,6 +2594,18 @@ fn mechanism_accepts_observation(
             FaultMechanism::VirtualClockSkew | FaultMechanism::VirtualClockJump,
             FaultObservationEffect::VirtualClockChanged
         ) | (
+            FaultMechanism::VirtualClockFreeze,
+            FaultObservationEffect::VirtualClockFrozen
+        ) | (
+            FaultMechanism::VirtualClockJitter,
+            FaultObservationEffect::VirtualClockJitterConfigured
+        ) | (
+            FaultMechanism::CpuStall,
+            FaultObservationEffect::CpuStallActivated
+        ) | (
+            FaultMechanism::MemoryPressure,
+            FaultObservationEffect::MemoryCeilingChanged
+        ) | (
             FaultMechanism::IrqInjection,
             FaultObservationEffect::InterruptInjected
         ) | (
@@ -2387,16 +2673,22 @@ mod tests {
     const TEST_SCHEDULE_SEQUENCE: u64 = 1;
     const TEST_SELECTED_AT_NS: u64 = NANOSECONDS_PER_SIMULATION_TICK;
     const TEST_BLOCK_SIZE_BYTES: u64 = 4_096;
+    const TEST_MEMORY_SIZE_BYTES: u64 = 8_192;
     const TEST_TSC_KHZ: u32 = 3_000_000;
 
     fn running_vm() -> VmFaultFacts {
         VmFaultFacts {
             status: FaultVmStatus::Running,
             vcpu_count: 2,
+            memory_size_bytes: TEST_MEMORY_SIZE_BYTES,
             block_device_size_bytes: Some(TEST_BLOCK_SIZE_BYTES),
             has_initial_snapshot: true,
             supports_irq: true,
             supports_nmi: true,
+            supports_clock_freeze: true,
+            supports_clock_jitter: true,
+            supports_cpu_stall: true,
+            supports_memory_pressure: true,
             virtual_tsc: TEST_SELECTED_AT_NS,
             tsc_khz: TEST_TSC_KHZ,
         }
@@ -2800,23 +3092,113 @@ mod tests {
                 &facts(),
                 &FaultApplicationPolicy::default(),
             );
-            if matches!(
-                variant,
-                FaultVariant::MemoryPressure
-                    | FaultVariant::CpuStall
-                    | FaultVariant::ClockFreeze
-                    | FaultVariant::ClockJitter
-                    | FaultVariant::ProcessRestart
-            ) {
+            if variant == FaultVariant::ProcessRestart {
                 assert!(matches!(
                     result,
-                    Err(FaultRejectionReason::UnsupportedCapability { .. })
-                        | Err(FaultRejectionReason::VmNotCrashed { .. })
+                    Err(FaultRejectionReason::VmNotCrashed { .. })
                 ));
             } else {
                 assert!(result.is_ok(), "{variant:?}: {result:?}");
             }
         }
+    }
+
+    #[test]
+    fn new_fault_surface_plans_bind_windows_baselines_and_capabilities() {
+        // r[verify chaoscontrol.fault_surface.validation]
+        const WINDOW_TICKS: u64 = 3;
+        const JITTER_BOUND_TSC: u64 = 17;
+        const MEMORY_LIMIT_BYTES: u64 = TEST_MEMORY_SIZE_BYTES / 2;
+        let facts = facts();
+        let policy = FaultApplicationPolicy::default();
+
+        let freeze = plan_fault_application(
+            &attempt(Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: WINDOW_TICKS,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            freeze.effect,
+            FaultPlanEffect::VirtualClockFreeze {
+                target: 0,
+                frozen_tsc: TEST_SELECTED_AT_NS,
+                release_at_tick: facts.current_tick + WINDOW_TICKS,
+            }
+        );
+
+        let jitter = plan_fault_application(
+            &attempt(Fault::ClockJitter {
+                target: 0,
+                bound_tsc: JITTER_BOUND_TSC,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            jitter.effect,
+            FaultPlanEffect::VirtualClockJitter {
+                target: 0,
+                bound_tsc: JITTER_BOUND_TSC,
+            }
+        );
+
+        let stall = plan_fault_application(
+            &attempt(Fault::CpuStall {
+                target: 0,
+                vcpu: 1,
+                duration_ticks: WINDOW_TICKS,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            stall.effect,
+            FaultPlanEffect::CpuStall {
+                target: 0,
+                vcpu: 1,
+                release_at_tick: facts.current_tick + WINDOW_TICKS,
+            }
+        );
+
+        let pressure = plan_fault_application(
+            &attempt(Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: MEMORY_LIMIT_BYTES,
+                duration_ticks: WINDOW_TICKS,
+            }),
+            &facts,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(
+            pressure.effect,
+            FaultPlanEffect::MemoryPressure {
+                target: 0,
+                limit_bytes: MEMORY_LIMIT_BYTES,
+                baseline_bytes: TEST_MEMORY_SIZE_BYTES,
+                release_at_tick: facts.current_tick + WINDOW_TICKS,
+            }
+        );
+
+        let mut unsupported = facts.clone();
+        unsupported.vms[0].supports_clock_freeze = false;
+        assert!(matches!(
+            plan_fault_application(
+                &attempt(Fault::ClockFreeze {
+                    target: 0,
+                    duration_ticks: WINDOW_TICKS,
+                }),
+                &unsupported,
+                &policy,
+            ),
+            Err(FaultRejectionReason::UnsupportedCapability { .. })
+        ));
     }
 
     #[test]
@@ -2903,9 +3285,12 @@ mod tests {
         let unsupported = attempt(Fault::MemoryPressure {
             target: 0,
             limit_bytes: 1,
+            duration_ticks: 1,
         });
+        let mut unsupported_facts = valid_facts.clone();
+        unsupported_facts.vms[0].supports_memory_pressure = false;
         assert!(matches!(
-            plan_fault_application(&unsupported, &valid_facts, &policy),
+            plan_fault_application(&unsupported, &unsupported_facts, &policy),
             Err(FaultRejectionReason::UnsupportedCapability { .. })
         ));
     }
@@ -3106,6 +3491,7 @@ mod tests {
             Fault::MemoryPressure {
                 target: 0,
                 limit_bytes: 1,
+                duration_ticks: 1,
             },
             Fault::InjectInterrupt { target: 0, irq: 1 },
             Fault::InjectNmi { target: 0, vcpu: 0 },

@@ -389,6 +389,7 @@ mod tests {
             vcpu_stall_until: vec![],
             clock_freeze: vec![],
             clock_jitter_bound: vec![],
+            memory_pressure: vec![],
             process_fault_attempt: vec![],
             pending_process_observations: Default::default(),
             fault_operation_sequence: 0,

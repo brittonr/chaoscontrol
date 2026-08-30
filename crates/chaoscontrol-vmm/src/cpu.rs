@@ -463,6 +463,10 @@ pub struct VirtualTsc {
     /// Frequency metadata.  Not used for counting but needed to convert
     /// counter values into wall-clock durations.
     tsc_khz: u32,
+    /// When true, deterministic counter advancement is suspended.
+    frozen: bool,
+    /// Maximum deterministic guest-visible offset around the counter.
+    jitter_bound: u64,
 }
 
 impl VirtualTsc {
@@ -472,6 +476,8 @@ impl VirtualTsc {
             counter: 0,
             advance_per_tick,
             tsc_khz,
+            frozen: false,
+            jitter_bound: 0,
         }
     }
 
@@ -497,7 +503,9 @@ impl VirtualTsc {
     /// Delegates arithmetic to `crate::verified::cpu::vtsc_tick`.
     #[inline]
     pub fn tick(&mut self) -> u64 {
-        self.counter = crate::verified::cpu::vtsc_tick(self.counter, self.advance_per_tick);
+        if !self.frozen {
+            self.counter = crate::verified::cpu::vtsc_tick(self.counter, self.advance_per_tick);
+        }
         self.counter
     }
 
@@ -508,7 +516,10 @@ impl VirtualTsc {
     /// Delegates arithmetic to `crate::verified::cpu::vtsc_advance`.
     #[inline]
     pub fn advance(&mut self, n: u64) -> u64 {
-        self.counter = crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
+        if !self.frozen {
+            self.counter =
+                crate::verified::cpu::vtsc_advance(self.counter, self.advance_per_tick, n);
+        }
         self.counter
     }
 
@@ -529,8 +540,54 @@ impl VirtualTsc {
     /// Delegates arithmetic to `crate::verified::cpu::vtsc_advance_to`.
     #[inline]
     pub fn advance_to(&mut self, target: u64) {
-        self.counter =
-            crate::verified::cpu::vtsc_advance_to(self.counter, self.advance_per_tick, target);
+        if !self.frozen {
+            self.counter =
+                crate::verified::cpu::vtsc_advance_to(self.counter, self.advance_per_tick, target);
+        }
+    }
+
+    /// Enable or disable deterministic counter suspension.
+    pub fn set_frozen(&mut self, frozen: bool) {
+        self.frozen = frozen;
+    }
+
+    /// Return whether deterministic counter advancement is suspended.
+    pub fn is_frozen(&self) -> bool {
+        self.frozen
+    }
+
+    /// Set the maximum deterministic guest-visible jitter offset.
+    pub fn set_jitter_bound(&mut self, jitter_bound: u64) {
+        self.jitter_bound = jitter_bound;
+    }
+
+    /// Return the configured deterministic jitter bound.
+    pub fn jitter_bound(&self) -> u64 {
+        self.jitter_bound
+    }
+
+    /// Return the deterministic guest-visible TSC value.
+    pub fn guest_read(&self) -> u64 {
+        const ROTATE_LEFT_BITS: u32 = 17;
+        const ROTATE_RIGHT_BITS: u32 = 11;
+        if self.jitter_bound == 0 {
+            return self.counter;
+        }
+        let span = self
+            .jitter_bound
+            .checked_mul(2)
+            .and_then(|value| value.checked_add(1))
+            .unwrap_or(u64::MAX);
+        let mixed = self.counter.rotate_left(ROTATE_LEFT_BITS)
+            ^ self.counter.rotate_right(ROTATE_RIGHT_BITS)
+            ^ self.jitter_bound;
+        let sample = mixed % span;
+        if sample <= self.jitter_bound {
+            self.counter
+                .saturating_sub(self.jitter_bound.saturating_sub(sample))
+        } else {
+            self.counter.saturating_add(sample - self.jitter_bound)
+        }
     }
 
     /// The configured TSC frequency in kHz.
@@ -570,6 +627,8 @@ impl VirtualTsc {
             counter: snapshot.counter,
             advance_per_tick: snapshot.advance_per_tick,
             tsc_khz: snapshot.tsc_khz,
+            frozen: false,
+            jitter_bound: 0,
         }
     }
 }
@@ -877,6 +936,40 @@ mod tests {
         assert_eq!(tsc.tick(), 1_000);
         assert_eq!(tsc.tick(), 2_000);
         assert_eq!(tsc.read(), 2_000);
+    }
+
+    #[test]
+    fn vtsc_freeze_stops_every_advance_path() {
+        const ADVANCE_PER_TICK: u64 = 1_000;
+        const TARGET_TSC: u64 = 10_000;
+        let mut tsc = VirtualTsc::new(DEFAULT_TSC_KHZ, ADVANCE_PER_TICK);
+        tsc.tick();
+        let frozen = tsc.read();
+        tsc.set_frozen(true);
+
+        assert_eq!(tsc.tick(), frozen);
+        assert_eq!(tsc.advance(TARGET_TSC), frozen);
+        tsc.advance_to(TARGET_TSC);
+        assert_eq!(tsc.read(), frozen);
+
+        tsc.set_frozen(false);
+        assert_eq!(tsc.tick(), frozen + ADVANCE_PER_TICK);
+    }
+
+    #[test]
+    fn vtsc_jitter_is_deterministic_and_bounded() {
+        const COUNTER: u64 = 10_000;
+        const JITTER_BOUND: u64 = 41;
+        let mut tsc = VirtualTsc::new(DEFAULT_TSC_KHZ, 1);
+        tsc.set(COUNTER);
+        tsc.set_jitter_bound(JITTER_BOUND);
+
+        let first = tsc.guest_read();
+        assert_eq!(first, tsc.guest_read());
+        assert!(first.abs_diff(COUNTER) <= JITTER_BOUND);
+
+        tsc.set_jitter_bound(0);
+        assert_eq!(tsc.guest_read(), COUNTER);
     }
 
     #[test]

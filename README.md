@@ -768,11 +768,10 @@ let schedule = FaultScheduleBuilder::new()
     .build();
 ```
 
-**27 fault types** across 6 categories: network (partition, latency,
-jitter, bandwidth, loss, corruption, reorder, duplication, heal), disk
-(I/O errors, torn writes, corruption, full), process (kill, pause,
-restart), clock (skew, jump), resource (memory pressure), interrupt
-(IRQ injection, NMI).
+**30 fault types** across 7 categories: network, disk, process, clock,
+resource, interrupt, and CPU. Clock freeze, bounded clock jitter, vCPU
+stall, and finite memory pressure use deterministic release behavior.
+See [`docs/fault-surface.md`](docs/fault-surface.md).
 
 Fault evidence uses six distinct stages:
 
@@ -791,7 +790,8 @@ New acceptance logic must use the stage ledger and counters.
 The default campaign policy records a rejection and continues.
 Set `rejection_is_fatal` to stop the campaign after a rejection.
 
-Memory pressure, CPU stall, clock freeze, and clock jitter currently return explicit unsupported-capability rejections.
+Memory pressure, CPU stall, clock freeze, and clock jitter execute when the selected profile supports them.
+Unsupported profiles and invalid windows return typed rejections without an observed stage.
 Other invalid targets, parameters, ranges, devices, and state transitions return typed rejection or application-failure records.
 
 Snapshots preserve the stage ledger, pending mechanisms, operation ordering, and exact attempt attribution.

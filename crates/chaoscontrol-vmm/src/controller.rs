@@ -58,6 +58,21 @@ fn guest_artifact_identity(path: &str) -> Result<[u8; 32], VmError> {
     Ok(*hasher.finalize().as_bytes())
 }
 
+fn ledger_has_observed_effect(
+    ledger: &chaoscontrol_fault::outcomes::FaultOutcomeLedger,
+    expected: &FaultPlanEffect,
+) -> bool {
+    ledger.events.iter().any(|event| {
+        matches!(
+            &event.kind,
+            FaultStageKind::Applied { effect } if effect == expected
+        ) && ledger
+            .attempts
+            .get(&event.attempt_id)
+            .is_some_and(|state| state.stage == FaultAuthoritativeStage::Observed)
+    })
+}
+
 fn route_network_packet(
     network: &mut NetworkFabric,
     from: usize,
@@ -153,8 +168,10 @@ pub struct VmSlot {
     pub disk_faults: DiskFaultFlags,
     /// TSC skew offset for clock fault injection (nanoseconds).
     pub tsc_skew: i64,
-    /// Memory pressure limit in bytes (`None` = unlimited).
+    /// Memory pressure limit in bytes (`None` = admitted baseline).
     pub memory_limit_bytes: Option<u64>,
+    /// Tick at which the admitted baseline memory ceiling is restored.
+    pub memory_limit_release_at_tick: Option<u64>,
     /// Initial snapshot taken after kernel load, used for restarts.
     pub initial_snapshot: Option<VmSnapshot>,
     /// Per-vCPU stall: vCPU index → tick at which stall expires.
@@ -373,6 +390,7 @@ impl SimulationController {
                 disk_faults: DiskFaultFlags::default(),
                 tsc_skew: 0,
                 memory_limit_bytes: None,
+                memory_limit_release_at_tick: None,
                 initial_snapshot: Some(initial_snapshot),
                 vcpu_stall_until: std::collections::BTreeMap::new(),
                 clock_freeze: None,
@@ -629,21 +647,34 @@ impl SimulationController {
                 self.vms[i].vm.dlog_tick_marker(self.tick);
             }
 
-            // Expire stalls and clock freezes, clean up expired entries.
-            for slot in &mut self.vms {
-                slot.vcpu_stall_until
-                    .retain(|_, expires| *expires > self.tick);
-                if let Some((_, expires)) = slot.clock_freeze {
-                    if self.tick >= expires {
-                        slot.clock_freeze = None;
-                    }
-                }
-            }
+            self.release_expired_fault_windows()?;
 
             // Step each VM by quantum exits (round-robin)
             for i in 0..self.vms.len() {
                 match self.vms[i].status {
                     VmStatus::Running => {
+                        let single_vcpu_stalled =
+                            self.vms[i].vm.num_vcpus() == 1 && self.vms[i].vm.vcpu_is_stalled(0);
+                        if single_vcpu_stalled {
+                            let command = kernel_plan
+                                .commands
+                                .get(kernel_observations.len())
+                                .ok_or_else(|| VmError::Snapshot {
+                                    message: format!(
+                                        "simulation kernel omitted stalled VM command for VM {i}"
+                                    ),
+                                })?;
+                            kernel_observations.push(RoundObservation {
+                                observation: ExitObservation::VcpuCompleted {
+                                    sequence: command.sequence(),
+                                    vm_index: i,
+                                    exits: 0,
+                                    halted: false,
+                                },
+                            });
+                            vms_running += 1;
+                            continue;
+                        }
                         let command = kernel_plan
                             .commands
                             .get(kernel_observations.len())
@@ -805,6 +836,40 @@ impl SimulationController {
         )
     }
 
+    fn release_expired_fault_windows(&mut self) -> Result<(), VmError> {
+        for slot in &mut self.vms {
+            let expired_vcpus = slot
+                .vcpu_stall_until
+                .iter()
+                .filter_map(|(vcpu, expires)| (self.tick >= *expires).then_some(*vcpu))
+                .collect::<Vec<_>>();
+            for vcpu in expired_vcpus {
+                slot.vcpu_stall_until.remove(&vcpu);
+                slot.vm.set_vcpu_stalled(vcpu, false)?;
+            }
+            if let Some((_, expires)) = slot.clock_freeze {
+                if self.tick >= expires {
+                    slot.vm.virtual_tsc_mut().set_frozen(false);
+                    slot.clock_freeze = None;
+                }
+            }
+            if slot
+                .memory_limit_release_at_tick
+                .is_some_and(|expires| self.tick >= expires)
+            {
+                let baseline_bytes =
+                    u64::try_from(slot.vm.memory().size()).map_err(|_| VmError::Snapshot {
+                        message: "guest memory size exceeds resource-observation bounds"
+                            .to_string(),
+                    })?;
+                slot.vm.set_memory_ceiling_bytes(baseline_bytes)?;
+                slot.memory_limit_bytes = None;
+                slot.memory_limit_release_at_tick = None;
+            }
+        }
+        Ok(())
+    }
+
     fn handle_fault_attempt(&mut self, attempt: &FaultAttempt) -> Result<(), VmError> {
         self.handle_fault_attempt_with_event_limit(attempt, MAX_FAULT_OUTCOME_EVENTS)
     }
@@ -879,10 +944,19 @@ impl SimulationController {
             vms.push(VmFaultFacts {
                 status: fault_vm_status(slot.status),
                 vcpu_count,
+                memory_size_bytes: u64::try_from(slot.vm.memory().size()).map_err(|_| {
+                    VmError::Snapshot {
+                        message: "guest memory size exceeds fault-planning bounds".to_string(),
+                    }
+                })?,
                 block_device_size_bytes: slot.vm.block_device_size_bytes(),
                 has_initial_snapshot: slot.initial_snapshot.is_some(),
                 supports_irq: true,
                 supports_nmi: true,
+                supports_clock_freeze: true,
+                supports_clock_jitter: true,
+                supports_cpu_stall: true,
+                supports_memory_pressure: true,
                 virtual_tsc: slot.vm.virtual_tsc(),
                 tsc_khz: slot.vm.virtual_tsc_ref().tsc_khz(),
             });
@@ -1072,13 +1146,17 @@ impl SimulationController {
             FaultMechanism::ProcessKill
             | FaultMechanism::ProcessPause
             | FaultMechanism::ProcessRestart => self.apply_process_fault_plan(plan),
-            FaultMechanism::VirtualClockSkew | FaultMechanism::VirtualClockJump => {
-                self.apply_clock_fault_plan(plan)
-            }
+            FaultMechanism::VirtualClockSkew
+            | FaultMechanism::VirtualClockJump
+            | FaultMechanism::VirtualClockFreeze
+            | FaultMechanism::VirtualClockJitter => self.apply_clock_fault_plan(plan),
             FaultMechanism::IrqInjection | FaultMechanism::NmiInjection => {
                 self.apply_interrupt_fault_plan(plan)
             }
-            FaultMechanism::CpuRegisterBitflip => self.apply_cpu_fault_plan(plan),
+            FaultMechanism::CpuRegisterBitflip | FaultMechanism::CpuStall => {
+                self.apply_cpu_fault_plan(plan)
+            }
+            FaultMechanism::MemoryPressure => self.apply_resource_fault_plan(plan),
         }
     }
 
@@ -1263,65 +1341,79 @@ impl SimulationController {
         &mut self,
         plan: &FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
-        let (target, basis_tsc, tsc_khz, source_delta_ns, tsc_delta, target_tsc) =
-            match &plan.effect {
-                FaultPlanEffect::VirtualClockSkew {
-                    target,
-                    basis_tsc,
-                    tsc_khz,
-                    offset_ns,
-                    tsc_delta,
-                    target_tsc,
-                } => (
+        let (target, observation_effect) = match &plan.effect {
+            FaultPlanEffect::VirtualClockSkew {
+                target,
+                basis_tsc,
+                tsc_khz,
+                offset_ns,
+                tsc_delta,
+                target_tsc,
+            }
+            | FaultPlanEffect::VirtualClockJump {
+                target,
+                basis_tsc,
+                tsc_khz,
+                delta_ns: offset_ns,
+                tsc_delta,
+                target_tsc,
+            } => {
+                let expected_target = if *tsc_delta >= 0 {
+                    basis_tsc.checked_add(tsc_delta.unsigned_abs())
+                } else {
+                    basis_tsc.checked_sub(tsc_delta.unsigned_abs())
+                };
+                if *offset_ns == 0
+                    || *tsc_delta == 0
+                    || checked_ns_to_tsc_delta(*offset_ns, *tsc_khz).ok() != Some(*tsc_delta)
+                    || expected_target != Some(*target_tsc)
+                {
+                    return Err(internal_application_error());
+                }
+                let slot = self.vm_slot_mut_checked(*target)?;
+                if slot.vm.virtual_tsc() != *basis_tsc
+                    || slot.vm.virtual_tsc_ref().tsc_khz() != *tsc_khz
+                {
+                    return Err(target_state_application_error());
+                }
+                slot.vm.virtual_tsc_mut().set(*target_tsc);
+                (*target, FaultObservationEffect::VirtualClockChanged)
+            }
+            FaultPlanEffect::VirtualClockFreeze {
+                target,
+                frozen_tsc,
+                release_at_tick,
+            } => {
+                if *release_at_tick <= self.tick {
+                    return Err(target_state_application_error());
+                }
+                let slot = self.vm_slot_mut_checked(*target)?;
+                if slot.vm.virtual_tsc() != *frozen_tsc {
+                    return Err(target_state_application_error());
+                }
+                slot.vm.virtual_tsc_mut().set_frozen(true);
+                slot.clock_freeze = Some((*frozen_tsc, *release_at_tick));
+                (*target, FaultObservationEffect::VirtualClockFrozen)
+            }
+            FaultPlanEffect::VirtualClockJitter { target, bound_tsc } => {
+                let slot = self.vm_slot_mut_checked(*target)?;
+                slot.vm.virtual_tsc_mut().set_jitter_bound(*bound_tsc);
+                slot.clock_jitter_bound = *bound_tsc;
+                (
                     *target,
-                    *basis_tsc,
-                    *tsc_khz,
-                    *offset_ns,
-                    *tsc_delta,
-                    *target_tsc,
-                ),
-                FaultPlanEffect::VirtualClockJump {
-                    target,
-                    basis_tsc,
-                    tsc_khz,
-                    delta_ns,
-                    tsc_delta,
-                    target_tsc,
-                } => (
-                    *target,
-                    *basis_tsc,
-                    *tsc_khz,
-                    *delta_ns,
-                    *tsc_delta,
-                    *target_tsc,
-                ),
-                _ => return Err(internal_application_error()),
-            };
-        let expected_target = if tsc_delta >= 0 {
-            basis_tsc.checked_add(tsc_delta.unsigned_abs())
-        } else {
-            basis_tsc.checked_sub(tsc_delta.unsigned_abs())
+                    FaultObservationEffect::VirtualClockJitterConfigured,
+                )
+            }
+            _ => return Err(internal_application_error()),
         };
-        if source_delta_ns == 0
-            || tsc_delta == 0
-            || checked_ns_to_tsc_delta(source_delta_ns, tsc_khz).ok() != Some(tsc_delta)
-            || expected_target != Some(target_tsc)
-        {
-            return Err(internal_application_error());
-        }
-        let slot = self.vm_slot_mut_checked(target)?;
-        if slot.vm.virtual_tsc() != basis_tsc || slot.vm.virtual_tsc_ref().tsc_khz() != tsc_khz {
-            return Err(target_state_application_error());
-        }
-        slot.vm.virtual_tsc_mut().set(target_tsc);
         let observation = self
             .make_shell_observation(
                 plan.attempt_id,
                 FaultObservationSubsystem::VirtualClock,
-                FaultObservationEffect::VirtualClockChanged,
+                observation_effect,
             )
             .map_err(|_| internal_application_error())?;
-        debug!("VM{} virtual clock changed by fault", target);
+        debug!("VM{} virtual clock effect applied", target);
         Ok(vec![observation])
     }
 
@@ -1372,7 +1464,7 @@ impl SimulationController {
         &mut self,
         plan: &FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
-        match &plan.effect {
+        let effect = match &plan.effect {
             FaultPlanEffect::CpuRegisterBitflip {
                 target,
                 vcpu,
@@ -1388,14 +1480,64 @@ impl SimulationController {
                     self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
                     return Err(non_runnable_application_error());
                 }
+                FaultObservationEffect::CpuRegisterChanged
+            }
+            FaultPlanEffect::CpuStall {
+                target,
+                vcpu,
+                release_at_tick,
+            } => {
+                if *release_at_tick <= self.tick {
+                    return Err(target_state_application_error());
+                }
+                let slot = self.vm_slot_mut_checked(*target)?;
+                let vcpu = checked_usize(*vcpu)?;
+                slot.vm
+                    .set_vcpu_stalled(vcpu, true)
+                    .map_err(|_| non_runnable_application_error())?;
+                slot.vcpu_stall_until.insert(vcpu, *release_at_tick);
+                FaultObservationEffect::CpuStallActivated
             }
             _ => return Err(internal_application_error()),
+        };
+        let observation = self
+            .make_shell_observation(plan.attempt_id, FaultObservationSubsystem::Cpu, effect)
+            .map_err(|_| internal_application_error())?;
+        Ok(vec![observation])
+    }
+
+    fn apply_resource_fault_plan(
+        &mut self,
+        plan: &FaultPlan,
+    ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
+        let FaultPlanEffect::MemoryPressure {
+            target,
+            limit_bytes,
+            baseline_bytes,
+            release_at_tick,
+        } = &plan.effect
+        else {
+            return Err(internal_application_error());
+        };
+        if *release_at_tick <= self.tick || *limit_bytes == 0 || *limit_bytes >= *baseline_bytes {
+            return Err(target_state_application_error());
         }
+        let slot = self.vm_slot_mut_checked(*target)?;
+        let observed_baseline =
+            u64::try_from(slot.vm.memory().size()).map_err(|_| internal_application_error())?;
+        if observed_baseline != *baseline_bytes {
+            return Err(target_state_application_error());
+        }
+        slot.vm
+            .set_memory_ceiling_bytes(*limit_bytes)
+            .map_err(|_| target_state_application_error())?;
+        slot.memory_limit_bytes = Some(*limit_bytes);
+        slot.memory_limit_release_at_tick = Some(*release_at_tick);
         let observation = self
             .make_shell_observation(
                 plan.attempt_id,
-                FaultObservationSubsystem::Cpu,
-                FaultObservationEffect::CpuRegisterChanged,
+                FaultObservationSubsystem::Scheduler,
+                FaultObservationEffect::MemoryCeilingChanged,
             )
             .map_err(|_| internal_application_error())?;
         Ok(vec![observation])
@@ -1900,6 +2042,26 @@ impl SimulationController {
             .collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+        let memory_pressure = self
+            .vms
+            .iter()
+            .map(|slot| {
+                slot.memory_limit_bytes
+                    .zip(slot.memory_limit_release_at_tick)
+                    .map(|(limit_bytes, release_at_tick)| {
+                        u64::try_from(slot.vm.memory().size())
+                            .map(|baseline_bytes| MemoryPressureSnapshotState {
+                                limit_bytes,
+                                baseline_bytes,
+                                release_at_tick,
+                            })
+                            .map_err(|_| VmError::Snapshot {
+                                message: "guest memory size exceeds snapshot bounds".to_string(),
+                            })
+                    })
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let process_fault_attempt = self
             .vms
             .iter()
@@ -1914,6 +2076,7 @@ impl SimulationController {
             vcpu_stall_until,
             clock_freeze,
             clock_jitter_bound,
+            memory_pressure,
             process_fault_attempt,
             fault_operation_sequence: self.fault_operation_sequence,
             pending_process_observations: self.pending_process_observations.clone(),
@@ -1950,6 +2113,26 @@ impl SimulationController {
             .collect();
         let clock_freeze = self.vms.iter().map(|s| s.clock_freeze).collect();
         let clock_jitter_bound = self.vms.iter().map(|s| s.clock_jitter_bound).collect();
+        let memory_pressure = self
+            .vms
+            .iter()
+            .map(|slot| {
+                slot.memory_limit_bytes
+                    .zip(slot.memory_limit_release_at_tick)
+                    .map(|(limit_bytes, release_at_tick)| {
+                        u64::try_from(slot.vm.memory().size())
+                            .map(|baseline_bytes| MemoryPressureSnapshotState {
+                                limit_bytes,
+                                baseline_bytes,
+                                release_at_tick,
+                            })
+                            .map_err(|_| VmError::Snapshot {
+                                message: "guest memory size exceeds snapshot bounds".to_string(),
+                            })
+                    })
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let process_fault_attempt = self
             .vms
             .iter()
@@ -1964,6 +2147,7 @@ impl SimulationController {
             vcpu_stall_until,
             clock_freeze,
             clock_jitter_bound,
+            memory_pressure,
             process_fault_attempt,
             fault_operation_sequence: self.fault_operation_sequence,
             pending_process_observations: self.pending_process_observations.clone(),
@@ -2043,22 +2227,55 @@ impl SimulationController {
         for (i, (vm_snap, status)) in snapshot.vm_snapshots.iter().enumerate() {
             self.vms[i].vm.restore(vm_snap)?;
             self.vms[i].status = *status;
-            if let Some(stalls) = snapshot.vcpu_stall_until.get(i) {
-                self.vms[i].vcpu_stall_until = stalls.clone();
-            } else {
-                self.vms[i].vcpu_stall_until.clear();
-            }
-            self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
-            self.vms[i].clock_jitter_bound =
-                snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
-            self.vms[i].process_fault_attempt =
-                snapshot.process_fault_attempt.get(i).copied().flatten();
+            self.restore_slot_fault_surface(i, snapshot)?;
         }
 
         info!(
             "Restored simulation state from snapshot at tick {}",
             self.tick
         );
+        Ok(())
+    }
+
+    fn restore_slot_fault_surface(
+        &mut self,
+        index: usize,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), VmError> {
+        if let Some(stalls) = snapshot.vcpu_stall_until.get(index) {
+            self.vms[index].vcpu_stall_until = stalls.clone();
+        } else {
+            self.vms[index].vcpu_stall_until.clear();
+        }
+        self.vms[index].clock_freeze = snapshot.clock_freeze.get(index).copied().flatten();
+        self.vms[index].clock_jitter_bound =
+            snapshot.clock_jitter_bound.get(index).copied().unwrap_or(0);
+        let frozen = self.vms[index].clock_freeze.is_some();
+        let jitter_bound = self.vms[index].clock_jitter_bound;
+        self.vms[index].vm.virtual_tsc_mut().set_frozen(frozen);
+        self.vms[index]
+            .vm
+            .virtual_tsc_mut()
+            .set_jitter_bound(jitter_bound);
+        let stalled_vcpus = self.vms[index]
+            .vcpu_stall_until
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for vcpu in stalled_vcpus {
+            self.vms[index].vm.set_vcpu_stalled(vcpu, true)?;
+        }
+        let memory_pressure = snapshot.memory_pressure.get(index).copied().flatten();
+        self.vms[index].memory_limit_bytes = memory_pressure.map(|state| state.limit_bytes);
+        self.vms[index].memory_limit_release_at_tick =
+            memory_pressure.map(|state| state.release_at_tick);
+        if let Some(state) = memory_pressure {
+            self.vms[index]
+                .vm
+                .set_memory_ceiling_bytes(state.limit_bytes)?;
+        }
+        self.vms[index].process_fault_attempt =
+            snapshot.process_fault_attempt.get(index).copied().flatten();
         Ok(())
     }
 
@@ -2080,7 +2297,10 @@ impl SimulationController {
             snapshot.clock_jitter_bound.len(),
             snapshot.process_fault_attempt.len(),
         ];
-        if vector_lengths.into_iter().any(|length| length != vm_count) {
+        let memory_state_length_valid =
+            snapshot.memory_pressure.is_empty() || snapshot.memory_pressure.len() == vm_count;
+        if vector_lengths.into_iter().any(|length| length != vm_count) || !memory_state_length_valid
+        {
             return Err(fault_transition_vm_error(
                 FaultTransitionError::SnapshotPendingStateMismatch,
             ));
@@ -2135,13 +2355,67 @@ impl SimulationController {
                 has_pending_observation,
             )
             .map_err(fault_transition_vm_error)?;
-            if !snapshot.vcpu_stall_until[index].is_empty()
-                || snapshot.clock_freeze[index].is_some()
-                || snapshot.clock_jitter_bound[index] != 0
-            {
-                return Err(fault_transition_vm_error(
-                    FaultTransitionError::SnapshotPendingStateMismatch,
-                ));
+            for (vcpu, release_at_tick) in &snapshot.vcpu_stall_until[index] {
+                let expected = FaultPlanEffect::CpuStall {
+                    target,
+                    vcpu: u32::try_from(*vcpu).map_err(|_| {
+                        fault_transition_vm_error(
+                            FaultTransitionError::SnapshotPendingStateMismatch,
+                        )
+                    })?,
+                    release_at_tick: *release_at_tick,
+                };
+                if *vcpu >= vm_snapshot.vcpu_snapshots.len()
+                    || *release_at_tick <= snapshot.tick
+                    || !ledger_has_observed_effect(ledger, &expected)
+                {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+            }
+            if let Some((frozen_tsc, release_at_tick)) = snapshot.clock_freeze[index] {
+                let expected = FaultPlanEffect::VirtualClockFreeze {
+                    target,
+                    frozen_tsc,
+                    release_at_tick,
+                };
+                if release_at_tick <= snapshot.tick
+                    || !ledger_has_observed_effect(ledger, &expected)
+                {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+            }
+            let jitter_bound = snapshot.clock_jitter_bound[index];
+            if jitter_bound != 0 {
+                let expected = FaultPlanEffect::VirtualClockJitter {
+                    target,
+                    bound_tsc: jitter_bound,
+                };
+                if !ledger_has_observed_effect(ledger, &expected) {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
+            }
+            if let Some(memory_state) = snapshot.memory_pressure.get(index).copied().flatten() {
+                let expected = FaultPlanEffect::MemoryPressure {
+                    target,
+                    limit_bytes: memory_state.limit_bytes,
+                    baseline_bytes: memory_state.baseline_bytes,
+                    release_at_tick: memory_state.release_at_tick,
+                };
+                if memory_state.limit_bytes == 0
+                    || memory_state.limit_bytes >= memory_state.baseline_bytes
+                    || memory_state.release_at_tick <= snapshot.tick
+                    || !ledger_has_observed_effect(ledger, &expected)
+                {
+                    return Err(fault_transition_vm_error(
+                        FaultTransitionError::SnapshotPendingStateMismatch,
+                    ));
+                }
             }
             for device in &vm_snapshot.virtio_snapshots {
                 if let crate::snapshot::VirtioBackendSnapshot::Block(block_snapshot) =
@@ -2232,16 +2506,7 @@ impl SimulationController {
                 self.vms[i].vm.restore(vm_snap)?;
             }
             self.vms[i].status = *status;
-            if let Some(stalls) = snapshot.vcpu_stall_until.get(i) {
-                self.vms[i].vcpu_stall_until = stalls.clone();
-            } else {
-                self.vms[i].vcpu_stall_until.clear();
-            }
-            self.vms[i].clock_freeze = snapshot.clock_freeze.get(i).copied().flatten();
-            self.vms[i].clock_jitter_bound =
-                snapshot.clock_jitter_bound.get(i).copied().unwrap_or(0);
-            self.vms[i].process_fault_attempt =
-                snapshot.process_fault_attempt.get(i).copied().flatten();
+            self.restore_slot_fault_surface(i, snapshot)?;
         }
 
         debug!("Incremental restore from snapshot at tick {}", self.tick);
@@ -2537,6 +2802,15 @@ pub struct SimulationResult {
     pub fault_outcomes: chaoscontrol_fault::outcomes::FaultOutcomeLedger,
 }
 
+/// Active guest-visible memory-pressure state retained by replay snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryPressureSnapshotState {
+    pub limit_bytes: u64,
+    pub baseline_bytes: u64,
+    pub release_at_tick: u64,
+}
+
 /// Complete snapshot of simulation state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2555,6 +2829,9 @@ pub struct SimulationSnapshot {
     pub clock_freeze: Vec<Option<(u64, u64)>>,
     /// Per-VM clock jitter bound.
     pub clock_jitter_bound: Vec<u64>,
+    /// Per-VM active memory-pressure state.
+    #[serde(default)]
+    pub memory_pressure: Vec<Option<MemoryPressureSnapshotState>>,
     /// Per-VM pending process-effect attempt identity.
     pub process_fault_attempt: Vec<Option<FaultAttemptId>>,
     /// Next deterministic operation sequence for shell observations.
@@ -2652,6 +2929,7 @@ mod tests {
             disk_faults: DiskFaultFlags::default(),
             tsc_skew: 0,
             memory_limit_bytes: None,
+            memory_limit_release_at_tick: None,
             initial_snapshot: None,
             vcpu_stall_until: std::collections::BTreeMap::new(),
             clock_freeze: None,
@@ -2699,6 +2977,7 @@ mod tests {
                 disk_faults: DiskFaultFlags::default(),
                 tsc_skew: 0,
                 memory_limit_bytes: None,
+                memory_limit_release_at_tick: None,
                 initial_snapshot: None,
                 vcpu_stall_until: std::collections::BTreeMap::new(),
                 clock_freeze: None,
@@ -2865,6 +3144,7 @@ mod tests {
             vcpu_stall_until: Vec::new(),
             clock_freeze: Vec::new(),
             clock_jitter_bound: Vec::new(),
+            memory_pressure: Vec::new(),
             process_fault_attempt: Vec::new(),
             fault_operation_sequence: 0,
             pending_process_observations: VecDeque::new(),
@@ -4433,6 +4713,7 @@ mod tests {
     fn every_supported_variant_reaches_a_successful_application_adapter() {
         // r[verify chaoscontrol.fault_outcomes.validation.variant_matrix]
         const FULL_RATE_PPM: u32 = 1_000_000;
+        const TEST_MEMORY_BASELINE_BYTES: u64 = 256 * 1024 * 1024;
         let mut controller = adapter_test_controller();
         let cases = vec![
             (
@@ -4590,6 +4871,38 @@ mod tests {
                 },
             ),
             (
+                FaultVariant::MemoryPressure,
+                FaultPlanEffect::MemoryPressure {
+                    target: 0,
+                    limit_bytes: 1,
+                    baseline_bytes: TEST_MEMORY_BASELINE_BYTES,
+                    release_at_tick: 1,
+                },
+            ),
+            (
+                FaultVariant::ClockFreeze,
+                FaultPlanEffect::VirtualClockFreeze {
+                    target: 0,
+                    frozen_tsc: 9,
+                    release_at_tick: 1,
+                },
+            ),
+            (
+                FaultVariant::ClockJitter,
+                FaultPlanEffect::VirtualClockJitter {
+                    target: 0,
+                    bound_tsc: 1,
+                },
+            ),
+            (
+                FaultVariant::CpuStall,
+                FaultPlanEffect::CpuStall {
+                    target: 0,
+                    vcpu: 0,
+                    release_at_tick: 1,
+                },
+            ),
+            (
                 FaultVariant::InjectInterrupt,
                 FaultPlanEffect::IrqInjection { target: 0, irq: 1 },
             ),
@@ -4611,17 +4924,10 @@ mod tests {
             .iter()
             .map(|(variant, _)| *variant)
             .collect::<std::collections::HashSet<_>>();
-        let unsupported = [
-            FaultVariant::MemoryPressure,
-            FaultVariant::CpuStall,
-            FaultVariant::ClockFreeze,
-            FaultVariant::ClockJitter,
-        ];
         for variant in FaultVariant::ALL {
-            assert_eq!(
+            assert!(
                 covered.contains(&variant),
-                !unsupported.contains(&variant),
-                "missing or unexpected adapter case for {variant:?}"
+                "missing adapter case for {variant:?}"
             );
         }
         for (index, (variant, effect)) in cases.into_iter().enumerate() {
@@ -4734,6 +5040,184 @@ mod tests {
                 }
             )
         }));
+    }
+
+    #[test]
+    fn clock_freeze_records_all_stages_and_releases_without_a_jump() {
+        // r[verify chaoscontrol.fault_surface.clock_freeze]
+        // r[verify chaoscontrol.fault_surface.stage_evidence]
+        const FREEZE_TICKS: u64 = 2;
+        let mut controller = adapter_test_controller();
+        let frozen_tsc = controller.vms[0].vm.virtual_tsc();
+
+        controller
+            .apply_fault(&Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: FREEZE_TICKS,
+            })
+            .unwrap();
+
+        assert_eq!(controller.fault_outcomes().counters.selected, 1);
+        assert!(controller
+            .fault_outcomes()
+            .events
+            .iter()
+            .any(|event| { matches!(event.kind, FaultStageKind::Applicable { .. }) }));
+        assert_eq!(controller.fault_outcomes().counters.applied, 1);
+        assert_eq!(controller.fault_outcomes().counters.observed, 1);
+        assert!(controller.vms[0].vm.virtual_tsc_ref().is_frozen());
+        controller.vms[0].vm.virtual_tsc_mut().tick();
+        assert_eq!(controller.vms[0].vm.virtual_tsc(), frozen_tsc);
+
+        controller.tick = FREEZE_TICKS;
+        controller.release_expired_fault_windows().unwrap();
+        assert!(!controller.vms[0].vm.virtual_tsc_ref().is_frozen());
+        controller.vms[0].vm.virtual_tsc_mut().tick();
+        assert!(controller.vms[0].vm.virtual_tsc() > frozen_tsc);
+    }
+
+    #[test]
+    fn jitter_is_deterministic_bounded_and_explicitly_clearable() {
+        // r[verify chaoscontrol.fault_surface.clock_jitter]
+        const JITTER_BOUND_TSC: u64 = 37;
+        const TEST_TSC: u64 = 1_000;
+        let mut controller = adapter_test_controller();
+        controller.vms[0].vm.virtual_tsc_mut().set(TEST_TSC);
+
+        controller
+            .apply_fault(&Fault::ClockJitter {
+                target: 0,
+                bound_tsc: JITTER_BOUND_TSC,
+            })
+            .unwrap();
+
+        let counter = controller.vms[0].vm.virtual_tsc();
+        let first = controller.vms[0].vm.virtual_tsc_ref().guest_read();
+        let second = controller.vms[0].vm.virtual_tsc_ref().guest_read();
+        assert_eq!(first, second);
+        assert!(first.abs_diff(counter) <= JITTER_BOUND_TSC);
+        assert_eq!(
+            controller.vms[0].vm.virtual_tsc_ref().jitter_bound(),
+            JITTER_BOUND_TSC
+        );
+
+        controller
+            .apply_fault(&Fault::ClockJitter {
+                target: 0,
+                bound_tsc: 0,
+            })
+            .unwrap();
+        assert_eq!(controller.vms[0].vm.virtual_tsc_ref().guest_read(), counter);
+    }
+
+    #[test]
+    fn cpu_stall_marks_the_vcpu_non_runnable_until_exact_release() {
+        // r[verify chaoscontrol.fault_surface.cpu_stall]
+        const STALL_TICKS: u64 = 3;
+        let mut controller = deterministic_smp_test_controller();
+
+        controller
+            .apply_fault(&Fault::CpuStall {
+                target: 0,
+                vcpu: 0,
+                duration_ticks: STALL_TICKS,
+            })
+            .unwrap();
+
+        assert!(controller.vms[0].vm.vcpu_is_stalled(0));
+        assert!(!controller.vms[0].vm.scheduler().state().runnable_vcpus[0]);
+        controller.tick = STALL_TICKS - 1;
+        controller.release_expired_fault_windows().unwrap();
+        assert!(controller.vms[0].vm.vcpu_is_stalled(0));
+        controller.tick = STALL_TICKS;
+        controller.release_expired_fault_windows().unwrap();
+        assert!(!controller.vms[0].vm.vcpu_is_stalled(0));
+    }
+
+    #[test]
+    fn memory_pressure_is_guest_visible_and_restores_the_baseline() {
+        // r[verify chaoscontrol.fault_surface.memory_pressure]
+        const PRESSURE_TICKS: u64 = 2;
+        const PRESSURE_DIVISOR: u64 = 2;
+        let mut controller = adapter_test_controller();
+        let baseline = controller.vms[0].vm.memory_ceiling_bytes();
+        let limit = baseline / PRESSURE_DIVISOR;
+
+        controller
+            .apply_fault(&Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: limit,
+                duration_ticks: PRESSURE_TICKS,
+            })
+            .unwrap();
+
+        assert_eq!(controller.vms[0].memory_limit_bytes, Some(limit));
+        assert_eq!(controller.vms[0].vm.memory_ceiling_bytes(), limit);
+        controller.tick = PRESSURE_TICKS;
+        controller.release_expired_fault_windows().unwrap();
+        assert_eq!(controller.vms[0].memory_limit_bytes, None);
+        assert_eq!(controller.vms[0].vm.memory_ceiling_bytes(), baseline);
+    }
+
+    #[test]
+    fn active_memory_pressure_snapshot_round_trips_and_rejects_deadline_drift() {
+        // r[verify chaoscontrol.fault_surface.stage_evidence]
+        const PRESSURE_TICKS: u64 = 3;
+        const PRESSURE_DIVISOR: u64 = 2;
+        const NETWORK_NODE_COUNT: usize = 1;
+        let mut controller = adapter_test_controller();
+        controller.network = NetworkFabric::new(NETWORK_NODE_COUNT, controller.config.seed);
+        let baseline = controller.vms[0].vm.memory_ceiling_bytes();
+        let limit = baseline / PRESSURE_DIVISOR;
+        controller
+            .apply_fault(&Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: limit,
+                duration_ticks: PRESSURE_TICKS,
+            })
+            .unwrap();
+        let snapshot = controller.snapshot_all().unwrap();
+
+        controller.vms[0]
+            .vm
+            .set_memory_ceiling_bytes(baseline)
+            .unwrap();
+        controller.vms[0].memory_limit_bytes = None;
+        controller.vms[0].memory_limit_release_at_tick = None;
+        controller.restore_all(&snapshot).unwrap();
+        assert_eq!(controller.vms[0].vm.memory_ceiling_bytes(), limit);
+
+        let mut forged = snapshot;
+        forged.memory_pressure[0].as_mut().unwrap().release_at_tick += 1;
+        assert!(controller.restore_all(&forged).is_err());
+    }
+
+    #[test]
+    fn invalid_fault_windows_are_rejected_without_observation() {
+        // r[verify chaoscontrol.fault_surface.validation]
+        let invalid_faults = [
+            Fault::ClockFreeze {
+                target: 0,
+                duration_ticks: 0,
+            },
+            Fault::CpuStall {
+                target: 0,
+                vcpu: 0,
+                duration_ticks: 0,
+            },
+            Fault::MemoryPressure {
+                target: 0,
+                limit_bytes: 0,
+                duration_ticks: 1,
+            },
+        ];
+        for fault in invalid_faults {
+            let mut controller = adapter_test_controller();
+            controller.apply_fault(&fault).unwrap();
+            assert_eq!(controller.fault_outcomes().counters.rejected, 1);
+            assert_eq!(controller.fault_outcomes().counters.applied, 0);
+            assert_eq!(controller.fault_outcomes().counters.observed, 0);
+        }
     }
 
     #[test]

@@ -7,6 +7,12 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
+
+const fn default_memory_pressure_duration_ticks() -> u64 {
+    DEFAULT_MEMORY_PRESSURE_DURATION_TICKS
+}
+
 /// General-purpose register identifier for CPU fault injection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum GpRegister {
@@ -310,6 +316,9 @@ pub enum Fault {
         target: usize,
         /// Maximum usable memory in bytes.
         limit_bytes: u64,
+        /// Number of simulation ticks before the admitted baseline is restored.
+        #[serde(default = "default_memory_pressure_duration_ticks")]
+        duration_ticks: u64,
     },
 
     // ── Interrupt injection ─────────────────────────────────
@@ -608,7 +617,11 @@ impl fmt::Display for Fault {
             Fault::MemoryPressure {
                 target,
                 limit_bytes,
-            } => write!(f, "memory-pressure(vm={target}, limit={limit_bytes})"),
+                duration_ticks,
+            } => write!(
+                f,
+                "memory-pressure(vm={target}, limit={limit_bytes}, {duration_ticks} ticks)"
+            ),
             Fault::InjectInterrupt { target, irq } => {
                 write!(f, "inject-irq(vm={target}, irq={irq})")
             }
@@ -764,7 +777,8 @@ mod tests {
         assert_eq!(
             Fault::MemoryPressure {
                 target: 0,
-                limit_bytes: 0
+                limit_bytes: 0,
+                duration_ticks: DEFAULT_MEMORY_PRESSURE_DURATION_TICKS,
             }
             .category(),
             FaultCategory::Resource

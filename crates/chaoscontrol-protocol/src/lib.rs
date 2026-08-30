@@ -166,6 +166,9 @@ pub const CMD_RANDOM_CHOICE: u8 = 0x21;
 /// Coverage: signal that guest has initialized coverage instrumentation.
 pub const CMD_COVERAGE_INIT: u8 = 0x30;
 
+/// Resource observation: return the current guest-visible memory ceiling.
+pub const CMD_RESOURCE_MEMORY_CEILING: u8 = 0x40;
+
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes
 // ═══════════════════════════════════════════════════════════════════════

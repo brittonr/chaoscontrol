@@ -654,6 +654,9 @@ pub fn transition(
             });
         }
         apply_runnable_changes(&mut next_state.runnable_vcpus, runnable_changes)?;
+        if next_state.halted && next_state.runnable_vcpus.iter().any(|runnable| *runnable) {
+            next_state.halted = false;
+        }
         next_state.sequence =
             state
                 .sequence

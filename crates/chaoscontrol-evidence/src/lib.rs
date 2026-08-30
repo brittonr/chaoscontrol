@@ -23,6 +23,7 @@ pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
 pub mod evidence_contracts;
+pub mod findability_shell;
 pub mod fresh;
 pub mod in_process_simulator;
 mod json_preflight;
@@ -102,6 +103,11 @@ pub use consistency_checker::{
     RegisterWorkloadHistoryAdapter, SingleRegisterChecker,
 };
 pub use contract_registry::{validate_contract_registry, validate_contract_registry_json};
+pub use findability_shell::{
+    bind_findability_artifact, check_findability_artifact_path, read_findability_artifact_path,
+    validate_findability_artifact, write_findability_report_path, FindabilityRoundArtifact,
+    RoundSubtree, FINDABILITY_ARTIFACT_SCHEMA_VERSION, MAX_FINDABILITY_ARTIFACT_BYTES,
+};
 pub use phenomena_shell::{
     adapt_consistency_history, check_consistency_phenomena_path, check_phenomena_history_path,
     read_phenomena_history_path, validate_phenomena_history_path, write_phenomena_report_path,

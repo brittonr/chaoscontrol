@@ -8,6 +8,7 @@
 
 pub mod boundary;
 pub mod fault;
+pub mod findability;
 pub mod kernel;
 pub mod network;
 pub mod protocol_fault;

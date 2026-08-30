@@ -23,7 +23,7 @@ pub mod validate;
 
 pub use dto::{
     ArtifactHash, ReplayClass, ReplayCommandContext, ReplayParentSnapshotRef,
-    ReplaySnapshotValidation, ReplayVerdict, SnapshotValidationStatus,
+    ReplayScheduleVariant, ReplaySnapshotValidation, ReplayVerdict, SnapshotValidationStatus,
     LEGACY_REPLAY_VERDICT_SCHEMA_VERSION, NOT_REPRODUCED_EXIT_STATUS,
     REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
 };

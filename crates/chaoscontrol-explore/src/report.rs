@@ -78,6 +78,11 @@ pub fn format_report(report: &ExplorationReport) -> String {
     output.push_str(&format!("Corpus entries:         {}\n", report.corpus_size));
     output.push_str(&format!("Unique edges found:     {}\n", report.total_edges));
     output.push_str(&format!("Bugs discovered:        {}\n", report.bugs.len()));
+    if report.bugs.is_empty() {
+        output.push_str(
+            "Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage\n",
+        );
+    }
     if report.wall_clock_seconds > 0.0 {
         output.push_str(&format!(
             "Wall-clock time:        {}\n",
@@ -840,6 +845,8 @@ mod tests {
         assert!(formatted.contains("Exploration rounds:     10"));
         assert!(formatted.contains("Total branches explored: 80"));
         assert!(formatted.contains("Bugs discovered:        0"));
+        assert!(formatted
+            .contains("no-bug output does not prove validated or exhaustive schedule coverage"));
         assert!(formatted.contains("No Bugs Found"));
     }
 

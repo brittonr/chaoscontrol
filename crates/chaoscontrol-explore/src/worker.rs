@@ -236,10 +236,13 @@ impl WorkerPool {
 
                                 match branch_result {
                                     Ok(Ok(result)) => results.push(result),
-                                    Ok(Err(e)) => {
+                                    Ok(Err(error)) if item.schedule_variant.is_some() => {
+                                        return Err(error);
+                                    }
+                                    Ok(Err(error)) => {
                                         log::error!(
                                             "Worker {} branch {} failed: {}",
-                                            worker_idx, branch_offset, e
+                                            worker_idx, branch_offset, error
                                         );
                                         results.push(empty_branch_result(item));
                                     }

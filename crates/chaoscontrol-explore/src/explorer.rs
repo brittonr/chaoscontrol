@@ -194,6 +194,26 @@ impl Default for ExplorerConfig {
     }
 }
 
+const MINIMUM_SMP_VCPUS: usize = 2;
+
+const fn schedule_diversity_enabled(enabled: bool, num_vcpus: usize) -> bool {
+    enabled && num_vcpus >= MINIMUM_SMP_VCPUS
+}
+
+fn branch_work_from_variants(
+    variants: &[(FaultSchedule, Option<ScheduleVariant>)],
+) -> Vec<BranchWork> {
+    variants
+        .iter()
+        .enumerate()
+        .map(|(branch_index, (schedule, schedule_variant))| BranchWork {
+            schedule: schedule.clone(),
+            branch_index,
+            schedule_variant: schedule_variant.clone(),
+        })
+        .collect()
+}
+
 /// The exploration engine.
 pub struct Explorer {
     config: ExplorerConfig,
@@ -620,23 +640,50 @@ impl Explorer {
         };
         let use_havoc = havoc_threshold > 0 && self.consecutive_stale_rounds >= havoc_threshold;
 
+        let schedule_diversity = schedule_diversity_enabled(
+            self.config.schedule_diversity,
+            self.config.vm_config.num_vcpus,
+        );
         let variants = if use_havoc {
             debug!(
                 "Using havoc mutations ({} consecutive stale rounds)",
                 self.consecutive_stale_rounds
             );
-            self.mutator.mutate_havoc(
+            if schedule_diversity {
+                self.mutator.mutate_havoc_with_schedule(
+                    &base_schedule,
+                    self.config.branch_factor,
+                    &self.config.mutation,
+                    self.config.havoc_mutations,
+                )
+            } else {
+                self.mutator
+                    .mutate_havoc(
+                        &base_schedule,
+                        self.config.branch_factor,
+                        &self.config.mutation,
+                        self.config.havoc_mutations,
+                    )
+                    .into_iter()
+                    .map(|schedule| (schedule, None))
+                    .collect()
+            }
+        } else if schedule_diversity {
+            self.mutator.mutate_with_schedule(
                 &base_schedule,
                 self.config.branch_factor,
                 &self.config.mutation,
-                self.config.havoc_mutations,
             )
         } else {
-            self.mutator.mutate(
-                &base_schedule,
-                self.config.branch_factor,
-                &self.config.mutation,
-            )
+            self.mutator
+                .mutate(
+                    &base_schedule,
+                    self.config.branch_factor,
+                    &self.config.mutation,
+                )
+                .into_iter()
+                .map(|schedule| (schedule, None))
+                .collect()
         };
 
         debug!("Generated {} variant schedules", variants.len());
@@ -644,18 +691,13 @@ impl Explorer {
         // Execute branches — parallel if pool available, sequential otherwise.
         let results = match (&mut self.worker_pool, &snapshot) {
             (Some(pool), Some(snap)) => {
-                let work: Vec<BranchWork> = variants
-                    .iter()
-                    .enumerate()
-                    .map(|(i, schedule)| BranchWork {
-                        schedule: schedule.clone(),
-                        branch_index: i,
-                        schedule_variant: None,
-                    })
-                    .collect();
+                let work = branch_work_from_variants(&variants);
 
                 let branch_results = pool.run_branches(snap, work)?;
-                branch_results.into_iter().zip(variants).collect()
+                branch_results
+                    .into_iter()
+                    .zip(variants.into_iter().map(|(schedule, _variant)| schedule))
+                    .collect()
             }
             _ => self.run_branches_sequential(&snapshot, variants)?,
         };
@@ -735,12 +777,12 @@ impl Explorer {
     fn run_branches_sequential(
         &mut self,
         snapshot: &Option<SimulationSnapshot>,
-        variants: Vec<FaultSchedule>,
+        variants: Vec<(FaultSchedule, Option<ScheduleVariant>)>,
     ) -> Result<Vec<(BranchResult, FaultSchedule)>, ExploreError> {
         let mut results = Vec::with_capacity(variants.len());
-        for (i, schedule) in variants.into_iter().enumerate() {
+        for (i, (schedule, schedule_variant)) in variants.into_iter().enumerate() {
             debug!("Running branch {}/{}", i + 1, self.config.branch_factor);
-            let result = self.run_branch(snapshot, schedule.clone())?;
+            let result = self.run_branch(snapshot, schedule.clone(), schedule_variant.as_ref())?;
             results.push((result, schedule));
         }
         Ok(results)
@@ -777,7 +819,7 @@ impl Explorer {
         // Phase 1: Run a "probe" branch to discover choice points.
         // This uses the base schedule (no overrides) — same as the
         // parent run, but we record the choice history.
-        let probe_result = self.run_branch(&snapshot, base_schedule.clone())?;
+        let probe_result = self.run_branch(&snapshot, base_schedule.clone(), None)?;
         timings.restore_ms += probe_result.timings.restore_ms;
         timings.run_ms += probe_result.timings.run_ms;
         timings.snapshot_ms += probe_result.timings.snapshot_ms;
@@ -1077,6 +1119,7 @@ impl Explorer {
         &mut self,
         snapshot: &Option<SimulationSnapshot>,
         schedule: FaultSchedule,
+        schedule_variant: Option<&ScheduleVariant>,
     ) -> Result<BranchResult, ExploreError> {
         self.ensure_controller()?;
         let mut timings = BranchTimings::default();
@@ -1097,6 +1140,10 @@ impl Explorer {
                 // Reset all VMs to Running — snapshots may have been taken
                 // after idle detection paused a VM.
                 controller.reset_vm_statuses();
+            }
+
+            if let Some(variant) = schedule_variant {
+                controller.apply_schedule_variant(variant)?;
             }
 
             // Apply the mutated fault schedule in a new branch run.
@@ -1163,7 +1210,7 @@ impl Explorer {
             total_ticks,
             bugs: Vec::new(),
             snapshot: snap,
-            schedule_variant: None,
+            schedule_variant: schedule_variant.cloned(),
             schedule_fingerprint,
             timings,
         })
@@ -2375,6 +2422,35 @@ mod tests {
     use super::*;
 
     const TEST_ALIAS: u32 = 42;
+    const TEST_VARIANT_SEED: u64 = 73;
+    const TEST_BRANCH_COUNT: usize = 2;
+
+    #[test]
+    fn diversity_is_disabled_for_single_vcpu_and_explicitly_disabled_smp() {
+        assert!(!schedule_diversity_enabled(true, 1));
+        assert!(!schedule_diversity_enabled(false, MINIMUM_SMP_VCPUS));
+        assert!(schedule_diversity_enabled(true, MINIMUM_SMP_VCPUS));
+    }
+
+    #[test]
+    fn branch_work_preserves_generated_schedule_variants() {
+        let variant = ScheduleVariant {
+            scheduler_seed: TEST_VARIANT_SEED,
+            strategy_override: None,
+            quantum_override: None,
+        };
+        let variants = vec![
+            (FaultSchedule::new(), Some(variant.clone())),
+            (FaultSchedule::new(), None),
+        ];
+        let work = branch_work_from_variants(&variants);
+
+        assert_eq!(work.len(), TEST_BRANCH_COUNT);
+        assert_eq!(work[0].branch_index, 0);
+        assert_eq!(work[0].schedule_variant, Some(variant));
+        assert_eq!(work[1].branch_index, 1);
+        assert!(work[1].schedule_variant.is_none());
+    }
 
     fn failed_report(compatibility_id: Option<u32>) -> OracleReport {
         let mut descriptor =

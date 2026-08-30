@@ -20,9 +20,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chaoscontrol_replay_evidence_core::classify::classify_replay;
 pub use chaoscontrol_replay_evidence_core::dto::{
-    ArtifactHash, ReplayClass, ReplayCommandContext, ReplaySnapshotValidation, ReplayVerdict,
-    SnapshotValidationStatus, NOT_REPRODUCED_EXIT_STATUS, REPLAY_VERDICT_SCHEMA_VERSION,
-    REPRODUCED_EXIT_STATUS,
+    ArtifactHash, ReplayClass, ReplayCommandContext, ReplayScheduleVariant,
+    ReplaySnapshotValidation, ReplayVerdict, SnapshotValidationStatus, NOT_REPRODUCED_EXIT_STATUS,
+    REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
 };
 
 pub struct ReproduceVerdictInput<'a> {
@@ -36,6 +36,29 @@ pub struct ReproduceVerdictInput<'a> {
     pub admitted_report: Option<&'a chaoscontrol_fault::oracle::OracleReport>,
     pub target_failed: bool,
     pub diagnostic: String,
+}
+
+fn replay_schedule_variant(
+    variant: &chaoscontrol_vmm::scheduler::ScheduleVariant,
+) -> Result<ReplayScheduleVariant, crate::bug::identity::BugIdentityError> {
+    let bytes = serde_json::to_vec(variant)
+        .map_err(|_error| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
+    let strategy = serde_json::to_string(&variant.strategy_override)
+        .map_err(|_error| crate::bug::identity::BugIdentityError::MalformedCarrier)?;
+    Ok(ReplayScheduleVariant {
+        scheduler_seed: variant.scheduler_seed,
+        strategy,
+        quantum_override: variant.quantum_override,
+        policy_blake3: blake3::hash(&bytes).to_hex().to_string(),
+    })
+}
+
+#[cfg(test)]
+fn replay_schedule_variant_matches(
+    variant: &chaoscontrol_vmm::scheduler::ScheduleVariant,
+    evidence: &ReplayScheduleVariant,
+) -> bool {
+    replay_schedule_variant(variant).is_ok_and(|expected| expected == *evidence)
 }
 
 /// Bind a replay verdict to the observed bug, oracle report, and command
@@ -102,6 +125,12 @@ pub fn verdict_from_reproduce(
         }
     }
 
+    let schedule_variant = bug
+        .schedule_variant
+        .as_ref()
+        .map(replay_schedule_variant)
+        .transpose()?;
+
     Ok(ReplayVerdict {
         schema_version: REPLAY_VERDICT_SCHEMA_VERSION,
         run_id,
@@ -117,6 +146,7 @@ pub fn verdict_from_reproduce(
         assertion_id: Some(bug.assertion_id),
         assertion_identity: Some(assertion_identity),
         replay_parent_depth: Some(bug.replay_parent_depth),
+        schedule_variant,
         snapshot,
         artifact_hashes,
     })
@@ -218,6 +248,10 @@ mod tests {
     use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder};
 
     const TEST_RUN_ID: &str = "replay-test";
+    const TEST_VARIANT_SEED: u64 = 73;
+    const TEST_MINIMUM_QUANTUM: u64 = 2;
+    const TEST_MAXIMUM_QUANTUM: u64 = 9;
+    const TEST_QUANTUM_OVERRIDE: u64 = 5;
 
     fn snapshot_ref() -> ReplayParentSnapshotRef {
         ReplayParentSnapshotRef {
@@ -423,6 +457,55 @@ mod tests {
         assert!(json.contains("snapshot_backed_reproduced"));
         assert!(json.contains("digest_verified"));
         assert!(json.contains("assertion_identity"));
+    }
+
+    #[test]
+    fn replay_verdict_binds_variant_and_rejects_identity_drift() {
+        let mut bug = bug(2, true);
+        bug.schedule_variant = Some(chaoscontrol_vmm::scheduler::ScheduleVariant {
+            scheduler_seed: TEST_VARIANT_SEED,
+            strategy_override: Some(
+                chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
+                    min_quantum: TEST_MINIMUM_QUANTUM,
+                    max_quantum: TEST_MAXIMUM_QUANTUM,
+                },
+            ),
+            quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+        });
+        let report = report_for_bug(&bug, false);
+        let verdict = verdict_from_reproduce(ReproduceVerdictInput {
+            run_id: TEST_RUN_ID.to_string(),
+            command: "chaoscontrol-explore reproduce ...".to_string(),
+            exit_status: REPRODUCED_EXIT_STATUS,
+            bug_path: "bug_2.json".to_string(),
+            bug_artifact_hash: bug_hash(),
+            bug: &bug,
+            snapshot: ReplaySnapshotValidation::valid(
+                bug.replay_parent_snapshot_ref
+                    .clone()
+                    .expect("snapshot ref"),
+            ),
+            admitted_report: Some(&report),
+            target_failed: true,
+            diagnostic: "variant-bound replay".to_string(),
+        })
+        .expect("variant-bound verdict");
+        let evidence = verdict
+            .schedule_variant
+            .as_ref()
+            .expect("schedule variant evidence");
+        assert!(replay_schedule_variant_matches(
+            bug.schedule_variant.as_ref().expect("bug variant"),
+            evidence,
+        ));
+        assert!(!evidence.policy_blake3.is_empty());
+
+        let mut drifted = evidence.clone();
+        drifted.scheduler_seed = drifted.scheduler_seed.wrapping_add(1);
+        assert!(!replay_schedule_variant_matches(
+            bug.schedule_variant.as_ref().expect("bug variant"),
+            &drifted,
+        ));
     }
 
     #[test]

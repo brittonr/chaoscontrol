@@ -62,6 +62,19 @@ use std::fs;
 use std::path::Path;
 
 const EXIT_ERROR: i32 = 1;
+const ENABLED_SCHEDULE_MUTATION_RATIO: f64 = 1.0;
+
+fn mutation_config(schedule_diversity: bool, quantum: u64) -> MutationConfig {
+    MutationConfig {
+        schedule_mutation_ratio: if schedule_diversity {
+            ENABLED_SCHEDULE_MUTATION_RATIO
+        } else {
+            0.0
+        },
+        base_quantum: quantum,
+        ..MutationConfig::default()
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "chaoscontrol-explore")]
@@ -1044,7 +1057,7 @@ fn cmd_run(
         max_frontier,
         quantum,
         scheduling_strategy,
-        mutation: MutationConfig::default(),
+        mutation: mutation_config(smp, quantum),
         exploration_mode,
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: output.clone(),
@@ -1380,7 +1393,7 @@ fn cmd_campaign(
         max_frontier,
         quantum,
         scheduling_strategy,
-        mutation: MutationConfig::default(),
+        mutation: mutation_config(smp, quantum),
         exploration_mode,
         coverage_gpa: COVERAGE_BITMAP_ADDR,
         output_dir: None, // set per-seed by CampaignRunner

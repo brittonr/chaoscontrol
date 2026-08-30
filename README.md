@@ -116,6 +116,7 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
   fork-from-snapshot branching, frontier-based search
 - **Three exploration modes**: fault-schedule mutation, input-tree
   branching at `random_choice()` points, or hybrid
+- **Deterministic schedule diversity**: SMP branches can carry explicit seeded scheduler variants. Bug and replay evidence binds the exact policy. See [`docs/schedule-diversity.md`](docs/schedule-diversity.md).
 - **Fault schedule minimization**: Delta debugging (ddmin) to find
   the smallest schedule that triggers a bug
 - **Bug reproduction**: Replay a bug report to verify it still triggers

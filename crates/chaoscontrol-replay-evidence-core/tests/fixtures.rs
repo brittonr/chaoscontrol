@@ -16,7 +16,7 @@ use chaoscontrol_replay_evidence_core::claims::{
 };
 use chaoscontrol_replay_evidence_core::dto::{
     ArtifactHash, ReplayClass, ReplayCommandContext, ReplayParentSnapshotRef,
-    ReplaySnapshotValidation, ReplayVerdict, REPLAY_VERDICT_SCHEMA_VERSION,
+    ReplayScheduleVariant, ReplaySnapshotValidation, ReplayVerdict, REPLAY_VERDICT_SCHEMA_VERSION,
 };
 use chaoscontrol_replay_evidence_core::validate::{
     parse_replay_class, validate_accepted_proof, validate_public_verdict_paths,
@@ -27,6 +27,9 @@ use chaoscontrol_replay_evidence_core::validate::{
 const TEST_ALIAS: u64 = 1806003755;
 const HEX_CHARS_IN_SHA256: usize = 64;
 const HEX_CHARS_PER_BYTE: usize = 2;
+const TEST_VARIANT_SEED: u64 = 73;
+const TEST_QUANTUM_OVERRIDE: u64 = 5;
+const BLAKE3_DIGEST_BYTES: usize = 32;
 
 fn test_identity(alias: u64) -> AssertionEvidenceIdentity {
     let compatibility_id = u32::try_from(alias).expect("fixture alias fits u32");
@@ -99,6 +102,7 @@ fn snapshot_backed_verdict(
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
         replay_parent_depth: Some(1),
+        schedule_variant: None,
         snapshot: ReplaySnapshotValidation::valid(snapshot_ref(0x77)),
         artifact_hashes: vec![
             bug_hash(),
@@ -126,6 +130,7 @@ fn schedule_only_verdict() -> ReplayVerdict {
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
         replay_parent_depth: Some(0),
+        schedule_variant: None,
         snapshot: ReplaySnapshotValidation::not_required(),
         artifact_hashes: vec![ArtifactHash {
             path: "bug_0.json".to_string(),
@@ -176,6 +181,19 @@ fn snapshot_backed_verdict_json_keeps_public_field_names() {
 }
 
 #[test]
+fn accepts_variant_bound_replay_verdict() {
+    let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
+    verdict.schedule_variant = Some(ReplayScheduleVariant {
+        scheduler_seed: TEST_VARIANT_SEED,
+        strategy: "{\"Randomized\":{\"min_quantum\":2,\"max_quantum\":9}}".to_string(),
+        quantum_override: Some(TEST_QUANTUM_OVERRIDE),
+        policy_blake3: "ab".repeat(BLAKE3_DIGEST_BYTES),
+    });
+    validate_verdict_consistency(&verdict).expect("variant-bound verdict is consistent");
+    validate_accepted_proof(&verdict).expect("variant-bound accepted proof");
+}
+
+#[test]
 fn accepts_schedule_only_gap_without_snapshot() {
     let verdict = schedule_only_verdict();
     validate_verdict_consistency(&verdict).expect("schedule-only gap is consistent");
@@ -219,6 +237,19 @@ fn rejects_malformed_artifact_hash() {
     verdict.artifact_hashes[0].sha256 = "sha256:zz".to_string();
     let error = validate_verdict_consistency(&verdict).expect_err("malformed hash rejected");
     assert!(error.message().contains("artifact-hash.sha256"));
+}
+
+#[test]
+fn rejects_malformed_schedule_variant_evidence() {
+    let mut verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
+    verdict.schedule_variant = Some(ReplayScheduleVariant {
+        scheduler_seed: TEST_VARIANT_SEED,
+        strategy: String::new(),
+        quantum_override: Some(0),
+        policy_blake3: "not-a-blake3-digest".to_string(),
+    });
+    let error = validate_verdict_consistency(&verdict).expect_err("invalid variant rejected");
+    assert!(error.message().contains("schedule_variant"));
 }
 
 #[test]

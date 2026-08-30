@@ -114,6 +114,27 @@ impl ScheduleMutator {
         variants
     }
 
+    /// Generate aggressive fault schedules and optional scheduler variants.
+    pub fn mutate_havoc_with_schedule(
+        &mut self,
+        base: &FaultSchedule,
+        n: usize,
+        config: &MutationConfig,
+        mutations_range: [u32; 2],
+    ) -> Vec<(FaultSchedule, Option<ScheduleVariant>)> {
+        let schedules = self.mutate_havoc(base, n, config, mutations_range);
+        schedules
+            .into_iter()
+            .map(|schedule| {
+                let child_seed = self.seed.wrapping_add(self.counter);
+                self.counter = self.counter.wrapping_add(1);
+                let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+                let variant = self.schedule_variant(config, &mut rng);
+                (schedule, variant)
+            })
+            .collect()
+    }
+
     /// Generate a single variant schedule.
     fn mutate_once(&mut self, base: &FaultSchedule, config: &MutationConfig) -> FaultSchedule {
         let child_seed = self.seed.wrapping_add(self.counter);
@@ -284,19 +305,26 @@ impl ScheduleMutator {
             self.counter += 1;
             let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
 
-            let variant = if config.schedule_mutation_ratio > 0.0
-                && rng.gen::<f64>() < config.schedule_mutation_ratio
-            {
-                Some(self.random_schedule_variant(config, &mut rng))
-            } else {
-                None
-            };
+            let variant = self.schedule_variant(config, &mut rng);
 
             // Always mutate the fault schedule too
             let schedule = self.mutate_once(base, config);
             results.push((schedule, variant));
         }
         results
+    }
+
+    fn schedule_variant(
+        &self,
+        config: &MutationConfig,
+        rng: &mut ChaCha8Rng,
+    ) -> Option<ScheduleVariant> {
+        if config.schedule_mutation_ratio > 0.0 && rng.gen::<f64>() < config.schedule_mutation_ratio
+        {
+            Some(self.random_schedule_variant(config, rng))
+        } else {
+            None
+        }
     }
 
     /// Generate a random `ScheduleVariant`.
@@ -452,6 +480,58 @@ impl ScheduleMutator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chaoscontrol_vmm::scheduler::core::{
+        ProgressMode, ProgressSource, ScheduleAction, ScheduleEvent,
+    };
+    use chaoscontrol_vmm::scheduler::{SchedulerConfig, VcpuScheduler};
+
+    const RACE_VCPU_COUNT: usize = 2;
+    const RACE_QUANTUM: u64 = 100;
+    const RACE_SEED: u64 = 41;
+    const RACE_VARIANT_COUNT: usize = 128;
+    const RACE_TRIGGER_MAXIMUM_STEPS: usize = 25;
+    const RACE_MAXIMUM_STEPS: usize = 512;
+    const HAVOC_MUTATION_RANGE: [u32; 2] = [4, 16];
+    const INVALID_MINIMUM_QUANTUM: u64 = 9;
+    const INVALID_MAXIMUM_QUANTUM: u64 = 2;
+
+    fn first_switch_steps(variant: Option<&ScheduleVariant>) -> Option<usize> {
+        let config = SchedulerConfig {
+            num_vcpus: RACE_VCPU_COUNT,
+            quantum: RACE_QUANTUM,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: RACE_SEED,
+        };
+        let mut scheduler = VcpuScheduler::try_new(
+            &config,
+            ProgressMode::ExactSingleStep,
+            vec![true; RACE_VCPU_COUNT],
+        )
+        .expect("race scheduler");
+        if let Some(variant) = variant {
+            scheduler.apply_variant(variant).expect("race variant");
+        }
+        for step in 1..=RACE_MAXIMUM_STEPS {
+            let state = scheduler.state();
+            let event = ScheduleEvent::GuestProgress {
+                expected_state_id: state.identity(),
+                vcpu: state.active_vcpu,
+                observed_progress: state.instruction_progress[state.active_vcpu].saturating_add(1),
+                runnable_changes: Vec::new(),
+                source: ProgressSource::ExactSingleStep,
+            };
+            let reservation = scheduler.reserve_transition().expect("race reservation");
+            let planned = scheduler.plan(&event).expect("race plan");
+            let action = planned.record.action.clone();
+            scheduler
+                .commit(reservation, planned)
+                .expect("race transition");
+            if matches!(action, ScheduleAction::Switch { .. }) {
+                return Some(step);
+            }
+        }
+        None
+    }
 
     #[test]
     fn test_mutator_new() {
@@ -629,6 +709,98 @@ mod tests {
             havoc_faults,
             normal_faults
         );
+    }
+
+    #[test]
+    // r[verify chaoscontrol.schedule_diversity.validated_effectiveness]
+    fn schedule_variants_reach_known_ordering_race() {
+        let base = FaultSchedule::new();
+        let config = MutationConfig {
+            schedule_mutation_ratio: 1.0,
+            base_quantum: RACE_QUANTUM,
+            ..Default::default()
+        };
+        let mut mutator = ScheduleMutator::new(RACE_SEED);
+        let variants = mutator.mutate_with_schedule(&base, RACE_VARIANT_COUNT, &config);
+
+        assert!(first_switch_steps(None).is_some_and(|steps| steps > RACE_TRIGGER_MAXIMUM_STEPS));
+        assert!(variants.iter().any(|(_schedule, variant)| {
+            variant.as_ref().is_some_and(|variant| {
+                first_switch_steps(Some(variant))
+                    .is_some_and(|steps| steps <= RACE_TRIGGER_MAXIMUM_STEPS)
+            })
+        }));
+    }
+
+    #[test]
+    // r[verify chaoscontrol.schedule_diversity.validation]
+    fn disabled_and_invalid_schedule_variants_fail_closed() {
+        let base = FaultSchedule::new();
+        let mut disabled = ScheduleMutator::new(RACE_SEED);
+        let variants =
+            disabled.mutate_with_schedule(&base, RACE_VARIANT_COUNT, &MutationConfig::default());
+        assert!(variants
+            .iter()
+            .all(|(_schedule, variant)| variant.is_none()));
+
+        let config = SchedulerConfig {
+            num_vcpus: RACE_VCPU_COUNT,
+            quantum: RACE_QUANTUM,
+            strategy: SchedulingStrategy::RoundRobin,
+            seed: RACE_SEED,
+        };
+        let mut scheduler = VcpuScheduler::try_new(
+            &config,
+            ProgressMode::ExactSingleStep,
+            vec![true; RACE_VCPU_COUNT],
+        )
+        .expect("validation scheduler");
+        let unsupported = ScheduleVariant {
+            scheduler_seed: RACE_SEED,
+            strategy_override: Some(SchedulingStrategy::Randomized {
+                min_quantum: INVALID_MINIMUM_QUANTUM,
+                max_quantum: INVALID_MAXIMUM_QUANTUM,
+            }),
+            quantum_override: None,
+        };
+        assert!(scheduler.apply_variant(&unsupported).is_err());
+        let zero_quantum = ScheduleVariant {
+            scheduler_seed: RACE_SEED,
+            strategy_override: None,
+            quantum_override: Some(0),
+        };
+        assert!(scheduler.apply_variant(&zero_quantum).is_err());
+    }
+
+    #[test]
+    fn havoc_schedule_variants_are_deterministic() {
+        let base = FaultSchedule::new();
+        let config = MutationConfig {
+            schedule_mutation_ratio: 1.0,
+            ..Default::default()
+        };
+        let mut first = ScheduleMutator::new(RACE_SEED);
+        let mut second = ScheduleMutator::new(RACE_SEED);
+        let first_variants = first.mutate_havoc_with_schedule(
+            &base,
+            RACE_VARIANT_COUNT,
+            &config,
+            HAVOC_MUTATION_RANGE,
+        );
+        let second_variants = second.mutate_havoc_with_schedule(
+            &base,
+            RACE_VARIANT_COUNT,
+            &config,
+            HAVOC_MUTATION_RANGE,
+        );
+        assert_eq!(first_variants.len(), second_variants.len());
+        for (first, second) in first_variants.iter().zip(second_variants.iter()) {
+            assert_eq!(first.0.total(), second.0.total());
+            assert_eq!(first.1, second.1);
+        }
+        assert!(first_variants
+            .iter()
+            .all(|(_schedule, variant)| variant.is_some()));
     }
 
     #[test]

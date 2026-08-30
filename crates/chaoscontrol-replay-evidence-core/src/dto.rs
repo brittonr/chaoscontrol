@@ -78,6 +78,16 @@ pub struct ReplaySnapshotValidation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ReplayScheduleVariant {
+    pub scheduler_seed: u64,
+    pub strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantum_override: Option<u64>,
+    pub policy_blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReplayVerdict {
     pub schema_version: u32,
     pub run_id: String,
@@ -99,6 +109,8 @@ pub struct ReplayVerdict {
     pub assertion_identity: Option<AssertionEvidenceIdentity>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_parent_depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule_variant: Option<ReplayScheduleVariant>,
     pub snapshot: ReplaySnapshotValidation,
     pub artifact_hashes: Vec<ArtifactHash>,
 }
@@ -156,6 +168,7 @@ impl ReplayVerdict {
             assertion_id: None,
             assertion_identity: None,
             replay_parent_depth: None,
+            schedule_variant: None,
             snapshot: ReplaySnapshotValidation::not_required(),
             artifact_hashes: Vec::new(),
         }

@@ -287,6 +287,7 @@ mod tests {
     const VCPU_COUNT: usize = 2;
     const QUANTUM: u64 = 3;
     const TEST_SEED: u64 = 42;
+    const ALTERNATE_TEST_SEED: u64 = 43;
 
     fn config() -> SchedulerConfig {
         SchedulerConfig {
@@ -412,6 +413,7 @@ mod tests {
     fn policy_variant_is_seeded_and_preserves_active_vcpu() {
         let mut first = scheduler();
         let mut second = scheduler();
+        let baseline_fingerprint = first.fingerprint();
         let variant = ScheduleVariant {
             scheduler_seed: TEST_SEED,
             strategy_override: Some(SchedulingStrategy::Randomized {
@@ -423,7 +425,17 @@ mod tests {
         first.apply_variant(&variant).unwrap();
         second.apply_variant(&variant).unwrap();
         assert_eq!(first.state_id(), second.state_id());
+        assert_ne!(first.fingerprint(), baseline_fingerprint);
         assert_eq!(first.active(), 0);
+
+        let mut drifted = scheduler();
+        drifted
+            .apply_variant(&ScheduleVariant {
+                scheduler_seed: ALTERNATE_TEST_SEED,
+                ..variant
+            })
+            .unwrap();
+        assert_ne!(first.fingerprint(), drifted.fingerprint());
     }
 
     #[test]

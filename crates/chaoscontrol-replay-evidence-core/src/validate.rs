@@ -8,8 +8,9 @@ use std::fmt;
 use std::path::{Component, Path};
 
 use crate::dto::{
-    ArtifactHash, ReplayClass, ReplayParentSnapshotRef, ReplayVerdict, SnapshotValidationStatus,
-    LEGACY_REPLAY_VERDICT_SCHEMA_VERSION, REPLAY_VERDICT_SCHEMA_VERSION, REPRODUCED_EXIT_STATUS,
+    ArtifactHash, ReplayClass, ReplayParentSnapshotRef, ReplayScheduleVariant, ReplayVerdict,
+    SnapshotValidationStatus, LEGACY_REPLAY_VERDICT_SCHEMA_VERSION, REPLAY_VERDICT_SCHEMA_VERSION,
+    REPRODUCED_EXIT_STATUS,
 };
 
 /// Replay class accepted as replay proof by evidence gates.
@@ -50,6 +51,8 @@ pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 
 const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_LENGTH: usize = 64;
+const BLAKE3_HEX_LENGTH: usize = 64;
+const MAXIMUM_STRATEGY_BYTES: usize = 128;
 
 /// Deterministic validation failure naming the invalid field or claim.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -290,6 +293,30 @@ fn validate_verdict_schema(version: u32) -> Result<(), ValidationError> {
     Ok(())
 }
 
+fn validate_schedule_variant(variant: &ReplayScheduleVariant) -> Result<(), ValidationError> {
+    if variant.strategy.is_empty() || variant.strategy.len() > MAXIMUM_STRATEGY_BYTES {
+        return Err(ValidationError::new(
+            "replay-verdict.schedule_variant.strategy: invalid length",
+        ));
+    }
+    if variant.quantum_override == Some(0) {
+        return Err(ValidationError::new(
+            "replay-verdict.schedule_variant.quantum_override: must be positive",
+        ));
+    }
+    if variant.policy_blake3.len() != BLAKE3_HEX_LENGTH
+        || !variant
+            .policy_blake3
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(ValidationError::new(
+            "replay-verdict.schedule_variant.policy_blake3: expected 64 lowercase hex characters",
+        ));
+    }
+    Ok(())
+}
+
 fn require_bug_context(verdict: &ReplayVerdict) -> Result<(), ValidationError> {
     if verdict.bug_path.is_none() {
         return Err(ValidationError::new(
@@ -350,6 +377,9 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
     }
     for hash in &verdict.artifact_hashes {
         validate_artifact_hash(hash)?;
+    }
+    if let Some(variant) = verdict.schedule_variant.as_ref() {
+        validate_schedule_variant(variant)?;
     }
 
     match verdict.replay_class {
@@ -433,6 +463,7 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
                 || verdict.bug_id.is_some()
                 || verdict.assertion_id.is_some()
                 || verdict.replay_parent_depth.is_some()
+                || verdict.schedule_variant.is_some()
             {
                 return Err(ValidationError::new(
                     "replay-verdict: no_bug_found verdicts carry no bug context",

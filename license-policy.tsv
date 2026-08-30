@@ -56,3 +56,4 @@ contains	docs/licensing.md	Processing a workload does not by itself relicense un
 contains	docs/licensing.md	third-party Cargo and Nix dependencies
 contains	docs/licensing.md	c169afc3d37698f816b54238c03fbc36d3ea1aa3
 contains	deny.toml	crate = "chaoscontrol-vmm"
+forbid	deny.toml	  "AGPL-3.0-or-later",

@@ -638,8 +638,7 @@ pub fn compare_case(
     spacewasm: NormalizedObservation,
     wasmtime: NormalizedObservation,
 ) -> Result<CaseComparison, String> {
-    let harness =
-        compare_through_harness(&module_blake3, case_kind, &spacewasm, &wasmtime)?;
+    let harness = compare_through_harness(&module_blake3, case_kind, &spacewasm, &wasmtime)?;
     let first_difference = match harness.verdict {
         differential_execution_core::ComparisonVerdict::Agreement => None,
         _ => first_difference(&spacewasm, &wasmtime),
@@ -784,8 +783,7 @@ pub fn admit_diff_case(
         adapter_contract: Some(identity(b"adapter-contract", &[DIFF_ADAPTER])?),
         normalization: Some(identity(b"normalization", &[DIFF_NORMALIZATION])?),
     };
-    differential_execution_core::admit_case(draft)
-        .map_err(|error| format!("admit case: {error:?}"))
+    differential_execution_core::admit_case(draft).map_err(|error| format!("admit case: {error:?}"))
 }
 
 /// Admits one engine observation for an already-admitted case.
@@ -832,9 +830,10 @@ pub fn admit_diff_observation(
         },
         events: Vec::new(),
         trap: match &observation.trap_class {
-            Some(class) => differential_execution_core::OptionalOutcome::Present(
-                identity(b"trap", &[class.as_bytes()])?,
-            ),
+            Some(class) => differential_execution_core::OptionalOutcome::Present(identity(
+                b"trap",
+                &[class.as_bytes()],
+            )?),
             None => differential_execution_core::OptionalOutcome::Absent,
         },
         interrupt: differential_execution_core::OptionalOutcome::Absent,
@@ -1323,17 +1322,11 @@ mod tests {
         "39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2";
 
     fn matched_pair() -> (NormalizedObservation, NormalizedObservation) {
-        (
-            completed("spacewasm"),
-            completed("wasmtime"),
-        )
+        (completed("spacewasm"), completed("wasmtime"))
     }
 
     fn diverging_pair() -> (NormalizedObservation, NormalizedObservation) {
-        (
-            completed("spacewasm"),
-            trapped("wasmtime", "unreachable"),
-        )
+        (completed("spacewasm"), trapped("wasmtime", "unreachable"))
     }
 
     #[test]
@@ -1359,21 +1352,17 @@ mod tests {
         let duplicate = admit_diff_observation(&case, "spacewasm", &spacewasm)
             .expect("admit duplicate spacewasm observation");
 
-        let duplicate_error = differential_execution_core::admit_independent_backends(
-            Some(&left),
-            Some(&duplicate),
-        )
-        .expect_err("duplicate implementation must fail");
+        let duplicate_error =
+            differential_execution_core::admit_independent_backends(Some(&left), Some(&duplicate))
+                .expect_err("duplicate implementation must fail");
         assert!(matches!(
             duplicate_error,
             differential_execution_core::IndependenceError::DuplicateImplementation
         ));
 
-        let single_error = differential_execution_core::admit_independent_backends(
-            Some(&left),
-            None,
-        )
-        .expect_err("single backend must fail");
+        let single_error =
+            differential_execution_core::admit_independent_backends(Some(&left), None)
+                .expect_err("single backend must fail");
         assert!(matches!(
             single_error,
             differential_execution_core::IndependenceError::OneBackend
@@ -1383,10 +1372,12 @@ mod tests {
     #[test]
     fn harness_case_identity_is_bound_and_reproducible() {
         let (spacewasm, wasmtime) = matched_pair();
-        let first = compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
-            .expect("first comparison");
-        let second = compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
-            .expect("second comparison");
+        let first =
+            compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
+                .expect("first comparison");
+        let second =
+            compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
+                .expect("second comparison");
         assert_eq!(first.case_identity_hex.len(), 64);
         assert_eq!(first.case_identity_hex, second.case_identity_hex);
     }
@@ -1394,13 +1385,9 @@ mod tests {
     #[test]
     fn harness_verdicts_preserve_prior_agreement_and_divergence() {
         let (spacewasm, wasmtime) = matched_pair();
-        let agreement = compare_through_harness(
-            DIFF_MODULE_BLAKE3,
-            CaseKind::Execute,
-            &spacewasm,
-            &wasmtime,
-        )
-        .expect("agreement comparison");
+        let agreement =
+            compare_through_harness(DIFF_MODULE_BLAKE3, CaseKind::Execute, &spacewasm, &wasmtime)
+                .expect("agreement comparison");
         assert!(matches!(
             agreement.verdict,
             differential_execution_core::ComparisonVerdict::Agreement

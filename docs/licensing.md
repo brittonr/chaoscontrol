@@ -35,7 +35,7 @@ The dependency-license policy keeps third-party AGPL review fail-closed. It perm
 
 Revision `c169afc3d37698f816b54238c03fbc36d3ea1aa3` is the last published revision before the unified repository-owned policy.
 
-The first unified implementation revision is `FIRST_UNIFIED_REVISION`. A later closeout commit records this immutable identity because a commit cannot contain its own identity.
+Revision `e477cad82f7d8fd0644cc4b940061f218f5cfcb0` is the first implementation revision under the unified policy. The closeout records that immutable identity in a later commit because a commit cannot contain its own identity.
 
 Earlier Apache-2.0 releases and grants remain valid. This policy does not revoke or narrow rights already granted.
 

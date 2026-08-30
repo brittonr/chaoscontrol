@@ -235,6 +235,21 @@ fn validate_catalog_record_equality(
         {
             return Err(OracleValidationError::Record);
         }
+        if record.fallback_scope.is_some()
+            || admitted.descriptor.category
+                == chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
+        {
+            let evidence_identity =
+                chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                    admitted,
+                    catalog.token,
+                )
+                .map_err(|_| OracleValidationError::Record)?;
+            crate::oracle_record_validation::validate_strict_fallback_scope(
+                record,
+                &evidence_identity,
+            )?;
+        }
     }
     Ok(())
 }

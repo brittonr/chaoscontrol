@@ -285,7 +285,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
 
     for rel in [
         "fixtures/invalid/bug-report.alias-substitution.invalid.ncl",
+        "fixtures/invalid/bug-report.fallback-scope-missing.invalid.ncl",
         "fixtures/invalid/bug-report.legacy-descriptor.invalid.ncl",
+        "fixtures/invalid/bug-report.process-scope-overclaim.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-mode.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-field.invalid.ncl",
         "fixtures/invalid/run-profile.zero-budget.invalid.ncl",

@@ -171,6 +171,21 @@ pub(crate) fn validate_strict_records(
             return Err(OracleValidationError::Catalog);
         }
         let record_token = *record.catalog_tokens.iter().next().expect("one token");
+        if record.fallback_scope.is_some()
+            || identity.descriptor.category
+                == chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
+        {
+            let evidence_identity =
+                chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                    identity,
+                    record_token,
+                )
+                .map_err(|_| OracleValidationError::Record)?;
+            crate::oracle_record_validation::validate_strict_fallback_scope(
+                record,
+                &evidence_identity,
+            )?;
+        }
         if token
             .replace(record_token)
             .is_some_and(|prior| prior != record_token)

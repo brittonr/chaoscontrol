@@ -446,6 +446,7 @@ mod tests {
             bug_id: 7,
             assertion_id: 42,
             assertion_identity: crate::test_support::assertion_identity(42),
+            fallback_scope: None,
             assertion_location: "assertion".into(),
             schedule: FaultSchedule::new(),
             snapshot,

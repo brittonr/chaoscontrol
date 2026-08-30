@@ -1461,6 +1461,7 @@ impl Explorer {
                     bug_id: 0, // Will be assigned by corpus
                     assertion_id: assertion_id as u64,
                     assertion_identity,
+                    fallback_scope: record.fallback_scope.clone(),
                     assertion_location: record.message.clone(),
                     schedule: schedule.clone(),
                     snapshot: replay_snapshot.cloned(),
@@ -2653,6 +2654,7 @@ mod tests {
                 compatibility_id: Some(10),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                fallback_scope: None,
             },
         );
 
@@ -2792,6 +2794,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                fallback_scope: None,
             },
         );
 
@@ -2814,6 +2817,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                fallback_scope: None,
             },
         );
 
@@ -2848,6 +2852,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                fallback_scope: None,
             },
         );
 

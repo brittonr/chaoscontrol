@@ -591,6 +591,9 @@ pub struct SerializableBug {
         skip_serializing_if = "Option::is_none"
     )]
     pub assertion_identity: Option<chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    /// Process-local fallback binding. Its presence is mandatory for fallback descriptors.
+    #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
+    pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     pub assertion_location: String,
     pub schedule: SerializableSchedule,
     pub tick: u64,
@@ -622,6 +625,10 @@ fn no_assertion_identity() -> Option<chaoscontrol_protocol::admission::Assertion
     None
 }
 
+fn no_fallback_scope() -> Option<chaoscontrol_protocol::fallback::FallbackAssertionScope> {
+    None
+}
+
 impl SerializableBug {
     pub fn require_replay_identity(
         &self,
@@ -629,7 +636,12 @@ impl SerializableBug {
         &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
         crate::bug::identity::BugIdentityError,
     > {
-        crate::bug::identity::validate_carrier(self.assertion_id, self.assertion_identity.as_ref())
+        let identity = crate::bug::identity::validate_carrier(
+            self.assertion_id,
+            self.assertion_identity.as_ref(),
+        )?;
+        crate::bug::identity::validate_fallback_scope(identity, self.fallback_scope.as_ref())?;
+        Ok(identity)
     }
 }
 
@@ -690,6 +702,7 @@ impl From<&BugReport> for SerializableBug {
             bug_id: bug.bug_id,
             assertion_id: bug.assertion_id,
             assertion_identity: Some(bug.assertion_identity.clone()),
+            fallback_scope: bug.fallback_scope.clone(),
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
             tick: bug.tick,
@@ -718,6 +731,7 @@ impl TryFrom<&SerializableBug> for BugReport {
             bug_id: bug.bug_id,
             assertion_id: bug.assertion_id,
             assertion_identity,
+            fallback_scope: bug.fallback_scope.clone(),
             assertion_location: bug.assertion_location.clone(),
             schedule: (&bug.schedule).into(),
             snapshot: None,
@@ -1342,6 +1356,7 @@ mod tests {
                 bug_id: 1,
                 assertion_id: 50,
                 assertion_identity: Some(crate::test_support::assertion_identity(50)),
+                fallback_scope: None,
                 assertion_location: "test.rs:1".into(),
                 schedule: SerializableSchedule { faults: Vec::new() },
                 tick: 1000,
@@ -1502,6 +1517,7 @@ mod tests {
             bug_id,
             assertion_id,
             assertion_identity: Some(crate::test_support::assertion_identity(assertion_id)),
+            fallback_scope: None,
             assertion_location: "test.rs:1".into(),
             schedule: SerializableSchedule { faults: Vec::new() },
             tick: 1000,

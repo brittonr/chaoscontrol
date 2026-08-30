@@ -122,6 +122,9 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
 - **Bug reproduction**: Replay a bug report to verify it still triggers
 - **Assertion catalog**: Compile-time registration of all assertion sites
   via `linkme`; reports show which assertions are exercised/unexercised
+- **Fallback assertion transport**: Non-SDK guest processes can emit bounded,
+  ordered, process-scoped assertion and lifecycle records. See
+  [`docs/fallback-assertion-transport.md`](docs/fallback-assertion-transport.md).
 - **Per-round history**: Coverage growth curves, plateau detection,
   bug discovery timeline
 

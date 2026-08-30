@@ -137,6 +137,7 @@ fn merged_record(
         || existing.guest != candidate.guest
         || existing.category != candidate.category
         || existing.compatibility_id != candidate.compatibility_id
+        || existing.fallback_scope != candidate.fallback_scope
     {
         return Err(ReportMergeConflict::DescriptorConflict);
     }

@@ -18,6 +18,11 @@ use chaoscontrol_protocol::admission::{
     validate_accepted_catalog, AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent,
     CatalogConflict, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
 };
+use chaoscontrol_protocol::fallback::{
+    catalog_with_fallback, validate_fallback_sink_evidence, FallbackAdmissionError,
+    FallbackAssertionScope, FallbackError, FallbackErrorKind, FallbackRecordType,
+    FallbackSinkEvidence,
+};
 use chaoscontrol_protocol::identity::AssertionFingerprint;
 pub use chaoscontrol_protocol::identity::AssertionKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -98,6 +103,9 @@ pub struct AssertionRecord {
         skip_serializing_if = "BTreeSet::is_empty"
     )]
     pub vm_instances: BTreeSet<u32>,
+    /// Exact process-local fallback binding, when this record came from a fallback sink.
+    #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
+    pub fallback_scope: Option<FallbackAssertionScope>,
 }
 
 impl AssertionRecord {
@@ -119,6 +127,7 @@ impl AssertionRecord {
             compatibility_id: descriptor.compatibility_id,
             catalog_tokens: BTreeSet::from([catalog_token]),
             vm_instances: BTreeSet::new(),
+            fallback_scope: None,
         }
     }
 
@@ -217,6 +226,25 @@ pub struct PropertyOracle {
     events: Vec<OracleEvent>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FallbackOracleError {
+    Admission(FallbackAdmissionError),
+    Catalog(CatalogConflict),
+    Record {
+        record_index: u64,
+        kind: FallbackErrorKind,
+    },
+    Sink(FallbackError),
+}
+
+impl core::fmt::Display for FallbackOracleError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(formatter, "fallback oracle error: {self:?}")
+    }
+}
+
+impl std::error::Error for FallbackOracleError {}
+
 /// An event recorded by the oracle.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -247,6 +275,10 @@ fn empty_catalog_tokens() -> BTreeSet<AssertionFingerprint> {
 
 fn empty_vm_instances() -> BTreeSet<u32> {
     BTreeSet::new()
+}
+
+fn no_fallback_scope() -> Option<FallbackAssertionScope> {
+    None
 }
 
 fn empty_structured_assertions() -> BTreeMap<AssertionFingerprint, AssertionRecord> {
@@ -423,6 +455,18 @@ impl PropertyOracle {
 
     // ── Catalog registration ────────────────────────────────────
 
+    /// Build and activate one catalog that includes all assertion records in a validated fallback sink.
+    pub fn activate_catalog_with_fallback(
+        &mut self,
+        base: &AcceptedCatalog,
+        evidence: &FallbackSinkEvidence,
+    ) -> Result<(), FallbackOracleError> {
+        let catalog =
+            catalog_with_fallback(base, evidence).map_err(FallbackOracleError::Admission)?;
+        self.activate_catalog(catalog)
+            .map_err(FallbackOracleError::Catalog)
+    }
+
     pub fn activate_catalog(&mut self, catalog: AcceptedCatalog) -> Result<(), CatalogConflict> {
         if let Err(conflict) = validate_accepted_catalog(&catalog) {
             self.mark_identity_conflict(conflict.clone());
@@ -580,6 +624,134 @@ impl PropertyOracle {
     fn reject_bound_event<T>(&mut self, conflict: CatalogConflict) -> Result<T, CatalogConflict> {
         self.mark_identity_conflict(conflict.clone());
         Err(conflict)
+    }
+
+    /// Ingest one validated fallback sink into the active run in exact sink order.
+    ///
+    /// The update is transactional. A malformed record, identity mismatch, or
+    /// oracle rejection leaves the original oracle unchanged.
+    pub fn record_fallback_sink(
+        &mut self,
+        evidence: &FallbackSinkEvidence,
+    ) -> Result<(), FallbackOracleError> {
+        validate_fallback_sink_evidence(evidence).map_err(FallbackOracleError::Sink)?;
+        let mut staged = self.clone();
+        let catalog_token = staged
+            .accepted_catalog
+            .as_ref()
+            .ok_or(FallbackOracleError::Catalog(
+                CatalogConflict::CatalogIncomplete,
+            ))?
+            .token;
+        for record in &evidence.records {
+            if record.record_type == FallbackRecordType::Lifecycle {
+                staged
+                    .record_event(
+                        &record.logical_key,
+                        serde_json::json!({
+                            "process": record.process,
+                            "message": record.message,
+                            "details": record.details,
+                            "fallback_sink_blake3": evidence.sink_blake3,
+                            "fallback_record_blake3": record.record_blake3().map_err(|kind| {
+                                FallbackOracleError::Record {
+                                    record_index: record.sequence,
+                                    kind,
+                                }
+                            })?,
+                        }),
+                    )
+                    .map_err(FallbackOracleError::Catalog)?;
+                continue;
+            }
+            let descriptor = record
+                .assertion_descriptor()
+                .map_err(|kind| FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind,
+                })?
+                .ok_or(FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind: FallbackErrorKind::AssertionIdentityMismatch,
+                })?;
+            let fingerprint = descriptor
+                .fingerprint()
+                .map_err(FallbackErrorKind::Descriptor)
+                .map_err(|kind| FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind,
+                })?;
+            let kind = record
+                .record_type
+                .assertion_kind()
+                .ok_or(FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind: FallbackErrorKind::AssertionIdentityMismatch,
+                })?;
+            let event = BoundAssertionEvent {
+                catalog_token,
+                fingerprint,
+                kind,
+            };
+            let details =
+                serde_json::to_vec(&record.details).map_err(|_| FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind: FallbackErrorKind::MalformedDetails,
+                })?;
+            let satisfied = staged
+                .record_bound_event(&event, record.condition.unwrap_or(true), Some(&details))
+                .map_err(FallbackOracleError::Catalog)?;
+            let admitted = staged
+                .accepted_catalog
+                .as_ref()
+                .and_then(|catalog| catalog.assertions.get(&fingerprint))
+                .ok_or(FallbackOracleError::Catalog(
+                    CatalogConflict::UnknownFingerprint,
+                ))?;
+            let identity =
+                chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                    admitted,
+                    catalog_token,
+                )
+                .map_err(FallbackOracleError::Catalog)?;
+            let scope = record
+                .assertion_scope(&evidence.sink_blake3)
+                .map_err(|kind| FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind,
+                })?
+                .ok_or(FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind: FallbackErrorKind::AssertionIdentityMismatch,
+                })?;
+            scope
+                .validate_against(&identity)
+                .map_err(|kind| FallbackOracleError::Record {
+                    record_index: record.sequence,
+                    kind,
+                })?;
+            let oracle_record = staged.structured_assertions.get_mut(&fingerprint).ok_or(
+                FallbackOracleError::Catalog(CatalogConflict::UnknownFingerprint),
+            )?;
+            if oracle_record.fallback_scope.is_none() || !satisfied {
+                oracle_record.fallback_scope = Some(scope);
+            }
+        }
+        if let Some(overflow) = &evidence.overflow {
+            staged
+                .record_event(
+                    "fallback_assertion_sink_overflow",
+                    serde_json::json!({
+                        "limit": overflow.limit,
+                        "rejected_sequence": overflow.rejected_sequence,
+                        "process": overflow.process,
+                        "fallback_sink_blake3": evidence.sink_blake3,
+                    }),
+                )
+                .map_err(FallbackOracleError::Catalog)?;
+        }
+        *self = staged;
+        Ok(())
     }
 
     /// Record a `setup_complete` lifecycle event.

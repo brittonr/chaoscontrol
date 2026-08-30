@@ -26,6 +26,8 @@ pub mod admission;
 #[cfg(feature = "std")]
 mod canonical;
 #[cfg(feature = "std")]
+pub mod fallback;
+#[cfg(feature = "std")]
 pub mod identity;
 mod memory;
 mod message;

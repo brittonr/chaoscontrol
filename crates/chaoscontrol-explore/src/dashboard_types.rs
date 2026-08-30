@@ -468,6 +468,7 @@ mod tests {
                 bug_id: 0,
                 assertion_id: ASSERTION_ALIAS,
                 assertion_identity: Some(identity),
+                fallback_scope: None,
                 assertion_location,
                 schedule: crate::checkpoint::SerializableSchedule { faults: vec![] },
                 tick: 500,

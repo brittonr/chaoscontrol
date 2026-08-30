@@ -99,6 +99,17 @@ let AssertionIdentity = {
   canonical_descriptor | Array Byte | CanonicalBytes,
   catalog_token | Fingerprint,
 } in
+let FallbackProcess = {
+  guest | NonEmptyString,
+  process | NonEmptyString,
+} in
+let FallbackScope = {
+  process | FallbackProcess,
+  record_sequence | Number,
+  record_blake3 | Fingerprint,
+  sink_blake3 | Fingerprint,
+  assertion_fingerprint | Fingerprint,
+} in
 let ReplayClass = std.contract.from_predicate (fun value =>
   value == "snapshot_backed_reproduced"
   || value == "snapshot_backed_not_reproduced"
@@ -148,6 +159,7 @@ let ReplayVerdictShape = {
   bug_id | Number | optional,
   assertion_id | U32 | optional,
   assertion_identity | AssertionIdentity | optional,
+  fallback_scope | FallbackScope | optional,
   replay_parent_depth | Number | optional,
   snapshot = {
     status | SnapshotStatus,
@@ -183,6 +195,16 @@ let ReplayBinding = fun value =>
       value.assertion_id == 0
   in
   (all_bug_fields || no_bug_fields) && alias_matches
+in
+let FallbackBinding = fun value =>
+  let has_identity = std.record.has_field "assertion_identity" value in
+  let has_scope = std.record.has_field "fallback_scope" value in
+  if !has_identity then !has_scope
+  else if value.assertion_identity.descriptor.category == "fallback-process" then
+    has_scope
+    && value.fallback_scope.assertion_fingerprint == value.assertion_identity.fingerprint
+  else
+    !has_scope
 in
 let SnapshotBinding = fun value =>
   let has_reference = std.record.has_field "reference" value.snapshot in
@@ -250,7 +272,10 @@ std.contract.custom (fun label value =>
   std.contract.check ReplayVerdictShape label value
   |> match {
     'Ok checked =>
-      if ReplayBinding checked && SnapshotBinding checked && ReplaySemantics checked
+      if ReplayBinding checked
+        && FallbackBinding checked
+        && SnapshotBinding checked
+        && ReplaySemantics checked
       then 'Ok checked
       else 'Error {},
     'Error error => 'Error error,

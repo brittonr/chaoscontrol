@@ -13,11 +13,27 @@ pub(crate) fn validate_legacy_records(
             || record.compatibility_id != Some(*id)
             || !record.catalog_tokens.is_empty()
             || !record.vm_instances.is_empty()
+            || record.fallback_scope.is_some()
         {
             return Err(OracleValidationError::LegacyState);
         }
     }
     Ok(())
+}
+
+pub(crate) fn validate_strict_fallback_scope(
+    record: &AssertionRecord,
+    identity: &chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+) -> Result<(), OracleValidationError> {
+    let is_fallback = identity.descriptor.category
+        == chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY;
+    match (is_fallback, record.fallback_scope.as_ref()) {
+        (false, None) => Ok(()),
+        (true, Some(scope)) => scope
+            .validate_against(identity)
+            .map_err(|_| OracleValidationError::Record),
+        (false, Some(_)) | (true, None) => Err(OracleValidationError::Record),
+    }
 }
 
 pub(crate) fn validate_final_record(

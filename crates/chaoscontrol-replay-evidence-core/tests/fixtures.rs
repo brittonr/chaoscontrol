@@ -7,6 +7,10 @@
 use chaoscontrol_protocol::admission::{
     token_for_descriptors, AssertionEvidenceIdentity, CatalogBuilder,
 };
+use chaoscontrol_protocol::fallback::{
+    FallbackAssertionScope, FallbackProcessIdentity, FallbackRecord, FallbackRecordType,
+    FallbackSink, FALLBACK_RECORD_SCHEMA_VERSION,
+};
 use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
@@ -30,6 +34,8 @@ const HEX_CHARS_PER_BYTE: usize = 2;
 const TEST_VARIANT_SEED: u64 = 73;
 const TEST_QUANTUM_OVERRIDE: u64 = 5;
 const BLAKE3_DIGEST_BYTES: usize = 32;
+const FALLBACK_SINK_LIMIT: usize = 1;
+const FALLBACK_RECORD_SEQUENCE: u64 = 0;
 
 fn test_identity(alias: u64) -> AssertionEvidenceIdentity {
     let compatibility_id = u32::try_from(alias).expect("fixture alias fits u32");
@@ -58,6 +64,47 @@ fn test_identity(alias: u64) -> AssertionEvidenceIdentity {
         .next()
         .expect("admitted assertion");
     AssertionEvidenceIdentity::from_admitted(admitted, token).expect("evidence identity")
+}
+
+fn fallback_identity_and_scope() -> (AssertionEvidenceIdentity, FallbackAssertionScope) {
+    let record = FallbackRecord {
+        schema_version: FALLBACK_RECORD_SCHEMA_VERSION,
+        sequence: FALLBACK_RECORD_SEQUENCE,
+        process: FallbackProcessIdentity {
+            guest: "fixture-guest".to_string(),
+            process: "wal-worker".to_string(),
+        },
+        namespace: "org.example.fixture".to_string(),
+        logical_key: "fallback-wal-safe".to_string(),
+        record_type: FallbackRecordType::Always,
+        condition: Some(false),
+        message: "fallback WAL invariant".to_string(),
+        details: serde_json::json!({"phase": "checkpoint"}),
+    };
+    let descriptor = record
+        .assertion_descriptor()
+        .expect("descriptor result")
+        .expect("assertion descriptor");
+    let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("catalog token");
+    let mut builder = CatalogBuilder::begin(FALLBACK_SINK_LIMIT).expect("catalog begins");
+    builder.insert(descriptor).expect("descriptor inserts");
+    let catalog = builder.complete(token).expect("catalog completes");
+    let admitted = catalog
+        .assertions
+        .values()
+        .next()
+        .expect("admitted assertion");
+    let identity =
+        AssertionEvidenceIdentity::from_admitted(admitted, token).expect("evidence identity");
+    let mut sink = FallbackSink::new(FALLBACK_SINK_LIMIT).expect("fallback sink");
+    sink.admit_line(&serde_json::to_string(&record).expect("record line"))
+        .expect("record admitted");
+    let evidence = sink.evidence().expect("sink evidence");
+    let scope = record
+        .assertion_scope(&evidence.sink_blake3)
+        .expect("scope result")
+        .expect("assertion scope");
+    (identity, scope)
 }
 
 fn digest(byte: u8) -> String {
@@ -101,6 +148,7 @@ fn snapshot_backed_verdict(
         bug_id: Some(2),
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
+        fallback_scope: None,
         replay_parent_depth: Some(1),
         schedule_variant: None,
         snapshot: ReplaySnapshotValidation::valid(snapshot_ref(0x77)),
@@ -129,6 +177,7 @@ fn schedule_only_verdict() -> ReplayVerdict {
         bug_id: Some(0),
         assertion_id: Some(TEST_ALIAS),
         assertion_identity: Some(test_identity(TEST_ALIAS)),
+        fallback_scope: None,
         replay_parent_depth: Some(0),
         schedule_variant: None,
         snapshot: ReplaySnapshotValidation::not_required(),
@@ -148,6 +197,40 @@ fn accepts_current_snapshot_backed_reproduced_verdict() {
     let verdict = snapshot_backed_verdict(ReplayClass::SnapshotBackedReproduced, true, 0);
     validate_verdict_consistency(&verdict).expect("consistent verdict");
     validate_accepted_proof(&verdict).expect("accepted proof");
+}
+
+#[test]
+fn accepts_process_scoped_fallback_replay_verdict() {
+    let (identity, scope) = fallback_identity_and_scope();
+    let mut verdict = snapshot_backed_verdict(
+        ReplayClass::SnapshotBackedReproduced,
+        true,
+        chaoscontrol_replay_evidence_core::dto::REPRODUCED_EXIT_STATUS,
+    );
+    verdict.assertion_id = Some(0);
+    verdict.assertion_identity = Some(identity);
+    verdict.fallback_scope = Some(scope);
+    validate_verdict_consistency(&verdict).expect("process-scoped fallback verdict");
+}
+
+#[test]
+fn rejects_fallback_replay_without_scope_or_with_process_drift() {
+    let (identity, scope) = fallback_identity_and_scope();
+    let mut verdict = snapshot_backed_verdict(
+        ReplayClass::SnapshotBackedReproduced,
+        true,
+        chaoscontrol_replay_evidence_core::dto::REPRODUCED_EXIT_STATUS,
+    );
+    verdict.assertion_id = Some(0);
+    verdict.assertion_identity = Some(identity);
+    let missing = validate_verdict_consistency(&verdict).expect_err("missing process scope");
+    assert!(missing.message().contains("require process scope"));
+
+    let mut drifted = scope;
+    drifted.process.process = "other-worker".to_string();
+    verdict.fallback_scope = Some(drifted);
+    let drift = validate_verdict_consistency(&verdict).expect_err("process drift");
+    assert!(drift.message().contains("binding mismatch"));
 }
 
 #[test]

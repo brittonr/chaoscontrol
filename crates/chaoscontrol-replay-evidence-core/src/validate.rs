@@ -347,6 +347,38 @@ fn require_bug_context(verdict: &ReplayVerdict) -> Result<(), ValidationError> {
     }
 }
 
+fn validate_fallback_scope(verdict: &ReplayVerdict) -> Result<(), ValidationError> {
+    let is_fallback = verdict.assertion_identity.as_ref().is_some_and(|identity| {
+        identity.descriptor.category == chaoscontrol_protocol::fallback::FALLBACK_ASSERTION_CATEGORY
+    });
+    match (is_fallback, verdict.fallback_scope.as_ref()) {
+        (false, None) => Ok(()),
+        (true, Some(scope)) => {
+            let identity = verdict.assertion_identity.as_ref().ok_or_else(|| {
+                ValidationError::new(
+                    "replay-verdict.fallback_scope: fallback scope requires assertion identity",
+                )
+            })?;
+            identity.validate_for_catalog_admission().map_err(|error| {
+                ValidationError::new(format!(
+                    "replay-verdict.fallback_scope: invalid assertion identity: {error:?}"
+                ))
+            })?;
+            scope.validate_against(identity).map_err(|error| {
+                ValidationError::new(format!(
+                    "replay-verdict.fallback_scope: process or record binding mismatch: {error:?}"
+                ))
+            })
+        }
+        (false, Some(_)) => Err(ValidationError::new(
+            "replay-verdict.fallback_scope: non-fallback assertions cannot claim fallback scope",
+        )),
+        (true, None) => Err(ValidationError::new(
+            "replay-verdict.fallback_scope: fallback assertions require process scope",
+        )),
+    }
+}
+
 /// Validate internal consistency of an emitted replay verdict, for every
 /// replay class. This check is class-agnostic; use
 /// [`validate_accepted_proof`] for the accepted-proof gate.
@@ -381,6 +413,7 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
     if let Some(variant) = verdict.schedule_variant.as_ref() {
         validate_schedule_variant(variant)?;
     }
+    validate_fallback_scope(verdict)?;
 
     match verdict.replay_class {
         ReplayClass::SnapshotBackedReproduced | ReplayClass::SnapshotBackedNotReproduced => {
@@ -464,6 +497,7 @@ pub fn validate_verdict_consistency(verdict: &ReplayVerdict) -> Result<(), Valid
                 || verdict.assertion_id.is_some()
                 || verdict.replay_parent_depth.is_some()
                 || verdict.schedule_variant.is_some()
+                || verdict.fallback_scope.is_some()
             {
                 return Err(ValidationError::new(
                     "replay-verdict: no_bug_found verdicts carry no bug context",

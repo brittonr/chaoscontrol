@@ -6,6 +6,10 @@ Captured for ChaosControl design and implementation work on 2026-07-28.
 
 This material is a design reference, not a ChaosControl requirement or parity claim. ChaosControl keeps its documented product boundaries. These boundaries include Rust-only guests and no Docker, OCI, Compose, or Kubernetes intake.
 
+WalTier DST is a second bounded comparison source at the object-store seam. See [the WalTier DST record](waltier-dst.md) for its separate mechanism and claim boundaries.
+
+Neither source creates a ChaosControl requirement or parity claim. Existing repository policy and evidence gates remain authoritative.
+
 ## Introduction
 
 - [Welcome to Antithesis](https://antithesis.com/docs/introduction/welcome.md): Explore the guides and examples for the Antithesis autonomous testing platform.

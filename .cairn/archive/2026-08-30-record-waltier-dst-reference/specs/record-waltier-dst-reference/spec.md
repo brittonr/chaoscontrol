@@ -1,10 +1,6 @@
 # WalTier DST Reference Specification
 
-## Purpose
-
-Records WalTier DST as a bounded, non-parity comparison source for ChaosControl.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Comparison source is bounded
 r[chaoscontrol.waltier_dst.source] ChaosControl MUST record WalTier DST beside Antithesis. The record MUST state its mechanism layer and claim boundary.

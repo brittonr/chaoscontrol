@@ -19,6 +19,7 @@ mod assertion_evidence_carrier;
 mod assertion_summary_identity;
 mod assertion_summary_semantics;
 mod bounded_file;
+pub mod causality_shell;
 pub mod consistency_checker;
 pub mod contract_registry;
 pub mod dogfood_guards;
@@ -86,6 +87,13 @@ pub fn observe_typed_executable(
     replay_readiness_orchestration::observe_executable_reference(path.as_ref(), maximum_bytes)
 }
 
+pub use causality_shell::{
+    bind_causality_request, read_causality_receipt_path, read_causality_request_path,
+    run_causality_analysis, validate_causality_receipt, validate_causality_request,
+    AttributionExecution, CausalityExecutor, CausalityReceipt, CausalityRequest, ExecutionBinding,
+    MinimizationExecution, CAUSALITY_RECEIPT_SCHEMA_VERSION, CAUSALITY_REQUEST_SCHEMA_VERSION,
+    MAX_CAUSALITY_ARTIFACT_BYTES,
+};
 pub use chaoscontrol_smr;
 pub use consistency_checker::{
     check_history_path as check_consistency_history_path, history_digest,

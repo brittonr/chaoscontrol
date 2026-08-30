@@ -7,6 +7,7 @@
 //! the returned commands.
 
 pub mod boundary;
+pub mod causality;
 pub mod fault;
 pub mod findability;
 pub mod kernel;

@@ -133,6 +133,9 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
 - **Findability statistics**: First-bug-per-subtree observations produce a
   bounded exponential fit and conservative Lomax survival projection. See
   [`docs/findability-statistics.md`](docs/findability-statistics.md).
+- **Causality analysis**: Bounded delta debugging minimizes reproduced
+  interleavings, while neutralization outcomes rank probable causes. See
+  [`docs/causality-analysis.md`](docs/causality-analysis.md).
 
 ### Pure Simulation Core
 - **Machine-independent decisions**: `chaoscontrol-sim-core` owns scheduling, virtual time, network transitions, fault selection, and canonical round traces.

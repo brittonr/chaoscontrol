@@ -117,6 +117,7 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
 - **Three exploration modes**: fault-schedule mutation, input-tree
   branching at `random_choice()` points, or hybrid
 - **Deterministic schedule diversity**: SMP branches can carry explicit seeded scheduler variants. Bug and replay evidence binds the exact policy. See [`docs/schedule-diversity.md`](docs/schedule-diversity.md).
+- **SUT-declared event branching**: Guests can declare stable branch markers. The explorer prioritizes new and rare markers, binds them to replay parents, and reports unreached declarations. See [`docs/sut-declared-event-branching.md`](docs/sut-declared-event-branching.md).
 - **Fault schedule minimization**: Delta debugging (ddmin) to find
   the smallest schedule that triggers a bug
 - **Bug reproduction**: Replay a bug report to verify it still triggers

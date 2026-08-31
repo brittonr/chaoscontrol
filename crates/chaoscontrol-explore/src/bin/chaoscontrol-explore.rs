@@ -1169,6 +1169,13 @@ fn cmd_run(
     eprintln!("Exploration complete!");
     eprintln!();
 
+    let marker_coverage = match explorer.marker_coverage_report() {
+        Ok(coverage) => coverage,
+        Err(error) => {
+            eprintln!("Branch-marker evidence is invalid: {error:?}");
+            std::process::exit(EXIT_ERROR);
+        }
+    };
     let assertion_summary = match validate_exploration_output(&report, vms) {
         Ok(summary) => summary,
         Err(error) => {
@@ -1185,6 +1192,7 @@ fn cmd_run(
     if let Some(ref output_dir) = output {
         if let Err(error) =
             persist_exploration_outputs(output_dir, &report, &formatted, &assertion_summary, vms)
+                .and_then(|()| persist_marker_coverage(output_dir, &marker_coverage))
         {
             eprintln!("Exploration output failed: {error}");
             std::process::exit(EXIT_ERROR);
@@ -1532,6 +1540,16 @@ fn validate_exploration_output(
         }
     }
     Ok(summary)
+}
+
+fn persist_marker_coverage(
+    output: &str,
+    coverage: &chaoscontrol_explore::marker_branching::MarkerCoverageReport,
+) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(coverage)
+        .map_err(|error| format!("serialize branch-marker coverage: {error}"))?;
+    let path = std::path::Path::new(output).join("branch-marker-coverage.json");
+    write_atomic_replacing(&path, &bytes)
 }
 
 fn persist_exploration_outputs(

@@ -1,6 +1,7 @@
 //! Frontier — priority queue of interesting simulation states to explore.
 
 use crate::coverage::CoverageBitmap;
+use crate::marker_branching::MarkerFrontierMetadata;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
 use rand::Rng;
@@ -24,6 +25,8 @@ pub struct FrontierEntry {
     pub schedule: FaultSchedule,
     /// Parent entry ID (if forked from another entry).
     pub parent: Option<u64>,
+    /// Guest-declared marker that created this branch opportunity.
+    pub marker: Option<MarkerFrontierMetadata>,
 }
 
 /// Priority queue of interesting simulation states to explore from.
@@ -168,6 +171,7 @@ mod tests {
             depth,
             schedule: FaultSchedule::new(),
             parent: None,
+            marker: None,
         }
     }
 

@@ -61,6 +61,8 @@ pub mod coverage;
 #[cfg(feature = "full")]
 pub mod details;
 pub mod lifecycle;
+#[cfg(feature = "full")]
+pub mod marker;
 pub mod prelude;
 pub mod random;
 pub mod resources;

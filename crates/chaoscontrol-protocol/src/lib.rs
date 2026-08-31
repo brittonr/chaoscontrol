@@ -24,6 +24,8 @@
 #[cfg(feature = "std")]
 pub mod admission;
 #[cfg(feature = "std")]
+pub mod branch_marker;
+#[cfg(feature = "std")]
 mod canonical;
 #[cfg(feature = "std")]
 pub mod fallback;

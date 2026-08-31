@@ -18,6 +18,9 @@ use chaoscontrol_protocol::admission::{
     validate_accepted_catalog, AcceptedCatalog, AdmittedAssertion, BoundAssertionEvent,
     CatalogConflict, CatalogValidationStatus, MAX_ASSERTION_CATALOG_ENTRIES,
 };
+use chaoscontrol_protocol::branch_marker::{
+    BranchMarker, BRANCH_MARKER_EVENT, BRANCH_MARKER_LIMIT_EVENT, MAX_MARKERS_PER_RUN,
+};
 use chaoscontrol_protocol::fallback::{
     catalog_with_fallback, validate_fallback_sink_evidence, FallbackAdmissionError,
     FallbackAssertionScope, FallbackError, FallbackErrorKind, FallbackRecordType,
@@ -786,6 +789,42 @@ impl PropertyOracle {
         let Some(run_id) = self.current_run.as_ref().map(|run| run.run_id) else {
             return self.reject_bound_event(CatalogConflict::NoActiveRun);
         };
+        if name == BRANCH_MARKER_EVENT {
+            let marker =
+                BranchMarker::from_value(&details).map_err(|_| CatalogConflict::MarkerInvalid)?;
+            let mut marker_count = 0_usize;
+            for event in self
+                .events
+                .iter()
+                .filter(|event| event.run_id == run_id && event.name == BRANCH_MARKER_EVENT)
+            {
+                marker_count = marker_count
+                    .checked_add(1)
+                    .ok_or(CatalogConflict::CounterOverflow)?;
+                if BranchMarker::from_value(&event.details)
+                    .is_ok_and(|existing| existing.collapse_key() == marker.collapse_key())
+                {
+                    return Ok(());
+                }
+            }
+            if marker_count >= MAX_MARKERS_PER_RUN {
+                let limit_recorded = self
+                    .events
+                    .iter()
+                    .any(|event| event.run_id == run_id && event.name == BRANCH_MARKER_LIMIT_EVENT);
+                if !limit_recorded {
+                    self.events.push(OracleEvent {
+                        run_id,
+                        name: BRANCH_MARKER_LIMIT_EVENT.to_string(),
+                        details: serde_json::json!({
+                            "limit": MAX_MARKERS_PER_RUN,
+                            "rejected_identity": marker.identity,
+                        }),
+                    });
+                }
+                return Err(CatalogConflict::MarkerLimitExceeded);
+            }
+        }
         self.events.push(OracleEvent {
             run_id,
             name: name.to_string(),

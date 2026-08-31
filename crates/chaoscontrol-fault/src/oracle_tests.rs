@@ -13,6 +13,24 @@ const SOURCE_COLUMN: u32 = 5;
 const EVENT_RUN: u32 = 7;
 const EVENT_ATTEMPT: u32 = 2;
 const MULTI_RUN_COUNT: u32 = 3;
+const FIRST_TERM: u64 = 1;
+const SECOND_TERM: u64 = 2;
+const EXPECTED_COLLAPSED_MARKERS: usize = 2;
+
+fn marker(key: &str, term: u64) -> serde_json::Value {
+    serde_json::to_value(
+        BranchMarker::new(
+            "raft",
+            key,
+            "guest-0",
+            json!({"term": term}),
+            None,
+            Some(format!("term:{term}")),
+        )
+        .expect("marker is valid"),
+    )
+    .expect("marker serializes")
+}
 
 fn descriptor(kind: AssertionKind, key: &str) -> AssertionDescriptor {
     AssertionDescriptor {
@@ -50,6 +68,72 @@ fn strict_oracle(
     let mut oracle = PropertyOracle::new();
     oracle.activate_catalog(catalog).expect("activate catalog");
     (oracle, event, fingerprint)
+}
+
+#[test]
+fn branch_markers_collapse_by_identity_and_instance_refs() {
+    let mut oracle = PropertyOracle::new();
+    oracle.begin_run();
+    let first = marker("leader-elected", FIRST_TERM);
+    oracle
+        .record_event(BRANCH_MARKER_EVENT, first.clone())
+        .expect("first marker records");
+    oracle
+        .record_event(BRANCH_MARKER_EVENT, first)
+        .expect("exact marker collapses");
+    oracle
+        .record_event(BRANCH_MARKER_EVENT, marker("leader-elected", SECOND_TERM))
+        .expect("different logical position records");
+    let report = oracle.finalized_report_projection();
+    assert_eq!(
+        report
+            .events
+            .iter()
+            .filter(|event| event.name == BRANCH_MARKER_EVENT)
+            .count(),
+        EXPECTED_COLLAPSED_MARKERS
+    );
+}
+
+#[test]
+fn branch_marker_limit_and_invalid_identity_fail_closed() {
+    let mut oracle = PropertyOracle::new();
+    oracle.begin_run();
+    for index in 0..MAX_MARKERS_PER_RUN {
+        oracle
+            .record_event(
+                BRANCH_MARKER_EVENT,
+                marker(&format!("marker-{index}"), FIRST_TERM),
+            )
+            .expect("bounded marker records");
+    }
+    assert_eq!(
+        oracle.record_event(BRANCH_MARKER_EVENT, marker("overflow", FIRST_TERM)),
+        Err(CatalogConflict::MarkerLimitExceeded)
+    );
+    assert_eq!(
+        oracle.record_event(BRANCH_MARKER_EVENT, marker("overflow-again", FIRST_TERM)),
+        Err(CatalogConflict::MarkerLimitExceeded)
+    );
+    let report = oracle.finalized_report_projection();
+    assert_eq!(
+        report
+            .events
+            .iter()
+            .filter(|event| event.name == BRANCH_MARKER_LIMIT_EVENT)
+            .count(),
+        1
+    );
+
+    let mut invalid = marker("invalid", FIRST_TERM);
+    invalid["identity"] = serde_json::Value::String("b3:invalid".to_string());
+    let mut rejected = PropertyOracle::new();
+    rejected.begin_run();
+    assert_eq!(
+        rejected.record_event(BRANCH_MARKER_EVENT, invalid),
+        Err(CatalogConflict::MarkerInvalid)
+    );
+    assert!(rejected.finalized_report_projection().events.is_empty());
 }
 
 fn record<'a>(report: &'a OracleReport, fingerprint: &AssertionFingerprint) -> &'a AssertionRecord {

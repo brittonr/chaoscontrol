@@ -55,6 +55,8 @@ pub enum CatalogConflict {
     LegacyAliasConflict,
     LegacyIdentityForbidden,
     LogicalKeyConflict,
+    MarkerInvalid,
+    MarkerLimitExceeded,
     MessageConflict,
     NamespaceConflict,
     NoActiveRun,

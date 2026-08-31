@@ -7,6 +7,9 @@ use crate::corpus::{BugReport, Corpus, CorpusEntry};
 use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
 use crate::frontier::{Frontier, FrontierEntry};
 use crate::input_tree;
+use crate::marker_branching::{
+    frontier_metadata, marker_score, observations as marker_observations, update_hit_counts,
+};
 use crate::mutator::{MutationConfig, ScheduleMutator};
 use crate::worker::{BranchWork, WorkerPool};
 use chaoscontrol_fault::oracle::OracleReport;
@@ -246,6 +249,8 @@ pub struct Explorer {
     standalone_bugs: Vec<BugReport>,
     /// Consecutive rounds with 0 new edges and 0 new bugs.
     consecutive_stale_rounds: u64,
+    /// Prior observations per stable branch-marker identity.
+    marker_hits: BTreeMap<String, u32>,
     /// Materialized phase summary (stored at bootstrap time).
     scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
@@ -281,6 +286,7 @@ impl Explorer {
             seen_dedup_keys: BTreeSet::new(),
             standalone_bugs: Vec::new(),
             consecutive_stale_rounds: 0,
+            marker_hits: BTreeMap::new(),
             scenario_summary: None,
             metrics_sink: None,
         }
@@ -1548,6 +1554,7 @@ impl Explorer {
                 depth: entry.depth,
                 schedule: entry.schedule.clone(),
                 parent: None,
+                marker: None,
             };
             self.frontier.push(frontier_entry);
             recycled += 1;
@@ -1575,6 +1582,7 @@ impl Explorer {
                             depth: entry.depth,
                             schedule: entry.schedule.clone(),
                             parent: None,
+                            marker: None,
                         };
                         self.frontier.push(frontier_entry);
                         recycled += 1;
@@ -1595,20 +1603,38 @@ impl Explorer {
         parent: Option<u64>,
         depth: u32,
     ) {
-        let score = self.score_branch(&result, depth);
+        let base_score = self.score_branch(&result, depth);
+        let markers = marker_observations(&result.oracle_report).unwrap_or_default();
+        if markers.is_empty() {
+            self.frontier.push(FrontierEntry {
+                id: 0,
+                snapshot,
+                coverage: result.coverage,
+                score: base_score,
+                times_selected: 0,
+                depth,
+                schedule,
+                parent,
+                marker: None,
+            });
+            return;
+        }
 
-        let entry = FrontierEntry {
-            id: 0, // Will be assigned by frontier
-            snapshot,
-            coverage: result.coverage,
-            score,
-            times_selected: 0,
-            depth,
-            schedule,
-            parent,
-        };
-
-        self.frontier.push(entry);
+        for observation in markers {
+            let prior_hits = update_hit_counts(&mut self.marker_hits, &observation.marker.identity);
+            let metadata = frontier_metadata(&observation, result.total_ticks);
+            self.frontier.push(FrontierEntry {
+                id: 0,
+                snapshot: snapshot.clone(),
+                coverage: result.coverage.clone(),
+                score: marker_score(base_score, prior_hits),
+                times_selected: 0,
+                depth,
+                schedule: schedule.clone(),
+                parent,
+                marker: Some(metadata),
+            });
+        }
     }
 
     /// Add a result to the corpus.
@@ -2004,6 +2030,20 @@ impl Explorer {
         }
     }
 
+    /// Project declared and reached branch-marker coverage from the live controller.
+    pub fn marker_coverage_report(
+        &self,
+    ) -> Result<
+        crate::marker_branching::MarkerCoverageReport,
+        crate::marker_branching::MarkerBindingError,
+    > {
+        let report = self
+            .controller
+            .as_ref()
+            .map_or_else(OracleReport::empty, SimulationController::report);
+        crate::marker_branching::oracle_coverage_report(&report)
+    }
+
     /// Get a mutable reference to the config (for runtime adjustments).
     pub fn config_mut(&mut self) -> &mut ExplorerConfig {
         &mut self.config
@@ -2183,6 +2223,7 @@ impl Explorer {
                 .collect(),
             standalone_bugs,
             consecutive_stale_rounds: 0,
+            marker_hits: BTreeMap::new(),
             scenario_summary: checkpoint.scenario_summary.clone(),
             metrics_sink: None,
         })
@@ -2425,6 +2466,9 @@ mod tests {
     const TEST_ALIAS: u32 = 42;
     const TEST_VARIANT_SEED: u64 = 73;
     const TEST_BRANCH_COUNT: usize = 2;
+    const TEST_VM_COUNT: usize = 2;
+    const TEST_NETWORK_SEED: u64 = 42;
+    const TEST_MARKER_TICK: u64 = 19;
 
     #[test]
     fn diversity_is_disabled_for_single_vcpu_and_explicitly_disabled_smp() {
@@ -2481,6 +2525,28 @@ mod tests {
         oracle.report()
     }
 
+    fn dummy_snapshot() -> SimulationSnapshot {
+        let engine = chaoscontrol_fault::engine::FaultEngine::new(
+            chaoscontrol_fault::engine::EngineConfig::default(),
+        );
+        SimulationSnapshot {
+            tick: 0,
+            vm_snapshots: Vec::new(),
+            network_state: chaoscontrol_vmm::controller::NetworkFabric::new(
+                TEST_VM_COUNT,
+                TEST_NETWORK_SEED,
+            ),
+            fault_engine_snapshot: engine.snapshot(),
+            vcpu_stall_until: Vec::new(),
+            clock_freeze: Vec::new(),
+            clock_jitter_bound: Vec::new(),
+            memory_pressure: Vec::new(),
+            process_fault_attempt: Vec::new(),
+            pending_process_observations: Default::default(),
+            fault_operation_sequence: 0,
+        }
+    }
+
     fn branch_result(oracle_report: OracleReport) -> BranchResult {
         BranchResult {
             coverage: CoverageBitmap::new(),
@@ -2488,13 +2554,53 @@ mod tests {
             schedule: FaultSchedule::new(),
             exit_counts: Vec::new(),
             halted: false,
-            total_ticks: 0,
+            total_ticks: TEST_MARKER_TICK,
             bugs: Vec::new(),
             snapshot: None,
             schedule_variant: None,
             schedule_fingerprint: 0,
             timings: BranchTimings::default(),
         }
+    }
+
+    #[test]
+    fn branch_markers_create_identity_bound_novel_frontier_entries() {
+        let marker = chaoscontrol_protocol::branch_marker::BranchMarker::new(
+            "raft",
+            "leader-elected",
+            "guest-0",
+            serde_json::json!({"term": 1}),
+            None,
+            Some("term:1".to_string()),
+        )
+        .unwrap();
+        let expected_identity = marker.identity.clone();
+        let mut oracle = chaoscontrol_fault::oracle::PropertyOracle::new();
+        oracle.begin_run();
+        oracle
+            .record_event(
+                chaoscontrol_protocol::branch_marker::BRANCH_MARKER_EVENT,
+                serde_json::to_value(marker).unwrap(),
+            )
+            .unwrap();
+        oracle.end_run();
+
+        let mut explorer = Explorer::new(ExplorerConfig::default());
+        explorer.add_to_frontier(
+            dummy_snapshot(),
+            branch_result(oracle.report()),
+            FaultSchedule::new(),
+            None,
+            0,
+        );
+
+        assert_eq!(explorer.frontier.len(), 1);
+        let metadata = explorer.frontier.entries()[0].marker.as_ref().unwrap();
+        assert_eq!(metadata.marker_identity, expected_identity);
+        assert_eq!(metadata.observed_tick, TEST_MARKER_TICK);
+        assert!(
+            explorer.frontier.entries()[0].score >= crate::marker_branching::MARKER_NOVELTY_BONUS
+        );
     }
 
     #[test]

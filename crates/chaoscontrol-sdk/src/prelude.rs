@@ -22,6 +22,8 @@ pub use crate::runtime::guest_init;
 
 // ── Assertion functions ──────────────────────────────────────────────
 pub use crate::assert::AssertionKind;
+#[cfg(feature = "full")]
+pub use crate::cc_branch_marker;
 
 // ── Assertion macros ─────────────────────────────────────────────────
 pub use crate::{
@@ -66,6 +68,8 @@ pub use crate::{
 
 // ── Lifecycle ────────────────────────────────────────────────────────
 pub use crate::lifecycle::{send_event, setup_complete};
+#[cfg(feature = "full")]
+pub use crate::marker::branch_marker;
 pub use crate::resources::memory_ceiling_bytes;
 
 // ── Random ───────────────────────────────────────────────────────────

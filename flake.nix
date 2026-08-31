@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nickel-1-17-0.url = "github:nickel-lang/nickel/1320a983e6c3d1e2fb53dd2464b084b4903b1426";
     crane.url = "github:ipetkov/crane";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -30,6 +31,7 @@
     {
       self,
       nixpkgs,
+      nickel-1-17-0,
       crane,
       rust-overlay,
       octet,
@@ -47,9 +49,13 @@
       eachSystem = forAllSystems (
         system:
         let
+          exactNickel = nickel-1-17-0.packages.${system}.default;
           pkgs = import nixpkgs {
             inherit system;
-            overlays = [ (import rust-overlay) ];
+            overlays = [
+              (import rust-overlay)
+              (_final: _previous: { nickel = exactNickel; })
+            ];
           };
 
           vmCohortRevision = "ab123e3673b6dd616b3df5d044026b5e85755149";
@@ -86,6 +92,46 @@
                 fi
                 touch "$out"
               '';
+          # r[impl chaoscontrol.nickel_toolchain.cohort]
+          # r[impl chaoscontrol.nickel_toolchain.compatibility]
+          nickelCohortCheck =
+            pkgs.runCommand "chaoscontrol-nickel-cohort-exact"
+              {
+                nativeBuildInputs = [
+                  pkgs.gnugrep
+                  pkgs.nickel
+                  pkgs.ripgrep
+                ];
+                src = self;
+              }
+              ''
+                set -euo pipefail
+                cd "$src"
+                test '${nickel-1-17-0.rev}' = '1320a983e6c3d1e2fb53dd2464b084b4903b1426'
+                test "$(nickel --version)" = 'nickel-lang-cli nickel 1.17.0 (rev 1320a98)'
+                if rg -n 'nickel 1\.15\.1|nixpkgs#nickel' \
+                  crates contracts/evidence/fixtures/valid; then
+                  echo 'old, ambient, or fallback Nickel evaluator remains' >&2
+                  exit 1
+                fi
+                nickel export --format json contracts/evidence/examples/raft-run-config.ncl >/dev/null
+                nickel export --format json contracts/evidence/examples/register-simulator-profile.ncl >/dev/null
+                nickel export --format json contracts/evidence/examples/raft-campaign-profile.ncl >/dev/null
+                nickel export --format json contracts/evidence/examples/raft-fault-schedule-profile.ncl >/dev/null
+                for invalid in \
+                  contracts/nickel-toolchain/fixtures/invalid/malformed.ncl \
+                  contracts/nickel-toolchain/fixtures/invalid/missing-import.ncl \
+                  contracts/evidence/fixtures/invalid/run-profile.unknown-field.invalid.ncl \
+                  contracts/evidence/fixtures/invalid/run-profile.zero-budget.invalid.ncl \
+                  contracts/evidence/fixtures/invalid/fault-schedule.unknown-action.invalid.ncl; do
+                  if nickel export --format json "$invalid" >/dev/null 2>&1; then
+                    echo "invalid Nickel fixture unexpectedly passed: $invalid" >&2
+                    exit 1
+                  fi
+                done
+                touch "$out"
+              '';
+
           vmCohortAdoptionContractCheck =
             pkgs.runCommand "chaoscontrol-vm-cohort-adoption-contract"
               {
@@ -1418,19 +1464,21 @@
 
             # Repository-owned package, artifact, template, prior-grant, and
             # third-party license boundary.
-            license-boundary = pkgs.runCommand "chaoscontrol-license-boundary"
-              {
-                nativeBuildInputs = [ rustToolchain ];
-              }
-              ''
-                rustc ${self}/tools/check-license-boundary.rs -o check-license-boundary
-                ./check-license-boundary ${self}
-                touch "$out"
-              '';
+            license-boundary =
+              pkgs.runCommand "chaoscontrol-license-boundary"
+                {
+                  nativeBuildInputs = [ rustToolchain ];
+                }
+                ''
+                  rustc ${self}/tools/check-license-boundary.rs -o check-license-boundary
+                  ./check-license-boundary ${self}
+                  touch "$out"
+                '';
 
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
             vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;
+            nickel-cohort-exact = nickelCohortCheck;
 
             # Clippy — deny warnings
             clippy = craneLib.cargoClippy (

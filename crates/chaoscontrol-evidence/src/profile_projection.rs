@@ -8,7 +8,7 @@ use crate::{EvidenceError, EvidenceResult};
 
 pub(crate) const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
 pub(crate) const RECEIPT_SCHEMA: &str = "chaoscontrol.profile-projection-receipt.v1";
-pub(crate) const EVALUATOR_IDENTITY: &str = "nickel-lang-cli nickel 1.15.1 (rev cargore)";
+pub(crate) const EVALUATOR_IDENTITY: &str = "nickel-lang-cli nickel 1.17.0 (rev 1320a98)";
 pub(crate) const NON_CLAIMS: [&str; 2] = [
     "profile conformance is pre-run intent only",
     "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim",
@@ -165,32 +165,21 @@ fn validate_evaluator(command: &[String]) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn evaluator_version_args(command: &[String]) -> Vec<String> {
-    if command.first().is_some_and(|value| value == "nix") {
-        return vec![
-            "run".to_string(),
-            "nixpkgs#nickel".to_string(),
-            "--".to_string(),
-            "--version".to_string(),
-        ];
-    }
+fn evaluator_version_args(_command: &[String]) -> Vec<String> {
     vec!["--version".to_string()]
 }
 
+// r[impl chaoscontrol.nickel_toolchain.cohort]
+// r[impl chaoscontrol.nickel_toolchain.boundary]
 fn nickel_command() -> EvidenceResult<Vec<String>> {
-    if command_exists("nickel") {
-        return Ok(vec!["nickel".to_string(), "export".to_string()]);
+    planned_nickel_command(command_exists("nickel"))
+}
+
+fn planned_nickel_command(available: bool) -> EvidenceResult<Vec<String>> {
+    if !available {
+        return Err(EvidenceError::new("exact Nickel evaluator is unavailable"));
     }
-    if command_exists("nix") {
-        return Ok(vec![
-            "nix".to_string(),
-            "run".to_string(),
-            "nixpkgs#nickel".to_string(),
-            "--".to_string(),
-            "export".to_string(),
-        ]);
-    }
-    Err(EvidenceError::new("Nickel evaluator is unavailable"))
+    Ok(vec!["nickel".to_string(), "export".to_string()])
 }
 
 fn command_exists(name: &str) -> bool {

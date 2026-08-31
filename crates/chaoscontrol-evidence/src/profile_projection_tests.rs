@@ -29,6 +29,19 @@ fn malformed_projection_is_rejected() {
     assert!(canonical_pretty_json(b"not-json").is_err());
 }
 
+// r[verify chaoscontrol.nickel_toolchain.cohort]
+// r[verify chaoscontrol.nickel_toolchain.boundary]
+#[test]
+fn evaluator_planning_requires_the_exact_path_command_without_fallback() {
+    assert_eq!(
+        planned_nickel_command(true).expect("exact evaluator is available"),
+        vec!["nickel".to_string(), "export".to_string()]
+    );
+    assert!(planned_nickel_command(false).is_err());
+    assert_eq!(evaluator_version_args(&[]), vec!["--version".to_string()]);
+    assert!(NON_CLAIMS.contains(&"profile conformance is pre-run intent only"));
+}
+
 #[test]
 fn verifier_accepts_only_the_trusted_fixture() {
     let fixture = test_fixture();

@@ -16,8 +16,8 @@
     }
   ],
   "evaluator": {
-    "name": "nickel-lang-cli nickel 1.15.1 (rev cargore)",
-    "identity": "blake3:283b5e590a77d27ebcb9f338666f4704217650999664d2143099b228dca1602a"
+    "name": "nickel-lang-cli nickel 1.17.0 (rev 1320a98)",
+    "identity": "blake3:bb5e202a62d399506f1eecaa8cb803108db19a0845505e927be416c0c442a09a"
   },
   "projection": {
     "path": "contracts/evidence/fixtures/valid/fault-schedule-profile.valid.json",

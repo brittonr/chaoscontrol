@@ -359,20 +359,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
     Ok(())
 }
 
+// r[impl chaoscontrol.nickel_toolchain.cohort]
 fn nickel_command() -> Option<Vec<String>> {
-    if command_exists("nickel") {
-        return Some(vec!["nickel".to_string(), "export".to_string()]);
-    }
-    if command_exists("nix") {
-        return Some(vec![
-            "nix".to_string(),
-            "run".to_string(),
-            "nixpkgs#nickel".to_string(),
-            "--".to_string(),
-            "export".to_string(),
-        ]);
-    }
-    None
+    command_exists("nickel").then(|| vec!["nickel".to_string(), "export".to_string()])
 }
 
 fn command_exists(name: &str) -> bool {

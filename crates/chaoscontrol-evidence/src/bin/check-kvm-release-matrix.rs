@@ -308,23 +308,11 @@ fn nickel_status(root: &Path, source: &Path) -> Result<std::process::ExitStatus,
         .map_err(|error| format!("failed to export {}: {error}", source.display()))
 }
 
+// r[impl chaoscontrol.nickel_toolchain.cohort]
 fn nickel_command() -> Command {
-    if command_exists("nickel") {
-        let mut command = Command::new("nickel");
-        command.arg("export");
-        command
-    } else {
-        let mut command = Command::new("nix");
-        command.args(["run", "nixpkgs#nickel", "--", "export"]);
-        command
-    }
-}
-
-fn command_exists(name: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|directory| directory.join(name).is_file())
+    let mut command = Command::new("nickel");
+    command.arg("export");
+    command
 }
 
 fn check_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {

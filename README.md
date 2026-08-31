@@ -350,7 +350,7 @@ collision is impossible.
 
 Nickel contracts live under `contracts/evidence/` and `contracts/kvm-release/`. Nickel owns human-authored VM run, simulator, campaign, fault-schedule, SMR workload, eBPF capture, and KVM release profiles. Rust revalidates external projections and owns runtime records, outcomes, reports, receipts, execution, and replay.
 
-Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
+Use `check-profile-projections --root .` to check projection freshness. Use `--write` only during the explicit preparation workflow. The receipt binds source, imports, contract, evaluator, profile, and projection identities with BLAKE3. Nickel is not invoked in simulator, campaign, or replay hot paths. See [`docs/nickel-toolchain.md`](docs/nickel-toolchain.md) for the exact evaluator cohort and `docs/simulator-campaign-profile-boundary.md` for the field inventory and non-claims.
 
 Raw `run.log` and `reproduce.log` files are debug-only. They are excluded from the acceptance record. Replay parent snapshot references are Rust-derived refs with a store, digest, codec, schema version, and confined path. The optional redb store or index is host-side only. It is not a public evidence format.
 

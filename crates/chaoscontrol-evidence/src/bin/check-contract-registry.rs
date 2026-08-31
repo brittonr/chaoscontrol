@@ -70,25 +70,15 @@ fn parse_root() -> PathBuf {
     root
 }
 
+// r[impl chaoscontrol.nickel_toolchain.cohort]
 fn nickel_export_command(registry: &Path) -> Option<Vec<String>> {
-    if which("nickel").is_some() {
-        return Some(vec![
+    which("nickel").map(|_| {
+        vec![
             "nickel".to_string(),
             "export".to_string(),
             registry.display().to_string(),
-        ]);
-    }
-    if which("nix").is_some() {
-        return Some(vec![
-            "nix".to_string(),
-            "run".to_string(),
-            "nixpkgs#nickel".to_string(),
-            "--".to_string(),
-            "export".to_string(),
-            registry.display().to_string(),
-        ]);
-    }
-    None
+        ]
+    })
 }
 
 fn which(program: &str) -> Option<PathBuf> {

@@ -6,9 +6,9 @@ ChaosControl determinizes the surfaces it declares: TSC, CPUID, virtio entropy, 
 
 ## What Changes
 
-- Bootstrap the guest kernel with deterministically injected entropy so the CRNG and `/dev/urandom` streams are reproducible.
-- Fix time sources by relying on the virtual TSC and by pinning the guest clocks that derive from it.
-- Fix memory layout and ASLR with a run-derived seed.
+- Bootstrap the guest kernel with a run-derived Linux seed node, then prove CRNG continuation from an admitted quiescent snapshot.
+- Fix the admitted guest clock on deterministic jiffies driven by the VMM timer plan.
+- Fix memory layout by disabling supported Linux randomization inputs and bind that policy to the run configuration.
 - Make signal delivery order derive from the deterministic schedule.
 - Add a bit-exact determinism validation fixture that reads every admitted surface and proves identical output across repeated identical runs.
 

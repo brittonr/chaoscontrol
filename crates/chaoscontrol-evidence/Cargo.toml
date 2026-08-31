@@ -30,6 +30,10 @@ name = "check-evidence-contracts"
 path = "src/bin/check-evidence-contracts.rs"
 
 [[bin]]
+name = "guest-determinism-gate"
+path = "src/bin/guest-determinism-gate.rs"
+
+[[bin]]
 name = "check-sim-core-purity"
 path = "src/bin/check-sim-core-purity.rs"
 

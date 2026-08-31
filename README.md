@@ -493,6 +493,8 @@ nix run .#vm-determinism-drift -- --out "$PWD/dogfood-results/vm-determinism-dri
 
 This is the current passing DST VM confidence rail for the selected single-VM and controller cases. It emits `receipt.json` plus dlogs and remains a bounded drift check; it does not promote arbitrary guest/device/timing determinism. For legacy A/B diagnosis, call `determinism_stress` directly with `--single-clock-profile tsc`.
 
+The guest OS drift gate separately observes snapshot-backed CRNG output, monotonic jiffies deltas, fixed process layout, and guest signal order. It injects a run-derived Linux `SETUP_RNG_SEED` node, captures one quiescent snapshot, and accepts only bit-exact restored continuations. See [`docs/guest-os-determinism-boundary.md`](docs/guest-os-determinism-boundary.md). This is not a fresh-boot, universal Linux, closed-binary, host, or cross-machine replay claim.
+
 To run exactly one slow KVM accepted-verdict proof rail after static checks pass, select a workload explicitly and pass any dogfood wrapper args after `--`:
 
 ```bash

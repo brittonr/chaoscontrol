@@ -10,6 +10,7 @@ pub mod boundary;
 pub mod causality;
 pub mod fault;
 pub mod findability;
+pub mod guest_determinism;
 pub mod kernel;
 pub mod network;
 pub mod protocol_fault;
@@ -23,6 +24,15 @@ pub mod snapshot;
 pub use boundary::{
     validate_exchange, BoundaryError, BoundaryState, CommandExecutor, ExecutionCommand,
     ExitObservation, ValidatedExchange,
+};
+pub use guest_determinism::{
+    build_guest_determinism_profile, compare_guest_determinism_probes, derive_boot_entropy_seed,
+    derive_layout_binding, encode_linux_rng_seed_setup_data, validate_guest_determinism_probe,
+    validate_guest_determinism_profile, GuestClockMode, GuestDeterminismDriftReport,
+    GuestDeterminismError, GuestDeterminismInput, GuestDeterminismProbe, GuestDeterminismProfile,
+    GuestDeterminismSurface, BOOT_ENTROPY_SEED_BYTES, GUEST_DETERMINISM_DRIFT_SCHEMA,
+    GUEST_DETERMINISM_PROBE_SCHEMA, GUEST_DETERMINISM_PROFILE_SCHEMA, LINUX_RNG_SETUP_DATA_BYTES,
+    LINUX_SETUP_DATA_HEADER_BYTES, LINUX_SETUP_RNG_SEED_TYPE,
 };
 pub use kernel::{
     complete_round, guest_artifact_set_identity, plan_round, simulation_config_identity,

@@ -35,7 +35,7 @@ use crate::scheduler::{
 use crate::memory::{
     self, build_e820_map, code64_segment, data_segment, tss_segment, GuestMemoryManager,
     BOOT_GDT_OFFSET, BOOT_IDT_OFFSET, BOOT_STACK_POINTER, CMDLINE_START, GDT_ENTRY_COUNT,
-    HIMEM_START, PML4_START, ZERO_PAGE_START,
+    HIMEM_START, PML4_START, RNG_SETUP_DATA_START, ZERO_PAGE_START,
 };
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
 use chaoscontrol_protocol::{
@@ -43,9 +43,11 @@ use chaoscontrol_protocol::{
     HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
 };
 use chaoscontrol_sim_core::{
-    plan_runtime_capacity, CapacityUsageObservation, RuntimeCapacityClaims, RuntimeCapacityLimits,
-    RuntimeCapacityObservations, RuntimeCapacityPlan, RuntimeCapacityStartupResult,
-    ScratchClassLimit, RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA,
+    build_guest_determinism_profile, derive_boot_entropy_seed, encode_linux_rng_seed_setup_data,
+    plan_runtime_capacity, validate_guest_determinism_profile, CapacityUsageObservation,
+    GuestClockMode, GuestDeterminismInput, GuestDeterminismProfile, RuntimeCapacityClaims,
+    RuntimeCapacityLimits, RuntimeCapacityObservations, RuntimeCapacityPlan,
+    RuntimeCapacityStartupResult, ScratchClassLimit, RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA,
 };
 
 use kvm_bindings::{
@@ -400,6 +402,7 @@ impl Default for VmConfig {
                        nokaslr noapic nosmp \
                        nohpet \
                        randomize_kstack_offset=off norandmaps \
+                       random.trust_cpu=off random.trust_bootloader=off \
                        kfence.sample_interval=0 \
                        no_hash_pointers \
                        virtio_mmio.device=4K@0xd0000000:5 \
@@ -695,6 +698,7 @@ pub struct DeterministicVm {
 
     // Determinism state
     virtual_tsc: VirtualTsc,
+    guest_determinism_profile: GuestDeterminismProfile,
 
     // Deterministic entropy source (seeded PRNG replacing virtio-rng)
     entropy: DeterministicEntropy,
@@ -1019,6 +1023,23 @@ impl DeterministicVm {
         }
         info!("Created {} vCPU(s)", num_vcpus);
 
+        let profile_input = GuestDeterminismInput {
+            run_seed: config.cpu.seed,
+            vm_id: u32::try_from(config.vm_id).map_err(|_| VmError::RuntimeCapacity {
+                message: "VM identifier exceeds the guest determinism profile bound".to_string(),
+            })?,
+            vcpu_count: u32::try_from(num_vcpus).map_err(|_| VmError::RuntimeCapacity {
+                message: "vCPU count exceeds the guest determinism profile bound".to_string(),
+            })?,
+            tsc_khz: config.cpu.tsc_khz,
+            clock_mode: if config.cpu.hide_tsc {
+                GuestClockMode::DeterministicJiffies
+            } else {
+                GuestClockMode::VirtualTsc
+            },
+        };
+        let guest_determinism_profile = build_guest_determinism_profile(profile_input);
+
         // Create virtual TSC for deterministic time tracking
         let virtual_tsc = VirtualTsc::from_config(&config.cpu);
 
@@ -1188,6 +1209,7 @@ impl DeterministicVm {
             memory,
             memory_ceiling_bytes,
             virtual_tsc,
+            guest_determinism_profile,
             entropy,
             pit,
             serial,
@@ -1402,12 +1424,21 @@ impl DeterministicVm {
     /// Always includes `vm_id=N` for multi-VM networking identification.
     fn build_cmdline(&self, vm_id: usize) -> Vec<u8> {
         let num_vcpus = self.vcpus.len();
+        let use_jiffies = matches!(
+            self.guest_determinism_profile.input.clock_mode,
+            GuestClockMode::DeterministicJiffies
+        );
         let (smp_params, clock_params) = if num_vcpus > 1 {
             // SMP: use jiffies clocksource (driven by deterministic PIT).
             // notsc disables TSC entirely — no TSC calibration (which reads
             // hardware TSC + PIT, producing non-deterministic results).
             (
                 format!("maxcpus={num_vcpus}"),
+                "clocksource=jiffies notsc".to_string(),
+            )
+        } else if use_jiffies {
+            (
+                "nosmp noapic".to_string(),
                 "clocksource=jiffies notsc".to_string(),
             )
         } else {
@@ -1426,6 +1457,7 @@ impl DeterministicVm {
              nokaslr {smp_params} \
              nohpet \
              randomize_kstack_offset=off norandmaps \
+             random.trust_cpu=off random.trust_bootloader=off \
              kfence.sample_interval=0 \
              no_hash_pointers \
              virtio_mmio.device=4K@0xd0000000:5 \
@@ -1542,6 +1574,12 @@ impl DeterministicVm {
         Ok(())
     }
 
+    /// Return the exact guest operating-system determinism profile.
+    #[must_use]
+    pub fn guest_determinism_profile(&self) -> &GuestDeterminismProfile {
+        &self.guest_determinism_profile
+    }
+
     /// Reset the vCPU's TSC to 0 via MSR write.
     fn reset_tsc_to_zero(&self) -> Result<(), VmError> {
         self.write_tsc_to_guest(0)
@@ -1590,6 +1628,21 @@ impl DeterministicVm {
         // Write kernel command line (dynamic based on num_vcpus and vm_id)
         let cmdline = self.build_cmdline(self.vm_id);
         self.memory.write_cmdline(&cmdline)?;
+        let effective_cmdline = String::from_utf8_lossy(&cmdline);
+        validate_guest_determinism_profile(
+            &self.guest_determinism_profile,
+            effective_cmdline.trim_end_matches(char::from(0)),
+        )
+        .map_err(|error| VmError::RuntimeCapacity {
+            message: format!("guest determinism profile admission failed: {error:?}"),
+        })?;
+        // r[impl chaoscontrol.guest_determinism.boot_entropy]
+        let boot_entropy_seed = derive_boot_entropy_seed(self.guest_determinism_profile.input);
+        let rng_setup_data = encode_linux_rng_seed_setup_data(boot_entropy_seed);
+        self.memory
+            .inner()
+            .write_slice(&rng_setup_data, GuestAddress(RNG_SETUP_DATA_START))
+            .map_err(|_| GuestMemoryWriteSnafu.build())?;
 
         let mut hdr = linux_loader::loader::bootparam::setup_header {
             type_of_loader: KERNEL_LOADER_OTHER,
@@ -1598,6 +1651,7 @@ impl DeterministicVm {
             cmd_line_ptr: CMDLINE_START as u32,
             cmdline_size: cmdline.len() as u32,
             kernel_alignment: KERNEL_MIN_ALIGNMENT_BYTES,
+            setup_data: RNG_SETUP_DATA_START,
             ..Default::default()
         };
 

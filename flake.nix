@@ -118,7 +118,9 @@
                 nickel export --format json contracts/evidence/examples/register-simulator-profile.ncl >/dev/null
                 nickel export --format json contracts/evidence/examples/raft-campaign-profile.ncl >/dev/null
                 nickel export --format json contracts/evidence/examples/raft-fault-schedule-profile.ncl >/dev/null
+                nickel export --format json contracts/guest-determinism/fixtures/valid/bit-exact.valid.ncl >/dev/null
                 for invalid in \
+                  contracts/guest-determinism/fixtures/invalid/accepted-drift.invalid.ncl \
                   contracts/nickel-toolchain/fixtures/invalid/malformed.ncl \
                   contracts/nickel-toolchain/fixtures/invalid/missing-import.ncl \
                   contracts/evidence/fixtures/invalid/run-profile.unknown-field.invalid.ncl \
@@ -251,6 +253,13 @@
               cargoExtraArgs = "-p chaoscontrol-evidence --bin oci-intake";
             }
           );
+          guestDeterminismGateArtifacts = craneLib.buildDepsOnly (
+            commonArgs
+            // {
+              pname = "chaoscontrol-guest-determinism-gate-deps";
+              cargoExtraArgs = "-p chaoscontrol-evidence --bin guest-determinism-gate";
+            }
+          );
 
           # Build the full workspace
           # doCheck = false — tests run via checks.tests instead.
@@ -274,6 +283,20 @@
               installPhaseCommand = ''
                 mkdir -p $out/bin
                 cp target/release/oci-intake $out/bin/
+              '';
+            }
+          );
+          guestDeterminismGate = craneLib.buildPackage (
+            commonArgs
+            // {
+              pname = "chaoscontrol-guest-determinism-gate";
+              cargoArtifacts = guestDeterminismGateArtifacts;
+              cargoExtraArgs = "-p chaoscontrol-evidence --bin guest-determinism-gate";
+              doCheck = false;
+              doNotPostBuildInstallCargoBinaries = true;
+              installPhaseCommand = ''
+                mkdir -p $out/bin
+                cp target/release/guest-determinism-gate $out/bin/
               '';
             }
           );
@@ -350,6 +373,7 @@
               cargoExtraArgs = builtins.concatStringsSep " " [
                 "--target x86_64-unknown-linux-musl"
                 "-p chaoscontrol-guest"
+                "-p chaoscontrol-guest-determinism-probe"
                 "-p chaoscontrol-raft-guest"
                 "-p chaoscontrol-net-guest"
                 "-p chaoscontrol-rust-workload-guest"
@@ -378,6 +402,15 @@
             );
 
           guest-sdk = mkGuestPackage { pname = "chaoscontrol-guest"; };
+          guest-determinism-probe = mkGuestPackage {
+            pname = "chaoscontrol-guest-determinism-probe";
+            doNotPostBuildInstallCargoBinaries = true;
+            installPhaseCommand = ''
+              mkdir -p $out/bin
+              cp target/x86_64-unknown-linux-musl/release/chaoscontrol-guest-determinism-probe \
+                $out/bin/
+            '';
+          };
           guest-raft = mkGuestPackage { pname = "chaoscontrol-raft-guest"; };
           guest-net = mkGuestPackage { pname = "chaoscontrol-net-guest"; };
           guest-redb = mkGuestPackage { pname = "chaoscontrol-redb-guest"; };
@@ -422,6 +455,10 @@
           initrd-sdk = mkChaosInitrd {
             init = guest-sdk;
             name = "chaoscontrol-initrd-sdk";
+          };
+          initrd-determinism-probe = mkChaosInitrd {
+            init = guest-determinism-probe;
+            name = "chaoscontrol-initrd-determinism-probe";
           };
           initrd-raft = mkChaosInitrd {
             init = guest-raft;
@@ -1371,9 +1408,11 @@
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
             oci-intake = ociIntake;
+            guest-determinism-gate = guestDeterminismGate;
 
             inherit
               guest-sdk
+              guest-determinism-probe
               guest-raft
               guest-net
               guest-redb
@@ -1382,6 +1421,7 @@
               ;
             inherit
               initrd-sdk
+              initrd-determinism-probe
               initrd-raft
               initrd-net
               initrd-redb
@@ -1413,6 +1453,7 @@
             tigerstyle-standards = octet.packages.${system}.tigerstyle-standards;
             verified-logic = trellis.packages.${system}.verified-logic;
 
+            determinism-probe-vmlinux = mkChaosKernel { };
             net-vmlinux = mkChaosKernel { virtioNet = true; };
             kcov-vmlinux = mkChaosKernel { kcov = true; };
             kcov-net-vmlinux = mkChaosKernel {
@@ -2054,6 +2095,7 @@
           apps = {
             default = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
             boot = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
+            guest-determinism-gate = mkApp "Run the bounded guest OS bit-exact drift gate." "${guestDeterminismGate}/bin/guest-determinism-gate";
             snapshot-demo = mkApp "Run the local ChaosControl snapshot demo." "${chaoscontrol}/bin/snapshot_demo";
             explore = mkApp "Run the ChaosControl explorer with caller-supplied arguments." "${chaoscontrol}/bin/chaoscontrol-explore";
             oci-intake = mkApp "Lower a bounded image topology into a guest process bundle." "${ociIntake}/bin/oci-intake";

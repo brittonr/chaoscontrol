@@ -1,0 +1,12 @@
+[package]
+name = "chaoscontrol-guest-determinism-probe"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Guest fixture for the bounded ChaosControl OS determinism profile"
+
+[dependencies]
+chaoscontrol-sim-core = { path = "../chaoscontrol-sim-core" }
+libc = "0.2"
+serde_json = "1"

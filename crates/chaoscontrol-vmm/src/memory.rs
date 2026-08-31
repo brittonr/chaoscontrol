@@ -27,6 +27,8 @@
 //!              │  PDE (512 × 2 MB pages)   │  → 1 GB identity map
 //! 0x0002_0000  ├───────────────────────────┤
 //!              │  Kernel command line       │
+//! 0x0003_0000  ├───────────────────────────┤
+//!              │  SETUP_RNG_SEED node       │
 //! 0x0010_0000  ├───────────────────────────┤  ← HIMEM_START (1 MB)
 //!              │  Kernel image + initrd     │
 //!              │  ...                       │
@@ -84,6 +86,13 @@ pub const CMDLINE_START: u64 = 0x20000;
 
 /// Maximum length of the kernel command line (bytes, including NUL).
 pub const CMDLINE_MAX_SIZE: usize = 0x10000;
+
+/// Address of the deterministic Linux `SETUP_RNG_SEED` node.
+///
+/// This starts after the complete reserved command-line range and before the
+/// kernel image. The node contains only its fixed header and one BLAKE3-sized
+/// seed.
+pub const RNG_SETUP_DATA_START: u64 = 0x30000;
 
 /// Offset of the boot GDT in guest physical memory.
 ///

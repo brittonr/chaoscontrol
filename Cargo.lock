@@ -466,6 +466,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-guest-determinism-probe"
+version = "0.1.0"
+dependencies = [
+ "chaoscontrol-sim-core",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
 name = "chaoscontrol-guest-net"
 version = "0.1.0"
 dependencies = [

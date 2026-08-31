@@ -1,0 +1,56 @@
+{
+  "schema": "chaoscontrol.guest-determinism-drift.v1",
+  "profile_id": "b3:bd6ec6d2491afc19854732a53447c68385eb049260247b29a84b6c8aea303a76",
+  "profile": {
+    "schema": "chaoscontrol.guest-determinism-profile.v1",
+    "profile_id": "b3:bd6ec6d2491afc19854732a53447c68385eb049260247b29a84b6c8aea303a76",
+    "input": {
+      "run_seed": 47,
+      "vm_id": 0,
+      "vcpu_count": 1,
+      "tsc_khz": 3000000,
+      "clock_mode": "deterministic-jiffies"
+    },
+    "boot_entropy_seed_blake3": "b3:e8344cac624b69998995814654bcaf79056431fba3834930c8d6dcdd3ccbaf95",
+    "layout_binding_blake3": "b3:54fef6536949df8c4bde448ada90178691456466aef8430ef8f32cf2d23076f2",
+    "layout_policy": "linux-randomization-disabled-v1",
+    "clock_policy": "deterministic-jiffies-from-vmm-pit-v1",
+    "signal_policy": "serialized-vcpu-schedule-observed-v1",
+    "required_cmdline": [
+      "clocksource=jiffies",
+      "notsc",
+      "nokaslr",
+      "randomize_kstack_offset=off",
+      "norandmaps",
+      "random.trust_cpu=off",
+      "random.trust_bootloader=off",
+      "nohpet",
+      "kfence.sample_interval=0",
+      "no_hash_pointers"
+    ],
+    "admitted_surfaces": [
+      "boot-entropy",
+      "monotonic-clock",
+      "process-layout",
+      "signal-order"
+    ],
+    "non_claims": [
+      "no independent fresh-boot CRNG equality claim",
+      "no host-side or cross-machine replay claim",
+      "no reads outside the admitted surface list",
+      "no arbitrary closed-binary syscall-interception claim",
+      "no host signal-timing claim"
+    ]
+  },
+  "left_probe_blake3": "b3:74f252fdfdac25a5faad0c96a0b3ac891cb8ecddacad9941e9900ba18aff1db2",
+  "right_probe_blake3": "b3:74f252fdfdac25a5faad0c96a0b3ac891cb8ecddacad9941e9900ba18aff1db2",
+  "accepted": true,
+  "drifted_surfaces": [],
+  "non_claims": [
+    "no independent fresh-boot CRNG equality claim",
+    "no host-side or cross-machine replay claim",
+    "no reads outside the admitted surface list",
+    "no arbitrary closed-binary syscall-interception claim",
+    "no host signal-timing claim"
+  ]
+}

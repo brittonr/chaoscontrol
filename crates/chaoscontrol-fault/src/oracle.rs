@@ -31,6 +31,8 @@ pub use chaoscontrol_protocol::identity::AssertionKind;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 
+pub const MAX_PROCESS_INSTANCES_PER_ASSERTION: usize = 32;
+
 fn serialize_json_value<S>(value: &serde_json::Value, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -106,6 +108,9 @@ pub struct AssertionRecord {
         skip_serializing_if = "BTreeSet::is_empty"
     )]
     pub vm_instances: BTreeSet<u32>,
+    /// Guest process identities that emitted this assertion.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub process_instances: BTreeSet<String>,
     /// Exact process-local fallback binding, when this record came from a fallback sink.
     #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
     pub fallback_scope: Option<FallbackAssertionScope>,
@@ -130,6 +135,7 @@ impl AssertionRecord {
             compatibility_id: descriptor.compatibility_id,
             catalog_tokens: BTreeSet::from([catalog_token]),
             vm_instances: BTreeSet::new(),
+            process_instances: BTreeSet::new(),
             fallback_scope: None,
         }
     }
@@ -554,11 +560,32 @@ impl PropertyOracle {
                 chaoscontrol_protocol::identity::AssertionError::FieldTooLong("event_details"),
             ));
         }
+        let process_identity = details
+            .and_then(|value| serde_json::from_slice::<serde_json::Value>(value).ok())
+            .and_then(|value| {
+                value
+                    .get("chaoscontrol_process_identity")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            });
+        if process_identity.as_deref().is_some_and(|identity| {
+            !chaoscontrol_protocol::process::validate_process_token(identity)
+        }) {
+            return self.reject_bound_event(CatalogConflict::Descriptor(
+                chaoscontrol_protocol::identity::AssertionError::MalformedCanonical,
+            ));
+        }
         let Some(record) = self.structured_assertions.get(&event.fingerprint) else {
             return self.reject_bound_event(CatalogConflict::UnknownFingerprint);
         };
         if record.identity.as_ref() != Some(&admitted) {
             return self.reject_bound_event(CatalogConflict::FingerprintCollision);
+        }
+        if process_identity.as_ref().is_some_and(|identity| {
+            !record.process_instances.contains(identity)
+                && record.process_instances.len() >= MAX_PROCESS_INSTANCES_PER_ASSERTION
+        }) {
+            return self.reject_bound_event(CatalogConflict::CardinalityOverflow);
         }
         let satisfied = match admitted.descriptor.kind {
             AssertionKind::Always | AssertionKind::Sometimes => condition,
@@ -610,6 +637,9 @@ impl PropertyOracle {
         record.false_count = false_count;
         record.first_failure_run = first_failure_run;
         record.last_failure_details = last_failure_details;
+        if let Some(identity) = process_identity {
+            record.process_instances.insert(identity);
+        }
         let run = self
             .current_run
             .as_mut()
@@ -881,6 +911,10 @@ impl PropertyOracle {
 
     pub fn catalog_status(&self) -> CatalogValidationStatus {
         self.catalog_status
+    }
+
+    pub fn accepted_catalog(&self) -> Option<&AcceptedCatalog> {
+        self.accepted_catalog.as_ref()
     }
 
     /// Total number of completed runs.

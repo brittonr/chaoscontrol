@@ -106,6 +106,26 @@ fn mismatched_token_kind_spoof_and_post_conflict_events_fail_closed() {
 }
 
 #[test]
+fn exact_duplicate_catalog_is_idempotent_for_multiprocess_guests() {
+    let value = descriptor();
+    let mut engine = FaultEngine::new(EngineConfig::default());
+    let token = admit(&mut engine, &value);
+    assert_eq!(engine.handle_hypercall(&begin_page(1)).1, STATUS_OK);
+    assert_eq!(
+        engine.handle_hypercall(&descriptor_page(&value)).1,
+        STATUS_OK
+    );
+    assert_eq!(engine.handle_hypercall(&complete_page(&value)).1, STATUS_OK);
+    assert_eq!(
+        engine
+            .oracle()
+            .accepted_catalog()
+            .map(|catalog| catalog.token),
+        Some(token)
+    );
+}
+
+#[test]
 fn catalog_metadata_conflict_is_fatal_before_runtime() {
     let value = descriptor();
     let mut conflict = value.clone();

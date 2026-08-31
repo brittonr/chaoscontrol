@@ -144,6 +144,14 @@ pub(crate) fn validate_strict_records(
         if reject_vm_provenance && !record.vm_instances.is_empty() {
             return Err(OracleValidationError::VmProvenance);
         }
+        if record.process_instances.len() > crate::oracle::MAX_PROCESS_INSTANCES_PER_ASSERTION
+            || record
+                .process_instances
+                .iter()
+                .any(|identity| !chaoscontrol_protocol::process::validate_process_token(identity))
+        {
+            return Err(OracleValidationError::Record);
+        }
         let identity = record
             .identity
             .as_ref()

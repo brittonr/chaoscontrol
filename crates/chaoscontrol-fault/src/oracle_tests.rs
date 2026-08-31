@@ -6,6 +6,7 @@ use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
 };
 use serde_json::json;
+use std::collections::BTreeSet;
 
 const COMPATIBILITY_ALIAS: u32 = 41;
 const SOURCE_LINE: u32 = 17;
@@ -141,6 +142,25 @@ fn record<'a>(report: &'a OracleReport, fingerprint: &AssertionFingerprint) -> &
         .structured_assertions
         .get(fingerprint)
         .expect("structured assertion record")
+}
+
+#[test]
+fn process_scoped_assertion_events_retain_exact_owner() {
+    let (mut oracle, event, fingerprint) = strict_oracle(AssertionKind::Always, "process-scope");
+    oracle.begin_run();
+    let details = serde_json::to_vec(&json!({
+        "chaoscontrol_process_identity": "b3:process-owner",
+    }))
+    .unwrap();
+    oracle
+        .record_bound_event(&event, true, Some(&details))
+        .unwrap();
+    oracle.end_run();
+    let report = oracle.report();
+    assert_eq!(
+        record(&report, &fingerprint).process_instances,
+        BTreeSet::from(["b3:process-owner".to_string()])
+    );
 }
 
 #[test]

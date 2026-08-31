@@ -4689,23 +4689,42 @@ impl DeterministicVm {
 
         // Resource observations are VM-owned because they describe this
         // exact guest's admitted execution surface.
+        let mut response_payload = false;
         let (result, status) = if page.command == chaoscontrol_protocol::CMD_RESOURCE_MEMORY_CEILING
         {
             (self.memory_ceiling_bytes, chaoscontrol_protocol::STATUS_OK)
+        } else if page.command == chaoscontrol_protocol::CMD_PROCESS_FAULT_POLL {
+            response_payload = true;
+            match self.fault_engine.write_process_fault_response(&mut page) {
+                Ok(present) => (u64::from(present), chaoscontrol_protocol::STATUS_OK),
+                Err(_) => (0, chaoscontrol_protocol::STATUS_ERROR),
+            }
         } else {
             self.fault_engine.handle_hypercall(&page)
         };
 
-        // Write result and status back to the guest page
-        let result_bytes = result.to_le_bytes();
-        let _ = self.memory.inner().write_slice(
-            &result_bytes,
-            vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + 0x10), // result offset
-        );
-        let _ = self.memory.inner().write_slice(
-            &[status],
-            vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + 0x18), // status offset
-        );
+        // Write result and status back to the guest page.
+        const RESULT_OFFSET: usize = 0x10;
+        const STATUS_OFFSET: usize = 0x18;
+        if response_payload {
+            let result_bytes = result.to_le_bytes();
+            page_bytes[RESULT_OFFSET..STATUS_OFFSET].copy_from_slice(&result_bytes);
+            page_bytes[STATUS_OFFSET] = status;
+            let _ = self
+                .memory
+                .inner()
+                .write_slice(page_bytes, vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR));
+        } else {
+            let result_bytes = result.to_le_bytes();
+            let _ = self.memory.inner().write_slice(
+                &result_bytes,
+                vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + RESULT_OFFSET as u64),
+            );
+            let _ = self.memory.inner().write_slice(
+                &[status],
+                vm_memory::GuestAddress(HYPERCALL_PAGE_ADDR + STATUS_OFFSET as u64),
+            );
+        }
     }
 }
 

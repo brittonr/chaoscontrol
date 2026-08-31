@@ -2760,6 +2760,7 @@ mod tests {
                 compatibility_id: Some(10),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                process_instances: std::collections::BTreeSet::new(),
                 fallback_scope: None,
             },
         );
@@ -2900,6 +2901,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                process_instances: std::collections::BTreeSet::new(),
                 fallback_scope: None,
             },
         );
@@ -2923,6 +2925,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                process_instances: std::collections::BTreeSet::new(),
                 fallback_scope: None,
             },
         );
@@ -2958,6 +2961,7 @@ mod tests {
                 compatibility_id: Some(1),
                 catalog_tokens: std::collections::BTreeSet::new(),
                 vm_instances: std::collections::BTreeSet::new(),
+                process_instances: std::collections::BTreeSet::new(),
                 fallback_scope: None,
             },
         );

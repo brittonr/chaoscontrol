@@ -13,6 +13,7 @@ pub(crate) fn validate_legacy_records(
             || record.compatibility_id != Some(*id)
             || !record.catalog_tokens.is_empty()
             || !record.vm_instances.is_empty()
+            || !record.process_instances.is_empty()
             || record.fallback_scope.is_some()
         {
             return Err(OracleValidationError::LegacyState);

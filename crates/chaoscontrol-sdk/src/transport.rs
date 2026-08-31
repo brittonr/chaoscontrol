@@ -36,6 +36,9 @@ pub(crate) fn hypercall(
 ) -> (u64, u8) {
     if let Some(page_ptr) = crate::internal::vm_page_ptr() {
         // ── VM transport ────────────────────────────────────────
+        let Ok(_process_guard) = crate::internal::acquire_process_transport() else {
+            return (0, chaoscontrol_protocol::STATUS_ERROR);
+        };
         unsafe {
             let page = &mut *page_ptr;
             page.command = command;
@@ -66,6 +69,9 @@ pub(crate) fn hypercall_raw(command: u8, flags: u8, id: u32, payload: &[u8]) -> 
         return (0, chaoscontrol_protocol::STATUS_ASSERTION_LIMIT_EXCEEDED);
     }
     if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        let Ok(_process_guard) = crate::internal::acquire_process_transport() else {
+            return (0, chaoscontrol_protocol::STATUS_ERROR);
+        };
         unsafe {
             let page = &mut *page_ptr;
             page.command = command;
@@ -100,16 +106,31 @@ pub(crate) fn hypercall_bound_assertion(
         chaoscontrol_protocol::CMD_ASSERT_UNREACHABLE => AssertionKind::Unreachable,
         _ => return (0, chaoscontrol_protocol::STATUS_ERROR),
     };
-    let details = match serde_json::from_slice::<serde_json::Value>(json_details) {
+    let mut details = match serde_json::from_slice::<serde_json::Value>(json_details) {
         Ok(details) if details.is_object() => details,
         Ok(_) | Err(_) => return (0, chaoscontrol_protocol::STATUS_ERROR),
+    };
+    if let Ok(process_identity) = std::env::var("CHAOSCONTROL_PROCESS_ID") {
+        if !chaoscontrol_protocol::process::validate_process_token(&process_identity) {
+            return (0, chaoscontrol_protocol::STATUS_ERROR);
+        }
+        details
+            .as_object_mut()
+            .expect("assertion details were validated as an object")
+            .insert(
+                "chaoscontrol_process_identity".to_string(),
+                serde_json::Value::String(process_identity),
+            );
+    }
+    let Ok(scoped_details) = serde_json::to_vec(&details) else {
+        return (0, chaoscontrol_protocol::STATUS_ERROR);
     };
     let (wire_id, _) = bound_event_ids(&identity);
     let frame = EventFrame {
         catalog_token: identity.catalog_token,
         fingerprint: identity.fingerprint,
         kind,
-        details: json_details.to_vec(),
+        details: scoped_details,
     };
     let mut payload = [0_u8; chaoscontrol_protocol::PAYLOAD_MAX];
     let Ok(length) = encode_event_frame(&frame, &mut payload) else {
@@ -126,6 +147,9 @@ pub(crate) fn hypercall_bound_assertion(
 #[cfg(feature = "full")]
 pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
     if let Some(page_ptr) = crate::internal::vm_page_ptr() {
+        let Ok(_process_guard) = crate::internal::acquire_process_transport() else {
+            return (0, chaoscontrol_protocol::STATUS_ERROR);
+        };
         unsafe {
             let page = &mut *page_ptr;
             page.command = command;
@@ -156,6 +180,33 @@ pub(crate) fn hypercall_simple(command: u8, id: u32) -> (u64, u8) {
             }
             _ => (0, 0),
         }
+    }
+}
+
+/// Issue a response-payload hypercall for bounded supervisor control.
+#[cfg(feature = "full")]
+pub(crate) fn hypercall_response(command: u8) -> (u64, u8, Vec<u8>) {
+    let Some(page_ptr) = crate::internal::vm_page_ptr() else {
+        return (0, chaoscontrol_protocol::STATUS_OK, Vec::new());
+    };
+    let Ok(_process_guard) = crate::internal::acquire_process_transport() else {
+        return (0, chaoscontrol_protocol::STATUS_ERROR, Vec::new());
+    };
+    unsafe {
+        let page = &mut *page_ptr;
+        page.command = command;
+        page.flags = 0;
+        page.id = 0;
+        page.payload_len = 0;
+        page.result = 0;
+        page.status = 0;
+        crate::internal::vm_trigger();
+        let payload_len = usize::from(page.payload_len).min(chaoscontrol_protocol::PAYLOAD_MAX);
+        (
+            page.result,
+            page.status,
+            page.payload[..payload_len].to_vec(),
+        )
     }
 }
 

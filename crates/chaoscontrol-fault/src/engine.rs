@@ -22,7 +22,16 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use snafu::{ResultExt, Snafu};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+
+pub const MAX_PROCESS_FAULT_QUEUE: usize = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessFaultQueueError {
+    InvalidCommand,
+    QueueFull,
+    PayloadLimit,
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Choice recording for input tree exploration
@@ -166,6 +175,9 @@ pub struct EngineSnapshot {
     /// Choice counter at snapshot time — restored so sequence IDs
     /// align with overrides set by the explorer.
     choice_count: u64,
+    /// Host-directed process commands not yet observed by the guest supervisor.
+    #[serde(default)]
+    process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
 }
 
 impl EngineSnapshot {
@@ -328,6 +340,8 @@ pub struct FaultEngine {
     choice_count: u64,
     /// Pending strict assertion catalog. It becomes authoritative only at completion.
     catalog_builder: Option<CatalogBuilder>,
+    /// Bounded host-to-supervisor process fault queue.
+    process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
 }
 
 impl FaultEngine {
@@ -357,6 +371,7 @@ impl FaultEngine {
             random_overrides: BTreeMap::new(),
             choice_count: 0,
             catalog_builder: None,
+            process_fault_queue: VecDeque::new(),
         }
     }
 
@@ -369,6 +384,7 @@ impl FaultEngine {
         self.schedule_id = self.schedule.identity();
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
+        self.process_fault_queue.clear();
         match self.run_sequence.checked_add(1) {
             Some(run_sequence) => {
                 self.run_sequence = run_sequence;
@@ -402,6 +418,7 @@ impl FaultEngine {
         self.setup_complete = false;
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
+        self.process_fault_queue.clear();
     }
 
     /// Start a clean counterfactual run after the current bounded run.
@@ -429,6 +446,7 @@ impl FaultEngine {
         self.run_exhausted = false;
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
+        self.process_fault_queue.clear();
         Ok(())
     }
 
@@ -439,6 +457,50 @@ impl FaultEngine {
                 .mark_identity_conflict(CatalogConflict::CatalogIncomplete);
         }
         self.oracle.end_run();
+    }
+
+    /// Queue one process-scoped command for the guest supervisor.
+    pub fn enqueue_process_fault(
+        &mut self,
+        command: chaoscontrol_protocol::process::ProcessFaultCommand,
+    ) -> Result<(), ProcessFaultQueueError> {
+        command
+            .validate()
+            .map_err(|_| ProcessFaultQueueError::InvalidCommand)?;
+        if self.process_fault_queue.len() >= MAX_PROCESS_FAULT_QUEUE {
+            return Err(ProcessFaultQueueError::QueueFull);
+        }
+        if self
+            .process_fault_queue
+            .iter()
+            .any(|queued| queued.request_id == command.request_id)
+        {
+            return Err(ProcessFaultQueueError::InvalidCommand);
+        }
+        self.process_fault_queue.push_back(command);
+        Ok(())
+    }
+
+    /// Write one queued process command into a supervisor poll response.
+    pub fn write_process_fault_response(
+        &mut self,
+        page: &mut HypercallPage,
+    ) -> Result<bool, ProcessFaultQueueError> {
+        let Some(command) = self.process_fault_queue.front() else {
+            page.payload_len = 0;
+            return Ok(false);
+        };
+        let bytes =
+            serde_json::to_vec(command).map_err(|_| ProcessFaultQueueError::PayloadLimit)?;
+        if bytes.len() > PAYLOAD_MAX {
+            return Err(ProcessFaultQueueError::PayloadLimit);
+        }
+        let length =
+            u16::try_from(bytes.len()).map_err(|_| ProcessFaultQueueError::PayloadLimit)?;
+        page.payload[..bytes.len()].copy_from_slice(&bytes);
+        page.payload_len = length;
+        self.process_fault_queue.pop_front();
+        Ok(true)
     }
 
     /// Handle a hypercall from the guest SDK.
@@ -520,8 +582,11 @@ impl FaultEngine {
 
     fn handle_catalog_begin(&mut self, page: &HypercallPage) -> (u64, u8) {
         if self.catalog_builder.is_some()
-            || self.oracle.catalog_status()
-                != chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+            || !matches!(
+                self.oracle.catalog_status(),
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+                    | chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+            )
         {
             return self.catalog_failure(CatalogConflict::AlreadyBegun);
         }
@@ -589,10 +654,17 @@ impl FaultEngine {
             .catalog_builder
             .take()
             .expect("catalog builder was checked");
-        match builder
-            .complete(token)
-            .and_then(|catalog| self.oracle.activate_catalog(catalog))
-        {
+        let catalog = match builder.complete(token) {
+            Ok(catalog) => catalog,
+            Err(conflict) => return self.catalog_failure(conflict),
+        };
+        if let Some(existing) = self.oracle.accepted_catalog() {
+            if existing == &catalog {
+                return (0, STATUS_OK);
+            }
+            return self.catalog_failure(CatalogConflict::AlreadyBegun);
+        }
+        match self.oracle.activate_catalog(catalog) {
             Ok(()) => {
                 self.oracle.begin_run();
                 (0, STATUS_OK)
@@ -943,6 +1015,7 @@ impl FaultEngine {
             setup_complete: self.setup_complete,
             next_random_fault_time_ns: self.next_random_fault_time_ns,
             choice_count: self.choice_count,
+            process_fault_queue: self.process_fault_queue.clone(),
         }
     }
 
@@ -952,6 +1025,14 @@ impl FaultEngine {
         snapshot: &EngineSnapshot,
     ) -> Result<(), FaultTransitionError> {
         validate_fault_outcome_ledger(&snapshot.outcomes)?;
+        if snapshot.process_fault_queue.len() > MAX_PROCESS_FAULT_QUEUE
+            || snapshot
+                .process_fault_queue
+                .iter()
+                .any(|command| command.validate().is_err())
+        {
+            return Err(FaultTransitionError::SnapshotRunStateMismatch);
+        }
         let canonical_rng = Self::rng_from_seed(self.config.seed);
         if snapshot.rng_seed != canonical_rng.get_seed()
             || snapshot.rng_stream != canonical_rng.get_stream()
@@ -1149,6 +1230,7 @@ impl FaultEngine {
         self.choice_count = snapshot.choice_count;
         self.choice_history.clear();
         self.catalog_builder = None;
+        self.process_fault_queue = snapshot.process_fault_queue.clone();
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -2046,6 +2128,39 @@ mod tests {
         engine.begin_run();
         let (v3, _) = engine.handle_hypercall(&page);
         assert_eq!(v2, v3);
+    }
+
+    #[test]
+    fn process_fault_queue_is_bounded_and_snapshot_replay_stable() {
+        use chaoscontrol_protocol::process::{ProcessFaultAction, ProcessFaultCommand};
+
+        const PAUSE_TICKS: u64 = 3;
+        let command = ProcessFaultCommand::new(
+            "request-1",
+            "writer",
+            ProcessFaultAction::Pause,
+            Some(PAUSE_TICKS),
+        )
+        .unwrap();
+        let mut engine = FaultEngine::new(EngineConfig::default());
+        engine.enqueue_process_fault(command.clone()).unwrap();
+        assert_eq!(
+            engine.enqueue_process_fault(command.clone()),
+            Err(ProcessFaultQueueError::InvalidCommand)
+        );
+        let snapshot = engine.snapshot();
+        let mut response = HypercallPage::zeroed();
+        assert!(engine.write_process_fault_response(&mut response).unwrap());
+        let decoded: ProcessFaultCommand =
+            serde_json::from_slice(&response.payload[..usize::from(response.payload_len)]).unwrap();
+        assert_eq!(decoded, command);
+        engine.restore(&snapshot).unwrap();
+        let mut replayed = HypercallPage::zeroed();
+        assert!(engine.write_process_fault_response(&mut replayed).unwrap());
+        assert_eq!(
+            &replayed.payload[..usize::from(replayed.payload_len)],
+            &response.payload[..usize::from(response.payload_len)]
+        );
     }
 
     #[test]

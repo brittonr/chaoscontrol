@@ -30,9 +30,13 @@ mod canonical;
 #[cfg(feature = "std")]
 pub mod fallback;
 #[cfg(feature = "std")]
+pub mod guest_process;
+#[cfg(feature = "std")]
 pub mod identity;
 mod memory;
 mod message;
+#[cfg(feature = "std")]
+pub mod process;
 #[cfg(feature = "std")]
 pub mod transport;
 
@@ -170,6 +174,9 @@ pub const CMD_COVERAGE_INIT: u8 = 0x30;
 
 /// Resource observation: return the current guest-visible memory ceiling.
 pub const CMD_RESOURCE_MEMORY_CEILING: u8 = 0x40;
+
+/// Guest supervisor: poll one host-directed process fault command.
+pub const CMD_PROCESS_FAULT_POLL: u8 = 0x50;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Status codes

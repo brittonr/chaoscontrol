@@ -121,6 +121,7 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
 - **Fault schedule minimization**: Delta debugging (ddmin) to find
   the smallest schedule that triggers a bug
 - **Bug reproduction**: Replay a bug report to verify it still triggers
+- **Guest multiprocess topology**: A typed manifest and PID-1 supervisor own bounded child lifetimes, shared guest directories, process faults, transport locking, and process-scoped evidence. See [`docs/guest-multiprocess-topology.md`](docs/guest-multiprocess-topology.md).
 - **Assertion catalog**: Compile-time registration of all assertion sites
   via `linkme`; reports show which assertions are exercised/unexercised
 - **Fallback assertion transport**: Non-SDK guest processes can emit bounded,
@@ -881,6 +882,7 @@ Current baseline: replay artifacts for `raft`, `redb`, `net`, and `rust-workload
 - [x] Core pinning for reduced scheduling jitter
 - [x] Nix-native build pipeline (guest packages, initrd builder, kernel composer)
 - [x] Declarative simulation tests via `mkChaosTest`
+- [x] Experimental bounded guest multiprocess manifest, supervisor, shared directory, process-fault, and process-evidence path
 
 ## Using ChaosControl from Your Flake
 

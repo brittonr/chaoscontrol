@@ -340,13 +340,18 @@
             {
               pname,
               cargoExtraArgs ? "-p ${pname}",
+              installPhaseCommand ? null,
+              doNotPostBuildInstallCargoBinaries ? false,
             }:
             muslCraneLib.buildPackage (
               muslCommonArgs
               // {
-                inherit pname;
+                inherit pname doNotPostBuildInstallCargoBinaries;
                 cargoArtifacts = muslCargoArtifacts;
                 cargoExtraArgs = "${cargoExtraArgs} --target x86_64-unknown-linux-musl";
+              }
+              // pkgs.lib.optionalAttrs (installPhaseCommand != null) {
+                inherit installPhaseCommand;
               }
             );
 
@@ -355,6 +360,15 @@
           guest-net = mkGuestPackage { pname = "chaoscontrol-net-guest"; };
           guest-redb = mkGuestPackage { pname = "chaoscontrol-redb-guest"; };
           guest-rust-workload = mkGuestPackage { pname = "chaoscontrol-rust-workload-guest"; };
+          guest-supervisor = mkGuestPackage {
+            pname = "chaoscontrol-sdk";
+            cargoExtraArgs = "-p chaoscontrol-sdk --bin chaoscontrol-guest-supervisor";
+            doNotPostBuildInstallCargoBinaries = true;
+            installPhaseCommand = ''
+              mkdir -p $out/bin
+              cp target/x86_64-unknown-linux-musl/release/chaoscontrol-guest-supervisor $out/bin/
+            '';
+          };
 
           # --- Initrd builder ---
 
@@ -410,6 +424,19 @@
             init = guest-rust-workload;
             name = "chaoscontrol-initrd-rust-workload";
           };
+          initrd-multiprocess =
+            pkgs.runCommand "chaoscontrol-initrd-multiprocess"
+              {
+                nativeBuildInputs = [ pkgs.cpio ];
+              }
+              ''
+                mkdir -p root/{dev,proc,sys,sys/kernel/debug,etc/chaoscontrol,data,run}
+                cp ${guest-supervisor}/bin/chaoscontrol-guest-supervisor root/init
+                cp ${./contracts/guest-processes/fixtures/valid/cooperating-processes.json} \
+                  root/etc/chaoscontrol/process-manifest.json
+                chmod +x root/init
+                (cd root && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > $out
+              '';
 
           # --- Disk image builder ---
 
@@ -1328,6 +1355,7 @@
               guest-net
               guest-redb
               guest-rust-workload
+              guest-supervisor
               ;
             inherit
               initrd-sdk
@@ -1335,6 +1363,7 @@
               initrd-net
               initrd-redb
               initrd-rust-workload
+              initrd-multiprocess
               ;
             inherit redb-disk-image;
 

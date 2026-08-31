@@ -2570,6 +2570,20 @@ impl SimulationController {
         self.vms.get(index)
     }
 
+    /// Queue one host-directed command for a guest process supervisor.
+    pub fn queue_guest_process_fault(
+        &mut self,
+        vm_index: usize,
+        command: chaoscontrol_protocol::process::ProcessFaultCommand,
+    ) -> Result<(), chaoscontrol_fault::engine::ProcessFaultQueueError> {
+        self.assert_controller_healthy();
+        let slot = self
+            .vms
+            .get_mut(vm_index)
+            .ok_or(chaoscontrol_fault::engine::ProcessFaultQueueError::InvalidCommand)?;
+        slot.vm.fault_engine_mut().enqueue_process_fault(command)
+    }
+
     /// Get a mutable reference to a specific VM slot.
     pub fn vm_slot_mut(&mut self, index: usize) -> Option<&mut VmSlot> {
         self.assert_controller_healthy();

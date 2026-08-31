@@ -1,0 +1,51 @@
+{
+  "schema": "chaoscontrol.process-manifest.v1",
+  "guest": "storage-guest",
+  "shared_directories": [
+    {
+      "id": "data",
+      "path": "/data",
+      "device": "memory"
+    }
+  ],
+  "processes": [
+    {
+      "role": "writer",
+      "executable": "/init",
+      "arguments": [
+        "--fixture-worker"
+      ],
+      "environment": {
+        "DATA_DIR": "/data"
+      },
+      "shared_directories": [
+        "data"
+      ],
+      "restart": {
+        "mode": "on_failure",
+        "max_restarts": 4
+      },
+      "instrumented": true,
+      "transport_slot": 0
+    },
+    {
+      "role": "checkpoint",
+      "executable": "/init",
+      "arguments": [
+        "--fixture-worker"
+      ],
+      "environment": {
+        "DATA_DIR": "/data"
+      },
+      "shared_directories": [
+        "data"
+      ],
+      "restart": {
+        "mode": "always",
+        "max_restarts": 4
+      },
+      "instrumented": true,
+      "transport_slot": 1
+    }
+  ]
+}

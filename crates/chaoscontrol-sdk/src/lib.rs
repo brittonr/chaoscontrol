@@ -64,6 +64,8 @@ pub mod lifecycle;
 #[cfg(feature = "full")]
 pub mod marker;
 pub mod prelude;
+#[cfg(feature = "full")]
+pub mod process;
 pub mod random;
 pub mod resources;
 mod transport;
@@ -85,6 +87,8 @@ pub mod kcov;
 
 #[cfg(feature = "full")]
 pub mod runtime;
+#[cfg(feature = "full")]
+pub mod supervisor;
 
 /// Initialize the ChaosControl SDK.
 ///

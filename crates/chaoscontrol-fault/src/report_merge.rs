@@ -156,6 +156,12 @@ fn merged_record(
         merged.last_failure_details = candidate.last_failure_details.clone();
     }
     merged.vm_instances.insert(vm_instance);
+    merged
+        .process_instances
+        .extend(candidate.process_instances.iter().cloned());
+    if merged.process_instances.len() > crate::oracle::MAX_PROCESS_INSTANCES_PER_ASSERTION {
+        return Err(ReportMergeConflict::CardinalityOverflow);
+    }
     merged.catalog_tokens.clear();
     Ok(merged)
 }

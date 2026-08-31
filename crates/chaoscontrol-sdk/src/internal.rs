@@ -38,8 +38,58 @@ unsafe impl Sync for TransportMode {}
 ///
 /// This mirrors Antithesis's `ANTITHESIS_SDK_LOCAL_OUTPUT`.
 pub const LOCAL_OUTPUT: &str = "CHAOSCONTROL_SDK_LOCAL_OUTPUT";
+pub const PROCESS_TRANSPORT_LOCK: &str = "CHAOSCONTROL_SDK_TRANSPORT_LOCK";
+
+enum ProcessTransportLock {
+    Disabled,
+    File(File),
+    Failed,
+}
+
+pub(crate) struct ProcessTransportGuard {
+    file: Option<&'static File>,
+}
+
+impl Drop for ProcessTransportGuard {
+    fn drop(&mut self) {
+        if let Some(file) = self.file {
+            let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+        }
+    }
+}
 
 static MODE: OnceLock<TransportMode> = OnceLock::new();
+static PROCESS_LOCK: OnceLock<ProcessTransportLock> = OnceLock::new();
+
+pub(crate) fn acquire_process_transport() -> Result<ProcessTransportGuard, ()> {
+    let lock = PROCESS_LOCK.get_or_init(|| {
+        let Ok(path) = std::env::var(PROCESS_TRANSPORT_LOCK) else {
+            return ProcessTransportLock::Disabled;
+        };
+        match OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(path)
+        {
+            Ok(file) => ProcessTransportLock::File(file),
+            Err(_) => ProcessTransportLock::Failed,
+        }
+    });
+    match lock {
+        ProcessTransportLock::Disabled => Ok(ProcessTransportGuard { file: None }),
+        ProcessTransportLock::File(file) => {
+            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+            if result == 0 {
+                Ok(ProcessTransportGuard { file: Some(file) })
+            } else {
+                Err(())
+            }
+        }
+        ProcessTransportLock::Failed => Err(()),
+    }
+}
 
 /// Initialize the transport and return the detected mode.
 fn detect_mode() -> TransportMode {

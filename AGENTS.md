@@ -14,6 +14,6 @@
 
 ## Non-Goals
 
-- **Container image intake**: No Docker/OCI/Compose workflow. Users write Rust guest binaries.
+- **Container runtime**: No Docker, Compose, Kubernetes, registry, or namespace runtime. Bounded OCI, directory, and tar intake may convert reviewed sources into the existing Rust guest bundle.
 - **Language-agnostic SDKs**: Rust-only SDK is intentional. No Go/Java/Python/C SDK planned.
 - **Nickel-owned runtime traces**: Do not hand-author high-volume checkpoints, raw logs, or VM execution traces as Nickel. Use Nickel for configs/contracts/receipts and Rust for runtime record serialization.

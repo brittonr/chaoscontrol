@@ -32,6 +32,7 @@ pub mod kernel_bundle_initrd;
 pub mod kernel_bundle_validation;
 pub mod kvm_release;
 mod non_null_option;
+pub mod oci_intake;
 pub mod operator_triage;
 pub mod phenomena_shell;
 pub mod product_scope;

@@ -244,6 +244,13 @@
 
           # Build only the cargo dependencies — cached across rebuilds
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+          ociIntakeArtifacts = craneLib.buildDepsOnly (
+            commonArgs
+            // {
+              pname = "chaoscontrol-oci-intake-deps";
+              cargoExtraArgs = "-p chaoscontrol-evidence --bin oci-intake";
+            }
+          );
 
           # Build the full workspace
           # doCheck = false — tests run via checks.tests instead.
@@ -253,6 +260,21 @@
               inherit cargoArtifacts;
               cargoExtraArgs = "--workspace --bins";
               doCheck = false;
+            }
+          );
+
+          ociIntake = craneLib.buildPackage (
+            commonArgs
+            // {
+              pname = "chaoscontrol-oci-intake";
+              cargoArtifacts = ociIntakeArtifacts;
+              cargoExtraArgs = "-p chaoscontrol-evidence --bin oci-intake";
+              doCheck = false;
+              doNotPostBuildInstallCargoBinaries = true;
+              installPhaseCommand = ''
+                mkdir -p $out/bin
+                cp target/release/oci-intake $out/bin/
+              '';
             }
           );
 
@@ -1348,6 +1370,7 @@
           packages = {
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
+            oci-intake = ociIntake;
 
             inherit
               guest-sdk
@@ -2033,6 +2056,7 @@
             boot = mkApp "Boot a ChaosControl VM from explicit kernel/initrd arguments." "${chaoscontrol}/bin/boot";
             snapshot-demo = mkApp "Run the local ChaosControl snapshot demo." "${chaoscontrol}/bin/snapshot_demo";
             explore = mkApp "Run the ChaosControl explorer with caller-supplied arguments." "${chaoscontrol}/bin/chaoscontrol-explore";
+            oci-intake = mkApp "Lower a bounded image topology into a guest process bundle." "${ociIntake}/bin/oci-intake";
             scaffold-rust-workload = mkApp "Copy the Rust workload harness template and write explicit local/VM promotion commands." "${scaffoldRustWorkload}/bin/scaffold-rust-workload";
             explore-raft =
               let

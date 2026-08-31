@@ -122,6 +122,7 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
   the smallest schedule that triggers a bug
 - **Bug reproduction**: Replay a bug report to verify it still triggers
 - **Guest multiprocess topology**: A typed manifest and PID-1 supervisor own bounded child lifetimes, shared guest directories, process faults, transport locking, and process-scoped evidence. See [`docs/guest-multiprocess-topology.md`](docs/guest-multiprocess-topology.md).
+- **Bounded OCI intake**: Reviewed OCI layers, directories, and tar archives can lower into the existing guest process bundle without a container runtime. See [`docs/oci-container-intake.md`](docs/oci-container-intake.md).
 - **Assertion catalog**: Compile-time registration of all assertion sites
   via `linkme`; reports show which assertions are exercised/unexercised
 - **Fallback assertion transport**: Non-SDK guest processes can emit bounded,
@@ -883,6 +884,7 @@ Current baseline: replay artifacts for `raft`, `redb`, `net`, and `rust-workload
 - [x] Nix-native build pipeline (guest packages, initrd builder, kernel composer)
 - [x] Declarative simulation tests via `mkChaosTest`
 - [x] Experimental bounded guest multiprocess manifest, supervisor, shared directory, process-fault, and process-evidence path
+- [x] Experimental bounded OCI, directory, and tar intake into the guest multiprocess bundle
 
 ## Using ChaosControl from Your Flake
 
@@ -939,6 +941,7 @@ Earlier Apache-2.0 grants remain valid for revisions published before this polic
 
 ## References
 
+- [Bounded Tree](https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git) at `b0fd0103bc9eed2c1b6d852045959462d105d8f1` — bounded directory observation, revalidation, and copy mechanics used by kernel-bundle and OCI intake shells.
 - [VM Cohort](rad:z2QJLUqyAZnnHPiZQ1BFjLsX9ush3) at `ab123e3673b6dd616b3df5d044026b5e85755149` — product-neutral retained-base, private-overlay, KVM clone, lifecycle, cleanup, and conformance mechanics.
 - [NASA SpaceWasm](https://github.com/nasa/spacewasm) at `e24cf09355a90497148eb5029fdb8e3400bd63e3` — exact experimental core-MVP interpreter used by the bounded diagnostic rail.
 - [`../mantle/`](../mantle/) at `a141fcbaafe41f9a413a81275a33fe915bfca370` — producer of the remeasured SpaceWasm source, runner, fixture, toolchain, report, and non-claim bundle.

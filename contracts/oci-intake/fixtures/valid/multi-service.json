@@ -1,0 +1,60 @@
+{
+  "schema": "chaoscontrol.oci-topology.v1",
+  "topology_id": "database-stack",
+  "shared_directories": [
+    {
+      "id": "data",
+      "path": "/data",
+      "device": "memory"
+    }
+  ],
+  "services": [
+    {
+      "role": "database",
+      "source": {
+        "format": "oci_layers",
+        "path": "/fixtures/database-image",
+        "image_identity": "b3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "layers": [
+          {
+            "path": "layer-0.tar",
+            "identity": "b3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "entrypoint": "bin/database",
+      "arguments": [],
+      "environment": {},
+      "shared_directories": [
+        "data"
+      ],
+      "restart": {
+        "mode": "on_failure",
+        "max_restarts": 4
+      },
+      "instrumented": false,
+      "transport_slot": null
+    },
+    {
+      "role": "checkpoint",
+      "source": {
+        "format": "directory",
+        "path": "/fixtures/checkpoint-root",
+        "image_identity": "b3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "layers": []
+      },
+      "entrypoint": "bin/checkpoint",
+      "arguments": [],
+      "environment": {},
+      "shared_directories": [
+        "data"
+      ],
+      "restart": {
+        "mode": "always",
+        "max_restarts": 4
+      },
+      "instrumented": false,
+      "transport_slot": null
+    }
+  ]
+}

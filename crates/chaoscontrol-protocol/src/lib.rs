@@ -36,6 +36,8 @@ pub mod identity;
 mod memory;
 mod message;
 #[cfg(feature = "std")]
+pub mod oci_intake;
+#[cfg(feature = "std")]
 pub mod process;
 #[cfg(feature = "std")]
 pub mod transport;

@@ -1,0 +1,44 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Blocking waiting for file lock on build directory
+warning: constant `CODE_REGION_END` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:39:7
+   |
+39 | const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / 2;
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `fnv1a` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:42:4
+   |
+42 | fn fnv1a(data: &[u8]) -> u64 {
+   |    ^^^^^
+
+warning: `chaoscontrol-sdk` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.96s

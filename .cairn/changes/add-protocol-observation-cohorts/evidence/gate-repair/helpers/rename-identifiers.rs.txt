@@ -1,0 +1,73 @@
+#!/usr/bin/env -S nix shell github:nix-community/fenix/092bd452904e749efa39907aa4a20a42678ac31e#minimal.toolchain nixpkgs#gcc -c cargo -q -Zscript
+---
+[package]
+edition = "2024"
+[dependencies]
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
+syn = { version = "=2.0.117", features = ["full"] }
+---
+//! Exact token renaming for a manually reviewed single-file namespace.
+//! This is not a Rust name resolver. Callers must review every selected binding.
+
+type Failure = Box<dyn std::error::Error>;
+const MAX_SOURCE_BYTES: usize = 2_097_152;
+
+fn collect(tokens: proc_macro2::TokenStream, names: &std::collections::BTreeMap<String, String>, edits: &mut Vec<(std::ops::Range<usize>, String)>) {
+    for token in tokens {
+        match token {
+            proc_macro2::TokenTree::Group(group) => collect(group.stream(), names, edits),
+            proc_macro2::TokenTree::Ident(ident) => {
+                if let Some(new) = names.get(&ident.to_string()) { edits.push((ident.span().byte_range(), new.clone())); }
+            }
+            _ => {}
+        }
+    }
+}
+fn transform(source: &str, names: &std::collections::BTreeMap<String, String>) -> Result<String, Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds byte bound".into()); }
+    syn::parse_file(source)?;
+    for (old, new) in names {
+        syn::parse_str::<syn::Ident>(old)?;
+        syn::parse_str::<syn::Path>(new)?;
+    }
+    let mut edits = Vec::new();
+    collect(source.parse()?, names, &mut edits);
+    edits.sort_by_key(|(range, _)| range.start);
+    let mut output = source.to_owned();
+    for (range, new) in edits.iter().rev() {
+        let old = source.get(range.clone()).ok_or("invalid span")?;
+        if names.get(old) != Some(new) { return Err("stale rename span".into()); }
+        output.replace_range(range.clone(), new);
+    }
+    syn::parse_file(&output)?;
+    Ok(output)
+}
+fn self_test() -> Result<(), Failure> {
+    let names = std::collections::BTreeMap::from([("Old".into(), "New".into())]);
+    let input = "// Old λ\nstruct Old; fn f() -> Old { println!(\"Old\"); Old }";
+    let output = transform(input, &names)?;
+    assert_eq!(output, "// Old λ\nstruct New; fn f() -> New { println!(\"Old\"); New }");
+    assert_eq!(transform(&output, &names)?, output);
+    assert!(transform("not Rust", &names).is_err());
+    let invalid = std::collections::BTreeMap::from([("Old".into(), "bad-name".into())]);
+    assert!(transform(input, &invalid).is_err());
+    println!("Exact identifier renamer controls passed");
+    Ok(())
+}
+fn main() -> Result<(), Failure> {
+    let mut args = std::env::args().skip(1);
+    let file = args.next().ok_or("expected file or --self-test")?;
+    if file == "--self-test" { return self_test(); }
+    let mut names = std::collections::BTreeMap::new();
+    for mapping in args {
+        let (old, new) = mapping.split_once('=').ok_or("expected OLD=NEW")?;
+        if names.insert(old.into(), new.into()).is_some() { return Err("duplicate rename".into()); }
+    }
+    if names.is_empty() { return Err("empty rename set".into()); }
+    let before = std::fs::read_to_string(&file)?;
+    let after = transform(&before, &names)?;
+    if std::fs::read_to_string(&file)? != before { return Err("source changed before write".into()); }
+    std::fs::write(&file, after)?;
+    println!("renamed reviewed tokens: {file}");
+    Ok(())
+}

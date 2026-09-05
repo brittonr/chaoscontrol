@@ -1,0 +1,9 @@
+let
+  root = builtins.getEnv "REPAIR_ROOT";
+  consumer = builtins.getFlake root;
+  pkgs = import consumer.inputs.nixpkgs { system = builtins.currentSystem; };
+  interop = import (root + "/nix/cargo-radicle.nix") { inherit pkgs; };
+  original = pkgs.makeSetupHook { name = "cargo-metadata-hook-drift-control"; }
+    (builtins.toFile "metadata-hook-drift.sh" "true\n");
+in
+interop.installHook original

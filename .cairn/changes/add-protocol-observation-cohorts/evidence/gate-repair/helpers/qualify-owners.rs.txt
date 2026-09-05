@@ -1,0 +1,209 @@
+#!/usr/bin/env -S nix shell github:nix-community/fenix/092bd452904e749efa39907aa4a20a42678ac31e#minimal.toolchain nixpkgs#gcc -c cargo -q -Zscript
+---
+[package]
+edition = "2024"
+[dependencies]
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
+quote = "1"
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+---
+//! Conservative owner-path correction for standard-library imports.
+//! Reject ambiguous scopes rather than infer a different Rust binding.
+
+use syn::visit::Visit;
+use syn::spanned::Spanned;
+use quote::ToTokens;
+
+type Failure = Box<dyn std::error::Error>;
+const MAX_SOURCE_BYTES: usize = 2_097_152;
+const MAX_FILES: usize = 512;
+const OWNERS: &[&str] = &[
+    "std::collections::BTreeMap", "std::collections::BTreeSet",
+    "std::collections::HashMap", "std::collections::HashSet", "std::collections::VecDeque",
+    "std::path::Path", "std::path::PathBuf", "std::sync::Arc", "std::sync::Mutex",
+    "std::sync::RwLock", "std::sync::OnceLock", "std::sync::atomic::AtomicBool",
+    "std::sync::atomic::AtomicU64", "std::sync::atomic::AtomicUsize",
+    "std::sync::atomic::Ordering", "std::time::Duration", "std::time::Instant",
+    "std::io::Error", "std::io::ErrorKind", "std::io::Cursor", "std::fs::File",
+    "std::fs::OpenOptions", "std::process::Command", "std::process::Stdio",
+];
+
+#[derive(Clone, Debug)]
+struct Edit { range: std::ops::Range<usize>, old: String, new: String }
+
+struct Scan<'a> {
+    source: &'a str,
+    owners: std::collections::BTreeMap<String, String>,
+    bindings: std::collections::BTreeSet<String>,
+    edits: Vec<Edit>,
+    blocked: Option<String>,
+}
+
+impl Scan<'_> {
+    fn edit(&mut self, range: std::ops::Range<usize>, new: String) {
+        match self.source.get(range.clone()) {
+            Some(old) => self.edits.push(Edit { range, old: old.into(), new }),
+            None => self.blocked = Some("invalid source span".into()),
+        }
+    }
+    fn declaration(&mut self, ident: &proc_macro2::Ident) {
+        if self.owners.contains_key(&ident.to_string()) {
+            self.blocked = Some(format!("shadowed import {ident}"));
+        }
+    }
+    fn imports(&mut self, tree: &syn::UseTree, prefix: &str) -> Option<syn::UseTree> {
+        match tree {
+            syn::UseTree::Path(path) => {
+                let next = if prefix.is_empty() { path.ident.to_string() } else { format!("{prefix}::{}", path.ident) };
+                self.imports(&path.tree, &next).map(|tree| {
+                    let mut path = path.clone(); path.tree = Box::new(tree); syn::UseTree::Path(path)
+                })
+            }
+            syn::UseTree::Group(group) => {
+                let items: syn::punctuated::Punctuated<_, syn::Token![,]> = group.items.iter().filter_map(|item| self.imports(item, prefix)).collect();
+                if items.is_empty() { None } else {
+                    let mut group = group.clone(); group.items = items; Some(syn::UseTree::Group(group))
+                }
+            }
+            syn::UseTree::Name(name) => self.leaf(tree, prefix, &name.ident, &name.ident),
+            syn::UseTree::Rename(name) => self.leaf(tree, prefix, &name.ident, &name.rename),
+            syn::UseTree::Glob(_) => { self.blocked = Some("glob import needs scope review".into()); Some(tree.clone()) }
+        }
+    }
+    fn leaf(&mut self, tree: &syn::UseTree, prefix: &str, name: &proc_macro2::Ident, alias: &proc_macro2::Ident) -> Option<syn::UseTree> {
+        let binding = alias.to_string();
+        if !self.bindings.insert(binding.clone()) { self.blocked = Some(format!("duplicate import {binding}")); }
+        let owner = format!("{prefix}::{name}");
+        if OWNERS.contains(&owner.as_str()) {
+            self.owners.insert(binding, owner); None
+        } else { Some(tree.clone()) }
+    }
+    fn macro_tokens(&mut self, tokens: proc_macro2::TokenStream) {
+        let tokens: Vec<_> = tokens.into_iter().collect();
+        for (index, token) in tokens.iter().enumerate() {
+            match token {
+                proc_macro2::TokenTree::Group(group) => self.macro_tokens(group.stream()),
+                proc_macro2::TokenTree::Literal(literal) => {
+                    if self.owners.keys().any(|name| literal.to_string().contains(&format!("{{{name}"))) {
+                        self.blocked = Some("implicit format capture needs review".into());
+                    }
+                }
+                proc_macro2::TokenTree::Ident(ident) => {
+                    let Some(owner) = self.owners.get(&ident.to_string()).cloned() else { continue; };
+                    let previous_colon = index.checked_sub(1).and_then(|previous| tokens.get(previous)).is_some_and(|token| matches!(token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ':'));
+                    if previous_colon { continue; }
+                    let next_colon = tokens.get(index + 1).is_some_and(|token| matches!(token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ':' && punct.spacing() == proc_macro2::Spacing::Joint));
+                    if !next_colon {
+                        self.blocked = Some("bare macro identifier needs review".into());
+                        continue;
+                    }
+                    self.edit(ident.span().byte_range(), owner);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for Scan<'_> {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        if let Some(first) = path.segments.first() {
+            if first.ident == "self" && path.segments.iter().nth(1).is_some_and(|segment| self.owners.contains_key(&segment.ident.to_string())) {
+                self.blocked = Some("self-qualified import needs scope review".into());
+            }
+            if let Some(owner) = self.owners.get(&first.ident.to_string()).cloned() {
+                self.edit(first.ident.span().byte_range(), owner);
+            }
+        }
+        syn::visit::visit_path(self, path);
+    }
+    fn visit_item_use(&mut self, _: &'ast syn::ItemUse) { self.blocked = Some("nested import needs scope review".into()); }
+    fn visit_attribute(&mut self, _: &'ast syn::Attribute) {}
+    fn visit_item_mod(&mut self, _: &'ast syn::ItemMod) { self.blocked = Some("child module needs scope review".into()); }
+    fn visit_item_macro(&mut self, _: &'ast syn::ItemMacro) { self.blocked = Some("macro definition needs scope review".into()); }
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) { self.macro_tokens(mac.tokens.clone()); }
+    fn visit_pat_ident(&mut self, pat: &'ast syn::PatIdent) { self.declaration(&pat.ident); syn::visit::visit_pat_ident(self, pat); }
+    fn visit_type_param(&mut self, param: &'ast syn::TypeParam) { self.declaration(&param.ident); syn::visit::visit_type_param(self, param); }
+    fn visit_item_struct(&mut self, item: &'ast syn::ItemStruct) { self.declaration(&item.ident); syn::visit::visit_item_struct(self, item); }
+    fn visit_item_enum(&mut self, item: &'ast syn::ItemEnum) { self.declaration(&item.ident); syn::visit::visit_item_enum(self, item); }
+    fn visit_item_type(&mut self, item: &'ast syn::ItemType) { self.declaration(&item.ident); syn::visit::visit_item_type(self, item); }
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) { self.declaration(&item.sig.ident); syn::visit::visit_item_fn(self, item); }
+    fn visit_item_const(&mut self, item: &'ast syn::ItemConst) { self.declaration(&item.ident); syn::visit::visit_item_const(self, item); }
+    fn visit_item_static(&mut self, item: &'ast syn::ItemStatic) { self.declaration(&item.ident); syn::visit::visit_item_static(self, item); }
+    fn visit_item_trait(&mut self, item: &'ast syn::ItemTrait) { self.declaration(&item.ident); syn::visit::visit_item_trait(self, item); }
+}
+
+fn transform(source: &str) -> Result<(String, usize), Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds byte bound".into()); }
+    let file = syn::parse_file(source)?;
+    let mut scan = Scan { source, owners: std::collections::BTreeMap::new(), bindings: std::collections::BTreeSet::new(), edits: Vec::new(), blocked: None };
+    for item in &file.items {
+        let syn::Item::Use(item) = item else { continue; };
+        if !matches!(item.vis, syn::Visibility::Inherited) || !item.attrs.is_empty() { return Err("conditional or exported imports need review".into()); }
+        let count_before = scan.owners.len();
+        let tree = scan.imports(&item.tree, "");
+        if scan.owners.len() != count_before {
+            let text = match tree {
+                Some(tree) => { let mut replacement = item.clone(); replacement.tree = tree; replacement.into_token_stream().to_string() },
+                None => String::new(),
+            };
+            scan.edit(item.span().byte_range(), text);
+        }
+    }
+    for item in &file.items { if !matches!(item, syn::Item::Use(_)) { scan.visit_item(item); } }
+    if let Some(reason) = scan.blocked { return Err(reason.into()); }
+    scan.edits.sort_by_key(|edit| edit.range.start);
+    let mut previous_end = 0;
+    for edit in &scan.edits {
+        if edit.range.start < previous_end || source.get(edit.range.clone()) != Some(edit.old.as_str()) { return Err("overlapping or stale edit".into()); }
+        previous_end = edit.range.end;
+    }
+    let count = scan.edits.len();
+    let mut output = source.to_owned();
+    for edit in scan.edits.iter().rev() { output.replace_range(edit.range.clone(), &edit.new); }
+    syn::parse_file(&output)?;
+    Ok((output, count))
+}
+
+fn self_test() -> Result<(), Failure> {
+    let source = "// Arc λ\nuse std::sync::Arc; fn f() -> Arc<str> { Arc::from(\"Arc\") }";
+    let (output, _) = transform(source)?;
+    assert_eq!(output, "// Arc λ\n fn f() -> std::sync::Arc<str> { std::sync::Arc::from(\"Arc\") }");
+    assert_eq!(transform(&output)?.1, 0);
+    let (output, _) = transform("use std::io::{Read, Cursor}; fn f() { let _ = Cursor::new([]); }")?;
+    assert!(output.contains("Read"));
+    assert!(output.contains("std::io::Cursor::new"));
+    assert!(transform("use std::sync::Arc; fn f<Arc>(x: Arc) {} ").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { let Arc = 0; }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { use other::Arc; Arc::new(); }").is_err());
+    assert!(transform("use std::sync::Arc; fn Arc() {} ").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { m!({Arc: 1}); }").is_err());
+    assert!(transform("pub use std::sync::Arc;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { self::Arc::new(0); }").is_err());
+    assert!(transform("use std::sync::Arc; use other::Arc;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { println!(\"{Arc}\"); }").is_err());
+    assert!(transform("this is not Rust").is_err());
+    println!("Owner qualifier positive and negative controls passed");
+    Ok(())
+}
+
+fn main() -> Result<(), Failure> {
+    let mut args = std::env::args().skip(1);
+    let mode = args.next().ok_or("expected --check, --write, or --self-test")?;
+    if mode == "--self-test" { return self_test(); }
+    if mode != "--check" && mode != "--write" { return Err("unknown mode".into()); }
+    let files: Vec<_> = args.collect();
+    if files.is_empty() || files.len() > MAX_FILES { return Err("invalid file count".into()); }
+    for path in files {
+        let source = std::fs::read_to_string(&path)?;
+        let (output, count) = match transform(&source) { Ok(result) => result, Err(error) => { eprintln!("REVIEW {path}: {error}"); continue; } };
+        if count == 0 { continue; }
+        println!("{count} edits: {path}");
+        if mode == "--write" {
+            if std::fs::read_to_string(&path)? != source { return Err("source changed before write".into()); }
+            std::fs::write(path, output)?;
+        }
+    }
+    Ok(())
+}

@@ -1,0 +1,1427 @@
+evaluating flake...
+checking flake output 'lib'...
+checking flake output 'packages'...
+checking derivation packages.x86_64-linux.default...
+derivation evaluated to /nix/store/w1fhv4h67rvm06zm5xxadmzcz1c5ql2a-chaoscontrol-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-sdk...
+derivation evaluated to /nix/store/dlq33f4pnp4hpryprm394fk726qzg1ny-chaoscontrol-guest-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-determinism-probe...
+derivation evaluated to /nix/store/kfz6ydx5l2zzg5vi793zbbk3bmin7lz4-chaoscontrol-guest-determinism-probe-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-raft...
+derivation evaluated to /nix/store/2w8nr9ymi3rm3dlfp1d76q9jaxwdwv5z-chaoscontrol-raft-guest-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-net...
+derivation evaluated to /nix/store/zw9ia4rrzzlb4p1rypgaga6l64s3s4h1-chaoscontrol-net-guest-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-redb...
+derivation evaluated to /nix/store/amxksssvn9rccfgc1krz6cyczc78h5ng-chaoscontrol-redb-guest-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-rust-workload...
+derivation evaluated to /nix/store/6wwlwmfv71c8060q84sczzd2x0vzb2ih-chaoscontrol-rust-workload-guest-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-supervisor...
+derivation evaluated to /nix/store/6y193y8jqyqvcjf0xkajb1bdp4jw5kzr-chaoscontrol-sdk-0.1.0.drv
+checking derivation packages.x86_64-linux.initrd-sdk...
+derivation evaluated to /nix/store/90fa5l5548m7qmfgxi5i1jrpa4d1qqs5-chaoscontrol-initrd-sdk.drv
+checking derivation packages.x86_64-linux.initrd-determinism-probe...
+derivation evaluated to /nix/store/wh2g1scsg39vf2z589ldxr3r4mqacjz7-chaoscontrol-initrd-determinism-probe.drv
+checking derivation packages.x86_64-linux.initrd-raft...
+derivation evaluated to /nix/store/kw0kpx4wx9rc2dxcvkgk87nwswzr3bb0-chaoscontrol-initrd-raft.drv
+checking derivation packages.x86_64-linux.initrd-net...
+derivation evaluated to /nix/store/dsnzwak07adiyhrb4kkz2y6yr7hrldhf-chaoscontrol-initrd-net.drv
+checking derivation packages.x86_64-linux.initrd-redb...
+derivation evaluated to /nix/store/39jkwvbdj9lhbnjg84xhj03ddlmq37kf-chaoscontrol-initrd-redb.drv
+checking derivation packages.x86_64-linux.initrd-rust-workload...
+derivation evaluated to /nix/store/lqxvsx54g9211hy4mf762pm620rxcrc6-chaoscontrol-initrd-rust-workload.drv
+checking derivation packages.x86_64-linux.initrd-multiprocess...
+derivation evaluated to /nix/store/nsrh1j19b6zh4fqknj01r07wmpk9fipf-chaoscontrol-initrd-multiprocess.drv
+checking derivation packages.x86_64-linux.redb-disk-image...
+derivation evaluated to /nix/store/smr9nf644lykjg18rjjdmwhzjc2haasb-redb-disk-image.drv
+checking derivation packages.x86_64-linux.chaoscontrol-vmm...
+derivation evaluated to /nix/store/w1fhv4h67rvm06zm5xxadmzcz1c5ql2a-chaoscontrol-0.1.0.drv
+checking derivation packages.x86_64-linux.oci-intake...
+derivation evaluated to /nix/store/c5r7j928lfrmaanbbks5wnrr3zrvln74-chaoscontrol-oci-intake-0.1.0.drv
+checking derivation packages.x86_64-linux.guest-determinism-gate...
+derivation evaluated to /nix/store/011xr2dqanw2ivz422l3sqhya8wvvfvs-chaoscontrol-guest-determinism-gate-0.1.0.drv
+checking derivation packages.x86_64-linux.raft-accepted-verdict-dogfood...
+derivation evaluated to /nix/store/3v40wi3qa0g42863pm05y6ky78dcl5ck-raft-accepted-verdict-dogfood.drv
+checking derivation packages.x86_64-linux.redb-accepted-verdict-dogfood...
+derivation evaluated to /nix/store/xi0nb5scl891z142g9ksz5cay569n0pw-redb-accepted-verdict-dogfood.drv
+checking derivation packages.x86_64-linux.net-accepted-verdict-dogfood...
+derivation evaluated to /nix/store/a41s12bs1l77zvdg2cfks5gii2xx3kky-net-accepted-verdict-dogfood.drv
+checking derivation packages.x86_64-linux.rust-workload-accepted-verdict-dogfood...
+derivation evaluated to /nix/store/cgiy6m4i31jzl6ihdksk5wfpmw9a23bp-rust-workload-accepted-verdict-dogfood.drv
+checking derivation packages.x86_64-linux.accepted-verdict-dogfood-config...
+derivation evaluated to /nix/store/i20nqmd2phsbh6gil75p6q42b5xy65sm-accepted-verdict-dogfood-config.json.drv
+checking derivation packages.x86_64-linux.replay-readiness...
+derivation evaluated to /nix/store/dj9ykqnynpcw08y4zmfpc975achcq6fl-replay-readiness.drv
+checking derivation packages.x86_64-linux.scaffold-rust-workload...
+derivation evaluated to /nix/store/xal9jpy6gwv887kha59h8az8sdffvg1z-scaffold-rust-workload.drv
+checking derivation packages.x86_64-linux.fresh-rust-workload-proof...
+derivation evaluated to /nix/store/1lsi7a0pn07isxjncm90q7xnigznfgw1-fresh-rust-workload-proof.drv
+checking derivation packages.x86_64-linux.vm-determinism-matrix...
+derivation evaluated to /nix/store/jbyx54wx7kbs0x392ifb18dw91pjpar1-vm-determinism-matrix.drv
+checking derivation packages.x86_64-linux.replay-readiness-summary...
+derivation evaluated to /nix/store/1yny1d118izbyrwsqmibd6qiwi383kkb-replay-readiness-summary.drv
+checking derivation packages.x86_64-linux.replay-readiness-dashboard...
+derivation evaluated to /nix/store/qpwyp70bipi2qbzigv3jj66y4sizvax7-replay-readiness-dashboard.drv
+checking derivation packages.x86_64-linux.replay-readiness-triage...
+derivation evaluated to /nix/store/5jimmzjimgvlayn83q45c4j9cq1jqqv0-replay-readiness-triage.drv
+checking derivation packages.x86_64-linux.replay-readiness-fleet-index...
+derivation evaluated to /nix/store/2anrjh4234cwl92fspk3bk6myblhjkag-replay-readiness-fleet-index.drv
+checking derivation packages.x86_64-linux.replay-readiness-decision-receipt...
+derivation evaluated to /nix/store/5myysllbw4kqf5grw6njpga08xb8kj14-replay-readiness-decision-receipt.drv
+checking derivation packages.x86_64-linux.replay-readiness-scheduler-receipt...
+derivation evaluated to /nix/store/f2z9yql70s7pzrl3h77497gdrv5i6dyl-replay-readiness-scheduler-receipt.drv
+checking derivation packages.x86_64-linux.in-process-simulator-receipt...
+derivation evaluated to /nix/store/734nrpiwsqyp0xnwglb689kgfm8l2di7-in-process-simulator-receipt.drv
+checking derivation packages.x86_64-linux.local-multi-hypervisor-kvm-smoke...
+derivation evaluated to /nix/store/km3ddn084xs1i6mlr8fdfr8ar951fzsw-local-multi-hypervisor-kvm-smoke.drv
+checking derivation packages.x86_64-linux.replay-readiness-readme-status...
+derivation evaluated to /nix/store/5cch0j43w9bjadwrlzgmfwykj8w1sxl0-replay-readiness-readme-status.drv
+checking derivation packages.x86_64-linux.cargo-radicle...
+derivation evaluated to /nix/store/fig6g6sivb8in9y5g8mpxzvk9cax6i67-cargo-radicle-1.92.0.drv
+checking derivation packages.x86_64-linux.cargo-tigerstyle...
+derivation evaluated to /nix/store/i675hk4mr2svhbpz7ilv7jly4vpysw6i-cargo-octet-0.1.0.drv
+checking derivation packages.x86_64-linux.tigerstyle-standards...
+derivation evaluated to /nix/store/w5njs8pm48gd6rzsjcnbk29g7d8hjsq0-octet-standards-0.1.0.drv
+checking derivation packages.x86_64-linux.verified-logic...
+derivation evaluated to /nix/store/c3z245a5jqpl0hmf1ai9i8jzgb1nfq6w-verified-logic-0.2.0.drv
+checking derivation packages.x86_64-linux.determinism-probe-vmlinux...
+derivation evaluated to /nix/store/r0nhjyymj3xmkywcq0q87g2g7b0d13ak-chaoscontrol-vmlinux.drv
+checking derivation packages.x86_64-linux.net-vmlinux...
+derivation evaluated to /nix/store/m4nnxffwrzjlnqczph76sr1xsn3n0y0d-chaoscontrol-vmlinux.drv
+checking derivation packages.x86_64-linux.kcov-vmlinux...
+derivation evaluated to /nix/store/d9jgpxqp1fcjffc563w059n6rd8jwy91-chaoscontrol-vmlinux.drv
+checking derivation packages.x86_64-linux.kcov-net-vmlinux...
+derivation evaluated to /nix/store/vz4vngrnym8c2cjd5f2xs9gf376yw9k5-chaoscontrol-vmlinux.drv
+checking derivation packages.x86_64-linux.raft-sim...
+derivation evaluated to /nix/store/ymlz4fjm1jzlsq485nzx1zz1nzns3shj-chaoscontrol-test-raft-sim.drv
+checking derivation packages.x86_64-linux.redb-sim...
+derivation evaluated to /nix/store/q49c8d0sq0j6fr8fz8i10k79r2ydx0x7-chaoscontrol-test-redb-sim.drv
+checking derivation packages.x86_64-linux.rust-workload-sim...
+derivation evaluated to /nix/store/38fgbcvf21b2dawzddphsr9ahhan9zf1-chaoscontrol-test-rust-workload-sim.drv
+checking derivation packages.x86_64-linux.rust-workload-local-report...
+derivation evaluated to /nix/store/4dwva1a3pcc154srg8sb0snynadghibh-rust-workload-local-report.drv
+checking derivation packages.x86_64-linux.docs...
+derivation evaluated to /nix/store/7rc6g5l4k4fgixz5nd00qziifbj5qkxz-chaoscontrol-docs.drv
+checking flake output 'checks'...
+checking derivation checks.x86_64-linux.replay-readiness...
+derivation evaluated to /nix/store/l9xbhbd681k4k0l3ywiqvcsnhhpa5ybn-replay-readiness-check.drv
+checking derivation checks.x86_64-linux.local-multi-hypervisor-kvm-smoke...
+derivation evaluated to /nix/store/imiav1a3mngaz8dn6klwhq9s1xgk7b31-local-multi-hypervisor-kvm-smoke-check.drv
+checking derivation checks.x86_64-linux.rustdoc...
+derivation evaluated to /nix/store/ls6q1lh7rjzb476w9l03lwa5xnjiyd3f-chaoscontrol-doc-0.1.0.drv
+checking derivation checks.x86_64-linux.package...
+derivation evaluated to /nix/store/w1fhv4h67rvm06zm5xxadmzcz1c5ql2a-chaoscontrol-0.1.0.drv
+checking derivation checks.x86_64-linux.protocol-observation-tests...
+derivation evaluated to /nix/store/b1acrfdv8lwm4yhmaf13jz1pb6k1lmd5-chaoscontrol-protocol-observation-test-0.1.0.drv
+checking derivation checks.x86_64-linux.protocol-observation-contracts...
+derivation evaluated to /nix/store/2p7gqa32y5gy62m3ngyj4flkvwrnjkmq-protocol-observation-contracts.drv
+checking derivation checks.x86_64-linux.license-boundary...
+derivation evaluated to /nix/store/i9920vasv34vc02s8g6ysgn2rvbk9qnn-chaoscontrol-license-boundary.drv
+checking derivation checks.x86_64-linux.vm-cohort-dependency...
+derivation evaluated to /nix/store/jgqwxs2a4sl300a3rydmgbazw84vck69-chaoscontrol-vm-cohort-dependency.drv
+checking derivation checks.x86_64-linux.vm-cohort-adoption-contract...
+derivation evaluated to /nix/store/bpzmnwc6gimy7z4vwk92z88ahc6c8a14-chaoscontrol-vm-cohort-adoption-contract.drv
+checking derivation checks.x86_64-linux.nickel-cohort-exact...
+derivation evaluated to /nix/store/ik0pbqyfk09glzvlg6xb30la50nnjvvl-chaoscontrol-nickel-cohort-exact.drv
+checking derivation checks.x86_64-linux.clippy...
+derivation evaluated to /nix/store/jz1hxp4b02z3pb22lsy700336hjvmkh1-chaoscontrol-clippy-0.1.0.drv
+checking derivation checks.x86_64-linux.fmt...
+derivation evaluated to /nix/store/gjpnm7h24p87ga1jp9fk0qhwnd8dj19f-chaoscontrol-fmt-0.1.0.drv
+checking derivation checks.x86_64-linux.tests...
+derivation evaluated to /nix/store/c9xbxigb44aq49vkmq21j8zf1dxk9wal-chaoscontrol-test-0.1.0.drv
+checking derivation checks.x86_64-linux.property-coverage...
+derivation evaluated to /nix/store/fzbs3s1vvmk1vns0zv62pq7zwrp6kaqq-property-coverage-check.drv
+checking derivation checks.x86_64-linux.ebpf-trace-evidence...
+derivation evaluated to /nix/store/plza9a5y9h7ahdz0nzssirsf5bhqh4yf-ebpf-trace-evidence-check.drv
+checking derivation checks.x86_64-linux.virtio-malicious-guest-kvm-smoke...
+derivation evaluated to /nix/store/3a42acdra17mrdhfclfkk076a1fp5cy8-chaoscontrol-test-0.1.0.drv
+checking derivation checks.x86_64-linux.profiling...
+derivation evaluated to /nix/store/2akhmcd3nmfqiy6dpvsydjk7dfzp5q9r-chaoscontrol-clippy-0.1.0.drv
+checking derivation checks.x86_64-linux.nixfmt...
+derivation evaluated to /nix/store/qwnrqgz1ap1n1hqirqvll8fj8bzwhpbd-nixfmt-check.drv
+checking derivation checks.x86_64-linux.dependency-audit...
+derivation evaluated to /nix/store/rh24h2dp2piii4bgzkbas5zgxp6lyj6q-dependency-audit-check.drv
+checking derivation checks.x86_64-linux.dependency-policy...
+derivation evaluated to /nix/store/8bygpr9mzgpk3lwp6r42fm7l24ql2g6f-chaoscontrol-deny-0.1.0.drv
+checking derivation checks.x86_64-linux.snapshot-descriptor-contracts...
+derivation evaluated to /nix/store/vm0z3xqqrnqmbxgw5v916zl880f4cdlz-snapshot-descriptor-contracts-check.drv
+checking derivation checks.x86_64-linux.evidence-contracts...
+derivation evaluated to /nix/store/3k9ziszpr6gi5nrzgazrv73ma141dsrc-evidence-contracts-check.drv
+checking derivation checks.x86_64-linux.spacewasm-mvp-differential...
+derivation evaluated to /nix/store/sr9v9hn36fwwrq55npc1jd3nz42vmljl-spacewasm-mvp-differential-check.drv
+checking derivation checks.x86_64-linux.vm-determinism-drift-receipt...
+derivation evaluated to /nix/store/d4bv532myvbvfl3jxwrfyvi4y5grs7za-vm-determinism-drift-receipt-check.drv
+checking derivation checks.x86_64-linux.snapshot-replay-smoke...
+derivation evaluated to /nix/store/g9zndpabyw72wqcljdjb14jri3sam4sb-snapshot-replay-smoke-check.drv
+checking derivation checks.x86_64-linux.tigerstyle-policy-registry...
+derivation evaluated to /nix/store/y6j4w8055wqw5xvcnx98hk9xgr2gp9hk-octet-policy-registry-check.drv
+checking derivation checks.x86_64-linux.vm-cohort-adapter-octet-deny-all...
+derivation evaluated to /nix/store/xc89qcasggjshzfw288lzgnm7p0959sk-octet-consumer-check.drv
+checking derivation checks.x86_64-linux.snapshot-descriptor-octet-deny-all...
+derivation evaluated to /nix/store/cxl891lagihar0ah0y5kf6x057dw2cyw-octet-consumer-check.drv
+checking derivation checks.x86_64-linux.tigerstyle-chaoscontrol-focused...
+derivation evaluated to /nix/store/1x7rl8jmxkfzh850qykczq9khqjaxld1-octet-consumer-check.drv
+checking derivation checks.x86_64-linux.verified-logic-verus-proofs...
+derivation evaluated to /nix/store/fqz40hr70fmsssi5n8ijc3cz99lvafcq-verus-proofs.drv
+checking flake output 'apps'...
+checking app 'apps.x86_64-linux.default'...
+checking app 'apps.x86_64-linux.oci-intake'...
+checking app 'apps.x86_64-linux.guest-determinism-gate'...
+checking app 'apps.x86_64-linux.raft-accepted-verdict-dogfood'...
+checking app 'apps.x86_64-linux.redb-accepted-verdict-dogfood'...
+checking app 'apps.x86_64-linux.net-accepted-verdict-dogfood'...
+checking app 'apps.x86_64-linux.rust-workload-accepted-verdict-dogfood'...
+checking app 'apps.x86_64-linux.replay-readiness'...
+checking app 'apps.x86_64-linux.scaffold-rust-workload'...
+checking app 'apps.x86_64-linux.fresh-rust-workload-proof'...
+checking app 'apps.x86_64-linux.vm-determinism-matrix'...
+checking app 'apps.x86_64-linux.replay-readiness-summary'...
+checking app 'apps.x86_64-linux.replay-readiness-dashboard'...
+checking app 'apps.x86_64-linux.replay-readiness-triage'...
+checking app 'apps.x86_64-linux.replay-readiness-fleet-index'...
+checking app 'apps.x86_64-linux.replay-readiness-decision-receipt'...
+checking app 'apps.x86_64-linux.replay-readiness-scheduler-receipt'...
+checking app 'apps.x86_64-linux.in-process-simulator-receipt'...
+checking app 'apps.x86_64-linux.local-multi-hypervisor-kvm-smoke'...
+checking app 'apps.x86_64-linux.replay-readiness-readme-status'...
+checking app 'apps.x86_64-linux.rust-workload-local-report'...
+checking app 'apps.x86_64-linux.boot'...
+checking app 'apps.x86_64-linux.snapshot-demo'...
+checking app 'apps.x86_64-linux.explore'...
+checking app 'apps.x86_64-linux.explore-raft'...
+checking app 'apps.x86_64-linux.explore-redb'...
+checking app 'apps.x86_64-linux.explore-sdk'...
+checking app 'apps.x86_64-linux.explore-rust-workload'...
+checking app 'apps.x86_64-linux.check-kvm-release-matrix'...
+checking app 'apps.x86_64-linux.kvm-release-matrix'...
+checking app 'apps.x86_64-linux.vm-determinism-drift'...
+checking flake output 'devShells'...
+checking derivation devShells.x86_64-linux.default...
+derivation evaluated to /nix/store/x1kyl5ldx915q5xc722z2h6db7mj8v42-nix-shell.drv
+running 66 flake checks...
+building '/nix/store/8bygpr9mzgpk3lwp6r42fm7l24ql2g6f-chaoscontrol-deny-0.1.0.drv'...
+building '/nix/store/bqxkhnvmgjjb2112wccbhb5m6ij27557-chaoscontrol-deps-0.1.0.drv'...
+building '/nix/store/gjpnm7h24p87ga1jp9fk0qhwnd8dj19f-chaoscontrol-fmt-0.1.0.drv'...
+building '/nix/store/i9920vasv34vc02s8g6ysgn2rvbk9qnn-chaoscontrol-license-boundary.drv'...
+chaoscontrol-deny> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deny> Running phase: unpackPhase
+chaoscontrol-deny> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-deps> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deps> Running phase: unpackPhase
+chaoscontrol-deps> unpacking source archive /nix/store/vj85qcj0q0f2frlqncr2nabj02mqrkx6-source
+chaoscontrol-deps> source root is source
+chaoscontrol-deps> Running phase: patchPhase
+chaoscontrol-fmt> cargoVendorDir not set, will not automatically configure vendored sources
+chaoscontrol-fmt> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deps> Executing configureCargoCommonVars
+chaoscontrol-deps> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deny> source root is source
+chaoscontrol-deps> Running phase: configurePhase
+chaoscontrol-deps> will append /build/source/.cargo-home/config.toml with contents of /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/config.toml
+chaoscontrol-deps> default configurePhase, nothing to do
+chaoscontrol-deps> Running phase: buildPhase
+chaoscontrol-deps> +++ command cargo --version
+chaoscontrol-fmt> Running phase: unpackPhase
+chaoscontrol-fmt> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-deps> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-deps> +++ command cargo check --release --locked --all-targets
+chaoscontrol-deny> Running phase: patchPhase
+chaoscontrol-deny> Executing configureCargoCommonVars
+chaoscontrol-deny> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deny> Running phase: configurePhase
+chaoscontrol-deny> will append /build/source/.cargo-home/config.toml with contents of /nix/store/jakhr0biy2232q306zgrlayfc2hkls9n-vendor-cargo-deps/config.toml
+chaoscontrol-deny> default configurePhase, nothing to do
+chaoscontrol-deny> Running phase: buildPhase
+chaoscontrol-deny> +++ command cargo --version
+chaoscontrol-deny> cargo 1.92.0 (344c4567c 2025-10-21)
+chaoscontrol-deny> +++ command cargo --offline deny --locked check bans licenses sources
+chaoscontrol-fmt> source root is source
+chaoscontrol-fmt> Running phase: patchPhase
+chaoscontrol-fmt> Executing configureCargoCommonVars
+chaoscontrol-fmt> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-fmt> Running phase: configurePhase
+chaoscontrol-fmt> default configurePhase, nothing to do
+chaoscontrol-fmt> Running phase: buildPhase
+chaoscontrol-fmt> +++ command cargo --version
+chaoscontrol-fmt> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-fmt> +++ command cargo fmt -- --check
+chaoscontrol-deps>    Compiling libc v0.2.180
+chaoscontrol-deps>    Compiling proc-macro2 v1.0.106
+chaoscontrol-deps>    Compiling quote v1.0.44
+chaoscontrol-deps>    Compiling unicode-ident v1.0.24
+chaoscontrol-deps>    Compiling find-msvc-tools v0.1.9
+chaoscontrol-deny> bans ok, licenses ok, sources ok
+chaoscontrol-deny> Running phase: installPhase
+chaoscontrol-deny> Running phase: fixupPhase
+chaoscontrol-deny> shrinking RPATHs of ELF executables and libraries in /nix/store/0y4h8z8w6qg4nwk5kgxlsydchx2qxarb-chaoscontrol-deny-0.1.0
+chaoscontrol-deny> checking for references to /build/ in /nix/store/0y4h8z8w6qg4nwk5kgxlsydchx2qxarb-chaoscontrol-deny-0.1.0...
+chaoscontrol-deny> patching script interpreter paths in /nix/store/0y4h8z8w6qg4nwk5kgxlsydchx2qxarb-chaoscontrol-deny-0.1.0
+building '/nix/store/83kl614f3sb2xvcia542qrwb8j6l4p0g-wasm-encoder-0.220.1.drv'...
+chaoscontrol-deps>    Compiling shlex v1.3.0
+chaoscontrol-deps>     Checking cfg-if v1.0.4
+chaoscontrol-deps>    Compiling serde_core v1.0.228
+chaoscontrol-license-boundary> license boundary valid: 59 rules
+building '/nix/store/b1acrfdv8lwm4yhmaf13jz1pb6k1lmd5-chaoscontrol-protocol-observation-test-0.1.0.drv'...
+building '/nix/store/amxksssvn9rccfgc1krz6cyczc78h5ng-chaoscontrol-redb-guest-0.1.0.drv'...
+chaoscontrol-protocol-observation-test> Running phase: unpackPhase
+chaoscontrol-protocol-observation-test> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-protocol-observation-test> source root is source
+chaoscontrol-redb-guest> Running phase: unpackPhase
+chaoscontrol-redb-guest> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-protocol-observation-test> Running phase: patchPhase
+chaoscontrol-protocol-observation-test> Executing configureCargoCommonVars
+chaoscontrol-protocol-observation-test> decompressing cargo artifacts from /nix/store/6hs58mvsi6262n52vpqzlbxgyzgxaf0m-chaoscontrol-protocol-observation-deps-0.1.0/target.tar.zst to target
+chaoscontrol-deps>    Compiling syn v2.0.116
+chaoscontrol-redb-guest> source root is source
+chaoscontrol-protocol-observation-test> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-redb-guest> Running phase: patchPhase
+chaoscontrol-redb-guest> Executing configureCargoCommonVars
+chaoscontrol-redb-guest> decompressing cargo artifacts from /nix/store/mc2kmbf54randswz2smzj1ri9lc3r5b3-chaoscontrol-guest-deps-0.1.0/target.tar.zst to target
+chaoscontrol-protocol-observation-test> Running phase: configurePhase
+chaoscontrol-protocol-observation-test> will append /build/source/.cargo-home/config.toml with contents of /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/config.toml
+chaoscontrol-protocol-observation-test> default configurePhase, nothing to do
+chaoscontrol-protocol-observation-test> Running phase: buildPhase
+chaoscontrol-protocol-observation-test> +++ command cargo --version
+chaoscontrol-protocol-observation-test> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-protocol-observation-test> Running phase: checkPhase
+chaoscontrol-protocol-observation-test> +++ command cargo test --release -p chaoscontrol-protocol -p chaoscontrol-vmm -p chaoscontrol-explore --features chaoscontrol-protocol/std --test protocol_observation
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-snapshot-descriptor v0.1.0 (/build/source/crates/chaoscontrol-snapshot-descriptor)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-redb-guest> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-fmt> Running phase: ensureTargetDir
+chaoscontrol-fmt> Running phase: installPhase
+chaoscontrol-fmt> no previous artifacts found, compressing and installing full archive of target to /nix/store/j5d53gdir7dh3g1lgl92ly9cpwc3ns3n-chaoscontrol-fmt-0.1.0/target.tar.zst
+chaoscontrol-fmt> /*stdin*\            :  0.72%   (  10.0 KiB =>     74 B, /nix/store/j5d53gdir7dh3g1lgl92ly9cpwc3ns3n-chaoscontrol-fmt-0.1.0/target.tar.zst)
+chaoscontrol-fmt> Running phase: fixupPhase
+chaoscontrol-fmt> shrinking RPATHs of ELF executables and libraries in /nix/store/j5d53gdir7dh3g1lgl92ly9cpwc3ns3n-chaoscontrol-fmt-0.1.0
+chaoscontrol-fmt> checking for references to /build/ in /nix/store/j5d53gdir7dh3g1lgl92ly9cpwc3ns3n-chaoscontrol-fmt-0.1.0...
+chaoscontrol-redb-guest> Running phase: configurePhase
+chaoscontrol-redb-guest> will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+chaoscontrol-redb-guest> default configurePhase, nothing to do
+chaoscontrol-redb-guest> Running phase: buildPhase
+chaoscontrol-fmt> patching script interpreter paths in /nix/store/j5d53gdir7dh3g1lgl92ly9cpwc3ns3n-chaoscontrol-fmt-0.1.0
+chaoscontrol-deps>    Compiling jobserver v0.1.34
+chaoscontrol-redb-guest> +++ command cargo --version
+chaoscontrol-redb-guest> cargo 1.98.0 (797e8a9bc 2026-08-05)
+building '/nix/store/ik0pbqyfk09glzvlg6xb30la50nnjvvl-chaoscontrol-nickel-cohort-exact.drv'...
+chaoscontrol-deps>    Compiling serde v1.0.228
+chaoscontrol-deps>    Compiling cc v1.2.56
+chaoscontrol-deps>    Compiling zmij v1.0.21
+chaoscontrol-redb-guest> +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-redb-guest --target x86_64-unknown-linux-musl
+chaoscontrol-redb-guest>    Compiling syn v2.0.116
+chaoscontrol-redb-guest>    Compiling rand_chacha v0.3.1
+chaoscontrol-redb-guest>    Compiling redb v3.1.1
+chaoscontrol-deps>     Checking itoa v1.0.17
+chaoscontrol-deps>     Checking memchr v2.8.0
+chaoscontrol-redb-guest>    Compiling rand v0.8.6
+chaoscontrol-deps>     Checking arrayvec v0.7.8
+building '/nix/store/6wwlwmfv71c8060q84sczzd2x0vzb2ih-chaoscontrol-rust-workload-guest-0.1.0.drv'...
+chaoscontrol-deps>     Checking constant_time_eq v0.3.1
+chaoscontrol-rust-workload-guest> Running phase: unpackPhase
+chaoscontrol-rust-workload-guest> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-deps>     Checking arrayref v0.3.9
+chaoscontrol-deps>    Compiling serde_json v1.0.149
+chaoscontrol-rust-workload-guest> source root is source
+chaoscontrol-rust-workload-guest> Running phase: patchPhase
+chaoscontrol-rust-workload-guest> Executing configureCargoCommonVars
+chaoscontrol-rust-workload-guest> decompressing cargo artifacts from /nix/store/mc2kmbf54randswz2smzj1ri9lc3r5b3-chaoscontrol-guest-deps-0.1.0/target.tar.zst to target
+chaoscontrol-deps>    Compiling zerocopy v0.8.39
+chaoscontrol-rust-workload-guest> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-rust-workload-guest> Running phase: configurePhase
+chaoscontrol-rust-workload-guest> will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+chaoscontrol-rust-workload-guest> default configurePhase, nothing to do
+chaoscontrol-rust-workload-guest> Running phase: buildPhase
+chaoscontrol-rust-workload-guest> +++ command cargo --version
+chaoscontrol-rust-workload-guest> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-rust-workload-guest> +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-rust-workload-guest --target x86_64-unknown-linux-musl
+chaoscontrol-deps>     Checking bitflags v2.11.0
+chaoscontrol-rust-workload-guest>    Compiling syn v2.0.116
+chaoscontrol-rust-workload-guest>    Compiling rand_chacha v0.3.1
+chaoscontrol-deps>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-deps>     Checking getrandom v0.2.17
+chaoscontrol-rust-workload-guest>    Compiling rand v0.8.6
+chaoscontrol-deps>    Compiling blake3 v1.8.2
+chaoscontrol-deps>     Checking rand_core v0.6.4
+chaoscontrol-deps>    Compiling heck v0.5.0
+chaoscontrol-deps>    Compiling thiserror v2.0.18
+chaoscontrol-deps>     Checking log v0.4.29
+chaoscontrol-redb-guest>    Compiling serde_derive v1.0.228
+chaoscontrol-redb-guest>    Compiling linkme-impl v0.3.35
+chaoscontrol-deps>     Checking byteorder v1.5.0
+chaoscontrol-deps>     Checking bitflags v1.3.2
+chaoscontrol-deps>     Checking regex-syntax v0.8.9
+chaoscontrol-deps>     Checking utf8parse v0.2.2
+chaoscontrol-deps>     Checking anstyle-parse v0.2.7
+chaoscontrol-deps>     Checking aho-corasick v1.1.4
+chaoscontrol-redb-guest>    Compiling linkme v0.3.35
+chaoscontrol-deps>     Checking colorchoice v1.0.4
+chaoscontrol-deps>     Checking anstyle-query v1.1.5
+chaoscontrol-deps>    Compiling serde_derive v1.0.228
+chaoscontrol-deps>    Compiling zerocopy-derive v0.8.39
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-replay-evidence-core v0.1.0 (/build/source/crates/chaoscontrol-replay-evidence-core)
+chaoscontrol-rust-workload-guest>    Compiling serde_derive v1.0.228
+chaoscontrol-rust-workload-guest>    Compiling linkme-impl v0.3.35
+chaoscontrol-deps>    Compiling thiserror-impl v2.0.18
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-rust-workload-guest>    Compiling linkme v0.3.35
+chaoscontrol-deps>    Compiling snafu-derive v0.8.9
+chaoscontrol-redb-guest>    Compiling serde v1.0.228
+chaoscontrol-deps>     Checking anstyle v1.0.13
+chaoscontrol-deps>     Checking is_terminal_polyfill v1.70.2
+chaoscontrol-deps>     Checking anstream v0.6.21
+chaoscontrol-deps>     Checking regex-automata v0.4.14
+chaoscontrol-redb-guest>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-deps>     Checking snafu v0.8.9
+chaoscontrol-rust-workload-guest>    Compiling serde v1.0.228
+chaoscontrol-deps>    Compiling zerocopy-derive v0.7.35
+chaoscontrol-rust-workload-guest>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-deps>     Checking zerocopy v0.7.35
+chaoscontrol-deps>     Checking vmm-sys-util v0.12.1
+chaoscontrol-deps>    Compiling kvm-ioctls v0.19.1
+chaoscontrol-deps>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-deps>     Checking jiff v0.2.20
+chaoscontrol-deps>     Checking kvm-bindings v0.10.0
+chaoscontrol-deps>     Checking regex v1.12.3
+chaoscontrol-deps>     Checking env_filter v1.0.0
+chaoscontrol-deps>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-deps>     Checking vm-memory v0.17.1
+chaoscontrol-deps>    Compiling rustix v1.1.3
+chaoscontrol-deps>     Checking ppv-lite86 v0.2.21
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-deps>     Checking linux-raw-sys v0.11.0
+chaoscontrol-deps>    Compiling crc32fast v1.5.0
+chaoscontrol-deps>     Checking rand_chacha v0.3.1
+chaoscontrol-deps>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-redb-guest>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-deps>     Checking rand v0.8.6
+chaoscontrol-deps>     Checking linux-loader v0.13.2
+chaoscontrol-deps>     Checking vm-superio v0.8.1
+chaoscontrol-deps>     Checking once_cell v1.21.3
+chaoscontrol-deps>    Compiling getrandom v0.3.4
+chaoscontrol-deps>     Checking fastrand v2.3.0
+chaoscontrol-deps>    Compiling cfg_aliases v0.2.1
+chaoscontrol-deps>    Compiling version_check v0.9.5
+chaoscontrol-deps>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-deps>    Compiling generic-array v0.14.7
+chaoscontrol-deps>     Checking typenum v1.20.0
+chaoscontrol-rust-workload-guest>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-redb-guest>    Compiling chaoscontrol-redb-guest v0.1.0 (/build/source/crates/chaoscontrol-redb-guest)
+chaoscontrol-deps>    Compiling io-lifetimes v2.0.4
+chaoscontrol-deps>    Compiling io-lifetimes v3.0.1
+chaoscontrol-deps>     Checking env_logger v0.11.9
+chaoscontrol-deps>    Compiling io-extras v0.19.0
+chaoscontrol-deps>    Compiling cap-primitives v4.0.2
+chaoscontrol-deps>    Compiling cap-std v4.0.2
+chaoscontrol-deps>     Checking maybe-owned v0.3.4
+chaoscontrol-deps>     Checking ipnet v2.12.1
+chaoscontrol-deps>     Checking ambient-authority v0.0.2
+chaoscontrol-deps>     Checking crypto-common v0.1.7
+chaoscontrol-deps>     Checking block-buffer v0.10.4
+chaoscontrol-deps>    Compiling nix v0.30.1
+chaoscontrol-deps>     Checking tempfile v3.25.0
+chaoscontrol-deps>     Checking rustix-linux-procfs v0.1.1
+chaoscontrol-deps>     Checking fs-set-times v0.20.3
+chaoscontrol-deps>     Checking digest v0.10.7
+chaoscontrol-deps>    Compiling chaoscontrol-replay-evidence-core v0.1.0 (/build/source/crates/chaoscontrol-replay-evidence-core)
+chaoscontrol-deps>     Checking cpufeatures v0.2.17
+chaoscontrol-deps>    Compiling chaoscontrol-snapshot-descriptor v0.1.0 (/build/source/crates/chaoscontrol-snapshot-descriptor)
+chaoscontrol-deps>    Compiling cap-fs-ext v4.0.2
+chaoscontrol-deps>     Checking sha2 v0.10.9
+chaoscontrol-deps>     Checking xattr v1.6.1
+chaoscontrol-deps>     Checking filetime v0.2.29
+chaoscontrol-deps>    Compiling chaoscontrol-evidence v0.1.0 (/build/source/crates/chaoscontrol-evidence)
+chaoscontrol-deps>     Checking bounded-exec-core v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+chaoscontrol-deps>     Checking bounded-tree-core v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+chaoscontrol-deps>     Checking tar v0.4.46
+chaoscontrol-deps>     Checking bounded-tree-cap v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+chaoscontrol-deps>    Compiling linkme-impl v0.3.35
+chaoscontrol-deps>     Checking bounded-exec v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+chaoscontrol-deps>    Compiling linkme v0.3.35
+chaoscontrol-deps>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-deps>    Compiling pkg-config v0.3.32
+chaoscontrol-deps>    Compiling clap_derive v4.5.55
+chaoscontrol-deps>     Checking clap_lex v1.0.0
+chaoscontrol-deps>     Checking strsim v0.11.1
+chaoscontrol-deps>     Checking clap_builder v4.5.59
+chaoscontrol-deps>     Checking pin-project-lite v0.2.16
+chaoscontrol-deps>     Checking futures-core v0.3.32
+chaoscontrol-deps>     Checking bytes v1.11.1
+chaoscontrol-deps>    Compiling autocfg v1.5.0
+chaoscontrol-deps>     Checking http v1.4.0
+chaoscontrol-deps>    Compiling nix v0.31.1
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-deps>    Compiling zstd-sys v2.0.16+zstd.1.5.7
+chaoscontrol-rust-workload-guest>    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+chaoscontrol-deps>    Compiling tokio-macros v2.6.1
+chaoscontrol-deps>     Checking http-body v1.0.1
+chaoscontrol-deps>     Checking socket2 v0.6.3
+chaoscontrol-deps>     Checking mio v1.1.1
+chaoscontrol-redb-guest>     Finished `release` profile [optimized] target(s) in 12.25s
+chaoscontrol-redb-guest> searching for bins/libs to install from cargo build log at cargoBuildLogtK5G.json
+chaoscontrol-deps>     Checking clap v4.5.59
+chaoscontrol-deps>    Compiling httparse v1.10.1
+chaoscontrol-deps>     Checking tower-service v0.3.3
+chaoscontrol-rust-workload-guest>     Finished `release` profile [optimized] target(s) in 11.29s
+chaoscontrol-rust-workload-guest> searching for bins/libs to install from cargo build log at cargoBuildLog1Ksx.json
+chaoscontrol-redb-guest> installing /build/source/target/x86_64-unknown-linux-musl/release/chaoscontrol-redb-guest in postBuildInstallFromCargoBuildLogOutTempcv2/bin
+chaoscontrol-deps>     Checking tokio v1.50.0
+chaoscontrol-deps>     Checking tracing-core v0.1.36
+chaoscontrol-rust-workload-guest> installing /build/source/target/x86_64-unknown-linux-musl/release/chaoscontrol-rust-workload-guest in postBuildInstallFromCargoBuildLogOutTempG5H/bin
+chaoscontrol-rust-workload-guest> searching for bins/libs complete
+chaoscontrol-redb-guest> searching for bins/libs complete
+chaoscontrol-redb-guest> Running phase: checkPhase
+chaoscontrol-rust-workload-guest> Running phase: checkPhase
+chaoscontrol-rust-workload-guest> +++ command cargo test --release -p chaoscontrol-rust-workload-guest --target x86_64-unknown-linux-musl
+chaoscontrol-redb-guest> +++ command cargo test --release -p chaoscontrol-redb-guest --target x86_64-unknown-linux-musl
+chaoscontrol-rust-workload-guest>    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+chaoscontrol-redb-guest>    Compiling chaoscontrol-redb-guest v0.1.0 (/build/source/crates/chaoscontrol-redb-guest)
+chaoscontrol-deps>     Checking tower-layer v0.3.3
+chaoscontrol-deps>     Checking tracing v0.1.44
+chaoscontrol-rust-workload-guest>     Finished `release` profile [optimized] target(s) in 0.42s
+chaoscontrol-rust-workload-guest>      Running unittests src/main.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_rust_workload_guest-79917795b0a3ed32)
+chaoscontrol-rust-workload-guest> 
+chaoscontrol-rust-workload-guest> running 2 tests
+chaoscontrol-rust-workload-guest> test tests::parses_snapshot_probe_cmdline_values ... ok
+chaoscontrol-rust-workload-guest> test tests::snapshot_probe_is_opt_in_and_defaults_fail_after ... ok
+chaoscontrol-rust-workload-guest> 
+chaoscontrol-rust-workload-guest> test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-rust-workload-guest> 
+chaoscontrol-rust-workload-guest> Running phase: installPhase
+chaoscontrol-rust-workload-guest> actually installing contents of postBuildInstallFromCargoBuildLogOutTempG5H to /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0
+chaoscontrol-rust-workload-guest> stripping references to Rust toolchain
+chaoscontrol-rust-workload-guest> Rust toolchain at: /nix/store/jvzhlcnfzzhhkk8ya093c4ndnig1nb7h-rust-default-1.98.0
+chaoscontrol-rust-workload-guest> stripping Rust toolchain references done
+chaoscontrol-rust-workload-guest> stripping references to cargoVendorDir from:
+chaoscontrol-rust-workload-guest> /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0/bin/chaoscontrol-rust-workload-guest
+chaoscontrol-rust-workload-guest> stripping references done
+chaoscontrol-rust-workload-guest> Running phase: fixupPhase
+chaoscontrol-rust-workload-guest> shrinking RPATHs of ELF executables and libraries in /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0
+chaoscontrol-rust-workload-guest> shrinking /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0/bin/chaoscontrol-rust-workload-guest
+chaoscontrol-rust-workload-guest> checking for references to /build/ in /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0...
+chaoscontrol-rust-workload-guest> patching script interpreter paths in /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0
+chaoscontrol-rust-workload-guest> stripping (with command strip and flags -S -p) in  /nix/store/r0lwym4nlj1w0wwg7d2l105z8qkhknz9-chaoscontrol-rust-workload-guest-0.1.0/bin
+building '/nix/store/zw9ia4rrzzlb4p1rypgaga6l64s3s4h1-chaoscontrol-net-guest-0.1.0.drv'...
+chaoscontrol-deps>    Compiling libbpf-sys v1.6.3+v1.6.3
+chaoscontrol-redb-guest>     Finished `release` profile [optimized] target(s) in 0.86s
+chaoscontrol-redb-guest>      Running unittests src/lib.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_redb_guest-3dfe068beaf5fa8f)
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> running 9 tests
+chaoscontrol-redb-guest> test tests::make_value_deterministic ... ok
+chaoscontrol-redb-guest> test tests::oracle_insert_get_delete ... ok
+chaoscontrol-redb-guest> test tests::make_value_lengths ... ok
+chaoscontrol-redb-guest> test tests::op_from_index_covers_all ... ok
+chaoscontrol-redb-guest> test tests::oracle_pick_existing_key ... ok
+chaoscontrol-redb-guest> test tests::oracle_range ... ok
+chaoscontrol-redb-guest> test tests::oracle_restore_without_snapshot ... ok
+chaoscontrol-redb-guest> test tests::oracle_snapshot_restore ... ok
+chaoscontrol-net-guest> Running phase: unpackPhase
+chaoscontrol-net-guest> unpacking source archive /nix/store/rpzzm6vb34d3fnjwripnn585shrv5r02-source
+chaoscontrol-net-guest> source root is source
+chaoscontrol-redb-guest> test tests::redb_local_assertion_harness_covers_readiness_gap_conditions ... ok
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest>      Running unittests src/main.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_redb_guest-1d7cc134821a2da3)
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> running 0 tests
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest>    Doc-tests chaoscontrol_redb_guest
+chaoscontrol-net-guest> Running phase: patchPhase
+chaoscontrol-net-guest> Executing configureCargoCommonVars
+chaoscontrol-net-guest> decompressing cargo artifacts from /nix/store/mc2kmbf54randswz2smzj1ri9lc3r5b3-chaoscontrol-guest-deps-0.1.0/target.tar.zst to target
+chaoscontrol-deps>     Checking futures-channel v0.3.32
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> running 0 tests
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-redb-guest> 
+chaoscontrol-redb-guest> Running phase: installPhase
+chaoscontrol-redb-guest> actually installing contents of postBuildInstallFromCargoBuildLogOutTempcv2 to /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0
+chaoscontrol-redb-guest> stripping references to Rust toolchain
+chaoscontrol-redb-guest> Rust toolchain at: /nix/store/jvzhlcnfzzhhkk8ya093c4ndnig1nb7h-rust-default-1.98.0
+chaoscontrol-redb-guest> stripping Rust toolchain references done
+chaoscontrol-redb-guest> stripping references to cargoVendorDir from:
+chaoscontrol-redb-guest> /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0/bin/chaoscontrol-redb-guest
+chaoscontrol-deps>    Compiling vsprintf v2.0.0
+chaoscontrol-net-guest> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-net-guest> Running phase: configurePhase
+chaoscontrol-net-guest> will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+chaoscontrol-net-guest> default configurePhase, nothing to do
+chaoscontrol-net-guest> Running phase: buildPhase
+chaoscontrol-net-guest> +++ command cargo --version
+chaoscontrol-net-guest> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-net-guest> +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-net-guest --target x86_64-unknown-linux-musl
+chaoscontrol-deps>     Checking sync_wrapper v1.0.2
+chaoscontrol-deps>     Checking atomic-waker v1.1.2
+chaoscontrol-deps>     Checking futures-task v0.3.32
+chaoscontrol-redb-guest> stripping references done
+chaoscontrol-redb-guest> Running phase: fixupPhase
+chaoscontrol-net-guest>    Compiling syn v2.0.116
+chaoscontrol-net-guest>    Compiling rand_chacha v0.3.1
+chaoscontrol-net-guest>    Compiling chaoscontrol-guest-net v0.1.0 (/build/source/crates/chaoscontrol-guest-net)
+chaoscontrol-redb-guest> shrinking RPATHs of ELF executables and libraries in /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0
+chaoscontrol-redb-guest> shrinking /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0/bin/chaoscontrol-redb-guest
+chaoscontrol-redb-guest> checking for references to /build/ in /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0...
+chaoscontrol-redb-guest> patching script interpreter paths in /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0
+chaoscontrol-redb-guest> stripping (with command strip and flags -S -p) in  /nix/store/bb7bi5zxb9a666cfxzp914zxfk371wgx-chaoscontrol-redb-guest-0.1.0/bin
+building '/nix/store/ywi3pi50b08aqkll2xmn686hwx14p4cj-chaoscontrol-vm-cohort-adapter-octet-workspace.drv'...
+chaoscontrol-deps>    Compiling zstd-safe v7.2.4
+chaoscontrol-deps>     Checking slab v0.4.12
+chaoscontrol-deps>     Checking pin-utils v0.1.0
+chaoscontrol-net-guest>    Compiling rand v0.8.6
+chaoscontrol-deps>     Checking httpdate v1.0.3
+building '/nix/store/bpzmnwc6gimy7z4vwk92z88ahc6c8a14-chaoscontrol-vm-cohort-adoption-contract.drv'...
+chaoscontrol-deps>     Checking percent-encoding v2.3.2
+chaoscontrol-deps>     Checking smallvec v1.15.1
+building '/nix/store/xc89qcasggjshzfw288lzgnm7p0959sk-octet-consumer-check.drv'...
+chaoscontrol-deps>     Checking form_urlencoded v1.2.2
+chaoscontrol-deps>     Checking futures-util v0.3.32
+chaoscontrol-deps>     Checking http-body-util v0.1.3
+chaoscontrol-deps>     Checking hyper v1.8.1
+chaoscontrol-deps>     Checking half v2.7.1
+chaoscontrol-deps>     Checking ciborium-io v0.2.2
+chaoscontrol-deps>     Checking mime v0.3.17
+chaoscontrol-deps>     Checking ryu v1.0.23
+chaoscontrol-deps>     Checking serde_urlencoded v0.7.1
+octet-consumer-check>    Compiling proc-macro2 v1.0.107
+octet-consumer-check>    Compiling unicode-ident v1.0.24
+octet-consumer-check>    Compiling quote v1.0.47
+octet-consumer-check>    Compiling libc v0.2.189
+octet-consumer-check>    Compiling serde_core v1.0.229
+octet-consumer-check>    Compiling serde v1.0.229
+octet-consumer-check>     Checking cfg-if v1.0.4
+octet-consumer-check>     Checking memchr v2.8.3
+octet-consumer-check>    Compiling find-msvc-tools v0.1.11
+octet-consumer-check>    Compiling shlex v2.0.1
+octet-consumer-check>    Compiling zmij v1.0.23
+octet-consumer-check>     Checking constant_time_eq v0.4.2
+octet-consumer-check>     Checking arrayvec v0.7.8
+octet-consumer-check>    Compiling serde_json v1.0.151
+octet-consumer-check>     Checking cpufeatures v0.3.0
+octet-consumer-check>    Compiling zerocopy v0.8.56
+octet-consumer-check>     Checking itoa v1.0.18
+octet-consumer-check>     Checking byteorder v1.5.0
+octet-consumer-check>     Checking bitflags v1.3.2
+octet-consumer-check>     Checking bitflags v2.13.1
+octet-consumer-check>    Compiling thiserror v2.0.20
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling kvm-ioctls v0.19.1
+octet-consumer-check>     Checking regex-syntax v0.8.11
+octet-consumer-check>    Compiling rustix v1.1.4
+octet-consumer-check>     Checking linux-raw-sys v0.12.1
+octet-consumer-check>     Checking utf8parse v0.2.2
+octet-consumer-check>     Checking jiff-core v0.1.0
+octet-consumer-check>     Checking log v0.4.34
+octet-consumer-check>     Checking anstyle v1.0.14
+octet-consumer-check>    Compiling crc32fast v1.5.1
+octet-consumer-check>     Checking is_terminal_polyfill v1.70.2
+octet-consumer-check>     Checking anstyle-query v1.1.5
+octet-consumer-check>     Checking colorchoice v1.0.5
+octet-consumer-check>    Compiling cpufeatures v0.3.0
+octet-consumer-check>    Compiling cfg_if v1.0.4
+octet-consumer-check>     Checking vm-superio v0.8.1
+octet-consumer-check>    Compiling bitflags v1.3.2
+octet-consumer-check>    Compiling is_terminal_polyfill v1.70.2
+octet-consumer-check>    Compiling utf8parse v0.2.2
+octet-consumer-check>     Checking anstyle-parse v1.0.0
+octet-consumer-check>    Compiling constant_time_eq v0.4.2
+octet-consumer-check>    Compiling unicode_ident v1.0.24
+octet-consumer-check>    Compiling anstyle_query v1.1.5
+octet-consumer-check>    Compiling itoa v1.0.18
+octet-consumer-check>    Compiling cc v1.4.4
+octet-consumer-check>    Compiling colorchoice v1.0.5
+octet-consumer-check>    Compiling byteorder v1.5.0
+octet-consumer-check>    Compiling shlex v2.0.1
+octet-consumer-check>    Compiling bitflags v2.13.1
+octet-consumer-check>    Compiling log v0.4.34
+octet-consumer-check>    Compiling anstyle v1.0.14
+octet-consumer-check>    Compiling arrayvec v0.7.8
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling find_msvc_tools v0.1.11
+chaoscontrol-deps>     Checking axum-core v0.5.6
+octet-consumer-check>     Checking anstream v1.0.0
+octet-consumer-check>    Compiling anstyle_parse v1.0.0
+chaoscontrol-deps>     Checking hyper-util v0.1.20
+octet-consumer-check>    Compiling vm_superio v0.8.1
+octet-consumer-check>    Compiling build-script-build v1.1.4
+octet-consumer-check>    Compiling build-script-build v1.0.23
+octet-consumer-check>    Compiling build-script-build v1.0.47
+octet-consumer-check>    Compiling build-script-build v0.19.1
+octet-consumer-check>    Compiling build-script-build v1.0.107
+octet-consumer-check>    Compiling build-script-build v1.0.229
+octet-consumer-check>    Compiling build-script-build v0.2.189
+octet-consumer-check>    Compiling build-script-build v2.0.20
+octet-consumer-check>    Compiling build-script-build v1.5.1
+octet-consumer-check>    Compiling build-script-build v1.0.151
+octet-consumer-check>    Compiling build-script-build v1.0.229
+octet-consumer-check>    Compiling build-script-build v0.8.56
+chaoscontrol-net-guest>    Compiling serde_derive v1.0.228
+chaoscontrol-net-guest>    Compiling linkme-impl v0.3.35
+octet-consumer-check>     Checking aho-corasick v1.1.5
+octet-consumer-check>    Compiling memchr v2.8.3
+octet-consumer-check>    Compiling crc32fast v1.5.1
+octet-consumer-check>    Compiling anstream v1.0.0
+octet-consumer-check>    Compiling linux_raw_sys v0.12.1
+chaoscontrol-deps>     Checking ciborium-ll v0.2.2
+octet-consumer-check>    Compiling zmij v1.0.23
+chaoscontrol-deps>    Compiling num-traits v0.2.19
+chaoscontrol-deps>    Compiling async-stream-impl v0.3.6
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-evidence v0.1.0 (/build/source/crates/chaoscontrol-evidence)
+octet-consumer-check>     Checking jiff v0.2.35
+octet-consumer-check>    Compiling jiff_core v0.1.0
+octet-consumer-check>    Compiling proc_macro2 v1.0.107
+octet-consumer-check>    Compiling syn v3.0.4
+octet-consumer-check>    Compiling syn v2.0.119
+octet-consumer-check>    Compiling quote v1.0.47
+chaoscontrol-deps>     Checking tower v0.5.3
+chaoscontrol-net-guest>    Compiling linkme v0.3.35
+octet-consumer-check>    Compiling cc v1.4.4
+octet-consumer-check>    Compiling blake3 v1.8.7
+chaoscontrol-deps>     Checking serde_path_to_error v0.1.20
+octet-consumer-check>    Compiling aho_corasick v1.1.5
+octet-consumer-check>    Compiling libc v0.2.189
+octet-consumer-check>     Checking getrandom v0.2.17
+octet-consumer-check>     Checking vmm-sys-util v0.12.1
+octet-consumer-check>     Checking memmap2 v0.9.11
+octet-consumer-check>    Compiling build-script-build v1.8.7
+octet-consumer-check>     Checking rand_core v0.6.4
+octet-consumer-check>    Compiling getrandom v0.2.17
+chaoscontrol-deps>     Checking matchit v0.8.4
+octet-consumer-check>    Compiling memmap2 v0.9.11
+octet-consumer-check>    Compiling rand_core v0.6.4
+chaoscontrol-deps>    Compiling anyhow v1.0.101
+octet-consumer-check>    Compiling vmm_sys_util v0.12.1
+chaoscontrol-deps>    Compiling chaoscontrol-explore v0.1.0 (/build/source/crates/chaoscontrol-explore)
+chaoscontrol-deps>     Checking axum v0.8.8
+chaoscontrol-deps>     Checking async-stream v0.3.6
+octet-consumer-check>    Compiling regex_syntax v0.8.11
+octet-consumer-check>     Checking regex-automata v0.4.18
+chaoscontrol-deps>     Checking ciborium v0.2.2
+octet-consumer-check>    Compiling blake3 v1.8.7
+octet-consumer-check>    Compiling rustix v1.1.4
+octet-consumer-check>     Checking memfd v0.6.5
+chaoscontrol-deps>     Checking tower-http v0.6.8
+octet-consumer-check>    Compiling memfd v0.6.5
+octet-consumer-check>    Compiling serde_core v1.0.229
+chaoscontrol-deps>    Compiling camino v1.2.2
+octet-consumer-check>    Compiling syn v3.0.4
+octet-consumer-check>    Compiling serde_derive v1.0.229
+octet-consumer-check>    Compiling thiserror-impl v2.0.20
+octet-consumer-check>    Compiling serde_json v1.0.151
+octet-consumer-check>    Compiling jiff v0.2.35
+chaoscontrol-net-guest>    Compiling serde v1.0.228
+octet-consumer-check>    Compiling regex_automata v0.4.18
+octet-consumer-check>     Checking regex v1.13.1
+octet-consumer-check>    Compiling thiserror_impl v2.0.20
+octet-consumer-check>    Compiling thiserror v2.0.20
+octet-consumer-check>     Checking vm-memory v0.17.1
+octet-consumer-check>    Compiling syn v2.0.119
+octet-consumer-check>    Compiling zerocopy-derive v0.7.35
+octet-consumer-check>    Compiling snafu-derive v0.8.9
+chaoscontrol-net-guest>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+octet-consumer-check>    Compiling regex v1.13.1
+octet-consumer-check>     Checking env_filter v2.0.0
+octet-consumer-check>    Compiling zerocopy v0.8.56
+octet-consumer-check>     Checking ppv-lite86 v0.2.21
+octet-consumer-check>     Checking env_logger v0.11.11
+octet-consumer-check>    Compiling env_filter v2.0.0
+octet-consumer-check>     Checking linux-loader v0.13.2
+octet-consumer-check>    Compiling vm_memory v0.17.1
+octet-consumer-check>    Compiling env_logger v0.11.11
+octet-consumer-check>    Compiling ppv_lite86 v0.2.21
+octet-consumer-check>    Compiling zerocopy_derive v0.7.35
+octet-consumer-check>     Checking zerocopy v0.7.35
+octet-consumer-check>    Compiling linux_loader v0.13.2
+octet-consumer-check>    Compiling zerocopy v0.7.35
+octet-consumer-check>    Compiling snafu_derive v0.8.9
+octet-consumer-check>     Checking snafu v0.8.9
+octet-consumer-check>    Compiling serde_derive v1.0.229
+octet-consumer-check>    Compiling snafu v0.8.9
+chaoscontrol-deps>    Compiling iana-time-zone v0.1.65
+octet-consumer-check>    Compiling serde v1.0.229
+octet-consumer-check>     Checking kvm-bindings v0.10.0
+octet-consumer-check>     Checking rand_chacha v0.3.1
+octet-consumer-check>     Checking chaoscontrol-protocol v0.1.0 (/nix/store/g0vh4skcd457rvck9ndj7yqi40hrn1pr-source/crates/chaoscontrol-protocol)
+octet-consumer-check>     Checking vm-cohort-core v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-core)
+chaoscontrol-deps>    Compiling lazy_static v1.5.0
+chaoscontrol-deps>    Compiling sharded-slab v0.1.7
+octet-consumer-check>    Compiling rand_chacha v0.3.1
+octet-consumer-check>     Checking rand v0.8.8
+octet-consumer-check>    Compiling kvm_bindings v0.10.0
+octet-consumer-check>    Compiling rand v0.8.8
+octet-consumer-check>    Compiling kvm_ioctls v0.19.1
+octet-consumer-check>    Compiling vm_cohort_core v0.1.0
+octet-consumer-check>     Checking vm-cohort-kvm v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-kvm)
+octet-consumer-check>    Compiling vm_cohort_kvm v0.1.0
+octet-consumer-check>     Checking vm-cohort-conformance v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-conformance)
+chaoscontrol-deps>    Compiling chrono v0.4.43
+octet-consumer-check>    Compiling vm_cohort_conformance v0.1.0
+chaoscontrol-net-guest>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+octet-consumer-check>    Compiling chaoscontrol_protocol v0.1.0
+octet-consumer-check>     Checking chaoscontrol-fault v0.1.0 (/nix/store/g0vh4skcd457rvck9ndj7yqi40hrn1pr-source/crates/chaoscontrol-fault)
+chaoscontrol-deps>    Compiling cargo-platform v0.1.9
+chaoscontrol-deps>    Compiling semver v1.0.27
+chaoscontrol-deps>    Compiling thread_local v1.1.9
+chaoscontrol-deps>    Compiling nu-ansi-term v0.50.3
+chaoscontrol-deps>    Compiling tracing-subscriber v0.3.22
+chaoscontrol-deps>    Compiling cargo_metadata v0.19.2
+chaoscontrol-deps>    Compiling libbpf-rs v0.26.0
+chaoscontrol-deps>    Compiling memmap2 v0.9.10
+chaoscontrol-deps>    Compiling libbpf-cargo v0.26.0
+chaoscontrol-net-guest>    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+octet-consumer-check>    Compiling chaoscontrol_fault v0.1.0
+octet-consumer-check>     Checking chaoscontrol-sim-core v0.1.0 (/nix/store/g0vh4skcd457rvck9ndj7yqi40hrn1pr-source/crates/chaoscontrol-sim-core)
+chaoscontrol-deps>    Compiling heapless v0.8.0
+chaoscontrol-net-guest>     Finished `release` profile [optimized] target(s) in 11.66s
+chaoscontrol-net-guest> searching for bins/libs to install from cargo build log at cargoBuildLogKqcO.json
+chaoscontrol-deps>    Compiling chaoscontrol-trace v0.1.0 (/build/source/crates/chaoscontrol-trace)
+chaoscontrol-deps>     Checking rand_core v0.9.5
+chaoscontrol-net-guest> installing /build/source/target/x86_64-unknown-linux-musl/release/chaoscontrol-net-guest in postBuildInstallFromCargoBuildLogOutTempLIQ/bin
+chaoscontrol-deps>     Checking hash32 v0.3.1
+chaoscontrol-deps>     Checking wait-timeout v0.2.1
+chaoscontrol-deps>    Compiling redb v3.1.1
+chaoscontrol-deps>     Checking stable_deref_trait v1.2.1
+chaoscontrol-deps>    Compiling smoltcp v0.12.0
+chaoscontrol-net-guest> searching for bins/libs complete
+chaoscontrol-net-guest> Running phase: checkPhase
+chaoscontrol-net-guest> +++ command cargo test --release -p chaoscontrol-net-guest --target x86_64-unknown-linux-musl
+chaoscontrol-net-guest>    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-redb-guest v0.1.0 (/build/source/crates/chaoscontrol-redb-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-guest-net v0.1.0 (/build/source/crates/chaoscontrol-guest-net)
+chaoscontrol-deps>    Compiling chaoscontrol-replay v0.1.0 (/build/source/crates/chaoscontrol-replay)
+chaoscontrol-net-guest>     Finished `release` profile [optimized] target(s) in 0.35s
+chaoscontrol-deps>     Checking managed v0.8.0
+chaoscontrol-net-guest>      Running unittests src/main.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_net_guest-4124244807b17a60)
+chaoscontrol-net-guest> 
+chaoscontrol-net-guest> running 2 tests
+chaoscontrol-net-guest> test tests::snapshot_probe_has_an_explicit_failure_boundary ... ok
+chaoscontrol-net-guest> test tests::parses_cmdline_value ... ok
+chaoscontrol-net-guest> 
+chaoscontrol-net-guest> test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-net-guest> 
+chaoscontrol-net-guest> Running phase: installPhase
+chaoscontrol-net-guest> actually installing contents of postBuildInstallFromCargoBuildLogOutTempLIQ to /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0
+chaoscontrol-net-guest> stripping references to Rust toolchain
+chaoscontrol-net-guest> Rust toolchain at: /nix/store/jvzhlcnfzzhhkk8ya093c4ndnig1nb7h-rust-default-1.98.0
+chaoscontrol-net-guest> stripping Rust toolchain references done
+chaoscontrol-net-guest> stripping references to cargoVendorDir from:
+chaoscontrol-net-guest> /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0/bin/chaoscontrol-net-guest
+chaoscontrol-deps>    Compiling chaoscontrol-wasm-differential v0.1.0 (/build/source/crates/chaoscontrol-wasm-differential)
+chaoscontrol-deps>    Compiling chaoscontrol-dashboard v0.1.0 (/build/source/crates/chaoscontrol-dashboard)
+chaoscontrol-deps>    Compiling chaoscontrol-property-suite v0.1.0 (/build/source/crates/chaoscontrol-property-suite)
+chaoscontrol-net-guest> stripping references done
+chaoscontrol-net-guest> Running phase: fixupPhase
+chaoscontrol-net-guest> shrinking RPATHs of ELF executables and libraries in /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0
+chaoscontrol-net-guest> shrinking /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0/bin/chaoscontrol-net-guest
+chaoscontrol-net-guest> checking for references to /build/ in /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0...
+chaoscontrol-net-guest> patching script interpreter paths in /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0
+chaoscontrol-net-guest> stripping (with command strip and flags -S -p) in  /nix/store/29fhawxvpahsdpx8g6x1hmqb0p6mp1vg-chaoscontrol-net-guest-0.1.0/bin
+building '/nix/store/fqz40hr70fmsssi5n8ijc3cz99lvafcq-verus-proofs.drv'...
+chaoscontrol-deps>     Checking memfd v0.6.5
+chaoscontrol-deps>     Checking differential-execution-core v0.1.0 (https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git?rev=cad5a7cb6c6502b0ec5dc76c51e03352260d8efd#cad5a7cb)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-explore v0.1.0 (/build/source/crates/chaoscontrol-explore)
+octet-consumer-check>    Compiling chaoscontrol_sim_core v0.1.0
+octet-consumer-check>     Checking chaoscontrol-vmm v0.1.0 (/nix/store/g0vh4skcd457rvck9ndj7yqi40hrn1pr-source/crates/chaoscontrol-vmm)
+chaoscontrol-deps>     Checking vm-cohort-core v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps>     Checking bit-vec v0.8.0
+chaoscontrol-deps>     Checking fnv v1.0.7
+chaoscontrol-deps>     Checking quick-error v1.2.3
+chaoscontrol-deps>     Checking bit-set v0.8.0
+chaoscontrol-deps>     Checking rusty-fork v0.3.1
+chaoscontrol-deps>     Checking vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps>     Checking rand v0.9.5
+chaoscontrol-deps>     Checking rand_xorshift v0.4.0
+chaoscontrol-deps>     Checking rand_chacha v0.9.0
+chaoscontrol-deps>    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-guest-determinism-probe v0.1.0 (/build/source/crates/chaoscontrol-guest-determinism-probe)
+chaoscontrol-deps>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-deps>    Compiling chaoscontrol-guest v0.1.0 (/build/source/crates/chaoscontrol-guest)
+chaoscontrol-deps>     Checking unarray v0.1.4
+chaoscontrol-deps>     Checking proptest v1.11.0
+chaoscontrol-deps>     Checking vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps> error: couldn't read `/nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+chaoscontrol-deps>   --> /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/standard.rs:33:34
+chaoscontrol-deps>    |
+chaoscontrol-deps> 33 |     let profile = decode_profile(include_bytes!("../../../config/generated/profile.json"))
+chaoscontrol-deps>    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+chaoscontrol-deps> 
+chaoscontrol-deps> error: could not compile `vm-cohort-conformance` (lib) due to 1 previous error
+chaoscontrol-deps> warning: build failed, waiting for other jobs to finish...
+octet-consumer-check>    Compiling chaoscontrol_vmm v0.1.0
+octet-consumer-check>     Checking chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source)
+octet-consumer-check>    Compiling chaoscontrol_vm_cohort_adapter v0.1.0
+octet-consumer-check>    Compiling chaoscontrol_vm_cohort_adapter v0.1.0
+octet-consumer-check>     Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.08s
+octet-consumer-check>     Finished checking
+octet-consumer-check> --- octet summary ---
+octet-consumer-check> Status: clean
+octet-consumer-check> Findings: 0
+octet-consumer-check> Warnings: 0
+octet-consumer-check> Errors: 0
+octet-consumer-check> Autofixable: 0
+octet-consumer-check> Tool: cargo-octet 0.1.0
+octet-consumer-check> Toolchain: nightly-2026-03-21-x86_64-unknown-linux-gnu
+octet-consumer-check> Config hash: b3:a85f257c12a51e13494b45e941078838ea34e251d5ead38ef9084d71977941ce
+octet-consumer-check> Profile hash: b3:97ba93ae7219923d82d6d3b2e076f5b75b483851c23b6e712f5fb6e01645a06c
+octet-consumer-check> ---
+building '/nix/store/dsnzwak07adiyhrb4kkz2y6yr7hrldhf-chaoscontrol-initrd-net.drv'...
+building '/nix/store/jgqwxs2a4sl300a3rydmgbazw84vck69-chaoscontrol-vm-cohort-dependency.drv'...
+building '/nix/store/39jkwvbdj9lhbnjg84xhj03ddlmq37kf-chaoscontrol-initrd-redb.drv'...
+building '/nix/store/2p7gqa32y5gy62m3ngyj4flkvwrnjkmq-protocol-observation-contracts.drv'...
+building '/nix/store/lqxvsx54g9211hy4mf762pm620rxcrc6-chaoscontrol-initrd-rust-workload.drv'...
+building '/nix/store/qwnrqgz1ap1n1hqirqvll8fj8bzwhpbd-nixfmt-check.drv'...
+building '/nix/store/zypz4v4qqh5vsikxnyzvzjhnwb98hfgp-cargo-vendor-dir.drv'...
+building '/nix/store/1x7rl8jmxkfzh850qykczq9khqjaxld1-octet-consumer-check.drv'...
+octet-consumer-check>    Compiling libc v0.2.180
+octet-consumer-check>    Compiling proc-macro2 v1.0.106
+octet-consumer-check>    Compiling quote v1.0.44
+octet-consumer-check>    Compiling unicode-ident v1.0.24
+octet-consumer-check>    Compiling shlex v1.3.0
+octet-consumer-check>    Compiling find-msvc-tools v0.1.9
+octet-consumer-check>     Checking cfg-if v1.0.4
+octet-consumer-check>    Compiling serde_core v1.0.228
+octet-consumer-check>     Checking itoa v1.0.17
+octet-consumer-check>    Compiling serde v1.0.228
+octet-consumer-check>    Compiling zmij v1.0.21
+octet-consumer-check>     Checking memchr v2.8.0
+octet-consumer-check>     Checking bitflags v2.11.0
+octet-consumer-check>    Compiling cfg_aliases v0.2.1
+octet-consumer-check>    Compiling pkg-config v0.3.32
+octet-consumer-check>    Compiling zerocopy v0.8.39
+octet-consumer-check>     Checking constant_time_eq v0.3.1
+octet-consumer-check>    Compiling serde_json v1.0.149
+octet-consumer-check>     Checking arrayvec v0.7.8
+octet-consumer-check>     Checking arrayref v0.3.9
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling thiserror v2.0.18
+octet-consumer-check>     Checking once_cell v1.21.3
+octet-consumer-check>    Compiling rustix v1.1.3
+octet-consumer-check>     Checking pin-project-lite v0.2.16
+octet-consumer-check>     Checking log v0.4.29
+octet-consumer-check>     Checking linux-raw-sys v0.11.0
+octet-consumer-check>     Checking byteorder v1.5.0
+octet-consumer-check>    Compiling getrandom v0.3.4
+octet-consumer-check>    Compiling cfg_aliases v0.2.1
+octet-consumer-check>    Compiling arrayref v0.3.9
+octet-consumer-check>     Checking utf8parse v0.2.2
+octet-consumer-check>    Compiling nix v0.31.1
+octet-consumer-check>    Compiling version_check v0.9.5
+octet-consumer-check>     Checking futures-core v0.3.32
+octet-consumer-check>    Compiling cfg_if v1.0.4
+octet-consumer-check>    Compiling constant_time_eq v0.3.1
+octet-consumer-check>     Checking colorchoice v1.0.4
+octet-consumer-check>    Compiling cfg_if v1.0.4
+octet-consumer-check>     Checking is_terminal_polyfill v1.70.2
+octet-consumer-check>    Compiling pin_project_lite v0.2.16
+octet-consumer-check>     Checking anstyle-parse v0.2.7
+octet-consumer-check>    Compiling utf8parse v0.2.2
+octet-consumer-check>     Checking bytes v1.11.1
+octet-consumer-check>    Compiling colorchoice v1.0.4
+octet-consumer-check>    Compiling io-lifetimes v3.0.1
+octet-consumer-check>    Compiling unicode_ident v1.0.24
+octet-consumer-check>    Compiling is_terminal_polyfill v1.70.2
+octet-consumer-check>     Checking anstyle v1.0.13
+octet-consumer-check>     Checking regex-syntax v0.8.9
+octet-consumer-check>    Compiling futures_core v0.3.32
+octet-consumer-check>    Compiling itoa v1.0.17
+octet-consumer-check>     Checking anstyle-query v1.1.5
+octet-consumer-check>    Compiling io-lifetimes v2.0.4
+octet-consumer-check>    Compiling once_cell v1.21.3
+octet-consumer-check>     Checking bitflags v1.3.2
+octet-consumer-check>    Compiling bitflags v2.11.0
+octet-consumer-check>    Compiling anstyle_query v1.1.5
+octet-consumer-check>    Compiling io-extras v0.19.0
+octet-consumer-check>    Compiling bitflags v1.3.2
+octet-consumer-check>     Checking typenum v1.20.0
+octet-consumer-check>    Compiling autocfg v1.5.0
+octet-consumer-check>    Compiling log v0.4.29
+octet-consumer-check>    Compiling build-script-build v1.0.149
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling cap-primitives v4.0.2
+octet-consumer-check>    Compiling find_msvc_tools v0.1.9
+octet-consumer-check>    Compiling shlex v1.3.0
+octet-consumer-check>    Compiling generic-array v0.14.7
+octet-consumer-check>    Compiling version_check v0.9.5
+octet-consumer-check>    Compiling byteorder v1.5.0
+octet-consumer-check>     Checking ambient-authority v0.0.2
+octet-consumer-check>    Compiling build-script-build v1.0.21
+octet-consumer-check>    Compiling build-script-build v1.0.228
+octet-consumer-check>    Compiling build-script-build v1.0.44
+octet-consumer-check>    Compiling ambient_authority v0.0.2
+octet-consumer-check>    Compiling build-script-build v0.3.4
+octet-consumer-check>    Compiling anstyle_parse v0.2.7
+octet-consumer-check>    Compiling anyhow v1.0.101
+octet-consumer-check>    Compiling build-script-build v1.0.228
+octet-consumer-check>    Compiling utf8parse v0.2.2
+octet-consumer-check>     Checking jiff v0.2.20
+octet-consumer-check>    Compiling build-script-build v1.0.228
+octet-consumer-check>    Compiling build-script-build v0.8.39
+octet-consumer-check>    Compiling bitflags v2.11.0
+octet-consumer-check>    Compiling build-script-build v1.0.106
+octet-consumer-check>    Compiling build-script-build v2.0.4
+octet-consumer-check>    Compiling is_terminal_polyfill v1.70.2
+octet-consumer-check>     Checking tower-service v0.3.3
+octet-consumer-check>     Checking maybe-owned v0.3.4
+octet-consumer-check>    Compiling anstyle_query v1.1.5
+octet-consumer-check>    Compiling build-script-build v2.0.18
+octet-consumer-check>    Compiling build-script-build v1.1.3
+octet-consumer-check>    Compiling build-script-build v0.31.1
+octet-consumer-check>    Compiling camino v1.2.2
+octet-consumer-check>    Compiling arrayvec v0.7.8
+octet-consumer-check>    Compiling build-script-build v3.0.1
+octet-consumer-check>    Compiling tower_service v0.3.3
+octet-consumer-check>    Compiling kvm-ioctls v0.19.1
+octet-consumer-check>    Compiling cap-std v4.0.2
+octet-consumer-check>    Compiling build-script-build v0.14.7
+octet-consumer-check>    Compiling httparse v1.10.1
+octet-consumer-check>    Compiling linux_raw_sys v0.11.0
+octet-consumer-check>    Compiling crc32fast v1.5.0
+octet-consumer-check>    Compiling colorchoice v1.0.4
+octet-consumer-check>     Checking ipnet v2.12.1
+octet-consumer-check>    Compiling io_lifetimes v2.0.4
+octet-consumer-check>    Compiling build-script-build v0.2.180
+octet-consumer-check>     Checking anstream v0.6.21
+octet-consumer-check>    Compiling anstyle v1.0.13
+octet-consumer-check>    Compiling io_lifetimes v3.0.1
+octet-consumer-check>     Checking tracing-core v0.1.36
+octet-consumer-check>    Compiling build-script-build v1.0.149
+octet-consumer-check>    Compiling build-script-build v0.19.0
+octet-consumer-check>    Compiling build-script-build v4.0.2
+octet-consumer-check>    Compiling build-script-build v0.19.1
+octet-consumer-check>    Compiling nix v0.30.1
+octet-consumer-check>    Compiling anstyle_parse v0.2.7
+octet-consumer-check>    Compiling lazy_static v1.5.0
+octet-consumer-check>    Compiling zmij v1.0.21
+octet-consumer-check>     Checking clap_lex v1.0.0
+octet-consumer-check>    Compiling lazy_static v1.5.0
+octet-consumer-check>    Compiling build-script-build v1.0.228
+octet-consumer-check>    Compiling once_cell v1.21.3
+octet-consumer-check>    Compiling maybe_owned v0.3.4
+octet-consumer-check>     Checking strsim v0.11.1
+octet-consumer-check>    Compiling ipnet v2.12.1
+octet-consumer-check>    Compiling io_extras v0.19.0
+octet-consumer-check>    Compiling build-script-build v4.0.2
+octet-consumer-check>    Compiling linkme-impl v0.3.35
+octet-consumer-check>     Checking aho-corasick v1.1.4
+octet-consumer-check>    Compiling build-script-build v1.0.101
+octet-consumer-check>    Compiling memchr v2.8.0
+octet-consumer-check>    Compiling build-script-build v1.5.0
+octet-consumer-check>    Compiling bytes v1.11.1    Checking http v1.4.0
+octet-consumer-check> 
+octet-consumer-check>    Compiling iana-time-zone v0.1.65
+octet-consumer-check>    Compiling anstyle v1.0.13
+octet-consumer-check>     Checking tower-layer v0.3.3
+octet-consumer-check>    Compiling tracing_core v0.1.36
+octet-consumer-check>    Compiling cap-fs-ext v4.0.2
+octet-consumer-check>    Compiling build-script-build v1.2.2
+octet-consumer-check>     Checking tracing v0.1.44
+octet-consumer-check>    Compiling clap_lex v1.0.0
+octet-consumer-check>    Compiling clap_lex v1.0.0
+octet-consumer-check>    Compiling sharded-slab v0.1.7
+octet-consumer-check>    Compiling num-traits v0.2.19
+octet-consumer-check>    Compiling autocfg v1.5.0
+octet-consumer-check>    Compiling build-script-build v1.10.1
+octet-consumer-check>    Compiling build-script-build v1.1.3
+octet-consumer-check>     Checking futures-channel v0.3.32
+octet-consumer-check>    Compiling itoa v1.0.17
+octet-consumer-check>    Compiling zmij v1.0.21
+octet-consumer-check>    Compiling thread_local v1.1.9
+octet-consumer-check>    Compiling anstream v0.6.21
+octet-consumer-check>     Checking pin-utils v0.1.0
+octet-consumer-check>    Compiling pin_utils v0.1.0
+octet-consumer-check>    Compiling zstd-safe v7.2.4
+octet-consumer-check>     Checking smallvec v1.15.1
+octet-consumer-check>    Compiling crc32fast v1.5.0
+octet-consumer-check>     Checking clap_builder v4.5.59
+octet-consumer-check>    Compiling strsim v0.11.1
+octet-consumer-check>    Compiling linkme v0.3.35
+octet-consumer-check>    Compiling pkg_config v0.3.32
+octet-consumer-check>     Checking vm-superio v0.8.1
+octet-consumer-check>     Checking percent-encoding v2.3.2
+octet-consumer-check>    Compiling tower_layer v0.3.3
+octet-consumer-check>    Compiling build-script-build v0.3.35
+octet-consumer-check>    Compiling iana_time_zone v0.1.65
+octet-consumer-check>     Checking sync_wrapper v1.0.2
+octet-consumer-check>    Compiling build-script-build v0.2.19
+octet-consumer-check>    Compiling fastrand v2.3.0
+octet-consumer-check>    Compiling sync_wrapper v1.0.2
+octet-consumer-check>    Compiling nu-ansi-term v0.50.3
+octet-consumer-check>    Compiling futures_channel v0.3.32
+octet-consumer-check>     Checking atomic-waker v1.1.2
+octet-consumer-check>     Checking futures-task v0.3.32
+octet-consumer-check>    Compiling tracing v0.1.44
+octet-consumer-check>     Checking cpufeatures v0.2.17
+octet-consumer-check>    Compiling thread_local v1.1.9
+octet-consumer-check>     Checking slab v0.4.12
+octet-consumer-check>    Compiling percent_encoding v2.3.2
+octet-consumer-check>     Checking httpdate v1.0.3
+octet-consumer-check>    Compiling build-script-build v7.2.4
+octet-consumer-check>    Compiling cpufeatures v0.2.17
+octet-consumer-check>    Compiling atomic_waker v1.1.2
+octet-consumer-check>     Checking form_urlencoded v1.2.2
+octet-consumer-check>    Compiling smallvec v1.15.1
+octet-consumer-check>    Compiling build-script-build v4.0.2
+octet-consumer-check>     Checking mime v0.3.17
+octet-consumer-check>    Compiling futures_task v0.3.32
+octet-consumer-check>     Checking ciborium-io v0.2.2
+octet-consumer-check>    Compiling httparse v1.10.1
+octet-consumer-check>    Compiling pin_project_lite v0.2.16
+octet-consumer-check>     Checking bounded-tree-core v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+octet-consumer-check>    Compiling build-script-build v0.30.1
+octet-consumer-check>     Checking ryu v1.0.23
+octet-consumer-check>    Compiling vm_superio v0.8.1
+octet-consumer-check>    Compiling httpdate v1.0.3
+octet-consumer-check>     Checking bounded-exec-core v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+octet-consumer-check>     Checking futures-util v0.3.32
+octet-consumer-check>    Compiling slab v0.4.12
+octet-consumer-check>    Compiling ciborium_io v0.2.2
+octet-consumer-check>    Compiling build-script-build v0.3.35
+octet-consumer-check>    Compiling heapless v0.8.0
+octet-consumer-check>    Compiling constant_time_eq v0.3.1
+octet-consumer-check>    Compiling arrayref v0.3.9
+octet-consumer-check>     Checking hash32 v0.3.1
+octet-consumer-check>    Compiling anstream v0.6.21
+octet-consumer-check>    Compiling smoltcp v0.12.0
+octet-consumer-check>    Compiling form_urlencoded v1.2.2
+octet-consumer-check>    Compiling strsim v0.11.1
+octet-consumer-check>     Checking stable_deref_trait v1.2.1
+octet-consumer-check>    Compiling bounded_exec_core v0.1.0
+octet-consumer-check>     Checking matchit v0.8.4
+octet-consumer-check>    Compiling redb v3.1.1
+octet-consumer-check>    Compiling ryu v1.0.23
+octet-consumer-check>    Compiling stable_deref_trait v1.2.1
+octet-consumer-check>     Checking managed v0.8.0
+octet-consumer-check>    Compiling hash32 v0.3.1
+octet-consumer-check>     Checking http-body v1.0.1
+octet-consumer-check>    Compiling http v1.4.0
+octet-consumer-check>     Checking tower-http v0.6.8
+octet-consumer-check>    Compiling nu_ansi_term v0.50.3
+octet-consumer-check>    Compiling fastrand v2.3.0
+octet-consumer-check>    Compiling mime v0.3.17
+octet-consumer-check>    Compiling fastrand v2.3.0
+octet-consumer-check>    Compiling bounded_tree_core v0.1.0
+octet-consumer-check>     Checking http-body-util v0.1.3
+octet-consumer-check>    Compiling http_body v1.0.1
+octet-consumer-check>    Compiling arrayvec v0.7.8
+octet-consumer-check>    Compiling linux_raw_sys v0.11.0
+octet-consumer-check>    Compiling build-script-build v3.1.1
+octet-consumer-check>    Compiling build-script-build v0.8.0
+octet-consumer-check>    Compiling proc_macro2 v1.0.106
+octet-consumer-check>    Compiling tower_http v0.6.8
+octet-consumer-check>    Compiling managed v0.8.0
+octet-consumer-check>    Compiling anyhow v1.0.101
+octet-consumer-check>    Compiling build-script-build v0.12.0
+octet-consumer-check>    Compiling anyhow v1.0.101
+octet-consumer-check>    Compiling matchit v0.8.4
+octet-consumer-check>    Compiling tracing_core v0.1.36
+octet-consumer-check>    Compiling aho_corasick v1.1.4
+octet-consumer-check>    Compiling syn v2.0.116
+octet-consumer-check>     Checking axum-core v0.5.6
+octet-consumer-check>    Compiling http_body_util v0.1.3
+octet-consumer-check>    Compiling quote v1.0.44
+octet-consumer-check>    Compiling typenum v1.20.0
+octet-consumer-check>    Compiling tracing v0.1.44
+octet-consumer-check>    Compiling memchr v2.8.0
+octet-consumer-check>    Compiling sharded_slab v0.1.7
+octet-consumer-check>    Compiling heapless v0.8.0
+octet-consumer-check>    Compiling regex_syntax v0.8.9
+octet-consumer-check>     Checking regex-automata v0.4.14
+octet-consumer-check>    Compiling chrono v0.4.43
+octet-consumer-check>    Compiling num_traits v0.2.19
+octet-consumer-check>    Compiling jobserver v0.1.34
+octet-consumer-check>    Compiling memmap2 v0.9.10
+octet-consumer-check>    Compiling clap_builder v4.5.59
+octet-consumer-check>    Compiling libc v0.2.180
+octet-consumer-check>    Compiling getrandom v0.3.4
+octet-consumer-check>     Checking crypto-common v0.1.7
+octet-consumer-check>    Compiling generic_array v0.14.7
+octet-consumer-check>     Checking block-buffer v0.10.4
+octet-consumer-check>    Compiling memmap2 v0.9.10
+octet-consumer-check>    Compiling crypto_common v0.1.7
+octet-consumer-check>     Checking digest v0.10.7
+octet-consumer-check>    Compiling block_buffer v0.10.4
+octet-consumer-check>    Compiling libc v0.2.180    Checking getrandom v0.2.17
+octet-consumer-check> 
+octet-consumer-check>     Checking vmm-sys-util v0.12.1
+octet-consumer-check>     Checking socket2 v0.6.3
+octet-consumer-check>     Checking mio v1.1.1
+octet-consumer-check>     Checking filetime v0.2.29
+octet-consumer-check>    Compiling cc v1.2.56
+octet-consumer-check>    Compiling jobserver v0.1.34
+octet-consumer-check>    Compiling filetime v0.2.29
+octet-consumer-check>     Checking rand_core v0.6.4
+octet-consumer-check>    Compiling getrandom v0.2.17
+octet-consumer-check>    Compiling getrandom v0.3.4
+octet-consumer-check>     Checking sha2 v0.10.9
+octet-consumer-check>    Compiling digest v0.10.7
+octet-consumer-check>    Compiling mio v1.1.1
+octet-consumer-check>    Compiling rand_core v0.6.4
+octet-consumer-check>    Compiling socket2 v0.6.3
+octet-consumer-check>    Compiling vmm_sys_util v0.12.1
+octet-consumer-check>    Compiling futures_util v0.3.32
+octet-consumer-check>    Compiling sha2 v0.10.9
+octet-consumer-check>     Checking rustix-linux-procfs v0.1.1
+octet-consumer-check>    Compiling rustix v1.1.3
+octet-consumer-check>     Checking fs-set-times v0.20.3
+octet-consumer-check>     Checking xattr v1.6.1
+octet-consumer-check>     Checking tempfile v3.25.0
+octet-consumer-check>    Compiling axum_core v0.5.6
+octet-consumer-check>    Compiling fs_set_times v0.20.3
+octet-consumer-check>     Checking bounded-exec v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+octet-consumer-check>    Compiling nix v0.30.1
+octet-consumer-check>     Checking tar v0.4.46
+octet-consumer-check>    Compiling xattr v1.6.1
+octet-consumer-check>    Compiling rustix_linux_procfs v0.1.1
+octet-consumer-check>    Compiling tempfile v3.25.0
+octet-consumer-check>    Compiling bounded_exec v0.1.0
+octet-consumer-check>    Compiling jiff v0.2.20
+octet-consumer-check>    Compiling nix v0.31.1
+octet-consumer-check>    Compiling tracing-subscriber v0.3.22
+octet-consumer-check>    Compiling semver v1.0.27
+octet-consumer-check>    Compiling cap_primitives v4.0.2
+octet-consumer-check>    Compiling serde_core v1.0.228
+octet-consumer-check>    Compiling chrono v0.4.43
+octet-consumer-check>    Compiling rustix v1.1.3
+octet-consumer-check>    Compiling tar v0.4.46
+octet-consumer-check>    Compiling smoltcp v0.12.0
+octet-consumer-check>     Checking chaoscontrol-guest-net v0.1.0 (/build/source/crates/chaoscontrol-guest-net)
+octet-consumer-check>    Compiling cap_std v4.0.2
+octet-consumer-check>    Compiling cap_fs_ext v4.0.2
+octet-consumer-check>    Compiling semver v1.0.27
+octet-consumer-check>    Compiling chaoscontrol_guest_net v0.1.0
+octet-consumer-check>    Compiling tempfile v3.25.0
+octet-consumer-check>    Compiling camino v1.2.2
+octet-consumer-check>    Compiling cc v1.2.56
+octet-consumer-check>    Compiling blake3 v1.8.2
+octet-consumer-check>    Compiling libbpf-sys v1.6.3+v1.6.3
+octet-consumer-check>    Compiling vsprintf v2.0.0
+octet-consumer-check>    Compiling zstd-sys v2.0.16+zstd.1.5.7
+octet-consumer-check>    Compiling serde_core v1.0.228
+octet-consumer-check>     Checking serde_path_to_error v0.1.20
+octet-consumer-check>    Compiling redb v3.1.1
+octet-consumer-check>    Compiling build-script-build v2.0.0
+octet-consumer-check>    Compiling serde_path_to_error v0.1.20
+octet-consumer-check>    Compiling build-script-build v2.0.16+zstd.1.5.7
+octet-consumer-check>    Compiling build-script-build v1.6.3+v1.6.3
+octet-consumer-check>    Compiling build-script-build v1.8.2
+octet-consumer-check>    Compiling vsprintf v2.0.0
+octet-consumer-check>    Compiling vsprintf v2.0.0
+octet-consumer-check>     Checking regex v1.12.3
+octet-consumer-check>    Compiling regex_automata v0.4.14
+octet-consumer-check>    Compiling serde_json v1.0.149
+octet-consumer-check>     Checking bounded-tree-cap v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+octet-consumer-check>    Compiling blake3 v1.8.2
+octet-consumer-check>    Compiling tracing_subscriber v0.3.22
+octet-consumer-check>     Checking env_filter v1.0.0
+octet-consumer-check>    Compiling regex v1.12.3
+octet-consumer-check>     Checking env_logger v0.11.9
+octet-consumer-check>    Compiling env_filter v1.0.0
+octet-consumer-check>    Compiling blake3 v1.8.2
+octet-consumer-check>    Compiling bounded_tree_cap v0.1.0
+octet-consumer-check>    Compiling clap_builder v4.5.59
+octet-consumer-check>    Compiling env_logger v0.11.9
+octet-consumer-check>    Compiling serde_json v1.0.149
+octet-consumer-check>    Compiling syn v2.0.116
+octet-consumer-check>    Compiling serde_derive v1.0.228
+octet-consumer-check>    Compiling zerocopy-derive v0.8.39
+octet-consumer-check>    Compiling thiserror-impl v2.0.18
+octet-consumer-check>    Compiling snafu-derive v0.8.9
+octet-consumer-check>    Compiling clap_derive v4.5.55
+octet-consumer-check>    Compiling zerocopy-derive v0.7.35
+octet-consumer-check>    Compiling tokio-macros v2.6.1
+octet-consumer-check>    Compiling async-stream-impl v0.3.6
+octet-consumer-check>     Checking async-stream v0.3.6
+octet-consumer-check>    Compiling async_stream_impl v0.3.6
+octet-consumer-check>    Compiling async_stream v0.3.6
+octet-consumer-check>     Checking tokio v1.50.0
+octet-consumer-check>    Compiling tokio_macros v2.6.1
+octet-consumer-check>     Checking zerocopy v0.7.35
+octet-consumer-check>    Compiling zerocopy_derive v0.7.35
+octet-consumer-check>    Compiling linkme_impl v0.3.35
+octet-consumer-check>    Compiling linkme v0.3.35
+octet-consumer-check>     Checking libbpf-rs v0.26.0
+octet-consumer-check>    Compiling libbpf_sys v1.6.3+v1.6.3
+octet-consumer-check>    Compiling thiserror_impl v2.0.18
+octet-consumer-check>    Compiling zerocopy_derive v0.8.39
+octet-consumer-check>     Checking vm-memory v0.17.1
+octet-consumer-check>    Compiling thiserror v2.0.18
+octet-consumer-check>    Compiling libbpf_sys v1.6.3+v1.6.3
+octet-consumer-check>    Compiling thiserror v2.0.18
+octet-consumer-check>    Compiling zerocopy v0.7.35
+octet-consumer-check>    Compiling snafu_derive v0.8.9
+octet-consumer-check>     Checking snafu v0.8.9
+octet-consumer-check>    Compiling clap_derive v4.5.55
+octet-consumer-check>     Checking clap v4.5.59
+octet-consumer-check>    Compiling clap v4.5.59
+octet-consumer-check>    Compiling clap v4.5.59
+octet-consumer-check>    Compiling vm_memory v0.17.1
+octet-consumer-check>     Checking linux-loader v0.13.2
+octet-consumer-check>    Compiling libbpf_rs v0.26.0
+octet-consumer-check>    Compiling snafu v0.8.9
+octet-consumer-check>    Compiling linux_loader v0.13.2
+octet-consumer-check>    Compiling zstd_sys v2.0.16+zstd.1.5.7
+octet-consumer-check>    Compiling zstd_safe v7.2.4
+octet-consumer-check>     Checking zstd v0.13.3
+octet-consumer-check>    Compiling zstd v0.13.3
+octet-consumer-check>    Compiling libbpf_rs v0.26.0
+octet-consumer-check>    Compiling serde_derive v1.0.228
+octet-consumer-check>    Compiling serde v1.0.228
+octet-consumer-check>     Checking chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+octet-consumer-check>     Checking kvm-bindings v0.10.0
+octet-consumer-check>     Checking chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+octet-consumer-check>     Checking chaoscontrol-snapshot-descriptor v0.1.0 (/build/source/crates/chaoscontrol-snapshot-descriptor)
+octet-consumer-check>     Checking serde_urlencoded v0.7.1
+octet-consumer-check>    Compiling cargo-platform v0.1.9
+octet-consumer-check>    Compiling serde v1.0.228
+octet-consumer-check>    Compiling serde_urlencoded v0.7.1
+octet-consumer-check>    Compiling cargo_metadata v0.19.2
+octet-consumer-check>    Compiling cargo_platform v0.1.9
+octet-consumer-check> warning: source file is 816 lines (limit: 300)
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/fallback.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / //! Versioned fallback assertion records and deterministic bounded sinks.
+octet-consumer-check>   2 | | //!
+octet-consumer-check>   3 | | //! This module is the pure protocol boundary for processes that do not link
+octet-consumer-check>   4 | | //! the Rust SDK. Filesystem or shared-device adapters supply complete lines;
+octet-consumer-check> ...   |
+octet-consumer-check> 816 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (File Length): split oversized source files along module or responsibility boundaries Example: mod parser; mod planner; mod executor;
+octet-consumer-check>     = note: see Tiger Style guide: File Length
+octet-consumer-check>     = note: `#[warn(tigerstyle::excessive_file_length)]` on by default
+octet-consumer-check> 
+octet-consumer-check> warning: source file is 791 lines (limit: 300)
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/guest_process.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / use crate::process::{ProcessFaultAction, ProcessFaultCommand};
+octet-consumer-check>   2 | | use serde::{Deserialize, Serialize};
+octet-consumer-check>   3 | |
+octet-consumer-check>   4 | | pub const PROCESS_MANIFEST_SCHEMA: &str = "chaoscontrol.process-manifest.v1";
+octet-consumer-check> ...   |
+octet-consumer-check> 791 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (File Length): split oversized source files along module or responsibility boundaries Example: mod parser; mod planner; mod executor;
+octet-consumer-check>     = note: see Tiger Style guide: File Length
+octet-consumer-check> 
+octet-consumer-check> warning: source file is 450 lines (limit: 300)
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/oci_intake.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / //! Pure OCI and directory intake planning with bounded provenance identities.
+octet-consumer-check>   2 | |
+octet-consumer-check>   3 | | use crate::guest_process::{
+octet-consumer-check>   4 | |     admit_manifest, AdmittedManifest, ProcessManifest, ProcessSpec, RestartPolicy,
+octet-consumer-check> ...   |
+octet-consumer-check> 450 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (File Length): split oversized source files along module or responsibility boundaries Example: mod parser; mod planner; mod executor;
+octet-consumer-check>     = note: see Tiger Style guide: File Length
+octet-consumer-check> 
+octet-consumer-check> warning: module directory `crates/chaoscontrol-protocol/src` contains 10 Rust source files (limit: 7)
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/branch_marker.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / //! Bounded guest-declared branch-marker identity and admission.
+octet-consumer-check>   2 | |
+octet-consumer-check>   3 | | use serde::{Deserialize, Serialize};
+octet-consumer-check> ...   |
+octet-consumer-check> 251 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (Module Size): split crowded module directories into smaller responsibility-based submodules Example: mod parser; mod planner; mod executor;
+octet-consumer-check>     = note: see Tiger Style guide: File Length
+octet-consumer-check>     = note: `#[warn(tigerstyle::module_file_count)]` on by default
+octet-consumer-check> 
+octet-consumer-check> warning: module filename `branch_marker.rs` contains an underscore; prefer `branch/marker.rs`
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/branch_marker.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / //! Bounded guest-declared branch-marker identity and admission.
+octet-consumer-check>   2 | |
+octet-consumer-check>   3 | | use serde::{Deserialize, Serialize};
+octet-consumer-check> ...   |
+octet-consumer-check> 251 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (Searchable Module Paths): replace compound module filenames with responsibility-based directory paths Example: compute/vm.rs
+octet-consumer-check>     = note: see Tiger Style guide: Naming
+octet-consumer-check>     = note: `#[warn(tigerstyle::underscore_in_module_filename)]` on by default
+octet-consumer-check> 
+octet-consumer-check> warning: module filename `guest_process.rs` contains an underscore; prefer `guest/process.rs`
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/guest_process.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / use crate::process::{ProcessFaultAction, ProcessFaultCommand};
+octet-consumer-check>   2 | | use serde::{Deserialize, Serialize};
+octet-consumer-check>   3 | |
+octet-consumer-check>   4 | | pub const PROCESS_MANIFEST_SCHEMA: &str = "chaoscontrol.process-manifest.v1";
+octet-consumer-check> ...   |
+octet-consumer-check> 791 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (Searchable Module Paths): replace compound module filenames with responsibility-based directory paths Example: compute/vm.rs
+octet-consumer-check>     = note: see Tiger Style guide: Naming
+octet-consumer-check> 
+octet-consumer-check> warning: module filename `oci_intake.rs` contains an underscore; prefer `oci/intake.rs`
+octet-consumer-check>    --> crates/chaoscontrol-protocol/src/oci_intake.rs:1:1
+octet-consumer-check>     |
+octet-consumer-check>   1 | / //! Pure OCI and directory intake planning with bounded provenance identities.
+octet-consumer-check>   2 | |
+octet-consumer-check>   3 | | use crate::guest_process::{
+octet-consumer-check>   4 | |     admit_manifest, AdmittedManifest, ProcessManifest, ProcessSpec, RestartPolicy,
+octet-consumer-check> ...   |
+octet-consumer-check> 450 | | }
+octet-consumer-check>     | |__^
+octet-consumer-check>     |
+octet-consumer-check>     = help: Tiger Style (Searchable Module Paths): replace compound module filenames with responsibility-based directory paths Example: compute/vm.rs
+octet-consumer-check>     = note: see Tiger Style guide: Naming
+octet-consumer-check> 
+octet-consumer-check>    Compiling tokio v1.50.0
+octet-consumer-check>     Checking hyper v1.8.1
+octet-consumer-check>     Checking tower v0.5.3
+octet-consumer-check>    Compiling kvm_bindings v0.10.0
+warning: killing stray builder process 3589052 ()...
+error (ignored): deleting cgroup "/sys/fs/cgroup/system.slice/nix-daemon.service/nix-build-uid-872546304": Device or resource busy
+warning: killing stray builder process 3590224 ()...
+warning: killing stray builder process 3590242 ()...
+warning: killing stray builder process 3594753 ()...
+warning: killing stray builder process 3595089 ()...
+warning: killing stray builder process 3595092 ()...
+warning: killing stray builder process 3579006 ()...
+error (ignored): deleting cgroup "/sys/fs/cgroup/system.slice/nix-daemon.service/nix-build-uid-872611840": Device or resource busy
+error: build of '/nix/store/bqxkhnvmgjjb2112wccbhb5m6ij27557-chaoscontrol-deps-0.1.0.drv^*' failed: Cannot build '/nix/store/bqxkhnvmgjjb2112wccbhb5m6ij27557-chaoscontrol-deps-0.1.0.drv'.
+       Reason: builder failed with exit code 101.
+       Output paths:
+         /nix/store/4j0d5l6grqba1y2p1piz0ypj4rxaxrqr-chaoscontrol-deps-0.1.0
+       Last 25 log lines:
+       >     Checking bit-vec v0.8.0
+       >     Checking fnv v1.0.7
+       >     Checking quick-error v1.2.3
+       >     Checking bit-set v0.8.0
+       >     Checking rusty-fork v0.3.1
+       >     Checking vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+       >     Checking rand v0.9.5
+       >     Checking rand_xorshift v0.4.0
+       >     Checking rand_chacha v0.9.0
+       >    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+       >    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+       >    Compiling chaoscontrol-guest-determinism-probe v0.1.0 (/build/source/crates/chaoscontrol-guest-determinism-probe)
+       >    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+       >    Compiling chaoscontrol-guest v0.1.0 (/build/source/crates/chaoscontrol-guest)
+       >     Checking unarray v0.1.4
+       >     Checking proptest v1.11.0
+       >     Checking vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+       > error: couldn't read `/nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+       >   --> /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/standard.rs:33:34
+       >    |
+       > 33 |     let profile = decode_profile(include_bytes!("../../../config/generated/profile.json"))
+       >    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       >
+       > error: could not compile `vm-cohort-conformance` (lib) due to 1 previous error
+       > warning: build failed, waiting for other jobs to finish...
+       For full logs, run:
+         nix log /nix/store/bqxkhnvmgjjb2112wccbhb5m6ij27557-chaoscontrol-deps-0.1.0.drv

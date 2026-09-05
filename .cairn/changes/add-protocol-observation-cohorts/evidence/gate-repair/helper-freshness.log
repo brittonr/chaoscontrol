@@ -1,0 +1,11 @@
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/install-hook-negative.nix.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/module-owner-controls.log: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-module-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-reported-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-serde.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/README.md: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/rename-identifiers.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-applied.log: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-controls.log: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-proposals.log: OK

@@ -1,0 +1,141 @@
+REVIEW crates/chaoscontrol-evidence/src/assertion/readiness.rs: attribute references a selected binding
+15 edits: crates/chaoscontrol-evidence/src/assertion_evidence_carrier.rs
+56 edits: crates/chaoscontrol-evidence/src/assertion_summary_identity.rs
+16 edits: crates/chaoscontrol-evidence/src/assertion_summary_semantics.rs
+13 edits: crates/chaoscontrol-evidence/src/bounded_file.rs
+70 edits: crates/chaoscontrol-evidence/src/causality_shell.rs
+REVIEW crates/chaoscontrol-evidence/src/consistency_checker.rs: attribute references a selected binding
+19 edits: crates/chaoscontrol-evidence/src/contract_registry.rs
+REVIEW crates/chaoscontrol-evidence/src/dogfood_guards.rs: implicit format capture needs review
+REVIEW crates/chaoscontrol-evidence/src/evidence_contracts.rs: bare macro identifier needs review
+31 edits: crates/chaoscontrol-evidence/src/findability_shell.rs
+14 edits: crates/chaoscontrol-evidence/src/guest_determinism.rs
+REVIEW crates/chaoscontrol-evidence/src/in_process_simulator.rs: attribute references a selected binding
+12 edits: crates/chaoscontrol-evidence/src/json_preflight.rs
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_validation.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-evidence/src/kvm_release/mod.rs: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-evidence/src/oci_intake.rs: bare macro identifier needs review
+43 edits: crates/chaoscontrol-evidence/src/operator_triage.rs
+45 edits: crates/chaoscontrol-evidence/src/phenomena_shell.rs
+REVIEW crates/chaoscontrol-evidence/src/product_scope.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: external child module needs scope review
+10 edits: crates/chaoscontrol-evidence/src/profile_projection_spec.rs
+31 edits: crates/chaoscontrol-evidence/src/profile_projection_verification.rs
+15 edits: crates/chaoscontrol-evidence/src/protocol_simulation_receipt.rs
+44 edits: crates/chaoscontrol-evidence/src/readiness_promotion_gate.rs
+48 edits: crates/chaoscontrol-evidence/src/replay_readiness_ci_plans.rs
+41 edits: crates/chaoscontrol-evidence/src/replay_readiness_core.rs
+5 edits: crates/chaoscontrol-evidence/src/replay_readiness_loader.rs
+58 edits: crates/chaoscontrol-evidence/src/replay_readiness_orchestration.rs
+2 edits: crates/chaoscontrol-evidence/src/replay_readiness_publication.rs
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: conditional or exported imports need review
+17 edits: crates/chaoscontrol-evidence/src/replay_verdict_artifact.rs
+61 edits: crates/chaoscontrol-evidence/src/rust_automation/accepted_dogfood.rs
+17 edits: crates/chaoscontrol-evidence/src/rust_automation/audit.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_receipt.rs: bare macro identifier needs review
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_summary.rs: bare macro identifier needs review
+9 edits: crates/chaoscontrol-evidence/src/rust_automation/local_kvm.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/readiness_receipt.rs: bare macro identifier needs review
+3 edits: crates/chaoscontrol-evidence/src/rust_automation/scaffold.rs
+24 edits: crates/chaoscontrol-evidence/src/rust_automation/vm_determinism.rs
+26 edits: crates/chaoscontrol-evidence/src/sdk_local_catalog.rs
+45 edits: crates/chaoscontrol-evidence/src/sdk_local_event.rs
+REVIEW crates/chaoscontrol-evidence/src/sdk_local_identity.rs: conditional or exported imports need review
+8 edits: crates/chaoscontrol-evidence/src/sdk_local_identity_value.rs
+38 edits: crates/chaoscontrol-evidence/src/sdk_local_quality.rs
+82 edits: crates/chaoscontrol-evidence/src/sdk_local_report.rs
+23 edits: crates/chaoscontrol-evidence/src/sdk_local_verdict.rs
+REVIEW crates/chaoscontrol-evidence/src/semantic_history.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-evidence/src/simulator_profile.rs: attribute references a selected binding
+46 edits: crates/chaoscontrol-evidence/src/snapshot_descriptor/closure.rs
+37 edits: crates/chaoscontrol-evidence/src/snapshot_descriptor/contracts.rs
+64 edits: crates/chaoscontrol-evidence/src/snapshot_descriptor/fixture.rs
+REVIEW crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: external child module needs scope review
+20 edits: crates/chaoscontrol-explore/src/assertion_report.rs
+REVIEW crates/chaoscontrol-explore/src/assertion_summary.rs: conditional or exported imports need review
+28 edits: crates/chaoscontrol-explore/src/assertion_summary_validation.rs
+8 edits: crates/chaoscontrol-explore/src/assertion_summary_writer.rs
+REVIEW crates/chaoscontrol-explore/src/bug/identity.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-explore/src/campaign.rs: bare macro identifier needs review
+REVIEW crates/chaoscontrol-explore/src/checkpoint.rs: attribute references a selected binding
+20 edits: crates/chaoscontrol-explore/src/corpus.rs
+3 edits: crates/chaoscontrol-explore/src/coverage.rs
+REVIEW crates/chaoscontrol-explore/src/dashboard_types.rs: bare macro identifier needs review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: unknown glob import needs scope review
+12 edits: crates/chaoscontrol-explore/src/frontier.rs
+5 edits: crates/chaoscontrol-explore/src/input_tree.rs
+REVIEW crates/chaoscontrol-explore/src/marker_branching.rs: bare macro identifier needs review
+2 edits: crates/chaoscontrol-explore/src/memory.rs
+66 edits: crates/chaoscontrol-explore/src/minimizer.rs
+105 edits: crates/chaoscontrol-explore/src/mutator.rs
+5 edits: crates/chaoscontrol-explore/src/profile/campaign.rs
+16 edits: crates/chaoscontrol-explore/src/profile/run.rs
+12 edits: crates/chaoscontrol-explore/src/profile/schedule.rs
+REVIEW crates/chaoscontrol-explore/src/protocol/mod.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/replay_verdict.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-explore/src/report.rs: bare macro identifier needs review
+84 edits: crates/chaoscontrol-explore/src/server.rs
+3 edits: crates/chaoscontrol-explore/src/signal.rs
+REVIEW crates/chaoscontrol-explore/src/snapshot_store.rs: conditional or exported imports need review
+43 edits: crates/chaoscontrol-explore/src/worker.rs
+REVIEW crates/chaoscontrol-fault/src/engine.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/faults.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: conditional or exported imports need review
+10 edits: crates/chaoscontrol-fault/src/oracle_event_validation.rs
+30 edits: crates/chaoscontrol-fault/src/oracle_record_validation.rs
+75 edits: crates/chaoscontrol-fault/src/oracle_snapshot_validation.rs
+REVIEW crates/chaoscontrol-fault/src/oracle_validation.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: attribute references a selected binding
+25 edits: crates/chaoscontrol-fault/src/report_merge.rs
+REVIEW crates/chaoscontrol-fault/src/scenario.rs: attribute references a selected binding
+23 edits: crates/chaoscontrol-fault/src/schedule.rs
+32 edits: crates/chaoscontrol-protocol/src/admission/evidence.rs
+REVIEW crates/chaoscontrol-protocol/src/branch_marker.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-protocol/src/fallback.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-protocol/src/guest_process.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-protocol/src/oci_intake.rs: bare macro identifier needs review
+REVIEW crates/chaoscontrol-protocol/src/process.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/assert.rs: conditional or exported imports need review
+58 edits: crates/chaoscontrol-sdk/src/assertion_catalog.rs
+3 edits: crates/chaoscontrol-sdk/src/bounded_json.rs
+REVIEW crates/chaoscontrol-sdk/src/details.rs: bare macro identifier needs review
+10 edits: crates/chaoscontrol-sdk/src/internal.rs
+2 edits: crates/chaoscontrol-sdk/src/kcov.rs
+REVIEW crates/chaoscontrol-sdk/src/lifecycle.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/marker.rs: conditional or exported imports need review
+3 edits: crates/chaoscontrol-sdk/src/process.rs
+REVIEW crates/chaoscontrol-sdk/src/protocol_observation.rs: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/random.rs: unknown glob import needs scope review
+3 edits: crates/chaoscontrol-sdk/src/resources.rs
+2 edits: crates/chaoscontrol-sdk/src/runtime.rs
+REVIEW crates/chaoscontrol-sdk/src/supervisor.rs: bare macro identifier needs review
+34 edits: crates/chaoscontrol-sdk/src/workload.rs
+6 edits: crates/chaoscontrol-vmm/src/acpi.rs
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: conditional or exported imports need review
+REVIEW crates/chaoscontrol-vmm/src/controller_core.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/cpu.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/determinism_gate.rs: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/devices/block.rs: attribute references a selected binding
+5 edits: crates/chaoscontrol-vmm/src/devices/entropy.rs
+6 edits: crates/chaoscontrol-vmm/src/devices/virtio_block.rs
+11 edits: crates/chaoscontrol-vmm/src/devices/virtio_block_io.rs
+23 edits: crates/chaoscontrol-vmm/src/devices/virtio_buffer.rs
+5 edits: crates/chaoscontrol-vmm/src/devices/virtio_entropy.rs
+28 edits: crates/chaoscontrol-vmm/src/devices/virtio_mmio.rs
+9 edits: crates/chaoscontrol-vmm/src/devices/virtio_net.rs
+REVIEW crates/chaoscontrol-vmm/src/devices/virtio_validation.rs: conditional or exported imports need review
+19 edits: crates/chaoscontrol-vmm/src/dlog.rs
+REVIEW crates/chaoscontrol-vmm/src/memory.rs: conditional or exported imports need review
+79 edits: crates/chaoscontrol-vmm/src/perf.rs
+7 edits: crates/chaoscontrol-vmm/src/registers.rs
+12 edits: crates/chaoscontrol-vmm/src/sim_adapter.rs
+REVIEW crates/chaoscontrol-vmm/src/snapshot.rs: bare macro identifier needs review
+30 edits: crates/chaoscontrol-vmm/src/verified/block.rs
+108 edits: crates/chaoscontrol-vmm/src/verified/pit.rs
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: conflicting import self

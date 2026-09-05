@@ -1,0 +1,11 @@
+a08ec617cb3370318b56e88b5426af091e5290f7527283e61a7241028f5f56ba  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/install-hook-negative.nix.txt
+12eb31a2db54f4e2de730a6c156f57b3b9b099ba9e67a620fa338cca0fa300de  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/module-owner-controls.log
+806801eb8a191fa255c81b429942b852c63ec3bd22a7348f2a68ebac733b3a33  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-module-owners.rs.txt
+e69e63683b60d6b0fb82853b70f5901e5855af0e72e1b57068bafb978ad6c9e6  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-owners.rs.txt
+f3e5609e8fcdc2994d8fab42e6827db707920516abb4c4768317d2baa009ba6a  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-reported-owners.rs.txt
+4b01e1b1f8410b68aaee4a586491fc9ba872a277ffb4593f869055b15c31a9d4  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-serde.rs.txt
+38b35b61aaf4f488317866b75c4dcc6628d1f11f293d799a066e131496f14276  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/README.md
+144ba44b0f8074e955db516ef354c0e5972aaa06b8592df1aa762ab8f5574de8  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/rename-identifiers.rs.txt
+2ce2e9a5181d7bfa926a07d8877c58d1a7dff29c50263f935116bd9278ce8a10  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-applied.log
+2dc73e6d9b090fc1b6c3d43e09413284231f92acf2f7072ffe0f81e781aeedb0  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-controls.log
+2ce2e9a5181d7bfa926a07d8877c58d1a7dff29c50263f935116bd9278ce8a10  .cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/reported-owner-proposals.log

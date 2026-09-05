@@ -1,0 +1,185 @@
+#!/usr/bin/env -S nix shell github:nix-community/fenix/092bd452904e749efa39907aa4a20a42678ac31e#minimal.toolchain nixpkgs#gcc -c cargo -q -Zscript
+---
+[package]
+edition = "2024"
+[dependencies]
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+---
+//! Qualify Serde derive macros without removing trait method resolution.
+//! This helper proposes source edits. The compiler and repository tests remain authoritative.
+
+use syn::visit::Visit;
+
+const MAX_SOURCE_BYTES: usize = 2_097_152;
+const MAX_FILES: usize = 512;
+const SERIALIZE: &str = "Serialize";
+const DESERIALIZE: &str = "Deserialize";
+
+type Failure = Box<dyn std::error::Error>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Replacement {
+    range: std::ops::Range<usize>,
+    before: String,
+    after: String,
+}
+
+struct Collector<'a> {
+    source: &'a str,
+    changes: Vec<Replacement>,
+    imports: std::collections::BTreeSet<String>,
+    blocked: Option<String>,
+}
+
+impl Collector<'_> {
+    fn replace(&mut self, span: proc_macro2::Span, after: String) {
+        let range = span.byte_range();
+        let Some(before) = self.source.get(range.clone()) else {
+            self.blocked = Some("invalid source span".into());
+            return;
+        };
+        self.changes.push(Replacement { range, before: before.into(), after });
+    }
+
+    fn import(&mut self, tree: &syn::UseTree, prefix: &str) {
+        match tree {
+            syn::UseTree::Path(path) => {
+                let next = if prefix.is_empty() { path.ident.to_string() } else { format!("{prefix}::{}", path.ident) };
+                self.import(&path.tree, &next);
+            }
+            syn::UseTree::Group(group) => {
+                for item in &group.items { self.import(item, prefix); }
+            }
+            syn::UseTree::Name(name) if prefix == "serde" => {
+                let ident = name.ident.to_string();
+                let owner = match ident.as_str() {
+                    SERIALIZE => "ser",
+                    DESERIALIZE => "de",
+                    _ => return,
+                };
+                self.imports.insert(ident.clone());
+                self.replace(name.ident.span(), format!("{owner}::{ident}"));
+            }
+            syn::UseTree::Rename(rename) if prefix == "serde" => {
+                if [SERIALIZE, DESERIALIZE].contains(&rename.ident.to_string().as_str()) {
+                    self.blocked = Some("renamed Serde import needs a separate review".into());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for Collector<'_> {
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        // Public exports own compatibility. Do not rewrite them.
+        if matches!(item.vis, syn::Visibility::Inherited) {
+            self.import(&item.tree, "");
+        }
+    }
+
+    fn visit_attribute(&mut self, attribute: &'ast syn::Attribute) {
+        if attribute.path().is_ident("cfg_attr") {
+            self.blocked = Some("conditional attribute needs a separate review".into());
+            return;
+        }
+        if !attribute.path().is_ident("derive") { return; }
+        let parsed = attribute.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated);
+        let Ok(paths) = parsed else {
+            self.blocked = Some("malformed derive attribute".into());
+            return;
+        };
+        for path in paths {
+            let Some(ident) = path.get_ident() else { continue; };
+            let name = ident.to_string();
+            if self.imports.contains(&name) {
+                self.replace(ident.span(), format!("serde::{name}"));
+            }
+        }
+    }
+
+    fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
+        // Do not change an outer macro import that a nested scope can inherit.
+        if module.content.is_some() {
+            self.blocked = Some("inline module needs a separate scope review".into());
+        }
+    }
+}
+
+fn propose(source: &str) -> Result<Vec<Replacement>, Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds the byte bound".into()); }
+    let file = syn::parse_file(source)?;
+    let mut collector = Collector {
+        source, changes: Vec::new(), imports: std::collections::BTreeSet::new(), blocked: None,
+    };
+    // Imports can occur after type definitions. Collect them before derive paths.
+    for item in &file.items {
+        if let syn::Item::Use(item) = item { collector.visit_item_use(item); }
+    }
+    for item in &file.items {
+        if !matches!(item, syn::Item::Use(_)) { collector.visit_item(item); }
+    }
+    if let Some(reason) = collector.blocked { return Err(reason.into()); }
+    collector.changes.sort_by_key(|change| change.range.start);
+    Ok(collector.changes)
+}
+
+fn apply(source: &str, changes: &[Replacement]) -> Result<String, Failure> {
+    let mut previous_end = 0;
+    for change in changes {
+        if change.range.start < previous_end || source.get(change.range.clone()) != Some(change.before.as_str()) {
+            return Err("overlapping or stale source edit".into());
+        }
+        previous_end = change.range.end;
+    }
+    let mut output = source.to_owned();
+    for change in changes.iter().rev() { output.replace_range(change.range.clone(), &change.after); }
+    syn::parse_file(&output)?;
+    Ok(output)
+}
+
+fn self_test() -> Result<(), Failure> {
+    let source = "// λ\nuse serde::{Serialize, Deserialize};\n#[derive(Serialize, Deserialize)] struct Row;";
+    let output = apply(source, &propose(source)?)?;
+    assert_eq!(output, "// λ\nuse serde::{ser::Serialize, de::Deserialize};\n#[derive(serde::Serialize, serde::Deserialize)] struct Row;");
+    assert!(propose(&output)?.is_empty());
+    assert!(propose("use serde::Serialize as S;").is_err());
+    assert!(propose("use serde::Serialize; mod inner { struct X; }").is_err());
+    assert!(propose("use serde::Serialize; mod tests { struct X; }").is_err());
+    assert!(propose("use serde::Serialize; #[cfg_attr(test, derive(Serialize))] struct X;").is_err());
+    assert!(propose("this is not Rust").is_err());
+    let changes = propose(source)?;
+    assert!(apply("stale", &changes).is_err());
+    let mut overlap = changes.clone();
+    overlap.push(changes[0].clone());
+    assert!(apply(source, &overlap).is_err());
+    assert!(propose("use other::Serialize; #[derive(Serialize)] struct Row;")?.is_empty());
+    assert!(propose("pub use serde::Serialize; #[derive(Serialize)] struct Row;")?.is_empty());
+    println!("Serde qualifier positive and negative controls passed");
+    Ok(())
+}
+
+fn main() -> Result<(), Failure> {
+    let mut args = std::env::args().skip(1);
+    let mode = args.next().ok_or("expected --check, --write, or --self-test")?;
+    if mode == "--self-test" { return self_test(); }
+    if mode != "--check" && mode != "--write" { return Err("unknown mode".into()); }
+    let paths: Vec<_> = args.collect();
+    if paths.is_empty() || paths.len() > MAX_FILES { return Err("invalid file count".into()); }
+    for path in paths {
+        let source = std::fs::read_to_string(&path)?;
+        let changes = match propose(&source) {
+            Ok(changes) => changes,
+            Err(error) => { eprintln!("REVIEW {path}: {error}"); continue; }
+        };
+        if changes.is_empty() { continue; }
+        let output = apply(&source, &changes)?;
+        println!("{} edits: {path}", changes.len());
+        if mode == "--write" {
+            if std::fs::read_to_string(&path)? != source { return Err("source changed before write".into()); }
+            std::fs::write(path, output)?;
+        }
+    }
+    Ok(())
+}

@@ -48,5 +48,16 @@ The final Raft build uses Cargo 1.98.0 and successfully selects and installs its
 The missing-command fixture fails with the expected `substituteStream()` pattern error.
 Evidence: `cargo-install-hook-verified.log`, `.exit`, and `cargo-install-hook-drift-final.log`, `.exit`.
 
+## Remaining vendor-layout error
+
+The final broad retry passes the repaired installation boundary, then fails in the default dependency build.
+The vendored `vm-cohort-conformance` crate uses `include_bytes!("../../../config/generated/profile.json")` in `src/standard.rs:33`.
+Crane's flattened vendor layout does not supply that workspace-relative file.
+`flake-final.log` and `flake-final.exit` retain the failure.
+
+The path-based isolated adapter check passes against the same pinned source.
+The next packaging correction must retain the exact profile bytes and source revision without removing the dependency or bypassing a guard.
+This is a vendor-layout failure, not a remaining package-ID parser panic.
+
 These repairs do not establish a strict clean result for the broader source scope.
 That source report still has 1,814 warnings. Lifecycle completion remains withheld.

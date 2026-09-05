@@ -191,6 +191,60 @@ pub fn case_identity(case: &ExplorationCase) -> Result<String, String> {
     Ok(blake3_hex(&canonical_json(case)?))
 }
 
+/// The verdict of replaying one corpus case from its declared manifest
+/// facts against a regeneration of the same declared inputs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "verdict", rename_all = "kebab-case")]
+pub enum CorpusReplayVerdict {
+    Reproducible {
+        case_identity_blake3: String,
+    },
+    ReplayMismatch {
+        declared_identity_blake3: String,
+        regenerated_identity_blake3: String,
+    },
+}
+
+/// Verifies one corpus replay. Regeneration of the declared inputs must
+/// reproduce the exact artifact bytes; anything else is the typed
+/// `replay-mismatch` class and never counts as reproducible evidence.
+/// Comparing cases with different declared inputs is a harness error, not a
+/// mismatch, because it verifies nothing about reproducibility.
+pub fn verify_corpus_replay(
+    declared: &ExplorationCase,
+    regenerated: &ExplorationCase,
+) -> Result<CorpusReplayVerdict, String> {
+    let manifest_inputs_equal = declared.case_id == regenerated.case_id
+        && declared.corpus_class == regenerated.corpus_class
+        && declared.generator == regenerated.generator
+        && declared.generator_version == regenerated.generator_version
+        && declared.seed_hex == regenerated.seed_hex
+        && declared.configuration_blake3 == regenerated.configuration_blake3
+        && declared.parent_case_id == regenerated.parent_case_id
+        && declared.componentization_blake3 == regenerated.componentization_blake3
+        && declared.expected_validity == regenerated.expected_validity
+        && declared.wit_blake3 == regenerated.wit_blake3
+        && declared.wit_size_bytes == regenerated.wit_size_bytes;
+    if !manifest_inputs_equal {
+        return Err(
+            "corpus replay must compare one case against a regeneration of the same declared inputs"
+                .to_string(),
+        );
+    }
+    let declared_identity_blake3 = case_identity(declared)?;
+    let regenerated_identity_blake3 = case_identity(regenerated)?;
+    if declared_identity_blake3 == regenerated_identity_blake3 {
+        Ok(CorpusReplayVerdict::Reproducible {
+            case_identity_blake3: declared_identity_blake3,
+        })
+    } else {
+        Ok(CorpusReplayVerdict::ReplayMismatch {
+            declared_identity_blake3,
+            regenerated_identity_blake3,
+        })
+    }
+}
+
 /// Seed material binds the seed bytes to the configuration, parent, and
 /// componentization identity inputs through one domain-separated digest, so
 /// two cases sharing a seed cannot share derived generator material.
@@ -271,6 +325,61 @@ mod tests {
         let first = derive_seed_material(&shared_seed).expect("seed material");
         let second = derive_seed_material(&other_config).expect("seed material");
         assert_ne!(first.derivation_blake3, second.derivation_blake3);
+    }
+
+    #[test]
+    fn corpus_replay_of_identical_regeneration_is_reproducible() {
+        let declared = example_case();
+        let regenerated = example_case();
+        match verify_corpus_replay(&declared, &regenerated).expect("verdict") {
+            CorpusReplayVerdict::Reproducible {
+                case_identity_blake3,
+            } => {
+                assert_eq!(
+                    case_identity_blake3,
+                    case_identity(&declared).expect("identity")
+                );
+            }
+            CorpusReplayVerdict::ReplayMismatch { .. } => {
+                panic!("identical regeneration must not be a replay mismatch");
+            }
+        }
+    }
+
+    #[test]
+    fn corpus_replay_with_divergent_bytes_is_the_replay_mismatch_class() {
+        let declared = example_case();
+        let mut regenerated = example_case();
+        regenerated.artifact_blake3 = crate::blake3_hex(b"regenerated-different-bytes");
+        match verify_corpus_replay(&declared, &regenerated).expect("verdict") {
+            CorpusReplayVerdict::Reproducible { .. } => {
+                panic!("divergent regeneration must not be reproducible");
+            }
+            CorpusReplayVerdict::ReplayMismatch {
+                declared_identity_blake3,
+                regenerated_identity_blake3,
+            } => {
+                assert_eq!(
+                    declared_identity_blake3,
+                    case_identity(&declared).expect("identity")
+                );
+                assert_eq!(
+                    regenerated_identity_blake3,
+                    case_identity(&regenerated).expect("identity")
+                );
+                assert_ne!(declared_identity_blake3, regenerated_identity_blake3);
+            }
+        }
+    }
+
+    #[test]
+    fn corpus_replay_across_different_declared_inputs_is_a_harness_error() {
+        let declared = example_case();
+        let mut regenerated = example_case();
+        regenerated.seed_hex = "ff112233445566778899aabbccddeeff".to_string();
+        let error = verify_corpus_replay(&declared, &regenerated)
+            .expect_err("different declared inputs must not verify");
+        assert!(error.contains("same declared inputs"));
     }
 
     #[test]

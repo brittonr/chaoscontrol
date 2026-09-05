@@ -27,8 +27,8 @@ pub mod shrink;
 
 pub use bounds::{check_artifact_bytes, check_wit_bytes, decide_bound, BoundDecision, BoundSkip};
 pub use case::{
-    case_identity, derive_seed_material, validate_case, CorpusClass, ExpectedValidity,
-    ExplorationCase, GeneratorKind, SeedMaterial,
+    case_identity, derive_seed_material, validate_case, verify_corpus_replay, CorpusClass,
+    CorpusReplayVerdict, ExpectedValidity, ExplorationCase, GeneratorKind, SeedMaterial,
 };
 pub use classify::{classify_boundary_rejection, AdmissionBoundary, OutcomeClass};
 pub use compare::{

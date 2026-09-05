@@ -5,47 +5,34 @@
 // r[impl chaoscontrol.typed_operator_commands.mechanism]
 // r[impl chaoscontrol.typed_operator_commands.evidence]
 
-use std::ffi::OsString;
-
 use std::io::Read;
-
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use bounded_exec::{run, CommandSpec, EnvironmentMode, Input, RunRequest, TerminationScope};
-
-use crate::typed_operator_command::{
-    command_identity, completion_name, disposition_name, execution_limits, outcome_policy,
-    stdin_bytes, CommandObservation, CommandPlan, EnvironmentMode as PlanEnvironmentMode,
-    ExecutableRef, StreamObservation, TerminationScope as PlanTerminationScope,
-};
-use crate::{ensure, EvidenceError, EvidenceResult};
 
 const HASH_BUFFER_BYTES: usize = 8_192;
 
 /// Captured process data and its structured observation.
 #[derive(Debug)]
 pub struct CapturedPlanCommand {
-    pub observation: CommandObservation,
+    pub observation: crate::typed_operator_command::CommandObservation,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
 
 /// Execute one admitted command through the pinned bounded process mechanism.
 pub(crate) fn run_plan_command(
-    plan: &CommandPlan,
+    plan: &crate::typed_operator_command::CommandPlan,
     execution_root: &std::path::Path,
-) -> EvidenceResult<CommandObservation> {
+) -> crate::EvidenceResult<crate::typed_operator_command::CommandObservation> {
     Ok(run_plan_command_captured(plan, execution_root)?.observation)
 }
 
 /// Execute one admitted command and retain its bounded output for a Rust shell.
 pub fn run_plan_command_captured(
-    plan: &CommandPlan,
+    plan: &crate::typed_operator_command::CommandPlan,
     execution_root: &std::path::Path,
-) -> EvidenceResult<CapturedPlanCommand> {
+) -> crate::EvidenceResult<CapturedPlanCommand> {
     let executable = std::path::PathBuf::from(&plan.executable.path);
     let executable_blake3 = hash_file_bounded(&executable, plan.executable.maximum_bytes)?;
-    ensure(
+    crate::ensure(
         executable_blake3 == plan.executable.blake3,
         format!(
             "typed command executable identity mismatch: expected={} actual={executable_blake3}",
@@ -53,60 +40,77 @@ pub fn run_plan_command_captured(
         ),
     )?;
     let execution_root = std::fs::canonicalize(execution_root).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "typed command execution root {}: {error}",
             execution_root.display()
         ))
     })?;
     let working_directory = execution_root.join(&plan.working_directory);
-    ensure(
+    crate::ensure(
         working_directory.is_dir(),
         format!(
             "typed command working directory is not a directory: {}",
             working_directory.display()
         ),
     )?;
-    let input_bytes = stdin_bytes(&plan.stdin).map_err(EvidenceError::new)?;
+    let input_bytes = crate::typed_operator_command::stdin_bytes(&plan.stdin)
+        .map_err(crate::EvidenceError::new)?;
     let input = if matches!(plan.stdin, crate::typed_operator_command::StdinSpec::Null) {
-        Input::Null
+        ::bounded_exec::Input::Null
     } else {
-        Input::Bytes(input_bytes)
+        ::bounded_exec::Input::Bytes(input_bytes)
     };
-    let request = RunRequest {
-        command: CommandSpec {
+    let request = ::bounded_exec::RunRequest {
+        command: ::bounded_exec::CommandSpec {
             program: executable,
-            args: plan.args.iter().map(OsString::from).collect(),
+            args: plan.args.iter().map(::std::ffi::OsString::from).collect(),
             current_dir: working_directory,
             environment_mode: match plan.environment.mode {
-                PlanEnvironmentMode::Clear => EnvironmentMode::Clear,
-                PlanEnvironmentMode::Inherit => EnvironmentMode::Inherit,
+                crate::typed_operator_command::EnvironmentMode::Clear => {
+                    ::bounded_exec::EnvironmentMode::Clear
+                }
+                crate::typed_operator_command::EnvironmentMode::Inherit => {
+                    ::bounded_exec::EnvironmentMode::Inherit
+                }
             },
             environment: plan
                 .environment
                 .entries
                 .iter()
-                .map(|entry| (OsString::from(&entry.name), OsString::from(&entry.value)))
+                .map(|entry| {
+                    (
+                        ::std::ffi::OsString::from(&entry.name),
+                        ::std::ffi::OsString::from(&entry.value),
+                    )
+                })
                 .collect(),
             input,
         },
-        limits: execution_limits(plan.limits).map_err(EvidenceError::new)?,
+        limits: crate::typed_operator_command::execution_limits(plan.limits)
+            .map_err(crate::EvidenceError::new)?,
         termination_scope: match plan.termination_scope {
-            PlanTerminationScope::Child => TerminationScope::Child,
-            PlanTerminationScope::ProcessGroup => TerminationScope::ProcessGroup,
+            crate::typed_operator_command::TerminationScope::Child => {
+                ::bounded_exec::TerminationScope::Child
+            }
+            crate::typed_operator_command::TerminationScope::ProcessGroup => {
+                ::bounded_exec::TerminationScope::ProcessGroup
+            }
         },
-        outcome_policy: outcome_policy(plan).map_err(EvidenceError::new)?,
+        outcome_policy: crate::typed_operator_command::outcome_policy(plan)
+            .map_err(crate::EvidenceError::new)?,
     };
-    let output = run(request)
-        .map_err(|error| EvidenceError::new(format!("bounded-exec failed: {error}")))?;
-    let command_identity_blake3 = command_identity(plan).map_err(EvidenceError::new)?;
-    let completion = completion_name(output.completion);
-    let observation = CommandObservation {
+    let output = ::bounded_exec::run(request)
+        .map_err(|error| crate::EvidenceError::new(format!("bounded-exec failed: {error}")))?;
+    let command_identity_blake3 =
+        crate::typed_operator_command::command_identity(plan).map_err(crate::EvidenceError::new)?;
+    let completion = crate::typed_operator_command::completion_name(output.completion);
+    let observation = crate::typed_operator_command::CommandObservation {
         schema: "chaoscontrol.typed-command-observation.v1",
         mechanism_revision: crate::typed_operator_command::MECHANISM_REVISION,
         command_identity_blake3,
         executable_blake3,
         completion,
-        disposition: disposition_name(output.disposition),
+        disposition: crate::typed_operator_command::disposition_name(output.disposition),
         exit_code: output.exit_code,
         signal: output.signal,
         cancellation: if completion == "cancelled" {
@@ -128,23 +132,25 @@ pub fn run_plan_command_captured(
 pub fn observe_executable_reference(
     path: &std::path::Path,
     maximum_bytes: u64,
-) -> EvidenceResult<ExecutableRef> {
+) -> crate::EvidenceResult<crate::typed_operator_command::ExecutableRef> {
     let canonical = std::fs::canonicalize(path).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "typed command executable path {}: {error}",
             path.display()
         ))
     })?;
     let blake3 = hash_file_bounded(&canonical, maximum_bytes)?;
-    Ok(ExecutableRef {
+    Ok(crate::typed_operator_command::ExecutableRef {
         path: canonical.display().to_string(),
         blake3,
         maximum_bytes,
     })
 }
 
-fn stream_observation(output: &bounded_exec::CapturedOutput) -> StreamObservation {
-    StreamObservation {
+fn stream_observation(
+    output: &bounded_exec::CapturedOutput,
+) -> crate::typed_operator_command::StreamObservation {
+    crate::typed_operator_command::StreamObservation {
         observed_bytes: output.observed_bytes,
         retained_bytes: output.bytes.len(),
         retained_blake3: blake3::hash(&output.bytes).to_hex().to_string(),
@@ -152,24 +158,24 @@ fn stream_observation(output: &bounded_exec::CapturedOutput) -> StreamObservatio
     }
 }
 
-fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResult<String> {
+fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> crate::EvidenceResult<String> {
     let mut file = std::fs::File::open(path).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "typed command executable open {}: {error}",
             path.display()
         ))
     })?;
     let metadata = file.metadata().map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "typed command executable metadata {}: {error}",
             path.display()
         ))
     })?;
-    ensure(
+    crate::ensure(
         metadata.is_file(),
         format!("typed command executable is not a file: {}", path.display()),
     )?;
-    ensure(
+    crate::ensure(
         metadata.len() <= maximum_bytes,
         format!(
             "typed command executable exceeds byte bound: size={} maximum={maximum_bytes}",
@@ -186,7 +192,7 @@ fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResu
             .unwrap_or(usize::MAX)
             .min(HASH_BUFFER_BYTES);
         let read = file.read(&mut buffer[..next_read]).map_err(|error| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "typed command executable read {}: {error}",
                 path.display()
             ))
@@ -196,8 +202,10 @@ fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResu
         }
         observed_bytes = observed_bytes
             .checked_add(u64::try_from(read).expect("bounded read length fits u64"))
-            .ok_or_else(|| EvidenceError::new("typed command executable byte count overflow"))?;
-        ensure(
+            .ok_or_else(|| {
+                crate::EvidenceError::new("typed command executable byte count overflow")
+            })?;
+        crate::ensure(
             observed_bytes <= maximum_bytes,
             format!(
                 "typed command executable grew beyond byte bound: observed={observed_bytes} maximum={maximum_bytes}"
@@ -215,7 +223,7 @@ fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResu
     reason = "receipt writer shell timestamps bounded local scheduler evidence"
 )]
 pub(crate) fn unix_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    ::std::time::SystemTime::now()
+        .duration_since(::std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
 }

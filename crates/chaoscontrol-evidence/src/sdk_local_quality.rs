@@ -1,8 +1,4 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::admission::{CatalogBuilder, MAX_ASSERTION_REPORT_ENTRIES};
-use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::de::Deserialize;
-use serde_json::Value;
 
 pub const LOCAL_REPORT_SCHEMA: &str = "chaoscontrol.sdk.local_report.v2";
 pub const LOCAL_REPLAY_BOUNDARY: &str = "local SDK JSONL proves instrumentation shape only; VM campaign and replay artifacts must be reviewed separately";
@@ -11,20 +7,20 @@ const LOCAL_EVIDENCE_CLASS: &str = "instrumentation-dry-run";
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LocalReportIdentity {
-    pub descriptor: AssertionDescriptor,
-    pub fingerprint: AssertionFingerprint,
+    pub descriptor: ::chaoscontrol_protocol::identity::AssertionDescriptor,
+    pub fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     pub canonical_descriptor: String,
-    pub catalog_token: AssertionFingerprint,
+    pub catalog_token: ::chaoscontrol_protocol::identity::AssertionFingerprint,
 }
 
 impl LocalReportIdentity {
     pub fn from_resolved(
         resolved: &crate::sdk_local_identity::ResolvedLocalIdentity,
-    ) -> EvidenceResult<Self> {
+    ) -> crate::EvidenceResult<Self> {
         let canonical = resolved
             .descriptor
             .canonical_bytes()
-            .map_err(|error| EvidenceError::new(format!("invalid descriptor: {error}")))?;
+            .map_err(|error| crate::EvidenceError::new(format!("invalid descriptor: {error}")))?;
         Ok(Self {
             descriptor: resolved.descriptor.clone(),
             fingerprint: resolved.fingerprint,
@@ -89,16 +85,22 @@ struct CoverageEntry {
     identity: Option<LocalReportIdentity>,
 }
 
-pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFacts> {
-    let report = LocalReportV2::deserialize(value)
-        .map_err(|error| EvidenceError::new(format!("invalid SDK local report v2: {error}")))?;
+pub(crate) fn validate_quality_report(
+    value: &::serde_json::Value,
+) -> crate::EvidenceResult<QualityFacts> {
+    let report = LocalReportV2::deserialize(value).map_err(|error| {
+        crate::EvidenceError::new(format!("invalid SDK local report v2: {error}"))
+    })?;
     if report.schema != LOCAL_REPORT_SCHEMA
         || report.replay_evidence
         || report.evidence_class != LOCAL_EVIDENCE_CLASS
         || report.replay_boundary != LOCAL_REPLAY_BOUNDARY
-        || report.assertion_coverage.len() > MAX_ASSERTION_REPORT_ENTRIES
+        || report.assertion_coverage.len()
+            > ::chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES
     {
-        return Err(EvidenceError::new("invalid SDK local report v2 boundary"));
+        return Err(crate::EvidenceError::new(
+            "invalid SDK local report v2 boundary",
+        ));
     }
     let identity_count = report
         .assertion_coverage
@@ -110,7 +112,7 @@ pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFa
             report.catalog_status.as_str(),
             "legacy-ambiguous" | "pending"
         ) {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "legacy report has invalid catalog status",
             ));
         }
@@ -118,18 +120,20 @@ pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFa
     } else if identity_count == report.assertion_coverage.len() {
         validate_strict_entries(&report.assertion_coverage)?;
         if report.catalog_status != "accepted" {
-            return Err(EvidenceError::new("strict report catalog is not accepted"));
+            return Err(crate::EvidenceError::new(
+                "strict report catalog is not accepted",
+            ));
         }
         true
     } else {
         validate_strict_entries(&report.assertion_coverage)?;
         if report.catalog_status != "legacy-ambiguous" {
-            return Err(EvidenceError::new("mixed report is not quarantined"));
+            return Err(crate::EvidenceError::new("mixed report is not quarantined"));
         }
         false
     };
     if report.collision_safe_evidence != collision_safe {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "caller-owned collision-safe marker conflicts with recomputed identity",
         ));
     }
@@ -140,7 +144,7 @@ pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFa
         .copied()
         .unwrap_or(0);
     if setup_count > 1 || report.setup_complete != (setup_count == 1) {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "setup completion disagrees with validated lifecycle count",
         ));
     }
@@ -163,9 +167,9 @@ pub(crate) fn validate_quality_report(value: &Value) -> EvidenceResult<QualityFa
     })
 }
 
-fn validate_strict_entries(entries: &[CoverageEntry]) -> EvidenceResult<()> {
+fn validate_strict_entries(entries: &[CoverageEntry]) -> crate::EvidenceResult<()> {
     if entries.is_empty() {
-        return Err(EvidenceError::new("strict report catalog is empty"));
+        return Err(crate::EvidenceError::new("strict report catalog is empty"));
     }
     let strict_entries = entries
         .iter()
@@ -173,19 +177,21 @@ fn validate_strict_entries(entries: &[CoverageEntry]) -> EvidenceResult<()> {
         .collect::<Vec<_>>();
     let mut fingerprints = std::collections::BTreeSet::new();
     let mut catalog_token = None;
-    let mut builder = CatalogBuilder::begin(strict_entries.len())
-        .map_err(|error| EvidenceError::new(format!("invalid report catalog: {error:?}")))?;
+    let mut builder = ::chaoscontrol_protocol::admission::CatalogBuilder::begin(
+        strict_entries.len(),
+    )
+    .map_err(|error| crate::EvidenceError::new(format!("invalid report catalog: {error:?}")))?;
     for entry in strict_entries {
         validate_entry_counts(entry)?;
         let identity = entry.identity.as_ref().expect("entry was filtered");
         let canonical = identity
             .descriptor
             .canonical_bytes()
-            .map_err(|error| EvidenceError::new(format!("invalid descriptor: {error}")))?;
+            .map_err(|error| crate::EvidenceError::new(format!("invalid descriptor: {error}")))?;
         let fingerprint = identity
             .descriptor
             .fingerprint()
-            .map_err(|error| EvidenceError::new(format!("invalid fingerprint: {error}")))?;
+            .map_err(|error| crate::EvidenceError::new(format!("invalid fingerprint: {error}")))?;
         if fingerprint != identity.fingerprint
             || crate::sdk_local_identity_value::encode_hex(&canonical)
                 != identity.canonical_descriptor
@@ -202,25 +208,29 @@ fn validate_strict_entries(entries: &[CoverageEntry]) -> EvidenceResult<()> {
                 entry.failure_count,
             )
         {
-            return Err(EvidenceError::new("report assertion identity mismatch"));
+            return Err(crate::EvidenceError::new(
+                "report assertion identity mismatch",
+            ));
         }
         if catalog_token
             .replace(identity.catalog_token)
             .is_some_and(|token| token != identity.catalog_token)
         {
-            return Err(EvidenceError::new("report catalog tokens disagree"));
+            return Err(crate::EvidenceError::new("report catalog tokens disagree"));
         }
         builder
             .insert_with_fingerprint(identity.descriptor.clone(), fingerprint)
-            .map_err(|error| EvidenceError::new(format!("report catalog conflict: {error:?}")))?;
+            .map_err(|error| {
+                crate::EvidenceError::new(format!("report catalog conflict: {error:?}"))
+            })?;
     }
     builder
         .complete(catalog_token.expect("strict entries are non-empty"))
-        .map_err(|error| EvidenceError::new(format!("invalid report token: {error:?}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("invalid report token: {error:?}")))?;
     Ok(())
 }
 
-fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
+fn validate_derived_totals(report: &LocalReportV2) -> crate::EvidenceResult<()> {
     let mut failed = 0_u64;
     let mut observed = 0_u64;
     let mut uncategorized = 0_u64;
@@ -230,7 +240,7 @@ fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
     for entry in &report.assertion_coverage {
         validate_entry_counts(entry)?;
         let kind = crate::sdk_local_verdict::report_kind(&entry.assert_type)
-            .ok_or_else(|| EvidenceError::new("report assertion kind is unknown"))?;
+            .ok_or_else(|| crate::EvidenceError::new("report assertion kind is unknown"))?;
         let verdict = crate::sdk_local_verdict::derive_local_verdict(
             kind,
             entry.success_count,
@@ -242,16 +252,20 @@ fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
         if crate::sdk_local_verdict::blocks_as_unobserved(kind, entry.observed) {
             unobserved.push(entry.message.clone());
         }
-        if kind == AssertionKind::Reachable && entry.success_count == 0 {
+        if kind == ::chaoscontrol_protocol::identity::AssertionKind::Reachable
+            && entry.success_count == 0
+        {
             reachable.push(entry.message.clone());
         }
-        if kind == AssertionKind::Sometimes && entry.success_count == 0 {
+        if kind == ::chaoscontrol_protocol::identity::AssertionKind::Sometimes
+            && entry.success_count == 0
+        {
             sometimes.push(entry.message.clone());
         }
         let _review_only = &entry.adoption_tracks;
     }
     let cataloged = u64::try_from(report.assertion_coverage.len())
-        .map_err(|_| EvidenceError::new("report catalog size overflow"))?;
+        .map_err(|_| crate::EvidenceError::new("report catalog size overflow"))?;
     if report.cataloged_assertions != cataloged
         || report.registered_assertions != cataloged
         || report.exercised_assertions != observed
@@ -266,20 +280,22 @@ fn validate_derived_totals(report: &LocalReportV2) -> EvidenceResult<()> {
         || crate::sdk_local_verdict::sorted_strings(&report.sometimes_without_success)
             != crate::sdk_local_verdict::sorted_owned(sometimes)
     {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "SDK local report derived totals disagree",
         ));
     }
     Ok(())
 }
 
-fn validate_entry_counts(entry: &CoverageEntry) -> EvidenceResult<()> {
+fn validate_entry_counts(entry: &CoverageEntry) -> crate::EvidenceResult<()> {
     let hits = entry
         .success_count
         .checked_add(entry.failure_count)
-        .ok_or_else(|| EvidenceError::new("assertion count overflow"))?;
+        .ok_or_else(|| crate::EvidenceError::new("assertion count overflow"))?;
     if hits != entry.observed_hits || entry.observed != (entry.observed_hits > 0) {
-        return Err(EvidenceError::new("assertion coverage counts disagree"));
+        return Err(crate::EvidenceError::new(
+            "assertion coverage counts disagree",
+        ));
     }
     Ok(())
 }

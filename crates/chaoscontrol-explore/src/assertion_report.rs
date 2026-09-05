@@ -1,23 +1,19 @@
-use crate::explorer::{AssertionDetail, AssertionIdentityDetail, AssertionStats};
-use chaoscontrol_fault::oracle::{OracleReport, Verdict};
-use chaoscontrol_fault::oracle_validation::OracleValidationError;
-use chaoscontrol_protocol::admission::CatalogValidationStatus;
-
 const FAILED_SORT_RANK: u8 = 0;
 const UNEXERCISED_SORT_RANK: u8 = 1;
 const PASSED_SORT_RANK: u8 = 2;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssertionReportProjection {
-    pub stats: AssertionStats,
-    pub details: Vec<AssertionDetail>,
-    pub catalog_status: CatalogValidationStatus,
+    pub stats: crate::explorer::AssertionStats,
+    pub details: Vec<crate::explorer::AssertionDetail>,
+    pub catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
     pub collision_safe_evidence: bool,
 }
 
 pub fn strict_projection(
-    report: &OracleReport,
-) -> Result<AssertionReportProjection, OracleValidationError> {
+    report: &::chaoscontrol_fault::oracle::OracleReport,
+) -> Result<AssertionReportProjection, ::chaoscontrol_fault::oracle_validation::OracleValidationError>
+{
     chaoscontrol_fault::oracle_validation::validate_oracle_report_claim(report)?;
     let mut passed = 0_usize;
     let mut failed = 0_usize;
@@ -26,21 +22,21 @@ pub fn strict_projection(
     for record in report.structured_assertions.values() {
         let verdict = record.verdict();
         match verdict {
-            Verdict::Passed => passed += 1,
-            Verdict::Failed => failed += 1,
-            Verdict::Unexercised => unexercised += 1,
+            ::chaoscontrol_fault::oracle::Verdict::Passed => passed += 1,
+            ::chaoscontrol_fault::oracle::Verdict::Failed => failed += 1,
+            ::chaoscontrol_fault::oracle::Verdict::Unexercised => unexercised += 1,
         }
         let admitted = record
             .identity
             .as_ref()
-            .ok_or(OracleValidationError::Record)?;
+            .ok_or(::chaoscontrol_fault::oracle_validation::OracleValidationError::Record)?;
         let failure_details = record
             .last_failure_details
             .as_ref()
             .and_then(|bytes| std::str::from_utf8(bytes).ok().map(str::to_string));
-        details.push(AssertionDetail {
+        details.push(crate::explorer::AssertionDetail {
             id: record.compatibility_id.unwrap_or_default(),
-            identity: Some(AssertionIdentityDetail {
+            identity: Some(crate::explorer::AssertionIdentityDetail {
                 descriptor: admitted.descriptor.clone(),
                 fingerprint: admitted.fingerprint,
                 canonical_descriptor: chaoscontrol_protocol::identity::encode_lower_hex(
@@ -71,14 +67,14 @@ pub fn strict_projection(
             .then(left.id.cmp(&right.id))
     });
     Ok(AssertionReportProjection {
-        stats: AssertionStats {
+        stats: crate::explorer::AssertionStats {
             catalog_size: details.len(),
             passed,
             failed,
             unexercised,
         },
         details,
-        catalog_status: CatalogValidationStatus::Accepted,
+        catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted,
         collision_safe_evidence: true,
     })
 }
@@ -102,7 +98,7 @@ mod tests {
 
     const TEST_ALIAS: u32 = 7;
 
-    fn accepted_report() -> OracleReport {
+    fn accepted_report() -> ::chaoscontrol_fault::oracle::OracleReport {
         let descriptor = AssertionDescriptor {
             identity_version: ASSERTION_IDENTITY_VERSION,
             namespace: "org.example.report".to_string(),
@@ -131,7 +127,10 @@ mod tests {
     fn projects_a_validated_accepted_report() {
         let projection = strict_projection(&accepted_report()).expect("report projects");
 
-        assert_eq!(projection.catalog_status, CatalogValidationStatus::Accepted);
+        assert_eq!(
+            projection.catalog_status,
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+        );
         assert!(projection.collision_safe_evidence);
         assert_eq!(projection.details.len(), 1);
         assert_eq!(projection.details[0].id, TEST_ALIAS);

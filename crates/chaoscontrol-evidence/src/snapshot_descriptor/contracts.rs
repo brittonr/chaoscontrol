@@ -1,9 +1,4 @@
-use chaoscontrol_snapshot_descriptor as snapshot_core;
 use serde::ser::Serialize;
-use serde_json::Value;
-
-use crate::snapshot_descriptor::fixture::example_descriptor;
-use crate::{EvidenceError, EvidenceResult};
 
 const CONTRACT_DIR: &str = "contracts/evidence";
 const CONTRACT_FILE: &str = "snapshot-descriptor.ncl";
@@ -57,20 +52,21 @@ struct FreshnessFile {
 pub fn check_snapshot_descriptor_contracts(
     root: impl AsRef<std::path::Path>,
     write: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let root = root.as_ref();
     let contract_root = root.join(CONTRACT_DIR);
     let fixture_path = contract_root.join(VALID_FIXTURE_FILE);
-    let expected = example_descriptor()?;
+    let expected = crate::snapshot_descriptor::fixture::example_descriptor()?;
     if write {
         write_json(&fixture_path, &expected)?;
     }
     let fixture_bytes = std::fs::read(&fixture_path)?;
-    let fixture: snapshot_core::SnapshotDescriptor = serde_json::from_slice(&fixture_bytes)?;
-    snapshot_core::validate_descriptor(&fixture)
-        .map_err(|error| EvidenceError::new(error.to_string()))?;
+    let fixture: ::chaoscontrol_snapshot_descriptor::SnapshotDescriptor =
+        serde_json::from_slice(&fixture_bytes)?;
+    ::chaoscontrol_snapshot_descriptor::validate_descriptor(&fixture)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     if fixture != expected {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "snapshot descriptor fixture is stale relative to the Rust owner",
         ));
     }
@@ -83,22 +79,26 @@ pub fn check_snapshot_descriptor_contracts(
     }
     let committed: FreshnessManifest = serde_json::from_slice(&std::fs::read(&freshness_path)?)?;
     if committed != freshness {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "snapshot descriptor contract freshness manifest is stale",
         ));
     }
     Ok(())
 }
 
-fn validate_schema_snapshot(path: &std::path::Path) -> EvidenceResult<()> {
-    let schema: Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    if schema.get("$id").and_then(Value::as_str) != Some(snapshot_core::DESCRIPTOR_SCHEMA) {
-        return Err(EvidenceError::new("snapshot descriptor schema ID is stale"));
+fn validate_schema_snapshot(path: &std::path::Path) -> crate::EvidenceResult<()> {
+    let schema: ::serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    if schema.get("$id").and_then(::serde_json::Value::as_str)
+        != Some(::chaoscontrol_snapshot_descriptor::DESCRIPTOR_SCHEMA)
+    {
+        return Err(crate::EvidenceError::new(
+            "snapshot descriptor schema ID is stale",
+        ));
     }
     let properties = schema
         .get("properties")
-        .and_then(Value::as_object)
-        .ok_or_else(|| EvidenceError::new("snapshot descriptor schema lacks properties"))?;
+        .and_then(::serde_json::Value::as_object)
+        .ok_or_else(|| crate::EvidenceError::new("snapshot descriptor schema lacks properties"))?;
     let property_names = properties
         .keys()
         .map(String::as_str)
@@ -107,20 +107,22 @@ fn validate_schema_snapshot(path: &std::path::Path) -> EvidenceResult<()> {
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
     if property_names != expected_names {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "snapshot descriptor schema properties differ from the Rust owner",
         ));
     }
     let required = schema
         .get("required")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("snapshot descriptor schema lacks required fields"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("snapshot descriptor schema lacks required fields")
+        })?;
     let required_names = required
         .iter()
-        .filter_map(Value::as_str)
+        .filter_map(::serde_json::Value::as_str)
         .collect::<std::collections::BTreeSet<_>>();
     if required_names != expected_names {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "snapshot descriptor schema required fields differ from the Rust owner",
         ));
     }
@@ -130,8 +132,8 @@ fn validate_schema_snapshot(path: &std::path::Path) -> EvidenceResult<()> {
 fn validate_nickel_contract(
     root: &std::path::Path,
     contract_root: &std::path::Path,
-    fixture: &snapshot_core::SnapshotDescriptor,
-) -> EvidenceResult<()> {
+    fixture: &::chaoscontrol_snapshot_descriptor::SnapshotDescriptor,
+) -> crate::EvidenceResult<()> {
     let nickel = nickel_command()?;
     let output = std::process::Command::new(&nickel[0])
         .args(&nickel[1..])
@@ -139,16 +141,17 @@ fn validate_nickel_contract(
         .arg(contract_root.join(EXAMPLE_FILE))
         .current_dir(root)
         .output()
-        .map_err(|error| EvidenceError::new(format!("cannot run Nickel: {error}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("cannot run Nickel: {error}")))?;
     if !output.status.success() {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "snapshot descriptor Nickel example failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )));
     }
-    let exported: snapshot_core::SnapshotDescriptor = serde_json::from_slice(&output.stdout)?;
+    let exported: ::chaoscontrol_snapshot_descriptor::SnapshotDescriptor =
+        serde_json::from_slice(&output.stdout)?;
     if &exported != fixture {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "snapshot descriptor Nickel projection differs from the Rust fixture",
         ));
     }
@@ -161,17 +164,17 @@ fn validate_nickel_contract(
         .stderr(std::process::Stdio::null())
         .status()
         .map_err(|error| {
-            EvidenceError::new(format!("cannot run negative Nickel fixture: {error}"))
+            crate::EvidenceError::new(format!("cannot run negative Nickel fixture: {error}"))
         })?;
     if invalid_status.success() {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "invalid snapshot descriptor Nickel fixture unexpectedly passed",
         ));
     }
     Ok(())
 }
 
-fn build_freshness(root: &std::path::Path) -> EvidenceResult<FreshnessManifest> {
+fn build_freshness(root: &std::path::Path) -> crate::EvidenceResult<FreshnessManifest> {
     let mut files = FRESHNESS_INPUTS
         .iter()
         .map(|relative| {
@@ -181,7 +184,7 @@ fn build_freshness(root: &std::path::Path) -> EvidenceResult<FreshnessManifest> 
                 blake3: blake3::hash(&bytes).to_hex().to_string(),
             })
         })
-        .collect::<EvidenceResult<Vec<_>>>()?;
+        .collect::<crate::EvidenceResult<Vec<_>>>()?;
     files.sort();
     Ok(FreshnessManifest {
         schema: FRESHNESS_SCHEMA.to_string(),
@@ -189,7 +192,7 @@ fn build_freshness(root: &std::path::Path) -> EvidenceResult<FreshnessManifest> 
     })
 }
 
-fn nickel_command() -> EvidenceResult<Vec<String>> {
+fn nickel_command() -> crate::EvidenceResult<Vec<String>> {
     let status = std::process::Command::new("nickel")
         .arg("--version")
         .stdout(std::process::Stdio::null())
@@ -198,16 +201,19 @@ fn nickel_command() -> EvidenceResult<Vec<String>> {
     if status.is_ok_and(|value| value.success()) {
         return Ok(vec!["nickel".to_string()]);
     }
-    Err(EvidenceError::new(
+    Err(crate::EvidenceError::new(
         "nickel is required for snapshot descriptor contract checks",
     ))
 }
 
-fn write_json(path: impl AsRef<std::path::Path>, value: &impl Serialize) -> EvidenceResult<()> {
+fn write_json(
+    path: impl AsRef<std::path::Path>,
+    value: &impl Serialize,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     let parent = path
         .parent()
-        .ok_or_else(|| EvidenceError::new("generated contract path lacks a parent"))?;
+        .ok_or_else(|| crate::EvidenceError::new("generated contract path lacks a parent"))?;
     std::fs::create_dir_all(parent)?;
     let mut bytes = serde_json::to_vec_pretty(value)?;
     bytes.push(b'\n');

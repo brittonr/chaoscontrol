@@ -1,6 +1,3 @@
-use chaoscontrol_fault::faults::Fault;
-use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
-
 use super::{checked_usize, valid_identifier};
 
 const SCHEDULE_SCHEMA: &str = "chaoscontrol.fault-schedule-profile.v1";
@@ -142,39 +139,44 @@ impl FaultDescriptor {
         Ok(())
     }
 
-    fn to_scheduled_fault(&self) -> Result<ScheduledFault, String> {
+    fn to_scheduled_fault(&self) -> Result<::chaoscontrol_fault::schedule::ScheduledFault, String> {
         let fault = match self {
-            Self::ProcessKill { target, .. } => Fault::ProcessKill {
+            Self::ProcessKill { target, .. } => ::chaoscontrol_fault::faults::Fault::ProcessKill {
                 target: checked_usize("fault target", *target)?,
             },
-            Self::NetworkPartition { side_a, side_b, .. } => Fault::NetworkPartition {
-                side_a: convert_targets(side_a)?,
-                side_b: convert_targets(side_b)?,
-            },
+            Self::NetworkPartition { side_a, side_b, .. } => {
+                ::chaoscontrol_fault::faults::Fault::NetworkPartition {
+                    side_a: convert_targets(side_a)?,
+                    side_b: convert_targets(side_b)?,
+                }
+            }
             Self::NetworkLatency {
                 target, latency_ns, ..
-            } => Fault::NetworkLatency {
+            } => ::chaoscontrol_fault::faults::Fault::NetworkLatency {
                 target: checked_usize("fault target", *target)?,
                 latency_ns: *latency_ns,
             },
             Self::PacketLoss {
                 target, rate_ppm, ..
-            } => Fault::PacketLoss {
+            } => ::chaoscontrol_fault::faults::Fault::PacketLoss {
                 target: checked_usize("fault target", *target)?,
                 rate_ppm: *rate_ppm,
             },
-            Self::DiskWriteError { target, offset, .. } => Fault::DiskWriteError {
-                target: checked_usize("fault target", *target)?,
-                offset: *offset,
-            },
+            Self::DiskWriteError { target, offset, .. } => {
+                ::chaoscontrol_fault::faults::Fault::DiskWriteError {
+                    target: checked_usize("fault target", *target)?,
+                    offset: *offset,
+                }
+            }
             Self::ClockSkew {
                 target, offset_ns, ..
-            } => Fault::ClockSkew {
+            } => ::chaoscontrol_fault::faults::Fault::ClockSkew {
                 target: checked_usize("fault target", *target)?,
                 offset_ns: *offset_ns,
             },
         };
-        let mut scheduled = ScheduledFault::new(self.time_ns(), fault);
+        let mut scheduled =
+            ::chaoscontrol_fault::schedule::ScheduledFault::new(self.time_ns(), fault);
         if let Some(label) = self.label() {
             scheduled = scheduled.with_label(label);
         }
@@ -183,9 +185,11 @@ impl FaultDescriptor {
 }
 
 impl FaultScheduleProfile {
-    pub fn try_into_schedule(self) -> Result<FaultSchedule, String> {
+    pub fn try_into_schedule(
+        self,
+    ) -> Result<::chaoscontrol_fault::schedule::FaultSchedule, String> {
         self.validate()?;
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         for descriptor in &self.faults {
             schedule.add(descriptor.to_scheduled_fault()?);
         }

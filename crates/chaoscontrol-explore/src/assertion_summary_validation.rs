@@ -1,19 +1,10 @@
-use crate::explorer::{AssertionDetail, AssertionIdentityDetail};
-use chaoscontrol_protocol::admission::{
-    CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
-};
-use chaoscontrol_protocol::identity::{
-    AssertionFingerprint, AssertionKind, MAX_ASSERTION_CATEGORY_BYTES,
-    MAX_ASSERTION_EVENT_DETAILS_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
-};
-
 pub(crate) fn validate_assertion_details(
-    assertions: &[AssertionDetail],
-) -> Result<CatalogValidationStatus, String> {
+    assertions: &[crate::explorer::AssertionDetail],
+) -> Result<::chaoscontrol_protocol::admission::CatalogValidationStatus, String> {
     if assertions.is_empty() {
-        return Ok(CatalogValidationStatus::LegacyAmbiguous);
+        return Ok(::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous);
     }
-    if assertions.len() > MAX_ASSERTION_REPORT_ENTRIES {
+    if assertions.len() > ::chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES {
         return Err("assertion summary exceeds descriptor cardinality".to_string());
     }
     let identified = assertions
@@ -22,16 +13,16 @@ pub(crate) fn validate_assertion_details(
         .count();
     if identified == 0 {
         validate_legacy(assertions)?;
-        return Ok(CatalogValidationStatus::LegacyAmbiguous);
+        return Ok(::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous);
     }
     if identified != assertions.len() {
         return Err("mixed legacy and structured assertion details".to_string());
     }
     validate_strict(assertions)?;
-    Ok(CatalogValidationStatus::Accepted)
+    Ok(::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted)
 }
 
-fn validate_legacy(assertions: &[AssertionDetail]) -> Result<(), String> {
+fn validate_legacy(assertions: &[crate::explorer::AssertionDetail]) -> Result<(), String> {
     let mut ids = std::collections::BTreeSet::new();
     for detail in assertions {
         validate_common(detail)?;
@@ -42,8 +33,12 @@ fn validate_legacy(assertions: &[AssertionDetail]) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn validate_fatal_details(assertions: &[AssertionDetail]) -> Result<(), String> {
-    if assertions.is_empty() || assertions.len() > MAX_ASSERTION_REPORT_ENTRIES {
+pub(crate) fn validate_fatal_details(
+    assertions: &[crate::explorer::AssertionDetail],
+) -> Result<(), String> {
+    if assertions.is_empty()
+        || assertions.len() > ::chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES
+    {
         return Err("fatal assertion summary cardinality is invalid".to_string());
     }
     for detail in assertions {
@@ -55,11 +50,11 @@ pub(crate) fn validate_fatal_details(assertions: &[AssertionDetail]) -> Result<(
     Ok(())
 }
 
-fn validate_strict(assertions: &[AssertionDetail]) -> Result<(), String> {
-    let mut builder = CatalogBuilder::begin(assertions.len())
+fn validate_strict(assertions: &[crate::explorer::AssertionDetail]) -> Result<(), String> {
+    let mut builder = ::chaoscontrol_protocol::admission::CatalogBuilder::begin(assertions.len())
         .map_err(|error| format!("invalid assertion catalog: {error:?}"))?;
     let mut fingerprints = std::collections::BTreeSet::new();
-    let mut catalog_token: Option<AssertionFingerprint> = None;
+    let mut catalog_token: Option<::chaoscontrol_protocol::identity::AssertionFingerprint> = None;
     for detail in assertions {
         validate_common(detail)?;
         let identity = validate_strict_identity(detail)?;
@@ -84,7 +79,9 @@ fn validate_strict(assertions: &[AssertionDetail]) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_strict_identity(detail: &AssertionDetail) -> Result<&AssertionIdentityDetail, String> {
+fn validate_strict_identity(
+    detail: &crate::explorer::AssertionDetail,
+) -> Result<&crate::explorer::AssertionIdentityDetail, String> {
     let identity = detail
         .identity
         .as_ref()
@@ -113,21 +110,20 @@ fn validate_strict_identity(detail: &AssertionDetail) -> Result<&AssertionIdenti
     Ok(identity)
 }
 
-fn validate_common(detail: &AssertionDetail) -> Result<(), String> {
+fn validate_common(detail: &crate::explorer::AssertionDetail) -> Result<(), String> {
     if detail.message.is_empty()
         || detail.message.bytes().any(|byte| byte.is_ascii_control())
         || detail.guest.bytes().any(|byte| byte.is_ascii_control())
         || detail.category.bytes().any(|byte| byte.is_ascii_control())
-        || detail.message.len() > MAX_ASSERTION_MESSAGE_BYTES
+        || detail.message.len() > ::chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES
         || detail.guest.is_empty()
-        || detail.guest.len() > MAX_ASSERTION_GUEST_BYTES
+        || detail.guest.len() > ::chaoscontrol_protocol::identity::MAX_ASSERTION_GUEST_BYTES
         || detail.category.is_empty()
-        || detail.category.len() > MAX_ASSERTION_CATEGORY_BYTES
+        || detail.category.len() > ::chaoscontrol_protocol::identity::MAX_ASSERTION_CATEGORY_BYTES
         || !normalized_category(&detail.category)
-        || detail
-            .last_failure_details
-            .as_ref()
-            .is_some_and(|value| value.len() > MAX_ASSERTION_EVENT_DETAILS_BYTES)
+        || detail.last_failure_details.as_ref().is_some_and(|value| {
+            value.len() > ::chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES
+        })
     {
         return Err("assertion detail metadata exceeds bounds".to_string());
     }
@@ -146,7 +142,9 @@ fn normalized_category(value: &str) -> bool {
         && !value.ends_with('-')
 }
 
-pub(crate) fn derive_detail_verdict(detail: &AssertionDetail) -> Result<&'static str, String> {
+pub(crate) fn derive_detail_verdict(
+    detail: &crate::explorer::AssertionDetail,
+) -> Result<&'static str, String> {
     let hits = detail
         .true_count
         .checked_add(detail.false_count)
@@ -175,11 +173,11 @@ pub(crate) fn derive_detail_verdict(detail: &AssertionDetail) -> Result<&'static
     }
 }
 
-fn exact_kind(kind: AssertionKind) -> &'static str {
+fn exact_kind(kind: ::chaoscontrol_protocol::identity::AssertionKind) -> &'static str {
     match kind {
-        AssertionKind::Always => "always",
-        AssertionKind::Sometimes => "sometimes",
-        AssertionKind::Reachable => "reachable",
-        AssertionKind::Unreachable => "unreachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Always => "always",
+        ::chaoscontrol_protocol::identity::AssertionKind::Sometimes => "sometimes",
+        ::chaoscontrol_protocol::identity::AssertionKind::Reachable => "reachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Unreachable => "unreachable",
     }
 }

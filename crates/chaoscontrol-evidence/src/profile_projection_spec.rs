@@ -1,6 +1,3 @@
-use crate::profile_projection::{BoundArtifact, ProjectionReceipt};
-use crate::{EvidenceError, EvidenceResult};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ArtifactSpec {
     pub(crate) path: &'static str,
@@ -98,21 +95,23 @@ pub(crate) const SPECS: &[ProjectionSpec] = &[
     },
 ];
 
-pub(crate) fn find_spec(profile_id: &str) -> EvidenceResult<&'static ProjectionSpec> {
+pub(crate) fn find_spec(profile_id: &str) -> crate::EvidenceResult<&'static ProjectionSpec> {
     SPECS
         .iter()
         .find(|spec| spec.profile_id == profile_id)
-        .ok_or_else(|| EvidenceError::new(format!("unknown trusted profile ID: {profile_id}")))
+        .ok_or_else(|| {
+            crate::EvidenceError::new(format!("unknown trusted profile ID: {profile_id}"))
+        })
 }
 
 pub(crate) fn validate_receipt_against_spec(
-    receipt: &ProjectionReceipt,
+    receipt: &crate::profile_projection::ProjectionReceipt,
     spec: &ProjectionSpec,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     ensure_artifact_matches(&receipt.source, spec.source, "source")?;
     ensure_artifact_matches(&receipt.contract, spec.contract, "contract")?;
     if receipt.imports.len() != spec.imports.len() {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "profile projection import cardinality mismatch",
         ));
     }
@@ -123,12 +122,12 @@ pub(crate) fn validate_receipt_against_spec(
 }
 
 fn ensure_artifact_matches(
-    actual: &BoundArtifact,
+    actual: &crate::profile_projection::BoundArtifact,
     expected: ArtifactSpec,
     kind: &str,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     if actual.path != expected.path || actual.identity != expected.identity {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "profile projection {kind} differs from the trusted specification: {}",
             expected.path
         )));

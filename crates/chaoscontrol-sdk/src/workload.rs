@@ -4,10 +4,6 @@
 //! as the source of truth while giving downstream Rust projects a repeatable
 //! setup/scenario/report shape.
 
-use serde_json::{json, Value};
-
-use std::io;
-
 const MAX_LOCAL_JSONL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_LOCAL_JSONL_LINE_BYTES: usize = 16 * 1024;
 const MAX_LOCAL_JSONL_EVENTS: usize = 65_536;
@@ -98,9 +94,9 @@ impl WorkloadHarness {
         scenario: impl Into<String>,
         seed_or_schedule_ref: impl Into<String>,
         evidence_class: WorkloadEvidenceClass,
-    ) -> Value {
+    ) -> ::serde_json::Value {
         let identity = self.adapter_identity(scenario, seed_or_schedule_ref, evidence_class);
-        json!({
+        ::serde_json::json!({
             "workload": identity.workload,
             "adapter_version": identity.adapter_version,
             "scenario": identity.scenario,
@@ -120,7 +116,7 @@ impl WorkloadHarness {
         crate::chaoscontrol_init();
         crate::lifecycle::send_event(
             "workload_init",
-            &json!({
+            &::serde_json::json!({
                 "workload": self.name,
                 "adapter_version": self.adapter_version,
                 "artifact_digests": self.artifact_digests,
@@ -129,11 +125,11 @@ impl WorkloadHarness {
     }
 
     /// Mark workload setup complete and attach the workload name to details.
-    pub fn setup_complete(&self, mut details: Value) {
-        if let Value::Object(ref mut object) = details {
+    pub fn setup_complete(&self, mut details: ::serde_json::Value) {
+        if let ::serde_json::Value::Object(ref mut object) = details {
             object
                 .entry("workload")
-                .or_insert_with(|| Value::String(self.name.clone()));
+                .or_insert_with(|| ::serde_json::Value::String(self.name.clone()));
         }
         crate::lifecycle::setup_complete(&details);
     }
@@ -142,7 +138,7 @@ impl WorkloadHarness {
     pub fn scenario<T>(&self, name: &str, run: impl FnOnce() -> T) -> T {
         crate::lifecycle::send_event(
             "scenario_start",
-            &json!({
+            &::serde_json::json!({
                 "workload": self.name,
                 "scenario": name,
                 "adapter_version": self.adapter_version,
@@ -153,7 +149,7 @@ impl WorkloadHarness {
         let result = run();
         crate::lifecycle::send_event(
             "scenario_finish",
-            &json!({
+            &::serde_json::json!({
                 "workload": self.name,
                 "scenario": name,
                 "adapter_version": self.adapter_version,
@@ -218,7 +214,7 @@ pub struct LocalDryRunReport {
 
 impl LocalDryRunReport {
     /// Parse a local JSONL output file emitted by the SDK.
-    pub fn from_path(path: impl AsRef<std::path::Path>) -> io::Result<Self> {
+    pub fn from_path(path: impl AsRef<std::path::Path>) -> ::std::io::Result<Self> {
         let content = crate::local_json_security::read_bounded_regular_file(
             path.as_ref(),
             MAX_LOCAL_JSONL_BYTES,
@@ -230,7 +226,7 @@ impl LocalDryRunReport {
     ///
     /// This compatibility API rejects conflicting legacy metadata, but it is
     /// diagnostic-only. Use the evidence crate's strict report for promotion.
-    pub fn from_jsonl(content: &str) -> io::Result<Self> {
+    pub fn from_jsonl(content: &str) -> ::std::io::Result<Self> {
         if content.len() > MAX_LOCAL_JSONL_BYTES {
             return Err(invalid_data("SDK JSONL exceeds the input byte limit"));
         }
@@ -240,11 +236,11 @@ impl LocalDryRunReport {
         let mut sometimes_success = std::collections::BTreeSet::<String>::new();
         let mut reachable_hit = std::collections::BTreeSet::<String>::new();
 
-        fn details_track(details: &Value) -> Option<String> {
+        fn details_track(details: &::serde_json::Value) -> Option<String> {
             details
                 .get("adoption_track")
                 .or_else(|| details.get("instrumentation_source"))
-                .and_then(Value::as_str)
+                .and_then(::serde_json::Value::as_str)
                 .map(str::to_string)
         }
 
@@ -270,9 +266,9 @@ impl LocalDryRunReport {
             if event_count > MAX_LOCAL_JSONL_EVENTS {
                 return Err(invalid_data("SDK JSONL event count exceeds the limit"));
             }
-            let value: Value = serde_json::from_str(trimmed).map_err(|err| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
+            let value: ::serde_json::Value = serde_json::from_str(trimmed).map_err(|err| {
+                ::std::io::Error::new(
+                    ::std::io::ErrorKind::InvalidData,
                     format!("invalid SDK JSONL at line {}: {err}", line_no + 1),
                 )
             })?;
@@ -292,10 +288,12 @@ impl LocalDryRunReport {
                 }
                 let hit = required_bool(assertion, "hit", line_no)?;
                 let condition = required_bool(assertion, "condition", line_no)?;
-                let details = assertion.get("details").unwrap_or(&Value::Null);
+                let details = assertion
+                    .get("details")
+                    .unwrap_or(&::serde_json::Value::Null);
                 let explicit_category = details
                     .get("category")
-                    .and_then(Value::as_str)
+                    .and_then(::serde_json::Value::as_str)
                     .map(str::to_string);
                 let category = explicit_category
                     .clone()
@@ -451,20 +449,22 @@ impl LocalDryRunReport {
 }
 
 fn exact_setup_record(
-    value: &Value,
+    value: &::serde_json::Value,
     line_no: usize,
-) -> io::Result<&serde_json::Map<String, Value>> {
+) -> ::std::io::Result<&serde_json::Map<String, ::serde_json::Value>> {
     let outer = value
         .as_object()
         .filter(|outer| outer.len() == 1)
         .ok_or_else(|| invalid_data(format!("invalid setup record at line {}", line_no + 1)))?;
     let setup = outer
         .get("antithesis_setup")
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .filter(|setup| setup.len() == 2)
         .ok_or_else(|| invalid_data(format!("invalid setup record at line {}", line_no + 1)))?;
-    if setup.get("status").and_then(Value::as_str) != Some("complete")
-        || !setup.get("details").is_some_and(Value::is_object)
+    if setup.get("status").and_then(::serde_json::Value::as_str) != Some("complete")
+        || !setup
+            .get("details")
+            .is_some_and(::serde_json::Value::is_object)
     {
         return Err(invalid_data(format!(
             "invalid setup record at line {}",
@@ -474,14 +474,18 @@ fn exact_setup_record(
     Ok(setup)
 }
 
-fn invalid_data(message: impl Into<String>) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, message.into())
+fn invalid_data(message: impl Into<String>) -> ::std::io::Error {
+    ::std::io::Error::new(::std::io::ErrorKind::InvalidData, message.into())
 }
 
-fn required_string(value: &Value, field: &str, line_no: usize) -> io::Result<String> {
+fn required_string(
+    value: &::serde_json::Value,
+    field: &str,
+    line_no: usize,
+) -> ::std::io::Result<String> {
     let selected = value
         .get(field)
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|selected| !selected.is_empty())
         .ok_or_else(|| {
             invalid_data(format!(
@@ -492,13 +496,20 @@ fn required_string(value: &Value, field: &str, line_no: usize) -> io::Result<Str
     Ok(selected.to_string())
 }
 
-fn required_bool(value: &Value, field: &str, line_no: usize) -> io::Result<bool> {
-    value.get(field).and_then(Value::as_bool).ok_or_else(|| {
-        invalid_data(format!(
-            "assertion {field} must be a boolean at line {}",
-            line_no + 1
-        ))
-    })
+fn required_bool(
+    value: &::serde_json::Value,
+    field: &str,
+    line_no: usize,
+) -> ::std::io::Result<bool> {
+    value
+        .get(field)
+        .and_then(::serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            invalid_data(format!(
+                "assertion {field} must be a boolean at line {}",
+                line_no + 1
+            ))
+        })
 }
 
 #[derive(Debug, Clone)]

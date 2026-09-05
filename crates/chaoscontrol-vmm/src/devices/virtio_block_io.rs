@@ -4,13 +4,13 @@ use super::block::DeterministicBlock;
 use super::virtio_chain::{DescriptorBuffer, DescriptorChainPlan};
 use super::virtio_request::{BlockRequestHeader, BLOCK_HEADER_BYTES};
 use super::virtio_types::{RequestViolation, VirtioFailure};
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::Bytes;
 
 const HEADER_RESERVED_OFFSET: u64 = 4;
 const HEADER_SECTOR_OFFSET: u64 = 8;
 
 pub(super) fn read_header(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     chain: &DescriptorChainPlan,
 ) -> Result<BlockRequestHeader, VirtioFailure> {
     let header = chain
@@ -42,13 +42,13 @@ pub(super) fn block_data_buffers(
 }
 
 pub(super) fn preflight_guest_reads(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     buffers: &[DescriptorBuffer],
     scratch: &mut [u8],
 ) -> Result<(), VirtioFailure> {
     for buffer in buffers {
         visit_chunks(buffer, scratch, |address, chunk| {
-            mem.read_slice(chunk, GuestAddress(address))
+            mem.read_slice(chunk, ::vm_memory::GuestAddress(address))
                 .map_err(|_| VirtioFailure::GuestMemoryRead)
         })?;
     }
@@ -56,7 +56,7 @@ pub(super) fn preflight_guest_reads(
 }
 
 pub(super) fn transfer_guest_to_disk(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     disk: &mut DeterministicBlock,
     buffers: &[DescriptorBuffer],
     mut disk_offset: u64,
@@ -64,7 +64,7 @@ pub(super) fn transfer_guest_to_disk(
 ) -> Result<(), VirtioFailure> {
     for buffer in buffers {
         visit_chunks(buffer, scratch, |address, chunk| {
-            mem.read_slice(chunk, GuestAddress(address))
+            mem.read_slice(chunk, ::vm_memory::GuestAddress(address))
                 .map_err(|_| VirtioFailure::GuestMemoryRead)?;
             disk.write(disk_offset, chunk)
                 .map_err(|_| VirtioFailure::BackendWrite)?;
@@ -76,7 +76,7 @@ pub(super) fn transfer_guest_to_disk(
 }
 
 pub(super) fn transfer_disk_to_guest(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     disk: &mut DeterministicBlock,
     buffers: &[DescriptorBuffer],
     mut disk_offset: u64,
@@ -86,7 +86,7 @@ pub(super) fn transfer_disk_to_guest(
         visit_chunks(buffer, scratch, |address, chunk| {
             disk.read(disk_offset, chunk)
                 .map_err(|_| VirtioFailure::BackendRead)?;
-            mem.write_slice(chunk, GuestAddress(address))
+            mem.write_slice(chunk, ::vm_memory::GuestAddress(address))
                 .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
             disk_offset = checked_advance(disk_offset, chunk.len(), VirtioFailure::BackendRead)?;
             Ok(())
@@ -121,15 +121,15 @@ fn checked_advance(
 }
 
 fn read_field<T: vm_memory::ByteValued>(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     address: u64,
 ) -> Result<T, VirtioFailure> {
-    mem.read_obj(GuestAddress(address))
+    mem.read_obj(::vm_memory::GuestAddress(address))
         .map_err(|_| VirtioFailure::GuestMemoryRead)
 }
 
 fn read_field_at<T: vm_memory::ByteValued>(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     address: u64,
     offset: u64,
 ) -> Result<T, VirtioFailure> {

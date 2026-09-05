@@ -1,12 +1,3 @@
-use crate::oracle::{AssertionRecord, OracleReport, Verdict};
-use crate::oracle_validation::{
-    validate_prepared_oracle_report, validate_strict_oracle_report, MAX_ORACLE_EVENTS,
-};
-use chaoscontrol_protocol::admission::{
-    token_for_descriptors, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
-};
-use chaoscontrol_protocol::identity::AssertionFingerprint;
-
 pub const MAX_ORACLE_REPORTS: usize = 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,14 +11,15 @@ pub enum ReportMergeConflict {
 }
 
 pub fn merge_oracle_reports(
-    reports: &[(u32, OracleReport)],
-) -> Result<OracleReport, ReportMergeConflict> {
+    reports: &[(u32, crate::oracle::OracleReport)],
+) -> Result<crate::oracle::OracleReport, ReportMergeConflict> {
     let bounds = validate_report_set(reports)?;
     let mut assertions = std::collections::BTreeMap::new();
     let mut events = Vec::with_capacity(bounds.event_count);
     let mut total_runs = 0_u32;
     for (vm_instance, report) in reports {
-        validate_strict_oracle_report(report).map_err(|_| ReportMergeConflict::IneligibleInput)?;
+        crate::oracle_validation::validate_strict_oracle_report(report)
+            .map_err(|_| ReportMergeConflict::IneligibleInput)?;
         total_runs = total_runs.max(report.total_runs);
         events.extend(report.events.iter().cloned());
         for (fingerprint, record) in &report.structured_assertions {
@@ -55,17 +47,17 @@ pub fn merge_oracle_reports(
                 .ok_or(ReportMergeConflict::DescriptorConflict)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let merged_token =
-        token_for_descriptors(&descriptors).map_err(|_| ReportMergeConflict::CatalogConflict)?;
+    let merged_token = ::chaoscontrol_protocol::admission::token_for_descriptors(&descriptors)
+        .map_err(|_| ReportMergeConflict::CatalogConflict)?;
     for record in assertions.values_mut() {
         record.catalog_tokens = std::collections::BTreeSet::from([merged_token]);
     }
     let (passed, failed, unexercised) = verdict_counts(&assertions);
-    let mut output = OracleReport {
+    let mut output = crate::oracle::OracleReport {
         assertions: std::collections::BTreeMap::new(),
         catalog_size: assertions.len(),
         structured_assertions: assertions,
-        catalog_status: CatalogValidationStatus::Accepted,
+        catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted,
         identity_conflicts: Vec::new(),
         collision_safe_evidence: false,
         total_runs,
@@ -74,16 +66,17 @@ pub fn merge_oracle_reports(
         unexercised,
         events,
     };
-    validate_prepared_oracle_report(&output).map_err(|_| ReportMergeConflict::IneligibleInput)?;
+    crate::oracle_validation::validate_prepared_oracle_report(&output)
+        .map_err(|_| ReportMergeConflict::IneligibleInput)?;
     output.collision_safe_evidence = true;
     Ok(output)
 }
 
-pub fn rejected_merge_report(conflict: ReportMergeConflict) -> OracleReport {
-    OracleReport {
+pub fn rejected_merge_report(conflict: ReportMergeConflict) -> crate::oracle::OracleReport {
+    crate::oracle::OracleReport {
         assertions: std::collections::BTreeMap::new(),
         structured_assertions: std::collections::BTreeMap::new(),
-        catalog_status: CatalogValidationStatus::FatalConflict,
+        catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
         identity_conflicts: vec![format!("report merge rejected: {conflict:?}")],
         collision_safe_evidence: false,
         total_runs: 0,
@@ -100,7 +93,7 @@ struct ReportSetBounds {
 }
 
 fn validate_report_set(
-    reports: &[(u32, OracleReport)],
+    reports: &[(u32, crate::oracle::OracleReport)],
 ) -> Result<ReportSetBounds, ReportMergeConflict> {
     if reports.is_empty() || reports.len() > MAX_ORACLE_REPORTS {
         return Err(ReportMergeConflict::CardinalityOverflow);
@@ -119,17 +112,19 @@ fn validate_report_set(
             .checked_add(report.events.len())
             .ok_or(ReportMergeConflict::CardinalityOverflow)?;
     }
-    if assertion_count > MAX_ASSERTION_REPORT_ENTRIES || event_count > MAX_ORACLE_EVENTS {
+    if assertion_count > ::chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES
+        || event_count > crate::oracle_validation::MAX_ORACLE_EVENTS
+    {
         return Err(ReportMergeConflict::CardinalityOverflow);
     }
     Ok(ReportSetBounds { event_count })
 }
 
 fn merged_record(
-    existing: &AssertionRecord,
-    candidate: &AssertionRecord,
+    existing: &crate::oracle::AssertionRecord,
+    candidate: &crate::oracle::AssertionRecord,
     vm_instance: u32,
-) -> Result<AssertionRecord, ReportMergeConflict> {
+) -> Result<crate::oracle::AssertionRecord, ReportMergeConflict> {
     if existing.identity != candidate.identity
         || existing.kind != candidate.kind
         || existing.message != candidate.message
@@ -171,13 +166,16 @@ fn checked_sum(left: u64, right: u64) -> Result<u64, ReportMergeConflict> {
 }
 
 fn verdict_counts(
-    assertions: &std::collections::BTreeMap<AssertionFingerprint, AssertionRecord>,
+    assertions: &std::collections::BTreeMap<
+        ::chaoscontrol_protocol::identity::AssertionFingerprint,
+        crate::oracle::AssertionRecord,
+    >,
 ) -> (usize, usize, usize) {
     assertions.values().fold((0, 0, 0), |mut counts, record| {
         match record.verdict() {
-            Verdict::Passed => counts.0 += 1,
-            Verdict::Failed => counts.1 += 1,
-            Verdict::Unexercised => counts.2 += 1,
+            crate::oracle::Verdict::Passed => counts.0 += 1,
+            crate::oracle::Verdict::Failed => counts.1 += 1,
+            crate::oracle::Verdict::Unexercised => counts.2 += 1,
         }
         counts
     })

@@ -11,7 +11,7 @@ use super::virtio_buffer::{
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::{plan_block_request, validated_block_status, BlockOperation};
 use super::virtio_types::{ResourceViolation, VirtioFailure};
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::Bytes;
 
 const VIRTIO_BLK_DEVICE_ID: u32 = 2;
 const VIRTIO_BLK_F_SIZE_MAX: u64 = 1 << 1;
@@ -68,7 +68,7 @@ impl VirtioBlock {
     fn process_one(
         &mut self,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let Some(available) = queue.plan_next(mem)? else {
             return Ok(false);
@@ -116,8 +116,11 @@ impl VirtioBlock {
                     transfer_disk_to_guest(mem, disk, data, plan.disk_offset, scratch)?
                 }
             }
-            mem.write_obj(VIRTIO_BLK_S_OK, GuestAddress(plan.status_address))
-                .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
+            mem.write_obj(
+                VIRTIO_BLK_S_OK,
+                ::vm_memory::GuestAddress(plan.status_address),
+            )
+            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
             queue.complete(mem, available.head_index, used_length)?;
             Ok(true)
         })
@@ -126,7 +129,7 @@ impl VirtioBlock {
     fn complete_request_error(
         &mut self,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
         available: super::virtio_mmio::PlannedAvail,
         failure: VirtioFailure,
     ) -> Result<bool, VirtioFailure> {
@@ -135,8 +138,11 @@ impl VirtioBlock {
         };
         queue.stage_completion(available.head_index, STATUS_USED_BYTES)?;
         queue.mark_effects_started()?;
-        mem.write_obj(VIRTIO_BLK_S_IOERR, GuestAddress(status_address))
-            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
+        mem.write_obj(
+            VIRTIO_BLK_S_IOERR,
+            ::vm_memory::GuestAddress(status_address),
+        )
+        .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
         queue.complete_rejected(mem, available.head_index, STATUS_USED_BYTES, failure)?;
         Ok(true)
     }
@@ -185,7 +191,7 @@ impl VirtioBackend for VirtioBlock {
         &mut self,
         _queue_idx: usize,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let mut completed = false;
         while self.process_one(queue, mem)? {

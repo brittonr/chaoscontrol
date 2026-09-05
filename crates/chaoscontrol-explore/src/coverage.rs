@@ -3,7 +3,7 @@
 //! Uses a 64KB bitmap with 8-bit saturating counters (AFL-style).
 //! Coverage is collected from guest memory after each simulation run.
 
-use vm_memory::{Bytes, GuestAddress, GuestMemory};
+use vm_memory::{Bytes, GuestMemory};
 
 /// Coverage bitmap size (64 KB, same as AFL).
 pub const MAP_SIZE: usize = 65536;
@@ -169,7 +169,7 @@ impl CoverageCollector {
 
         let mut buffer = vec![0u8; self.bitmap_size];
         if mem
-            .read_slice(&mut buffer, GuestAddress(self.bitmap_gpa))
+            .read_slice(&mut buffer, ::vm_memory::GuestAddress(self.bitmap_gpa))
             .is_err()
         {
             log::warn!(
@@ -332,7 +332,7 @@ mod tests {
 
         // Create a dummy guest memory (won't be used in blind mode)
         let mem: GuestMemoryMmap =
-            GuestMemoryMmap::from_ranges(&[(GuestAddress(0), 1024 * 1024)]).unwrap();
+            GuestMemoryMmap::from_ranges(&[(::vm_memory::GuestAddress(0), 1024 * 1024)]).unwrap();
 
         let bitmap = collector.collect_from_guest(&mem);
         assert_eq!(bitmap.count_bits(), 0);

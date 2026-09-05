@@ -1,8 +1,8 @@
-use chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES;
 use std::io::{self, Write};
 
 pub(crate) fn assertion_details(value: &serde_json::Value) -> Result<Vec<u8>, io::Error> {
-    let mut writer = BoundedWriter::new(MAX_ASSERTION_EVENT_DETAILS_BYTES);
+    let mut writer =
+        BoundedWriter::new(::chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES);
     serde_json::to_writer(&mut writer, value).map_err(io::Error::other)?;
     Ok(writer.into_bytes())
 }
@@ -59,7 +59,9 @@ mod tests {
 
     #[test]
     fn oversized_details_fail_before_output_growth() {
-        let value = serde_json::Value::String("x".repeat(MAX_ASSERTION_EVENT_DETAILS_BYTES));
+        let value = serde_json::Value::String(
+            "x".repeat(::chaoscontrol_protocol::identity::MAX_ASSERTION_EVENT_DETAILS_BYTES),
+        );
         assert!(assertion_details(&value).is_err());
     }
 }

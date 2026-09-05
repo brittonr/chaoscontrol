@@ -3,23 +3,19 @@
 // r[impl chaoscontrol.architecture_modules.evidence]
 // r[impl chaoscontrol.architecture_modules.boundary]
 
-use serde_json::{Map, Value};
-
-use crate::{ensure, EvidenceError, EvidenceResult};
-
-pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn summarize_receipt(receipt: &::serde_json::Value) -> crate::EvidenceResult<String> {
     let command = str_field(receipt.get("command"), "receipt.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness",
         format!("receipt.command: expected replay-readiness, got {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "receipt.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "passed" | "failed"),
         format!("receipt.status: unsupported value {status:?}"),
     )?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
-    ensure(
+    crate::ensure(
         !gates.is_empty(),
         "receipt.static_gates: expected non-empty list",
     )?;
@@ -40,7 +36,7 @@ pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
             "fail" => failed_gates.push(name.to_string()),
             "pending" | "running" => {}
             other => {
-                return Err(EvidenceError::new(format!(
+                return Err(crate::EvidenceError::new(format!(
                     "receipt.static_gates[{index}].status: unsupported value {other:?}"
                 )));
             }
@@ -53,7 +49,7 @@ pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
         "receipt.dogfood.selected_workload",
     )?;
     let dogfood_status = str_field(dogfood.get("status"), "receipt.dogfood.status")?;
-    ensure(
+    crate::ensure(
         matches!(dogfood_status, "skipped" | "pass" | "fail" | "running"),
         format!("receipt.dogfood.status: unsupported value {dogfood_status:?}"),
     )?;
@@ -120,60 +116,75 @@ pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
     ))
 }
 
-fn str_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {
+fn str_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a str> {
     value
-        .and_then(Value::as_str)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected string")))
+        .and_then(::serde_json::Value::as_str)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected string")))
 }
 
-fn token_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {
+fn token_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a str> {
     let token = str_field(value, field)?;
-    ensure(
+    crate::ensure(
         !token.trim().is_empty(),
         format!("{field}: expected non-empty token"),
     )?;
     Ok(token)
 }
 
-fn optional_token<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<Option<&'a str>> {
+fn optional_token<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<Option<&'a str>> {
     match value {
-        None | Some(Value::Null) => Ok(None),
+        None | Some(::serde_json::Value::Null) => Ok(None),
         Some(value) => token_field(Some(value), field).map(Some),
     }
 }
 
 fn object_field<'a>(
-    value: Option<&'a Value>,
+    value: Option<&'a ::serde_json::Value>,
     field: &str,
-) -> EvidenceResult<&'a Map<String, Value>> {
+) -> crate::EvidenceResult<&'a ::serde_json::Map<String, ::serde_json::Value>> {
     value
-        .and_then(Value::as_object)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected object")))
+        .and_then(::serde_json::Value::as_object)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected object")))
 }
 
-fn array_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a Vec<Value>> {
+fn array_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a Vec<::serde_json::Value>> {
     value
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected array")))
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected array")))
 }
 
-fn int_field(value: Option<&Value>, field: &str) -> EvidenceResult<i64> {
+fn int_field(value: Option<&::serde_json::Value>, field: &str) -> crate::EvidenceResult<i64> {
     value
-        .and_then(Value::as_i64)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected integer")))
+        .and_then(::serde_json::Value::as_i64)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected integer")))
 }
 
-fn optional_int(value: Option<&Value>, field: &str) -> EvidenceResult<Option<i64>> {
+fn optional_int(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<Option<i64>> {
     match value {
-        None | Some(Value::Null) => Ok(None),
+        None | Some(::serde_json::Value::Null) => Ok(None),
         Some(value) => int_field(Some(value), field).map(Some),
     }
 }
 
-fn bool_field(value: Option<&Value>, field: &str) -> EvidenceResult<bool> {
+fn bool_field(value: Option<&::serde_json::Value>, field: &str) -> crate::EvidenceResult<bool> {
     value
-        .and_then(Value::as_bool)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected boolean")))
+        .and_then(::serde_json::Value::as_bool)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected boolean")))
 }
 
 #[cfg(test)]

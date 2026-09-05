@@ -1,20 +1,18 @@
 //! Filesystem shell for adapter-based protocol-simulation receipts.
 
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_sim_core::{
-    build_protocol_simulation_receipt, validate_protocol_simulation_receipt,
-    ProtocolSimulationConfig, ProtocolSimulationReceipt,
-};
-
 /// Build, validate, and write one protocol-simulation receipt as JSON.
 pub fn emit_protocol_simulation_receipt_path(
     output_path: impl AsRef<std::path::Path>,
-    config: ProtocolSimulationConfig,
+    config: ::chaoscontrol_sim_core::ProtocolSimulationConfig,
     history_bytes: &[u8],
     output_bytes: &[u8],
-) -> EvidenceResult<ProtocolSimulationReceipt> {
-    let receipt = build_protocol_simulation_receipt(config, history_bytes, output_bytes)
-        .map_err(protocol_receipt_error)?;
+) -> crate::EvidenceResult<::chaoscontrol_sim_core::ProtocolSimulationReceipt> {
+    let receipt = ::chaoscontrol_sim_core::build_protocol_simulation_receipt(
+        config,
+        history_bytes,
+        output_bytes,
+    )
+    .map_err(protocol_receipt_error)?;
     let output_path = output_path.as_ref();
     if let Some(parent) = output_path
         .parent()
@@ -29,15 +27,17 @@ pub fn emit_protocol_simulation_receipt_path(
 /// Read and validate the self-contained bindings in one receipt file.
 pub fn validate_protocol_simulation_receipt_path(
     receipt_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<ProtocolSimulationReceipt> {
+) -> crate::EvidenceResult<::chaoscontrol_sim_core::ProtocolSimulationReceipt> {
     let bytes = std::fs::read(receipt_path)?;
-    let receipt: ProtocolSimulationReceipt = serde_json::from_slice(&bytes)?;
-    validate_protocol_simulation_receipt(&receipt).map_err(protocol_receipt_error)?;
+    let receipt: ::chaoscontrol_sim_core::ProtocolSimulationReceipt =
+        serde_json::from_slice(&bytes)?;
+    ::chaoscontrol_sim_core::validate_protocol_simulation_receipt(&receipt)
+        .map_err(protocol_receipt_error)?;
     Ok(receipt)
 }
 
-fn protocol_receipt_error(error: impl std::fmt::Display) -> EvidenceError {
-    EvidenceError::new(format!("invalid protocol-simulation receipt: {error}"))
+fn protocol_receipt_error(error: impl std::fmt::Display) -> crate::EvidenceError {
+    crate::EvidenceError::new(format!("invalid protocol-simulation receipt: {error}"))
 }
 
 #[cfg(test)]
@@ -59,8 +59,8 @@ mod tests {
         format!("blake3:{TEST_DIGEST_HEX}")
     }
 
-    fn config() -> ProtocolSimulationConfig {
-        ProtocolSimulationConfig {
+    fn config() -> ::chaoscontrol_sim_core::ProtocolSimulationConfig {
+        ::chaoscontrol_sim_core::ProtocolSimulationConfig {
             schema: PROTOCOL_SIMULATION_CONFIG_SCHEMA.to_string(),
             seed: TEST_SEED,
             schedule: ProtocolScheduleRef {

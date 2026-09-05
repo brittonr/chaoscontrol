@@ -1,10 +1,4 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::admission::{
-    CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
-};
-use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::de::Deserialize;
-use serde_json::Value;
 
 const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 
@@ -12,7 +6,7 @@ const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 #[serde(deny_unknown_fields)]
 struct SummaryEnvelope {
     schema: String,
-    catalog_status: CatalogValidationStatus,
+    catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
     collision_safe_evidence: bool,
     assertions: Vec<ReviewAssertion>,
 }
@@ -20,10 +14,10 @@ struct SummaryEnvelope {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReviewIdentity {
-    descriptor: AssertionDescriptor,
-    fingerprint: AssertionFingerprint,
+    descriptor: ::chaoscontrol_protocol::identity::AssertionDescriptor,
+    fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     canonical_descriptor: String,
-    catalog_tokens: Vec<AssertionFingerprint>,
+    catalog_tokens: Vec<::chaoscontrol_protocol::identity::AssertionFingerprint>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -57,42 +51,53 @@ pub(crate) enum SummaryIdentityStatus {
 }
 
 pub(crate) fn validate(
-    value: &Value,
+    value: &::serde_json::Value,
     require_collision_safe: bool,
-) -> EvidenceResult<SummaryIdentityStatus> {
+) -> crate::EvidenceResult<SummaryIdentityStatus> {
     let items = value
         .as_array()
-        .or_else(|| value.get("assertions").and_then(Value::as_array))
-        .ok_or_else(|| EvidenceError::new("assertion-summary: expected array or v2 object"))?;
+        .or_else(|| {
+            value
+                .get("assertions")
+                .and_then(::serde_json::Value::as_array)
+        })
+        .ok_or_else(|| {
+            crate::EvidenceError::new("assertion-summary: expected array or v2 object")
+        })?;
     if items.is_empty() {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: expected non-empty array",
         ));
     }
-    if items.len() > MAX_ASSERTION_REPORT_ENTRIES {
-        return Err(EvidenceError::new(
+    if items.len() > ::chaoscontrol_protocol::admission::MAX_ASSERTION_REPORT_ENTRIES {
+        return Err(crate::EvidenceError::new(
             "assertion-summary: entry count exceeds the limit",
         ));
     }
     let (assertions, classification) = if value.is_array() {
         (
-            Vec::<ReviewAssertion>::deserialize(value)
-                .map_err(|error| EvidenceError::new(format!("assertion-summary: {error}")))?,
+            Vec::<ReviewAssertion>::deserialize(value).map_err(|error| {
+                crate::EvidenceError::new(format!("assertion-summary: {error}"))
+            })?,
             None,
         )
     } else {
         let envelope = SummaryEnvelope::deserialize(value)
-            .map_err(|error| EvidenceError::new(format!("assertion-summary: {error}")))?;
+            .map_err(|error| crate::EvidenceError::new(format!("assertion-summary: {error}")))?;
         if envelope.schema != ASSERTION_SUMMARY_SCHEMA {
-            return Err(EvidenceError::new("assertion-summary: unsupported schema"));
+            return Err(crate::EvidenceError::new(
+                "assertion-summary: unsupported schema",
+            ));
         }
         (
             envelope.assertions,
             Some((envelope.catalog_status, envelope.collision_safe_evidence)),
         )
     };
-    if classification.is_some_and(|(status, _)| status == CatalogValidationStatus::Pending) {
-        return Err(EvidenceError::new(
+    if classification.is_some_and(|(status, _)| {
+        status == ::chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+    }) {
+        return Err(crate::EvidenceError::new(
             "assertion-summary: pending is not a v2 status",
         ));
     }
@@ -102,28 +107,40 @@ pub(crate) fn validate(
         .count();
     if identified == 0 {
         match classification {
-            None | Some((CatalogValidationStatus::LegacyAmbiguous, false)) => {
+            None
+            | Some((
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
+                false,
+            )) => {
                 validate_legacy(&assertions)?;
             }
-            Some((CatalogValidationStatus::FatalConflict, false)) => {
+            Some((
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
+                false,
+            )) => {
                 assertions.iter().try_for_each(validate_common)?;
             }
             _ => {
-                return Err(EvidenceError::new(
+                return Err(crate::EvidenceError::new(
                     "assertion-summary: legacy classification is invalid",
                 ))
             }
         }
         if require_collision_safe {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: legacy or fatal evidence cannot be promoted",
             ));
         }
         return Ok(SummaryIdentityStatus::LegacyAmbiguous);
     }
     if identified != assertions.len() {
-        if classification != Some((CatalogValidationStatus::FatalConflict, false)) {
-            return Err(EvidenceError::new(
+        if classification
+            != Some((
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
+                false,
+            ))
+        {
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: mixed legacy and structured identities require fatal classification",
             ));
         }
@@ -134,7 +151,7 @@ pub(crate) fn validate(
             }
         }
         if require_collision_safe {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: fatal evidence cannot be promoted",
             ));
         }
@@ -144,25 +161,30 @@ pub(crate) fn validate(
         None => {
             validate_structured(&assertions)?;
             if require_collision_safe {
-                return Err(EvidenceError::new(
+                return Err(crate::EvidenceError::new(
                     "assertion-summary: explicit accepted classification is required",
                 ));
             }
         }
-        Some((CatalogValidationStatus::Accepted, true)) => validate_structured(&assertions)?,
-        Some((CatalogValidationStatus::FatalConflict, false)) => {
+        Some((::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted, true)) => {
+            validate_structured(&assertions)?
+        }
+        Some((
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
+            false,
+        )) => {
             for assertion in &assertions {
                 validate_common(assertion)?;
                 validate_strict_identity(assertion)?;
             }
             if require_collision_safe {
-                return Err(EvidenceError::new(
+                return Err(crate::EvidenceError::new(
                     "assertion-summary: fatal evidence cannot be promoted",
                 ));
             }
         }
         _ => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: strict classification is invalid",
             ))
         }
@@ -170,12 +192,12 @@ pub(crate) fn validate(
     Ok(SummaryIdentityStatus::CollisionSafe)
 }
 
-fn validate_legacy(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
+fn validate_legacy(assertions: &[ReviewAssertion]) -> crate::EvidenceResult<()> {
     let mut ids = std::collections::BTreeSet::new();
     for assertion in assertions {
         validate_common(assertion)?;
         if !ids.insert(assertion.id) {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: duplicate legacy assertion ID",
             ));
         }
@@ -183,16 +205,17 @@ fn validate_legacy(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn validate_structured(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
+fn validate_structured(assertions: &[ReviewAssertion]) -> crate::EvidenceResult<()> {
     let mut fingerprints = std::collections::BTreeSet::new();
     let mut catalog_token = None;
-    let mut builder = CatalogBuilder::begin(assertions.len())
-        .map_err(|error| EvidenceError::new(format!("assertion-summary: {error:?}")))?;
+    let mut builder =
+        ::chaoscontrol_protocol::admission::CatalogBuilder::begin(assertions.len())
+            .map_err(|error| crate::EvidenceError::new(format!("assertion-summary: {error:?}")))?;
     for assertion in assertions {
         validate_common(assertion)?;
         let identity = validate_strict_identity(assertion)?;
         if !fingerprints.insert(identity.fingerprint) {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: duplicate assertion fingerprint",
             ));
         }
@@ -201,45 +224,45 @@ fn validate_structured(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
             .replace(identity_token)
             .is_some_and(|token| token != identity_token)
         {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "assertion-summary: inconsistent catalog tokens",
             ));
         }
         builder
             .insert_with_fingerprint(identity.descriptor.clone(), identity.fingerprint)
             .map_err(|error| {
-                EvidenceError::new(format!("assertion-summary catalog conflict: {error:?}"))
+                crate::EvidenceError::new(format!("assertion-summary catalog conflict: {error:?}"))
             })?;
     }
     builder
         .complete(catalog_token.expect("structured summary is non-empty"))
-        .map_err(|error| EvidenceError::new(format!("assertion-summary: {error:?}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("assertion-summary: {error:?}")))?;
     Ok(())
 }
 
-fn validate_strict_identity(assertion: &ReviewAssertion) -> EvidenceResult<&ReviewIdentity> {
+fn validate_strict_identity(assertion: &ReviewAssertion) -> crate::EvidenceResult<&ReviewIdentity> {
     let identity = assertion
         .identity
         .as_ref()
         .expect("caller checked identity presence");
     let computed = identity.descriptor.fingerprint().map_err(|error| {
-        EvidenceError::new(format!("assertion-summary: invalid descriptor: {error}"))
+        crate::EvidenceError::new(format!("assertion-summary: invalid descriptor: {error}"))
     })?;
     let canonical = identity.descriptor.canonical_bytes().map_err(|error| {
-        EvidenceError::new(format!("assertion-summary: invalid descriptor: {error}"))
+        crate::EvidenceError::new(format!("assertion-summary: invalid descriptor: {error}"))
     })?;
     if computed != identity.fingerprint {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: descriptor fingerprint mismatch",
         ));
     }
     if crate::sdk_local_identity_value::encode_hex(&canonical) != identity.canonical_descriptor {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: canonical descriptor mismatch",
         ));
     }
     if identity.catalog_tokens.len() != 1 {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: each identity requires one catalog token",
         ));
     }
@@ -247,7 +270,7 @@ fn validate_strict_identity(assertion: &ReviewAssertion) -> EvidenceResult<&Revi
     Ok(identity)
 }
 
-fn validate_common(assertion: &ReviewAssertion) -> EvidenceResult<()> {
+fn validate_common(assertion: &ReviewAssertion) -> crate::EvidenceResult<()> {
     crate::assertion_summary_semantics::validate_common(
         crate::assertion_summary_semantics::AssertionSemantics {
             message: &assertion.message,
@@ -265,20 +288,20 @@ fn validate_common(assertion: &ReviewAssertion) -> EvidenceResult<()> {
 
 fn validate_metadata(
     assertion: &ReviewAssertion,
-    descriptor: &AssertionDescriptor,
-) -> EvidenceResult<()> {
+    descriptor: &::chaoscontrol_protocol::identity::AssertionDescriptor,
+) -> crate::EvidenceResult<()> {
     let descriptor_kind = match descriptor.kind {
-        AssertionKind::Always => "always",
-        AssertionKind::Sometimes => "sometimes",
-        AssertionKind::Reachable => "reachable",
-        AssertionKind::Unreachable => "unreachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Always => "always",
+        ::chaoscontrol_protocol::identity::AssertionKind::Sometimes => "sometimes",
+        ::chaoscontrol_protocol::identity::AssertionKind::Reachable => "reachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Unreachable => "unreachable",
     };
     if assertion.message != descriptor.message
         || assertion.kind != descriptor_kind
         || assertion.guest != descriptor.guest
         || assertion.category != descriptor.category
     {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: report metadata conflicts with descriptor",
         ));
     }
@@ -288,7 +311,7 @@ fn validate_metadata(
             compatibility_id == assertion.id
         });
     if !redundant_id_matches {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion-summary: compatibility ID conflicts with descriptor",
         ));
     }

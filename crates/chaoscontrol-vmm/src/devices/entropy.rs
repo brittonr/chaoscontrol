@@ -6,7 +6,6 @@
 
 use rand::RngCore;
 use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 
 /// Snapshot of the PRNG state, suitable for serialisation or in-memory cloning.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -37,7 +36,7 @@ pub struct EntropySnapshot {
 /// ```
 #[derive(Clone, Debug)]
 pub struct DeterministicEntropy {
-    rng: ChaCha20Rng,
+    rng: ::rand_chacha::ChaCha20Rng,
     /// Total number of bytes dispensed through [`fill_bytes`] and [`next_u64`].
     bytes_generated: u64,
 }
@@ -80,7 +79,7 @@ impl DeterministicEntropy {
 
     /// Restore a `DeterministicEntropy` from a previously captured snapshot.
     pub fn restore(snapshot: &EntropySnapshot) -> Self {
-        let mut rng = ChaCha20Rng::from_seed(snapshot.seed);
+        let mut rng = ::rand_chacha::ChaCha20Rng::from_seed(snapshot.seed);
         rng.set_stream(snapshot.stream);
         rng.set_word_pos(snapshot.word_pos);
         Self {
@@ -105,9 +104,9 @@ impl DeterministicEntropy {
 
     // ── internal helpers ──────────────────────────────────────────────
 
-    fn rng_from_u64(seed: u64) -> ChaCha20Rng {
+    fn rng_from_u64(seed: u64) -> ::rand_chacha::ChaCha20Rng {
         let key = crate::verified::entropy::expand_seed(seed);
-        ChaCha20Rng::from_seed(key)
+        ::rand_chacha::ChaCha20Rng::from_seed(key)
     }
 }
 

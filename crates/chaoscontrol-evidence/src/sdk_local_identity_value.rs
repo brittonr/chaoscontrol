@@ -1,19 +1,17 @@
-use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
-
-pub(crate) fn exact_kind(kind: AssertionKind) -> &'static str {
+pub(crate) fn exact_kind(kind: ::chaoscontrol_protocol::identity::AssertionKind) -> &'static str {
     match kind {
-        AssertionKind::Always => "always",
-        AssertionKind::Sometimes => "sometimes",
-        AssertionKind::Reachable => "reachable",
-        AssertionKind::Unreachable => "unreachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Always => "always",
+        ::chaoscontrol_protocol::identity::AssertionKind::Sometimes => "sometimes",
+        ::chaoscontrol_protocol::identity::AssertionKind::Reachable => "reachable",
+        ::chaoscontrol_protocol::identity::AssertionKind::Unreachable => "unreachable",
     }
 }
 
 const COMPATIBILITY_ID_HEX_DIGITS: usize = 8;
 
 pub(crate) fn report_id(
-    descriptor: &AssertionDescriptor,
-    fingerprint: AssertionFingerprint,
+    descriptor: &::chaoscontrol_protocol::identity::AssertionDescriptor,
+    fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
 ) -> String {
     descriptor
         .compatibility_id

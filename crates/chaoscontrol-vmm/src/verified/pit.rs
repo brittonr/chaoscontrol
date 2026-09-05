@@ -22,8 +22,6 @@
 //! | [`decode_command`]          | `DeterministicPit::write_command()` parse |
 //! | [`handles_port`]            | `DeterministicPit::handles_port()`        |
 
-use crate::devices::pit::ChannelMode;
-
 // ─── Constants (duplicated from devices/pit.rs so this module is self-contained) ─
 
 /// PIT operating frequency in Hz (1.193182 MHz).
@@ -92,7 +90,12 @@ const _: () = assert!(PIT_FREQ_HZ > 0, "PIT frequency must be positive");
 /// assert_eq!(compute_counter(ChannelMode::Mode2, 1000, true, 1000), 1000);
 /// assert_eq!(compute_counter(ChannelMode::Mode2, 1000, true, 1001), 999);
 /// ```
-pub fn compute_counter(mode: ChannelMode, reload: u16, armed: bool, elapsed_pit_ticks: u64) -> u16 {
+pub fn compute_counter(
+    mode: crate::devices::pit::ChannelMode,
+    reload: u16,
+    armed: bool,
+    elapsed_pit_ticks: u64,
+) -> u16 {
     // Precondition: if not armed, always return 0
     if !armed {
         return 0;
@@ -101,7 +104,7 @@ pub fn compute_counter(mode: ChannelMode, reload: u16, armed: bool, elapsed_pit_
     let effective_reload = if reload == 0 { 65536u64 } else { reload as u64 };
 
     let result = match mode {
-        ChannelMode::Mode0 => {
+        crate::devices::pit::ChannelMode::Mode0 => {
             // Count down once, saturate at 0
             if elapsed_pit_ticks >= effective_reload {
                 0
@@ -109,7 +112,7 @@ pub fn compute_counter(mode: ChannelMode, reload: u16, armed: bool, elapsed_pit_
                 (effective_reload - elapsed_pit_ticks) as u16
             }
         }
-        ChannelMode::Mode2 | ChannelMode::Mode3 => {
+        crate::devices::pit::ChannelMode::Mode2 | crate::devices::pit::ChannelMode::Mode3 => {
             // Periodic mode: count wraps around
             let position = elapsed_pit_ticks % effective_reload;
             if position == 0 && elapsed_pit_ticks > 0 {
@@ -179,7 +182,7 @@ pub fn compute_counter(mode: ChannelMode, reload: u16, armed: bool, elapsed_pit_
 /// assert_eq!(compute_output(ChannelMode::Mode0, true, true, 1000, 1000), true);
 /// ```
 pub fn compute_output(
-    mode: ChannelMode,
+    mode: crate::devices::pit::ChannelMode,
     armed: bool,
     gate: bool,
     reload: u16,
@@ -193,16 +196,16 @@ pub fn compute_output(
     let effective_reload = if reload == 0 { 65536u64 } else { reload as u64 };
 
     match mode {
-        ChannelMode::Mode0 => {
+        crate::devices::pit::ChannelMode::Mode0 => {
             // Output starts LOW, goes HIGH when counter reaches 0
             elapsed_pit_ticks >= effective_reload
         }
-        ChannelMode::Mode2 => {
+        crate::devices::pit::ChannelMode::Mode2 => {
             // Output is HIGH except for 1 tick pulse LOW at reload
             let position = elapsed_pit_ticks % effective_reload;
             position != 0 || elapsed_pit_ticks == 0
         }
-        ChannelMode::Mode3 => {
+        crate::devices::pit::ChannelMode::Mode3 => {
             // Square wave: HIGH for first half, LOW for second half
             let position = elapsed_pit_ticks % effective_reload;
             position < (effective_reload / 2)
@@ -308,7 +311,7 @@ pub fn tsc_to_pit_ticks(elapsed_tsc: u64, tsc_khz: u32) -> u64 {
 /// assert_eq!(pending_irq_check(ChannelMode::Mode2, true, 1000, 2000, 1), true);
 /// ```
 pub fn pending_irq_check(
-    mode: ChannelMode,
+    mode: crate::devices::pit::ChannelMode,
     armed: bool,
     reload: u16,
     elapsed_pit_ticks: u64,
@@ -322,12 +325,15 @@ pub fn pending_irq_check(
     let effective_reload = if reload == 0 { 65536u64 } else { reload as u64 };
 
     match mode {
-        ChannelMode::Mode2 | ChannelMode::Mode3 => {
+        crate::devices::pit::ChannelMode::Mode2 | crate::devices::pit::ChannelMode::Mode3 => {
             // Periodic: IRQ fires every reload period
             let periods_elapsed = elapsed_pit_ticks / effective_reload;
             periods_elapsed > irqs_delivered
         }
-        ChannelMode::Mode0 | ChannelMode::Mode1 | ChannelMode::Mode4 | ChannelMode::Mode5 => {
+        crate::devices::pit::ChannelMode::Mode0
+        | crate::devices::pit::ChannelMode::Mode1
+        | crate::devices::pit::ChannelMode::Mode4
+        | crate::devices::pit::ChannelMode::Mode5 => {
             // One-shot: IRQ fires once when counter reaches 0
             elapsed_pit_ticks >= effective_reload && irqs_delivered == 0
         }
@@ -382,7 +388,7 @@ pub fn pending_irq_check(
 /// assert!(tsc.is_some());
 /// ```
 pub fn next_irq_tsc_compute(
-    mode: ChannelMode,
+    mode: crate::devices::pit::ChannelMode,
     armed: bool,
     reload: u16,
     start_tsc: u64,
@@ -400,7 +406,7 @@ pub fn next_irq_tsc_compute(
     let tsc_hz = tsc_khz as u128 * 1000;
 
     let result = match mode {
-        ChannelMode::Mode2 | ChannelMode::Mode3 => {
+        crate::devices::pit::ChannelMode::Mode2 | crate::devices::pit::ChannelMode::Mode3 => {
             // Periodic modes: next IRQ fires after (irqs_delivered + 1) full periods
             let next_period = irqs_delivered + 1;
             let pit_ticks_needed = next_period * effective_reload;
@@ -408,7 +414,10 @@ pub fn next_irq_tsc_compute(
                 (pit_ticks_needed as u128 * tsc_hz).div_ceil(PIT_FREQ_HZ as u128) as u64;
             Some(start_tsc + tsc_offset)
         }
-        ChannelMode::Mode0 | ChannelMode::Mode1 | ChannelMode::Mode4 | ChannelMode::Mode5 => {
+        crate::devices::pit::ChannelMode::Mode0
+        | crate::devices::pit::ChannelMode::Mode1
+        | crate::devices::pit::ChannelMode::Mode4
+        | crate::devices::pit::ChannelMode::Mode5 => {
             // One-shot modes: fire once at terminal count
             if irqs_delivered > 0 {
                 None // Already fired
@@ -464,19 +473,19 @@ pub fn next_irq_tsc_compute(
 /// assert_eq!(access, 3);
 /// assert_eq!(mode, ChannelMode::Mode2);
 /// ```
-pub fn decode_command(value: u8) -> (u8, u8, ChannelMode) {
+pub fn decode_command(value: u8) -> (u8, u8, crate::devices::pit::ChannelMode) {
     let channel_select = (value >> 6) & 0x3;
     let access_mode = (value >> 4) & 0x3;
     let mode_bits = (value >> 1) & 0x7;
 
     let mode = match mode_bits {
-        0 => ChannelMode::Mode0,
-        1 => ChannelMode::Mode1,
-        2 | 6 => ChannelMode::Mode2,
-        3 | 7 => ChannelMode::Mode3,
-        4 => ChannelMode::Mode4,
-        5 => ChannelMode::Mode5,
-        _ => ChannelMode::Mode0, // Shouldn't happen with 3 bits
+        0 => crate::devices::pit::ChannelMode::Mode0,
+        1 => crate::devices::pit::ChannelMode::Mode1,
+        2 | 6 => crate::devices::pit::ChannelMode::Mode2,
+        3 | 7 => crate::devices::pit::ChannelMode::Mode3,
+        4 => crate::devices::pit::ChannelMode::Mode4,
+        5 => crate::devices::pit::ChannelMode::Mode5,
+        _ => crate::devices::pit::ChannelMode::Mode0, // Shouldn't happen with 3 bits
     };
 
     // Postcondition: channel_select is 0-3
@@ -534,12 +543,12 @@ mod tests {
     fn test_compute_counter_unarmed_returns_zero() {
         // Tiger Style: unarmed channel must return 0
         for mode in [
-            ChannelMode::Mode0,
-            ChannelMode::Mode1,
-            ChannelMode::Mode2,
-            ChannelMode::Mode3,
-            ChannelMode::Mode4,
-            ChannelMode::Mode5,
+            crate::devices::pit::ChannelMode::Mode0,
+            crate::devices::pit::ChannelMode::Mode1,
+            crate::devices::pit::ChannelMode::Mode2,
+            crate::devices::pit::ChannelMode::Mode3,
+            crate::devices::pit::ChannelMode::Mode4,
+            crate::devices::pit::ChannelMode::Mode5,
         ] {
             assert_eq!(compute_counter(mode, 1000, false, 0), 0);
             assert_eq!(compute_counter(mode, 1000, false, 500), 0);
@@ -552,14 +561,32 @@ mod tests {
         let reload = 1000u16;
 
         // Count down
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 0), 1000);
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 500), 500);
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 999), 1);
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 0),
+            1000
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 500),
+            500
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 999),
+            1
+        );
 
         // Saturate at 0
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 1000), 0);
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 1500), 0);
-        assert_eq!(compute_counter(ChannelMode::Mode0, reload, true, 10000), 0);
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 1000),
+            0
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 1500),
+            0
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode0, reload, true, 10000),
+            0
+        );
     }
 
     #[test]
@@ -567,16 +594,28 @@ mod tests {
         let reload = 1000u16;
 
         // First period
-        assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 0), 1000);
-        assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 1), 999);
-        assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 999), 1);
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode2, reload, true, 0),
+            1000
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode2, reload, true, 1),
+            999
+        );
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode2, reload, true, 999),
+            1
+        );
 
         // Wrap at reload
         assert_eq!(
-            compute_counter(ChannelMode::Mode2, reload, true, 1000),
+            compute_counter(crate::devices::pit::ChannelMode::Mode2, reload, true, 1000),
             1000
         );
-        assert_eq!(compute_counter(ChannelMode::Mode2, reload, true, 1001), 999);
+        assert_eq!(
+            compute_counter(crate::devices::pit::ChannelMode::Mode2, reload, true, 1001),
+            999
+        );
     }
 
     #[test]
@@ -585,7 +624,12 @@ mod tests {
         for reload in [1, 100, 1000, 65535] {
             for elapsed in [0, 1, 100, 1000, 10000, 65536, 100000] {
                 let effective_reload = if reload == 0 { 65536u64 } else { reload as u64 };
-                let count = compute_counter(ChannelMode::Mode2, reload, true, elapsed);
+                let count = compute_counter(
+                    crate::devices::pit::ChannelMode::Mode2,
+                    reload,
+                    true,
+                    elapsed,
+                );
                 assert!(
                     count as u64 <= effective_reload,
                     "counter {} exceeds reload {}",
@@ -600,19 +644,19 @@ mod tests {
     fn test_compute_counter_reload_zero_means_65536() {
         // Reload value 0 means 65536
         // At elapsed=0, Mode0 returns (65536 - 0) as u16 = 0 (wraps)
-        let count = compute_counter(ChannelMode::Mode0, 0, true, 0);
+        let count = compute_counter(crate::devices::pit::ChannelMode::Mode0, 0, true, 0);
         assert_eq!(count, 0); // 65536 wraps to 0 in u16
 
         // At elapsed=1, returns (65536 - 1) = 65535
-        let count = compute_counter(ChannelMode::Mode0, 0, true, 1);
+        let count = compute_counter(crate::devices::pit::ChannelMode::Mode0, 0, true, 1);
         assert_eq!(count, 65535);
 
         // Mode2 at elapsed=0 returns effective_reload as u16 = 0
-        let count = compute_counter(ChannelMode::Mode2, 0, true, 0);
+        let count = compute_counter(crate::devices::pit::ChannelMode::Mode2, 0, true, 0);
         assert_eq!(count, 0);
 
         // Mode2 at elapsed=1 returns (65536 - 1) = 65535
-        let count = compute_counter(ChannelMode::Mode2, 0, true, 1);
+        let count = compute_counter(crate::devices::pit::ChannelMode::Mode2, 0, true, 1);
         assert_eq!(count, 65535);
     }
 
@@ -621,7 +665,11 @@ mod tests {
     #[test]
     fn test_compute_output_unarmed_returns_false() {
         // Tiger Style: unarmed channel must return false
-        for mode in [ChannelMode::Mode0, ChannelMode::Mode2, ChannelMode::Mode3] {
+        for mode in [
+            crate::devices::pit::ChannelMode::Mode0,
+            crate::devices::pit::ChannelMode::Mode2,
+            crate::devices::pit::ChannelMode::Mode3,
+        ] {
             assert!(!compute_output(mode, false, true, 1000, 0));
             assert!(!compute_output(mode, false, true, 1000, 1000));
         }
@@ -630,7 +678,11 @@ mod tests {
     #[test]
     fn test_compute_output_gate_off_returns_false() {
         // Tiger Style: gate-off channel must return false
-        for mode in [ChannelMode::Mode0, ChannelMode::Mode2, ChannelMode::Mode3] {
+        for mode in [
+            crate::devices::pit::ChannelMode::Mode0,
+            crate::devices::pit::ChannelMode::Mode2,
+            crate::devices::pit::ChannelMode::Mode3,
+        ] {
             assert!(!compute_output(mode, true, false, 1000, 0));
             assert!(!compute_output(mode, true, false, 1000, 1000));
         }
@@ -641,13 +693,43 @@ mod tests {
         let reload = 1000u16;
 
         // Output LOW before terminal count
-        assert!(!compute_output(ChannelMode::Mode0, true, true, reload, 0));
-        assert!(!compute_output(ChannelMode::Mode0, true, true, reload, 500));
-        assert!(!compute_output(ChannelMode::Mode0, true, true, reload, 999));
+        assert!(!compute_output(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            true,
+            reload,
+            0
+        ));
+        assert!(!compute_output(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            true,
+            reload,
+            500
+        ));
+        assert!(!compute_output(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            true,
+            reload,
+            999
+        ));
 
         // Output HIGH at/after terminal count
-        assert!(compute_output(ChannelMode::Mode0, true, true, reload, 1000));
-        assert!(compute_output(ChannelMode::Mode0, true, true, reload, 1500));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            true,
+            reload,
+            1000
+        ));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            true,
+            reload,
+            1500
+        ));
     }
 
     #[test]
@@ -655,16 +737,40 @@ mod tests {
         let reload = 1000u16;
 
         // Output HIGH at start
-        assert!(compute_output(ChannelMode::Mode2, true, true, reload, 0));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            0
+        ));
 
         // Output HIGH during countdown
-        assert!(compute_output(ChannelMode::Mode2, true, true, reload, 1));
-        assert!(compute_output(ChannelMode::Mode2, true, true, reload, 500));
-        assert!(compute_output(ChannelMode::Mode2, true, true, reload, 999));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            1
+        ));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            500
+        ));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            999
+        ));
 
         // Output LOW at reload point
         assert!(!compute_output(
-            ChannelMode::Mode2,
+            crate::devices::pit::ChannelMode::Mode2,
             true,
             true,
             reload,
@@ -672,7 +778,13 @@ mod tests {
         ));
 
         // Output HIGH after reload
-        assert!(compute_output(ChannelMode::Mode2, true, true, reload, 1001));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            true,
+            reload,
+            1001
+        ));
     }
 
     #[test]
@@ -680,15 +792,45 @@ mod tests {
         let reload = 1000u16;
 
         // HIGH for first half
-        assert!(compute_output(ChannelMode::Mode3, true, true, reload, 0));
-        assert!(compute_output(ChannelMode::Mode3, true, true, reload, 499));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode3,
+            true,
+            true,
+            reload,
+            0
+        ));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode3,
+            true,
+            true,
+            reload,
+            499
+        ));
 
         // LOW for second half
-        assert!(!compute_output(ChannelMode::Mode3, true, true, reload, 500));
-        assert!(!compute_output(ChannelMode::Mode3, true, true, reload, 999));
+        assert!(!compute_output(
+            crate::devices::pit::ChannelMode::Mode3,
+            true,
+            true,
+            reload,
+            500
+        ));
+        assert!(!compute_output(
+            crate::devices::pit::ChannelMode::Mode3,
+            true,
+            true,
+            reload,
+            999
+        ));
 
         // Wrap: HIGH again
-        assert!(compute_output(ChannelMode::Mode3, true, true, reload, 1000));
+        assert!(compute_output(
+            crate::devices::pit::ChannelMode::Mode3,
+            true,
+            true,
+            reload,
+            1000
+        ));
     }
 
     // ─── tsc_to_pit_ticks tests ─────────────────────────────────────
@@ -747,8 +889,20 @@ mod tests {
     #[test]
     fn test_pending_irq_unarmed_returns_false() {
         // Tiger Style: unarmed channel never has pending IRQ
-        assert!(!pending_irq_check(ChannelMode::Mode0, false, 1000, 1000, 0));
-        assert!(!pending_irq_check(ChannelMode::Mode2, false, 1000, 1000, 0));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            false,
+            1000,
+            1000,
+            0
+        ));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            false,
+            1000,
+            1000,
+            0
+        ));
     }
 
     #[test]
@@ -756,17 +910,47 @@ mod tests {
         let reload = 1000u16;
 
         // No IRQ before terminal count
-        assert!(!pending_irq_check(ChannelMode::Mode0, true, reload, 0, 0));
-        assert!(!pending_irq_check(ChannelMode::Mode0, true, reload, 500, 0));
-        assert!(!pending_irq_check(ChannelMode::Mode0, true, reload, 999, 0));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            0,
+            0
+        ));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            500,
+            0
+        ));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            999,
+            0
+        ));
 
         // IRQ at terminal count
-        assert!(pending_irq_check(ChannelMode::Mode0, true, reload, 1000, 0));
-        assert!(pending_irq_check(ChannelMode::Mode0, true, reload, 1500, 0));
+        assert!(pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            1000,
+            0
+        ));
+        assert!(pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            1500,
+            0
+        ));
 
         // No IRQ after acknowledged
         assert!(!pending_irq_check(
-            ChannelMode::Mode0,
+            crate::devices::pit::ChannelMode::Mode0,
             true,
             reload,
             1500,
@@ -779,15 +963,33 @@ mod tests {
         let reload = 1000u16;
 
         // No IRQ initially
-        assert!(!pending_irq_check(ChannelMode::Mode2, true, reload, 0, 0));
-        assert!(!pending_irq_check(ChannelMode::Mode2, true, reload, 999, 0));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            0,
+            0
+        ));
+        assert!(!pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            999,
+            0
+        ));
 
         // First IRQ at 1*reload
-        assert!(pending_irq_check(ChannelMode::Mode2, true, reload, 1000, 0));
+        assert!(pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            1000,
+            0
+        ));
 
         // No IRQ in same period after ack
         assert!(!pending_irq_check(
-            ChannelMode::Mode2,
+            crate::devices::pit::ChannelMode::Mode2,
             true,
             reload,
             1500,
@@ -795,10 +997,22 @@ mod tests {
         ));
 
         // Second IRQ at 2*reload
-        assert!(pending_irq_check(ChannelMode::Mode2, true, reload, 2000, 1));
+        assert!(pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            2000,
+            1
+        ));
 
         // Third IRQ at 3*reload
-        assert!(pending_irq_check(ChannelMode::Mode2, true, reload, 3000, 2));
+        assert!(pending_irq_check(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            3000,
+            2
+        ));
     }
 
     // ─── next_irq_tsc_compute tests ─────────────────────────────────
@@ -807,11 +1021,25 @@ mod tests {
     fn test_next_irq_tsc_unarmed_returns_none() {
         // Tiger Style: unarmed channel has no next IRQ
         assert_eq!(
-            next_irq_tsc_compute(ChannelMode::Mode0, false, 1000, 0, 2_400_000, 0),
+            next_irq_tsc_compute(
+                crate::devices::pit::ChannelMode::Mode0,
+                false,
+                1000,
+                0,
+                2_400_000,
+                0
+            ),
             None
         );
         assert_eq!(
-            next_irq_tsc_compute(ChannelMode::Mode2, false, 1000, 0, 2_400_000, 0),
+            next_irq_tsc_compute(
+                crate::devices::pit::ChannelMode::Mode2,
+                false,
+                1000,
+                0,
+                2_400_000,
+                0
+            ),
             None
         );
     }
@@ -823,12 +1051,26 @@ mod tests {
         let tsc_khz = 2_400_000;
 
         // First IRQ
-        let next = next_irq_tsc_compute(ChannelMode::Mode0, true, reload, start_tsc, tsc_khz, 0);
+        let next = next_irq_tsc_compute(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            start_tsc,
+            tsc_khz,
+            0,
+        );
         assert!(next.is_some());
         assert!(next.unwrap() > start_tsc);
 
         // After first IRQ: no more
-        let next = next_irq_tsc_compute(ChannelMode::Mode0, true, reload, start_tsc, tsc_khz, 1);
+        let next = next_irq_tsc_compute(
+            crate::devices::pit::ChannelMode::Mode0,
+            true,
+            reload,
+            start_tsc,
+            tsc_khz,
+            1,
+        );
         assert_eq!(next, None);
     }
 
@@ -839,17 +1081,38 @@ mod tests {
         let tsc_khz = 2_400_000;
 
         // Next IRQ for period 1
-        let next1 = next_irq_tsc_compute(ChannelMode::Mode2, true, reload, start_tsc, tsc_khz, 0);
+        let next1 = next_irq_tsc_compute(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            start_tsc,
+            tsc_khz,
+            0,
+        );
         assert!(next1.is_some());
         assert!(next1.unwrap() > start_tsc);
 
         // Next IRQ for period 2
-        let next2 = next_irq_tsc_compute(ChannelMode::Mode2, true, reload, start_tsc, tsc_khz, 1);
+        let next2 = next_irq_tsc_compute(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            start_tsc,
+            tsc_khz,
+            1,
+        );
         assert!(next2.is_some());
         assert!(next2.unwrap() > next1.unwrap());
 
         // Next IRQ for period 3
-        let next3 = next_irq_tsc_compute(ChannelMode::Mode2, true, reload, start_tsc, tsc_khz, 2);
+        let next3 = next_irq_tsc_compute(
+            crate::devices::pit::ChannelMode::Mode2,
+            true,
+            reload,
+            start_tsc,
+            tsc_khz,
+            2,
+        );
         assert!(next3.is_some());
         assert!(next3.unwrap() > next2.unwrap());
     }
@@ -857,7 +1120,10 @@ mod tests {
     #[test]
     fn test_next_irq_tsc_always_gte_start() {
         // Tiger Style: result must be >= start_tsc when Some
-        for mode in [ChannelMode::Mode0, ChannelMode::Mode2] {
+        for mode in [
+            crate::devices::pit::ChannelMode::Mode0,
+            crate::devices::pit::ChannelMode::Mode2,
+        ] {
             for start_tsc in [0, 1000, 1000000] {
                 if let Some(next) = next_irq_tsc_compute(mode, true, 1000, start_tsc, 2_400_000, 0)
                 {
@@ -916,31 +1182,31 @@ mod tests {
     fn test_decode_command_modes() {
         // Mode 0
         let (_, _, mode) = decode_command(0b00000000);
-        assert_eq!(mode, ChannelMode::Mode0);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode0);
 
         // Mode 1
         let (_, _, mode) = decode_command(0b00000010);
-        assert_eq!(mode, ChannelMode::Mode1);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode1);
 
         // Mode 2 (both aliases)
         let (_, _, mode) = decode_command(0b00000100);
-        assert_eq!(mode, ChannelMode::Mode2);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode2);
         let (_, _, mode) = decode_command(0b00001100);
-        assert_eq!(mode, ChannelMode::Mode2);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode2);
 
         // Mode 3 (both aliases)
         let (_, _, mode) = decode_command(0b00000110);
-        assert_eq!(mode, ChannelMode::Mode3);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode3);
         let (_, _, mode) = decode_command(0b00001110);
-        assert_eq!(mode, ChannelMode::Mode3);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode3);
 
         // Mode 4
         let (_, _, mode) = decode_command(0b00001000);
-        assert_eq!(mode, ChannelMode::Mode4);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode4);
 
         // Mode 5
         let (_, _, mode) = decode_command(0b00001010);
-        assert_eq!(mode, ChannelMode::Mode5);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode5);
     }
 
     #[test]
@@ -949,13 +1215,13 @@ mod tests {
         let (ch, access, mode) = decode_command(0b00110100);
         assert_eq!(ch, 0);
         assert_eq!(access, 3);
-        assert_eq!(mode, ChannelMode::Mode2);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode2);
 
         // Channel 2, LoHiByte, Mode 0 (common for TSC calibration)
         let (ch, access, mode) = decode_command(0b10110000);
         assert_eq!(ch, 2);
         assert_eq!(access, 3);
-        assert_eq!(mode, ChannelMode::Mode0);
+        assert_eq!(mode, crate::devices::pit::ChannelMode::Mode0);
     }
 
     // ─── handles_port tests ─────────────────────────────────────────

@@ -5,9 +5,7 @@
 //!
 //! This module is only compiled with the `full` feature.
 
-use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR};
-
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -17,12 +15,16 @@ use std::os::unix::io::AsRawFd;
 /// How the SDK communicates assertion/lifecycle/random data.
 enum TransportMode {
     /// Running inside a ChaosControl VM — use vmcall via shared page.
-    VmVmcall { page_ptr: *mut HypercallPage },
+    VmVmcall {
+        page_ptr: *mut ::chaoscontrol_protocol::HypercallPage,
+    },
     /// Running inside a ChaosControl VM — use port I/O via shared page.
-    VmPortIo { page_ptr: *mut HypercallPage },
+    VmPortIo {
+        page_ptr: *mut ::chaoscontrol_protocol::HypercallPage,
+    },
     /// Running locally — log assertions to a JSON file.
     LocalOutput {
-        writer: std::sync::Mutex<BufWriter<std::fs::File>>,
+        writer: std::sync::Mutex<::std::io::BufWriter<std::fs::File>>,
     },
     /// No output — silently discard everything.
     Noop,
@@ -128,7 +130,7 @@ fn detect_mode() -> TransportMode {
             .open(&path)
         {
             return TransportMode::LocalOutput {
-                writer: std::sync::Mutex::new(BufWriter::new(file)),
+                writer: std::sync::Mutex::new(::std::io::BufWriter::new(file)),
             };
         }
         eprintln!(
@@ -142,7 +144,7 @@ fn detect_mode() -> TransportMode {
 /// Try to mmap the hypercall page at the expected guest physical address.
 /// Returns `Some(ptr)` if successful (we're in a ChaosControl VM),
 /// `None` if `/dev/mem` is unavailable or mmap fails.
-fn try_mmap_hypercall_page() -> Option<*mut HypercallPage> {
+fn try_mmap_hypercall_page() -> Option<*mut ::chaoscontrol_protocol::HypercallPage> {
     let fd = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -156,7 +158,7 @@ fn try_mmap_hypercall_page() -> Option<*mut HypercallPage> {
             libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_SHARED,
             fd.as_raw_fd(),
-            HYPERCALL_PAGE_ADDR as libc::off_t,
+            ::chaoscontrol_protocol::HYPERCALL_PAGE_ADDR as libc::off_t,
         )
     };
 
@@ -164,7 +166,7 @@ fn try_mmap_hypercall_page() -> Option<*mut HypercallPage> {
         return None;
     }
 
-    Some(ptr as *mut HypercallPage)
+    Some(ptr as *mut ::chaoscontrol_protocol::HypercallPage)
 }
 
 fn get_mode() -> &'static TransportMode {
@@ -212,7 +214,7 @@ pub fn is_local_output() -> bool {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Get the hypercall page pointer, or `None` if not in a VM.
-pub(crate) fn vm_page_ptr() -> Option<*mut HypercallPage> {
+pub(crate) fn vm_page_ptr() -> Option<*mut ::chaoscontrol_protocol::HypercallPage> {
     match get_mode() {
         TransportMode::VmVmcall { page_ptr } | TransportMode::VmPortIo { page_ptr } => {
             Some(*page_ptr)

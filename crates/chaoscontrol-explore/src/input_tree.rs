@@ -20,7 +20,6 @@
 //! - **Depth weighting**: Earlier choices affect more of the execution
 //! - **Budget capping**: Never generate more alternatives than the budget
 
-use chaoscontrol_fault::engine::ChoiceRecord;
 use rand::Rng;
 
 /// A proposed alternative value for a specific choice point.
@@ -41,7 +40,7 @@ pub struct ChoiceAlternative {
 /// Scored choice point for ranking.
 struct ScoredChoice {
     vm_id: usize,
-    record: ChoiceRecord,
+    record: ::chaoscontrol_fault::engine::ChoiceRecord,
     score: f64,
 }
 
@@ -57,7 +56,7 @@ struct ScoredChoice {
 /// 4. Small-n (≤ 10): enumerate all alternatives
 /// 5. Large-n (> 10): sample up to 3 random alternatives
 pub fn select_alternatives(
-    histories: &[(usize, Vec<ChoiceRecord>)],
+    histories: &[(usize, Vec<::chaoscontrol_fault::engine::ChoiceRecord>)],
     budget: usize,
     rng: &mut impl Rng,
 ) -> Vec<ChoiceAlternative> {
@@ -161,8 +160,8 @@ pub fn alternatives_to_overrides(
 mod tests {
     use super::*;
 
-    fn choice(seq: u64, n: u32, val: u64) -> ChoiceRecord {
-        ChoiceRecord {
+    fn choice(seq: u64, n: u32, val: u64) -> ::chaoscontrol_fault::engine::ChoiceRecord {
+        ::chaoscontrol_fault::engine::ChoiceRecord {
             sequence_id: seq,
             n_options: n,
             value: val,

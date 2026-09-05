@@ -3,15 +3,13 @@
 // r[impl chaoscontrol.rust_automation.tools]
 // r[impl chaoscontrol.rust_automation.parity]
 
-use serde_json::{json, Value};
-
 pub const TEXT_EXTENSIONS: [&str; 3] = ["md", "rs", "toml"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScaffoldPlan {
     pub package: String,
     pub replacements: Vec<(String, String)>,
-    pub manifest: Value,
+    pub manifest: ::serde_json::Value,
 }
 
 pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
@@ -33,7 +31,7 @@ pub fn plan(workload: &str, source_root: &str) -> Result<ScaffoldPlan, String> {
         (String::from("my-service-chaos-workload"), package.clone()),
         (String::from("my-service"), workload.to_string()),
     ];
-    let manifest = json!({
+    let manifest = ::serde_json::json!({
         "schema": "chaoscontrol.rust_workload_scaffold.v1",
         "workload": workload,
         "template_source": "docs/templates/rust-workload",

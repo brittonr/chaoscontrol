@@ -1,10 +1,6 @@
 //! Fault schedule mutation — generates variant schedules from a base.
 
-use chaoscontrol_fault::faults::{Fault, GpRegister};
-use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
-use chaoscontrol_vmm::scheduler::{ScheduleVariant, SchedulingStrategy};
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
 /// Configuration for fault schedule mutation.
 #[derive(Debug, Clone)]
@@ -61,10 +57,10 @@ impl ScheduleMutator {
     /// Mutations are deterministic given the same seed and counter.
     pub fn mutate(
         &mut self,
-        base: &FaultSchedule,
+        base: &::chaoscontrol_fault::schedule::FaultSchedule,
         n: usize,
         config: &MutationConfig,
-    ) -> Vec<FaultSchedule> {
+    ) -> Vec<::chaoscontrol_fault::schedule::FaultSchedule> {
         let mut variants = Vec::with_capacity(n);
 
         for _ in 0..n {
@@ -81,11 +77,11 @@ impl ScheduleMutator {
     /// random mutations instead of the normal 1–3.
     pub fn mutate_havoc(
         &mut self,
-        base: &FaultSchedule,
+        base: &::chaoscontrol_fault::schedule::FaultSchedule,
         n: usize,
         config: &MutationConfig,
         mutations_range: [u32; 2],
-    ) -> Vec<FaultSchedule> {
+    ) -> Vec<::chaoscontrol_fault::schedule::FaultSchedule> {
         let mut variants = Vec::with_capacity(n);
         let lo = mutations_range[0].max(1);
         let hi = mutations_range[1].max(lo);
@@ -93,7 +89,7 @@ impl ScheduleMutator {
         for _ in 0..n {
             let child_seed = self.seed.wrapping_add(self.counter);
             self.counter += 1;
-            let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+            let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(child_seed);
 
             let mut schedule = base.clone();
 
@@ -117,18 +113,21 @@ impl ScheduleMutator {
     /// Generate aggressive fault schedules and optional scheduler variants.
     pub fn mutate_havoc_with_schedule(
         &mut self,
-        base: &FaultSchedule,
+        base: &::chaoscontrol_fault::schedule::FaultSchedule,
         n: usize,
         config: &MutationConfig,
         mutations_range: [u32; 2],
-    ) -> Vec<(FaultSchedule, Option<ScheduleVariant>)> {
+    ) -> Vec<(
+        ::chaoscontrol_fault::schedule::FaultSchedule,
+        Option<::chaoscontrol_vmm::scheduler::ScheduleVariant>,
+    )> {
         let schedules = self.mutate_havoc(base, n, config, mutations_range);
         schedules
             .into_iter()
             .map(|schedule| {
                 let child_seed = self.seed.wrapping_add(self.counter);
                 self.counter = self.counter.wrapping_add(1);
-                let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+                let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(child_seed);
                 let variant = self.schedule_variant(config, &mut rng);
                 (schedule, variant)
             })
@@ -136,11 +135,15 @@ impl ScheduleMutator {
     }
 
     /// Generate a single variant schedule.
-    fn mutate_once(&mut self, base: &FaultSchedule, config: &MutationConfig) -> FaultSchedule {
+    fn mutate_once(
+        &mut self,
+        base: &::chaoscontrol_fault::schedule::FaultSchedule,
+        config: &MutationConfig,
+    ) -> ::chaoscontrol_fault::schedule::FaultSchedule {
         let child_seed = self.seed.wrapping_add(self.counter);
         self.counter += 1;
 
-        let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(child_seed);
 
         // Clone the base schedule
         let mut schedule = base.clone();
@@ -178,17 +181,23 @@ impl ScheduleMutator {
     /// Mutation strategy 1: Add a random fault at a random time.
     fn add_random_fault(
         &mut self,
-        schedule: &mut FaultSchedule,
+        schedule: &mut ::chaoscontrol_fault::schedule::FaultSchedule,
         config: &MutationConfig,
-        rng: &mut ChaCha8Rng,
+        rng: &mut ::rand_chacha::ChaCha8Rng,
     ) {
         let time_ns = rng.gen_range(0..=config.max_tick);
         let fault = self.random_fault(config, rng);
-        schedule.add(ScheduledFault::new(time_ns, fault));
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            time_ns, fault,
+        ));
     }
 
     /// Mutation strategy 2: Remove a random fault.
-    fn remove_random_fault(&mut self, schedule: &mut FaultSchedule, rng: &mut ChaCha8Rng) {
+    fn remove_random_fault(
+        &mut self,
+        schedule: &mut ::chaoscontrol_fault::schedule::FaultSchedule,
+        rng: &mut ::rand_chacha::ChaCha8Rng,
+    ) {
         if schedule.total() == 0 {
             return;
         }
@@ -209,7 +218,7 @@ impl ScheduleMutator {
         }
 
         let remove_idx = rng.gen_range(0..faults.len());
-        let mut new_schedule = FaultSchedule::new();
+        let mut new_schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         for (i, fault) in faults.into_iter().enumerate() {
             if i != remove_idx {
                 new_schedule.add(fault);
@@ -220,7 +229,11 @@ impl ScheduleMutator {
     }
 
     /// Mutation strategy 3: Shift a fault's timing by ±10%.
-    fn shift_timing(&mut self, schedule: &mut FaultSchedule, rng: &mut ChaCha8Rng) {
+    fn shift_timing(
+        &mut self,
+        schedule: &mut ::chaoscontrol_fault::schedule::FaultSchedule,
+        rng: &mut ::rand_chacha::ChaCha8Rng,
+    ) {
         let faults: Vec<_> = {
             let mut sched_clone = schedule.clone();
             sched_clone.reset();
@@ -236,7 +249,7 @@ impl ScheduleMutator {
         }
 
         let shift_idx = rng.gen_range(0..faults.len());
-        let mut new_schedule = FaultSchedule::new();
+        let mut new_schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
 
         for (i, mut fault) in faults.into_iter().enumerate() {
             if i == shift_idx {
@@ -257,9 +270,9 @@ impl ScheduleMutator {
     /// Mutation strategy 4: Replace a fault with a different type.
     fn replace_fault(
         &mut self,
-        schedule: &mut FaultSchedule,
+        schedule: &mut ::chaoscontrol_fault::schedule::FaultSchedule,
         config: &MutationConfig,
-        rng: &mut ChaCha8Rng,
+        rng: &mut ::rand_chacha::ChaCha8Rng,
     ) {
         let faults: Vec<_> = {
             let mut sched_clone = schedule.clone();
@@ -276,7 +289,7 @@ impl ScheduleMutator {
         }
 
         let replace_idx = rng.gen_range(0..faults.len());
-        let mut new_schedule = FaultSchedule::new();
+        let mut new_schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
 
         for (i, mut fault) in faults.into_iter().enumerate() {
             if i == replace_idx {
@@ -295,15 +308,18 @@ impl ScheduleMutator {
     /// when the mutation targets faults only.
     pub fn mutate_with_schedule(
         &mut self,
-        base: &FaultSchedule,
+        base: &::chaoscontrol_fault::schedule::FaultSchedule,
         n: usize,
         config: &MutationConfig,
-    ) -> Vec<(FaultSchedule, Option<ScheduleVariant>)> {
+    ) -> Vec<(
+        ::chaoscontrol_fault::schedule::FaultSchedule,
+        Option<::chaoscontrol_vmm::scheduler::ScheduleVariant>,
+    )> {
         let mut results = Vec::with_capacity(n);
         for _ in 0..n {
             let child_seed = self.seed.wrapping_add(self.counter);
             self.counter += 1;
-            let mut rng = ChaCha8Rng::seed_from_u64(child_seed);
+            let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(child_seed);
 
             let variant = self.schedule_variant(config, &mut rng);
 
@@ -317,8 +333,8 @@ impl ScheduleMutator {
     fn schedule_variant(
         &self,
         config: &MutationConfig,
-        rng: &mut ChaCha8Rng,
-    ) -> Option<ScheduleVariant> {
+        rng: &mut ::rand_chacha::ChaCha8Rng,
+    ) -> Option<::chaoscontrol_vmm::scheduler::ScheduleVariant> {
         if config.schedule_mutation_ratio > 0.0 && rng.gen::<f64>() < config.schedule_mutation_ratio
         {
             Some(self.random_schedule_variant(config, rng))
@@ -334,14 +350,14 @@ impl ScheduleMutator {
     fn random_schedule_variant(
         &self,
         config: &MutationConfig,
-        rng: &mut ChaCha8Rng,
-    ) -> ScheduleVariant {
+        rng: &mut ::rand_chacha::ChaCha8Rng,
+    ) -> ::chaoscontrol_vmm::scheduler::ScheduleVariant {
         let scheduler_seed = rng.gen::<u64>();
         let roll = rng.gen::<f64>();
 
         if roll < 0.5 {
             // ReSeed only — different interleaving, same strategy/quantum
-            ScheduleVariant {
+            ::chaoscontrol_vmm::scheduler::ScheduleVariant {
                 scheduler_seed,
                 ..Default::default()
             }
@@ -353,7 +369,7 @@ impl ScheduleMutator {
             } else {
                 (config.base_quantum / factor).max(1)
             };
-            ScheduleVariant {
+            ::chaoscontrol_vmm::scheduler::ScheduleVariant {
                 scheduler_seed,
                 quantum_override: Some(quantum),
                 ..Default::default()
@@ -361,16 +377,16 @@ impl ScheduleMutator {
         } else {
             // StrategyFlip — toggle between RoundRobin and Randomized
             let strategy = if rng.gen_bool(0.5) {
-                SchedulingStrategy::RoundRobin
+                ::chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin
             } else {
                 let min_q = (config.base_quantum / 4).max(1);
                 let max_q = config.base_quantum.saturating_mul(4);
-                SchedulingStrategy::Randomized {
+                ::chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
                     min_quantum: min_q,
                     max_quantum: max_q,
                 }
             };
-            ScheduleVariant {
+            ::chaoscontrol_vmm::scheduler::ScheduleVariant {
                 scheduler_seed,
                 strategy_override: Some(strategy),
                 ..Default::default()
@@ -379,21 +395,25 @@ impl ScheduleMutator {
     }
 
     /// Generate a random fault suitable for the config.
-    fn random_fault(&self, config: &MutationConfig, rng: &mut ChaCha8Rng) -> Fault {
+    fn random_fault(
+        &self,
+        config: &MutationConfig,
+        rng: &mut ::rand_chacha::ChaCha8Rng,
+    ) -> ::chaoscontrol_fault::faults::Fault {
         if config.num_vms == 0 {
-            return Fault::NetworkHeal;
+            return ::chaoscontrol_fault::faults::Fault::NetworkHeal;
         }
 
         let target = rng.gen_range(0..config.num_vms);
         let fault_type = rng.gen_range(0..22);
 
         match fault_type {
-            0 => Fault::ProcessKill { target },
-            1 => Fault::ProcessPause {
+            0 => ::chaoscontrol_fault::faults::Fault::ProcessKill { target },
+            1 => ::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target,
                 duration_ns: rng.gen_range(1_000_000..10_000_000_000), // 1ms to 10s
             },
-            2 => Fault::ProcessRestart { target },
+            2 => ::chaoscontrol_fault::faults::Fault::ProcessRestart { target },
             3 => {
                 // Network partition: split randomly
                 let side_a: Vec<usize> =
@@ -403,76 +423,76 @@ impl ScheduleMutator {
                     .collect();
 
                 if side_a.is_empty() || side_b.is_empty() {
-                    Fault::NetworkHeal
+                    ::chaoscontrol_fault::faults::Fault::NetworkHeal
                 } else {
-                    Fault::NetworkPartition { side_a, side_b }
+                    ::chaoscontrol_fault::faults::Fault::NetworkPartition { side_a, side_b }
                 }
             }
-            4 => Fault::NetworkHeal,
-            5 => Fault::NetworkLatency {
+            4 => ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+            5 => ::chaoscontrol_fault::faults::Fault::NetworkLatency {
                 target,
                 latency_ns: rng.gen_range(1_000_000..1_000_000_000), // 1ms to 1s
             },
-            6 => Fault::DiskFull { target },
-            7 => Fault::DiskWriteError {
+            6 => ::chaoscontrol_fault::faults::Fault::DiskFull { target },
+            7 => ::chaoscontrol_fault::faults::Fault::DiskWriteError {
                 target,
                 offset: rng.gen_range(0..10_000_000),
             },
-            8 => Fault::ClockSkew {
+            8 => ::chaoscontrol_fault::faults::Fault::ClockSkew {
                 target,
                 offset_ns: rng.gen_range(-10_000_000_000..10_000_000_000), // ±10s
             },
-            9 => Fault::ClockJump {
+            9 => ::chaoscontrol_fault::faults::Fault::ClockJump {
                 target,
                 delta_ns: rng.gen_range(-5_000_000_000..5_000_000_000), // ±5s
             },
-            10 => Fault::NetworkJitter {
+            10 => ::chaoscontrol_fault::faults::Fault::NetworkJitter {
                 target,
                 jitter_ns: rng.gen_range(1_000_000..100_000_000), // 1ms to 100ms
             },
-            11 => Fault::NetworkBandwidth {
+            11 => ::chaoscontrol_fault::faults::Fault::NetworkBandwidth {
                 target,
                 bytes_per_sec: rng.gen_range(10_000..10_000_000), // 10 KB/s to 10 MB/s
             },
-            12 => Fault::PacketDuplicate {
+            12 => ::chaoscontrol_fault::faults::Fault::PacketDuplicate {
                 target,
                 rate_ppm: rng.gen_range(10_000..500_000), // 1% to 50%
             },
-            13 => Fault::InjectInterrupt {
+            13 => ::chaoscontrol_fault::faults::Fault::InjectInterrupt {
                 target,
                 irq: rng.gen_range(0..24), // Full x86 PIC/IOAPIC range
             },
-            14 => Fault::InjectNmi { target, vcpu: 0 },
-            15 => Fault::DiskSlow {
+            14 => ::chaoscontrol_fault::faults::Fault::InjectNmi { target, vcpu: 0 },
+            15 => ::chaoscontrol_fault::faults::Fault::DiskSlow {
                 target,
                 delay_ns: rng.gen_range(1_000_000..100_000_000), // 1ms to 100ms
             },
-            16 => Fault::DiskFsyncLie { target },
-            17 => Fault::DiskPartialRead {
+            16 => ::chaoscontrol_fault::faults::Fault::DiskFsyncLie { target },
+            17 => ::chaoscontrol_fault::faults::Fault::DiskPartialRead {
                 target,
                 offset: rng.gen_range(0..10_000_000),
                 max_bytes: rng.gen_range(1..4096),
             },
-            18 => Fault::CpuBitflip {
+            18 => ::chaoscontrol_fault::faults::Fault::CpuBitflip {
                 target,
                 vcpu: 0,
-                register: GpRegister::ALL[rng.gen_range(0..16)],
+                register: ::chaoscontrol_fault::faults::GpRegister::ALL[rng.gen_range(0..16)],
                 bit: rng.gen_range(0..64),
             },
-            19 => Fault::CpuStall {
+            19 => ::chaoscontrol_fault::faults::Fault::CpuStall {
                 target,
                 vcpu: 0,
                 duration_ticks: rng.gen_range(1..200),
             },
-            20 => Fault::ClockFreeze {
+            20 => ::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target,
                 duration_ticks: rng.gen_range(10..500),
             },
-            21 => Fault::ClockJitter {
+            21 => ::chaoscontrol_fault::faults::Fault::ClockJitter {
                 target,
                 bound_tsc: rng.gen_range(100..5000),
             },
-            _ => Fault::NetworkHeal,
+            _ => ::chaoscontrol_fault::faults::Fault::NetworkHeal,
         }
     }
 }
@@ -495,11 +515,13 @@ mod tests {
     const INVALID_MINIMUM_QUANTUM: u64 = 9;
     const INVALID_MAXIMUM_QUANTUM: u64 = 2;
 
-    fn first_switch_steps(variant: Option<&ScheduleVariant>) -> Option<usize> {
+    fn first_switch_steps(
+        variant: Option<&::chaoscontrol_vmm::scheduler::ScheduleVariant>,
+    ) -> Option<usize> {
         let config = SchedulerConfig {
             num_vcpus: RACE_VCPU_COUNT,
             quantum: RACE_QUANTUM,
-            strategy: SchedulingStrategy::RoundRobin,
+            strategy: ::chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
             seed: RACE_SEED,
         };
         let mut scheduler = VcpuScheduler::try_new(
@@ -542,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_mutator_deterministic() {
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig::default();
 
         let mut m1 = ScheduleMutator::new(100);
@@ -561,7 +583,7 @@ mod tests {
     #[test]
     fn test_mutator_counter_increments() {
         let mut mutator = ScheduleMutator::new(42);
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig::default();
 
         mutator.mutate(&base, 3, &config);
@@ -574,10 +596,10 @@ mod tests {
     #[test]
     fn test_add_random_fault() {
         let mut mutator = ScheduleMutator::new(42);
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig::default();
 
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
         mutator.add_random_fault(&mut schedule, &config, &mut rng);
 
         assert!(schedule.total() > 0);
@@ -586,11 +608,17 @@ mod tests {
     #[test]
     fn test_remove_random_fault() {
         let mut mutator = ScheduleMutator::new(42);
-        let mut schedule = FaultSchedule::new();
-        schedule.add(ScheduledFault::new(1000, Fault::NetworkHeal));
-        schedule.add(ScheduledFault::new(2000, Fault::ProcessKill { target: 0 }));
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            1000,
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+        ));
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            2000,
+            ::chaoscontrol_fault::faults::Fault::ProcessKill { target: 0 },
+        ));
 
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
         mutator.remove_random_fault(&mut schedule, &mut rng);
 
         assert_eq!(schedule.total(), 1);
@@ -599,8 +627,8 @@ mod tests {
     #[test]
     fn test_remove_from_empty() {
         let mut mutator = ScheduleMutator::new(42);
-        let mut schedule = FaultSchedule::new();
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
 
         mutator.remove_random_fault(&mut schedule, &mut rng);
         assert_eq!(schedule.total(), 0); // No crash
@@ -609,10 +637,13 @@ mod tests {
     #[test]
     fn test_shift_timing() {
         let mut mutator = ScheduleMutator::new(42);
-        let mut schedule = FaultSchedule::new();
-        schedule.add(ScheduledFault::new(10000, Fault::NetworkHeal));
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            10000,
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+        ));
 
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
         mutator.shift_timing(&mut schedule, &mut rng);
 
         // Time should have shifted
@@ -623,15 +654,18 @@ mod tests {
     #[test]
     fn test_replace_fault() {
         let mut mutator = ScheduleMutator::new(42);
-        let mut schedule = FaultSchedule::new();
-        schedule.add(ScheduledFault::new(1000, Fault::NetworkHeal));
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            1000,
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+        ));
 
         let config = MutationConfig {
             num_vms: 3,
             ..Default::default()
         };
 
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
         mutator.replace_fault(&mut schedule, &config, &mut rng);
 
         assert_eq!(schedule.total(), 1);
@@ -646,7 +680,7 @@ mod tests {
             ..Default::default()
         };
 
-        let mut rng = ChaCha8Rng::seed_from_u64(999);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(999);
         let mut fault_debug_strs = std::collections::BTreeSet::new();
 
         for _ in 0..100 {
@@ -663,7 +697,7 @@ mod tests {
     #[test]
     fn test_mutate_applies_multiple_mutations() {
         let mut mutator = ScheduleMutator::new(42);
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig::default();
 
         let variants = mutator.mutate(&base, 10, &config);
@@ -682,9 +716,9 @@ mod tests {
             ..Default::default()
         };
 
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = ::rand_chacha::ChaCha8Rng::seed_from_u64(42);
         let fault = mutator.random_fault(&config, &mut rng);
-        assert_eq!(fault, Fault::NetworkHeal); // Safe default
+        assert_eq!(fault, ::chaoscontrol_fault::faults::Fault::NetworkHeal); // Safe default
     }
 
     #[test]
@@ -692,7 +726,7 @@ mod tests {
         let mut mutator_normal = ScheduleMutator::new(42);
         let mut mutator_havoc = ScheduleMutator::new(42);
         let config = MutationConfig::default();
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
 
         let normal = mutator_normal.mutate(&base, 10, &config);
         let havoc = mutator_havoc.mutate_havoc(&base, 10, &config, [4, 16]);
@@ -714,7 +748,7 @@ mod tests {
     #[test]
     // r[verify chaoscontrol.schedule_diversity.validated_effectiveness]
     fn schedule_variants_reach_known_ordering_race() {
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig {
             schedule_mutation_ratio: 1.0,
             base_quantum: RACE_QUANTUM,
@@ -735,7 +769,7 @@ mod tests {
     #[test]
     // r[verify chaoscontrol.schedule_diversity.validation]
     fn disabled_and_invalid_schedule_variants_fail_closed() {
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let mut disabled = ScheduleMutator::new(RACE_SEED);
         let variants =
             disabled.mutate_with_schedule(&base, RACE_VARIANT_COUNT, &MutationConfig::default());
@@ -746,7 +780,7 @@ mod tests {
         let config = SchedulerConfig {
             num_vcpus: RACE_VCPU_COUNT,
             quantum: RACE_QUANTUM,
-            strategy: SchedulingStrategy::RoundRobin,
+            strategy: ::chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
             seed: RACE_SEED,
         };
         let mut scheduler = VcpuScheduler::try_new(
@@ -755,16 +789,18 @@ mod tests {
             vec![true; RACE_VCPU_COUNT],
         )
         .expect("validation scheduler");
-        let unsupported = ScheduleVariant {
+        let unsupported = ::chaoscontrol_vmm::scheduler::ScheduleVariant {
             scheduler_seed: RACE_SEED,
-            strategy_override: Some(SchedulingStrategy::Randomized {
-                min_quantum: INVALID_MINIMUM_QUANTUM,
-                max_quantum: INVALID_MAXIMUM_QUANTUM,
-            }),
+            strategy_override: Some(
+                ::chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
+                    min_quantum: INVALID_MINIMUM_QUANTUM,
+                    max_quantum: INVALID_MAXIMUM_QUANTUM,
+                },
+            ),
             quantum_override: None,
         };
         assert!(scheduler.apply_variant(&unsupported).is_err());
-        let zero_quantum = ScheduleVariant {
+        let zero_quantum = ::chaoscontrol_vmm::scheduler::ScheduleVariant {
             scheduler_seed: RACE_SEED,
             strategy_override: None,
             quantum_override: Some(0),
@@ -774,7 +810,7 @@ mod tests {
 
     #[test]
     fn havoc_schedule_variants_are_deterministic() {
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         let config = MutationConfig {
             schedule_mutation_ratio: 1.0,
             ..Default::default()
@@ -806,7 +842,7 @@ mod tests {
     #[test]
     fn test_havoc_deterministic() {
         let config = MutationConfig::default();
-        let base = FaultSchedule::new();
+        let base = ::chaoscontrol_fault::schedule::FaultSchedule::new();
 
         let mut m1 = ScheduleMutator::new(99);
         let mut m2 = ScheduleMutator::new(99);

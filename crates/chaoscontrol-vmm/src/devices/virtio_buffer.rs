@@ -1,15 +1,12 @@
 //! Startup-allocated scratch buffers for virtio imperative shells.
 
 use super::virtio_types::{ResourceViolation, VirtioFailure, DEFAULT_SCRATCH_BYTES};
-use chaoscontrol_sim_core::{
-    CapacityLease, CapacityPoolState, RuntimeCapacityError, ScratchClassLimit,
-};
 
 const SCRATCH_POOL_GENERATION: u64 = 1;
 const DEFAULT_SCRATCH_SLOT_COUNT: usize = 1;
 
 pub struct ScratchBufferLease {
-    capacity_lease: CapacityLease,
+    capacity_lease: ::chaoscontrol_sim_core::CapacityLease,
     requested: usize,
     buffer: Vec<u8>,
 }
@@ -51,24 +48,26 @@ pub struct ScratchPoolObservations {
 }
 
 pub struct HostBufferAllocator {
-    state: CapacityPoolState,
+    state: ::chaoscontrol_sim_core::CapacityPoolState,
     slots: Vec<Option<Vec<u8>>>,
 }
 
 impl HostBufferAllocator {
     pub fn try_default() -> Result<Self, ResourceViolation> {
-        Self::try_from_classes(&[ScratchClassLimit {
+        Self::try_from_classes(&[::chaoscontrol_sim_core::ScratchClassLimit {
             slot_bytes: DEFAULT_SCRATCH_BYTES,
             slots: DEFAULT_SCRATCH_SLOT_COUNT,
         }])
     }
 
-    pub fn try_from_classes(classes: &[ScratchClassLimit]) -> Result<Self, ResourceViolation> {
+    pub fn try_from_classes(
+        classes: &[::chaoscontrol_sim_core::ScratchClassLimit],
+    ) -> Result<Self, ResourceViolation> {
         Self::try_from_classes_with(classes, allocate_zeroed_buffer)
     }
 
     fn try_from_classes_with(
-        classes: &[ScratchClassLimit],
+        classes: &[::chaoscontrol_sim_core::ScratchClassLimit],
         mut allocate: impl FnMut(usize) -> Result<Vec<u8>, ResourceViolation>,
     ) -> Result<Self, ResourceViolation> {
         let slot_count = classes.iter().try_fold(0usize, |total, class| {
@@ -102,8 +101,11 @@ impl HostBufferAllocator {
                 slots.push(Some(buffer));
             }
         }
-        let state = CapacityPoolState::new(SCRATCH_POOL_GENERATION, slot_capacities)
-            .map_err(map_capacity_error)?;
+        let state = ::chaoscontrol_sim_core::CapacityPoolState::new(
+            SCRATCH_POOL_GENERATION,
+            slot_capacities,
+        )
+        .map_err(map_capacity_error)?;
         Ok(Self { state, slots })
     }
 
@@ -232,26 +234,32 @@ pub fn with_zeroed_scratch<T>(
     outcome
 }
 
-fn map_capacity_error(error: RuntimeCapacityError) -> ResourceViolation {
+fn map_capacity_error(error: ::chaoscontrol_sim_core::RuntimeCapacityError) -> ResourceViolation {
     match error {
-        RuntimeCapacityError::SlotExhausted => ResourceViolation::ScratchExhausted,
-        RuntimeCapacityError::Zero { .. } => ResourceViolation::ScratchLimit {
-            requested: 0,
-            maximum: DEFAULT_SCRATCH_BYTES,
-        },
-        RuntimeCapacityError::InvalidSlot { slot }
-        | RuntimeCapacityError::SlotAlreadyInUse { slot }
-        | RuntimeCapacityError::SlotAlreadyFree { slot } => {
+        ::chaoscontrol_sim_core::RuntimeCapacityError::SlotExhausted => {
+            ResourceViolation::ScratchExhausted
+        }
+        ::chaoscontrol_sim_core::RuntimeCapacityError::Zero { .. } => {
+            ResourceViolation::ScratchLimit {
+                requested: 0,
+                maximum: DEFAULT_SCRATCH_BYTES,
+            }
+        }
+        ::chaoscontrol_sim_core::RuntimeCapacityError::InvalidSlot { slot }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::SlotAlreadyInUse { slot }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::SlotAlreadyFree { slot } => {
             ResourceViolation::ScratchLease { slot }
         }
-        RuntimeCapacityError::StaleLease { .. }
-        | RuntimeCapacityError::OversizedLease { .. }
-        | RuntimeCapacityError::CounterOverflow { .. }
-        | RuntimeCapacityError::AboveMaximum { .. }
-        | RuntimeCapacityError::ScratchClassesNotAscending
-        | RuntimeCapacityError::QueueMetadataBelowPacketSlots { .. }
-        | RuntimeCapacityError::RetainedBytesAbovePacketStorage { .. }
-        | RuntimeCapacityError::Arithmetic { .. } => {
+        ::chaoscontrol_sim_core::RuntimeCapacityError::StaleLease { .. }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::OversizedLease { .. }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::CounterOverflow { .. }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::AboveMaximum { .. }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::ScratchClassesNotAscending
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::QueueMetadataBelowPacketSlots { .. }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::RetainedBytesAbovePacketStorage {
+            ..
+        }
+        | ::chaoscontrol_sim_core::RuntimeCapacityError::Arithmetic { .. } => {
             ResourceViolation::ScratchLease { slot: usize::MAX }
         }
     }
@@ -266,7 +274,7 @@ mod tests {
     const TEST_FILL_BYTE: u8 = 0xA5;
 
     fn pool() -> HostBufferAllocator {
-        HostBufferAllocator::try_from_classes(&[ScratchClassLimit {
+        HostBufferAllocator::try_from_classes(&[::chaoscontrol_sim_core::ScratchClassLimit {
             slot_bytes: TEST_SLOT_BYTES,
             slots: DEFAULT_SCRATCH_SLOT_COUNT,
         }])
@@ -276,7 +284,7 @@ mod tests {
     #[test]
     fn startup_allocation_failure_is_typed_before_a_pool_exists() {
         let result = HostBufferAllocator::try_from_classes_with(
-            &[ScratchClassLimit {
+            &[::chaoscontrol_sim_core::ScratchClassLimit {
                 slot_bytes: TEST_SLOT_BYTES,
                 slots: DEFAULT_SCRATCH_SLOT_COUNT,
             }],

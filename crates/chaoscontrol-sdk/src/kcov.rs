@@ -51,8 +51,6 @@
 //! }
 //! ```
 
-use crate::coverage;
-
 // ═══════════════════════════════════════════════════════════════════════
 //  KCOV ioctl constants (from linux/kcov.h)
 // ═══════════════════════════════════════════════════════════════════════
@@ -244,7 +242,7 @@ pub fn collect() -> usize {
             let pc = core::ptr::read_volatile(KCOV_AREA.add(i)) as usize;
             // AFL-style: edge = prev XOR cur, then record
             let edge_index = (PREV_PC ^ pc) % chaoscontrol_protocol::COVERAGE_BITMAP_SIZE;
-            coverage::record_hit(edge_index);
+            crate::coverage::record_hit(edge_index);
             PREV_PC = pc >> 1;
         }
 

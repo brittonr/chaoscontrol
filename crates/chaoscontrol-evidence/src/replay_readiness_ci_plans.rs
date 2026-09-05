@@ -3,21 +3,6 @@
 // r[impl chaoscontrol.typed_operator_commands.plan]
 // r[impl chaoscontrol.typed_operator_commands.evidence]
 
-use serde_json::{json, Value};
-
-use crate::replay_readiness_orchestration::observe_executable_reference;
-use crate::replay_readiness_publication::write_bytes;
-use crate::replay_readiness_surfaces::{
-    sample_fleet_scheduler_plan, sample_hosted_shared_state_plan,
-    sample_multi_hypervisor_campaign_plan, sample_networked_hosted_scheduler_plan,
-    sample_scheduler_receipt,
-};
-use crate::typed_operator_command::{
-    CommandPlan, EnvironmentMode, EnvironmentSpec, ExecutableRef, LimitSpec, StdinSpec,
-    TerminationScope,
-};
-use crate::EvidenceResult;
-
 const EXECUTABLE_MAX_BYTES: u64 = 1_073_741_824;
 const TIMEOUT_MS: u64 = 30_000;
 const STDIN_MAX_BYTES: u64 = 1_024;
@@ -31,38 +16,44 @@ pub fn write_typed_command_plan(
     output_path: impl AsRef<std::path::Path>,
     executable_path: impl AsRef<std::path::Path>,
     args: Vec<String>,
-) -> EvidenceResult<()> {
-    let executable = observe_executable_reference(executable_path.as_ref(), EXECUTABLE_MAX_BYTES)?;
+) -> crate::EvidenceResult<()> {
+    let executable = crate::replay_readiness_orchestration::observe_executable_reference(
+        executable_path.as_ref(),
+        EXECUTABLE_MAX_BYTES,
+    )?;
     let plan = command_with_args(&executable, args);
     let mut bytes = serde_json::to_vec_pretty(&plan)?;
     bytes.push(b'\n');
-    write_bytes(output_path.as_ref(), &bytes)
+    crate::replay_readiness_publication::write_bytes(output_path.as_ref(), &bytes)
 }
 
 /// Observe one packaged executable and write all CI scheduler plans.
 pub fn write_ci_scheduler_plans(
     output_root: impl AsRef<std::path::Path>,
     executable_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<usize> {
+) -> crate::EvidenceResult<usize> {
     let output_root = output_root.as_ref();
-    let executable = observe_executable_reference(executable_path.as_ref(), EXECUTABLE_MAX_BYTES)?;
+    let executable = crate::replay_readiness_orchestration::observe_executable_reference(
+        executable_path.as_ref(),
+        EXECUTABLE_MAX_BYTES,
+    )?;
     let plans = build_ci_scheduler_plans(output_root, &executable)?;
     for (path, value) in &plans {
         let mut bytes = serde_json::to_vec_pretty(value)?;
         bytes.push(b'\n');
-        write_bytes(path, &bytes)?;
+        crate::replay_readiness_publication::write_bytes(path, &bytes)?;
     }
     Ok(plans.len())
 }
 
 fn build_ci_scheduler_plans(
     output_root: &std::path::Path,
-    executable: &ExecutableRef,
-) -> EvidenceResult<Vec<(std::path::PathBuf, Value)>> {
+    executable: &crate::typed_operator_command::ExecutableRef,
+) -> crate::EvidenceResult<Vec<(std::path::PathBuf, ::serde_json::Value)>> {
     let path = |name: &str| output_root.join(name).display().to_string();
 
-    let mut scheduler = sample_scheduler_receipt();
-    scheduler["source_decision_receipt"] = json!(path("decision-receipt.json"));
+    let mut scheduler = crate::replay_readiness_surfaces::sample_scheduler_receipt();
+    scheduler["source_decision_receipt"] = ::serde_json::json!(path("decision-receipt.json"));
     set_command_entry(
         &mut scheduler["run_plan"][0],
         executable,
@@ -74,9 +65,9 @@ fn build_ci_scheduler_plans(
         &path("scheduled-run-2.json"),
     )?;
 
-    let mut fleet = sample_fleet_scheduler_plan();
-    fleet["queue"]["state_path"] = json!(path("fleet-scheduler-state.json"));
-    fleet["operator_decisions"] = json!([path("decision-receipt.json")]);
+    let mut fleet = crate::replay_readiness_surfaces::sample_fleet_scheduler_plan();
+    fleet["queue"]["state_path"] = ::serde_json::json!(path("fleet-scheduler-state.json"));
+    fleet["operator_decisions"] = ::serde_json::json!([path("decision-receipt.json")]);
     set_command_entry(
         &mut fleet["queue"]["entries"][0],
         executable,
@@ -88,15 +79,17 @@ fn build_ci_scheduler_plans(
         &path("fleet-scheduled-run-2.json"),
     )?;
 
-    let mut multi = sample_multi_hypervisor_campaign_plan();
-    multi["state_path"] = json!(path("local-multi-hypervisor-campaign-state.json"));
-    multi["artifact_index_path"] = json!(path("local-multi-hypervisor-artifact-index.json"));
-    multi["follow_up_policy"] = json!({"enabled": false, "reproduce": false, "minimize": false});
-    multi["hypervisors"][0]["artifact_root"] = json!(path("local-hv-a"));
-    multi["hypervisors"][1]["artifact_root"] = json!(path("local-hv-b"));
-    multi["operator_decisions"] = json!([path("decision-receipt.json")]);
-    multi["queue"]["entries"][0]["expected_bug_artifacts"] = json!([]);
-    multi["queue"]["entries"][1]["expected_bug_artifacts"] = json!([]);
+    let mut multi = crate::replay_readiness_surfaces::sample_multi_hypervisor_campaign_plan();
+    multi["state_path"] = ::serde_json::json!(path("local-multi-hypervisor-campaign-state.json"));
+    multi["artifact_index_path"] =
+        ::serde_json::json!(path("local-multi-hypervisor-artifact-index.json"));
+    multi["follow_up_policy"] =
+        ::serde_json::json!({"enabled": false, "reproduce": false, "minimize": false});
+    multi["hypervisors"][0]["artifact_root"] = ::serde_json::json!(path("local-hv-a"));
+    multi["hypervisors"][1]["artifact_root"] = ::serde_json::json!(path("local-hv-b"));
+    multi["operator_decisions"] = ::serde_json::json!([path("decision-receipt.json")]);
+    multi["queue"]["entries"][0]["expected_bug_artifacts"] = ::serde_json::json!([]);
+    multi["queue"]["entries"][1]["expected_bug_artifacts"] = ::serde_json::json!([]);
     set_command_entry(
         &mut multi["queue"]["entries"][0],
         executable,
@@ -108,9 +101,10 @@ fn build_ci_scheduler_plans(
         &path("local-multi-hypervisor-run-2.json"),
     )?;
 
-    let mut hosted = sample_hosted_shared_state_plan();
-    hosted["queue"]["state_path"] = json!(path("hosted-shared-queue-state.json"));
-    hosted["decision_store"]["path"] = json!(path("hosted-shared-decision-store.json"));
+    let mut hosted = crate::replay_readiness_surfaces::sample_hosted_shared_state_plan();
+    hosted["queue"]["state_path"] = ::serde_json::json!(path("hosted-shared-queue-state.json"));
+    hosted["decision_store"]["path"] =
+        ::serde_json::json!(path("hosted-shared-decision-store.json"));
     set_command_entry(
         &mut hosted["queue"]["entries"][0],
         executable,
@@ -122,10 +116,11 @@ fn build_ci_scheduler_plans(
         &path("hosted-run-2.json"),
     )?;
 
-    let mut networked = sample_networked_hosted_scheduler_plan();
-    networked["queue"]["state_snapshot_path"] = json!(path("networked-hosted-queue-state.json"));
+    let mut networked = crate::replay_readiness_surfaces::sample_networked_hosted_scheduler_plan();
+    networked["queue"]["state_snapshot_path"] =
+        ::serde_json::json!(path("networked-hosted-queue-state.json"));
     networked["decision_store"]["state_snapshot_path"] =
-        json!(path("networked-hosted-decision-store.json"));
+        ::serde_json::json!(path("networked-hosted-decision-store.json"));
     set_command_entry(
         &mut networked["queue"]["entries"][0],
         executable,
@@ -155,11 +150,11 @@ fn build_ci_scheduler_plans(
 }
 
 fn set_command_entry(
-    entry: &mut Value,
-    executable: &ExecutableRef,
+    entry: &mut ::serde_json::Value,
+    executable: &crate::typed_operator_command::ExecutableRef,
     receipt_path: &str,
-) -> EvidenceResult<()> {
-    entry["receipt_path"] = json!(receipt_path);
+) -> crate::EvidenceResult<()> {
+    entry["receipt_path"] = ::serde_json::json!(receipt_path);
     entry["command_plan"] = serde_json::to_value(command_with_args(
         executable,
         vec!["--receipt".to_string(), receipt_path.to_string()],
@@ -167,19 +162,22 @@ fn set_command_entry(
     Ok(())
 }
 
-fn command_with_args(executable: &ExecutableRef, args: Vec<String>) -> CommandPlan {
-    CommandPlan {
+fn command_with_args(
+    executable: &crate::typed_operator_command::ExecutableRef,
+    args: Vec<String>,
+) -> crate::typed_operator_command::CommandPlan {
+    crate::typed_operator_command::CommandPlan {
         schema: crate::typed_operator_command::PLAN_SCHEMA.to_string(),
         mechanism_revision: crate::typed_operator_command::MECHANISM_REVISION.to_string(),
         executable: executable.clone(),
         args,
         working_directory: ".".to_string(),
-        environment: EnvironmentSpec {
-            mode: EnvironmentMode::Clear,
+        environment: crate::typed_operator_command::EnvironmentSpec {
+            mode: crate::typed_operator_command::EnvironmentMode::Clear,
             entries: Vec::new(),
         },
-        stdin: StdinSpec::Null,
-        limits: LimitSpec {
+        stdin: crate::typed_operator_command::StdinSpec::Null,
+        limits: crate::typed_operator_command::LimitSpec {
             timeout_ms: TIMEOUT_MS,
             stdin_max_bytes: STDIN_MAX_BYTES,
             stdout_max_bytes: OUTPUT_MAX_BYTES,
@@ -190,7 +188,7 @@ fn command_with_args(executable: &ExecutableRef, args: Vec<String>) -> CommandPl
         accepted_exit_codes: vec![0],
         reject_stdout_truncation: true,
         reject_stderr_truncation: true,
-        termination_scope: TerminationScope::ProcessGroup,
+        termination_scope: crate::typed_operator_command::TerminationScope::ProcessGroup,
         evidence_eligible: true,
     }
 }
@@ -203,7 +201,7 @@ mod tests {
 
     #[test]
     fn pure_plan_builder_uses_typed_commands_and_expected_paths() {
-        let executable = ExecutableRef {
+        let executable = crate::typed_operator_command::ExecutableRef {
             path: "/nix/store/example/bin/replay-readiness".to_string(),
             blake3: DIGEST.to_string(),
             maximum_bytes: EXECUTABLE_MAX_BYTES,

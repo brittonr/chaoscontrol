@@ -1,15 +1,8 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::admission::{
-    AcceptedCatalog, CatalogBuilder, ASSERTION_CATALOG_VERSION, MAX_ASSERTION_CATALOG_ENTRIES,
-};
-use chaoscontrol_protocol::identity::{
-    AssertionDescriptor, AssertionFingerprint, MAX_ASSERTION_CANONICAL_BYTES,
-};
-
 const HEX_CHARACTERS_PER_BYTE: usize = 2;
 const HEX_HIGH_NIBBLE_SHIFT: u32 = 4;
 const HEX_ALPHA_DIGIT_OFFSET: u8 = 10;
-const MAX_CANONICAL_HEX_BYTES: usize = MAX_ASSERTION_CANONICAL_BYTES * HEX_CHARACTERS_PER_BYTE;
+const MAX_CANONICAL_HEX_BYTES: usize =
+    ::chaoscontrol_protocol::identity::MAX_ASSERTION_CANONICAL_BYTES * HEX_CHARACTERS_PER_BYTE;
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,14 +19,14 @@ enum CatalogRecord {
         valid: bool,
     },
     Descriptor {
-        fingerprint: AssertionFingerprint,
-        descriptor: AssertionDescriptor,
+        fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
+        descriptor: ::chaoscontrol_protocol::identity::AssertionDescriptor,
         canonical_descriptor: String,
     },
     Complete {
         catalog_version: u8,
         descriptor_count: usize,
-        catalog_token: AssertionFingerprint,
+        catalog_token: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     },
     Conflict {
         error: String,
@@ -43,30 +36,35 @@ enum CatalogRecord {
 pub(crate) fn apply_catalog_line(
     line: &str,
     line_index: usize,
-    builder: &mut Option<CatalogBuilder>,
-    accepted: &mut Option<AcceptedCatalog>,
-) -> EvidenceResult<()> {
+    builder: &mut Option<::chaoscontrol_protocol::admission::CatalogBuilder>,
+    accepted: &mut Option<::chaoscontrol_protocol::admission::AcceptedCatalog>,
+) -> crate::EvidenceResult<()> {
     let envelope: CatalogEnvelope = serde_json::from_str(line)
-        .map_err(|error| EvidenceError::new(format!("line {}: {error}", line_index + 1)))?;
+        .map_err(|error| crate::EvidenceError::new(format!("line {}: {error}", line_index + 1)))?;
     match envelope.chaoscontrol_assertion_catalog {
         CatalogRecord::Begin {
             catalog_version,
             expected_descriptors,
             valid,
         } => {
-            if catalog_version != ASSERTION_CATALOG_VERSION || !valid {
+            if catalog_version != ::chaoscontrol_protocol::admission::ASSERTION_CATALOG_VERSION
+                || !valid
+            {
                 return line_error(line_index, "invalid catalog begin record");
             }
             if builder.is_some() || accepted.is_some() {
                 return line_error(line_index, "duplicate catalog begin record");
             }
-            if expected_descriptors > MAX_ASSERTION_CATALOG_ENTRIES {
+            if expected_descriptors
+                > ::chaoscontrol_protocol::admission::MAX_ASSERTION_CATALOG_ENTRIES
+            {
                 return line_error(line_index, "catalog cardinality exceeds the limit");
             }
             *builder = Some(
-                CatalogBuilder::begin(expected_descriptors).map_err(|error| {
-                    EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
-                })?,
+                ::chaoscontrol_protocol::admission::CatalogBuilder::begin(expected_descriptors)
+                    .map_err(|error| {
+                        crate::EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
+                    })?,
             );
         }
         CatalogRecord::Descriptor {
@@ -76,10 +74,10 @@ pub(crate) fn apply_catalog_line(
         } => {
             let canonical = decode_hex(&canonical_descriptor, line_index)?;
             let expected = descriptor.canonical_bytes().map_err(|error| {
-                EvidenceError::new(format!("invalid assertion descriptor: {error}"))
+                crate::EvidenceError::new(format!("invalid assertion descriptor: {error}"))
             })?;
             let expected_fingerprint = descriptor.fingerprint().map_err(|error| {
-                EvidenceError::new(format!("invalid assertion fingerprint: {error}"))
+                crate::EvidenceError::new(format!("invalid assertion fingerprint: {error}"))
             })?;
             if expected_fingerprint != fingerprint {
                 return line_error(line_index, "descriptor fingerprint does not match");
@@ -93,7 +91,7 @@ pub(crate) fn apply_catalog_line(
             pending
                 .insert_with_fingerprint(descriptor, fingerprint)
                 .map_err(|error| {
-                    EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
+                    crate::EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
                 })?;
         }
         CatalogRecord::Complete {
@@ -101,8 +99,9 @@ pub(crate) fn apply_catalog_line(
             descriptor_count,
             catalog_token,
         } => {
-            if catalog_version != ASSERTION_CATALOG_VERSION
-                || descriptor_count > MAX_ASSERTION_CATALOG_ENTRIES
+            if catalog_version != ::chaoscontrol_protocol::admission::ASSERTION_CATALOG_VERSION
+                || descriptor_count
+                    > ::chaoscontrol_protocol::admission::MAX_ASSERTION_CATALOG_ENTRIES
             {
                 return line_error(line_index, "invalid catalog complete record");
             }
@@ -116,7 +115,7 @@ pub(crate) fn apply_catalog_line(
             }
             let pending = builder.take().expect("pending catalog was checked");
             *accepted = Some(pending.complete(catalog_token).map_err(|error| {
-                EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
+                crate::EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
             })?);
         }
         CatalogRecord::Conflict { error } => {
@@ -129,7 +128,7 @@ pub(crate) fn apply_catalog_line(
     Ok(())
 }
 
-fn decode_hex(value: &str, line_index: usize) -> EvidenceResult<Vec<u8>> {
+fn decode_hex(value: &str, line_index: usize) -> crate::EvidenceResult<Vec<u8>> {
     if value.len() > MAX_CANONICAL_HEX_BYTES {
         return line_error(
             line_index,
@@ -148,18 +147,18 @@ fn decode_hex(value: &str, line_index: usize) -> EvidenceResult<Vec<u8>> {
     Ok(output)
 }
 
-fn hex_nibble(value: u8) -> EvidenceResult<u8> {
+fn hex_nibble(value: u8) -> crate::EvidenceResult<u8> {
     match value {
         b'0'..=b'9' => Ok(value - b'0'),
         b'a'..=b'f' => Ok(value - b'a' + HEX_ALPHA_DIGIT_OFFSET),
-        _ => Err(EvidenceError::new(
+        _ => Err(crate::EvidenceError::new(
             "canonical descriptor contains invalid hex",
         )),
     }
 }
 
-fn line_error<T>(line_index: usize, message: &str) -> EvidenceResult<T> {
-    Err(EvidenceError::new(format!(
+fn line_error<T>(line_index: usize, message: &str) -> crate::EvidenceResult<T> {
+    Err(crate::EvidenceError::new(format!(
         "line {}: {message}",
         line_index + 1
     )))

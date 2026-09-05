@@ -1,12 +1,5 @@
 //! Corpus — stores interesting inputs (fault schedules) that produced new coverage or bugs.
 
-use crate::coverage::CoverageBitmap;
-use crate::snapshot_store::ReplayParentSnapshotRef;
-use chaoscontrol_fault::schedule::FaultSchedule;
-use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
-use chaoscontrol_vmm::controller::SimulationSnapshot;
-use chaoscontrol_vmm::scheduler::ScheduleVariant;
-
 /// A bug report produced during exploration.
 #[derive(Debug, Clone)]
 pub struct BugReport {
@@ -15,15 +8,15 @@ pub struct BugReport {
     /// Non-authoritative compact alias for display and filtering.
     pub assertion_id: u64,
     /// Exact admitted assertion identity that failed.
-    pub assertion_identity: AssertionEvidenceIdentity,
+    pub assertion_identity: ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
     /// Exact process-local fallback binding, when the failure used the fallback sink.
     pub fallback_scope: Option<chaoscontrol_protocol::fallback::FallbackAssertionScope>,
     /// The assertion location/message.
     pub assertion_location: String,
     /// The fault schedule that triggered it.
-    pub schedule: FaultSchedule,
+    pub schedule: ::chaoscontrol_fault::schedule::FaultSchedule,
     /// Parent snapshot used to start the failing branch (for reproduction).
-    pub snapshot: Option<SimulationSnapshot>,
+    pub snapshot: Option<::chaoscontrol_vmm::controller::SimulationSnapshot>,
     /// Tick when the bug was found.
     pub tick: u64,
     /// Depth of the frontier parent snapshot used to start the failing branch.
@@ -33,11 +26,11 @@ pub struct BugReport {
     /// snapshot context, not just the fault schedule.
     pub replay_parent_depth: u32,
     /// Durable replay parent snapshot artifact reference, when persisted.
-    pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
+    pub replay_parent_snapshot_ref: Option<crate::snapshot_store::ReplayParentSnapshotRef>,
     /// Dedup key: hash of (assertion fingerprint, sorted fault type names).
     pub dedup_key: u64,
     /// Schedule variant used for this branch (for reproduction).
-    pub schedule_variant: Option<ScheduleVariant>,
+    pub schedule_variant: Option<::chaoscontrol_vmm::scheduler::ScheduleVariant>,
     /// Helical scenario config that generated the schedule (if any).
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
     /// Materialized phase summary (if a scenario was used).
@@ -50,9 +43,9 @@ pub struct CorpusEntry {
     /// Unique entry ID.
     pub id: u64,
     /// The fault schedule.
-    pub schedule: FaultSchedule,
+    pub schedule: ::chaoscontrol_fault::schedule::FaultSchedule,
     /// Coverage bitmap produced by this schedule.
-    pub coverage: CoverageBitmap,
+    pub coverage: crate::coverage::CoverageBitmap,
     /// Number of new edges this schedule found.
     pub new_edges: usize,
     /// Bugs found by this schedule.
@@ -66,7 +59,7 @@ pub struct Corpus {
     /// Interesting schedules, indexed by ID.
     entries: Vec<CorpusEntry>,
     /// Global coverage union.
-    global_coverage: CoverageBitmap,
+    global_coverage: crate::coverage::CoverageBitmap,
     /// Next entry ID.
     next_id: u64,
     /// Next bug ID.
@@ -78,7 +71,7 @@ impl Corpus {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
-            global_coverage: CoverageBitmap::new(),
+            global_coverage: crate::coverage::CoverageBitmap::new(),
             next_id: 0,
             next_bug_id: 0,
         }
@@ -148,7 +141,7 @@ impl Corpus {
     }
 
     /// Get a reference to the global coverage.
-    pub fn global_coverage(&self) -> &CoverageBitmap {
+    pub fn global_coverage(&self) -> &crate::coverage::CoverageBitmap {
         &self.global_coverage
     }
 
@@ -187,7 +180,7 @@ mod tests {
     use super::*;
 
     fn make_entry(new_edges: usize, depth: u32, bugs: usize) -> CorpusEntry {
-        let mut coverage = CoverageBitmap::new();
+        let mut coverage = crate::coverage::CoverageBitmap::new();
         for i in 0..new_edges {
             coverage.record_hit(i);
         }
@@ -200,7 +193,7 @@ mod tests {
                 assertion_identity: crate::test_support::assertion_identity(i as u64),
                 fallback_scope: None,
                 assertion_location: format!("bug_{}", i),
-                schedule: FaultSchedule::new(),
+                schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
                 snapshot: None,
                 tick: 1000,
                 replay_parent_depth: 0,
@@ -214,7 +207,7 @@ mod tests {
 
         CorpusEntry {
             id: 0,
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             coverage,
             new_edges,
             bugs_found,
@@ -340,7 +333,7 @@ mod tests {
             assertion_identity: crate::test_support::assertion_identity(100),
             fallback_scope: None,
             assertion_location: "test.rs:123".to_string(),
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             snapshot: None,
             tick: 5000,
             replay_parent_depth: 0,

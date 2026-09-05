@@ -13,7 +13,7 @@ use super::virtio_validation::{
     VIRTIO_F_VERSION_1, VIRTIO_STATUS_DEVICE_NEEDS_RESET, VIRTIO_STATUS_DRIVER_OK,
     VIRTIO_STATUS_FEATURES_OK,
 };
-use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap, GuestMemoryRegion};
+use vm_memory::{Address, Bytes, GuestMemory, GuestMemoryRegion};
 
 pub const VIRTIO_MMIO_MAGIC_VALUE: u64 = 0x000;
 pub const VIRTIO_MMIO_VERSION: u64 = 0x004;
@@ -179,7 +179,7 @@ impl VirtQueue {
         self.raw
     }
 
-    pub fn activate(&mut self, mem: &GuestMemoryMmap) -> Result<(), VirtioFailure> {
+    pub fn activate(&mut self, mem: &::vm_memory::GuestMemoryMmap) -> Result<(), VirtioFailure> {
         if self.ready {
             return Err(VirtioFailure::Transport(TransportViolation::ReadyState));
         }
@@ -198,7 +198,10 @@ impl VirtQueue {
         Ok(())
     }
 
-    pub fn plan_next(&self, mem: &GuestMemoryMmap) -> Result<Option<PlannedAvail>, VirtioFailure> {
+    pub fn plan_next(
+        &self,
+        mem: &::vm_memory::GuestMemoryMmap,
+    ) -> Result<Option<PlannedAvail>, VirtioFailure> {
         let config = self.config()?;
         let queue_size = config.size();
         let available_index_address = config
@@ -207,7 +210,7 @@ impl VirtQueue {
             .checked_add(AVAILABLE_INDEX_OFFSET)
             .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
         let available_index = mem
-            .read_obj(GuestAddress(available_index_address))
+            .read_obj(::vm_memory::GuestAddress(available_index_address))
             .map_err(|_| VirtioFailure::GuestMemoryRead)?;
         let delta = validate_available_delta(self.last_avail_idx, available_index, queue_size)
             .map_err(VirtioFailure::Queue)?;
@@ -217,7 +220,7 @@ impl VirtQueue {
         let head_address = available_element_address(config, self.last_avail_idx)
             .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
         let head_index: u16 = mem
-            .read_obj(GuestAddress(head_address))
+            .read_obj(::vm_memory::GuestAddress(head_address))
             .map_err(|_| VirtioFailure::GuestMemoryRead)?;
         if head_index >= queue_size {
             return Err(VirtioFailure::Queue(QueueViolation::AvailableHead {
@@ -276,7 +279,7 @@ impl VirtQueue {
 
     pub fn complete(
         &mut self,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
         head_index: u16,
         written_length: u32,
     ) -> Result<(), VirtioFailure> {
@@ -290,7 +293,7 @@ impl VirtQueue {
 
     pub fn complete_rejected(
         &mut self,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
         head_index: u16,
         written_length: u32,
         failure: VirtioFailure,
@@ -309,7 +312,7 @@ impl VirtQueue {
 
     fn publish_completion(
         &mut self,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
         head_index: u16,
         written_length: u32,
     ) -> Result<(), VirtioFailure> {
@@ -332,15 +335,21 @@ impl VirtQueue {
             .ok_or(VirtioFailure::UsedRingWrite)?;
         let next_used_index = self.next_used_idx.wrapping_add(1);
         self.mark_effects_started()?;
-        mem.write_obj(u32::from(head_index), GuestAddress(element_address))
-            .map_err(|_| VirtioFailure::UsedRingWrite)?;
-        mem.write_obj(written_length, GuestAddress(length_address))
+        mem.write_obj(
+            u32::from(head_index),
+            ::vm_memory::GuestAddress(element_address),
+        )
+        .map_err(|_| VirtioFailure::UsedRingWrite)?;
+        mem.write_obj(written_length, ::vm_memory::GuestAddress(length_address))
             .map_err(|_| VirtioFailure::UsedRingWrite)?;
         if self.used_write_failure.take() == Some(UsedWriteFailurePoint::BeforeIndex) {
             return Err(VirtioFailure::UsedRingWrite);
         }
-        mem.write_obj(next_used_index, GuestAddress(used_index_address))
-            .map_err(|_| VirtioFailure::UsedRingWrite)?;
+        mem.write_obj(
+            next_used_index,
+            ::vm_memory::GuestAddress(used_index_address),
+        )
+        .map_err(|_| VirtioFailure::UsedRingWrite)?;
         self.last_avail_idx = self.last_avail_idx.wrapping_add(1);
         self.next_used_idx = next_used_index;
         self.pending_completion = None;
@@ -371,7 +380,7 @@ impl VirtQueue {
         max_size: u16,
         limits: VirtioLimits,
         regions: &[MemoryRegion],
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<Self, VirtioFailure> {
         let validated = if snapshot.ready {
             let config = validate_queue_config(snapshot.raw, max_size, regions, limits)
@@ -382,7 +391,7 @@ impl VirtQueue {
                 .checked_add(AVAILABLE_INDEX_OFFSET)
                 .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
             let available_index: u16 = mem
-                .read_obj(GuestAddress(available_index_address))
+                .read_obj(::vm_memory::GuestAddress(available_index_address))
                 .map_err(|_| VirtioFailure::GuestMemoryRead)?;
             validate_available_delta(snapshot.last_avail_idx, available_index, config.size())
                 .map_err(VirtioFailure::Queue)?;
@@ -392,7 +401,7 @@ impl VirtQueue {
                 .checked_add(USED_INDEX_OFFSET)
                 .ok_or(VirtioFailure::Queue(QueueViolation::AddressOverflow))?;
             let used_index: u16 = mem
-                .read_obj(GuestAddress(used_index_address))
+                .read_obj(::vm_memory::GuestAddress(used_index_address))
                 .map_err(|_| VirtioFailure::GuestMemoryRead)?;
             if used_index != snapshot.next_used_idx {
                 return Err(VirtioFailure::Queue(
@@ -470,7 +479,7 @@ impl VirtQueue {
 
     fn read_descriptor_table(
         &self,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
         config: ValidatedQueueConfig,
     ) -> Result<[VirtqDesc; MAX_QUEUE_SIZE_USIZE], VirtioFailure> {
         let mut descriptors = [VirtqDesc::default(); MAX_QUEUE_SIZE_USIZE];
@@ -496,7 +505,7 @@ pub trait VirtioBackend: Send {
         &mut self,
         queue_idx: usize,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure>;
     fn read_config(&self, offset: u64, data: &mut [u8]);
     fn write_config(&mut self, offset: u64, data: &[u8]);
@@ -632,7 +641,7 @@ impl VirtioMmioDevice {
     pub fn validate_snapshot(
         &self,
         snapshot: &VirtioMmioSnapshot,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<(), VirtioFailure> {
         if snapshot.base_addr != self.base_addr
             || snapshot.irq != self.irq
@@ -685,7 +694,7 @@ impl VirtioMmioDevice {
     pub fn restore_snapshot(
         &mut self,
         snapshot: &VirtioMmioSnapshot,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<(), VirtioFailure> {
         self.validate_snapshot(snapshot, mem)?;
         let (regions, count) = guest_memory_regions(mem)?;
@@ -756,7 +765,7 @@ impl VirtioMmioDevice {
         &mut self,
         address: u64,
         data: &[u8],
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<MmioWriteEffect, VirtioFailure> {
         let offset = address
             .checked_sub(self.base_addr)
@@ -775,7 +784,7 @@ impl VirtioMmioDevice {
         &mut self,
         offset: u64,
         data: &[u8],
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<MmioWriteEffect, VirtioFailure> {
         if offset >= VIRTIO_MMIO_CONFIG {
             self.backend.write_config(offset - VIRTIO_MMIO_CONFIG, data);
@@ -795,7 +804,11 @@ impl VirtioMmioDevice {
         result
     }
 
-    pub fn process_queue(&mut self, queue_index: usize, mem: &GuestMemoryMmap) -> bool {
+    pub fn process_queue(
+        &mut self,
+        queue_index: usize,
+        mem: &::vm_memory::GuestMemoryMmap,
+    ) -> bool {
         if self.status & VIRTIO_STATUS_DRIVER_OK == 0
             || self.status & VIRTIO_STATUS_DEVICE_NEEDS_RESET != 0
             || queue_index >= self.queues.len()
@@ -821,7 +834,7 @@ impl VirtioMmioDevice {
         }
     }
 
-    pub fn process_queues(&mut self, mem: &GuestMemoryMmap) -> bool {
+    pub fn process_queues(&mut self, mem: &::vm_memory::GuestMemoryMmap) -> bool {
         let mut completed = false;
         for queue_index in 0..self.queues.len() {
             completed |= self.process_queue(queue_index, mem);
@@ -837,7 +850,7 @@ impl VirtioMmioDevice {
         &mut self,
         offset: u64,
         value: u32,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<MmioWriteEffect, VirtioFailure> {
         match offset {
             VIRTIO_MMIO_DEVICE_FEATURES_SEL => self.device_features_sel = value,
@@ -899,7 +912,7 @@ impl VirtioMmioDevice {
     fn write_queue_ready(
         &mut self,
         value: u32,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<(), VirtioFailure> {
         if value != 1 {
             return Err(VirtioFailure::Transport(TransportViolation::ReadyValue {
@@ -1046,7 +1059,7 @@ fn join_high(current: u64, value: u32) -> u64 {
 }
 
 fn guest_memory_regions(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
 ) -> Result<([MemoryRegion; MAX_GUEST_MEMORY_REGIONS], usize), VirtioFailure> {
     let count = mem.num_regions();
     if count > MAX_GUEST_MEMORY_REGIONS {
@@ -1066,15 +1079,15 @@ fn guest_memory_regions(
 }
 
 fn read_at<T: vm_memory::ByteValued>(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     address: u64,
 ) -> Result<T, VirtioFailure> {
-    mem.read_obj(GuestAddress(address))
+    mem.read_obj(::vm_memory::GuestAddress(address))
         .map_err(|_| VirtioFailure::GuestMemoryRead)
 }
 
 fn read_at_offset<T: vm_memory::ByteValued>(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     address: u64,
     offset: u64,
 ) -> Result<T, VirtioFailure> {

@@ -1,6 +1,4 @@
 use super::{valid_identifier, ArtifactReference, RunProfile};
-use crate::campaign::CampaignConfig;
-use chaoscontrol_fault::scenario::ScenarioConfig;
 
 const CAMPAIGN_SCHEMA: &str = "chaoscontrol.campaign-profile.v1";
 const CAMPAIGN_SCOPE: &str = "pre-run campaign intent; not thread start, VM start, completed seed, fault effect, replay, report, receipt, or accepted evidence";
@@ -75,14 +73,14 @@ pub struct CampaignBounds {
 #[derive(Debug, Clone)]
 pub struct PreparedScenario {
     pub identity: String,
-    pub config: ScenarioConfig,
+    pub config: ::chaoscontrol_fault::scenario::ScenarioConfig,
 }
 
 impl CampaignProfile {
     pub fn try_into_campaign_config(
         self,
         scenario: Option<PreparedScenario>,
-    ) -> Result<CampaignConfig, String> {
+    ) -> Result<crate::campaign::CampaignConfig, String> {
         self.validate()?;
         match (&self.scenario, &scenario) {
             (None, None) => {}
@@ -119,7 +117,7 @@ impl CampaignProfile {
             .metrics
             .output
             .map(|reference| std::path::PathBuf::from(reference.path));
-        Ok(CampaignConfig {
+        Ok(crate::campaign::CampaignConfig {
             seeds: self.seeds,
             base_explorer_config: base,
             output_dir,

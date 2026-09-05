@@ -1,9 +1,3 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_sim_core::causality::{
-    candidate_set_identity, rank_candidates, step_set_identity, validate_budget, AnalysisBudget,
-    AttributionObservation, AttributionReport, CauseCandidate, DdminState, InterleavingStep,
-    MinimizationCandidate, MinimizationResult,
-};
 use serde::ser::Serialize;
 
 pub const CAUSALITY_REQUEST_SCHEMA_VERSION: u32 = 1;
@@ -30,9 +24,9 @@ pub struct CausalityRequest {
     pub request_blake3: String,
     pub replay_verdict_blake3: String,
     pub snapshot_blake3s: Vec<String>,
-    pub steps: Vec<InterleavingStep>,
-    pub candidates: Vec<CauseCandidate>,
-    pub budget: AnalysisBudget,
+    pub steps: Vec<::chaoscontrol_sim_core::causality::InterleavingStep>,
+    pub candidates: Vec<::chaoscontrol_sim_core::causality::CauseCandidate>,
+    pub budget: ::chaoscontrol_sim_core::causality::AnalysisBudget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -46,7 +40,7 @@ pub struct ExecutionBinding {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MinimizationExecution {
-    pub candidate: MinimizationCandidate,
+    pub candidate: ::chaoscontrol_sim_core::causality::MinimizationCandidate,
     pub binding: ExecutionBinding,
 }
 
@@ -68,8 +62,8 @@ pub struct CausalityReceipt {
     pub snapshot_blake3s: Vec<String>,
     pub step_set_blake3: String,
     pub candidate_set_blake3: String,
-    pub minimization: MinimizationResult,
-    pub attribution: AttributionReport,
+    pub minimization: ::chaoscontrol_sim_core::causality::MinimizationResult,
+    pub attribution: ::chaoscontrol_sim_core::causality::AttributionReport,
     pub minimization_executions: Vec<MinimizationExecution>,
     pub attribution_executions: Vec<AttributionExecution>,
     pub non_claims: Vec<String>,
@@ -77,12 +71,12 @@ pub struct CausalityReceipt {
 
 pub fn read_causality_request_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<CausalityRequest> {
+) -> crate::EvidenceResult<CausalityRequest> {
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_CAUSALITY_ARTIFACT_BYTES)?;
     let request = serde_json::from_slice::<CausalityRequest>(&bytes).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "{}: causality request is not a closed typed artifact: {error}",
             path.display()
         ))
@@ -94,12 +88,12 @@ pub fn read_causality_request_path(
 pub fn read_causality_receipt_path(
     request: &CausalityRequest,
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<CausalityReceipt> {
+) -> crate::EvidenceResult<CausalityReceipt> {
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_CAUSALITY_ARTIFACT_BYTES)?;
     let receipt = serde_json::from_slice::<CausalityReceipt>(&bytes).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "{}: causality receipt is not a closed typed artifact: {error}",
             path.display()
         ))
@@ -111,22 +105,22 @@ pub fn read_causality_receipt_path(
 pub trait CausalityExecutor {
     fn execute_interleaving(
         &mut self,
-        candidate: &MinimizationCandidate,
-    ) -> EvidenceResult<ExecutionBinding>;
+        candidate: &::chaoscontrol_sim_core::causality::MinimizationCandidate,
+    ) -> crate::EvidenceResult<ExecutionBinding>;
 
     fn execute_neutralization(
         &mut self,
-        candidate: &CauseCandidate,
-    ) -> EvidenceResult<ExecutionBinding>;
+        candidate: &::chaoscontrol_sim_core::causality::CauseCandidate,
+    ) -> crate::EvidenceResult<ExecutionBinding>;
 }
 
 pub fn bind_causality_request(
     replay_verdict_blake3: impl Into<String>,
     mut snapshot_blake3s: Vec<String>,
-    steps: Vec<InterleavingStep>,
-    mut candidates: Vec<CauseCandidate>,
-    budget: AnalysisBudget,
-) -> EvidenceResult<CausalityRequest> {
+    steps: Vec<::chaoscontrol_sim_core::causality::InterleavingStep>,
+    mut candidates: Vec<::chaoscontrol_sim_core::causality::CauseCandidate>,
+    budget: ::chaoscontrol_sim_core::causality::AnalysisBudget,
+) -> crate::EvidenceResult<CausalityRequest> {
     snapshot_blake3s.sort();
     candidates.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
     let mut request = CausalityRequest {
@@ -143,17 +137,19 @@ pub fn bind_causality_request(
     Ok(request)
 }
 
-pub fn validate_causality_request(request: &CausalityRequest) -> EvidenceResult<()> {
+pub fn validate_causality_request(request: &CausalityRequest) -> crate::EvidenceResult<()> {
     require(
         request.schema_version == CAUSALITY_REQUEST_SCHEMA_VERSION,
         "unsupported causality request schema",
     )?;
     validate_digest("replay_verdict_blake3", &request.replay_verdict_blake3)?;
     validate_snapshots(&request.snapshot_blake3s)?;
-    step_set_identity(&request.steps).map_err(|error| EvidenceError::new(error.to_string()))?;
-    candidate_set_identity(&request.candidates)
-        .map_err(|error| EvidenceError::new(error.to_string()))?;
-    validate_budget(request.budget).map_err(|error| EvidenceError::new(error.to_string()))?;
+    ::chaoscontrol_sim_core::causality::step_set_identity(&request.steps)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
+    ::chaoscontrol_sim_core::causality::candidate_set_identity(&request.candidates)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
+    ::chaoscontrol_sim_core::causality::validate_budget(request.budget)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     let expected = request_identity(request)?;
     require(
         request.request_blake3 == expected,
@@ -164,23 +160,23 @@ pub fn validate_causality_request(request: &CausalityRequest) -> EvidenceResult<
 pub fn run_causality_analysis<E: CausalityExecutor>(
     request: &CausalityRequest,
     executor: &mut E,
-) -> EvidenceResult<CausalityReceipt> {
+) -> crate::EvidenceResult<CausalityReceipt> {
     validate_causality_request(request)?;
-    let mut minimizer = DdminState::new(
+    let mut minimizer = ::chaoscontrol_sim_core::causality::DdminState::new(
         request.steps.clone(),
         request.budget.minimization_executions,
     )
-    .map_err(|error| EvidenceError::new(error.to_string()))?;
+    .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     let mut minimization_executions = Vec::new();
     while let Some(candidate) = minimizer
         .next_candidate()
-        .map_err(|error| EvidenceError::new(error.to_string()))?
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?
     {
         let binding = executor.execute_interleaving(&candidate)?;
         validate_execution_binding(request, &binding)?;
         minimizer
             .record_outcome(&candidate.candidate_blake3, binding.reproduced)
-            .map_err(|error| EvidenceError::new(error.to_string()))?;
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
         minimization_executions.push(MinimizationExecution { candidate, binding });
     }
     let minimization = minimizer.result();
@@ -188,7 +184,7 @@ pub fn run_causality_analysis<E: CausalityExecutor>(
     let mut attribution_executions = Vec::new();
     for candidate in &request.candidates {
         let spent = u64::try_from(attribution_executions.len())
-            .map_err(|_| EvidenceError::new("attribution execution count exceeds u64"))?;
+            .map_err(|_| crate::EvidenceError::new("attribution execution count exceeds u64"))?;
         if spent >= request.budget.attribution_executions {
             break;
         }
@@ -202,28 +198,32 @@ pub fn run_causality_analysis<E: CausalityExecutor>(
     }
     let attribution_observations = attribution_executions
         .iter()
-        .map(|execution| AttributionObservation {
-            candidate_id: execution.candidate_id.clone(),
-            attempt: execution.attempt,
-            neutralized_reproduced: execution.binding.reproduced,
-        })
+        .map(
+            |execution| ::chaoscontrol_sim_core::causality::AttributionObservation {
+                candidate_id: execution.candidate_id.clone(),
+                attempt: execution.attempt,
+                neutralized_reproduced: execution.binding.reproduced,
+            },
+        )
         .collect::<Vec<_>>();
-    let attribution = rank_candidates(
+    let attribution = ::chaoscontrol_sim_core::causality::rank_candidates(
         &request.candidates,
         &attribution_observations,
         request.budget.attribution_executions,
     )
-    .map_err(|error| EvidenceError::new(error.to_string()))?;
+    .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     let mut receipt = CausalityReceipt {
         schema_version: CAUSALITY_RECEIPT_SCHEMA_VERSION,
         receipt_blake3: String::new(),
         request_blake3: request.request_blake3.clone(),
         replay_verdict_blake3: request.replay_verdict_blake3.clone(),
         snapshot_blake3s: request.snapshot_blake3s.clone(),
-        step_set_blake3: step_set_identity(&request.steps)
-            .map_err(|error| EvidenceError::new(error.to_string()))?,
-        candidate_set_blake3: candidate_set_identity(&request.candidates)
-            .map_err(|error| EvidenceError::new(error.to_string()))?,
+        step_set_blake3: ::chaoscontrol_sim_core::causality::step_set_identity(&request.steps)
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?,
+        candidate_set_blake3: ::chaoscontrol_sim_core::causality::candidate_set_identity(
+            &request.candidates,
+        )
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?,
         minimization,
         attribution,
         minimization_executions,
@@ -238,7 +238,7 @@ pub fn run_causality_analysis<E: CausalityExecutor>(
 pub fn validate_causality_receipt(
     request: &CausalityRequest,
     receipt: &CausalityReceipt,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     validate_causality_request(request)?;
     require(
         receipt.schema_version == CAUSALITY_RECEIPT_SCHEMA_VERSION,
@@ -252,11 +252,11 @@ pub fn validate_causality_receipt(
     )?;
     require(
         receipt.step_set_blake3
-            == step_set_identity(&request.steps)
-                .map_err(|error| EvidenceError::new(error.to_string()))?
+            == ::chaoscontrol_sim_core::causality::step_set_identity(&request.steps)
+                .map_err(|error| crate::EvidenceError::new(error.to_string()))?
             && receipt.candidate_set_blake3
-                == candidate_set_identity(&request.candidates)
-                    .map_err(|error| EvidenceError::new(error.to_string()))?,
+                == ::chaoscontrol_sim_core::causality::candidate_set_identity(&request.candidates)
+                    .map_err(|error| crate::EvidenceError::new(error.to_string()))?,
         "causality receipt set identity drifted",
     )?;
     require(
@@ -264,16 +264,16 @@ pub fn validate_causality_receipt(
         "causality receipt non-claims drifted",
     )?;
 
-    let mut minimizer = DdminState::new(
+    let mut minimizer = ::chaoscontrol_sim_core::causality::DdminState::new(
         request.steps.clone(),
         request.budget.minimization_executions,
     )
-    .map_err(|error| EvidenceError::new(error.to_string()))?;
+    .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     for execution in &receipt.minimization_executions {
         let expected = minimizer
             .next_candidate()
-            .map_err(|error| EvidenceError::new(error.to_string()))?
-            .ok_or_else(|| EvidenceError::new("unexpected minimization execution"))?;
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?
+            .ok_or_else(|| crate::EvidenceError::new("unexpected minimization execution"))?;
         require(
             execution.candidate == expected,
             "minimization candidate sequence drifted",
@@ -284,12 +284,12 @@ pub fn validate_causality_receipt(
                 &execution.candidate.candidate_blake3,
                 execution.binding.reproduced,
             )
-            .map_err(|error| EvidenceError::new(error.to_string()))?;
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     }
     require(
         minimizer
             .next_candidate()
-            .map_err(|error| EvidenceError::new(error.to_string()))?
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?
             .is_none(),
         "minimization receipt omitted planned executions",
     )?;
@@ -301,7 +301,7 @@ pub fn validate_causality_receipt(
     let mut attribution_observations = Vec::new();
     for (expected_index, execution) in receipt.attribution_executions.iter().enumerate() {
         let expected_candidate = request.candidates.get(expected_index).ok_or_else(|| {
-            EvidenceError::new("attribution receipt contains an unknown candidate execution")
+            crate::EvidenceError::new("attribution receipt contains an unknown candidate execution")
         })?;
         require(
             execution.candidate_id == expected_candidate.candidate_id
@@ -309,18 +309,18 @@ pub fn validate_causality_receipt(
             "attribution candidate or attempt order drifted",
         )?;
         validate_execution_binding(request, &execution.binding)?;
-        attribution_observations.push(AttributionObservation {
+        attribution_observations.push(::chaoscontrol_sim_core::causality::AttributionObservation {
             candidate_id: execution.candidate_id.clone(),
             attempt: execution.attempt,
             neutralized_reproduced: execution.binding.reproduced,
         });
     }
-    let expected_attribution = rank_candidates(
+    let expected_attribution = ::chaoscontrol_sim_core::causality::rank_candidates(
         &request.candidates,
         &attribution_observations,
         request.budget.attribution_executions,
     )
-    .map_err(|error| EvidenceError::new(error.to_string()))?;
+    .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     require(
         receipt.attribution == expected_attribution,
         "attribution result drifted from execution evidence",
@@ -334,7 +334,7 @@ pub fn validate_causality_receipt(
 fn validate_execution_binding(
     request: &CausalityRequest,
     binding: &ExecutionBinding,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     require(
         binding.replay_verdict_blake3 == request.replay_verdict_blake3
             && binding.snapshot_blake3s == request.snapshot_blake3s,
@@ -342,7 +342,7 @@ fn validate_execution_binding(
     )
 }
 
-fn validate_snapshots(snapshots: &[String]) -> EvidenceResult<()> {
+fn validate_snapshots(snapshots: &[String]) -> crate::EvidenceResult<()> {
     require(
         !snapshots.is_empty() && snapshots.len() <= MAX_SNAPSHOT_IDENTITIES,
         "snapshot identities are empty or exceed the supported bound",
@@ -364,15 +364,15 @@ fn validate_snapshots(snapshots: &[String]) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn request_identity(request: &CausalityRequest) -> EvidenceResult<String> {
+fn request_identity(request: &CausalityRequest) -> crate::EvidenceResult<String> {
     #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         replay_verdict_blake3: &'a str,
         snapshot_blake3s: &'a [String],
-        steps: &'a [InterleavingStep],
-        candidates: &'a [CauseCandidate],
-        budget: AnalysisBudget,
+        steps: &'a [::chaoscontrol_sim_core::causality::InterleavingStep],
+        candidates: &'a [::chaoscontrol_sim_core::causality::CauseCandidate],
+        budget: ::chaoscontrol_sim_core::causality::AnalysisBudget,
     }
     let material = Material {
         schema_version: request.schema_version,
@@ -385,7 +385,7 @@ fn request_identity(request: &CausalityRequest) -> EvidenceResult<String> {
     identity(REQUEST_IDENTITY_DOMAIN, &material)
 }
 
-fn receipt_identity(receipt: &CausalityReceipt) -> EvidenceResult<String> {
+fn receipt_identity(receipt: &CausalityReceipt) -> crate::EvidenceResult<String> {
     #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
@@ -394,8 +394,8 @@ fn receipt_identity(receipt: &CausalityReceipt) -> EvidenceResult<String> {
         snapshot_blake3s: &'a [String],
         step_set_blake3: &'a str,
         candidate_set_blake3: &'a str,
-        minimization: &'a MinimizationResult,
-        attribution: &'a AttributionReport,
+        minimization: &'a ::chaoscontrol_sim_core::causality::MinimizationResult,
+        attribution: &'a ::chaoscontrol_sim_core::causality::AttributionReport,
         minimization_executions: &'a [MinimizationExecution],
         attribution_executions: &'a [AttributionExecution],
         non_claims: &'a [String],
@@ -416,20 +416,20 @@ fn receipt_identity(receipt: &CausalityReceipt) -> EvidenceResult<String> {
     identity(RECEIPT_IDENTITY_DOMAIN, &material)
 }
 
-fn identity<T: Serialize>(domain: &[u8], value: &T) -> EvidenceResult<String> {
+fn identity<T: Serialize>(domain: &[u8], value: &T) -> crate::EvidenceResult<String> {
     let bytes = serde_json::to_vec(value)?;
     let mut hasher = blake3::Hasher::new();
     hasher.update(domain);
     let length = u64::try_from(bytes.len())
-        .map_err(|_| EvidenceError::new("causality identity input exceeds u64"))?;
+        .map_err(|_| crate::EvidenceError::new("causality identity input exceeds u64"))?;
     hasher.update(&length.to_le_bytes());
     hasher.update(&bytes);
     Ok(format!("{BLAKE3_PREFIX}{}", hasher.finalize().to_hex()))
 }
 
-fn validate_digest(field: &'static str, value: &str) -> EvidenceResult<()> {
+fn validate_digest(field: &'static str, value: &str) -> crate::EvidenceResult<()> {
     let Some(hex) = value.strip_prefix(BLAKE3_PREFIX) else {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "{field} must use a BLAKE3 identity"
         )));
     };
@@ -449,10 +449,10 @@ fn required_non_claims() -> Vec<String> {
         .collect()
 }
 
-fn require(condition: bool, message: &'static str) -> EvidenceResult<()> {
+fn require(condition: bool, message: &'static str) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message))
+        Err(crate::EvidenceError::new(message))
     }
 }

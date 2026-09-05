@@ -28,22 +28,13 @@
 //! // assert!(minimized.schedule.total() <= bug_report.schedule.total());
 //! ```
 
-use crate::corpus::BugReport;
-use crate::explorer::ExploreError;
-use chaoscontrol_fault::oracle::Verdict;
-use chaoscontrol_fault::schedule::FaultSchedule;
-use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
-use chaoscontrol_vmm::scheduler::SchedulingStrategy;
-use chaoscontrol_vmm::vm::VmConfig;
-use log::{debug, info};
-
 /// Configuration for the minimizer.
 #[derive(Clone)]
 pub struct MinimizeConfig {
     /// Number of VMs per simulation.
     pub num_vms: usize,
     /// Per-VM config.
-    pub vm_config: VmConfig,
+    pub vm_config: ::chaoscontrol_vmm::vm::VmConfig,
     /// Kernel path.
     pub kernel_path: String,
     /// Optional initrd.
@@ -53,7 +44,7 @@ pub struct MinimizeConfig {
     /// Exits per VM per scheduling round.
     pub quantum: u64,
     /// Scheduling strategy for SMP.
-    pub scheduling_strategy: SchedulingStrategy,
+    pub scheduling_strategy: ::chaoscontrol_vmm::scheduler::SchedulingStrategy,
     /// How many ticks to run each candidate branch.
     pub ticks_per_branch: u64,
     /// Optional disk image path.
@@ -68,7 +59,7 @@ pub struct MinimizeConfig {
 #[derive(Debug, Clone)]
 pub struct MinimizeResult {
     /// The minimized schedule.
-    pub schedule: FaultSchedule,
+    pub schedule: ::chaoscontrol_fault::schedule::FaultSchedule,
     /// Original fault count.
     pub original_faults: usize,
     /// Minimized fault count.
@@ -85,14 +76,14 @@ pub struct MinimizeResult {
 /// that still triggers the same assertion failure.
 pub struct Minimizer {
     config: MinimizeConfig,
-    bug: BugReport,
-    controller: Option<SimulationController>,
+    bug: crate::corpus::BugReport,
+    controller: Option<::chaoscontrol_vmm::controller::SimulationController>,
     candidates_tested: usize,
 }
 
 impl Minimizer {
     /// Create a new minimizer for the given bug report.
-    pub fn new(config: MinimizeConfig, bug: BugReport) -> Self {
+    pub fn new(config: MinimizeConfig, bug: crate::corpus::BugReport) -> Self {
         Self {
             config,
             bug,
@@ -105,18 +96,19 @@ impl Minimizer {
     ///
     /// Returns the smallest schedule that still triggers the same
     /// assertion failure, along with stats about the minimization.
-    pub fn minimize(&mut self) -> Result<MinimizeResult, ExploreError> {
+    pub fn minimize(&mut self) -> Result<MinimizeResult, crate::explorer::ExploreError> {
         let original_total = self.bug.schedule.total();
 
         if original_total == 0 {
-            return Err(ExploreError::Config {
+            return Err(crate::explorer::ExploreError::Config {
                 message: "cannot minimize an empty fault schedule".to_string(),
             });
         }
 
-        info!(
+        ::log::info!(
             "Minimizing schedule: {} faults, assertion {}",
-            original_total, self.bug.assertion_id
+            original_total,
+            self.bug.assertion_id
         );
 
         // Bootstrap the controller, unless the bug report already carries
@@ -127,7 +119,7 @@ impl Minimizer {
         // Verify the full schedule actually triggers the bug
         let all_indices: Vec<usize> = (0..original_total).collect();
         if !self.triggers_bug(&replay_snapshot, &all_indices)? {
-            info!("Full schedule does not trigger bug — cannot minimize");
+            ::log::info!("Full schedule does not trigger bug — cannot minimize");
             return Ok(MinimizeResult {
                 schedule: self.bug.schedule.clone(),
                 original_faults: original_total,
@@ -137,7 +129,7 @@ impl Minimizer {
             });
         }
 
-        info!(
+        ::log::info!(
             "Confirmed: full schedule triggers assertion {}",
             self.bug.assertion_id
         );
@@ -149,14 +141,16 @@ impl Minimizer {
             .bug
             .schedule
             .subset(&minimized_indices)
-            .map_err(|error| ExploreError::Config {
+            .map_err(|error| crate::explorer::ExploreError::Config {
                 message: error.to_string(),
             })?;
         let minimized_count = minimized_schedule.total();
 
-        info!(
+        ::log::info!(
             "Minimization complete: {} → {} faults ({} candidates tested)",
-            original_total, minimized_count, self.candidates_tested
+            original_total,
+            minimized_count,
+            self.candidates_tested
         );
 
         Ok(MinimizeResult {
@@ -174,9 +168,9 @@ impl Minimizer {
     /// Returns the minimal subset.
     fn ddmin(
         &mut self,
-        snapshot: &SimulationSnapshot,
+        snapshot: &::chaoscontrol_vmm::controller::SimulationSnapshot,
         mut indices: Vec<usize>,
-    ) -> Result<Vec<usize>, ExploreError> {
+    ) -> Result<Vec<usize>, crate::explorer::ExploreError> {
         let mut n = 2usize; // Start with 2 chunks
 
         while indices.len() >= 2 {
@@ -184,7 +178,7 @@ impl Minimizer {
             let chunks: Vec<Vec<usize>> = indices.chunks(chunk_size).map(|c| c.to_vec()).collect();
             let num_chunks = chunks.len();
 
-            debug!(
+            ::log::debug!(
                 "ddmin: {} faults, {} chunks of ~{}",
                 indices.len(),
                 num_chunks,
@@ -205,7 +199,7 @@ impl Minimizer {
                     continue;
                 }
 
-                debug!(
+                ::log::debug!(
                     "  trying without chunk {} ({} faults → {})",
                     i,
                     indices.len(),
@@ -213,7 +207,7 @@ impl Minimizer {
                 );
 
                 if self.triggers_bug(snapshot, &complement)? {
-                    info!(
+                    ::log::info!(
                         "  removed chunk {} ({} faults): {} → {}",
                         i,
                         chunk.len(),
@@ -238,10 +232,10 @@ impl Minimizer {
                     continue; // Skip if chunk IS the whole set
                 }
 
-                debug!("  trying chunk {} alone ({} faults)", i, chunk.len());
+                ::log::debug!("  trying chunk {} alone ({} faults)", i, chunk.len());
 
                 if self.triggers_bug(snapshot, chunk)? {
-                    info!(
+                    ::log::info!(
                         "  chunk {} alone triggers bug: {} → {}",
                         i,
                         indices.len(),
@@ -264,7 +258,7 @@ impl Minimizer {
             }
 
             n = (2 * n).min(indices.len());
-            debug!("  increasing granularity to {} chunks", n);
+            ::log::debug!("  increasing granularity to {} chunks", n);
         }
 
         Ok(indices)
@@ -273,39 +267,36 @@ impl Minimizer {
     /// Test whether a subset of faults (by index) triggers the target bug.
     fn triggers_bug(
         &mut self,
-        snapshot: &SimulationSnapshot,
+        snapshot: &::chaoscontrol_vmm::controller::SimulationSnapshot,
         indices: &[usize],
-    ) -> Result<bool, ExploreError> {
-        let candidates_tested =
-            self.candidates_tested
-                .checked_add(1)
-                .ok_or_else(|| ExploreError::Config {
-                    message: "minimizer candidate counter overflow".to_string(),
-                })?;
-        let schedule = self
-            .bug
-            .schedule
-            .subset(indices)
-            .map_err(|error| ExploreError::Config {
+    ) -> Result<bool, crate::explorer::ExploreError> {
+        let candidates_tested = self.candidates_tested.checked_add(1).ok_or_else(|| {
+            crate::explorer::ExploreError::Config {
+                message: "minimizer candidate counter overflow".to_string(),
+            }
+        })?;
+        let schedule = self.bug.schedule.subset(indices).map_err(|error| {
+            crate::explorer::ExploreError::Config {
                 message: error.to_string(),
-            })?;
+            }
+        })?;
         crate::bug::identity::validate_carrier(
             self.bug.assertion_id,
             Some(&self.bug.assertion_identity),
         )
-        .map_err(|error| ExploreError::Config {
+        .map_err(|error| crate::explorer::ExploreError::Config {
             message: error.to_string(),
         })?;
         snapshot
             .validate_assertion_evidence(self.config.num_vms, &self.bug.assertion_identity)
-            .map_err(|error| ExploreError::Config { message: error })?;
+            .map_err(|error| crate::explorer::ExploreError::Config { message: error })?;
         self.candidates_tested = candidates_tested;
-        let controller = self
-            .controller
-            .as_mut()
-            .ok_or_else(|| ExploreError::Config {
-                message: "minimizer controller is not initialized".to_string(),
-            })?;
+        let controller =
+            self.controller
+                .as_mut()
+                .ok_or_else(|| crate::explorer::ExploreError::Config {
+                    message: "minimizer controller is not initialized".to_string(),
+                })?;
 
         // Restore only after the snapshot admits the exact assertion target.
         controller.restore_all(snapshot)?;
@@ -315,7 +306,7 @@ impl Minimizer {
             Some(&self.bug.assertion_identity),
             &restored_report,
         )
-        .map_err(|error| ExploreError::Config {
+        .map_err(|error| crate::explorer::ExploreError::Config {
             message: error.to_string(),
         })?;
         controller.reset_vm_statuses();
@@ -334,12 +325,15 @@ impl Minimizer {
             Some(&self.bug.assertion_identity),
             &report,
         )
-        .map_err(|error| ExploreError::Config {
+        .map_err(|error| crate::explorer::ExploreError::Config {
             message: error.to_string(),
         })?;
-        let triggered = matches!(record.verdict(), Verdict::Failed);
+        let triggered = matches!(
+            record.verdict(),
+            ::chaoscontrol_fault::oracle::Verdict::Failed
+        );
 
-        debug!(
+        ::log::debug!(
             "  candidate {} ({} faults): {}",
             self.candidates_tested,
             indices.len(),
@@ -349,7 +343,7 @@ impl Minimizer {
         Ok(triggered)
     }
 
-    fn ensure_controller(&mut self) -> Result<(), ExploreError> {
+    fn ensure_controller(&mut self) -> Result<(), crate::explorer::ExploreError> {
         if self.controller.is_some() {
             return Ok(());
         }
@@ -357,40 +351,48 @@ impl Minimizer {
         let mut vm_config = self.config.vm_config.clone();
         vm_config.scheduling_strategy = self.config.scheduling_strategy;
 
-        let sim_config = SimulationConfig {
+        let sim_config = ::chaoscontrol_vmm::controller::SimulationConfig {
             num_vms: self.config.num_vms,
             vm_config,
             kernel_path: self.config.kernel_path.clone(),
             initrd_path: self.config.initrd_path.clone(),
             seed: self.config.seed,
             quantum: self.config.quantum,
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             disk_image_path: self.config.disk_image_path.clone(),
             base_core: None,
             dlog_dir: None,
             bootstrap_budget: None,
         };
 
-        self.controller = Some(SimulationController::new(sim_config)?);
+        self.controller = Some(::chaoscontrol_vmm::controller::SimulationController::new(
+            sim_config,
+        )?);
         Ok(())
     }
 
-    fn bootstrap(&mut self) -> Result<SimulationSnapshot, ExploreError> {
+    fn bootstrap(
+        &mut self,
+    ) -> Result<::chaoscontrol_vmm::controller::SimulationSnapshot, crate::explorer::ExploreError>
+    {
         let controller = self.controller.as_mut().unwrap();
-        controller.set_schedule(FaultSchedule::new())?;
+        controller.set_schedule(::chaoscontrol_fault::schedule::FaultSchedule::new())?;
         controller.clear_all_coverage();
         controller.run_until_setup_complete(self.config.bootstrap_budget)?;
 
         let snapshot = controller.snapshot_all()?;
 
-        info!("Minimizer bootstrap complete at tick {}", controller.tick());
+        ::log::info!("Minimizer bootstrap complete at tick {}", controller.tick());
 
         Ok(snapshot)
     }
 
-    fn replay_start_snapshot(&mut self) -> Result<SimulationSnapshot, ExploreError> {
+    fn replay_start_snapshot(
+        &mut self,
+    ) -> Result<::chaoscontrol_vmm::controller::SimulationSnapshot, crate::explorer::ExploreError>
+    {
         if let Some(snapshot) = self.bug.snapshot.clone() {
-            info!(
+            ::log::info!(
                 "Using saved replay parent snapshot at depth {}",
                 self.bug.replay_parent_depth
             );
@@ -410,12 +412,12 @@ mod tests {
     fn test_config() -> MinimizeConfig {
         MinimizeConfig {
             num_vms: 3,
-            vm_config: VmConfig::default(),
+            vm_config: ::chaoscontrol_vmm::vm::VmConfig::default(),
             kernel_path: "vmlinux".into(),
             initrd_path: None,
             seed: 42,
             quantum: 100,
-            scheduling_strategy: SchedulingStrategy::RoundRobin,
+            scheduling_strategy: ::chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
             ticks_per_branch: 1000,
             disk_image_path: None,
             bootstrap_budget: 10_000,
@@ -423,11 +425,11 @@ mod tests {
         }
     }
 
-    fn dummy_snapshot(tick: u64) -> SimulationSnapshot {
+    fn dummy_snapshot(tick: u64) -> ::chaoscontrol_vmm::controller::SimulationSnapshot {
         let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
         let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
 
-        SimulationSnapshot {
+        ::chaoscontrol_vmm::controller::SimulationSnapshot {
             tick,
             vm_snapshots: Vec::new(),
             network_state,
@@ -442,14 +444,16 @@ mod tests {
         }
     }
 
-    fn bug_with_snapshot(snapshot: Option<SimulationSnapshot>) -> BugReport {
-        BugReport {
+    fn bug_with_snapshot(
+        snapshot: Option<::chaoscontrol_vmm::controller::SimulationSnapshot>,
+    ) -> crate::corpus::BugReport {
+        crate::corpus::BugReport {
             bug_id: 7,
             assertion_id: 42,
             assertion_identity: crate::test_support::assertion_identity(42),
             fallback_scope: None,
             assertion_location: "assertion".into(),
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             snapshot,
             tick: 123,
             replay_parent_depth: 2,
@@ -487,13 +491,16 @@ mod tests {
             .minimize()
             .expect_err("empty schedule must not produce a minimized bug");
 
-        assert!(matches!(error, ExploreError::Config { .. }));
+        assert!(matches!(
+            error,
+            crate::explorer::ExploreError::Config { .. }
+        ));
         assert!(minimizer.controller.is_none());
     }
 
     #[test]
     fn test_schedule_subset() {
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
         schedule.add(ScheduledFault::new(200, Fault::ProcessKill { target: 0 }));
         schedule.add(ScheduledFault::new(300, Fault::DiskFull { target: 1 }));
@@ -510,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_schedule_subset_empty() {
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
         let sub = schedule.subset(&[]).expect("empty subset is valid");
@@ -520,7 +527,7 @@ mod tests {
     #[test]
     fn test_schedule_subset_out_of_bounds() {
         const INVALID_INDEX: usize = 5;
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
         let error = schedule
@@ -537,7 +544,7 @@ mod tests {
 
     #[test]
     fn test_schedule_subset_rejects_duplicate_indices() {
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
         let error = schedule
@@ -551,7 +558,7 @@ mod tests {
 
     #[test]
     fn test_schedule_faults_accessor() {
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         schedule.add(ScheduledFault::new(200, Fault::ProcessKill { target: 1 }));
         schedule.add(ScheduledFault::new(100, Fault::NetworkHeal));
 
@@ -565,7 +572,7 @@ mod tests {
     #[test]
     fn test_minimize_result_reduction_ratio() {
         let result = MinimizeResult {
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             original_faults: 20,
             minimized_faults: 3,
             candidates_tested: 47,

@@ -3,12 +3,6 @@
 //! The shell runs a dedicated guest fixture and supplies observations to the
 //! pure drift decision in `chaoscontrol-sim-core`.
 
-use chaoscontrol_sim_core::{
-    compare_guest_determinism_probes, GuestDeterminismDriftReport, GuestDeterminismProbe,
-    GuestDeterminismProfile,
-};
-use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
-
 pub const GUEST_PROBE_PREFIX: &str = "GUEST_DETERMINISM_PROBE=";
 pub const GUEST_PROBE_READY: &str = "GUEST_DETERMINISM_READY";
 pub const GUEST_PROBE_DONE: &str = "chaoscontrol-guest-determinism-probe: done";
@@ -32,8 +26,8 @@ const PROBE_CMDLINE: &[u8] = b"console=ttyS0 earlyprintk=serial \
     virtio_mmio.device=4K@0xd0002000:7 \
     panic=0\0";
 
-fn probe_config(run_seed: u64) -> VmConfig {
-    VmConfig {
+fn probe_config(run_seed: u64) -> ::chaoscontrol_vmm::vm::VmConfig {
+    ::chaoscontrol_vmm::vm::VmConfig {
         memory_size: PROBE_MEMORY_BYTES,
         num_vcpus: 1,
         scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
@@ -82,8 +76,14 @@ pub fn run_guest_determinism_probe(
     kernel: &std::path::Path,
     initrd: &std::path::Path,
     run_seed: u64,
-) -> Result<(GuestDeterminismProfile, GuestDeterminismProbe), GuestDeterminismShellError> {
-    let mut vm = DeterministicVm::new(probe_config(run_seed))
+) -> Result<
+    (
+        ::chaoscontrol_sim_core::GuestDeterminismProfile,
+        ::chaoscontrol_sim_core::GuestDeterminismProbe,
+    ),
+    GuestDeterminismShellError,
+> {
+    let mut vm = ::chaoscontrol_vmm::vm::DeterministicVm::new(probe_config(run_seed))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
@@ -98,7 +98,7 @@ pub fn run_guest_determinism_probe(
 /// Parse one exact probe record from bounded serial output.
 pub fn extract_guest_determinism_probe(
     serial: &str,
-) -> Result<GuestDeterminismProbe, GuestDeterminismShellError> {
+) -> Result<::chaoscontrol_sim_core::GuestDeterminismProbe, GuestDeterminismShellError> {
     let mut matches = serial.lines().filter_map(|line| {
         line.trim()
             .strip_prefix(GUEST_PROBE_PREFIX)
@@ -119,8 +119,8 @@ pub fn run_guest_determinism_gate(
     kernel: &std::path::Path,
     initrd: &std::path::Path,
     run_seed: u64,
-) -> Result<GuestDeterminismDriftReport, GuestDeterminismShellError> {
-    let mut vm = DeterministicVm::new(probe_config(run_seed))
+) -> Result<::chaoscontrol_sim_core::GuestDeterminismDriftReport, GuestDeterminismShellError> {
+    let mut vm = ::chaoscontrol_vmm::vm::DeterministicVm::new(probe_config(run_seed))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
@@ -143,14 +143,14 @@ pub fn run_guest_determinism_gate(
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     let right_probe = extract_guest_determinism_probe(&right_serial)?;
 
-    compare_guest_determinism_probes(&profile, &left_probe, &right_probe)
+    ::chaoscontrol_sim_core::compare_guest_determinism_probes(&profile, &left_probe, &right_probe)
         .map_err(|error| GuestDeterminismShellError::DriftDecision(format!("{error:?}")))
 }
 
 /// Persist one canonical JSON report after the caller authorizes the path.
 pub fn write_guest_determinism_report(
     path: &std::path::Path,
-    report: &GuestDeterminismDriftReport,
+    report: &::chaoscontrol_sim_core::GuestDeterminismDriftReport,
 ) -> Result<(), GuestDeterminismShellError> {
     let bytes = serde_json::to_vec_pretty(report)
         .map_err(|error| GuestDeterminismShellError::Serialization(error.to_string()))?;
@@ -163,7 +163,7 @@ mod tests {
     use chaoscontrol_sim_core::{BOOT_ENTROPY_SEED_BYTES, GUEST_DETERMINISM_PROBE_SCHEMA};
 
     fn encoded_probe() -> String {
-        let probe = GuestDeterminismProbe {
+        let probe = ::chaoscontrol_sim_core::GuestDeterminismProbe {
             schema: GUEST_DETERMINISM_PROBE_SCHEMA.to_string(),
             entropy_hex: "ab".repeat(BOOT_ENTROPY_SEED_BYTES),
             monotonic_delta_ns: 1,
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn explicit_probe_cohort_preserves_the_previous_configuration() {
-        let mut previous = VmConfig::default();
+        let mut previous = ::chaoscontrol_vmm::vm::VmConfig::default();
         previous.cpu.seed = u64::MAX;
         previous.cpu.hide_tsc = true;
         // Both types derive Debug over every field, including the nested CPU configuration.

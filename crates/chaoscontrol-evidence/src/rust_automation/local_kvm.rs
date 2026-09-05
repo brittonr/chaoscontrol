@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.kvm]
 // r[impl chaoscontrol.rust_automation.functional_core]
 
-use serde_json::{json, Value};
-
 const REQUIRED_WORKLOAD_COUNT: usize = 2;
 const MAX_HYPERVISORS: usize = 2;
 const VCPUS_PER_WORKER: u64 = 2;
@@ -34,8 +32,8 @@ pub fn parse_workloads(raw: &str) -> Result<Vec<String>, String> {
 pub fn campaign_plan(
     out: &std::path::Path,
     workloads: &[String],
-    command_plans: &[Value],
-) -> Result<Value, String> {
+    command_plans: &[::serde_json::Value],
+) -> Result<::serde_json::Value, String> {
     if workloads.len() != command_plans.len() {
         return Err(String::from(
             "workload and command-plan cardinality differs",
@@ -47,7 +45,7 @@ pub fn campaign_plan(
         .enumerate()
         .map(|(index, (workload, command_plan))| {
             let number = index + 1;
-            json!({
+            ::serde_json::json!({
                 "queue_entry_id": format!("kvm-mhq-{number:04}"),
                 "run_id": format!("kvm-mh-run-{number:04}"),
                 "workload": workload,
@@ -61,7 +59,7 @@ pub fn campaign_plan(
         .enumerate()
         .map(|(index, _)| {
             let number = index + 1;
-            json!({
+            ::serde_json::json!({
                 "hypervisor_worker_id": format!("local-kvm-hv-{number}"),
                 "node_id": format!("local-kvm-node-{number}"),
                 "resource_budget": {"vcpus": VCPUS_PER_WORKER, "memory_mib": MEMORY_MIB_PER_WORKER},
@@ -69,7 +67,7 @@ pub fn campaign_plan(
             })
         })
         .collect::<Vec<_>>();
-    Ok(json!({
+    Ok(::serde_json::json!({
         "schema_version": 1,
         "campaign_id": "local-kvm-smoke-0001",
         "max_hypervisors": workloads.len().min(MAX_HYPERVISORS),
@@ -85,8 +83,6 @@ pub fn campaign_plan(
 #[cfg(test)]
 mod tests {
 
-    use serde_json::json;
-
     use super::{campaign_plan, parse_workloads};
 
     #[test]
@@ -95,7 +91,7 @@ mod tests {
         let plan = campaign_plan(
             std::path::Path::new("/tmp/out"),
             &workloads,
-            &[json!({}), json!({})],
+            &[::serde_json::json!({}), ::serde_json::json!({})],
         )
         .expect("plan");
         assert_eq!(plan["max_hypervisors"], 2);

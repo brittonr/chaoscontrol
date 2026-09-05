@@ -1,21 +1,13 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::admission::{AcceptedCatalog, BoundAssertionEvent};
-use chaoscontrol_protocol::identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, ASSERTION_FINGERPRINT_HEX_BYTES,
-    ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES,
-    MAX_ASSERTION_MESSAGE_BYTES,
-};
-use serde_json::{Map, Value};
-
 const ASSERTION_IDENTITY_FIELD_COUNT: usize = 4;
-const MAX_LEGACY_DIAGNOSTIC_ID_BYTES: usize = ASSERTION_FINGERPRINT_HEX_BYTES;
+const MAX_LEGACY_DIAGNOSTIC_ID_BYTES: usize =
+    ::chaoscontrol_protocol::identity::ASSERTION_FINGERPRINT_HEX_BYTES;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedLocalIdentity {
     pub key: String,
-    pub descriptor: AssertionDescriptor,
-    pub fingerprint: AssertionFingerprint,
-    pub catalog_token: AssertionFingerprint,
+    pub descriptor: ::chaoscontrol_protocol::identity::AssertionDescriptor,
+    pub fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
+    pub catalog_token: ::chaoscontrol_protocol::identity::AssertionFingerprint,
 }
 
 #[derive(Debug, Default)]
@@ -40,10 +32,10 @@ struct AssertionBody {
     id: String,
     message: String,
     display_type: Option<String>,
-    details: Value,
+    details: ::serde_json::Value,
     identity_version: Option<u8>,
-    catalog_token: Option<AssertionFingerprint>,
-    assertion_fingerprint: Option<AssertionFingerprint>,
+    catalog_token: Option<::chaoscontrol_protocol::identity::AssertionFingerprint>,
+    assertion_fingerprint: Option<::chaoscontrol_protocol::identity::AssertionFingerprint>,
     catalog_status: Option<String>,
 }
 
@@ -60,10 +52,11 @@ impl LocalEventState {
         &mut self,
         line: &str,
         line_index: usize,
-        catalog: Option<&AcceptedCatalog>,
-    ) -> EvidenceResult<()> {
-        let assertion: AssertionEnvelope = serde_json::from_str(line)
-            .map_err(|error| EvidenceError::new(format!("line {}: {error}", line_index + 1)))?;
+        catalog: Option<&::chaoscontrol_protocol::admission::AcceptedCatalog>,
+    ) -> crate::EvidenceResult<()> {
+        let assertion: AssertionEnvelope = serde_json::from_str(line).map_err(|error| {
+            crate::EvidenceError::new(format!("line {}: {error}", line_index + 1))
+        })?;
         let assertion = assertion.antithesis_assert;
         let identity_count = [
             assertion.identity_version.is_some(),
@@ -81,7 +74,7 @@ impl LocalEventState {
             return line_error(line_index, "assertion identity fields are incomplete");
         }
         let catalog = catalog.ok_or_else(|| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "line {}: event before catalog completion",
                 line_index + 1
             ))
@@ -107,7 +100,11 @@ impl LocalEventState {
         !self.legacy.is_empty()
     }
 
-    fn insert_legacy(&mut self, assertion: AssertionBody, line_index: usize) -> EvidenceResult<()> {
+    fn insert_legacy(
+        &mut self,
+        assertion: AssertionBody,
+        line_index: usize,
+    ) -> crate::EvidenceResult<()> {
         if assertion.id.is_empty()
             || assertion.id.len() > MAX_LEGACY_DIAGNOSTIC_ID_BYTES
             || !assertion
@@ -126,11 +123,14 @@ impl LocalEventState {
         ) {
             return line_error(line_index, "legacy assertion type is unknown");
         }
-        if assertion.message.is_empty() || assertion.message.len() > MAX_ASSERTION_MESSAGE_BYTES {
+        if assertion.message.is_empty()
+            || assertion.message.len()
+                > ::chaoscontrol_protocol::identity::MAX_ASSERTION_MESSAGE_BYTES
+        {
             return line_error(line_index, "legacy assertion message is out of bounds");
         }
         let details = assertion.details.as_object().ok_or_else(|| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "line {}: assertion details must be an object",
                 line_index + 1
             ))
@@ -139,14 +139,14 @@ impl LocalEventState {
             details,
             "guest",
             "uncategorized",
-            MAX_ASSERTION_GUEST_BYTES,
+            ::chaoscontrol_protocol::identity::MAX_ASSERTION_GUEST_BYTES,
             line_index,
         )?;
         let category = legacy_detail_string(
             details,
             "category",
             "uncategorized",
-            MAX_ASSERTION_CATEGORY_BYTES,
+            ::chaoscontrol_protocol::identity::MAX_ASSERTION_CATEGORY_BYTES,
             line_index,
         )?;
         let metadata = LegacyMetadata {
@@ -167,11 +167,12 @@ impl LocalEventState {
 }
 
 fn resolve_assertion(
-    catalog: &AcceptedCatalog,
+    catalog: &::chaoscontrol_protocol::admission::AcceptedCatalog,
     assertion: &AssertionBody,
     line_index: usize,
-) -> EvidenceResult<ResolvedLocalIdentity> {
-    if assertion.identity_version != Some(ASSERTION_IDENTITY_VERSION)
+) -> crate::EvidenceResult<ResolvedLocalIdentity> {
+    if assertion.identity_version
+        != Some(::chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION)
         || assertion.catalog_status.as_deref() != Some("accepted")
     {
         return line_error(
@@ -182,18 +183,18 @@ fn resolve_assertion(
     let kind = assertion_kind(&assertion.assert_type, assertion.condition)?;
     let catalog_token = assertion
         .catalog_token
-        .ok_or_else(|| EvidenceError::new("assertion catalog token is missing"))?;
+        .ok_or_else(|| crate::EvidenceError::new("assertion catalog token is missing"))?;
     let fingerprint = assertion
         .assertion_fingerprint
-        .ok_or_else(|| EvidenceError::new("assertion fingerprint is missing"))?;
-    let event = BoundAssertionEvent {
+        .ok_or_else(|| crate::EvidenceError::new("assertion fingerprint is missing"))?;
+    let event = ::chaoscontrol_protocol::admission::BoundAssertionEvent {
         catalog_token,
         fingerprint,
         kind,
     };
-    let admitted = catalog
-        .resolve_event(&event)
-        .map_err(|error| EvidenceError::new(format!("line {}: {error:?}", line_index + 1)))?;
+    let admitted = catalog.resolve_event(&event).map_err(|error| {
+        crate::EvidenceError::new(format!("line {}: {error:?}", line_index + 1))
+    })?;
     if assertion.message != admitted.descriptor.message {
         return line_error(
             line_index,
@@ -205,7 +206,9 @@ fn resolve_assertion(
     }
     let expected_must_hit = matches!(
         kind,
-        AssertionKind::Sometimes | AssertionKind::Reachable | AssertionKind::Unreachable
+        ::chaoscontrol_protocol::identity::AssertionKind::Sometimes
+            | ::chaoscontrol_protocol::identity::AssertionKind::Reachable
+            | ::chaoscontrol_protocol::identity::AssertionKind::Unreachable
     );
     if assertion.must_hit != Some(expected_must_hit) {
         return line_error(line_index, "assertion must_hit conflicts with its kind");
@@ -224,21 +227,26 @@ fn resolve_assertion(
     })
 }
 
-fn assertion_kind(assert_type: &str, condition: bool) -> EvidenceResult<AssertionKind> {
+fn assertion_kind(
+    assert_type: &str,
+    condition: bool,
+) -> crate::EvidenceResult<::chaoscontrol_protocol::identity::AssertionKind> {
     match assert_type {
-        "always" => Ok(AssertionKind::Always),
-        "sometimes" => Ok(AssertionKind::Sometimes),
-        "reachability" if condition => Ok(AssertionKind::Reachable),
-        "reachability" => Ok(AssertionKind::Unreachable),
-        _ => Err(EvidenceError::new("assertion type is unknown")),
+        "always" => Ok(::chaoscontrol_protocol::identity::AssertionKind::Always),
+        "sometimes" => Ok(::chaoscontrol_protocol::identity::AssertionKind::Sometimes),
+        "reachability" if condition => {
+            Ok(::chaoscontrol_protocol::identity::AssertionKind::Reachable)
+        }
+        "reachability" => Ok(::chaoscontrol_protocol::identity::AssertionKind::Unreachable),
+        _ => Err(crate::EvidenceError::new("assertion type is unknown")),
     }
 }
 
 fn validate_event_metadata(
     assertion: &AssertionBody,
-    descriptor: &AssertionDescriptor,
+    descriptor: &::chaoscontrol_protocol::identity::AssertionDescriptor,
     line_index: usize,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let Some(details) = assertion.details.as_object() else {
         return line_error(line_index, "assertion details must be an object");
     };
@@ -259,15 +267,15 @@ fn validate_event_metadata(
 }
 
 fn legacy_detail_string(
-    details: &Map<String, Value>,
+    details: &::serde_json::Map<String, ::serde_json::Value>,
     field: &str,
     default: &str,
     maximum_bytes: usize,
     line_index: usize,
-) -> EvidenceResult<String> {
+) -> crate::EvidenceResult<String> {
     let value = match details.get(field) {
         Some(value) => value.as_str().ok_or_else(|| {
-            EvidenceError::new(format!("line {}: {field} must be a string", line_index + 1))
+            crate::EvidenceError::new(format!("line {}: {field} must be a string", line_index + 1))
         })?,
         None => default,
     };
@@ -280,8 +288,8 @@ fn legacy_detail_string(
     Ok(value.to_string())
 }
 
-fn line_error<T>(line_index: usize, message: &str) -> EvidenceResult<T> {
-    Err(EvidenceError::new(format!(
+fn line_error<T>(line_index: usize, message: &str) -> crate::EvidenceResult<T> {
+    Err(crate::EvidenceError::new(format!(
         "line {}: {message}",
         line_index + 1
     )))

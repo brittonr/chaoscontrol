@@ -8,7 +8,7 @@ use super::virtio_chain::DescriptorChainPlan;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::{plan_net_request, NetDirection, NET_HEADER_BYTES};
 use super::virtio_types::{ResourceViolation, VirtioFailure};
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::Bytes;
 
 const VIRTIO_NET_DEVICE_ID: u32 = 1;
 const VIRTIO_NET_F_MAC: u64 = 1 << 5;
@@ -58,7 +58,7 @@ impl VirtioNet {
     fn process_tx_one(
         &mut self,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let Some(available) = queue.plan_next(mem)? else {
             return Ok(false);
@@ -96,7 +96,7 @@ impl VirtioNet {
     fn process_rx_one(
         &mut self,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let Some(packet) = self.net.peek_rx() else {
             return Ok(false);
@@ -140,7 +140,7 @@ impl VirtioBackend for VirtioNet {
         &mut self,
         queue_index: usize,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let mut completed = false;
         match queue_index {
@@ -202,7 +202,7 @@ fn map_queue_error(error: NetQueueError, packet_bytes: usize) -> VirtioFailure {
 }
 
 fn read_tx_packet(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     chain: &DescriptorChainPlan,
     packet: &mut [u8],
 ) -> Result<(), VirtioFailure> {
@@ -226,8 +226,11 @@ fn read_tx_packet(
             .addr
             .checked_add(u64::try_from(skip).map_err(|_| VirtioFailure::GuestMemoryRead)?)
             .ok_or(VirtioFailure::GuestMemoryRead)?;
-        mem.read_slice(&mut packet[packet_offset..end], GuestAddress(address))
-            .map_err(|_| VirtioFailure::GuestMemoryRead)?;
+        mem.read_slice(
+            &mut packet[packet_offset..end],
+            ::vm_memory::GuestAddress(address),
+        )
+        .map_err(|_| VirtioFailure::GuestMemoryRead)?;
         packet_offset = end;
     }
     if packet_offset != packet.len() {
@@ -237,7 +240,7 @@ fn read_tx_packet(
 }
 
 fn write_rx_packet(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     chain: &DescriptorChainPlan,
     packet: &[u8],
 ) -> Result<(), VirtioFailure> {
@@ -248,7 +251,7 @@ fn write_rx_packet(
         .first()
         .ok_or(VirtioFailure::GuestMemoryWrite)?;
     let header = [0u8; NET_HEADER_BYTES as usize];
-    mem.write_slice(&header, GuestAddress(first.addr))
+    mem.write_slice(&header, ::vm_memory::GuestAddress(first.addr))
         .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
 
     let mut packet_offset = 0usize;
@@ -269,8 +272,11 @@ fn write_rx_packet(
             .addr
             .checked_add(u64::try_from(skip).map_err(|_| VirtioFailure::GuestMemoryWrite)?)
             .ok_or(VirtioFailure::GuestMemoryWrite)?;
-        mem.write_slice(&packet[packet_offset..end], GuestAddress(address))
-            .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
+        mem.write_slice(
+            &packet[packet_offset..end],
+            ::vm_memory::GuestAddress(address),
+        )
+        .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
         packet_offset = end;
     }
     if packet_offset != packet.len() {

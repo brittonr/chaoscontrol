@@ -8,7 +8,7 @@ use super::virtio_chain::DescriptorBuffer;
 use super::virtio_mmio::{VirtQueue, VirtioBackend};
 use super::virtio_request::plan_entropy_request;
 use super::virtio_types::{ResourceViolation, VirtioFailure};
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::Bytes;
 
 const VIRTIO_ENTROPY_DEVICE_ID: u32 = 4;
 const VIRTIO_ENTROPY_QUEUE_COUNT: usize = 1;
@@ -63,7 +63,7 @@ impl VirtioEntropy {
     fn process_one(
         &mut self,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let Some(available) = queue.plan_next(mem)? else {
             return Ok(false);
@@ -136,7 +136,7 @@ impl VirtioBackend for VirtioEntropy {
         &mut self,
         _queue_idx: usize,
         queue: &mut VirtQueue,
-        mem: &GuestMemoryMmap,
+        mem: &::vm_memory::GuestMemoryMmap,
     ) -> Result<bool, VirtioFailure> {
         let mut completed = false;
         while self.process_one(queue, mem)? {
@@ -161,7 +161,7 @@ impl VirtioBackend for VirtioEntropy {
 }
 
 fn fill_guest_transactionally(
-    mem: &GuestMemoryMmap,
+    mem: &::vm_memory::GuestMemoryMmap,
     buffers: &[DescriptorBuffer],
     scratch: &mut [u8],
     entropy: &mut DeterministicEntropy,
@@ -174,7 +174,7 @@ fn fill_guest_transactionally(
             let chunk_length = remaining.min(scratch.len());
             let chunk = &mut scratch[..chunk_length];
             entropy.fill_bytes(chunk);
-            mem.write_slice(chunk, GuestAddress(address))
+            mem.write_slice(chunk, ::vm_memory::GuestAddress(address))
                 .map_err(|_| VirtioFailure::GuestMemoryWrite)?;
             address = address
                 .checked_add(

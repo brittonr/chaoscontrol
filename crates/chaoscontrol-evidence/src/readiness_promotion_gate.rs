@@ -1,7 +1,3 @@
-use serde_json::Value;
-
-use crate::{EvidenceError, EvidenceResult};
-
 const MANIFEST_SCOPE: &str = "bounded accepted snapshot-backed replay workload proofs";
 const REQUIRED_REPLAY_CLASS: &str = "snapshot_backed_reproduced";
 const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
@@ -53,16 +49,16 @@ struct ManifestWorkload {
 pub fn validate_readiness_promotion_files(
     manifest_path: impl AsRef<std::path::Path>,
     report_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<ReadinessPromotionSummary> {
+) -> crate::EvidenceResult<ReadinessPromotionSummary> {
     let manifest = load_manifest(manifest_path.as_ref())?;
     let report = load_report(report_path.as_ref())?;
     validate_readiness_promotion(&manifest, &report)
 }
 
 pub fn validate_readiness_promotion(
-    manifest: &Value,
+    manifest: &::serde_json::Value,
     report: &str,
-) -> EvidenceResult<ReadinessPromotionSummary> {
+) -> crate::EvidenceResult<ReadinessPromotionSummary> {
     let manifest_entries = manifest_workload_entries(manifest)?;
     let reported = report_workloads(report)?;
 
@@ -153,7 +149,7 @@ pub fn validate_readiness_promotion(
 pub fn run_readiness_promotion_selftest(
     manifest_path: impl AsRef<std::path::Path>,
     report_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let manifest = load_manifest(manifest_path.as_ref())?;
     let report = load_report(report_path.as_ref())?;
 
@@ -165,7 +161,9 @@ pub fn run_readiness_promotion_selftest(
         .expect("committed manifest is an object")
         .get_mut("anti_claims")
         .expect("committed manifest has anti_claims") =
-        Value::Array(vec![Value::String("bounded only".to_string())]);
+        ::serde_json::Value::Array(vec![::serde_json::Value::String(
+            "bounded only".to_string(),
+        )]);
     expect_failure(
         "missing anti-claim",
         &missing_claim,
@@ -178,7 +176,7 @@ pub fn run_readiness_promotion_selftest(
         .as_object_mut()
         .expect("committed manifest is an object")
         .get_mut("proofs")
-        .and_then(Value::as_array_mut)
+        .and_then(::serde_json::Value::as_array_mut)
         .expect("committed manifest has proofs");
     let first_assertion = proofs[0]
         .get("assertion_id")
@@ -373,15 +371,16 @@ pub fn run_readiness_promotion_selftest(
     Ok(())
 }
 
-fn load_manifest(path: &std::path::Path) -> EvidenceResult<Value> {
+fn load_manifest(path: &std::path::Path) -> crate::EvidenceResult<::serde_json::Value> {
     let input =
         crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
     crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
-    serde_json::from_str(&input)
-        .map_err(|error| EvidenceError::new(format!("invalid JSON in {}: {error}", path.display())))
+    serde_json::from_str(&input).map_err(|error| {
+        crate::EvidenceError::new(format!("invalid JSON in {}: {error}", path.display()))
+    })
 }
 
-fn load_report(path: &std::path::Path) -> EvidenceResult<String> {
+fn load_report(path: &std::path::Path) -> crate::EvidenceResult<String> {
     crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
 }
 
@@ -396,28 +395,36 @@ pub fn default_readiness_promotion_paths(
 }
 
 fn manifest_workload_entries(
-    manifest: &Value,
-) -> EvidenceResult<std::collections::BTreeMap<String, ManifestWorkload>> {
+    manifest: &::serde_json::Value,
+) -> crate::EvidenceResult<std::collections::BTreeMap<String, ManifestWorkload>> {
     let object = manifest
         .as_object()
-        .ok_or_else(|| EvidenceError::new("manifest must be a JSON object".to_string()))?;
+        .ok_or_else(|| crate::EvidenceError::new("manifest must be a JSON object".to_string()))?;
     require(
-        object.get("schema_version").and_then(Value::as_u64) == Some(1),
+        object
+            .get("schema_version")
+            .and_then(::serde_json::Value::as_u64)
+            == Some(1),
         "manifest schema_version must be 1",
     )?;
     require(
-        object.get("scope").and_then(Value::as_str) == Some(MANIFEST_SCOPE),
+        object.get("scope").and_then(::serde_json::Value::as_str) == Some(MANIFEST_SCOPE),
         "manifest scope must remain bounded accepted snapshot-backed replay workload proofs",
     )?;
     require(
-        object.get("required_replay_class").and_then(Value::as_str) == Some(REQUIRED_REPLAY_CLASS),
+        object
+            .get("required_replay_class")
+            .and_then(::serde_json::Value::as_str)
+            == Some(REQUIRED_REPLAY_CLASS),
         "manifest required_replay_class must remain snapshot_backed_reproduced",
     )?;
 
     let anti_claims = object
         .get("anti_claims")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("manifest anti_claims must be a list".to_string()))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("manifest anti_claims must be a list".to_string())
+        })?;
     let anti_claim_text = anti_claims
         .iter()
         .map(|item| item.as_str().unwrap_or_default())
@@ -432,9 +439,9 @@ fn manifest_workload_entries(
 
     let proofs = object
         .get("proofs")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .ok_or_else(|| {
-            EvidenceError::new("manifest proofs must be a non-empty list".to_string())
+            crate::EvidenceError::new("manifest proofs must be a non-empty list".to_string())
         })?;
     require(
         !proofs.is_empty(),
@@ -444,10 +451,13 @@ fn manifest_workload_entries(
     let mut workloads = std::collections::BTreeMap::new();
     let mut assertion_ids = std::collections::BTreeSet::new();
     for (index, proof) in proofs.iter().enumerate() {
-        let proof = proof
-            .as_object()
-            .ok_or_else(|| EvidenceError::new(format!("proof[{index}] must be an object")))?;
-        let workload = proof.get("workload").and_then(Value::as_str).unwrap_or("");
+        let proof = proof.as_object().ok_or_else(|| {
+            crate::EvidenceError::new(format!("proof[{index}] must be an object"))
+        })?;
+        let workload = proof
+            .get("workload")
+            .and_then(::serde_json::Value::as_str)
+            .unwrap_or("");
         require(
             !workload.is_empty(),
             format!("proof[{index}].workload must be non-empty"),
@@ -458,9 +468,9 @@ fn manifest_workload_entries(
         )?;
         let assertion_id = proof
             .get("assertion_id")
-            .and_then(Value::as_u64)
+            .and_then(::serde_json::Value::as_u64)
             .ok_or_else(|| {
-                EvidenceError::new(format!("{workload}: assertion_id must be an integer"))
+                crate::EvidenceError::new(format!("{workload}: assertion_id must be an integer"))
             })?;
         require(
             assertion_ids.insert(assertion_id),
@@ -477,14 +487,14 @@ fn manifest_workload_entries(
             require(
                 proof
                     .get(field)
-                    .and_then(Value::as_str)
+                    .and_then(::serde_json::Value::as_str)
                     .is_some_and(|value| !value.is_empty()),
                 format!("{workload}: proof.{field} must be non-empty"),
             )?;
         }
         let has_fresh_receipt = proof
             .get("receipt")
-            .and_then(Value::as_str)
+            .and_then(::serde_json::Value::as_str)
             .is_some_and(|value| !value.is_empty());
         workloads.insert(
             workload.to_string(),
@@ -500,7 +510,7 @@ fn manifest_workload_entries(
 
 fn report_workloads(
     report: &str,
-) -> EvidenceResult<std::collections::BTreeMap<String, ReportedWorkload>> {
+) -> crate::EvidenceResult<std::collections::BTreeMap<String, ReportedWorkload>> {
     let mut rows = std::collections::BTreeMap::new();
     let mut in_workload_table = false;
     for line in report.lines() {
@@ -528,7 +538,7 @@ fn report_workloads(
         let workload = strip_code(&columns[0]);
         let status = strip_code(&columns[1]).to_string();
         let assertion_id = strip_code(&columns[2]).parse::<u64>().map_err(|_| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "{workload}: readiness row assertion must be an integer"
             ))
         })?;
@@ -570,7 +580,7 @@ fn report_experimental_surfaces(report: &str) -> std::collections::BTreeMap<Stri
     surfaces
 }
 
-fn require_bounded_matrix_surface(report: &str) -> EvidenceResult<()> {
+fn require_bounded_matrix_surface(report: &str) -> crate::EvidenceResult<()> {
     let line = experimental_surface_line(report, "Arbitrary guest/device determinism")?;
     for token in [
         "`bounded-matrix-rail`",
@@ -605,7 +615,7 @@ fn require_bounded_matrix_surface(report: &str) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn require_protocol_simulation_surface(report: &str) -> EvidenceResult<()> {
+fn require_protocol_simulation_surface(report: &str) -> crate::EvidenceResult<()> {
     let line = experimental_surface_line(report, "Adapter-based distributed protocol simulation")?;
     for token in [
         "`adapter-protocol-simulation`",
@@ -641,7 +651,7 @@ fn require_protocol_simulation_surface(report: &str) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn require_in_process_simulator_surface(report: &str) -> EvidenceResult<()> {
+fn require_in_process_simulator_surface(report: &str) -> crate::EvidenceResult<()> {
     let line = experimental_surface_line(
         report,
         "FoundationDB-style in-process deterministic simulator",
@@ -679,7 +689,7 @@ fn require_in_process_simulator_surface(report: &str) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
+fn require_local_rust_product_scope(report: &str) -> crate::EvidenceResult<()> {
     let summary = report;
     for token in [
         "Current product target: Rust-only workload support on one machine with multiple local ChaosControl hypervisors",
@@ -720,7 +730,7 @@ fn require_local_rust_product_scope(report: &str) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn require_local_multi_hypervisor_control_plane_surface(report: &str) -> EvidenceResult<()> {
+fn require_local_multi_hypervisor_control_plane_surface(report: &str) -> crate::EvidenceResult<()> {
     let line = experimental_surface_line(report, "Local multi-hypervisor control plane")?;
     for token in [
         "`supported-bounded-local`",
@@ -757,11 +767,13 @@ fn require_local_multi_hypervisor_control_plane_surface(report: &str) -> Evidenc
     Ok(())
 }
 
-fn experimental_surface_line<'a>(report: &'a str, surface: &str) -> EvidenceResult<&'a str> {
+fn experimental_surface_line<'a>(report: &'a str, surface: &str) -> crate::EvidenceResult<&'a str> {
     report
         .lines()
         .find(|line| line.starts_with(&format!("| {surface} |")))
-        .ok_or_else(|| EvidenceError::new(format!("missing experimental surface row: {surface}")))
+        .ok_or_else(|| {
+            crate::EvidenceError::new(format!("missing experimental surface row: {surface}"))
+        })
 }
 
 fn markdown_columns(line: &str) -> Vec<String> {
@@ -778,20 +790,27 @@ fn strip_code(value: &str) -> &str {
     value.trim().trim_matches('`')
 }
 
-fn expect_failure(name: &str, manifest: &Value, report: &str, needle: &str) -> EvidenceResult<()> {
+fn expect_failure(
+    name: &str,
+    manifest: &::serde_json::Value,
+    report: &str,
+    needle: &str,
+) -> crate::EvidenceResult<()> {
     match validate_readiness_promotion(manifest, report) {
-        Ok(_) => Err(EvidenceError::new(format!("{name}: unexpectedly passed"))),
+        Ok(_) => Err(crate::EvidenceError::new(format!(
+            "{name}: unexpectedly passed"
+        ))),
         Err(err) if err.to_string().contains(needle) => Ok(()),
-        Err(err) => Err(EvidenceError::new(format!(
+        Err(err) => Err(crate::EvidenceError::new(format!(
             "{name}: expected {needle:?}, got {err}"
         ))),
     }
 }
 
-fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
+fn require(condition: bool, message: impl Into<String>) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message.into()))
+        Err(crate::EvidenceError::new(message.into()))
     }
 }

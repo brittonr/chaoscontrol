@@ -4,8 +4,6 @@
 //! the estimated VM memory requirement. Warns or errors if the estimate
 //! exceeds 80% of available memory.
 
-use log::info;
-
 /// Read `MemAvailable` from `/proc/meminfo`, in megabytes.
 ///
 /// Returns `None` on non-Linux or if the file can't be parsed.
@@ -35,7 +33,7 @@ pub fn check_memory(estimated_mb: usize, strict: bool) -> Result<(), String> {
         }
     };
 
-    info!(
+    ::log::info!(
         "Memory: {:.1} GB estimated ({} MB), {:.1} GB available ({} MB)",
         estimated_mb as f64 / 1024.0,
         estimated_mb,

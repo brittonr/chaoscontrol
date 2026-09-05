@@ -21,8 +21,6 @@
 //! }
 //! ```
 
-use std::ptr;
-
 /// Initialize the VM guest environment.
 ///
 /// Mounts the standard pseudo-filesystems, initializes kernel coverage
@@ -61,7 +59,7 @@ fn mount(fstype: &std::ffi::CStr, target: &std::ffi::CStr, source: &std::ffi::CS
             target.as_ptr().cast(),
             fstype.as_ptr().cast(),
             0,
-            ptr::null(),
+            ::std::ptr::null(),
         );
         if ret != 0 {
             let err = *libc::__errno_location();

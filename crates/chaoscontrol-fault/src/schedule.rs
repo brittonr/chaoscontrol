@@ -4,23 +4,20 @@
 //! simulation run.  Schedules can be built manually (for targeted testing)
 //! or generated randomly by the [`FaultEngine`](super::engine::FaultEngine).
 
-use crate::faults::Fault;
-use crate::outcomes::{fault_schedule_id, FaultScheduleId};
-
 /// A fault scheduled to fire at a specific virtual time.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduledFault {
     /// Virtual time (nanoseconds) at which to inject this fault.
     pub time_ns: u64,
     /// The fault to inject.
-    pub fault: Fault,
+    pub fault: crate::faults::Fault,
     /// Optional human-readable label for logging.
     pub label: Option<String>,
 }
 
 impl ScheduledFault {
     /// Create a new scheduled fault.
-    pub fn new(time_ns: u64, fault: Fault) -> Self {
+    pub fn new(time_ns: u64, fault: crate::faults::Fault) -> Self {
         Self {
             time_ns,
             fault,
@@ -109,8 +106,8 @@ impl FaultSchedule {
     }
 
     /// Return the canonical BLAKE3 identity for the complete schedule.
-    pub fn identity(&self) -> FaultScheduleId {
-        fault_schedule_id(
+    pub fn identity(&self) -> crate::outcomes::FaultScheduleId {
+        crate::outcomes::fault_schedule_id(
             self.faults
                 .iter()
                 .map(|entry| (entry.time_ns, entry.label.as_deref(), &entry.fault)),
@@ -214,8 +211,8 @@ impl FaultScheduleSnapshot {
     }
 
     /// Return the canonical BLAKE3 identity for the captured schedule.
-    pub(crate) fn identity(&self) -> FaultScheduleId {
-        fault_schedule_id(
+    pub(crate) fn identity(&self) -> crate::outcomes::FaultScheduleId {
+        crate::outcomes::fault_schedule_id(
             self.faults
                 .iter()
                 .map(|entry| (entry.time_ns, entry.label.as_deref(), &entry.fault)),
@@ -276,13 +273,13 @@ impl FaultScheduleBuilder {
     }
 
     /// Schedule a fault at a specific virtual time (nanoseconds).
-    pub fn at_ns(mut self, time_ns: u64, fault: Fault) -> Self {
+    pub fn at_ns(mut self, time_ns: u64, fault: crate::faults::Fault) -> Self {
         self.schedule.add(ScheduledFault::new(time_ns, fault));
         self
     }
 
     /// Schedule a labeled fault at a specific virtual time.
-    pub fn at_ns_labeled(mut self, time_ns: u64, fault: Fault, label: &str) -> Self {
+    pub fn at_ns_labeled(mut self, time_ns: u64, fault: crate::faults::Fault, label: &str) -> Self {
         self.schedule
             .add(ScheduledFault::new(time_ns, fault).with_label(label));
         self
@@ -303,7 +300,6 @@ impl Default for FaultScheduleBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::faults::Fault;
 
     #[test]
     fn empty_schedule() {
@@ -316,9 +312,15 @@ mod tests {
     #[test]
     fn faults_sorted_by_time() {
         let mut sched = FaultSchedule::new();
-        sched.add(ScheduledFault::new(3000, Fault::ProcessKill { target: 0 }));
-        sched.add(ScheduledFault::new(1000, Fault::NetworkHeal));
-        sched.add(ScheduledFault::new(2000, Fault::DiskFull { target: 1 }));
+        sched.add(ScheduledFault::new(
+            3000,
+            crate::faults::Fault::ProcessKill { target: 0 },
+        ));
+        sched.add(ScheduledFault::new(1000, crate::faults::Fault::NetworkHeal));
+        sched.add(ScheduledFault::new(
+            2000,
+            crate::faults::Fault::DiskFull { target: 1 },
+        ));
 
         assert_eq!(sched.next_time(), Some(1000));
         assert_eq!(sched.remaining(), 3);
@@ -327,13 +329,19 @@ mod tests {
     #[test]
     fn drain_due_returns_correct_faults() {
         let mut sched = FaultSchedule::new();
-        sched.add(ScheduledFault::new(100, Fault::NetworkHeal));
-        sched.add(ScheduledFault::new(200, Fault::DiskFull { target: 0 }));
-        sched.add(ScheduledFault::new(300, Fault::ProcessKill { target: 0 }));
+        sched.add(ScheduledFault::new(100, crate::faults::Fault::NetworkHeal));
+        sched.add(ScheduledFault::new(
+            200,
+            crate::faults::Fault::DiskFull { target: 0 },
+        ));
+        sched.add(ScheduledFault::new(
+            300,
+            crate::faults::Fault::ProcessKill { target: 0 },
+        ));
 
         let due = sched.drain_due(150);
         assert_eq!(due.len(), 1);
-        assert_eq!(due[0].fault, Fault::NetworkHeal);
+        assert_eq!(due[0].fault, crate::faults::Fault::NetworkHeal);
         assert_eq!(sched.remaining(), 2);
 
         let due = sched.drain_due(300);
@@ -344,7 +352,7 @@ mod tests {
     #[test]
     fn drain_due_idempotent_at_same_time() {
         let mut sched = FaultSchedule::new();
-        sched.add(ScheduledFault::new(100, Fault::NetworkHeal));
+        sched.add(ScheduledFault::new(100, crate::faults::Fault::NetworkHeal));
 
         let due = sched.drain_due(100);
         assert_eq!(due.len(), 1);
@@ -357,8 +365,11 @@ mod tests {
     #[test]
     fn snapshot_restore() {
         let mut sched = FaultSchedule::new();
-        sched.add(ScheduledFault::new(100, Fault::NetworkHeal));
-        sched.add(ScheduledFault::new(200, Fault::DiskFull { target: 0 }));
+        sched.add(ScheduledFault::new(100, crate::faults::Fault::NetworkHeal));
+        sched.add(ScheduledFault::new(
+            200,
+            crate::faults::Fault::DiskFull { target: 0 },
+        ));
 
         sched.drain_due(100);
         let snap = sched.snapshot();
@@ -374,8 +385,8 @@ mod tests {
     #[test]
     fn builder_produces_sorted_schedule() {
         let schedule = FaultScheduleBuilder::new()
-            .at_ns(3000, Fault::ProcessKill { target: 0 })
-            .at_ns(1000, Fault::NetworkHeal)
+            .at_ns(3000, crate::faults::Fault::ProcessKill { target: 0 })
+            .at_ns(1000, crate::faults::Fault::NetworkHeal)
             .build();
 
         assert_eq!(schedule.total(), 2);

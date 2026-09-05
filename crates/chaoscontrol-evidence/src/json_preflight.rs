@@ -1,5 +1,3 @@
-use crate::{EvidenceError, EvidenceResult};
-
 const MAX_JSON_DEPTH: usize = 64;
 const MAX_JSONL_STRUCTURAL_TOKENS: usize = 4_096;
 const MAX_JSONL_STRING_BYTES: usize = 12 * 1024;
@@ -30,7 +28,7 @@ pub(crate) const QUALITY_REPORT_LIMITS: JsonLimits = JsonLimits {
     maximum_string_bytes: MAX_REPORT_STRING_BYTES,
 };
 
-pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<()> {
+pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> crate::EvidenceResult<()> {
     let mut stack = [0_u8; MAX_JSON_DEPTH];
     let mut depth = 0_usize;
     let mut structural_tokens = 0_usize;
@@ -41,9 +39,11 @@ pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<
         if in_string {
             string_bytes = string_bytes
                 .checked_add(1)
-                .ok_or_else(|| EvidenceError::new("JSON string byte count overflow"))?;
+                .ok_or_else(|| crate::EvidenceError::new("JSON string byte count overflow"))?;
             if string_bytes > limits.maximum_string_bytes {
-                return Err(EvidenceError::new("JSON string byte budget exceeded"));
+                return Err(crate::EvidenceError::new(
+                    "JSON string byte budget exceeded",
+                ));
             }
             if escaped {
                 escaped = false;
@@ -52,7 +52,9 @@ pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<
             } else if byte == b'"' {
                 in_string = false;
             } else if byte < b' ' {
-                return Err(EvidenceError::new("JSON string contains a control byte"));
+                return Err(crate::EvidenceError::new(
+                    "JSON string contains a control byte",
+                ));
             }
             continue;
         }
@@ -61,7 +63,7 @@ pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<
             b'{' | b'[' => {
                 count_structural(&mut structural_tokens, limits)?;
                 if depth >= limits.maximum_depth {
-                    return Err(EvidenceError::new("JSON nesting depth exceeded"));
+                    return Err(crate::EvidenceError::new("JSON nesting depth exceeded"));
                 }
                 stack[depth] = byte;
                 depth += 1;
@@ -69,12 +71,16 @@ pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<
             b'}' | b']' => {
                 count_structural(&mut structural_tokens, limits)?;
                 if depth == 0 {
-                    return Err(EvidenceError::new("JSON has an unmatched closing token"));
+                    return Err(crate::EvidenceError::new(
+                        "JSON has an unmatched closing token",
+                    ));
                 }
                 depth -= 1;
                 let expected = if byte == b'}' { b'{' } else { b'[' };
                 if stack[depth] != expected {
-                    return Err(EvidenceError::new("JSON structural tokens are mismatched"));
+                    return Err(crate::EvidenceError::new(
+                        "JSON structural tokens are mismatched",
+                    ));
                 }
             }
             b',' | b':' => count_structural(&mut structural_tokens, limits)?,
@@ -82,17 +88,21 @@ pub(crate) fn preflight_json(input: &str, limits: JsonLimits) -> EvidenceResult<
         }
     }
     if in_string || escaped || depth != 0 {
-        return Err(EvidenceError::new("JSON lexical structure is incomplete"));
+        return Err(crate::EvidenceError::new(
+            "JSON lexical structure is incomplete",
+        ));
     }
     Ok(())
 }
 
-fn count_structural(count: &mut usize, limits: JsonLimits) -> EvidenceResult<()> {
+fn count_structural(count: &mut usize, limits: JsonLimits) -> crate::EvidenceResult<()> {
     *count = count
         .checked_add(1)
-        .ok_or_else(|| EvidenceError::new("JSON structural token count overflow"))?;
+        .ok_or_else(|| crate::EvidenceError::new("JSON structural token count overflow"))?;
     if *count > limits.maximum_structural_tokens {
-        return Err(EvidenceError::new("JSON structural token budget exceeded"));
+        return Err(crate::EvidenceError::new(
+            "JSON structural token budget exceeded",
+        ));
     }
     Ok(())
 }

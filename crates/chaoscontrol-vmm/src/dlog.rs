@@ -17,9 +17,7 @@
 //! At 500K exits/sec this is ~490 write syscalls/sec — negligible compared
 //! to KVM_RUN overhead.
 
-use std::fmt;
-
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, Read, Write};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Record format
@@ -119,8 +117,8 @@ impl DlogTag {
     }
 }
 
-impl fmt::Display for DlogTag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for DlogTag {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.write_str(self.name())
     }
 }
@@ -279,8 +277,8 @@ impl DlogRecord {
     }
 }
 
-impl fmt::Display for DlogRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for DlogRecord {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         let tag_name = self.tag().map_or("Unknown", |t| t.name());
         write!(
             f,
@@ -361,9 +359,9 @@ impl fmt::Display for DlogRecord {
     }
 }
 
-impl fmt::Debug for DlogRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
+impl ::std::fmt::Debug for DlogRecord {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::std::fmt::Display::fmt(self, f)
     }
 }
 
@@ -373,7 +371,7 @@ impl fmt::Debug for DlogRecord {
 
 /// Buffered binary writer for determinism log records.
 pub struct DlogWriter {
-    writer: BufWriter<std::fs::File>,
+    writer: ::std::io::BufWriter<std::fs::File>,
     seq: u64,
 }
 
@@ -383,7 +381,7 @@ impl DlogWriter {
     pub fn create(path: &std::path::Path) -> io::Result<Self> {
         let file = std::fs::File::create(path)?;
         Ok(Self {
-            writer: BufWriter::with_capacity(64 * 1024, file),
+            writer: ::std::io::BufWriter::with_capacity(64 * 1024, file),
             seq: 0,
         })
     }
@@ -418,7 +416,7 @@ impl Drop for DlogWriter {
 
 /// Sequential reader for determinism log files.
 pub struct DlogReader {
-    reader: BufReader<std::fs::File>,
+    reader: ::std::io::BufReader<std::fs::File>,
     offset: u64,
 }
 
@@ -427,7 +425,7 @@ impl DlogReader {
     pub fn open(path: &std::path::Path) -> io::Result<Self> {
         let file = std::fs::File::open(path)?;
         Ok(Self {
-            reader: BufReader::with_capacity(64 * 1024, file),
+            reader: ::std::io::BufReader::with_capacity(64 * 1024, file),
             offset: 0,
         })
     }
@@ -496,8 +494,8 @@ pub enum DiffResult {
     },
 }
 
-impl fmt::Display for DiffResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for DiffResult {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match self {
             Self::Identical { records } => write!(f, "Identical: {} records", records),
             Self::Diverged {

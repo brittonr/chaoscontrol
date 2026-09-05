@@ -1,6 +1,5 @@
 //! Guest register state — portable representation for debugger and dlog.
 
-use std::fmt;
 use std::str::FromStr;
 
 /// VM register state — all general-purpose, segment, and control registers.
@@ -98,8 +97,8 @@ impl RegisterState {
     }
 }
 
-impl fmt::Display for RegisterState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for RegisterState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         writeln!(
             f,
             "rip={:#018x}  rsp={:#018x}  rflags={:#018x}",
@@ -214,8 +213,8 @@ impl Register {
     }
 }
 
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for Register {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         let name = match self {
             Self::Rip => "rip",
             Self::Rsp => "rsp",

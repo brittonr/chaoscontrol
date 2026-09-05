@@ -1,12 +1,3 @@
-use serde_json::{json, Value};
-
-use crate::replay_readiness_core::summarize_receipt;
-use crate::replay_readiness_surfaces::sample_replay_readiness_receipt;
-use crate::{
-    ensure, AcceptedVerdictSummary, AcceptedWorkloadProof, AcceptedWorkloadProofs, BugRecord,
-    EvidenceError, EvidenceResult, ReplayVerdict, REQUIRED_REPLAY_CLASS,
-};
-
 const TRIAGE_DIR: &str = "target/operator-triage";
 const MANIFEST_PATH: &str = "dogfood-results/accepted-workload-proofs.json";
 
@@ -19,11 +10,13 @@ pub enum TriageReceiptSource<'a> {
 pub fn render_operator_triage_runbook_path(
     root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
-) -> EvidenceResult<String> {
+) -> crate::EvidenceResult<String> {
     let root = root.as_ref();
     let receipt = match receipt_source {
         TriageReceiptSource::Path(path) => read_json_value(path)?,
-        TriageReceiptSource::Sample => sample_replay_readiness_receipt(false, "passed"),
+        TriageReceiptSource::Sample => {
+            crate::replay_readiness_surfaces::sample_replay_readiness_receipt(false, "passed")
+        }
     };
     render_operator_triage_runbook(root, &receipt)
 }
@@ -32,7 +25,7 @@ pub fn write_operator_triage_runbook_path(
     root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
     output: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let rendered = render_operator_triage_runbook_path(root, receipt_source)?;
     let output = output.as_ref();
     if let Some(parent) = output.parent() {
@@ -46,16 +39,16 @@ pub fn check_operator_triage_runbook_path(
     root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
     expected_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let expected = render_operator_triage_runbook_path(root, receipt_source)?;
     let expected_path = expected_path.as_ref();
     let actual = std::fs::read_to_string(expected_path).map_err(|err| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "missing or unreadable operator triage runbook {}: {err}",
             expected_path.display()
         ))
     })?;
-    ensure(
+    crate::ensure(
         actual == expected,
         "operator triage runbook stale: run `cargo run -p chaoscontrol-evidence --bin replay-readiness-triage -- --root . --sample-receipt --output docs/operator-triage-runbook.md`",
     )
@@ -63,16 +56,17 @@ pub fn check_operator_triage_runbook_path(
 
 pub fn render_operator_triage_runbook(
     root: &std::path::Path,
-    receipt: &Value,
-) -> EvidenceResult<String> {
-    let summary_line = summarize_receipt(receipt)?;
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
+    let summary_line = crate::replay_readiness_core::summarize_receipt(receipt)?;
     let selected_workload = selected_workload(receipt)?;
-    let manifest = AcceptedWorkloadProofs::from_path(root.join(MANIFEST_PATH)).map_err(|err| {
-        EvidenceError::new(format!("{}: {err}", root.join(MANIFEST_PATH).display()))
-    })?;
+    let manifest =
+        crate::AcceptedWorkloadProofs::from_path(root.join(MANIFEST_PATH)).map_err(|err| {
+            crate::EvidenceError::new(format!("{}: {err}", root.join(MANIFEST_PATH).display()))
+        })?;
     manifest.validate_shape()?;
     let proofs = select_proofs(&manifest, selected_workload)?;
-    ensure(
+    crate::ensure(
         !proofs.is_empty(),
         "operator triage needs at least one proof",
     )?;
@@ -108,7 +102,7 @@ pub fn render_operator_triage_runbook(
         output.pop();
     }
 
-    ensure(
+    crate::ensure(
         !contains_raw_log_reference(&output),
         "operator triage runbook must not require raw-log scraping",
     )?;
@@ -117,22 +111,22 @@ pub fn render_operator_triage_runbook(
 
 fn render_proof_section(
     root: &std::path::Path,
-    proof: &AcceptedWorkloadProof,
-) -> EvidenceResult<String> {
+    proof: &crate::AcceptedWorkloadProof,
+) -> crate::EvidenceResult<String> {
     let evidence_dir = root.join(&proof.evidence_dir);
-    let summary: AcceptedVerdictSummary = read_json(&evidence_dir.join(&proof.summary))?;
-    let bug: BugRecord = read_json(&evidence_dir.join(&proof.bug))?;
-    let verdict: ReplayVerdict = read_json(&evidence_dir.join(&proof.verdict))?;
-    ensure(
+    let summary: crate::AcceptedVerdictSummary = read_json(&evidence_dir.join(&proof.summary))?;
+    let bug: crate::BugRecord = read_json(&evidence_dir.join(&proof.bug))?;
+    let verdict: crate::ReplayVerdict = read_json(&evidence_dir.join(&proof.verdict))?;
+    crate::ensure(
         summary.accepted && summary.reproduce_exit_status == 0 && summary.export_exit_status == 0,
         format!("{} summary is not accepted/reproduced", proof.workload),
     )?;
-    ensure(
+    crate::ensure(
         bug.replay_parent_depth > 0 && bug.replay_parent_snapshot_ref.is_some(),
         format!("{} bug lacks snapshot-backed replay parent", proof.workload),
     )?;
-    ensure(
-        verdict.replay_class == REQUIRED_REPLAY_CLASS && verdict.reproduced,
+    crate::ensure(
+        verdict.replay_class == crate::REQUIRED_REPLAY_CLASS && verdict.reproduced,
         format!("{} verdict is not accepted replay evidence", proof.workload),
     )?;
 
@@ -149,7 +143,7 @@ fn render_proof_section(
     let triage_verdict = format!("{TRIAGE_DIR}/{}-replay-verdict.json", proof.workload);
     let minimized = format!("{TRIAGE_DIR}/{}-minimized-bug.json", proof.workload);
     let decision = format!("{TRIAGE_DIR}/{}-decision.json", proof.workload);
-    let decision_json = json!({
+    let decision_json = ::serde_json::json!({
         "schema_version": 1,
         "workload": proof.workload,
         "assertion_id": proof.assertion_id,
@@ -205,31 +199,33 @@ fn render_proof_section(
     Ok(output)
 }
 
-fn selected_workload(receipt: &Value) -> EvidenceResult<Option<&str>> {
+fn selected_workload(receipt: &::serde_json::Value) -> crate::EvidenceResult<Option<&str>> {
     let dogfood = receipt
         .get("dogfood")
-        .and_then(Value::as_object)
-        .ok_or_else(|| EvidenceError::new("receipt.dogfood must be an object"))?;
+        .and_then(::serde_json::Value::as_object)
+        .ok_or_else(|| crate::EvidenceError::new("receipt.dogfood must be an object"))?;
     match dogfood.get("selected_workload") {
-        Some(Value::String(workload)) if !workload.is_empty() => Ok(Some(workload.as_str())),
-        Some(Value::Null) | None => Ok(None),
-        _ => Err(EvidenceError::new(
+        Some(::serde_json::Value::String(workload)) if !workload.is_empty() => {
+            Ok(Some(workload.as_str()))
+        }
+        Some(::serde_json::Value::Null) | None => Ok(None),
+        _ => Err(crate::EvidenceError::new(
             "receipt.dogfood.selected_workload must be string or null",
         )),
     }
 }
 
 fn select_proofs<'a>(
-    manifest: &'a AcceptedWorkloadProofs,
+    manifest: &'a crate::AcceptedWorkloadProofs,
     selected_workload: Option<&str>,
-) -> EvidenceResult<Vec<&'a AcceptedWorkloadProof>> {
+) -> crate::EvidenceResult<Vec<&'a crate::AcceptedWorkloadProof>> {
     if let Some(workload) = selected_workload {
         let proof = manifest
             .proofs
             .iter()
             .find(|proof| proof.workload == workload)
             .ok_or_else(|| {
-                EvidenceError::new(format!(
+                crate::EvidenceError::new(format!(
                     "selected workload {workload:?} missing from accepted proof manifest"
                 ))
             })?;
@@ -260,15 +256,15 @@ fn contains_raw_log_reference(text: &str) -> bool {
     .any(|needle| text.contains(needle))
 }
 
-fn read_json_value(path: &std::path::Path) -> EvidenceResult<Value> {
+fn read_json_value(path: &std::path::Path) -> crate::EvidenceResult<::serde_json::Value> {
     let input = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+        .map_err(|err| crate::EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> EvidenceResult<T> {
+fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> crate::EvidenceResult<T> {
     let input = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+        .map_err(|err| crate::EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 

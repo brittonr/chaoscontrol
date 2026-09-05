@@ -1,9 +1,5 @@
 //! Frontier — priority queue of interesting simulation states to explore.
 
-use crate::coverage::CoverageBitmap;
-use crate::marker_branching::MarkerFrontierMetadata;
-use chaoscontrol_fault::schedule::FaultSchedule;
-use chaoscontrol_vmm::controller::SimulationSnapshot;
 use rand::Rng;
 
 /// A snapshot with its associated metadata for prioritization.
@@ -12,9 +8,9 @@ pub struct FrontierEntry {
     /// Unique ID for this entry.
     pub id: u64,
     /// The simulation snapshot at this point.
-    pub snapshot: SimulationSnapshot,
+    pub snapshot: ::chaoscontrol_vmm::controller::SimulationSnapshot,
     /// Coverage bitmap at this point.
-    pub coverage: CoverageBitmap,
+    pub coverage: crate::coverage::CoverageBitmap,
     /// Score: higher = more interesting.
     pub score: f64,
     /// How many times this entry has been selected for exploration.
@@ -22,11 +18,11 @@ pub struct FrontierEntry {
     /// Depth in the exploration tree.
     pub depth: u32,
     /// The fault schedule that led to this state.
-    pub schedule: FaultSchedule,
+    pub schedule: ::chaoscontrol_fault::schedule::FaultSchedule,
     /// Parent entry ID (if forked from another entry).
     pub parent: Option<u64>,
     /// Guest-declared marker that created this branch opportunity.
-    pub marker: Option<MarkerFrontierMetadata>,
+    pub marker: Option<crate::marker_branching::MarkerFrontierMetadata>,
 }
 
 /// Priority queue of interesting simulation states to explore from.
@@ -134,12 +130,12 @@ mod tests {
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
 
-    fn dummy_snapshot() -> SimulationSnapshot {
+    fn dummy_snapshot() -> ::chaoscontrol_vmm::controller::SimulationSnapshot {
         use chaoscontrol_vmm::controller::NetworkFabric;
 
         let network_state = NetworkFabric::new(2, 42);
 
-        SimulationSnapshot {
+        ::chaoscontrol_vmm::controller::SimulationSnapshot {
             tick: 0,
             vm_snapshots: Vec::new(),
             network_state,
@@ -165,11 +161,11 @@ mod tests {
         FrontierEntry {
             id,
             snapshot: dummy_snapshot(),
-            coverage: CoverageBitmap::new(),
+            coverage: crate::coverage::CoverageBitmap::new(),
             score,
             times_selected: 0,
             depth,
-            schedule: FaultSchedule::new(),
+            schedule: ::chaoscontrol_fault::schedule::FaultSchedule::new(),
             parent: None,
             marker: None,
         }

@@ -1,7 +1,3 @@
-use serde_json::Value;
-
-use crate::{EvidenceError, EvidenceResult};
-
 pub const ALLOWED_OWNERSHIP: [&str; 3] = ["excluded", "nickel-authored", "rust-derived"];
 pub const REQUIRED_CONTRACT_IDS: [&str; 9] = [
     "assertion-summary",
@@ -15,30 +11,33 @@ pub const REQUIRED_CONTRACT_IDS: [&str; 9] = [
     "snapshot-reference",
 ];
 
-pub fn validate_contract_registry_json(text: &str) -> EvidenceResult<String> {
-    let registry: Value = serde_json::from_str(text)?;
+pub fn validate_contract_registry_json(text: &str) -> crate::EvidenceResult<String> {
+    let registry: ::serde_json::Value = serde_json::from_str(text)?;
     validate_contract_registry(&registry)
 }
 
-pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
+pub fn validate_contract_registry(registry: &::serde_json::Value) -> crate::EvidenceResult<String> {
     let mut errors = Vec::new();
 
     require(
-        registry.get("schema_version").and_then(Value::as_str) == Some("1"),
+        registry
+            .get("schema_version")
+            .and_then(::serde_json::Value::as_str)
+            == Some("1"),
         "schema_version must be '1'",
         &mut errors,
     );
     require(
         registry
             .get("policy")
-            .and_then(Value::as_str)
+            .and_then(::serde_json::Value::as_str)
             .is_some_and(|value| !value.is_empty()),
         "policy must be non-empty",
         &mut errors,
     );
 
     let families_value = registry.get("families");
-    let families = families_value.and_then(Value::as_array);
+    let families = families_value.and_then(::serde_json::Value::as_array);
     require(
         families.is_some_and(|entries| !entries.is_empty()),
         "families must be a non-empty list",
@@ -60,8 +59,8 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
             continue;
         };
 
-        let entry_id = entry.get("id").and_then(Value::as_str);
-        let ownership = entry.get("ownership").and_then(Value::as_str);
+        let entry_id = entry.get("id").and_then(::serde_json::Value::as_str);
+        let ownership = entry.get("ownership").and_then(::serde_json::Value::as_str);
         if let Some(entry_id) = entry_id {
             ids.insert(entry_id.to_string());
         }
@@ -85,7 +84,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
         require(
             entry
                 .get("owner")
-                .and_then(Value::as_str)
+                .and_then(::serde_json::Value::as_str)
                 .is_some_and(|value| !value.is_empty()),
             format!("{prefix}.owner must be non-empty"),
             &mut errors,
@@ -96,7 +95,9 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
             &mut errors,
         );
         require(
-            entry.get("artifact_paths").is_some_and(Value::is_array),
+            entry
+                .get("artifact_paths")
+                .is_some_and(::serde_json::Value::is_array),
             format!("{prefix}.artifact_paths must be a list"),
             &mut errors,
         );
@@ -113,7 +114,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
         require(
             entry
                 .get("freshness")
-                .and_then(Value::as_str)
+                .and_then(::serde_json::Value::as_str)
                 .is_some_and(|value| !value.is_empty()),
             format!("{prefix}.freshness must be non-empty"),
             &mut errors,
@@ -121,7 +122,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
         require(
             entry
                 .get("rationale")
-                .and_then(Value::as_str)
+                .and_then(::serde_json::Value::as_str)
                 .is_some_and(|value| !value.is_empty()),
             format!("{prefix}.rationale must be non-empty"),
             &mut errors,
@@ -131,7 +132,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
             require(
                 entry
                     .get("artifact_paths")
-                    .and_then(Value::as_array)
+                    .and_then(::serde_json::Value::as_array)
                     .is_none_or(|values| values.is_empty()),
                 format!("{prefix} is excluded and must not declare durable artifact_paths"),
                 &mut errors,
@@ -169,7 +170,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
             ownerships.iter().cloned().collect::<Vec<_>>().join(",")
         ))
     } else {
-        Err(EvidenceError::new(errors.join("\n")))
+        Err(crate::EvidenceError::new(errors.join("\n")))
     }
 }
 
@@ -179,8 +180,8 @@ fn require(condition: bool, message: impl Into<String>, errors: &mut Vec<String>
     }
 }
 
-fn non_empty_strings(value: Option<&Value>) -> bool {
-    let Some(values) = value.and_then(Value::as_array) else {
+fn non_empty_strings(value: Option<&::serde_json::Value>) -> bool {
+    let Some(values) = value.and_then(::serde_json::Value::as_array) else {
         return false;
     };
     values

@@ -1,8 +1,3 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_sim_core::findability::{
-    assemble_observations, fit_findability, validate_report, BugInstance, FindabilityPolicy,
-    FindabilityReport, SubtreeObservation,
-};
 use std::fs::{self};
 use std::io::Write;
 
@@ -16,7 +11,7 @@ pub struct FindabilityRoundArtifact {
     pub schema_version: u32,
     pub generation_id: String,
     pub artifact_blake3: String,
-    pub policy: FindabilityPolicy,
+    pub policy: ::chaoscontrol_sim_core::findability::FindabilityPolicy,
     pub subtrees: Vec<RoundSubtree>,
 }
 
@@ -26,14 +21,14 @@ pub struct RoundSubtree {
     pub subtree_id: String,
     pub independence_group: String,
     pub observed_time: u64,
-    pub bugs: Vec<BugInstance>,
+    pub bugs: Vec<::chaoscontrol_sim_core::findability::BugInstance>,
 }
 
 pub fn bind_findability_artifact(
     generation_id: impl Into<String>,
-    policy: FindabilityPolicy,
+    policy: ::chaoscontrol_sim_core::findability::FindabilityPolicy,
     mut subtrees: Vec<RoundSubtree>,
-) -> EvidenceResult<FindabilityRoundArtifact> {
+) -> crate::EvidenceResult<FindabilityRoundArtifact> {
     subtrees.sort_by(|left, right| left.subtree_id.cmp(&right.subtree_id));
     for subtree in &mut subtrees {
         subtree.bugs.sort();
@@ -50,7 +45,9 @@ pub fn bind_findability_artifact(
     Ok(artifact)
 }
 
-pub fn validate_findability_artifact(artifact: &FindabilityRoundArtifact) -> EvidenceResult<()> {
+pub fn validate_findability_artifact(
+    artifact: &FindabilityRoundArtifact,
+) -> crate::EvidenceResult<()> {
     require(
         artifact.schema_version == FINDABILITY_ARTIFACT_SCHEMA_VERSION,
         "unsupported findability artifact schema",
@@ -74,20 +71,21 @@ pub fn validate_findability_artifact(artifact: &FindabilityRoundArtifact) -> Evi
         "findability artifact BLAKE3 identity drifted",
     )?;
     let observations = artifact_observations(artifact)?;
-    let report = fit_findability(&observations, &artifact.policy)
-        .map_err(|error| EvidenceError::new(error.to_string()))?;
-    validate_report(&report, &observations, &artifact.policy)
-        .map_err(|error| EvidenceError::new(error.to_string()))
+    let report =
+        ::chaoscontrol_sim_core::findability::fit_findability(&observations, &artifact.policy)
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
+    ::chaoscontrol_sim_core::findability::validate_report(&report, &observations, &artifact.policy)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))
 }
 
 pub fn read_findability_artifact_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<FindabilityRoundArtifact> {
+) -> crate::EvidenceResult<FindabilityRoundArtifact> {
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_FINDABILITY_ARTIFACT_BYTES)?;
     let artifact = serde_json::from_slice::<FindabilityRoundArtifact>(&bytes).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "{}: findability JSON is not a closed typed artifact: {error}",
             path.display()
         ))
@@ -98,20 +96,21 @@ pub fn read_findability_artifact_path(
 
 pub fn check_findability_artifact_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<FindabilityReport> {
+) -> crate::EvidenceResult<::chaoscontrol_sim_core::findability::FindabilityReport> {
     let artifact = read_findability_artifact_path(path)?;
     let observations = artifact_observations(&artifact)?;
-    let report = fit_findability(&observations, &artifact.policy)
-        .map_err(|error| EvidenceError::new(error.to_string()))?;
-    validate_report(&report, &observations, &artifact.policy)
-        .map_err(|error| EvidenceError::new(error.to_string()))?;
+    let report =
+        ::chaoscontrol_sim_core::findability::fit_findability(&observations, &artifact.policy)
+            .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
+    ::chaoscontrol_sim_core::findability::validate_report(&report, &observations, &artifact.policy)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))?;
     Ok(report)
 }
 
 pub fn write_findability_report_path(
     artifact_path: impl AsRef<std::path::Path>,
     report_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let report = check_findability_artifact_path(artifact_path)?;
     let mut bytes = serde_json::to_vec_pretty(&report)?;
     bytes.push(b'\n');
@@ -123,11 +122,13 @@ pub fn write_findability_report_path(
         .write(true)
         .create_new(true)
         .open(report_path)
-        .map_err(|error| EvidenceError::new(format!("{}: {error}", report_path.display())))?;
+        .map_err(|error| {
+            crate::EvidenceError::new(format!("{}: {error}", report_path.display()))
+        })?;
     if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
         drop(file);
         let cleanup = fs::remove_file(report_path);
-        return Err(EvidenceError::new(match cleanup {
+        return Err(crate::EvidenceError::new(match cleanup {
             Ok(()) => format!("{}: {error}", report_path.display()),
             Err(cleanup_error) => format!(
                 "{}: {error}; failed to remove partial report: {cleanup_error}",
@@ -140,28 +141,31 @@ pub fn write_findability_report_path(
 
 fn artifact_observations(
     artifact: &FindabilityRoundArtifact,
-) -> EvidenceResult<Vec<chaoscontrol_sim_core::findability::AssembledObservation>> {
+) -> crate::EvidenceResult<Vec<chaoscontrol_sim_core::findability::AssembledObservation>> {
     let subtrees = artifact
         .subtrees
         .iter()
-        .map(|subtree| SubtreeObservation {
-            generation_id: artifact.generation_id.clone(),
-            subtree_id: subtree.subtree_id.clone(),
-            independence_group: subtree.independence_group.clone(),
-            observed_time: subtree.observed_time,
-            source_blake3: artifact.artifact_blake3.clone(),
-            bugs: subtree.bugs.clone(),
-        })
+        .map(
+            |subtree| ::chaoscontrol_sim_core::findability::SubtreeObservation {
+                generation_id: artifact.generation_id.clone(),
+                subtree_id: subtree.subtree_id.clone(),
+                independence_group: subtree.independence_group.clone(),
+                observed_time: subtree.observed_time,
+                source_blake3: artifact.artifact_blake3.clone(),
+                bugs: subtree.bugs.clone(),
+            },
+        )
         .collect::<Vec<_>>();
-    assemble_observations(&subtrees).map_err(|error| EvidenceError::new(error.to_string()))
+    ::chaoscontrol_sim_core::findability::assemble_observations(&subtrees)
+        .map_err(|error| crate::EvidenceError::new(error.to_string()))
 }
 
-fn artifact_identity(artifact: &FindabilityRoundArtifact) -> EvidenceResult<String> {
+fn artifact_identity(artifact: &FindabilityRoundArtifact) -> crate::EvidenceResult<String> {
     #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         generation_id: &'a str,
-        policy: &'a FindabilityPolicy,
+        policy: &'a ::chaoscontrol_sim_core::findability::FindabilityPolicy,
         subtrees: &'a [RoundSubtree],
     }
     let material = Material {
@@ -174,16 +178,16 @@ fn artifact_identity(artifact: &FindabilityRoundArtifact) -> EvidenceResult<Stri
     let mut hasher = blake3::Hasher::new();
     hasher.update(ARTIFACT_IDENTITY_DOMAIN);
     let length = u64::try_from(bytes.len())
-        .map_err(|_| EvidenceError::new("findability artifact length exceeds u64"))?;
+        .map_err(|_| crate::EvidenceError::new("findability artifact length exceeds u64"))?;
     hasher.update(&length.to_le_bytes());
     hasher.update(&bytes);
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
-fn require(condition: bool, message: &'static str) -> EvidenceResult<()> {
+fn require(condition: bool, message: &'static str) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message))
+        Err(crate::EvidenceError::new(message))
     }
 }

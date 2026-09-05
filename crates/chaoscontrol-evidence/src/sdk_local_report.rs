@@ -1,7 +1,3 @@
-use serde_json::{Map, Value};
-
-use crate::{EvidenceError, EvidenceResult};
-
 pub const DEFAULT_SDK_LOCAL_EVIDENCE_CLASS: &str = "instrumentation-dry-run";
 const MAX_SETUP_DETAIL_FIELDS: usize = 64;
 const MAX_SETUP_DETAIL_KEY_BYTES: usize = 128;
@@ -16,7 +12,7 @@ struct SetupEnvelope {
 #[serde(deny_unknown_fields)]
 struct SetupRecord {
     status: String,
-    details: Map<String, Value>,
+    details: ::serde_json::Map<String, ::serde_json::Value>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -38,7 +34,7 @@ struct AssertionSite {
 pub fn summarize_sdk_local_report(
     input_path: impl AsRef<std::path::Path>,
     evidence_class: &str,
-) -> EvidenceResult<Value> {
+) -> crate::EvidenceResult<::serde_json::Value> {
     let input_path = input_path.as_ref();
     let text = crate::bounded_file::read_bounded_regular_file(
         input_path,
@@ -51,7 +47,7 @@ pub fn summarize_sdk_local_jsonl(
     content: &str,
     evidence_class: &str,
     input_path: Option<&std::path::Path>,
-) -> EvidenceResult<Value> {
+) -> crate::EvidenceResult<::serde_json::Value> {
     let identity = crate::sdk_local_identity::validate_local_identity_stream(content)?;
     let mut lifecycle: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut catalog: std::collections::BTreeMap<String, AssertionSite> = identity
@@ -96,11 +92,11 @@ pub fn summarize_sdk_local_jsonl(
         if line.is_empty() {
             continue;
         }
-        let value: Value = serde_json::from_str(line).map_err(|err| {
+        let value: ::serde_json::Value = serde_json::from_str(line).map_err(|err| {
             let location = input_path
                 .map(|path| path.display().to_string())
                 .unwrap_or_else(|| "<jsonl>".to_string());
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "invalid JSONL at {location}:{}: {err}",
                 line_idx + 1
             ))
@@ -111,7 +107,7 @@ pub fn summarize_sdk_local_jsonl(
 
         if let Some(assertion) = object.get("antithesis_assert") {
             let assertion = assertion.as_object().ok_or_else(|| {
-                EvidenceError::new(format!(
+                crate::EvidenceError::new(format!(
                     "antithesis_assert at line {} must be an object",
                     line_idx + 1
                 ))
@@ -121,7 +117,9 @@ pub fn summarize_sdk_local_jsonl(
             let assertion_id = resolved
                 .map(|identity| identity.key.clone())
                 .unwrap_or_else(|| format!("legacy:{compatibility_id}"));
-            let details = assertion.get("details").and_then(Value::as_object);
+            let details = assertion
+                .get("details")
+                .and_then(::serde_json::Value::as_object);
             let track = details.and_then(details_track);
             if let Some(track) = &track {
                 *adoption_tracks.entry(track.clone()).or_default() += 1;
@@ -164,7 +162,7 @@ pub fn summarize_sdk_local_jsonl(
             }
             if !assertion
                 .get("hit")
-                .and_then(Value::as_bool)
+                .and_then(::serde_json::Value::as_bool)
                 .unwrap_or(false)
             {
                 continue;
@@ -174,7 +172,7 @@ pub fn summarize_sdk_local_jsonl(
             site.observed_hits += 1;
             let condition = assertion
                 .get("condition")
-                .and_then(Value::as_bool)
+                .and_then(::serde_json::Value::as_bool)
                 .unwrap_or(false);
             if condition {
                 site.success_count += 1;
@@ -192,19 +190,19 @@ pub fn summarize_sdk_local_jsonl(
 
         if object.contains_key("antithesis_setup") {
             let setup: SetupEnvelope = serde_json::from_str(line).map_err(|error| {
-                EvidenceError::new(format!(
+                crate::EvidenceError::new(format!(
                     "invalid setup record at line {}: {error}",
                     line_idx + 1
                 ))
             })?;
             if setup.antithesis_setup.status != "complete" {
-                return Err(EvidenceError::new(format!(
+                return Err(crate::EvidenceError::new(format!(
                     "setup status is not complete at line {}",
                     line_idx + 1
                 )));
             }
             if setup_complete {
-                return Err(EvidenceError::new(format!(
+                return Err(crate::EvidenceError::new(format!(
                     "duplicate setup record at line {}",
                     line_idx + 1
                 )));
@@ -216,7 +214,7 @@ pub fn summarize_sdk_local_jsonl(
                     .keys()
                     .any(|key| key.is_empty() || key.len() > MAX_SETUP_DETAIL_KEY_BYTES)
             {
-                return Err(EvidenceError::new(format!(
+                return Err(crate::EvidenceError::new(format!(
                     "setup details exceed metadata bounds at line {}",
                     line_idx + 1
                 )));
@@ -304,18 +302,18 @@ pub fn summarize_sdk_local_jsonl(
         .map(assertion_site_value)
         .collect::<Vec<_>>();
 
-    let mut report = Map::new();
+    let mut report = ::serde_json::Map::new();
     report.insert(
         "adoption_tracks".to_string(),
         count_map_value(&adoption_tracks),
     );
     report.insert(
         "assertion_coverage".to_string(),
-        Value::Array(assertion_coverage),
+        ::serde_json::Value::Array(assertion_coverage),
     );
     report.insert(
         "cataloged_assertions".to_string(),
-        Value::from(catalog.len() as u64),
+        ::serde_json::Value::from(catalog.len() as u64),
     );
     let report_catalog_status = if identity.legacy_ambiguous {
         chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
@@ -324,11 +322,11 @@ pub fn summarize_sdk_local_jsonl(
     };
     report.insert(
         "catalog_status".to_string(),
-        Value::String(catalog_status_string(report_catalog_status).to_string()),
+        ::serde_json::Value::String(catalog_status_string(report_catalog_status).to_string()),
     );
     report.insert(
         "collision_safe_evidence".to_string(),
-        Value::Bool(
+        ::serde_json::Value::Bool(
             identity.catalog_status
                 == chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
                 && !identity.legacy_ambiguous,
@@ -336,13 +334,16 @@ pub fn summarize_sdk_local_jsonl(
     );
     report.insert(
         "evidence_class".to_string(),
-        Value::String(evidence_class.to_string()),
+        ::serde_json::Value::String(evidence_class.to_string()),
     );
     report.insert(
         "exercised_assertions".to_string(),
-        Value::from(exercised.len() as u64),
+        ::serde_json::Value::from(exercised.len() as u64),
     );
-    report.insert("failed_assertions".to_string(), Value::from(failed));
+    report.insert(
+        "failed_assertions".to_string(),
+        ::serde_json::Value::from(failed),
+    );
     report.insert("gaps".to_string(), string_array(gaps));
     report.insert(
         "instrumentation_sources".to_string(),
@@ -351,11 +352,11 @@ pub fn summarize_sdk_local_jsonl(
     report.insert("lifecycle_events".to_string(), count_map_value(&lifecycle));
     report.insert(
         "observed_assertions".to_string(),
-        Value::from(exercised.len() as u64),
+        ::serde_json::Value::from(exercised.len() as u64),
     );
     report.insert(
         "random_choice_calls".to_string(),
-        Value::from(random_choice_calls),
+        ::serde_json::Value::from(random_choice_calls),
     );
     report.insert(
         "reachable_without_hit".to_string(),
@@ -363,35 +364,41 @@ pub fn summarize_sdk_local_jsonl(
     );
     report.insert(
         "registered_assertions".to_string(),
-        Value::from(catalog.len() as u64),
+        ::serde_json::Value::from(catalog.len() as u64),
     );
     report.insert(
         "replay_boundary".to_string(),
-        Value::String(crate::sdk_local_quality::LOCAL_REPLAY_BOUNDARY.to_string()),
+        ::serde_json::Value::String(crate::sdk_local_quality::LOCAL_REPLAY_BOUNDARY.to_string()),
     );
-    report.insert("replay_evidence".to_string(), Value::Bool(false));
+    report.insert(
+        "replay_evidence".to_string(),
+        ::serde_json::Value::Bool(false),
+    );
     report.insert(
         "schema".to_string(),
-        Value::String(crate::sdk_local_quality::LOCAL_REPORT_SCHEMA.to_string()),
+        ::serde_json::Value::String(crate::sdk_local_quality::LOCAL_REPORT_SCHEMA.to_string()),
     );
-    report.insert("setup_complete".to_string(), Value::Bool(setup_complete));
+    report.insert(
+        "setup_complete".to_string(),
+        ::serde_json::Value::Bool(setup_complete),
+    );
     report.insert(
         "sometimes_without_success".to_string(),
         string_array(sometimes_without_success),
     );
     report.insert(
         "uncategorized_assertions".to_string(),
-        Value::from(uncategorized),
+        ::serde_json::Value::from(uncategorized),
     );
     report.insert(
         "unobserved_assertion_count".to_string(),
-        Value::from(unobserved_assertions.len() as u64),
+        ::serde_json::Value::from(unobserved_assertions.len() as u64),
     );
     report.insert(
         "unobserved_assertions".to_string(),
         string_array(unobserved_assertions),
     );
-    let report = Value::Object(report);
+    let report = ::serde_json::Value::Object(report);
     crate::sdk_local_quality::validate_quality_report(&report)?;
     Ok(report)
 }
@@ -400,7 +407,7 @@ pub fn write_sdk_local_report(
     input_path: impl AsRef<std::path::Path>,
     output_path: impl AsRef<std::path::Path>,
     evidence_class: &str,
-) -> EvidenceResult<Value> {
+) -> crate::EvidenceResult<::serde_json::Value> {
     let report = summarize_sdk_local_report(input_path, evidence_class)?;
     let output_path = output_path.as_ref();
     if let Some(parent) = output_path.parent() {
@@ -437,28 +444,36 @@ impl AssertionQualityGate {
         }
     }
 
-    pub fn to_json(&self) -> Value {
-        let mut value = Map::new();
+    pub fn to_json(&self) -> ::serde_json::Value {
+        let mut value = ::serde_json::Map::new();
         value.insert(
             "schema".to_string(),
-            Value::String("chaoscontrol.sdk.assertion_quality_gate.v1".to_string()),
+            ::serde_json::Value::String("chaoscontrol.sdk.assertion_quality_gate.v1".to_string()),
         );
-        value.insert("passed".to_string(), Value::Bool(self.passed));
-        value.insert("summary".to_string(), Value::String(self.summary.clone()));
+        value.insert("passed".to_string(), ::serde_json::Value::Bool(self.passed));
+        value.insert(
+            "summary".to_string(),
+            ::serde_json::Value::String(self.summary.clone()),
+        );
         value.insert("blockers".to_string(), string_array(self.blockers.clone()));
-        value.insert("replay_evidence".to_string(), Value::Bool(false));
+        value.insert(
+            "replay_evidence".to_string(),
+            ::serde_json::Value::Bool(false),
+        );
         value.insert(
             "replay_boundary".to_string(),
-            Value::String(
+            ::serde_json::Value::String(
                 "assertion quality is local instrumentation evidence only; accepted replay still requires snapshot-backed verdict artifacts"
                     .to_string(),
             ),
         );
-        Value::Object(value)
+        ::serde_json::Value::Object(value)
     }
 }
 
-pub fn check_sdk_assertion_quality_report(report: &Value) -> EvidenceResult<AssertionQualityGate> {
+pub fn check_sdk_assertion_quality_report(
+    report: &::serde_json::Value,
+) -> crate::EvidenceResult<AssertionQualityGate> {
     let facts = crate::sdk_local_quality::validate_quality_report(report)?;
     let mut blockers = Vec::new();
     if !facts.collision_safe {
@@ -511,20 +526,20 @@ pub fn check_sdk_assertion_quality_report(report: &Value) -> EvidenceResult<Asse
 
 pub fn check_sdk_assertion_quality_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<AssertionQualityGate> {
+) -> crate::EvidenceResult<AssertionQualityGate> {
     let path = path.as_ref();
     let text = crate::bounded_file::read_bounded_regular_file(
         path,
         crate::sdk_local_identity::MAX_SDK_JSONL_BYTES,
     )?;
     crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
-    let report: Value = serde_json::from_str(&text).map_err(|err| {
-        EvidenceError::new(format!("{}: invalid JSON report: {err}", path.display()))
+    let report: ::serde_json::Value = serde_json::from_str(&text).map_err(|err| {
+        crate::EvidenceError::new(format!("{}: invalid JSON report: {err}", path.display()))
     })?;
     check_sdk_assertion_quality_report(&report)
 }
 
-pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
+pub fn check_sdk_assertion_quality_fixtures() -> crate::EvidenceResult<String> {
     let weak = summarize_sdk_local_jsonl(
         "{\"antithesis_assert\":{\"assert_type\":\"sometimes\",\"condition\":false,\"hit\":false,\"must_hit\":true,\"id\":\"1\",\"message\":\"write succeeds\",\"display_type\":\"sometimes\",\"details\":{\"category\":\"uncategorized\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"reachability\",\"condition\":false,\"hit\":false,\"must_hit\":true,\"id\":\"2\",\"message\":\"read branch\",\"display_type\":\"reachability\",\"details\":{\"category\":\"branch\"}}}\n",
         DEFAULT_SDK_LOCAL_EVIDENCE_CLASS,
@@ -532,7 +547,7 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
     )?;
     let weak_gate = check_sdk_assertion_quality_report(&weak)?;
     if weak_gate.passed || weak_gate.blockers.len() < 4 {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "weak fixture should fail with multiple blockers, got {:?}",
             weak_gate
         )));
@@ -550,7 +565,7 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
             .iter()
             .any(|blocker| blocker.contains("not collision-safe"))
     {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "legacy credible fixture must remain diagnostic, got {:?}",
             legacy_gate
         )));
@@ -562,9 +577,9 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
     )?;
     let credible_gate = check_sdk_assertion_quality_report(&credible)?;
     if !credible_gate.passed
-        || credible_gate.to_json().get("replay_evidence") != Some(&Value::Bool(false))
+        || credible_gate.to_json().get("replay_evidence") != Some(&::serde_json::Value::Bool(false))
     {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "credible fixture should pass without replay evidence, got {:?}",
             credible_gate
         )));
@@ -572,7 +587,7 @@ pub fn check_sdk_assertion_quality_fixtures() -> EvidenceResult<String> {
     Ok("sdk-assertion-quality: ok".to_string())
 }
 
-fn strict_quality_fixture_jsonl() -> EvidenceResult<String> {
+fn strict_quality_fixture_jsonl() -> crate::EvidenceResult<String> {
     use chaoscontrol_protocol::admission::{token_for_descriptors, ASSERTION_CATALOG_VERSION};
     use chaoscontrol_protocol::identity::{
         AssertionDescriptor, AssertionKind, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
@@ -595,12 +610,12 @@ fn strict_quality_fixture_jsonl() -> EvidenceResult<String> {
     };
     let fingerprint = descriptor
         .fingerprint()
-        .map_err(|error| EvidenceError::new(format!("fixture fingerprint: {error}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("fixture fingerprint: {error}")))?;
     let canonical = descriptor
         .canonical_bytes()
-        .map_err(|error| EvidenceError::new(format!("fixture descriptor: {error}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("fixture descriptor: {error}")))?;
     let token = token_for_descriptors(std::slice::from_ref(&descriptor))
-        .map_err(|error| EvidenceError::new(format!("fixture catalog: {error:?}")))?;
+        .map_err(|error| crate::EvidenceError::new(format!("fixture catalog: {error:?}")))?;
     let lines = [
         serde_json::json!({"chaoscontrol_assertion_catalog": {
             "record": "begin", "catalog_version": ASSERTION_CATALOG_VERSION,
@@ -637,7 +652,7 @@ fn encode_bytes_hex(bytes: &[u8]) -> String {
     chaoscontrol_protocol::identity::encode_lower_hex(bytes)
 }
 
-pub fn check_sdk_local_report_tracks() -> EvidenceResult<String> {
+pub fn check_sdk_local_report_tracks() -> crate::EvidenceResult<String> {
     let harness = "{\"antithesis_setup\":{\"status\":\"complete\",\"details\":{\"adoption_track\":\"external-harness\"}}}\n{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"must_hit\":false,\"id\":\"1\",\"message\":\"driver invariant\",\"display_type\":\"always\",\"details\":{\"category\":\"driver\",\"adoption_track\":\"external-harness\"}}}\n";
     let in_process = "{\"antithesis_assert\":{\"assert_type\":\"always\",\"condition\":true,\"hit\":true,\"must_hit\":false,\"id\":\"2\",\"message\":\"internal invariant\",\"display_type\":\"always\",\"details\":{\"category\":\"service-invariant\",\"instrumentation_source\":\"in-process-service\"}}}\n";
     assert_tracks("harness-only", harness, &[("external-harness", 2)])?;
@@ -650,7 +665,7 @@ pub fn check_sdk_local_report_tracks() -> EvidenceResult<String> {
     Ok("sdk-local-report-tracks: ok".to_string())
 }
 
-fn assert_tracks(name: &str, content: &str, expected: &[(&str, u64)]) -> EvidenceResult<()> {
+fn assert_tracks(name: &str, content: &str, expected: &[(&str, u64)]) -> crate::EvidenceResult<()> {
     let report = summarize_sdk_local_jsonl(content, DEFAULT_SDK_LOCAL_EVIDENCE_CLASS, None)?;
     let expected = expected
         .iter()
@@ -658,40 +673,40 @@ fn assert_tracks(name: &str, content: &str, expected: &[(&str, u64)]) -> Evidenc
         .collect::<std::collections::BTreeMap<_, _>>();
     let actual = count_object(report.get("adoption_tracks"));
     if actual != expected {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "{name}: expected {expected:?}, got {actual:?}"
         )));
     }
     let sources = count_object(report.get("instrumentation_sources"));
     if sources != expected {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "{name}: instrumentation_sources drifted"
         )));
     }
-    if report.get("replay_evidence") != Some(&Value::Bool(false)) {
-        return Err(EvidenceError::new(format!(
+    if report.get("replay_evidence") != Some(&::serde_json::Value::Bool(false)) {
+        return Err(crate::EvidenceError::new(format!(
             "{name}: local report claimed replay evidence"
         )));
     }
     Ok(())
 }
 
-fn details_track(details: &Map<String, Value>) -> Option<String> {
+fn details_track(details: &::serde_json::Map<String, ::serde_json::Value>) -> Option<String> {
     details
         .get("adoption_track")
         .or_else(|| details.get("instrumentation_source"))
         .map(|value| value_to_string(Some(value), ""))
 }
 
-fn value_to_string(value: Option<&Value>, default: &str) -> String {
+fn value_to_string(value: Option<&::serde_json::Value>, default: &str) -> String {
     match value {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Null) | None => default.to_string(),
+        Some(::serde_json::Value::String(text)) => text.clone(),
+        Some(::serde_json::Value::Null) | None => default.to_string(),
         Some(value) => value.to_string(),
     }
 }
 
-fn assertion_site_value(site: &AssertionSite) -> Value {
+fn assertion_site_value(site: &AssertionSite) -> ::serde_json::Value {
     serde_json::to_value(site).expect("assertion site contains JSON-safe fields")
 }
 
@@ -711,17 +726,17 @@ fn catalog_status_string(
     }
 }
 
-fn count_map_value(values: &std::collections::BTreeMap<String, u64>) -> Value {
-    let mut object = Map::new();
+fn count_map_value(values: &std::collections::BTreeMap<String, u64>) -> ::serde_json::Value {
+    let mut object = ::serde_json::Map::new();
     for (key, value) in values {
-        object.insert(key.clone(), Value::from(*value));
+        object.insert(key.clone(), ::serde_json::Value::from(*value));
     }
-    Value::Object(object)
+    ::serde_json::Value::Object(object)
 }
 
-fn count_object(value: Option<&Value>) -> std::collections::BTreeMap<String, u64> {
+fn count_object(value: Option<&::serde_json::Value>) -> std::collections::BTreeMap<String, u64> {
     value
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .map(|object| {
             object
                 .iter()
@@ -731,6 +746,11 @@ fn count_object(value: Option<&Value>) -> std::collections::BTreeMap<String, u64
         .unwrap_or_default()
 }
 
-fn string_array(values: Vec<String>) -> Value {
-    Value::Array(values.into_iter().map(Value::String).collect())
+fn string_array(values: Vec<String>) -> ::serde_json::Value {
+    ::serde_json::Value::Array(
+        values
+            .into_iter()
+            .map(::serde_json::Value::String)
+            .collect(),
+    )
 }

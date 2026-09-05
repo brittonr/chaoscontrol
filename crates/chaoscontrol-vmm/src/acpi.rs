@@ -11,7 +11,7 @@
 //! The tables are placed in guest memory below 1 MB so the kernel's
 //! early ACPI scanner can find them.
 
-use vm_memory::{Bytes, GuestAddress, GuestMemoryMmap};
+use vm_memory::Bytes;
 
 /// Base address for ACPI tables in guest memory.
 ///
@@ -66,7 +66,7 @@ pub enum AcpiError {
 /// Returns the address of the RSDP, which should be referenced by the
 /// EBDA pointer at 0x40E.
 pub fn write_acpi_tables(
-    guest_memory: &GuestMemoryMmap,
+    guest_memory: &::vm_memory::GuestMemoryMmap,
     num_cpus: usize,
 ) -> Result<u64, AcpiError> {
     if num_cpus > 128 {
@@ -80,19 +80,19 @@ pub fn write_acpi_tables(
     // ── Build MADT ──────────────────────────────────────────────────
     let madt = build_madt(num_cpus, madt_addr as u32);
     guest_memory
-        .write_slice(&madt, GuestAddress(madt_addr))
+        .write_slice(&madt, ::vm_memory::GuestAddress(madt_addr))
         .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Build RSDT ──────────────────────────────────────────────────
     let rsdt = build_rsdt(madt_addr as u32);
     guest_memory
-        .write_slice(&rsdt, GuestAddress(rsdt_addr))
+        .write_slice(&rsdt, ::vm_memory::GuestAddress(rsdt_addr))
         .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Build RSDP ──────────────────────────────────────────────────
     let rsdp = build_rsdp(rsdt_addr as u32);
     guest_memory
-        .write_slice(&rsdp, GuestAddress(rsdp_addr))
+        .write_slice(&rsdp, ::vm_memory::GuestAddress(rsdp_addr))
         .map_err(|_| WriteMemorySnafu.build())?;
 
     // ── Set EBDA pointer ────────────────────────────────────────────
@@ -101,7 +101,7 @@ pub fn write_acpi_tables(
     // We point it to a 1KB region starting at ACPI_TABLE_BASE.
     let ebda_segment = (ACPI_TABLE_BASE >> 4) as u16;
     guest_memory
-        .write_obj(ebda_segment, GuestAddress(0x40E))
+        .write_obj(ebda_segment, ::vm_memory::GuestAddress(0x40E))
         .map_err(|_| WriteMemorySnafu.build())?;
 
     log::info!(

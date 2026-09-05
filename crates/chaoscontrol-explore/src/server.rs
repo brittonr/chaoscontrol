@@ -2,18 +2,7 @@
 //!
 //! Only compiled when the `dashboard` feature is enabled.
 
-use crate::dashboard_types::{DashboardEvent, DashboardState};
-use axum::extract::State;
-use axum::http::{header, StatusCode};
-use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{Html, IntoResponse};
-use axum::routing::get;
-use axum::Router;
-use log::{info, warn};
-use std::convert::Infallible;
-use std::sync::mpsc::{Receiver, SyncSender};
-
-use tokio::sync::broadcast;
+use axum::response::IntoResponse;
 
 const INDEX_HTML: &str = include_str!("../assets/index.html");
 const CHART_JS: &str = include_str!("../assets/chart.umd.min.js");
@@ -21,8 +10,8 @@ const ANNOTATION_JS: &str = include_str!("../assets/chartjs-plugin-annotation.mi
 
 /// Shared state between the axum handlers and the event receiver.
 struct AppState {
-    state: std::sync::RwLock<DashboardState>,
-    tx: broadcast::Sender<DashboardEvent>,
+    state: std::sync::RwLock<crate::dashboard_types::DashboardState>,
+    tx: ::tokio::sync::broadcast::Sender<crate::dashboard_types::DashboardEvent>,
 }
 
 /// Default dashboard bind address: loopback only.
@@ -44,12 +33,17 @@ fn parse_dashboard_host(host: &str) -> Option<std::net::IpAddr> {
 /// Spawns a background thread running a tokio runtime with the HTTP
 /// server. Returns a `SyncSender` that the explorer uses to push
 /// events, or `None` if the host is invalid or the server failed to bind.
-pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
-    let (event_tx, event_rx) = std::sync::mpsc::sync_channel::<DashboardEvent>(64);
-    let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(256);
+pub fn start(
+    host: &str,
+    port: u16,
+) -> Option<::std::sync::mpsc::SyncSender<crate::dashboard_types::DashboardEvent>> {
+    let (event_tx, event_rx) =
+        std::sync::mpsc::sync_channel::<crate::dashboard_types::DashboardEvent>(64);
+    let (broadcast_tx, _) =
+        ::tokio::sync::broadcast::channel::<crate::dashboard_types::DashboardEvent>(256);
 
     let app_state = std::sync::Arc::new(AppState {
-        state: std::sync::RwLock::new(DashboardState::empty()),
+        state: std::sync::RwLock::new(crate::dashboard_types::DashboardState::empty()),
         tx: broadcast_tx.clone(),
     });
 
@@ -58,7 +52,7 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
     let ip = match parse_dashboard_host(host) {
         Some(ip) => ip,
         None => {
-            warn!(
+            ::log::warn!(
                 "Dashboard: invalid host '{}' (expected an IP address)",
                 host
             );
@@ -72,7 +66,7 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
             l
         }
         Err(e) => {
-            warn!("Dashboard: failed to bind {}: {}", addr, e);
+            ::log::warn!("Dashboard: failed to bind {}: {}", addr, e);
             return None;
         }
     };
@@ -97,7 +91,7 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
             let tokio_listener =
                 tokio::net::TcpListener::from_std(listener).expect("tokio listener from std");
 
-            info!("Dashboard server listening on http://{}", addr);
+            ::log::info!("Dashboard server listening on http://{}", addr);
 
             axum::serve(tokio_listener, app)
                 .await
@@ -109,10 +103,15 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
 }
 
 /// Start in standalone mode — blocks the calling thread.
-pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<(), String> {
+pub fn start_standalone(
+    state: crate::dashboard_types::DashboardState,
+    host: &str,
+    port: u16,
+) -> Result<(), String> {
     let ip = parse_dashboard_host(host)
         .ok_or_else(|| format!("invalid host '{}' (expected an IP address)", host))?;
-    let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(16);
+    let (broadcast_tx, _) =
+        ::tokio::sync::broadcast::channel::<crate::dashboard_types::DashboardEvent>(16);
     let app_state = std::sync::Arc::new(AppState {
         state: std::sync::RwLock::new(state),
         tx: broadcast_tx,
@@ -131,7 +130,7 @@ pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<
             .await
             .map_err(|e| format!("bind {}: {}", addr, e))?;
 
-        info!("Dashboard server listening on http://{}", addr);
+        ::log::info!("Dashboard server listening on http://{}", addr);
         eprintln!("Dashboard: http://{}", addr);
 
         axum::serve(listener, app)
@@ -140,54 +139,61 @@ pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<
     })
 }
 
-fn build_router(state: std::sync::Arc<AppState>) -> Router {
-    Router::new()
-        .route("/", get(index_handler))
-        .route("/assets/chart.umd.min.js", get(chart_js_handler))
+fn build_router(state: std::sync::Arc<AppState>) -> ::axum::Router {
+    ::axum::Router::new()
+        .route("/", ::axum::routing::get(index_handler))
+        .route(
+            "/assets/chart.umd.min.js",
+            ::axum::routing::get(chart_js_handler),
+        )
         .route(
             "/assets/chartjs-plugin-annotation.min.js",
-            get(annotation_js_handler),
+            ::axum::routing::get(annotation_js_handler),
         )
-        .route("/api/state", get(state_handler))
-        .route("/api/events", get(sse_handler))
-        .route("/api/bugs", get(bugs_handler))
-        .route("/api/bugs/{id}", get(bug_detail_handler))
+        .route("/api/state", ::axum::routing::get(state_handler))
+        .route("/api/events", ::axum::routing::get(sse_handler))
+        .route("/api/bugs", ::axum::routing::get(bugs_handler))
+        .route("/api/bugs/{id}", ::axum::routing::get(bug_detail_handler))
         .with_state(state)
 }
 
-async fn index_handler() -> Html<&'static str> {
-    Html(INDEX_HTML)
+async fn index_handler() -> ::axum::response::Html<&'static str> {
+    ::axum::response::Html(INDEX_HTML)
 }
 
 async fn chart_js_handler() -> impl IntoResponse {
     (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/javascript")],
+        ::axum::http::StatusCode::OK,
+        [(::axum::http::header::CONTENT_TYPE, "application/javascript")],
         CHART_JS,
     )
 }
 
 async fn annotation_js_handler() -> impl IntoResponse {
     (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/javascript")],
+        ::axum::http::StatusCode::OK,
+        [(::axum::http::header::CONTENT_TYPE, "application/javascript")],
         ANNOTATION_JS,
     )
 }
 
-async fn state_handler(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
+async fn state_handler(
+    ::axum::extract::State(state): ::axum::extract::State<std::sync::Arc<AppState>>,
+) -> impl IntoResponse {
     let data = state.state.read().unwrap();
     let json = serde_json::to_string(&*data).unwrap_or_else(|_| "{}".to_string());
     (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/json")],
+        ::axum::http::StatusCode::OK,
+        [(::axum::http::header::CONTENT_TYPE, "application/json")],
         json,
     )
 }
 
 async fn sse_handler(
-    State(state): State<std::sync::Arc<AppState>>,
-) -> Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>> {
+    ::axum::extract::State(state): ::axum::extract::State<std::sync::Arc<AppState>>,
+) -> ::axum::response::sse::Sse<
+    impl futures_core::Stream<Item = Result<::axum::response::sse::Event, ::std::convert::Infallible>>,
+> {
     let rx = state.tx.subscribe();
 
     let stream = async_stream::stream! {
@@ -197,71 +203,73 @@ async fn sse_handler(
                 Ok(event) => {
                     if let Ok(json) = serde_json::to_string(&event) {
                         let event_type = match &event {
-                            DashboardEvent::Started { .. } => "started",
-                            DashboardEvent::RoundComplete { .. } => "round",
-                            DashboardEvent::BugFound { .. } => "bug",
-                            DashboardEvent::Finished { .. } => "finished",
-                            DashboardEvent::CampaignStarted { .. } => "campaign_started",
-                            DashboardEvent::SeedComplete { .. } => "seed_complete",
-                            DashboardEvent::CampaignFinished { .. } => "campaign_finished",
+                            crate::dashboard_types::DashboardEvent::Started { .. } => "started",
+                            crate::dashboard_types::DashboardEvent::RoundComplete { .. } => "round",
+                            crate::dashboard_types::DashboardEvent::BugFound { .. } => "bug",
+                            crate::dashboard_types::DashboardEvent::Finished { .. } => "finished",
+                            crate::dashboard_types::DashboardEvent::CampaignStarted { .. } => "campaign_started",
+                            crate::dashboard_types::DashboardEvent::SeedComplete { .. } => "seed_complete",
+                            crate::dashboard_types::DashboardEvent::CampaignFinished { .. } => "campaign_finished",
                         };
-                        yield Ok(Event::default().event(event_type).data(json));
+                        yield Ok(::axum::response::sse::Event::default().event(event_type).data(json));
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
+                Err(::tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     log::debug!("SSE client lagged {} events", n);
                     continue;
                 }
-                Err(broadcast::error::RecvError::Closed) => break,
+                Err(::tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
         }
     };
 
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    ::axum::response::sse::Sse::new(stream).keep_alive(::axum::response::sse::KeepAlive::default())
 }
 
-async fn bugs_handler(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
+async fn bugs_handler(
+    ::axum::extract::State(state): ::axum::extract::State<std::sync::Arc<AppState>>,
+) -> impl IntoResponse {
     let data = state.state.read().unwrap();
     let json = serde_json::to_string(&data.bugs).unwrap_or_else(|_| "[]".to_string());
     (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "application/json")],
+        ::axum::http::StatusCode::OK,
+        [(::axum::http::header::CONTENT_TYPE, "application/json")],
         json,
     )
 }
 
 async fn bug_detail_handler(
-    State(state): State<std::sync::Arc<AppState>>,
+    ::axum::extract::State(state): ::axum::extract::State<std::sync::Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<usize>,
 ) -> impl IntoResponse {
     let data = state.state.read().unwrap();
     if let Some(bug) = data.bugs.get(id) {
         let json = serde_json::to_string(bug).unwrap_or_else(|_| "{}".to_string());
         (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "application/json")],
+            ::axum::http::StatusCode::OK,
+            [(::axum::http::header::CONTENT_TYPE, "application/json")],
             json,
         )
     } else {
         (
-            StatusCode::NOT_FOUND,
-            [(header::CONTENT_TYPE, "application/json")],
+            ::axum::http::StatusCode::NOT_FOUND,
+            [(::axum::http::header::CONTENT_TYPE, "application/json")],
             r#"{"error":"bug not found"}"#.to_string(),
         )
     }
 }
 
 async fn event_receiver_loop(
-    rx: Receiver<DashboardEvent>,
+    rx: ::std::sync::mpsc::Receiver<crate::dashboard_types::DashboardEvent>,
     state: std::sync::Arc<AppState>,
-    broadcast_tx: broadcast::Sender<DashboardEvent>,
+    broadcast_tx: ::tokio::sync::broadcast::Sender<crate::dashboard_types::DashboardEvent>,
 ) {
     tokio::task::spawn_blocking(move || {
         while let Ok(event) = rx.recv() {
             {
                 let mut data = state.state.write().unwrap();
                 match &event {
-                    DashboardEvent::Started {
+                    crate::dashboard_types::DashboardEvent::Started {
                         num_vms,
                         seed,
                         branch_factor,
@@ -284,7 +292,7 @@ async fn event_receiver_loop(
                         };
                         data.assertion_stats.catalog_size = *catalog_size;
                     }
-                    DashboardEvent::RoundComplete {
+                    crate::dashboard_types::DashboardEvent::RoundComplete {
                         round,
                         branches_run,
                         new_edges,
@@ -309,7 +317,7 @@ async fn event_receiver_loop(
                         );
                         data.total_branches += *branches_run as u64;
                     }
-                    DashboardEvent::BugFound {
+                    crate::dashboard_types::DashboardEvent::BugFound {
                         bug_index,
                         assertion_id,
                         assertion_message,
@@ -327,21 +335,24 @@ async fn event_receiver_loop(
                             schedule_length: *schedule_length,
                         });
                     }
-                    DashboardEvent::Finished { ref reason, .. } => {
+                    crate::dashboard_types::DashboardEvent::Finished { ref reason, .. } => {
                         data.running = false;
                         data.finish_reason = reason.clone();
                     }
-                    DashboardEvent::CampaignStarted { seeds, seeds_total } => {
+                    crate::dashboard_types::DashboardEvent::CampaignStarted {
+                        seeds,
+                        seeds_total,
+                    } => {
                         data.running = true;
                         data.mode = "campaign".to_string();
                         data.seeds_total = *seeds_total;
                         let _ = seeds; // seeds list available on /api/state
                     }
-                    DashboardEvent::SeedComplete { summary, .. } => {
+                    crate::dashboard_types::DashboardEvent::SeedComplete { summary, .. } => {
                         data.seeds_completed += 1;
                         data.seed_summaries.push(summary.clone());
                     }
-                    DashboardEvent::CampaignFinished { .. } => {
+                    crate::dashboard_types::DashboardEvent::CampaignFinished { .. } => {
                         data.running = false;
                         data.finish_reason = "campaign_complete".to_string();
                     }

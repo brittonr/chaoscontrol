@@ -17,8 +17,6 @@
 //! | [`check_bounds`]             | `DeterministicBlock::check_bounds()`       |
 //! | [`find_matching_fault`]      | `DeterministicBlock::find_fault()`         |
 
-use crate::devices::block::{BlockError, BlockFault};
-
 // ─── Bounds checking ────────────────────────────────────────────────
 
 /// Check whether a byte range `[offset, offset+len)` fits within a
@@ -40,10 +38,14 @@ use crate::devices::block::{BlockError, BlockFault};
 /// assert!(check_bounds(1024, 0, 512).is_ok());
 /// assert!(check_bounds(1024, 1020, 8).is_err());
 /// ```
-pub fn check_bounds(device_size: u64, offset: u64, len: u64) -> Result<(), BlockError> {
+pub fn check_bounds(
+    device_size: u64,
+    offset: u64,
+    len: u64,
+) -> Result<(), crate::devices::block::BlockError> {
     if offset.saturating_add(len) > device_size {
         use crate::devices::block::OutOfBoundsSnafu;
-        let result: Result<(), BlockError> = OutOfBoundsSnafu {
+        let result: Result<(), crate::devices::block::BlockError> = OutOfBoundsSnafu {
             offset,
             len,
             device_size,
@@ -53,7 +55,7 @@ pub fn check_bounds(device_size: u64, offset: u64, len: u64) -> Result<(), Block
         // Postcondition: error carries the correct parameters.
         debug_assert!(matches!(
             &result,
-            Err(BlockError::OutOfBounds {
+            Err(crate::devices::block::BlockError::OutOfBounds {
                 offset: o,
                 len: l,
                 device_size: d,
@@ -85,8 +87,8 @@ pub fn check_bounds(device_size: u64, offset: u64, len: u64) -> Result<(), Block
 /// - Returns `Some(i)` where `i < faults.len()` and `predicate(&faults[i])`.
 /// - No faults before index `i` match the predicate.
 pub fn find_matching_fault(
-    faults: &std::collections::VecDeque<BlockFault>,
-    predicate: impl Fn(&BlockFault) -> bool,
+    faults: &std::collections::VecDeque<crate::devices::block::BlockFault>,
+    predicate: impl Fn(&crate::devices::block::BlockFault) -> bool,
 ) -> Option<usize> {
     let result = faults.iter().position(&predicate);
 
@@ -114,7 +116,6 @@ pub fn find_matching_fault(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devices::block::{BlockError, BlockFault};
 
     // ── check_bounds ─────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ mod tests {
         let err = check_bounds(1024, 0, 1025).unwrap_err();
         assert!(matches!(
             err,
-            BlockError::OutOfBounds {
+            crate::devices::block::BlockError::OutOfBounds {
                 offset: 0,
                 len: 1025,
                 device_size: 1024
@@ -158,7 +159,10 @@ mod tests {
     #[test]
     fn bounds_err_offset_past_end() {
         let err = check_bounds(1024, 1024, 1).unwrap_err();
-        assert!(matches!(err, BlockError::OutOfBounds { .. }));
+        assert!(matches!(
+            err,
+            crate::devices::block::BlockError::OutOfBounds { .. }
+        ));
     }
 
     #[test]
@@ -166,7 +170,7 @@ mod tests {
         // offset + len would overflow u64, but saturating_add clamps to MAX.
         let err = check_bounds(1024, u64::MAX, 1).unwrap_err();
         assert!(
-            matches!(err, BlockError::OutOfBounds { .. }),
+            matches!(err, crate::devices::block::BlockError::OutOfBounds { .. }),
             "overflow case must be caught"
         );
     }
@@ -197,7 +201,7 @@ mod tests {
     fn bounds_err_carries_params() {
         let err = check_bounds(100, 90, 20).unwrap_err();
         match err {
-            BlockError::OutOfBounds {
+            crate::devices::block::BlockError::OutOfBounds {
                 offset,
                 len,
                 device_size,
@@ -222,7 +226,8 @@ mod tests {
 
     #[test]
     fn find_fault_empty_queue() {
-        let faults: std::collections::VecDeque<BlockFault> = std::collections::VecDeque::new();
+        let faults: std::collections::VecDeque<crate::devices::block::BlockFault> =
+            std::collections::VecDeque::new();
         assert!(
             find_matching_fault(&faults, |_| true).is_none(),
             "empty queue must return None"
@@ -232,12 +237,15 @@ mod tests {
     #[test]
     fn find_fault_no_match() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::ReadError { offset: 0 });
-        faults.push_back(BlockFault::WriteError { offset: 512 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::WriteError { offset: 512 });
 
         assert!(
             find_matching_fault(&faults, |f| {
-                matches!(f, BlockFault::ReadError { offset: 1024 })
+                matches!(
+                    f,
+                    crate::devices::block::BlockFault::ReadError { offset: 1024 }
+                )
             })
             .is_none(),
             "no matching fault must return None"
@@ -247,12 +255,15 @@ mod tests {
     #[test]
     fn find_fault_first_match() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::ReadError { offset: 0 });
-        faults.push_back(BlockFault::ReadError { offset: 512 });
-        faults.push_back(BlockFault::ReadError { offset: 1024 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 512 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 1024 });
 
         let idx = find_matching_fault(&faults, |f| {
-            matches!(f, BlockFault::ReadError { offset: 512 })
+            matches!(
+                f,
+                crate::devices::block::BlockFault::ReadError { offset: 512 }
+            )
         });
         assert_eq!(idx, Some(1), "must find the first matching fault");
     }
@@ -260,12 +271,15 @@ mod tests {
     #[test]
     fn find_fault_returns_earliest() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::ReadError { offset: 0 });
-        faults.push_back(BlockFault::ReadError { offset: 0 });
-        faults.push_back(BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
 
         let idx = find_matching_fault(&faults, |f| {
-            matches!(f, BlockFault::ReadError { offset: 0 })
+            matches!(
+                f,
+                crate::devices::block::BlockFault::ReadError { offset: 0 }
+            )
         });
         assert_eq!(idx, Some(0), "must return the earliest matching index");
     }
@@ -273,12 +287,15 @@ mod tests {
     #[test]
     fn find_fault_distinguishes_types() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::WriteError { offset: 0 });
-        faults.push_back(BlockFault::ReadError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::WriteError { offset: 0 });
+        faults.push_back(crate::devices::block::BlockFault::ReadError { offset: 0 });
 
         // Looking for ReadError at offset 0 — should skip the WriteError.
         let idx = find_matching_fault(&faults, |f| {
-            matches!(f, BlockFault::ReadError { offset: 0 })
+            matches!(
+                f,
+                crate::devices::block::BlockFault::ReadError { offset: 0 }
+            )
         });
         assert_eq!(idx, Some(1));
     }
@@ -286,13 +303,16 @@ mod tests {
     #[test]
     fn find_fault_torn_write() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::TornWrite {
+        faults.push_back(crate::devices::block::BlockFault::TornWrite {
             offset: 0,
             bytes_written: 4,
         });
 
         let idx = find_matching_fault(&faults, |f| {
-            matches!(f, BlockFault::TornWrite { offset: 0, .. })
+            matches!(
+                f,
+                crate::devices::block::BlockFault::TornWrite { offset: 0, .. }
+            )
         });
         assert_eq!(idx, Some(0));
     }
@@ -300,13 +320,16 @@ mod tests {
     #[test]
     fn find_fault_corruption() {
         let mut faults = std::collections::VecDeque::new();
-        faults.push_back(BlockFault::Corruption {
+        faults.push_back(crate::devices::block::BlockFault::Corruption {
             offset: 256,
             len: 16,
         });
 
         let idx = find_matching_fault(&faults, |f| {
-            matches!(f, BlockFault::Corruption { offset: 256, .. })
+            matches!(
+                f,
+                crate::devices::block::BlockFault::Corruption { offset: 256, .. }
+            )
         });
         assert_eq!(idx, Some(0));
     }

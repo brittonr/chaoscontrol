@@ -4,13 +4,11 @@
 //! force-exit on second signal. The explorer and campaign runner poll
 //! [`shutdown_requested()`] after each round/seed to stop cleanly.
 
-use std::sync::atomic::AtomicU32;
-
 /// Global shutdown flag — set by signal handler, polled by explorer.
 static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// How many signals have been received. Second signal force-exits.
-static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
+static SIGNAL_COUNT: ::std::sync::atomic::AtomicU32 = ::std::sync::atomic::AtomicU32::new(0);
 
 /// Returns `true` if a shutdown signal has been received.
 pub fn shutdown_requested() -> bool {

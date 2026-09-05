@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.tools]
 // r[impl chaoscontrol.rust_automation.validation]
 
-use serde_json::Value;
-
 const ALLOWLIST_VERSION: u64 = 1;
 const REQUIRED_FIELDS: [&str; 7] = [
     "category",
@@ -18,10 +16,13 @@ const REQUIRED_FIELDS: [&str; 7] = [
 
 type FindingKey = (String, String, String, String);
 
-pub fn validate_report(report: &Value, allowlist: &Value) -> Result<String, String> {
+pub fn validate_report(
+    report: &::serde_json::Value,
+    allowlist: &::serde_json::Value,
+) -> Result<String, String> {
     let vulnerabilities = report
         .pointer("/vulnerabilities/list")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .cloned()
         .unwrap_or_default();
     if !vulnerabilities.is_empty() {
@@ -81,9 +82,14 @@ pub fn validate_report(report: &Value, allowlist: &Value) -> Result<String, Stri
     ))
 }
 
-fn warning_findings(report: &Value) -> std::collections::BTreeMap<FindingKey, Value> {
+fn warning_findings(
+    report: &::serde_json::Value,
+) -> std::collections::BTreeMap<FindingKey, ::serde_json::Value> {
     let mut findings = std::collections::BTreeMap::new();
-    let Some(warnings) = report.get("warnings").and_then(Value::as_object) else {
+    let Some(warnings) = report
+        .get("warnings")
+        .and_then(::serde_json::Value::as_object)
+    else {
         return findings;
     };
     for (category, items) in warnings {
@@ -99,7 +105,7 @@ fn warning_findings(report: &Value) -> std::collections::BTreeMap<FindingKey, Va
     findings
 }
 
-fn finding_key(category: &str, item: &Value) -> FindingKey {
+fn finding_key(category: &str, item: &::serde_json::Value) -> FindingKey {
     (
         category.to_string(),
         string_or_unknown(item.pointer("/advisory/id")),
@@ -109,14 +115,18 @@ fn finding_key(category: &str, item: &Value) -> FindingKey {
 }
 
 fn validate_allowlist(
-    allowlist: &Value,
-) -> Result<std::collections::BTreeMap<FindingKey, Value>, String> {
-    if allowlist.get("version").and_then(Value::as_u64) != Some(ALLOWLIST_VERSION) {
+    allowlist: &::serde_json::Value,
+) -> Result<std::collections::BTreeMap<FindingKey, ::serde_json::Value>, String> {
+    if allowlist
+        .get("version")
+        .and_then(::serde_json::Value::as_u64)
+        != Some(ALLOWLIST_VERSION)
+    {
         return Err(String::from("allowlist version must be 1"));
     }
     let entries = allowlist
         .get("warnings")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .ok_or_else(|| String::from("allowlist must contain a warnings list"))?;
     let mut allowed = std::collections::BTreeMap::new();
     for (index, entry) in entries.iter().enumerate() {
@@ -129,7 +139,7 @@ fn validate_allowlist(
             .filter(|field| {
                 object
                     .get(**field)
-                    .and_then(Value::as_str)
+                    .and_then(::serde_json::Value::as_str)
                     .is_none_or(str::is_empty)
             })
             .copied()
@@ -156,18 +166,18 @@ fn validate_allowlist(
     Ok(allowed)
 }
 
-fn required_string(value: &Value, field: &str) -> Result<String, String> {
+fn required_string(value: &::serde_json::Value, field: &str) -> Result<String, String> {
     value
         .get(field)
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|item| !item.is_empty())
         .map(str::to_string)
         .ok_or_else(|| format!("missing {field}"))
 }
 
-fn string_or_unknown(value: Option<&Value>) -> String {
+fn string_or_unknown(value: Option<&::serde_json::Value>) -> String {
     value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|item| !item.is_empty())
         .unwrap_or("unknown")
         .to_string()

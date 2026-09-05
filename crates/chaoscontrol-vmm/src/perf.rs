@@ -6,10 +6,6 @@
 //! The VMM blocks and drains this signal around every arm and disarm boundary.
 //! Stale, cross-fd, repeated, and wrapped generations fail closed.
 
-use std::io;
-use std::os::fd::RawFd;
-use std::sync::atomic::AtomicI32;
-
 /// Maximum live perf fds that can own attributed overflow slots.
 pub const MAX_PMU_EXECUTION_THREADS: usize = 256;
 
@@ -41,17 +37,17 @@ const SIGINFO_POLL_FD_OFFSET: usize = 24;
 
 static PMU_SLOT_IN_USE: [std::sync::atomic::AtomicBool; MAX_PMU_EXECUTION_THREADS] =
     [const { std::sync::atomic::AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
-static PMU_SLOT_FDS: [AtomicI32; MAX_PMU_EXECUTION_THREADS] =
-    [const { AtomicI32::new(-1) }; MAX_PMU_EXECUTION_THREADS];
-static PMU_SLOT_TIDS: [AtomicI32; MAX_PMU_EXECUTION_THREADS] =
-    [const { AtomicI32::new(0) }; MAX_PMU_EXECUTION_THREADS];
+static PMU_SLOT_FDS: [::std::sync::atomic::AtomicI32; MAX_PMU_EXECUTION_THREADS] =
+    [const { ::std::sync::atomic::AtomicI32::new(-1) }; MAX_PMU_EXECUTION_THREADS];
+static PMU_SLOT_TIDS: [::std::sync::atomic::AtomicI32; MAX_PMU_EXECUTION_THREADS] =
+    [const { ::std::sync::atomic::AtomicI32::new(0) }; MAX_PMU_EXECUTION_THREADS];
 static PMU_OVERFLOW_GENERATIONS: [std::sync::atomic::AtomicU64; MAX_PMU_EXECUTION_THREADS] =
     [const { std::sync::atomic::AtomicU64::new(0) }; MAX_PMU_EXECUTION_THREADS];
 static PMU_GENERATION_WRAPPED: [std::sync::atomic::AtomicBool; MAX_PMU_EXECUTION_THREADS] =
     [const { std::sync::atomic::AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
 static PMU_SIGNAL_INSTALL: std::sync::OnceLock<Result<(), libc::c_int>> =
     std::sync::OnceLock::new();
-static PMU_SIGNAL_NUMBER: AtomicI32 = AtomicI32::new(0);
+static PMU_SIGNAL_NUMBER: ::std::sync::atomic::AtomicI32 = ::std::sync::atomic::AtomicI32::new(0);
 static PMU_ATTRIBUTION_POISONED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -125,22 +121,22 @@ struct FcntlOwner {
 /// Hardware instruction counter bound to one Linux execution thread.
 #[derive(Debug)]
 pub struct InstructionCounter {
-    fd: RawFd,
+    fd: ::std::os::fd::RawFd,
     owner_tid: libc::pid_t,
     overflow_slot: Option<usize>,
 }
 
 impl InstructionCounter {
     /// Create a guest-only counter without overflow signaling.
-    pub fn new() -> io::Result<Self> {
+    pub fn new() -> ::std::io::Result<Self> {
         Self::create(0, false)
     }
 
     /// Create a guest-only counter with exact fd-attributed overflow signaling.
-    pub fn with_overflow(period: u64) -> io::Result<Self> {
+    pub fn with_overflow(period: u64) -> ::std::io::Result<Self> {
         if period == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
+            return Err(::std::io::Error::new(
+                ::std::io::ErrorKind::InvalidInput,
                 "PMU overflow period must be positive",
             ));
         }
@@ -149,7 +145,7 @@ impl InstructionCounter {
         Self::create(period, true)
     }
 
-    fn create(sample_period: u64, async_signal: bool) -> io::Result<Self> {
+    fn create(sample_period: u64, async_signal: bool) -> ::std::io::Result<Self> {
         let owner_tid = current_tid();
         let mut attr = PerfEventAttr::guest_instructions(sample_period);
         // SAFETY: `attr` points to the Linux perf ABI structure above.
@@ -162,9 +158,9 @@ impl InstructionCounter {
                 -1i32,
                 0u64,
             )
-        } as RawFd;
+        } as ::std::os::fd::RawFd;
         if fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(::std::io::Error::last_os_error());
         }
 
         let overflow_slot = if async_signal {
@@ -187,26 +183,26 @@ impl InstructionCounter {
     }
 
     /// Reset to zero and enable counting for a new vCPU turn.
-    pub fn reset_and_enable(&self) -> io::Result<()> {
+    pub fn reset_and_enable(&self) -> ::std::io::Result<()> {
         self.ensure_owner_thread()?;
         checked_ioctl(self.fd, PERF_EVENT_IOC_RESET)?;
         checked_ioctl(self.fd, PERF_EVENT_IOC_ENABLE)
     }
 
     /// Resume counting without resetting the turn-relative count.
-    pub fn resume(&self) -> io::Result<()> {
+    pub fn resume(&self) -> ::std::io::Result<()> {
         self.ensure_owner_thread()?;
         checked_ioctl(self.fd, PERF_EVENT_IOC_ENABLE)
     }
 
     /// Pause counting while preserving the count.
-    pub fn disable(&self) -> io::Result<()> {
+    pub fn disable(&self) -> ::std::io::Result<()> {
         self.ensure_owner_thread()?;
         checked_ioctl(self.fd, PERF_EVENT_IOC_DISABLE)
     }
 
     /// Arm one overflow attempt after stale-signal drainage.
-    pub fn arm_overflow(&self) -> io::Result<u64> {
+    pub fn arm_overflow(&self) -> ::std::io::Result<u64> {
         self.ensure_owner_thread()?;
         let slot = self.require_overflow_slot()?;
         with_pmu_signal_blocked(|| {
@@ -218,25 +214,25 @@ impl InstructionCounter {
     }
 
     /// Disable one attempt and accept at most one fd-attributed overflow.
-    pub fn disarm_overflow(&self, baseline: u64) -> io::Result<bool> {
+    pub fn disarm_overflow(&self, baseline: u64) -> ::std::io::Result<bool> {
         self.ensure_owner_thread()?;
         let slot = self.require_overflow_slot()?;
         with_pmu_signal_blocked(|| {
             checked_ioctl(self.fd, PERF_EVENT_IOC_DISABLE)
-                .map_err(|error| io::Error::other(format!("PMU disable failed: {error}")))?;
+                .map_err(|error| ::std::io::Error::other(format!("PMU disable failed: {error}")))?;
             drain_pending_pmu_signals().map_err(|error| {
-                io::Error::other(format!("PMU generation drain failed: {error}"))
+                ::std::io::Error::other(format!("PMU generation drain failed: {error}"))
             })?;
             let current = checked_slot_generation(slot).map_err(|error| {
-                io::Error::other(format!("PMU generation validation failed: {error}"))
+                ::std::io::Error::other(format!("PMU generation validation failed: {error}"))
             })?;
-            let delta = current
-                .checked_sub(baseline)
-                .ok_or_else(|| io::Error::other("PMU overflow generation regressed or wrapped"))?;
+            let delta = current.checked_sub(baseline).ok_or_else(|| {
+                ::std::io::Error::other("PMU overflow generation regressed or wrapped")
+            })?;
             match delta {
                 0 => Ok(false),
                 1 => Ok(true),
-                _ => Err(io::Error::other(format!(
+                _ => Err(::std::io::Error::other(format!(
                     "PMU attempt received {delta} overflow signals"
                 ))),
             }
@@ -244,7 +240,7 @@ impl InstructionCounter {
     }
 
     /// Read the complete guest-only count. Short reads and failures fail.
-    pub fn read(&self) -> io::Result<u64> {
+    pub fn read(&self) -> ::std::io::Result<u64> {
         self.ensure_owner_thread()?;
         let mut value = 0u64;
         loop {
@@ -260,14 +256,14 @@ impl InstructionCounter {
                 return Ok(value);
             }
             if read_len < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
+                let error = ::std::io::Error::last_os_error();
+                if error.kind() == ::std::io::ErrorKind::Interrupted {
                     continue;
                 }
                 return Err(error);
             }
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
+            return Err(::std::io::Error::new(
+                ::std::io::ErrorKind::UnexpectedEof,
                 format!(
                     "short PMU read: expected {} bytes, got {read_len}",
                     std::mem::size_of::<u64>()
@@ -277,21 +273,21 @@ impl InstructionCounter {
     }
 
     /// Return this counter's checked fd-specific overflow generation.
-    pub fn overflow_generation(&self) -> io::Result<u64> {
+    pub fn overflow_generation(&self) -> ::std::io::Result<u64> {
         self.ensure_owner_thread()?;
         checked_slot_generation(self.require_overflow_slot()?)
     }
 
     /// True only when exactly one attributed signal advanced after `baseline`.
-    pub fn overflow_since(&self, baseline: u64) -> io::Result<bool> {
+    pub fn overflow_since(&self, baseline: u64) -> ::std::io::Result<bool> {
         let current = self.overflow_generation()?;
-        let delta = current
-            .checked_sub(baseline)
-            .ok_or_else(|| io::Error::other("PMU overflow generation regressed or wrapped"))?;
+        let delta = current.checked_sub(baseline).ok_or_else(|| {
+            ::std::io::Error::other("PMU overflow generation regressed or wrapped")
+        })?;
         match delta {
             0 => Ok(false),
             1 => Ok(true),
-            _ => Err(io::Error::other(format!(
+            _ => Err(::std::io::Error::other(format!(
                 "PMU attempt received {delta} overflow signals"
             ))),
         }
@@ -302,20 +298,20 @@ impl InstructionCounter {
         self.owner_tid
     }
 
-    fn require_overflow_slot(&self) -> io::Result<usize> {
+    fn require_overflow_slot(&self) -> ::std::io::Result<usize> {
         self.overflow_slot.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
+            ::std::io::Error::new(
+                ::std::io::ErrorKind::InvalidInput,
                 "counting-mode PMU has no overflow slot",
             )
         })
     }
 
-    fn ensure_owner_thread(&self) -> io::Result<()> {
+    fn ensure_owner_thread(&self) -> ::std::io::Result<()> {
         ensure_attribution_healthy()?;
         let current = current_tid();
         if current != self.owner_tid {
-            return Err(io::Error::other(format!(
+            return Err(::std::io::Error::other(format!(
                 "PMU counter belongs to thread {}, current thread is {current}",
                 self.owner_tid
             )));
@@ -362,9 +358,9 @@ impl Drop for InstructionCounter {
     }
 }
 
-fn ensure_attribution_healthy() -> io::Result<()> {
+fn ensure_attribution_healthy() -> ::std::io::Result<()> {
     if PMU_ATTRIBUTION_POISONED.load(std::sync::atomic::Ordering::Acquire) {
-        Err(io::Error::other(
+        Err(::std::io::Error::other(
             "PMU signal attribution was poisoned by an unsafe teardown",
         ))
     } else {
@@ -372,31 +368,34 @@ fn ensure_attribution_healthy() -> io::Result<()> {
     }
 }
 
-fn checked_ioctl(fd: RawFd, request: libc::c_ulong) -> io::Result<()> {
+fn checked_ioctl(fd: ::std::os::fd::RawFd, request: libc::c_ulong) -> ::std::io::Result<()> {
     // SAFETY: ioctl receives an owned perf fd and a no-argument perf request.
     let result = unsafe { libc::ioctl(fd, request, 0) };
     if result < 0 {
-        Err(io::Error::last_os_error())
+        Err(::std::io::Error::last_os_error())
     } else {
         Ok(())
     }
 }
 
 fn checked_fcntl(
-    fd: RawFd,
+    fd: ::std::os::fd::RawFd,
     command: libc::c_int,
     argument: libc::c_int,
-) -> io::Result<libc::c_int> {
+) -> ::std::io::Result<libc::c_int> {
     // SAFETY: `command` and `argument` use the Linux fcntl ABI.
     let result = unsafe { libc::fcntl(fd, command, argument) };
     if result < 0 {
-        Err(io::Error::last_os_error())
+        Err(::std::io::Error::last_os_error())
     } else {
         Ok(result)
     }
 }
 
-fn configure_overflow_fd(fd: RawFd, owner_tid: libc::pid_t) -> io::Result<usize> {
+fn configure_overflow_fd(
+    fd: ::std::os::fd::RawFd,
+    owner_tid: libc::pid_t,
+) -> ::std::io::Result<usize> {
     with_pmu_signal_blocked(|| {
         drain_pending_pmu_signals()?;
         let slot = register_overflow_slot(fd, owner_tid)?;
@@ -408,7 +407,10 @@ fn configure_overflow_fd(fd: RawFd, owner_tid: libc::pid_t) -> io::Result<usize>
     })
 }
 
-fn configure_async_signal(fd: RawFd, owner_tid: libc::pid_t) -> io::Result<()> {
+fn configure_async_signal(
+    fd: ::std::os::fd::RawFd,
+    owner_tid: libc::pid_t,
+) -> ::std::io::Result<()> {
     let owner = FcntlOwner {
         owner_type: FCNTL_OWNER_THREAD,
         pid: owner_tid,
@@ -416,7 +418,7 @@ fn configure_async_signal(fd: RawFd, owner_tid: libc::pid_t) -> io::Result<()> {
     // SAFETY: `owner` matches Linux `struct f_owner_ex` for this call.
     let owner_result = unsafe { libc::fcntl(fd, FCNTL_SET_OWNER_EX, &owner) };
     if owner_result < 0 {
-        return Err(io::Error::last_os_error());
+        return Err(::std::io::Error::last_os_error());
     }
     checked_fcntl(fd, FCNTL_SET_SIGNAL, pmu_overflow_signal())?;
     let flags = checked_fcntl(fd, libc::F_GETFL, 0)?;
@@ -424,7 +426,7 @@ fn configure_async_signal(fd: RawFd, owner_tid: libc::pid_t) -> io::Result<()> {
     Ok(())
 }
 
-fn install_pmu_signal_handler() -> io::Result<()> {
+fn install_pmu_signal_handler() -> ::std::io::Result<()> {
     let installed = PMU_SIGNAL_INSTALL.get_or_init(|| {
         let signal = pmu_overflow_signal();
         if signal > libc::SIGRTMAX() {
@@ -442,7 +444,7 @@ fn install_pmu_signal_handler() -> io::Result<()> {
         };
         if result < 0 {
             PMU_SIGNAL_NUMBER.store(0, std::sync::atomic::Ordering::Release);
-            Err(io::Error::last_os_error()
+            Err(::std::io::Error::last_os_error()
                 .raw_os_error()
                 .unwrap_or(libc::EINVAL))
         } else {
@@ -451,7 +453,7 @@ fn install_pmu_signal_handler() -> io::Result<()> {
     });
     match installed {
         Ok(()) => Ok(()),
-        Err(errno) => Err(io::Error::from_raw_os_error(*errno)),
+        Err(errno) => Err(::std::io::Error::from_raw_os_error(*errno)),
     }
 }
 
@@ -503,7 +505,7 @@ fn current_tid() -> libc::pid_t {
     unsafe { libc::syscall(libc::SYS_gettid) as libc::pid_t }
 }
 
-fn register_overflow_slot(fd: RawFd, tid: libc::pid_t) -> io::Result<usize> {
+fn register_overflow_slot(fd: ::std::os::fd::RawFd, tid: libc::pid_t) -> ::std::io::Result<usize> {
     for slot in 0..MAX_PMU_EXECUTION_THREADS {
         if PMU_SLOT_IN_USE[slot]
             .compare_exchange(
@@ -523,7 +525,7 @@ fn register_overflow_slot(fd: RawFd, tid: libc::pid_t) -> io::Result<usize> {
             return Ok(slot);
         }
     }
-    Err(io::Error::other(format!(
+    Err(::std::io::Error::other(format!(
         "PMU overflow slot limit {MAX_PMU_EXECUTION_THREADS} reached"
     )))
 }
@@ -537,15 +539,17 @@ fn release_overflow_slot(slot: usize) {
     PMU_SLOT_IN_USE[slot].store(false, std::sync::atomic::Ordering::Release);
 }
 
-fn checked_slot_generation(slot: usize) -> io::Result<u64> {
+fn checked_slot_generation(slot: usize) -> ::std::io::Result<u64> {
     ensure_attribution_healthy()?;
     if PMU_GENERATION_WRAPPED[slot].load(std::sync::atomic::Ordering::Acquire) {
-        return Err(io::Error::other("PMU overflow generation wrapped"));
+        return Err(::std::io::Error::other("PMU overflow generation wrapped"));
     }
     Ok(PMU_OVERFLOW_GENERATIONS[slot].load(std::sync::atomic::Ordering::Acquire))
 }
 
-fn with_pmu_signal_blocked<T>(operation: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
+fn with_pmu_signal_blocked<T>(
+    operation: impl FnOnce() -> ::std::io::Result<T>,
+) -> ::std::io::Result<T> {
     let signal_set = pmu_signal_set()?;
     // SAFETY: both sets are valid and apply only to the calling thread.
     let mut previous: libc::sigset_t = unsafe { std::mem::zeroed() };
@@ -553,7 +557,7 @@ fn with_pmu_signal_blocked<T>(operation: impl FnOnce() -> io::Result<T>) -> io::
     let block_result =
         unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &signal_set, &mut previous) };
     if block_result != 0 {
-        return Err(io::Error::from_raw_os_error(block_result));
+        return Err(::std::io::Error::from_raw_os_error(block_result));
     }
     let result = operation();
     // SAFETY: restore the exact mask captured above for this thread.
@@ -561,28 +565,28 @@ fn with_pmu_signal_blocked<T>(operation: impl FnOnce() -> io::Result<T>) -> io::
         unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &previous, std::ptr::null_mut()) };
     if restore_result != 0 {
         PMU_ATTRIBUTION_POISONED.store(true, std::sync::atomic::Ordering::Release);
-        return Err(io::Error::from_raw_os_error(restore_result));
+        return Err(::std::io::Error::from_raw_os_error(restore_result));
     }
     result
 }
 
-fn pmu_signal_set() -> io::Result<libc::sigset_t> {
+fn pmu_signal_set() -> ::std::io::Result<libc::sigset_t> {
     // SAFETY: the set is initialized before return.
     let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
     // SAFETY: both libc calls receive a valid signal set.
     let empty_result = unsafe { libc::sigemptyset(&mut set) };
     if empty_result != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(::std::io::Error::last_os_error());
     }
     // SAFETY: the signal number was checked during handler installation.
     let add_result = unsafe { libc::sigaddset(&mut set, pmu_overflow_signal()) };
     if add_result != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(::std::io::Error::last_os_error());
     }
     Ok(set)
 }
 
-fn drain_pending_pmu_signals() -> io::Result<usize> {
+fn drain_pending_pmu_signals() -> ::std::io::Result<usize> {
     let signal_set = pmu_signal_set()?;
     let timeout = libc::timespec {
         tv_sec: 0,
@@ -598,20 +602,20 @@ fn drain_pending_pmu_signals() -> io::Result<usize> {
             record_pmu_signal(result, &info);
             drained = drained
                 .checked_add(1)
-                .ok_or_else(|| io::Error::other("PMU pending-signal count overflow"))?;
+                .ok_or_else(|| ::std::io::Error::other("PMU pending-signal count overflow"))?;
             continue;
         }
         if result < 0 {
-            let error = io::Error::last_os_error();
+            let error = ::std::io::Error::last_os_error();
             if error.raw_os_error() == Some(libc::EAGAIN) {
                 return Ok(drained);
             }
-            if error.kind() == io::ErrorKind::Interrupted {
+            if error.kind() == ::std::io::ErrorKind::Interrupted {
                 continue;
             }
             return Err(error);
         }
-        return Err(io::Error::other(format!(
+        return Err(::std::io::Error::other(format!(
             "unexpected signal {result} while draining PMU overflow"
         )));
     }
@@ -622,12 +626,12 @@ mod tests {
     use super::*;
 
     const TEST_OVERFLOW_PERIOD: u64 = 10_000;
-    const FIRST_FAKE_FD: RawFd = 100;
-    const SECOND_FAKE_FD: RawFd = 101;
+    const FIRST_FAKE_FD: ::std::os::fd::RawFd = 100;
+    const SECOND_FAKE_FD: ::std::os::fd::RawFd = 101;
     const FIRST_FAKE_TID: libc::pid_t = 200;
     const SECOND_FAKE_TID: libc::pid_t = 201;
 
-    fn slot_has_registration(slot: usize, fd: RawFd, tid: libc::pid_t) -> bool {
+    fn slot_has_registration(slot: usize, fd: ::std::os::fd::RawFd, tid: libc::pid_t) -> bool {
         PMU_SLOT_IN_USE[slot].load(std::sync::atomic::Ordering::Acquire)
             && PMU_SLOT_FDS[slot].load(std::sync::atomic::Ordering::Relaxed) == fd
             && PMU_SLOT_TIDS[slot].load(std::sync::atomic::Ordering::Relaxed) == tid
@@ -635,7 +639,7 @@ mod tests {
             && !PMU_GENERATION_WRAPPED[slot].load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    fn synthetic_siginfo(fd: RawFd) -> libc::siginfo_t {
+    fn synthetic_siginfo(fd: ::std::os::fd::RawFd) -> libc::siginfo_t {
         // SAFETY: the value is initialized before the test writes `si_fd`.
         let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
         // SAFETY: the x86_64 Linux `_sigpoll.si_fd` offset is asserted by use.
@@ -662,7 +666,7 @@ mod tests {
     #[test]
     fn zero_overflow_period_is_rejected() {
         let error = InstructionCounter::with_overflow(0).unwrap_err();
-        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.kind(), ::std::io::ErrorKind::InvalidInput);
     }
 
     #[test]

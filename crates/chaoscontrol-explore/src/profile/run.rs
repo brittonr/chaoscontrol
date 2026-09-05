@@ -1,8 +1,4 @@
 use super::{checked_usize, valid_identifier, ArtifactReference};
-use crate::explorer::{ExplorationMode, ExplorerConfig};
-use crate::mutator::MutationConfig;
-use chaoscontrol_vmm::scheduler::SchedulingStrategy;
-use chaoscontrol_vmm::vm::VmConfig;
 
 const RUN_SCHEMA: &str = "chaoscontrol.run-profile.v2";
 const RUN_MODE: &str = "vm-exploration";
@@ -125,40 +121,44 @@ impl RunProfile {
         self,
         seed: u64,
         output_dir: Option<String>,
-    ) -> Result<ExplorerConfig, String> {
+    ) -> Result<crate::explorer::ExplorerConfig, String> {
         self.validate()?;
         let strategy = match self.topology.scheduling.strategy {
-            SchedulingMode::RoundRobin => SchedulingStrategy::RoundRobin,
-            SchedulingMode::Randomized => SchedulingStrategy::Randomized {
-                min_quantum: self.topology.scheduling.minimum_quantum,
-                max_quantum: self.topology.scheduling.maximum_quantum,
-            },
+            SchedulingMode::RoundRobin => {
+                ::chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin
+            }
+            SchedulingMode::Randomized => {
+                ::chaoscontrol_vmm::scheduler::SchedulingStrategy::Randomized {
+                    min_quantum: self.topology.scheduling.minimum_quantum,
+                    max_quantum: self.topology.scheduling.maximum_quantum,
+                }
+            }
         };
         let memory_bytes = self
             .topology
             .memory_mib
             .checked_mul(BYTES_PER_MIB)
             .ok_or_else(|| "profile memory byte count overflow".to_string())?;
-        let mutation = MutationConfig {
+        let mutation = crate::mutator::MutationConfig {
             num_vms: checked_usize("num_vms", self.topology.num_vms)?,
             max_tick: self.exploration.ticks_per_branch,
             base_quantum: self.exploration.quantum,
-            ..MutationConfig::default()
+            ..crate::mutator::MutationConfig::default()
         };
         let dlog_dir = self
             .logging
             .determinism_log_output
             .map(|reference| std::path::PathBuf::from(reference.path));
-        let vm_config = VmConfig {
+        let vm_config = ::chaoscontrol_vmm::vm::VmConfig {
             memory_size: checked_usize("memory bytes", memory_bytes)?,
             num_vcpus: checked_usize("num_vcpus", self.topology.num_vcpus)?,
             scheduling_strategy: strategy,
             extra_cmdline: self.guest_cmdline,
             dlog_register_interval: self.logging.register_interval,
             dlog_memory_hash: self.logging.memory_hash,
-            ..VmConfig::default()
+            ..::chaoscontrol_vmm::vm::VmConfig::default()
         };
-        Ok(ExplorerConfig {
+        Ok(crate::explorer::ExplorerConfig {
             num_vms: checked_usize("num_vms", self.topology.num_vms)?,
             vm_config,
             kernel_path: self.artifacts.kernel.path,
@@ -172,9 +172,11 @@ impl RunProfile {
             scheduling_strategy: strategy,
             mutation,
             exploration_mode: match self.exploration.mode {
-                ExplorationProfileMode::FaultSchedule => ExplorationMode::FaultSchedule,
-                ExplorationProfileMode::InputTree => ExplorationMode::InputTree,
-                ExplorationProfileMode::Hybrid => ExplorationMode::Hybrid,
+                ExplorationProfileMode::FaultSchedule => {
+                    crate::explorer::ExplorationMode::FaultSchedule
+                }
+                ExplorationProfileMode::InputTree => crate::explorer::ExplorationMode::InputTree,
+                ExplorationProfileMode::Hybrid => crate::explorer::ExplorationMode::Hybrid,
             },
             coverage_gpa: self.coverage.bitmap_gpa,
             output_dir,
@@ -186,7 +188,7 @@ impl RunProfile {
             num_workers: 1,
             stale_round_limit: self.exploration.stale_round_limit,
             schedule_diversity: self.topology.scheduling.diversity,
-            ..ExplorerConfig::default()
+            ..crate::explorer::ExplorerConfig::default()
         })
     }
 

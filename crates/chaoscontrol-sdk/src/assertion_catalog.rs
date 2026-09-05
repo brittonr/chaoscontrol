@@ -1,30 +1,17 @@
-use crate::assert::{AssertionKind, CatalogEntry, CatalogLogicalKey, ASSERTION_CATALOG};
-use crate::transport;
-use chaoscontrol_protocol::admission::{
-    catalog_token, AcceptedCatalog, CatalogBuilder, CatalogConflict, MAX_ASSERTION_CATALOG_ENTRIES,
-};
-use chaoscontrol_protocol::identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionLogicalKey, ASSERTION_IDENTITY_VERSION,
-};
-use chaoscontrol_protocol::transport::{
-    encode_catalog_begin, encode_catalog_complete, encode_descriptor_frame,
-};
-use chaoscontrol_protocol::{
-    CMD_ASSERT_CATALOG_BEGIN, CMD_ASSERT_CATALOG_COMPLETE, CMD_ASSERT_CATALOG_DESCRIPTOR,
-    PAYLOAD_MAX,
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BoundIdentity {
-    pub catalog_token: AssertionFingerprint,
-    pub fingerprint: AssertionFingerprint,
+    pub catalog_token: ::chaoscontrol_protocol::identity::AssertionFingerprint,
+    pub fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     pub compatibility_id: Option<u32>,
 }
 
 #[derive(Debug)]
 struct SdkCatalog {
-    descriptors: Vec<AssertionDescriptor>,
-    accepted: Result<Option<AcceptedCatalog>, CatalogConflict>,
+    descriptors: Vec<::chaoscontrol_protocol::identity::AssertionDescriptor>,
+    accepted: Result<
+        Option<::chaoscontrol_protocol::admission::AcceptedCatalog>,
+        ::chaoscontrol_protocol::admission::CatalogConflict,
+    >,
 }
 
 static SDK_CATALOG: std::sync::OnceLock<SdkCatalog> = std::sync::OnceLock::new();
@@ -35,19 +22,21 @@ pub(crate) fn emit_catalog() {
         return;
     }
     let descriptor_count = u32::try_from(catalog.descriptors.len()).unwrap_or(u32::MAX);
-    let mut payload = [0_u8; PAYLOAD_MAX];
-    if let Ok(length) = encode_catalog_begin(&mut payload) {
-        transport::hypercall_raw(
-            CMD_ASSERT_CATALOG_BEGIN,
+    let mut payload = [0_u8; ::chaoscontrol_protocol::PAYLOAD_MAX];
+    if let Ok(length) = ::chaoscontrol_protocol::transport::encode_catalog_begin(&mut payload) {
+        crate::transport::hypercall_raw(
+            ::chaoscontrol_protocol::CMD_ASSERT_CATALOG_BEGIN,
             0,
             descriptor_count,
             &payload[..length],
         );
     }
     for descriptor in &catalog.descriptors {
-        if let Ok(length) = encode_descriptor_frame(descriptor, &mut payload) {
-            transport::hypercall_raw(
-                CMD_ASSERT_CATALOG_DESCRIPTOR,
+        if let Ok(length) =
+            ::chaoscontrol_protocol::transport::encode_descriptor_frame(descriptor, &mut payload)
+        {
+            crate::transport::hypercall_raw(
+                ::chaoscontrol_protocol::CMD_ASSERT_CATALOG_DESCRIPTOR,
                 0,
                 descriptor.compatibility_id.unwrap_or_default(),
                 &payload[..length],
@@ -59,10 +48,15 @@ pub(crate) fn emit_catalog() {
         .as_ref()
         .ok()
         .and_then(Option::as_ref)
-        .map_or(AssertionFingerprint::ZERO, |accepted| accepted.token);
-    if let Ok(length) = encode_catalog_complete(token, &mut payload) {
-        transport::hypercall_raw(
-            CMD_ASSERT_CATALOG_COMPLETE,
+        .map_or(
+            ::chaoscontrol_protocol::identity::AssertionFingerprint::ZERO,
+            |accepted| accepted.token,
+        );
+    if let Ok(length) =
+        ::chaoscontrol_protocol::transport::encode_catalog_complete(token, &mut payload)
+    {
+        crate::transport::hypercall_raw(
+            ::chaoscontrol_protocol::CMD_ASSERT_CATALOG_COMPLETE,
             0,
             descriptor_count,
             &payload[..length],
@@ -72,7 +66,7 @@ pub(crate) fn emit_catalog() {
 
 pub(crate) fn resolve_compatibility(
     id: u32,
-    kind: AssertionKind,
+    kind: crate::assert::AssertionKind,
     message: &str,
 ) -> Option<BoundIdentity> {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
@@ -96,12 +90,12 @@ pub(crate) fn resolve_compatibility(
 pub(crate) fn resolve_stable(
     namespace: &str,
     key: &str,
-    kind: AssertionKind,
+    kind: crate::assert::AssertionKind,
     message: &str,
 ) -> Option<BoundIdentity> {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
     let accepted = catalog.accepted.as_ref().ok()?.as_ref()?;
-    let logical_key = AssertionLogicalKey::Stable {
+    let logical_key = ::chaoscontrol_protocol::identity::AssertionLogicalKey::Stable {
         key: key.to_string(),
     };
     let mut matches = accepted.assertions.values().filter(|assertion| {
@@ -122,14 +116,16 @@ pub(crate) fn resolve_stable(
 }
 
 fn build_catalog() -> SdkCatalog {
-    if ASSERTION_CATALOG.len() > MAX_ASSERTION_CATALOG_ENTRIES {
+    if crate::assert::ASSERTION_CATALOG.len()
+        > ::chaoscontrol_protocol::admission::MAX_ASSERTION_CATALOG_ENTRIES
+    {
         return SdkCatalog {
             descriptors: Vec::new(),
-            accepted: Err(CatalogConflict::CardinalityOverflow),
+            accepted: Err(::chaoscontrol_protocol::admission::CatalogConflict::CardinalityOverflow),
         };
     }
-    let mut descriptors = Vec::with_capacity(ASSERTION_CATALOG.len());
-    for entry in ASSERTION_CATALOG.iter() {
+    let mut descriptors = Vec::with_capacity(crate::assert::ASSERTION_CATALOG.len());
+    for entry in crate::assert::ASSERTION_CATALOG.iter() {
         match descriptor_from_entry(entry) {
             Ok(descriptor) => descriptors.push(descriptor),
             Err(error) => {
@@ -152,9 +148,12 @@ fn build_catalog() -> SdkCatalog {
 }
 
 fn accept_descriptors(
-    descriptors: &[AssertionDescriptor],
-) -> Result<AcceptedCatalog, CatalogConflict> {
-    let mut builder = CatalogBuilder::begin(descriptors.len())?;
+    descriptors: &[::chaoscontrol_protocol::identity::AssertionDescriptor],
+) -> Result<
+    ::chaoscontrol_protocol::admission::AcceptedCatalog,
+    ::chaoscontrol_protocol::admission::CatalogConflict,
+> {
+    let mut builder = ::chaoscontrol_protocol::admission::CatalogBuilder::begin(descriptors.len())?;
     for descriptor in descriptors {
         builder.insert(descriptor.clone())?;
     }
@@ -162,10 +161,10 @@ fn accept_descriptors(
     for descriptor in descriptors {
         let fingerprint = descriptor
             .fingerprint()
-            .map_err(CatalogConflict::Descriptor)?;
+            .map_err(::chaoscontrol_protocol::admission::CatalogConflict::Descriptor)?;
         let canonical_bytes = descriptor
             .canonical_bytes()
-            .map_err(CatalogConflict::Descriptor)?;
+            .map_err(::chaoscontrol_protocol::admission::CatalogConflict::Descriptor)?;
         assertions.entry(fingerprint).or_insert_with(|| {
             chaoscontrol_protocol::admission::AdmittedAssertion {
                 descriptor: descriptor.clone(),
@@ -174,20 +173,31 @@ fn accept_descriptors(
             }
         });
     }
-    builder.complete(catalog_token(&assertions))
+    builder.complete(::chaoscontrol_protocol::admission::catalog_token(
+        &assertions,
+    ))
 }
 
-fn descriptor_from_entry(entry: &CatalogEntry) -> Result<AssertionDescriptor, CatalogConflict> {
+fn descriptor_from_entry(
+    entry: &crate::assert::CatalogEntry,
+) -> Result<
+    ::chaoscontrol_protocol::identity::AssertionDescriptor,
+    ::chaoscontrol_protocol::admission::CatalogConflict,
+> {
     let logical_key = match entry.logical_key {
-        CatalogLogicalKey::Automatic(source_site) => AssertionLogicalKey::Automatic {
-            source_site: source_site.to_string(),
-        },
-        CatalogLogicalKey::Stable(key) => AssertionLogicalKey::Stable {
-            key: key.to_string(),
-        },
+        crate::assert::CatalogLogicalKey::Automatic(source_site) => {
+            ::chaoscontrol_protocol::identity::AssertionLogicalKey::Automatic {
+                source_site: source_site.to_string(),
+            }
+        }
+        crate::assert::CatalogLogicalKey::Stable(key) => {
+            ::chaoscontrol_protocol::identity::AssertionLogicalKey::Stable {
+                key: key.to_string(),
+            }
+        }
     };
-    let descriptor = AssertionDescriptor {
-        identity_version: ASSERTION_IDENTITY_VERSION,
+    let descriptor = ::chaoscontrol_protocol::identity::AssertionDescriptor {
+        identity_version: ::chaoscontrol_protocol::identity::ASSERTION_IDENTITY_VERSION,
         namespace: entry.namespace.to_string(),
         logical_key,
         compatibility_id: Some(entry.id),
@@ -199,30 +209,55 @@ fn descriptor_from_entry(entry: &CatalogEntry) -> Result<AssertionDescriptor, Ca
         guest: normalized_metadata(entry.guest),
         category: normalized_metadata(entry.category),
     };
-    descriptor.validate().map_err(CatalogConflict::Descriptor)?;
+    descriptor
+        .validate()
+        .map_err(::chaoscontrol_protocol::admission::CatalogConflict::Descriptor)?;
     Ok(descriptor)
 }
 
-fn protocol_kind(kind: AssertionKind) -> chaoscontrol_protocol::identity::AssertionKind {
+fn protocol_kind(
+    kind: crate::assert::AssertionKind,
+) -> chaoscontrol_protocol::identity::AssertionKind {
     match kind {
-        AssertionKind::Always => chaoscontrol_protocol::identity::AssertionKind::Always,
-        AssertionKind::Sometimes => chaoscontrol_protocol::identity::AssertionKind::Sometimes,
-        AssertionKind::Reachable => chaoscontrol_protocol::identity::AssertionKind::Reachable,
-        AssertionKind::Unreachable => chaoscontrol_protocol::identity::AssertionKind::Unreachable,
+        crate::assert::AssertionKind::Always => {
+            chaoscontrol_protocol::identity::AssertionKind::Always
+        }
+        crate::assert::AssertionKind::Sometimes => {
+            chaoscontrol_protocol::identity::AssertionKind::Sometimes
+        }
+        crate::assert::AssertionKind::Reachable => {
+            chaoscontrol_protocol::identity::AssertionKind::Reachable
+        }
+        crate::assert::AssertionKind::Unreachable => {
+            chaoscontrol_protocol::identity::AssertionKind::Unreachable
+        }
     }
 }
 
 fn protocol_catalog_kind(
     kind: u8,
-) -> Result<chaoscontrol_protocol::identity::AssertionKind, CatalogConflict> {
+) -> Result<
+    chaoscontrol_protocol::identity::AssertionKind,
+    ::chaoscontrol_protocol::admission::CatalogConflict,
+> {
     match kind {
-        crate::assert::CATALOG_KIND_ALWAYS => Ok(protocol_kind(AssertionKind::Always)),
-        crate::assert::CATALOG_KIND_SOMETIMES => Ok(protocol_kind(AssertionKind::Sometimes)),
-        crate::assert::CATALOG_KIND_REACHABLE => Ok(protocol_kind(AssertionKind::Reachable)),
-        crate::assert::CATALOG_KIND_UNREACHABLE => Ok(protocol_kind(AssertionKind::Unreachable)),
-        _ => Err(CatalogConflict::Descriptor(
-            chaoscontrol_protocol::identity::AssertionError::InvalidKind,
-        )),
+        crate::assert::CATALOG_KIND_ALWAYS => {
+            Ok(protocol_kind(crate::assert::AssertionKind::Always))
+        }
+        crate::assert::CATALOG_KIND_SOMETIMES => {
+            Ok(protocol_kind(crate::assert::AssertionKind::Sometimes))
+        }
+        crate::assert::CATALOG_KIND_REACHABLE => {
+            Ok(protocol_kind(crate::assert::AssertionKind::Reachable))
+        }
+        crate::assert::CATALOG_KIND_UNREACHABLE => {
+            Ok(protocol_kind(crate::assert::AssertionKind::Unreachable))
+        }
+        _ => Err(
+            ::chaoscontrol_protocol::admission::CatalogConflict::Descriptor(
+                chaoscontrol_protocol::identity::AssertionError::InvalidKind,
+            ),
+        ),
     }
 }
 

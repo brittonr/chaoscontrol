@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.nix]
 
-use serde_json::Value;
-
 const EXPECTED_DRIFT_CASES: [&str; 4] = [
     "controller-3vm-1vcpu",
     "controller-3vm-2vcpu",
@@ -13,12 +11,12 @@ const EXPECTED_DRIFT_CASES: [&str; 4] = [
 ];
 const EXPECTED_DRIFT_RUNS: u64 = 5;
 
-pub fn matrix_summary(receipt: &Value) -> Result<String, String> {
+pub fn matrix_summary(receipt: &::serde_json::Value) -> Result<String, String> {
     let rows = receipt
         .get("rows")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .ok_or_else(|| String::from("rows must be a list"))?;
-    let passed = receipt.get("passed").and_then(Value::as_bool) == Some(true);
+    let passed = receipt.get("passed").and_then(::serde_json::Value::as_bool) == Some(true);
     let mut lines = vec![
         format!(
             "vm determinism matrix: {}",
@@ -30,11 +28,11 @@ pub fn matrix_summary(receipt: &Value) -> Result<String, String> {
         format!("scope: {}", display(receipt.get("scope"))),
     ];
     for row in rows {
-        let profile = row.get("profile").and_then(Value::as_object);
-        let report = row.get("report").and_then(Value::as_object);
+        let profile = row.get("profile").and_then(::serde_json::Value::as_object);
+        let report = row.get("report").and_then(::serde_json::Value::as_object);
         let mismatches = report
             .and_then(|value| value.get("mismatches"))
-            .and_then(Value::as_array)
+            .and_then(::serde_json::Value::as_array)
             .map_or(0, Vec::len);
         lines.push(format!(
             "- {}: status={} passed={} runs={} product={} workers={} workload={} kernel={} initrd={} device={} clock={} controller={} hypervisor={} mismatches={}",
@@ -57,13 +55,16 @@ pub fn matrix_summary(receipt: &Value) -> Result<String, String> {
     Ok(lines.join("\n"))
 }
 
-pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
+pub fn validate_drift_receipt(receipt: &::serde_json::Value) -> Result<String, String> {
     require(
-        receipt.get("schema_version").and_then(Value::as_u64) == Some(1),
+        receipt
+            .get("schema_version")
+            .and_then(::serde_json::Value::as_u64)
+            == Some(1),
         "schema_version must be 1",
     )?;
     require(
-        receipt.get("gate").and_then(Value::as_str) == Some("vm-determinism-drift"),
+        receipt.get("gate").and_then(::serde_json::Value::as_str) == Some("vm-determinism-drift"),
         "unexpected gate",
     )?;
     require(
@@ -76,12 +77,12 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
     )?;
     let cases = receipt
         .get("cases")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .filter(|values| !values.is_empty())
         .ok_or_else(|| String::from("cases must be a non-empty list"))?;
     let seen = cases
         .iter()
-        .filter_map(|case| case.get("name").and_then(Value::as_str))
+        .filter_map(|case| case.get("name").and_then(::serde_json::Value::as_str))
         .collect::<std::collections::BTreeSet<_>>();
     let expected = EXPECTED_DRIFT_CASES
         .into_iter()
@@ -91,14 +92,14 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
     for case in cases {
         let name = case
             .get("name")
-            .and_then(Value::as_str)
+            .and_then(::serde_json::Value::as_str)
             .unwrap_or("unknown");
         require(
-            case.get("runs").and_then(Value::as_u64) == Some(EXPECTED_DRIFT_RUNS),
+            case.get("runs").and_then(::serde_json::Value::as_u64) == Some(EXPECTED_DRIFT_RUNS),
             &format!("{name}: expected 5 runs"),
         )?;
         require(
-            case.get("passed").and_then(Value::as_bool) == Some(true),
+            case.get("passed").and_then(::serde_json::Value::as_bool) == Some(true),
             &format!("{name}: not passed"),
         )?;
         require(
@@ -106,7 +107,9 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
             &format!("{name}: mismatches present"),
         )?;
         require(
-            case.get("dlog_structural_match").and_then(Value::as_bool) == Some(true),
+            case.get("dlog_structural_match")
+                .and_then(::serde_json::Value::as_bool)
+                == Some(true),
             &format!("{name}: dlog structural mismatch"),
         )?;
         require(
@@ -119,7 +122,7 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
         )?;
         let observations = case
             .get("observations")
-            .and_then(Value::as_array)
+            .and_then(::serde_json::Value::as_array)
             .ok_or_else(|| format!("{name}: observations must be a list"))?;
         require(
             observations.len() as u64 == EXPECTED_DRIFT_RUNS,
@@ -132,26 +135,28 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
     Ok(lines.join("\n"))
 }
 
-fn display(value: Option<&Value>) -> String {
+fn display(value: Option<&::serde_json::Value>) -> String {
     match value {
-        Some(Value::String(value)) => value.clone(),
+        Some(::serde_json::Value::String(value)) => value.clone(),
         Some(value) => value.to_string(),
         None => String::from("null"),
     }
 }
 
-fn field(object: Option<&serde_json::Map<String, Value>>, name: &str) -> String {
+fn field(object: Option<&serde_json::Map<String, ::serde_json::Value>>, name: &str) -> String {
     display(object.and_then(|value| value.get(name)))
 }
 
-fn prefix(value: Option<&Value>, expected: &str) -> bool {
+fn prefix(value: Option<&::serde_json::Value>, expected: &str) -> bool {
     value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .is_some_and(|value| value.starts_with(expected))
 }
 
-fn empty_array(value: Option<&Value>) -> bool {
-    value.and_then(Value::as_array).is_some_and(Vec::is_empty)
+fn empty_array(value: Option<&::serde_json::Value>) -> bool {
+    value
+        .and_then(::serde_json::Value::as_array)
+        .is_some_and(Vec::is_empty)
 }
 
 fn require(condition: bool, message: &str) -> Result<(), String> {

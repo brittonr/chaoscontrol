@@ -1,0 +1,118 @@
+   Compiling proc-macro2 v1.0.101
+   Compiling unicode-ident v1.0.19
+   Compiling quote v1.0.41
+   Compiling serde_core v1.0.228
+   Compiling stable_deref_trait v1.2.0
+   Compiling writeable v0.6.1
+   Compiling litemap v0.8.0
+   Compiling icu_normalizer_data v2.0.0
+   Compiling icu_properties_data v2.0.1
+   Compiling libc v0.2.176
+   Compiling serde v1.0.228
+   Compiling autocfg v1.5.0
+   Compiling utf8parse v0.2.2
+   Compiling anstyle v1.0.13
+   Compiling cfg-if v1.0.3
+   Compiling rustix v1.1.2
+   Compiling getrandom v0.3.3
+   Compiling smallvec v1.15.1
+   Compiling typeid v1.0.3
+   Compiling bitflags v2.9.4
+   Compiling anstyle-parse v0.2.7
+   Compiling colorchoice v1.0.4
+   Compiling utf8-width v0.1.7
+   Compiling linux-raw-sys v0.11.0
+   Compiling is_terminal_polyfill v1.70.1
+   Compiling memchr v2.7.6
+   Compiling serde_json v1.0.145
+   Compiling anstyle-query v1.1.4
+   Compiling erased-serde v0.4.8
+   Compiling num-traits v0.2.19
+   Compiling regex-syntax v0.8.6
+   Compiling anstyle-lossy v1.1.4
+   Compiling html-escape v0.2.13
+   Compiling unicode-width v0.2.1
+   Compiling itoa v1.0.15
+   Compiling percent-encoding v2.3.2
+   Compiling thiserror v2.0.17
+   Compiling same-file v1.0.6
+   Compiling anstream v0.6.20
+   Compiling ryu v1.0.20
+   Compiling once_cell v1.21.3
+   Compiling fastrand v2.3.0
+   Compiling utf8_iter v1.0.4
+   Compiling normalize-line-endings v0.3.0
+   Compiling similar v2.7.0
+   Compiling form_urlencoded v1.2.2
+   Compiling dunce v1.0.5
+   Compiling snapbox-macros v0.3.10
+   Compiling walkdir v2.5.0
+   Compiling content_inspector v0.2.4
+   Compiling unicode-xid v0.2.6
+   Compiling anstyle-svg v0.1.11
+   Compiling syn v2.0.106
+   Compiling filetime v0.2.26
+   Compiling regex-automata v0.4.11
+   Compiling ordered-float v2.10.1
+   Compiling toml_datetime v0.7.2
+   Compiling serde_spanned v1.0.2
+   Compiling semver v1.0.27
+   Compiling tempfile v3.23.0
+   Compiling toml v0.9.7
+   Compiling serde-untagged v0.1.9
+   Compiling regex v1.11.3
+   Compiling synstructure v0.13.2
+   Compiling zerovec-derive v0.11.1
+   Compiling displaydoc v0.2.5
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.17
+   Compiling zerofrom-derive v0.1.6
+   Compiling yoke-derive v0.8.0
+   Compiling zerofrom v0.1.6
+   Compiling yoke v0.8.0
+   Compiling zerovec v0.11.4
+   Compiling zerotrie v0.2.2
+   Compiling tinystr v0.8.1
+   Compiling potential_utf v0.1.3
+   Compiling icu_collections v2.0.0
+   Compiling icu_locale_core v2.0.0
+   Compiling serde-value v0.7.0
+   Compiling snapbox v0.6.21
+   Compiling icu_provider v2.0.0
+   Compiling icu_properties v2.0.1
+   Compiling icu_normalizer v2.0.0
+   Compiling idna_adapter v1.2.1
+   Compiling idna v1.1.0
+   Compiling url v2.5.7
+   Compiling cargo-util-schemas v0.10.2 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.pi/cargo-build/rustc-1.92.0-src/src/tools/cargo/crates/cargo-util-schemas)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.11s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/cargo_util_schemas-9c27d1ed0d1164e8)
+
+running 5 tests
+test core::package_id_spec::tests::pathless_source_rejects_missing_or_malformed_package_identity ... ok
+test core::package_id_spec::tests::pathless_git_source_formats_and_round_trips ... FAILED
+test core::package_id_spec::tests::pathless_source_keeps_an_explicit_name_without_a_version ... FAILED
+test core::package_id_spec::tests::bad_parsing ... ok
+test core::package_id_spec::tests::good_parsing ... ok
+
+failures:
+
+---- core::package_id_spec::tests::pathless_git_source_formats_and_round_trips stdout ----
+
+thread 'core::package_id_spec::tests::pathless_git_source_formats_and_round_trips' (2911434) panicked at crates/cargo-util-schemas/src/core/package_id_spec.rs:244:40:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- core::package_id_spec::tests::pathless_source_keeps_an_explicit_name_without_a_version stdout ----
+
+thread 'core::package_id_spec::tests::pathless_source_keeps_an_explicit_name_without_a_version' (2911435) panicked at crates/cargo-util-schemas/src/core/package_id_spec.rs:384:9:
+called `Result::unwrap()` on an `Err` value: PackageIdSpecError(MissingUrlPath(Url { scheme: "rad", cannot_be_a_base: false, username: "", password: None, host: Some(Domain("z2QJLUqyAZnnHPiZQ1BFjLsX9ush3")), port: None, path: "", query: None, fragment: None }))
+
+
+failures:
+    core::package_id_spec::tests::pathless_git_source_formats_and_round_trips
+    core::package_id_spec::tests::pathless_source_keeps_an_explicit_name_without_a_version
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p cargo-util-schemas --lib`

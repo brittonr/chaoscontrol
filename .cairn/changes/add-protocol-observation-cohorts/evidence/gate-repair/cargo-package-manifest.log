@@ -1,0 +1,454 @@
+this derivation will be built:
+  /nix/store/h0wwx0bdh2l0wyn9mshwjgn32sansbzc-cargo-radicle-1.92.0.drv
+building '/nix/store/h0wwx0bdh2l0wyn9mshwjgn32sansbzc-cargo-radicle-1.92.0.drv'...
+cargo-radicle> Running phase: unpackPhase
+cargo-radicle> unpacking source archive /nix/store/dlybphal7i8gll2vf0m3n9wr3x2rls4n-rustc-1.92.0-src.tar.gz
+cargo-radicle> source root is rustc-1.92.0-src
+cargo-radicle> Executing cargoSetupPostUnpackHook
+cargo-radicle> Finished cargoSetupPostUnpackHook
+cargo-radicle> setting SOURCE_DATE_EPOCH to timestamp 1765198352 of file "rustc-1.92.0-src/x.py"
+cargo-radicle> Running phase: patchPhase
+cargo-radicle> applying patch /nix/store/cqpb86a19lkdcp7sn7178lqhqv7zp9z0-cargo-pathless-tests.patch
+cargo-radicle> patching file src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
+cargo-radicle> applying patch /nix/store/hy6jihycs7jpb4zkskkivk6ysblnd555-cargo-pathless-source.patch
+cargo-radicle> patching file src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
+cargo-radicle> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-radicle> Running phase: configurePhase
+cargo-radicle> Running phase: buildPhase
+cargo-radicle> Executing cargoBuildHook
+cargo-radicle> /build/rustc-1.92.0-src/src/tools/cargo /build/rustc-1.92.0-src
+cargo-radicle> cargoBuildHook flags: -j 4 --target x86_64-unknown-linux-gnu --offline --profile release
+cargo-radicle>    Compiling libc v0.2.176
+cargo-radicle>    Compiling proc-macro2 v1.0.101
+cargo-radicle>    Compiling unicode-ident v1.0.19
+cargo-radicle>    Compiling quote v1.0.41
+cargo-radicle>    Compiling cfg-if v1.0.3
+cargo-radicle>    Compiling memchr v2.7.6
+cargo-radicle>    Compiling regex-syntax v0.8.6
+cargo-radicle>    Compiling syn v2.0.106
+cargo-radicle>    Compiling aho-corasick v1.1.3
+cargo-radicle>    Compiling thiserror v2.0.17
+cargo-radicle>    Compiling smallvec v1.15.1
+cargo-radicle>    Compiling autocfg v1.5.0
+cargo-radicle>    Compiling typenum v1.18.0
+cargo-radicle>    Compiling regex-automata v0.4.11
+cargo-radicle>    Compiling thiserror-impl v2.0.17
+cargo-radicle>    Compiling bstr v1.12.0
+cargo-radicle>    Compiling version_check v0.9.5
+cargo-radicle>    Compiling once_cell v1.21.3
+cargo-radicle>    Compiling stable_deref_trait v1.2.0
+cargo-radicle>    Compiling zeroize v1.8.2
+cargo-radicle>    Compiling generic-array v0.14.7
+cargo-radicle>    Compiling subtle v2.6.1
+cargo-radicle>    Compiling crc32fast v1.5.0
+cargo-radicle>    Compiling crossbeam-utils v0.8.21
+cargo-radicle>    Compiling fastrand v2.3.0
+cargo-radicle>    Compiling tinyvec_macros v0.1.1
+cargo-radicle>    Compiling const-oid v0.9.6
+cargo-radicle>    Compiling tinyvec v1.10.0
+cargo-radicle>    Compiling lock_api v0.4.13
+cargo-radicle>    Compiling parking_lot_core v0.9.11
+cargo-radicle>    Compiling gix-trace v0.1.13
+cargo-radicle>    Compiling unicode-normalization v0.1.24
+cargo-radicle>    Compiling scopeguard v1.2.0
+cargo-radicle>    Compiling gix-utils v0.3.0
+cargo-radicle>    Compiling gix-validate v0.10.0
+cargo-radicle>    Compiling home v0.5.11
+cargo-radicle>    Compiling crypto-common v0.1.6
+cargo-radicle>    Compiling gix-path v0.10.20
+cargo-radicle>    Compiling block-buffer v0.10.4
+cargo-radicle>    Compiling same-file v1.0.6
+cargo-radicle>    Compiling bitflags v2.9.4
+cargo-radicle>    Compiling walkdir v2.5.0
+cargo-radicle>    Compiling digest v0.10.7
+cargo-radicle>    Compiling parking_lot v0.12.4
+cargo-radicle>    Compiling zlib-rs v0.5.2
+cargo-radicle>    Compiling prodash v30.0.1
+cargo-radicle>    Compiling jobserver v0.1.34
+cargo-radicle>    Compiling crossbeam-channel v0.5.15
+cargo-radicle>    Compiling bytes v1.10.1
+cargo-radicle>    Compiling libz-rs-sys v0.5.2
+cargo-radicle>    Compiling flate2 v1.1.2
+cargo-radicle>    Compiling find-msvc-tools v0.1.2
+cargo-radicle>    Compiling shlex v1.3.0
+cargo-radicle>    Compiling gix-features v0.43.1
+cargo-radicle>    Compiling cc v1.2.39
+cargo-radicle>    Compiling serde_core v1.0.228
+cargo-radicle>    Compiling itoa v1.0.15
+cargo-radicle>    Compiling byteorder v1.5.0
+cargo-radicle>    Compiling cpufeatures v0.2.17
+cargo-radicle>    Compiling heapless v0.8.0
+cargo-radicle>    Compiling hash32 v0.3.1
+cargo-radicle>    Compiling equivalent v1.0.2
+cargo-radicle>    Compiling pkg-config v0.3.32
+cargo-radicle>    Compiling rustix v1.1.2
+cargo-radicle>    Compiling faster-hex v0.10.0
+cargo-radicle>    Compiling synstructure v0.13.2
+cargo-radicle>    Compiling linux-raw-sys v0.11.0
+cargo-radicle>    Compiling sha1 v0.10.6
+cargo-radicle>    Compiling winnow v0.7.13
+cargo-radicle>    Compiling allocator-api2 v0.2.21
+cargo-radicle>    Compiling vcpkg v0.2.15
+cargo-radicle>    Compiling foldhash v0.1.5
+cargo-radicle>    Compiling hashbrown v0.15.5
+cargo-radicle>    Compiling sha1-checked v0.10.0
+cargo-radicle>    Compiling zerofrom-derive v0.1.6
+cargo-radicle>    Compiling getrandom v0.3.3
+cargo-radicle>    Compiling jiff v0.2.15
+cargo-radicle>    Compiling gix-hash v0.19.0
+cargo-radicle>    Compiling yoke-derive v0.8.0
+cargo-radicle>    Compiling zerofrom v0.1.6
+cargo-radicle>    Compiling zerovec-derive v0.11.1
+cargo-radicle>    Compiling gix-hashtable v0.9.0
+cargo-radicle>    Compiling displaydoc v0.2.5
+cargo-radicle>    Compiling yoke v0.8.0
+cargo-radicle>    Compiling memmap2 v0.9.8
+cargo-radicle>    Compiling serde v1.0.228
+cargo-radicle>    Compiling serde_derive v1.0.228
+cargo-radicle>    Compiling tempfile v3.23.0
+cargo-radicle>    Compiling zerovec v0.11.4
+cargo-radicle>    Compiling openssl-sys v0.9.109
+cargo-radicle>    Compiling tinystr v0.8.1
+cargo-radicle>    Compiling libz-sys v1.1.22
+cargo-radicle>    Compiling hashbrown v0.14.5
+cargo-radicle>    Compiling writeable v0.6.1
+cargo-radicle>    Compiling litemap v0.8.0
+cargo-radicle>    Compiling dashmap v6.1.0
+cargo-radicle>    Compiling icu_locale_core v2.0.0
+cargo-radicle>    Compiling gix-date v0.10.5
+cargo-radicle>    Compiling gix-actor v0.35.4
+cargo-radicle>    Compiling gix-object v0.50.2
+cargo-radicle>    Compiling potential_utf v0.1.3
+cargo-radicle>    Compiling zerotrie v0.2.2
+cargo-radicle>    Compiling gix-fs v0.16.1
+cargo-radicle>    Compiling gix-chunk v0.4.11
+cargo-radicle>    Compiling icu_properties_data v2.0.1
+cargo-radicle>    Compiling icu_normalizer_data v2.0.0
+cargo-radicle>    Compiling gix-tempfile v18.0.0
+cargo-radicle>    Compiling icu_provider v2.0.0
+cargo-radicle>    Compiling icu_collections v2.0.0
+cargo-radicle>    Compiling gix-quote v0.6.0
+cargo-radicle>    Compiling icu_normalizer v2.0.0
+cargo-radicle>    Compiling icu_properties v2.0.1
+cargo-radicle>    Compiling gix-commitgraph v0.29.0
+cargo-radicle>    Compiling getrandom v0.2.16
+cargo-radicle>    Compiling gix-revwalk v0.21.0
+cargo-radicle>    Compiling idna_adapter v1.2.1
+cargo-radicle>    Compiling gix-lock v18.0.0
+cargo-radicle>    Compiling libnghttp2-sys v0.1.11+1.64.0
+cargo-radicle>    Compiling utf8_iter v1.0.4
+cargo-radicle>    Compiling percent-encoding v2.3.2
+cargo-radicle>    Compiling idna v1.1.0
+cargo-radicle>    Compiling form_urlencoded v1.2.2
+cargo-radicle>    Compiling rand_core v0.6.4
+cargo-radicle>    Compiling gix-glob v0.21.0
+cargo-radicle>    Compiling gix-config-value v0.15.1
+cargo-radicle>    Compiling unicode-bom v2.0.3
+cargo-radicle>    Compiling url v2.5.7
+cargo-radicle>    Compiling curl-sys v0.4.83+curl-8.15.0
+cargo-radicle>    Compiling base64ct v1.8.0
+cargo-radicle>    Compiling static_assertions v1.1.0
+cargo-radicle>    Compiling kstring v2.0.2
+cargo-radicle>    Compiling pem-rfc7468 v0.7.0
+cargo-radicle>    Compiling gix-sec v0.12.0
+cargo-radicle>    Compiling log v0.4.28
+cargo-radicle>    Compiling shell-words v1.1.0
+cargo-radicle>    Compiling gix-command v0.6.2
+cargo-radicle>    Compiling der v0.7.10
+cargo-radicle>    Compiling gix-attributes v0.27.0
+cargo-radicle>    Compiling filetime v0.2.26
+cargo-radicle>    Compiling serde_json v1.0.145
+cargo-radicle>    Compiling spki v0.7.3
+cargo-radicle>    Compiling gix-ref v0.53.1
+cargo-radicle>    Compiling libssh2-sys v0.3.1
+cargo-radicle>    Compiling hmac v0.12.1
+cargo-radicle>    Compiling ryu v1.0.20
+cargo-radicle>    Compiling curl v0.4.49
+cargo-radicle>    Compiling openssl-probe v0.1.6
+cargo-radicle>    Compiling pkcs8 v0.10.2
+cargo-radicle>    Compiling ff v0.13.1
+cargo-radicle>    Compiling gix-traverse v0.47.0
+cargo-radicle>    Compiling tracing-core v0.1.34
+cargo-radicle>    Compiling gix-bitmap v0.2.14
+cargo-radicle>    Compiling socket2 v0.6.0
+cargo-radicle>    Compiling fnv v1.0.7
+cargo-radicle>    Compiling base16ct v0.2.0
+cargo-radicle>    Compiling sec1 v0.7.3
+cargo-radicle>    Compiling gix-index v0.41.0
+cargo-radicle>    Compiling group v0.13.0
+cargo-radicle>    Compiling hkdf v0.12.4
+cargo-radicle>    Compiling gix-pathspec v0.12.0
+cargo-radicle>    Compiling gix-url v0.32.0
+cargo-radicle>    Compiling gix-ignore v0.16.0
+cargo-radicle>    Compiling crypto-bigint v0.5.5
+cargo-radicle>    Compiling libgit2-sys v0.18.2+1.9.1
+cargo-radicle>    Compiling tracing-attributes v0.1.30
+cargo-radicle>    Compiling num-traits v0.2.19
+cargo-radicle>    Compiling typeid v1.0.3
+cargo-radicle>    Compiling zerocopy v0.8.27
+cargo-radicle>    Compiling anyhow v1.0.100
+cargo-radicle>    Compiling powerfmt v0.2.0
+cargo-radicle>    Compiling anstyle v1.0.13
+cargo-radicle>    Compiling pin-project-lite v0.2.16
+cargo-radicle>    Compiling utf8parse v0.2.2
+cargo-radicle>    Compiling anstyle-parse v0.2.7
+cargo-radicle>    Compiling deranged v0.5.4
+cargo-radicle>    Compiling tracing v0.1.41
+cargo-radicle>    Compiling elliptic-curve v0.13.8
+cargo-radicle>    Compiling gix-worktree v0.42.0
+cargo-radicle>    Compiling gix-prompt v0.11.1
+cargo-radicle>    Compiling gix-revision v0.35.0
+cargo-radicle>    Compiling gix-packetline-blocking v0.19.1
+cargo-radicle>    Compiling encoding_rs v0.8.35
+cargo-radicle>    Compiling hashbrown v0.16.0
+cargo-radicle>    Compiling time-core v0.1.6
+cargo-radicle>    Compiling num-conv v0.1.0
+cargo-radicle>    Compiling colorchoice v1.0.4
+cargo-radicle>    Compiling anstyle-query v1.1.4
+cargo-radicle>    Compiling is_terminal_polyfill v1.70.1
+cargo-radicle>    Compiling erased-serde v0.4.8
+cargo-radicle>    Compiling anstream v0.6.20
+cargo-radicle>    Compiling gix-filter v0.20.0
+cargo-radicle>    Compiling indexmap v2.11.4
+cargo-radicle>    Compiling time v0.3.44
+cargo-radicle>    Compiling gix-refspec v0.31.0
+cargo-radicle>    Compiling gix-credentials v0.30.0
+cargo-radicle>    Compiling rfc6979 v0.4.0
+cargo-radicle>    Compiling gix-discover v0.41.0
+cargo-radicle>    Compiling signature v2.2.0
+cargo-radicle>    Compiling imara-diff v0.1.8
+cargo-radicle>    Compiling toml_parser v1.0.3
+cargo-radicle>    Compiling terminal_size v0.4.3
+cargo-radicle>    Compiling libsqlite3-sys v0.35.0
+cargo-radicle>    Compiling toml_datetime v0.7.2
+cargo-radicle>    Compiling serde_spanned v1.0.2
+cargo-radicle>    Compiling gix-packetline v0.19.1
+cargo-radicle>    Compiling sha2 v0.10.9
+cargo-radicle>    Compiling crossbeam-epoch v0.9.18
+cargo-radicle>    Compiling clap_lex v0.7.5
+cargo-radicle>    Compiling lazy_static v1.5.0
+cargo-radicle>    Compiling minimal-lexical v0.2.1
+cargo-radicle>    Compiling strsim v0.11.1
+cargo-radicle>    Compiling toml_writer v1.0.3
+cargo-radicle>    Compiling base64 v0.22.1
+cargo-radicle>    Compiling clru v0.6.2
+cargo-radicle>    Compiling gix-pack v0.60.0
+cargo-radicle>    Compiling gix-transport v0.48.0
+cargo-radicle>    Compiling nom v7.1.3
+cargo-radicle>    Compiling clap_builder v4.5.48
+cargo-radicle>    Compiling sharded-slab v0.1.7
+cargo-radicle>    Compiling crossbeam-deque v0.8.6
+cargo-radicle>    Compiling ppv-lite86 v0.2.21
+cargo-radicle>    Compiling gix-diff v0.53.0
+cargo-radicle>    Compiling ecdsa v0.16.9
+cargo-radicle>    Compiling gix-dir v0.15.0
+cargo-radicle>    Compiling tar v0.4.44
+cargo-radicle>    Compiling ordered-float v2.10.1
+cargo-radicle>    Compiling primeorder v0.13.6
+cargo-radicle>    Compiling tracing-log v0.2.0
+cargo-radicle>    Compiling gix-config v0.46.0
+cargo-radicle>    Compiling globset v0.4.16
+cargo-radicle>    Compiling gix-shallow v0.5.0
+cargo-radicle>    Compiling gix-negotiate v0.21.0
+cargo-radicle>    Compiling rand_core v0.9.3
+cargo-radicle>    Compiling blake3 v1.8.2
+cargo-radicle>    Compiling bitmaps v2.1.0
+cargo-radicle>    Compiling im-rc v15.1.0
+cargo-radicle>    Compiling matchers v0.2.0
+cargo-radicle>    Compiling maybe-async v0.2.10
+cargo-radicle>    Compiling thread_local v1.1.9
+cargo-radicle>    Compiling nu-ansi-term v0.50.1
+cargo-radicle>    Compiling fiat-crypto v0.3.0
+cargo-radicle>    Compiling arc-swap v1.7.1
+cargo-radicle>    Compiling gix-odb v0.70.0
+cargo-radicle>    Compiling tracing-subscriber v0.3.20
+cargo-radicle>    Compiling orion v0.17.11
+cargo-radicle>    Compiling gix-protocol v0.51.0
+cargo-radicle>    Compiling sized-chunks v0.6.5
+cargo-radicle>    Compiling rand_chacha v0.9.0
+cargo-radicle>    Compiling gix-submodule v0.20.0
+cargo-radicle>    Compiling ignore v0.4.23
+cargo-radicle>    Compiling cargo v0.93.0 (/build/rustc-1.92.0-src/src/tools/cargo)
+cargo-radicle>    Compiling p384 v0.13.1
+cargo-radicle>    Compiling serde-untagged v0.1.9
+cargo-radicle>    Compiling serde-value v0.7.0
+cargo-radicle>    Compiling gix-status v0.20.0
+cargo-radicle>    Compiling clap v4.5.48
+cargo-radicle>    Compiling color-print-proc-macro v0.3.7
+cargo-radicle>    Compiling toml v0.9.7
+cargo-radicle>    Compiling cargo-credential v0.4.9 (/build/rustc-1.92.0-src/src/tools/cargo/credential/cargo-credential)
+cargo-radicle>    Compiling rand_xoshiro v0.6.0
+cargo-radicle>    Compiling ed25519-compact v2.1.1
+cargo-radicle>    Compiling hashlink v0.10.0
+cargo-radicle>    Compiling semver v1.0.27
+cargo-radicle>    Compiling regex v1.11.3
+cargo-radicle>    Compiling libloading v0.8.9
+cargo-radicle>    Compiling ct-codecs v1.1.6
+cargo-radicle>    Compiling unicode-width v0.2.1
+cargo-radicle>    Compiling fallible-streaming-iterator v0.1.9
+cargo-radicle>    Compiling constant_time_eq v0.3.1
+cargo-radicle>    Compiling unicode-xid v0.2.6
+cargo-radicle>    Compiling arrayref v0.3.9
+cargo-radicle>    Compiling fallible-iterator v0.3.0
+cargo-radicle>    Compiling either v1.15.0
+cargo-radicle>    Compiling arrayvec v0.7.6
+cargo-radicle>    Compiling is_executable v1.0.5
+cargo-radicle>    Compiling hex v0.4.3
+cargo-radicle>    Compiling shell-escape v0.1.5
+cargo-radicle>    Compiling clap_complete v4.5.58
+cargo-radicle>    Compiling cargo-util v0.2.25 (/build/rustc-1.92.0-src/src/tools/cargo/crates/cargo-util)
+cargo-radicle>    Compiling itertools v0.14.0
+cargo-radicle>    Compiling cargo-util-schemas v0.10.2 (/build/rustc-1.92.0-src/src/tools/cargo/crates/cargo-util-schemas)
+cargo-radicle>    Compiling annotate-snippets v0.12.4
+cargo-radicle>    Compiling pasetors v0.7.7
+cargo-radicle>    Compiling cargo-credential-libsecret v0.5.3 (/build/rustc-1.92.0-src/src/tools/cargo/credential/cargo-credential-libsecret)
+cargo-radicle>    Compiling color-print v0.3.7
+cargo-radicle>    Compiling gix v0.73.0
+cargo-radicle>    Compiling rand v0.9.2
+cargo-radicle>    Compiling tracing-chrome v0.7.2
+cargo-radicle>    Compiling toml_edit v0.23.6
+cargo-radicle>    Compiling rustfix v0.9.4 (/build/rustc-1.92.0-src/src/tools/cargo/crates/rustfix)
+cargo-radicle>    Compiling crates-io v0.40.15 (/build/rustc-1.92.0-src/src/tools/cargo/crates/crates-io)
+cargo-radicle>    Compiling rusqlite v0.37.0
+cargo-radicle>    Compiling os_info v3.12.0
+cargo-radicle>    Compiling cargo-platform v0.3.2 (/build/rustc-1.92.0-src/src/tools/cargo/crates/cargo-platform)
+cargo-radicle>    Compiling serde_ignored v0.1.14
+cargo-radicle>    Compiling opener v0.8.3
+cargo-radicle>    Compiling http-auth v0.1.10
+cargo-radicle>    Compiling rustc-hash v2.1.1
+cargo-radicle>    Compiling lazycell v1.3.0
+cargo-radicle>    Compiling supports-unicode v3.0.0
+cargo-radicle>    Compiling pathdiff v0.2.3
+cargo-radicle>    Compiling glob v0.3.3
+cargo-radicle>    Compiling unicase v2.8.1
+cargo-radicle>    Compiling rustc-stable-hash v0.1.2
+cargo-radicle>    Compiling supports-hyperlinks v3.1.0
+cargo-radicle>    Compiling git2 v0.20.2
+cargo-radicle>    Compiling git2-curl v0.21.0
+cargo-radicle>     Finished `release` profile [optimized] target(s) in 2m 48s
+cargo-radicle> /build/rustc-1.92.0-src
+cargo-radicle> Executing cargoInstallPostBuildHook
+cargo-radicle> Finished cargoInstallPostBuildHook
+cargo-radicle> Finished cargoBuildHook
+cargo-radicle> buildPhase completed in 2 minutes 49 seconds
+cargo-radicle> Running phase: checkPhase
+cargo-radicle>    Compiling proc-macro2 v1.0.101
+cargo-radicle>    Compiling unicode-ident v1.0.19
+cargo-radicle>    Compiling quote v1.0.41
+cargo-radicle>    Compiling stable_deref_trait v1.2.0
+cargo-radicle>    Compiling serde_core v1.0.228
+cargo-radicle>    Compiling writeable v0.6.1
+cargo-radicle>    Compiling litemap v0.8.0
+cargo-radicle>    Compiling icu_normalizer_data v2.0.0
+cargo-radicle>    Compiling libc v0.2.176
+cargo-radicle>    Compiling icu_properties_data v2.0.1
+cargo-radicle>    Compiling utf8parse v0.2.2
+cargo-radicle>    Compiling anstyle v1.0.13
+cargo-radicle>    Compiling serde v1.0.228
+cargo-radicle>    Compiling autocfg v1.5.0
+cargo-radicle>    Compiling cfg-if v1.0.3
+cargo-radicle>    Compiling typeid v1.0.3
+cargo-radicle>    Compiling smallvec v1.15.1
+cargo-radicle>    Compiling rustix v1.1.2
+cargo-radicle>    Compiling getrandom v0.3.3
+cargo-radicle>    Compiling memchr v2.7.6
+cargo-radicle>    Compiling serde_json v1.0.145
+cargo-radicle>    Compiling anstyle-query v1.1.4
+cargo-radicle>    Compiling colorchoice v1.0.4
+cargo-radicle>    Compiling erased-serde v0.4.8
+cargo-radicle>    Compiling regex-syntax v0.8.6
+cargo-radicle>    Compiling linux-raw-sys v0.11.0
+cargo-radicle>    Compiling bitflags v2.9.4
+cargo-radicle>    Compiling is_terminal_polyfill v1.70.1
+cargo-radicle>    Compiling utf8-width v0.1.7
+cargo-radicle>    Compiling percent-encoding v2.3.2
+cargo-radicle>    Compiling once_cell v1.21.3
+cargo-radicle>    Compiling fastrand v2.3.0
+cargo-radicle>    Compiling anstyle-parse v0.2.7
+cargo-radicle>    Compiling utf8_iter v1.0.4
+cargo-radicle>    Compiling ryu v1.0.20
+cargo-radicle>    Compiling itoa v1.0.15
+cargo-radicle>    Compiling html-escape v0.2.13
+cargo-radicle>    Compiling thiserror v2.0.17
+cargo-radicle>    Compiling same-file v1.0.6
+cargo-radicle>    Compiling unicode-width v0.2.1
+cargo-radicle>    Compiling similar v2.7.0
+cargo-radicle>    Compiling anstyle-lossy v1.1.4
+cargo-radicle>    Compiling normalize-line-endings v0.3.0
+cargo-radicle>    Compiling walkdir v2.5.0
+cargo-radicle>    Compiling anstream v0.6.20
+cargo-radicle>    Compiling form_urlencoded v1.2.2
+cargo-radicle>    Compiling dunce v1.0.5
+cargo-radicle>    Compiling unicode-xid v0.2.6
+cargo-radicle>    Compiling num-traits v0.2.19
+cargo-radicle>    Compiling snapbox-macros v0.3.10
+cargo-radicle>    Compiling content_inspector v0.2.4
+cargo-radicle>    Compiling anstyle-svg v0.1.11
+cargo-radicle>    Compiling syn v2.0.106
+cargo-radicle>    Compiling filetime v0.2.26
+cargo-radicle>    Compiling regex-automata v0.4.11
+cargo-radicle>    Compiling ordered-float v2.10.1
+cargo-radicle>    Compiling tempfile v3.23.0
+cargo-radicle>    Compiling serde_spanned v1.0.2
+cargo-radicle>    Compiling toml_datetime v0.7.2
+cargo-radicle>    Compiling semver v1.0.27
+cargo-radicle>    Compiling toml v0.9.7
+cargo-radicle>    Compiling regex v1.11.3
+cargo-radicle>    Compiling serde-untagged v0.1.9
+cargo-radicle>    Compiling synstructure v0.13.2
+cargo-radicle>    Compiling zerovec-derive v0.11.1
+cargo-radicle>    Compiling displaydoc v0.2.5
+cargo-radicle>    Compiling serde_derive v1.0.228
+cargo-radicle>    Compiling thiserror-impl v2.0.17
+cargo-radicle>    Compiling zerofrom-derive v0.1.6
+cargo-radicle>    Compiling yoke-derive v0.8.0
+cargo-radicle>    Compiling zerofrom v0.1.6
+cargo-radicle>    Compiling yoke v0.8.0
+cargo-radicle>    Compiling zerotrie v0.2.2
+cargo-radicle>    Compiling zerovec v0.11.4
+cargo-radicle>    Compiling tinystr v0.8.1
+cargo-radicle>    Compiling potential_utf v0.1.3
+cargo-radicle>    Compiling icu_collections v2.0.0
+cargo-radicle>    Compiling icu_locale_core v2.0.0
+cargo-radicle>    Compiling icu_provider v2.0.0
+cargo-radicle>    Compiling icu_normalizer v2.0.0
+cargo-radicle>    Compiling icu_properties v2.0.1
+cargo-radicle>    Compiling snapbox v0.6.21
+cargo-radicle>    Compiling serde-value v0.7.0
+cargo-radicle>    Compiling idna_adapter v1.2.1
+cargo-radicle>    Compiling idna v1.1.0
+cargo-radicle>    Compiling url v2.5.7
+cargo-radicle>    Compiling cargo-util-schemas v0.10.2 (/build/rustc-1.92.0-src/src/tools/cargo/crates/cargo-util-schemas)
+cargo-radicle>     Finished `test` profile [unoptimized + debuginfo] target(s) in 8.52s
+cargo-radicle>      Running unittests src/lib.rs (target/debug/deps/cargo_util_schemas-c2a0b7b2f1609c9a)
+cargo-radicle> 
+cargo-radicle> running 14 tests
+cargo-radicle> test manifest::rust_version::test::is_compatible_with_rustc ... ok
+cargo-radicle> test manifest::rust_version::test::is_compatible_with_workspace_msrv ... ok
+cargo-radicle> test core::package_id_spec::tests::pathless_source_keeps_an_explicit_name_without_a_version ... ok
+cargo-radicle> test core::package_id_spec::tests::pathless_source_rejects_missing_or_malformed_package_identity ... ok
+cargo-radicle> test core::package_id_spec::tests::pathless_git_source_formats_and_round_trips ... ok
+cargo-radicle> test lockfile::tests::good_sources ... ok
+cargo-radicle> test restricted_names::tests::valid_feature_names ... ok
+cargo-radicle> test lockfile::tests::bad_sources ... ok
+cargo-radicle> test core::package_id_spec::tests::bad_parsing ... ok
+cargo-radicle> test index::escaped_char_in_index_json_blob ... ok
+cargo-radicle> test core::partial_version::test::parse_success ... ok
+cargo-radicle> test core::partial_version::test::parse_errors ... ok
+cargo-radicle> test manifest::rust_version::test::parse_errors ... ok
+cargo-radicle> test core::package_id_spec::tests::good_parsing ... ok
+cargo-radicle> 
+cargo-radicle> test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+cargo-radicle> 
+cargo-radicle> Running phase: installPhase
+cargo-radicle> Executing cargoInstallHook
+cargo-radicle> Finished cargoInstallHook
+cargo-radicle> Running phase: fixupPhase
+cargo-radicle> shrinking RPATHs of ELF executables and libraries in /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0
+cargo-radicle> shrinking /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0/bin/.cargo-wrapped
+cargo-radicle> checking for references to /build/ in /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0...
+cargo-radicle> gzipping man pages under /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0/share/man/
+cargo-radicle> patching script interpreter paths in /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0
+cargo-radicle> stripping (with command strip and flags -S -p) in  /nix/store/ypz7l1kwf6qf26913lk5idh21w9b1nmi-cargo-radicle-1.92.0/bin
+cargo-radicle> Running phase: installCheckPhase
+cargo-radicle>  0x0000000000000001 (NEEDED)             Shared library: [libcurl.so.4]

@@ -1,0 +1,49 @@
+--- a/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
++++ b/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
+@@ -358,6 +358,46 @@
+         };
+     }
+ 
++    const RADICLE_SOURCE: &str = "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3";
++    const RADICLE_REVISION: &str = "ab123e3673b6dd616b3df5d044026b5e85755149";
++    const RADICLE_PACKAGE: &str = "vm-cohort-core";
++    const RADICLE_VERSION: &str = "0.1.0";
++
++    #[test]
++    fn pathless_git_source_formats_and_round_trips() {
++        let expected = PackageIdSpec::new(RADICLE_PACKAGE.to_owned())
++            .with_url(Url::parse(RADICLE_SOURCE).unwrap())
++            .with_version(RADICLE_VERSION.parse().unwrap())
++            .with_kind(SourceKind::Git(GitReference::Rev(RADICLE_REVISION.to_owned())));
++        let rendered = format!(
++            "git+{RADICLE_SOURCE}?rev={RADICLE_REVISION}#{RADICLE_PACKAGE}@{RADICLE_VERSION}"
++        );
++        assert_eq!(expected.to_string(), rendered);
++        ok(&rendered, expected, &rendered);
++    }
++
++    #[test]
++    fn pathless_source_keeps_an_explicit_name_without_a_version() {
++        let expected = PackageIdSpec::new(RADICLE_PACKAGE.to_owned())
++            .with_url(Url::parse(RADICLE_SOURCE).unwrap());
++        let rendered = format!("{RADICLE_SOURCE}#{RADICLE_PACKAGE}");
++        ok(&rendered, expected, &rendered);
++    }
++
++    #[test]
++    fn pathless_source_rejects_missing_or_malformed_package_identity() {
++        for spec in [
++            RADICLE_SOURCE.to_owned(),
++            format!("{RADICLE_SOURCE}#"),
++            format!("{RADICLE_SOURCE}#{RADICLE_VERSION}"),
++            format!("{RADICLE_SOURCE}#@{RADICLE_VERSION}"),
++            format!("{RADICLE_SOURCE}#{RADICLE_PACKAGE}@invalid-version"),
++            format!("unsupported+{RADICLE_SOURCE}#{RADICLE_PACKAGE}"),
++        ] {
++            assert!(PackageIdSpec::parse(&spec).is_err(), "accepted {spec}");
++        }
++    }
++
+     #[test]
+     fn good_parsing() {
+         ok(

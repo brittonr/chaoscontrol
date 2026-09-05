@@ -1,0 +1,155 @@
+these 10 derivations will be built:
+  /nix/store/rnihn2dfyh8k7c5d20qfm7pqaa6a7iwb-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1.drv
+  /nix/store/6pq4ynaiq5z3gnz2hr1qzwchw6dkdna5-linkLockedDeps.drv
+  /nix/store/h2prx3q01h0r5qqxfvdh1my63ydjsmb9-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525.drv
+  /nix/store/dffzdwq8zn7daxqkq87vcrrrbipschj7-linkLockedDeps.drv
+  /nix/store/f5hlcwka0qga6y2vjgndp6bq4hdrirzx-cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149.drv
+  /nix/store/p0yaxsi3y07k5pqxbhbnkq45d95f3yk3-linkLockedDeps.drv
+  /nix/store/p9lf634p17sjp7yk1qq9b9k8448v53p1-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd.drv
+  /nix/store/rnc0n6j979wr89v297l506qh6g9qwvaz-linkLockedDeps.drv
+  /nix/store/bm2wrap5wlgdyxz33rizncsq2w21cfcg-vendor-cargo-deps.drv
+  /nix/store/z4bix8cp08jqsww797zcjzbgj6a2q128-chaoscontrol-deny-0.1.0.drv
+this path will be fetched (16.4 MiB download, 16.4 MiB unpacked):
+  /nix/store/fl02yv3ax1qf1xkq64ik8qz5bjxyyd71-cargo-deny-0.19.0
+copying path '/nix/store/fl02yv3ax1qf1xkq64ik8qz5bjxyyd71-cargo-deny-0.19.0' from 'http://100.100.103.95:5000'...
+building '/nix/store/h2prx3q01h0r5qqxfvdh1my63ydjsmb9-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525.drv'...
+building '/nix/store/p9lf634p17sjp7yk1qq9b9k8448v53p1-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd.drv'...
+building '/nix/store/rnihn2dfyh8k7c5d20qfm7pqaa6a7iwb-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1.drv'...
+building '/nix/store/f5hlcwka0qga6y2vjgndp6bq4hdrirzx-cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149.drv'...
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: unpackPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> unpacking source archive /nix/store/42kh9d4vr3zkiixs84f0vrf54n5d3x15-source
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> source root is source
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: patchPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: installPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: unpackPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> unpacking source archive /nix/store/3x4pdzl4zslh1q8iynx4xy9vwhac8lcg-source
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> source root is source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: unpackPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> unpacking source archive /nix/store/wn6655z652d358mxmblh5rpcw657hzny-source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> source root is source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: patchPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: installPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: patchPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: installPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: unpackPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> unpacking source archive /nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> source root is source
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: patchPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: installPhase
+building '/nix/store/dffzdwq8zn7daxqkq87vcrrrbipschj7-linkLockedDeps.drv'...
+building '/nix/store/6pq4ynaiq5z3gnz2hr1qzwchw6dkdna5-linkLockedDeps.drv'...
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> warning: manifest has no description, license, license-file, documentation, homepage or repository
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd>   |
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd>   = note: see https://doc.rust-lang.org/cargo/reference/manifest.html#package-metadata for more info
+building '/nix/store/p0yaxsi3y07k5pqxbhbnkq45d95f3yk3-linkLockedDeps.drv'...
+building '/nix/store/rnc0n6j979wr89v297l506qh6g9qwvaz-linkLockedDeps.drv'...
+building '/nix/store/bm2wrap5wlgdyxz33rizncsq2w21cfcg-vendor-cargo-deps.drv'...
+building '/nix/store/z4bix8cp08jqsww797zcjzbgj6a2q128-chaoscontrol-deny-0.1.0.drv'...
+chaoscontrol-deny> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deny> Running phase: unpackPhase
+chaoscontrol-deny> unpacking source archive /nix/store/55i8p256fb3y82fv0vn34hf907v8921y-source
+chaoscontrol-deny> source root is source
+chaoscontrol-deny> Running phase: patchPhase
+chaoscontrol-deny> Executing configureCargoCommonVars
+chaoscontrol-deny> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deny> Running phase: configurePhase
+chaoscontrol-deny> will append /build/source/.cargo-home/config.toml with contents of /nix/store/jakhr0biy2232q306zgrlayfc2hkls9n-vendor-cargo-deps/config.toml
+chaoscontrol-deny> default configurePhase, nothing to do
+chaoscontrol-deny> Running phase: buildPhase
+chaoscontrol-deny> +++ command cargo --version
+chaoscontrol-deny> cargo 1.92.0 (344c4567c 2025-10-21)
+chaoscontrol-deny> +++ command cargo --offline deny --locked check bans licenses sources
+chaoscontrol-deny> error[source-not-allowed]: detected 'git' source not explicitly allowed
+chaoscontrol-deny>    ┌─ /build/source/Cargo.lock:73:35
+chaoscontrol-deny>    │
+chaoscontrol-deny> 73 │ differential-execution-core 0.1.0 git+https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git?rev=cad5a7cb6c6502b0ec5dc76c51e03352260d8efd
+chaoscontrol-deny>    │                                   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+chaoscontrol-deny>    │
+chaoscontrol-deny>    ├ differential-execution-core v0.1.0
+chaoscontrol-deny>      └── chaoscontrol-wasm-differential v0.1.0
+chaoscontrol-deny> 
+chaoscontrol-deny> error[rejected]: failed to satisfy license requirements
+chaoscontrol-deny>   ┌─ path+file:///build/source/crates/chaoscontrol-guest-determinism-probe#0.1.0-synthesized.toml:4:12
+chaoscontrol-deny>   │
+chaoscontrol-deny> 4 │ license = "AGPL-3.0-or-later"
+chaoscontrol-deny>   │            ━━━━━━━━━━━━━━━━━
+chaoscontrol-deny>   │            │
+chaoscontrol-deny>   │            rejected: license is not explicitly allowed
+chaoscontrol-deny>   │
+chaoscontrol-deny>   ├ AGPL-3.0-or-later - GNU Affero General Public License v3.0 or later:
+chaoscontrol-deny>   ├   - OSI approved
+chaoscontrol-deny>   ├   - FSF Free/Libre
+chaoscontrol-deny>   ├   - Copyleft
+chaoscontrol-deny>   ├ chaoscontrol-guest-determinism-probe v0.1.0
+chaoscontrol-deny> 
+chaoscontrol-deny> error[source-not-allowed]: detected 'git' source not explicitly allowed
+chaoscontrol-deny>     ┌─ /build/source/Cargo.lock:199:29
+chaoscontrol-deny>     │
+chaoscontrol-deny> 199 │ vm-cohort-conformance 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+chaoscontrol-deny>     │                             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+chaoscontrol-deny>     │
+chaoscontrol-deny>     ├ vm-cohort-conformance v0.1.0
+chaoscontrol-deny>       └── chaoscontrol-vm-cohort-adapter v0.1.0
+chaoscontrol-deny> 
+chaoscontrol-deny> error[source-not-allowed]: detected 'git' source not explicitly allowed
+chaoscontrol-deny>     ┌─ /build/source/Cargo.lock:200:22
+chaoscontrol-deny>     │
+chaoscontrol-deny> 200 │ vm-cohort-core 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+chaoscontrol-deny>     │                      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+chaoscontrol-deny>     │
+chaoscontrol-deny>     ├ vm-cohort-core v0.1.0
+chaoscontrol-deny>       ├── chaoscontrol-vm-cohort-adapter v0.1.0
+chaoscontrol-deny>       ├── vm-cohort-conformance v0.1.0
+chaoscontrol-deny>       │   └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+chaoscontrol-deny>       └── vm-cohort-kvm v0.1.0
+chaoscontrol-deny>           ├── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+chaoscontrol-deny>           └── vm-cohort-conformance v0.1.0 (*)
+chaoscontrol-deny> 
+chaoscontrol-deny> error[source-not-allowed]: detected 'git' source not explicitly allowed
+chaoscontrol-deny>     ┌─ /build/source/Cargo.lock:201:21
+chaoscontrol-deny>     │
+chaoscontrol-deny> 201 │ vm-cohort-kvm 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+chaoscontrol-deny>     │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+chaoscontrol-deny>     │
+chaoscontrol-deny>     ├ vm-cohort-kvm v0.1.0
+chaoscontrol-deny>       ├── chaoscontrol-vm-cohort-adapter v0.1.0
+chaoscontrol-deny>       └── vm-cohort-conformance v0.1.0
+chaoscontrol-deny>           └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+chaoscontrol-deny> 
+chaoscontrol-deny> bans ok, licenses FAILED, sources FAILED
+error: Cannot build '/nix/store/z4bix8cp08jqsww797zcjzbgj6a2q128-chaoscontrol-deny-0.1.0.drv'.
+       Reason: builder failed with exit code 12.
+       Output paths:
+         /nix/store/j116vdh6fxlcqpk2qnwnnwiblb23sjfy-chaoscontrol-deny-0.1.0
+       Last 25 log lines:
+       >     ┌─ /build/source/Cargo.lock:200:22
+       >     │
+       > 200 │ vm-cohort-core 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+       >     │                      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+       >     │
+       >     ├ vm-cohort-core v0.1.0
+       >       ├── chaoscontrol-vm-cohort-adapter v0.1.0
+       >       ├── vm-cohort-conformance v0.1.0
+       >       │   └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+       >       └── vm-cohort-kvm v0.1.0
+       >           ├── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+       >           └── vm-cohort-conformance v0.1.0 (*)
+       >
+       > error[source-not-allowed]: detected 'git' source not explicitly allowed
+       >     ┌─ /build/source/Cargo.lock:201:21
+       >     │
+       > 201 │ vm-cohort-kvm 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+       >     │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+       >     │
+       >     ├ vm-cohort-kvm v0.1.0
+       >       ├── chaoscontrol-vm-cohort-adapter v0.1.0
+       >       └── vm-cohort-conformance v0.1.0
+       >           └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+       >
+       > bans ok, licenses FAILED, sources FAILED
+       For full logs, run:
+         nix log /nix/store/z4bix8cp08jqsww797zcjzbgj6a2q128-chaoscontrol-deny-0.1.0.drv

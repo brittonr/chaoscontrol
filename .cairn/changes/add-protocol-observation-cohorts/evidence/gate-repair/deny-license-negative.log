@@ -1,0 +1,21 @@
+error[rejected]: failed to satisfy license requirements
+  ┌─ path+file:///home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-guest-determinism-probe#0.1.0-synthesized.toml:4:12
+  │
+4 │ license = "AGPL-3.0-or-later"
+  │            ━━━━━━━━━━━━━━━━━
+  │            │
+  │            rejected: license is not explicitly allowed
+  │
+  ├ AGPL-3.0-or-later - GNU Affero General Public License v3.0 or later:
+  ├   - OSI approved
+  ├   - FSF Free/Libre
+  ├   - Copyleft
+  ├ chaoscontrol-guest-determinism-probe v0.1.0
+
+warning[license-exception-not-encountered]: license exception was not encountered
+   ┌─ /home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.pi/deny-license-negative.toml:57:10
+   │
+57 │ crate = "chaoscontrol-guest-determinism-probe-unreviewed"
+   │          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ unmatched license exception
+
+bans ok, licenses FAILED, sources ok

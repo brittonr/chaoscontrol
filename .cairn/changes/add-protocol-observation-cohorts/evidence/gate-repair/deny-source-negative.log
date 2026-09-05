@@ -1,0 +1,41 @@
+error[source-not-allowed]: detected 'git' source not explicitly allowed
+    ┌─ /home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/Cargo.lock:199:29
+    │
+199 │ vm-cohort-conformance 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+    │                             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+    │
+    ├ vm-cohort-conformance v0.1.0
+      └── chaoscontrol-vm-cohort-adapter v0.1.0
+
+error[source-not-allowed]: detected 'git' source not explicitly allowed
+    ┌─ /home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/Cargo.lock:200:22
+    │
+200 │ vm-cohort-core 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+    │                      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+    │
+    ├ vm-cohort-core v0.1.0
+      ├── chaoscontrol-vm-cohort-adapter v0.1.0
+      ├── vm-cohort-conformance v0.1.0
+      │   └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+      └── vm-cohort-kvm v0.1.0
+          ├── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+          └── vm-cohort-conformance v0.1.0 (*)
+
+error[source-not-allowed]: detected 'git' source not explicitly allowed
+    ┌─ /home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/Cargo.lock:201:21
+    │
+201 │ vm-cohort-kvm 0.1.0 git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149
+    │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ source
+    │
+    ├ vm-cohort-kvm v0.1.0
+      ├── chaoscontrol-vm-cohort-adapter v0.1.0
+      └── vm-cohort-conformance v0.1.0
+          └── chaoscontrol-vm-cohort-adapter v0.1.0 (*)
+
+warning[unmatched-source]: allowed source was not encountered
+    ┌─ /home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.pi/deny-source-negative.toml:167:4
+    │
+167 │   "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-unreviewed",
+    │    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ no crate source matched these criteria
+
+bans ok, licenses ok, sources FAILED

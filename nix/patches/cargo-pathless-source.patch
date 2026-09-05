@@ -1,0 +1,44 @@
+--- a/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
++++ b/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
+@@ -152,22 +152,25 @@
+         url.set_fragment(None);
+ 
+         let (name, version) = {
+-            let Some(path_name) = url.path_segments().and_then(|mut p| p.next_back()) else {
+-                return Err(ErrorKind::MissingUrlPath(url).into());
+-            };
++            let path_name = url.path_segments().and_then(|mut path| path.next_back());
+             match frag {
+                 Some(fragment) => match parse_spec(&fragment)? {
+                     Some((name, ver)) => (name, ver),
+                     None => {
+-                        if fragment.chars().next().unwrap().is_alphabetic() {
++                        if fragment.chars().next().is_some_and(char::is_alphabetic) {
+                             (String::from(fragment.as_str()), None)
+                         } else {
+                             let version = fragment.parse::<PartialVersion>()?;
+-                            (String::from(path_name), Some(version))
++                            let name = path_name
++                                .ok_or_else(|| ErrorKind::MissingUrlPath(url.clone()))?;
++                            (String::from(name), Some(version))
+                         }
+                     }
+                 },
+-                None => (String::from(path_name), None),
++                None => {
++                    let name = path_name.ok_or_else(|| ErrorKind::MissingUrlPath(url.clone()))?;
++                    (String::from(name), None)
++                }
+             }
+         };
+         PackageName::new(&name)?;
+@@ -241,7 +244,8 @@
+                         write!(f, "?{}", pretty)?;
+                     }
+                 }
+-                if url.path_segments().unwrap().next_back().unwrap() != &*self.name {
++                let path_name = url.path_segments().and_then(|mut path| path.next_back());
++                if path_name != Some(self.name.as_str()) {
+                     printed_name = true;
+                     write!(f, "#{}", self.name)?;
+                 }

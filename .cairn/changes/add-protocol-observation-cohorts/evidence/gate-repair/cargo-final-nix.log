@@ -1,0 +1,25 @@
+these 2 derivations will be built:
+  /nix/store/6f3nzw9h5619mbnhjj526dn1qf24345z-chaoscontrol-deny-0.1.0.drv
+  /nix/store/rdpxszrsf5cmm5qr5hs6w4qg45cx9r4c-chaoscontrol-vm-cohort-dependency.drv
+building '/nix/store/6f3nzw9h5619mbnhjj526dn1qf24345z-chaoscontrol-deny-0.1.0.drv'...
+building '/nix/store/rdpxszrsf5cmm5qr5hs6w4qg45cx9r4c-chaoscontrol-vm-cohort-dependency.drv'...
+chaoscontrol-deny> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deny> Running phase: unpackPhase
+chaoscontrol-deny> unpacking source archive /nix/store/2mn0pf0wrka1qa02xx3iis2ggrghxj25-source
+chaoscontrol-deny> source root is source
+chaoscontrol-deny> Running phase: patchPhase
+chaoscontrol-deny> Executing configureCargoCommonVars
+chaoscontrol-deny> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deny> Running phase: configurePhase
+chaoscontrol-deny> will append /build/source/.cargo-home/config.toml with contents of /nix/store/jakhr0biy2232q306zgrlayfc2hkls9n-vendor-cargo-deps/config.toml
+chaoscontrol-deny> default configurePhase, nothing to do
+chaoscontrol-deny> Running phase: buildPhase
+chaoscontrol-deny> +++ command cargo --version
+chaoscontrol-deny> cargo 1.92.0 (344c4567c 2025-10-21)
+chaoscontrol-deny> +++ command cargo --offline deny --locked check bans licenses sources
+chaoscontrol-deny> bans ok, licenses ok, sources ok
+chaoscontrol-deny> Running phase: installPhase
+chaoscontrol-deny> Running phase: fixupPhase
+chaoscontrol-deny> shrinking RPATHs of ELF executables and libraries in /nix/store/1x34djakxv5x33mmk2rdiabnj7174lz7-chaoscontrol-deny-0.1.0
+chaoscontrol-deny> checking for references to /build/ in /nix/store/1x34djakxv5x33mmk2rdiabnj7174lz7-chaoscontrol-deny-0.1.0...
+chaoscontrol-deny> patching script interpreter paths in /nix/store/1x34djakxv5x33mmk2rdiabnj7174lz7-chaoscontrol-deny-0.1.0

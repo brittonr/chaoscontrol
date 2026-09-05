@@ -157,6 +157,12 @@
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+          cargoInterop = import ./nix/cargo-radicle.nix { inherit pkgs; };
+          cargoPolicyLib = craneLib.overrideScope (
+            _final: _previous: {
+              cargo = cargoInterop.cargo;
+            }
+          );
 
           # Musl-targeting toolchain for statically-linked guest binaries
           muslRustToolchain = pkgs.rust-bin.stable.latest.default.override {
@@ -1451,6 +1457,8 @@
             local-multi-hypervisor-kvm-smoke = localMultiHypervisorKvmSmoke;
             replay-readiness-readme-status = replayReadinessReadmeStatus;
 
+            # The metadata-compatible Cargo provider keeps the Radicle source pin.
+            cargo-radicle = cargoInterop.cargo;
             cargo-tigerstyle = octet.packages.${system}.cargo-tigerstyle;
             tigerstyle-standards = octet.packages.${system}.tigerstyle-standards;
             verified-logic = trellis.packages.${system}.verified-logic;
@@ -1754,7 +1762,7 @@
                 '';
 
             # Cargo-deny dependency policy over license, ban, and source hygiene.
-            dependency-policy = craneLib.cargoDeny (
+            dependency-policy = cargoPolicyLib.cargoDeny (
               commonArgs
               // {
                 cargoDenyExtraArgs = "--locked";

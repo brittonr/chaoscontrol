@@ -156,8 +156,15 @@
               '';
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
-          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
           cargoInterop = import ./nix/cargo-radicle.nix { inherit pkgs; };
+          mkCraneLib =
+            toolchain:
+            ((crane.mkLib pkgs).overrideToolchain toolchain).overrideScope (
+              _final: previous: {
+                installFromCargoBuildLogHook = cargoInterop.installHook previous.installFromCargoBuildLogHook;
+              }
+            );
+          craneLib = mkCraneLib rustToolchain;
           cargoPolicyLib = craneLib.overrideScope (
             _final: _previous: {
               cargo = cargoInterop.cargo;
@@ -168,7 +175,7 @@
           muslRustToolchain = pkgs.rust-bin.stable.latest.default.override {
             targets = [ "x86_64-unknown-linux-musl" ];
           };
-          muslCraneLib = (crane.mkLib pkgs).overrideToolchain muslRustToolchain;
+          muslCraneLib = mkCraneLib muslRustToolchain;
           muslCC = pkgs.pkgsCross.musl64.stdenv.cc;
 
           # Filter source to include Rust-relevant files, BPF sources, and

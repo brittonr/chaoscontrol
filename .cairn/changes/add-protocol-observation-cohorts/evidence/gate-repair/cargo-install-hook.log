@@ -1,0 +1,66 @@
+this derivation will be built:
+  /nix/store/rgz4j3hzhxyy2va4p6m7dy9ka7qan4pj-chaoscontrol-raft-guest-0.1.0.drv
+building '/nix/store/rgz4j3hzhxyy2va4p6m7dy9ka7qan4pj-chaoscontrol-raft-guest-0.1.0.drv'...
+chaoscontrol-raft-guest> Running phase: unpackPhase
+chaoscontrol-raft-guest> unpacking source archive /nix/store/xa1zq429yxsn56g9dlp7cm8id54z1gxm-source
+chaoscontrol-raft-guest> source root is source
+chaoscontrol-raft-guest> Running phase: patchPhase
+chaoscontrol-raft-guest> Executing configureCargoCommonVars
+chaoscontrol-raft-guest> decompressing cargo artifacts from /nix/store/mc2kmbf54randswz2smzj1ri9lc3r5b3-chaoscontrol-guest-deps-0.1.0/target.tar.zst to target
+chaoscontrol-raft-guest> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-raft-guest> Running phase: configurePhase
+chaoscontrol-raft-guest> will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+chaoscontrol-raft-guest> default configurePhase, nothing to do
+chaoscontrol-raft-guest> Running phase: buildPhase
+chaoscontrol-raft-guest> +++ command cargo --version
+chaoscontrol-raft-guest> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-raft-guest> +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-raft-guest --target x86_64-unknown-linux-musl
+chaoscontrol-raft-guest>    Compiling syn v2.0.116
+chaoscontrol-raft-guest>    Compiling rand_chacha v0.3.1
+chaoscontrol-raft-guest>    Compiling rand v0.8.6
+chaoscontrol-raft-guest>    Compiling serde_derive v1.0.228
+chaoscontrol-raft-guest>    Compiling linkme-impl v0.3.35
+chaoscontrol-raft-guest>    Compiling linkme v0.3.35
+chaoscontrol-raft-guest>    Compiling serde v1.0.228
+chaoscontrol-raft-guest>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+chaoscontrol-raft-guest>     Finished `release` profile [optimized] target(s) in 7.84s
+chaoscontrol-raft-guest> searching for bins/libs to install from cargo build log at cargoBuildLogY5AD.json
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> thread 'main' (384) panicked at src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs:248:40:
+chaoscontrol-raft-guest> called `Option::unwrap()` on a `None` value
+chaoscontrol-raft-guest> note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+error: Cannot build '/nix/store/rgz4j3hzhxyy2va4p6m7dy9ka7qan4pj-chaoscontrol-raft-guest-0.1.0.drv'.
+       Reason: builder failed with exit code 101.
+       Output paths:
+         /nix/store/d1gl87lhpzki4izp1fjds136fi72sdhx-chaoscontrol-raft-guest-0.1.0
+       Last 25 log lines:
+       > Running phase: updateAutotoolsGnuConfigScriptsPhase
+       > Running phase: configurePhase
+       > will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+       > default configurePhase, nothing to do
+       > Running phase: buildPhase
+       > +++ command cargo --version
+       > cargo 1.98.0 (797e8a9bc 2026-08-05)
+       > +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-raft-guest --target x86_64-unknown-linux-musl
+       >    Compiling syn v2.0.116
+       >    Compiling rand_chacha v0.3.1
+       >    Compiling rand v0.8.6
+       >    Compiling serde_derive v1.0.228
+       >    Compiling linkme-impl v0.3.35
+       >    Compiling linkme v0.3.35
+       >    Compiling serde v1.0.228
+       >    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+       >    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+       >    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+       >    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+       >     Finished `release` profile [optimized] target(s) in 7.84s
+       > searching for bins/libs to install from cargo build log at cargoBuildLogY5AD.json
+       >
+       > thread 'main' (384) panicked at src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs:248:40:
+       > called `Option::unwrap()` on a `None` value
+       > note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+       For full logs, run:
+         nix log /nix/store/rgz4j3hzhxyy2va4p6m7dy9ka7qan4pj-chaoscontrol-raft-guest-0.1.0.drv

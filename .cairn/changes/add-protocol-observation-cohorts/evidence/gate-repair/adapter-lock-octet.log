@@ -1,0 +1,176 @@
+these 2 derivations will be built:
+  /nix/store/jnwbilbavis42wj7avd244iwi6f8r5ix-chaoscontrol-vm-cohort-adapter-octet-workspace.drv
+  /nix/store/2ri7n55cpnk3rs3bgydshsc44syh9wzw-octet-consumer-check.drv
+building '/nix/store/jnwbilbavis42wj7avd244iwi6f8r5ix-chaoscontrol-vm-cohort-adapter-octet-workspace.drv'...
+building '/nix/store/2ri7n55cpnk3rs3bgydshsc44syh9wzw-octet-consumer-check.drv'...
+octet-consumer-check>    Compiling proc-macro2 v1.0.107
+octet-consumer-check>    Compiling unicode-ident v1.0.24
+octet-consumer-check>    Compiling quote v1.0.47
+octet-consumer-check>    Compiling libc v0.2.189
+octet-consumer-check>    Compiling serde_core v1.0.229
+octet-consumer-check>    Compiling serde v1.0.229
+octet-consumer-check>     Checking cfg-if v1.0.4
+octet-consumer-check>     Checking memchr v2.8.3
+octet-consumer-check>    Compiling shlex v2.0.1
+octet-consumer-check>    Compiling find-msvc-tools v0.1.11
+octet-consumer-check>    Compiling zmij v1.0.23
+octet-consumer-check>    Compiling serde_json v1.0.151
+octet-consumer-check>    Compiling zerocopy v0.8.56
+octet-consumer-check>     Checking constant_time_eq v0.4.2
+octet-consumer-check>     Checking arrayvec v0.7.8
+octet-consumer-check>     Checking cpufeatures v0.3.0
+octet-consumer-check>     Checking itoa v1.0.18
+octet-consumer-check>     Checking byteorder v1.5.0
+octet-consumer-check>     Checking bitflags v2.13.1
+octet-consumer-check>     Checking bitflags v1.3.2
+octet-consumer-check>     Checking regex-syntax v0.8.11
+octet-consumer-check>    Compiling rustix v1.1.4
+octet-consumer-check>    Compiling kvm-ioctls v0.19.1
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling thiserror v2.0.20
+octet-consumer-check>     Checking linux-raw-sys v0.12.1
+octet-consumer-check>     Checking utf8parse v0.2.2
+octet-consumer-check>     Checking is_terminal_polyfill v1.70.2
+octet-consumer-check>     Checking jiff-core v0.1.0
+octet-consumer-check>     Checking colorchoice v1.0.5
+octet-consumer-check>     Checking log v0.4.34
+octet-consumer-check>     Checking anstyle-query v1.1.5
+octet-consumer-check>    Compiling cfg_if v1.0.4
+octet-consumer-check>    Compiling crc32fast v1.5.1
+octet-consumer-check>    Compiling bitflags v1.3.2
+octet-consumer-check>     Checking anstyle v1.0.14
+octet-consumer-check>     Checking vm-superio v0.8.1
+octet-consumer-check>    Compiling cpufeatures v0.3.0
+octet-consumer-check>    Compiling unicode_ident v1.0.24
+octet-consumer-check>    Compiling constant_time_eq v0.4.2
+octet-consumer-check>    Compiling anstyle_query v1.1.5
+octet-consumer-check>    Compiling colorchoice v1.0.5
+octet-consumer-check>    Compiling utf8parse v0.2.2
+octet-consumer-check>     Checking anstyle-parse v1.0.0
+octet-consumer-check>    Compiling is_terminal_polyfill v1.70.2
+octet-consumer-check>    Compiling cc v1.4.4
+octet-consumer-check>    Compiling bitflags v2.13.1
+octet-consumer-check>    Compiling itoa v1.0.18
+octet-consumer-check>    Compiling arrayvec v0.7.8
+octet-consumer-check>    Compiling shlex v2.0.1
+octet-consumer-check>    Compiling find_msvc_tools v0.1.11
+octet-consumer-check>    Compiling log v0.4.34
+octet-consumer-check>    Compiling build-script-build v1.0.151
+octet-consumer-check>    Compiling build-script-build v1.0.47
+octet-consumer-check>    Compiling build-script-build v0.19.1
+octet-consumer-check>    Compiling byteorder v1.5.0
+octet-consumer-check>    Compiling build-script-build v1.0.107
+octet-consumer-check>    Compiling build-script-build v1.0.229
+octet-consumer-check>    Compiling build-script-build v1.0.229
+octet-consumer-check>    Compiling build-script-build v1.0.23
+octet-consumer-check>    Compiling vm_superio v0.8.1
+octet-consumer-check>    Compiling heck v0.5.0
+octet-consumer-check>    Compiling build-script-build v0.2.189
+octet-consumer-check>    Compiling anstyle_parse v1.0.0
+octet-consumer-check>    Compiling build-script-build v1.5.1
+octet-consumer-check>     Checking anstream v1.0.0
+octet-consumer-check>    Compiling anstyle v1.0.14
+octet-consumer-check>    Compiling build-script-build v2.0.20
+octet-consumer-check>    Compiling build-script-build v1.1.4
+octet-consumer-check>    Compiling build-script-build v0.8.56
+octet-consumer-check>    Compiling crc32fast v1.5.1
+octet-consumer-check>    Compiling linux_raw_sys v0.12.1
+octet-consumer-check>    Compiling zmij v1.0.23
+octet-consumer-check>    Compiling anstream v1.0.0
+octet-consumer-check>    Compiling memchr v2.8.3    Checking aho-corasick v1.1.5
+octet-consumer-check> 
+octet-consumer-check>    Compiling proc_macro2 v1.0.107
+octet-consumer-check>    Compiling syn v3.0.4
+octet-consumer-check>    Compiling syn v2.0.119
+octet-consumer-check>     Checking jiff v0.2.35
+octet-consumer-check>    Compiling jiff_core v0.1.0
+octet-consumer-check>    Compiling quote v1.0.47
+octet-consumer-check>    Compiling blake3 v1.8.7
+octet-consumer-check>    Compiling cc v1.4.4
+octet-consumer-check>    Compiling libc v0.2.189
+octet-consumer-check>     Checking getrandom v0.2.17
+octet-consumer-check>     Checking vmm-sys-util v0.12.1
+octet-consumer-check>     Checking memmap2 v0.9.11
+octet-consumer-check>    Compiling build-script-build v1.8.7
+octet-consumer-check>    Compiling getrandom v0.2.17
+octet-consumer-check>     Checking rand_core v0.6.4
+octet-consumer-check>    Compiling memmap2 v0.9.11
+octet-consumer-check>    Compiling rand_core v0.6.4
+octet-consumer-check>    Compiling aho_corasick v1.1.5
+octet-consumer-check>    Compiling vmm_sys_util v0.12.1
+octet-consumer-check>    Compiling rustix v1.1.4
+octet-consumer-check>     Checking memfd v0.6.5
+octet-consumer-check>    Compiling memfd v0.6.5
+octet-consumer-check>     Checking regex-automata v0.4.18
+octet-consumer-check>    Compiling regex_syntax v0.8.11
+octet-consumer-check>    Compiling blake3 v1.8.7
+octet-consumer-check>    Compiling serde_core v1.0.229
+octet-consumer-check>    Compiling serde_derive v1.0.229
+octet-consumer-check>    Compiling syn v3.0.4
+octet-consumer-check>    Compiling thiserror-impl v2.0.20
+octet-consumer-check>    Compiling serde_json v1.0.151
+octet-consumer-check>    Compiling jiff v0.2.35
+octet-consumer-check>    Compiling thiserror_impl v2.0.20
+octet-consumer-check>    Compiling thiserror v2.0.20
+octet-consumer-check>     Checking vm-memory v0.17.1
+octet-consumer-check>    Compiling syn v2.0.119
+octet-consumer-check>    Compiling zerocopy-derive v0.7.35
+octet-consumer-check>    Compiling snafu-derive v0.8.9
+octet-consumer-check>    Compiling zerocopy v0.8.56
+octet-consumer-check>     Checking ppv-lite86 v0.2.21
+octet-consumer-check>    Compiling vm_memory v0.17.1
+octet-consumer-check>     Checking linux-loader v0.13.2
+octet-consumer-check>    Compiling regex_automata v0.4.18
+octet-consumer-check>     Checking regex v1.13.1
+octet-consumer-check>    Compiling zerocopy_derive v0.7.35    Checking zerocopy v0.7.35
+octet-consumer-check> 
+octet-consumer-check>    Compiling ppv_lite86 v0.2.21
+octet-consumer-check>    Compiling linux_loader v0.13.2
+octet-consumer-check>    Compiling regex v1.13.1
+octet-consumer-check>     Checking env_filter v2.0.0
+octet-consumer-check>    Compiling env_filter v2.0.0
+octet-consumer-check>     Checking env_logger v0.11.11
+octet-consumer-check>    Compiling env_logger v0.11.11
+octet-consumer-check>    Compiling zerocopy v0.7.35
+octet-consumer-check>    Compiling serde_derive v1.0.229
+octet-consumer-check>    Compiling snafu_derive v0.8.9
+octet-consumer-check>     Checking snafu v0.8.9
+octet-consumer-check>    Compiling snafu v0.8.9
+octet-consumer-check>    Compiling serde v1.0.229
+octet-consumer-check>     Checking kvm-bindings v0.10.0
+octet-consumer-check>     Checking rand_chacha v0.3.1
+octet-consumer-check>     Checking chaoscontrol-protocol v0.1.0 (/nix/store/rjikimb5la2d22vg0z4fd1wnkm17wj0l-source/crates/chaoscontrol-protocol)
+octet-consumer-check>     Checking vm-cohort-core v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-core)
+octet-consumer-check>    Compiling rand_chacha v0.3.1
+octet-consumer-check>     Checking rand v0.8.8
+octet-consumer-check>    Compiling kvm_bindings v0.10.0
+octet-consumer-check>    Compiling rand v0.8.8
+octet-consumer-check>    Compiling kvm_ioctls v0.19.1
+octet-consumer-check>    Compiling vm_cohort_core v0.1.0
+octet-consumer-check>     Checking vm-cohort-kvm v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-kvm)
+octet-consumer-check>    Compiling vm_cohort_kvm v0.1.0
+octet-consumer-check>     Checking vm-cohort-conformance v0.1.0 (/nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source/crates/vm-cohort-conformance)
+octet-consumer-check>    Compiling vm_cohort_conformance v0.1.0
+octet-consumer-check>    Compiling chaoscontrol_protocol v0.1.0
+octet-consumer-check>     Checking chaoscontrol-fault v0.1.0 (/nix/store/rjikimb5la2d22vg0z4fd1wnkm17wj0l-source/crates/chaoscontrol-fault)
+octet-consumer-check>    Compiling chaoscontrol_fault v0.1.0
+octet-consumer-check>     Checking chaoscontrol-sim-core v0.1.0 (/nix/store/rjikimb5la2d22vg0z4fd1wnkm17wj0l-source/crates/chaoscontrol-sim-core)
+octet-consumer-check>    Compiling chaoscontrol_sim_core v0.1.0
+octet-consumer-check>     Checking chaoscontrol-vmm v0.1.0 (/nix/store/rjikimb5la2d22vg0z4fd1wnkm17wj0l-source/crates/chaoscontrol-vmm)
+octet-consumer-check>    Compiling chaoscontrol_vmm v0.1.0
+octet-consumer-check>     Checking chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source)
+octet-consumer-check>    Compiling chaoscontrol_vm_cohort_adapter v0.1.0
+octet-consumer-check>    Compiling chaoscontrol_vm_cohort_adapter v0.1.0
+octet-consumer-check>     Finished checking
+octet-consumer-check>     Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.74s
+octet-consumer-check> --- octet summary ---
+octet-consumer-check> Status: clean
+octet-consumer-check> Findings: 0
+octet-consumer-check> Warnings: 0
+octet-consumer-check> Errors: 0
+octet-consumer-check> Autofixable: 0
+octet-consumer-check> Tool: cargo-octet 0.1.0
+octet-consumer-check> Toolchain: nightly-2026-03-21-x86_64-unknown-linux-gnu
+octet-consumer-check> Config hash: b3:2202b8ce75372b0019a52c49d784e373aa619edc6592be8a6bd3f768efc82ab3
+octet-consumer-check> Profile hash: b3:0edb6f9de6617398c8238487a5aefa56f2806bf8eb134869c81aedc933a2a84c
+octet-consumer-check> ---

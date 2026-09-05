@@ -1,0 +1,12 @@
+this derivation will be built:
+  /nix/store/p5grlymbi270s322i36ndpghrxlda38r-cargo-metadata-hook-drift-control.drv
+building '/nix/store/p5grlymbi270s322i36ndpghrxlda38r-cargo-metadata-hook-drift-control.drv'...
+cargo-metadata-hook-drift-control> substituteStream() in derivation cargo-metadata-hook-drift-control: ERROR: pattern command\ cargo\ metadata doesn't match anything in file '/nix/store/8w0qqy8sz8vs8hbygrxph9a18kbkabfx-cargo-metadata-hook-drift-control/nix-support/setup-hook'
+error: Cannot build '/nix/store/p5grlymbi270s322i36ndpghrxlda38r-cargo-metadata-hook-drift-control.drv'.
+       Reason: builder failed with exit code 1.
+       Output paths:
+         /nix/store/8w0qqy8sz8vs8hbygrxph9a18kbkabfx-cargo-metadata-hook-drift-control
+       Last 1 log lines:
+       > substituteStream() in derivation cargo-metadata-hook-drift-control: ERROR: pattern command\ cargo\ metadata doesn't match anything in file '/nix/store/8w0qqy8sz8vs8hbygrxph9a18kbkabfx-cargo-metadata-hook-drift-control/nix-support/setup-hook'
+       For full logs, run:
+         nix log /nix/store/p5grlymbi270s322i36ndpghrxlda38r-cargo-metadata-hook-drift-control.drv

@@ -1,0 +1,176 @@
+these 2 derivations will be built:
+  /nix/store/4ldgkn3i2hm8lzm2zcp6cwnrz8vka6lj-installFromCargoBuildLogHook.drv
+  /nix/store/a5y2jrby3iv3ri7k9nhkqkxqw1bzhbhl-chaoscontrol-raft-guest-0.1.0.drv
+building '/nix/store/4ldgkn3i2hm8lzm2zcp6cwnrz8vka6lj-installFromCargoBuildLogHook.drv'...
+building '/nix/store/a5y2jrby3iv3ri7k9nhkqkxqw1bzhbhl-chaoscontrol-raft-guest-0.1.0.drv'...
+chaoscontrol-raft-guest> Running phase: unpackPhase
+chaoscontrol-raft-guest> unpacking source archive /nix/store/xa1zq429yxsn56g9dlp7cm8id54z1gxm-source
+chaoscontrol-raft-guest> source root is source
+chaoscontrol-raft-guest> Running phase: patchPhase
+chaoscontrol-raft-guest> Executing configureCargoCommonVars
+chaoscontrol-raft-guest> decompressing cargo artifacts from /nix/store/mc2kmbf54randswz2smzj1ri9lc3r5b3-chaoscontrol-guest-deps-0.1.0/target.tar.zst to target
+chaoscontrol-raft-guest> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-raft-guest> Running phase: configurePhase
+chaoscontrol-raft-guest> will append /build/source/.cargo-home/config.toml with contents of /nix/store/6hqy98c4lp089agv5z6xf9zs2sa01b6y-vendor-cargo-deps/config.toml
+chaoscontrol-raft-guest> default configurePhase, nothing to do
+chaoscontrol-raft-guest> Running phase: buildPhase
+chaoscontrol-raft-guest> +++ command cargo --version
+chaoscontrol-raft-guest> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-raft-guest> +++ command cargo build --release --message-format json-render-diagnostics -p chaoscontrol-raft-guest --target x86_64-unknown-linux-musl
+chaoscontrol-raft-guest>    Compiling syn v2.0.116
+chaoscontrol-raft-guest>    Compiling rand_chacha v0.3.1
+chaoscontrol-raft-guest>    Compiling rand v0.8.6
+chaoscontrol-raft-guest>    Compiling serde_derive v1.0.228
+chaoscontrol-raft-guest>    Compiling linkme-impl v0.3.35
+chaoscontrol-raft-guest>    Compiling linkme v0.3.35
+chaoscontrol-raft-guest>    Compiling serde v1.0.228
+chaoscontrol-raft-guest>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-raft-guest>    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+chaoscontrol-raft-guest>     Finished `release` profile [optimized] target(s) in 7.66s
+chaoscontrol-raft-guest> searching for bins/libs to install from cargo build log at cargoBuildLog05on.json
+chaoscontrol-raft-guest> installing /build/source/target/x86_64-unknown-linux-musl/release/chaoscontrol-raft-guest in postBuildInstallFromCargoBuildLogOutTempaqS/bin
+chaoscontrol-raft-guest> searching for bins/libs complete
+chaoscontrol-raft-guest> Running phase: checkPhase
+chaoscontrol-raft-guest> +++ command cargo test --release -p chaoscontrol-raft-guest --target x86_64-unknown-linux-musl
+chaoscontrol-raft-guest>    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+chaoscontrol-raft-guest>     Finished `release` profile [optimized] target(s) in 0.86s
+chaoscontrol-raft-guest>      Running unittests src/lib.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_raft_guest-ed4ed324449a86c4)
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> running 106 tests
+chaoscontrol-raft-guest> test tests::append_entries_rejected_log_too_short ... ok
+chaoscontrol-raft-guest> test tests::append_entries_accepted_empty_log ... ok
+chaoscontrol-raft-guest> test smr_adapter_tests::raft_adapter_projects_only_committed_application_values ... ok
+chaoscontrol-raft-guest> test smr_adapter_tests::raft_adapter_rejects_changed_or_rolled_back_application_prefix ... ok
+chaoscontrol-raft-guest> test tests::append_entries_rejected_stale_term ... ok
+chaoscontrol-raft-guest> test tests::append_entries_rejected_term_mismatch ... ok
+chaoscontrol-raft-guest> test tests::append_multiple_entries ... ok
+chaoscontrol-raft-guest> test tests::become_candidate_increments_term_and_votes_self ... ok
+chaoscontrol-raft-guest> test tests::become_follower_same_term_keeps_vote ... ok
+chaoscontrol-raft-guest> test tests::become_follower_updates_term_and_clears_vote ... ok
+chaoscontrol-raft-guest> test tests::become_leader_initializes_indices_and_sends_heartbeats ... ok
+chaoscontrol-raft-guest> test tests::bug_accept_stale_term_correct_rejects ... ok
+chaoscontrol-raft-guest> test tests::bug_accept_stale_term_processes_old_leader ... ok
+chaoscontrol-raft-guest> test tests::bug_double_vote_correct_denies_second ... ok
+chaoscontrol-raft-guest> test tests::bug_double_vote_grants_two_votes ... ok
+chaoscontrol-raft-guest> test tests::bug_fig8_commit_allows_old_term_commit ... ok
+chaoscontrol-raft-guest> test tests::bug_fig8_commit_correct_blocks_old_term ... ok
+chaoscontrol-raft-guest> test tests::bug_fig8_cluster_runs_without_panic ... ok
+chaoscontrol-raft-guest> test tests::bug_leader_no_stepdown_correct_steps_down ... ok
+chaoscontrol-raft-guest> test tests::bug_leader_no_stepdown_stays_leader ... ok
+chaoscontrol-raft-guest> test tests::bug_mode_name_roundtrip ... ok
+chaoscontrol-raft-guest> test tests::bug_mode_parse ... ok
+chaoscontrol-raft-guest> test tests::bug_accept_stale_term_cluster_runs ... ok
+chaoscontrol-raft-guest> test tests::bug_leader_no_stepdown_cluster_runs ... ok
+chaoscontrol-raft-guest> test tests::bug_premature_commit_advances_before_check ... ok
+chaoscontrol-raft-guest> test tests::bug_premature_commit_cluster_runs ... ok
+chaoscontrol-raft-guest> test tests::bug_premature_commit_correct_no_advance ... ok
+chaoscontrol-raft-guest> test tests::bug_skip_truncate_correct_truncates ... ok
+chaoscontrol-raft-guest> test tests::bug_none_is_safe ... ok
+chaoscontrol-raft-guest> test tests::bug_skip_truncate_keeps_stale_entries ... ok
+chaoscontrol-raft-guest> test tests::candidate_becomes_leader_on_quorum ... ok
+chaoscontrol-raft-guest> test tests::candidate_resets_on_new_election ... ok
+chaoscontrol-raft-guest> test tests::candidate_stays_candidate_without_quorum ... ok
+chaoscontrol-raft-guest> test tests::candidate_steps_down_on_append_entries ... ok
+chaoscontrol-raft-guest> test tests::candidate_steps_down_on_higher_term_vote_response ... ok
+chaoscontrol-raft-guest> test tests::bug_skip_truncate_found_by_cluster ... ok
+chaoscontrol-raft-guest> test tests::cluster_commits_values_within_200_ticks ... ok
+chaoscontrol-raft-guest> test tests::cluster_deterministic_with_same_seed ... ok
+chaoscontrol-raft-guest> test tests::cluster_elects_leader_within_50_ticks ... ok
+chaoscontrol-raft-guest> test tests::cluster_leaders_returns_current_leaders ... ok
+chaoscontrol-raft-guest> test tests::cluster_different_seeds_diverge ... ok
+chaoscontrol-raft-guest> test tests::cluster_safety_holds_1000_ticks ... ok
+chaoscontrol-raft-guest> test tests::commit_index_advances_from_leader_commit ... ok
+chaoscontrol-raft-guest> test tests::commit_index_capped_by_log_length ... ok
+chaoscontrol-raft-guest> test tests::commit_index_never_decreases ... ok
+chaoscontrol-raft-guest> test tests::conflicting_entry_truncates_log ... ok
+chaoscontrol-raft-guest> test tests::election_safety_allows_leaders_in_different_terms ... ok
+chaoscontrol-raft-guest> test tests::election_safety_detects_two_leaders_same_term ... ok
+chaoscontrol-raft-guest> test tests::election_safety_no_leaders ... ok
+chaoscontrol-raft-guest> test tests::election_safety_passes_one_leader_per_term ... ok
+chaoscontrol-raft-guest> test tests::election_timer_reset_with_jitter ... ok
+chaoscontrol-raft-guest> test tests::empty_append_entries_is_heartbeat ... ok
+chaoscontrol-raft-guest> test tests::full_election_three_nodes ... ok
+chaoscontrol-raft-guest> test tests::heartbeats_include_entries_for_lagging_peer ... ok
+chaoscontrol-raft-guest> test tests::heartbeats_set_correct_prev_log ... ok
+chaoscontrol-raft-guest> test tests::idempotent_append_same_entries ... ok
+chaoscontrol-raft-guest> test tests::last_log_index_empty ... ok
+chaoscontrol-raft-guest> test tests::last_log_index_with_entries ... ok
+chaoscontrol-raft-guest> test tests::leader_commit_advances_via_replication_response ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_catches_current_term_violation ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_detects_missing_entry ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_detects_wrong_entry_content ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_detects_wrong_term ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_no_committed_entries ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_passes_leader_has_all_committed ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_skips_stale_leader ... ok
+chaoscontrol-raft-guest> test tests::leader_completeness_stale_leader_short_log ... ok
+chaoscontrol-raft-guest> test tests::leader_decrements_next_index_on_failure ... ok
+chaoscontrol-raft-guest> test tests::leader_next_index_does_not_go_below_one ... ok
+chaoscontrol-raft-guest> test tests::leader_replicates_and_commits ... ok
+chaoscontrol-raft-guest> test tests::leader_retries_after_log_inconsistency ... ok
+chaoscontrol-raft-guest> test tests::leader_steps_down_on_higher_term_append ... ok
+chaoscontrol-raft-guest> test tests::leader_steps_down_on_higher_term_append_response ... ok
+chaoscontrol-raft-guest> test tests::leader_updates_indices_on_success ... ok
+chaoscontrol-raft-guest> test tests::log_matching_allows_trailing_divergence ... ok
+chaoscontrol-raft-guest> test tests::log_matching_detects_divergence_before_agreement ... ok
+chaoscontrol-raft-guest> test tests::log_matching_passes_different_lengths ... ok
+chaoscontrol-raft-guest> test tests::log_matching_passes_identical_logs ... ok
+chaoscontrol-raft-guest> test tests::new_node_initializes_peer_indices ... ok
+chaoscontrol-raft-guest> test tests::new_node_starts_as_follower ... ok
+chaoscontrol-raft-guest> test tests::node_steps_down_on_higher_term_vote_request ... ok
+chaoscontrol-raft-guest> test tests::non_leader_ignores_append_response ... ok
+chaoscontrol-raft-guest> test tests::raft_local_assertion_harness_covers_quorum_commit_progress ... ok
+chaoscontrol-raft-guest> test tests::run_checked_panics_on_completeness_violation - should panic ... ok
+chaoscontrol-raft-guest> test tests::run_checked_panics_on_election_safety_violation - should panic ... ok
+chaoscontrol-raft-guest> test tests::run_checked_panics_on_log_matching_violation - should panic ... ok
+chaoscontrol-raft-guest> test tests::cluster_safety_multiple_seeds ... ok
+chaoscontrol-raft-guest> test tests::split_vote_no_leader ... ok
+chaoscontrol-raft-guest> test tests::term_advances_on_higher_term_message ... ok
+chaoscontrol-raft-guest> test tests::stale_vote_response_ignored ... ok
+chaoscontrol-raft-guest> test tests::term_never_decreases_on_stale_append ... ok
+chaoscontrol-raft-guest> test tests::try_advance_commit_commits_current_term_entries ... ok
+chaoscontrol-raft-guest> test tests::try_advance_commit_requires_quorum ... ok
+chaoscontrol-raft-guest> test tests::try_advance_commit_sequential ... ok
+chaoscontrol-raft-guest> test tests::try_advance_commit_skips_prior_term_entries ... ok
+chaoscontrol-raft-guest> test tests::vote_denied_already_voted_for_other ... ok
+chaoscontrol-raft-guest> test tests::vote_denied_candidate_log_shorter_same_term ... ok
+chaoscontrol-raft-guest> test tests::vote_denied_candidate_log_stale_term ... ok
+chaoscontrol-raft-guest> test tests::vote_granted_candidate_higher_last_term ... ok
+chaoscontrol-raft-guest> test tests::vote_granted_candidate_log_longer_same_term ... ok
+chaoscontrol-raft-guest> test tests::vote_granted_to_same_candidate_again ... ok
+chaoscontrol-raft-guest> test tests::vote_granted_when_not_voted_and_log_current ... ok
+chaoscontrol-raft-guest> test tests::vote_rejected_for_stale_term ... ok
+chaoscontrol-raft-guest> test tests::vote_response_ignored_if_not_candidate ... ok
+chaoscontrol-raft-guest> test tests::bug_none_safe_extended_10k_seeds ... ok
+chaoscontrol-raft-guest> test tests::bug_double_vote_found_by_cluster ... ok
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> test result: ok. 106 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.82s
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest>      Running unittests src/main.rs (target/x86_64-unknown-linux-musl/release/deps/chaoscontrol_raft_guest-c2611c8b084a2eaa)
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> running 0 tests
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest>    Doc-tests chaoscontrol_raft_guest
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> running 0 tests
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-raft-guest> 
+chaoscontrol-raft-guest> Running phase: installPhase
+chaoscontrol-raft-guest> actually installing contents of postBuildInstallFromCargoBuildLogOutTempaqS to /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0
+chaoscontrol-raft-guest> stripping references to Rust toolchain
+chaoscontrol-raft-guest> Rust toolchain at: /nix/store/jvzhlcnfzzhhkk8ya093c4ndnig1nb7h-rust-default-1.98.0
+chaoscontrol-raft-guest> stripping Rust toolchain references done
+chaoscontrol-raft-guest> stripping references to cargoVendorDir from:
+chaoscontrol-raft-guest> /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0/bin/chaoscontrol-raft-guest
+chaoscontrol-raft-guest> stripping references done
+chaoscontrol-raft-guest> Running phase: fixupPhase
+chaoscontrol-raft-guest> shrinking RPATHs of ELF executables and libraries in /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0
+chaoscontrol-raft-guest> shrinking /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0/bin/chaoscontrol-raft-guest
+chaoscontrol-raft-guest> checking for references to /build/ in /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0...
+chaoscontrol-raft-guest> patching script interpreter paths in /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0
+chaoscontrol-raft-guest> stripping (with command strip and flags -S -p) in  /nix/store/vah07yb9jg6b91ar2gx2zy8bfx1l5id6-chaoscontrol-raft-guest-0.1.0/bin

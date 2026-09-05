@@ -46,4 +46,15 @@ let
 in
 {
   inherit cargo counterexample;
+
+  # Preserve Crane's artifact selection. Only its metadata subprocess changes.
+  installHook =
+    hook:
+    hook.overrideAttrs (previous: {
+      buildCommand = previous.buildCommand + ''
+        substituteInPlace "$out/nix-support/setup-hook" \
+          --replace-fail 'command cargo metadata' \
+          'command ${cargo}/bin/cargo metadata'
+      '';
+    });
 }

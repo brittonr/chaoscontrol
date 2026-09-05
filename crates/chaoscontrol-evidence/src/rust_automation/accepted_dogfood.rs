@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.parity]
 
-use std::path::Path;
-
 use serde_json::{json, Value};
 
 pub const REPLAY_VERDICT_SCHEMA_VERSION: u64 = 2;
@@ -81,7 +79,7 @@ pub fn verdict_is_accepted(
     verdict: &Value,
     bug: &Value,
     assertion_id: i64,
-    bug_path: &Path,
+    bug_path: &std::path::Path,
 ) -> bool {
     let reference = verdict
         .pointer("/snapshot/reference")
@@ -114,7 +112,7 @@ pub fn verdict_is_accepted(
         && hashes.iter().any(|item| {
             item.get("path")
                 .and_then(Value::as_str)
-                .is_some_and(|path| same_lexical_path(Path::new(path), bug_path))
+                .is_some_and(|path| same_lexical_path(std::path::Path::new(path), bug_path))
         })
 }
 
@@ -126,7 +124,7 @@ pub struct AttemptInput<'a> {
     pub export_exit_status: Option<i32>,
     pub reproduce_exit_status: Option<i32>,
     pub bugs: &'a [(String, Value)],
-    pub verdict_path: Option<&'a Path>,
+    pub verdict_path: Option<&'a std::path::Path>,
     pub verdict: Option<&'a Value>,
 }
 
@@ -195,7 +193,7 @@ fn hex_identity(value: Option<&Value>) -> bool {
     })
 }
 
-fn same_lexical_path(left: &Path, right: &Path) -> bool {
+fn same_lexical_path(left: &std::path::Path, right: &std::path::Path) -> bool {
     left == right
 }
 
@@ -209,7 +207,6 @@ fn display(value: Option<&Value>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
 
     use serde_json::json;
 
@@ -256,6 +253,6 @@ mod tests {
         .expect("rewrite");
         assert_eq!(verdict["command"]["command"], "tool --bug public/bug.json");
         assert_eq!(verdict["bug_path"], "public/bug.json");
-        let _ = Path::new("public/bug.json");
+        let _ = std::path::Path::new("public/bug.json");
     }
 }

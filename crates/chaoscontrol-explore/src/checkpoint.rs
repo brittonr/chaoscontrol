@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
 
 const MAX_CHECKPOINT_BUGS: usize = 4_096;
 const MAX_SERIALIZABLE_FAULTS: usize = 4_096;
@@ -786,7 +785,7 @@ pub struct ExplorationCheckpoint {
 }
 
 /// Save a checkpoint to a JSON file.
-pub fn save_checkpoint<P: AsRef<Path>>(
+pub fn save_checkpoint<P: AsRef<std::path::Path>>(
     path: P,
     checkpoint: &ExplorationCheckpoint,
 ) -> Result<(), CheckpointError> {
@@ -801,7 +800,7 @@ pub fn save_checkpoint<P: AsRef<Path>>(
     let parent = path
         .parent()
         .filter(|value| !value.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+        .unwrap_or_else(|| std::path::Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     temporary.write_all(&bytes)?;
     temporary.as_file().sync_all()?;
@@ -811,18 +810,22 @@ pub fn save_checkpoint<P: AsRef<Path>>(
 }
 
 /// Load a checkpoint from a JSON file.
-pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<ExplorationCheckpoint, CheckpointError> {
+pub fn load_checkpoint<P: AsRef<std::path::Path>>(
+    path: P,
+) -> Result<ExplorationCheckpoint, CheckpointError> {
     let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
     let checkpoint = serde_json::from_str(&json)?;
     validate_checkpoint(&checkpoint)?;
     Ok(checkpoint)
 }
 
-pub fn load_serializable_bug<P: AsRef<Path>>(path: P) -> Result<SerializableBug, CheckpointError> {
+pub fn load_serializable_bug<P: AsRef<std::path::Path>>(
+    path: P,
+) -> Result<SerializableBug, CheckpointError> {
     load_serializable_bug_artifact(path).map(|(bug, _bytes)| bug)
 }
 
-pub fn load_serializable_bug_artifact<P: AsRef<Path>>(
+pub fn load_serializable_bug_artifact<P: AsRef<std::path::Path>>(
     path: P,
 ) -> Result<(SerializableBug, Vec<u8>), CheckpointError> {
     let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
@@ -896,7 +899,7 @@ pub enum CheckpointBugExportError {
     InvalidAssertionIdentity { bug_id: u64, reason: String },
 
     #[snafu(display("bug artifact already exists: {}", path.display()))]
-    AlreadyExists { path: PathBuf },
+    AlreadyExists { path: std::path::PathBuf },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -936,7 +939,7 @@ pub struct CheckpointBugExportSummary {
 /// reached `checkpoint.json` before the normal end-of-run artifact writer ran.
 /// Existing replay parent snapshot refs are validated against the checkpoint store.
 /// Matched snapshots are copied into the output store with the same exact ref.
-pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
+pub fn export_checkpoint_bugs<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
     checkpoint_path: P,
     output_dir: Q,
     overwrite: bool,
@@ -954,7 +957,7 @@ pub fn export_checkpoint_bugs<P: AsRef<Path>, Q: AsRef<Path>>(
 /// Filtered exports preserve the checkpoint bug index in `bug_N.json` filenames.
 /// The loader validates every bug identity and reference shape before filtering.
 /// Snapshot artifact bytes are loaded only for matched bugs.
-pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
+pub fn export_checkpoint_bugs_with_filter<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
     checkpoint_path: P,
     output_dir: Q,
     overwrite: bool,
@@ -968,7 +971,9 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<Path>, Q: AsRef<Path>>(
             reason: error.source.to_string(),
         }
     })?;
-    let source_dir = checkpoint_path.parent().unwrap_or_else(|| Path::new("."));
+    let source_dir = checkpoint_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir)?;
     let source_snapshot_store = FileSnapshotStore::new(source_dir);
@@ -1517,7 +1522,7 @@ mod tests {
 
     const TEST_EXPORT_ALIAS: u64 = 1_806_003_755;
 
-    fn write_untrusted_checkpoint(path: &Path, checkpoint: &ExplorationCheckpoint) {
+    fn write_untrusted_checkpoint(path: &std::path::Path, checkpoint: &ExplorationCheckpoint) {
         let bytes = serde_json::to_vec_pretty(checkpoint).expect("checkpoint fixture JSON");
         fs::write(path, bytes).expect("write untrusted checkpoint fixture");
     }

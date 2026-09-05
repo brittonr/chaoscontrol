@@ -23,11 +23,12 @@ use chaoscontrol_fault::outcomes::{
 };
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::Arc;
 
 /// Dirty + volatile page overlays extracted for restart preservation.
-pub type DirtyOverlay = (BTreeMap<usize, Vec<u8>>, BTreeMap<usize, Vec<u8>>);
+pub type DirtyOverlay = (
+    std::collections::BTreeMap<usize, Vec<u8>>,
+    std::collections::BTreeMap<usize, Vec<u8>>,
+);
 
 /// Page size for copy-on-write tracking (4 KB, matching Linux page size).
 const PAGE_SIZE: usize = 4096;
@@ -114,11 +115,11 @@ pub struct BlockStats {
 /// and metadata are cloned.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockSnapshot {
-    base: Arc<Vec<u8>>,
-    dirty: BTreeMap<usize, Vec<u8>>,
-    volatile: BTreeMap<usize, Vec<u8>>,
-    faults: VecDeque<BlockFault>,
-    fault_attempt_ids: VecDeque<Option<FaultAttemptId>>,
+    base: std::sync::Arc<Vec<u8>>,
+    dirty: std::collections::BTreeMap<usize, Vec<u8>>,
+    volatile: std::collections::BTreeMap<usize, Vec<u8>>,
+    faults: std::collections::VecDeque<BlockFault>,
+    fault_attempt_ids: std::collections::VecDeque<Option<FaultAttemptId>>,
     stats: BlockStats,
     slow_delay_ns: u64,
     slow_attempt_id: Option<FaultAttemptId>,
@@ -126,7 +127,7 @@ pub struct BlockSnapshot {
     fsync_lie_attempt_id: Option<FaultAttemptId>,
     full: bool,
     full_attempt_id: Option<FaultAttemptId>,
-    fault_observations: VecDeque<FaultObservation>,
+    fault_observations: std::collections::VecDeque<FaultObservation>,
     operation_sequence: u64,
     observation_overflowed: u64,
 }
@@ -239,7 +240,7 @@ impl BlockSnapshot {
 
 fn validate_snapshot_overlay(
     layer: &'static str,
-    pages: &BTreeMap<usize, Vec<u8>>,
+    pages: &std::collections::BTreeMap<usize, Vec<u8>>,
     base_bytes: usize,
 ) -> Result<(), BlockSnapshotValidationError> {
     for (&page, data) in pages {
@@ -335,15 +336,15 @@ fn validate_active_block_effect(
 #[derive(Clone, Debug)]
 pub struct DeterministicBlock {
     /// Immutable base image, shared across snapshots.
-    base: Arc<Vec<u8>>,
+    base: std::sync::Arc<Vec<u8>>,
     /// Dirty pages: page index → page data (4 KB each, last page may be shorter).
-    dirty: BTreeMap<usize, Vec<u8>>,
+    dirty: std::collections::BTreeMap<usize, Vec<u8>>,
     /// Volatile pages (fsync-lie mode): discarded on crash, flushed explicitly.
-    volatile: BTreeMap<usize, Vec<u8>>,
+    volatile: std::collections::BTreeMap<usize, Vec<u8>>,
     /// Pending fault injection queue.
-    faults: VecDeque<BlockFault>,
+    faults: std::collections::VecDeque<BlockFault>,
     /// Attempt identities parallel to the pending fault queue.
-    fault_attempt_ids: VecDeque<Option<FaultAttemptId>>,
+    fault_attempt_ids: std::collections::VecDeque<Option<FaultAttemptId>>,
     /// I/O statistics.
     stats: BlockStats,
     /// Per-operation I/O delay in nanoseconds (0 = no delay).
@@ -359,7 +360,7 @@ pub struct DeterministicBlock {
     /// Attempt that armed disk-full behavior.
     full_attempt_id: Option<FaultAttemptId>,
     /// Bounded observations waiting for the controller ledger.
-    fault_observations: VecDeque<FaultObservation>,
+    fault_observations: std::collections::VecDeque<FaultObservation>,
     /// Sequence for deterministic block-operation identities.
     operation_sequence: u64,
     /// Observations rejected because the bounded queue was full.
@@ -370,11 +371,11 @@ impl DeterministicBlock {
     /// Create an empty (zero-filled) block device of `size_bytes`.
     pub fn new(size_bytes: usize) -> Self {
         Self {
-            base: Arc::new(vec![0u8; size_bytes]),
-            dirty: BTreeMap::new(),
-            volatile: BTreeMap::new(),
-            faults: VecDeque::new(),
-            fault_attempt_ids: VecDeque::new(),
+            base: std::sync::Arc::new(vec![0u8; size_bytes]),
+            dirty: std::collections::BTreeMap::new(),
+            volatile: std::collections::BTreeMap::new(),
+            faults: std::collections::VecDeque::new(),
+            fault_attempt_ids: std::collections::VecDeque::new(),
             stats: BlockStats::default(),
             slow_delay_ns: 0,
             slow_attempt_id: None,
@@ -382,7 +383,9 @@ impl DeterministicBlock {
             fsync_lie_attempt_id: None,
             full: false,
             full_attempt_id: None,
-            fault_observations: VecDeque::with_capacity(MAX_PENDING_BLOCK_OBSERVATIONS),
+            fault_observations: std::collections::VecDeque::with_capacity(
+                MAX_PENDING_BLOCK_OBSERVATIONS,
+            ),
             operation_sequence: 0,
             observation_overflowed: 0,
         }
@@ -391,11 +394,11 @@ impl DeterministicBlock {
     /// Create a block device pre-loaded with `data` (e.g. a disk image).
     pub fn from_image(data: Vec<u8>) -> Self {
         Self {
-            base: Arc::new(data),
-            dirty: BTreeMap::new(),
-            volatile: BTreeMap::new(),
-            faults: VecDeque::new(),
-            fault_attempt_ids: VecDeque::new(),
+            base: std::sync::Arc::new(data),
+            dirty: std::collections::BTreeMap::new(),
+            volatile: std::collections::BTreeMap::new(),
+            faults: std::collections::VecDeque::new(),
+            fault_attempt_ids: std::collections::VecDeque::new(),
             stats: BlockStats::default(),
             slow_delay_ns: 0,
             slow_attempt_id: None,
@@ -403,7 +406,9 @@ impl DeterministicBlock {
             fsync_lie_attempt_id: None,
             full: false,
             full_attempt_id: None,
-            fault_observations: VecDeque::with_capacity(MAX_PENDING_BLOCK_OBSERVATIONS),
+            fault_observations: std::collections::VecDeque::with_capacity(
+                MAX_PENDING_BLOCK_OBSERVATIONS,
+            ),
             operation_sequence: 0,
             observation_overflowed: 0,
         }
@@ -737,7 +742,7 @@ impl DeterministicBlock {
     /// size. The base image is shared via `Arc` reference counting.
     pub fn snapshot(&self) -> BlockSnapshot {
         BlockSnapshot {
-            base: Arc::clone(&self.base),
+            base: std::sync::Arc::clone(&self.base),
             dirty: self.dirty.clone(),
             volatile: self.volatile.clone(),
             faults: self.faults.clone(),
@@ -760,7 +765,7 @@ impl DeterministicBlock {
     /// Shares the base image with the snapshot via `Arc`.
     pub fn restore(snapshot: &BlockSnapshot) -> Self {
         Self {
-            base: Arc::clone(&snapshot.base),
+            base: std::sync::Arc::clone(&snapshot.base),
             dirty: snapshot.dirty.clone(),
             volatile: snapshot.volatile.clone(),
             faults: snapshot.faults.clone(),
@@ -1325,7 +1330,7 @@ mod tests {
         let snap = blk.snapshot();
 
         // After snapshot, original and snapshot share the same base Arc
-        assert!(Arc::ptr_eq(&blk.base, &snap.base));
+        assert!(std::sync::Arc::ptr_eq(&blk.base, &snap.base));
 
         // Snapshot has the same dirty page count
         let restored = DeterministicBlock::restore(&snap);
@@ -1381,8 +1386,8 @@ mod tests {
         let snap3 = blk.snapshot();
 
         // All snapshots share the same base
-        assert!(Arc::ptr_eq(&snap1.base, &snap2.base));
-        assert!(Arc::ptr_eq(&snap2.base, &snap3.base));
+        assert!(std::sync::Arc::ptr_eq(&snap1.base, &snap2.base));
+        assert!(std::sync::Arc::ptr_eq(&snap2.base, &snap3.base));
 
         // But have different dirty page counts
         let r1 = DeterministicBlock::restore(&snap1);
@@ -1480,7 +1485,7 @@ mod tests {
         assert_eq!(check, [0u8; 13]);
 
         // Both share the same base
-        assert!(Arc::ptr_eq(&branch_a.base, &branch_b.base));
+        assert!(std::sync::Arc::ptr_eq(&branch_a.base, &branch_b.base));
     }
 
     #[test]

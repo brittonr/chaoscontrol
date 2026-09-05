@@ -4,29 +4,29 @@
 //! force-exit on second signal. The explorer and campaign runner poll
 //! [`shutdown_requested()`] after each round/seed to stop cleanly.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 
 /// Global shutdown flag — set by signal handler, polled by explorer.
-static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// How many signals have been received. Second signal force-exits.
 static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Returns `true` if a shutdown signal has been received.
 pub fn shutdown_requested() -> bool {
-    SHUTDOWN.load(Ordering::Relaxed)
+    SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Manually request shutdown (for testing).
 pub fn request_shutdown() {
-    SHUTDOWN.store(true, Ordering::Relaxed);
+    SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Reset shutdown state (for testing only — not safe in production).
 #[cfg(test)]
 pub fn reset_shutdown() {
-    SHUTDOWN.store(false, Ordering::Relaxed);
-    SIGNAL_COUNT.store(0, Ordering::Relaxed);
+    SHUTDOWN.store(false, std::sync::atomic::Ordering::Relaxed);
+    SIGNAL_COUNT.store(0, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Install signal handlers for SIGINT and SIGTERM.
@@ -59,10 +59,10 @@ extern "C" fn signal_handler(
     _info: *mut libc::siginfo_t,
     _ctx: *mut libc::c_void,
 ) {
-    let prev = SIGNAL_COUNT.fetch_add(1, Ordering::Relaxed);
+    let prev = SIGNAL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if prev == 0 {
         // First signal: set flag, let explorer finish gracefully.
-        SHUTDOWN.store(true, Ordering::Relaxed);
+        SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
     } else {
         // Second signal: force exit.
         std::process::exit(1);

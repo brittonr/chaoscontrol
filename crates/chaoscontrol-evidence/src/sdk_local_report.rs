@@ -1,6 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-
 use serde_json::{Map, Value};
 
 use crate::{EvidenceError, EvidenceResult};
@@ -39,7 +36,7 @@ struct AssertionSite {
 }
 
 pub fn summarize_sdk_local_report(
-    input_path: impl AsRef<Path>,
+    input_path: impl AsRef<std::path::Path>,
     evidence_class: &str,
 ) -> EvidenceResult<Value> {
     let input_path = input_path.as_ref();
@@ -53,11 +50,11 @@ pub fn summarize_sdk_local_report(
 pub fn summarize_sdk_local_jsonl(
     content: &str,
     evidence_class: &str,
-    input_path: Option<&Path>,
+    input_path: Option<&std::path::Path>,
 ) -> EvidenceResult<Value> {
     let identity = crate::sdk_local_identity::validate_local_identity_stream(content)?;
-    let mut lifecycle: BTreeMap<String, u64> = BTreeMap::new();
-    let mut catalog: BTreeMap<String, AssertionSite> = identity
+    let mut lifecycle: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    let mut catalog: std::collections::BTreeMap<String, AssertionSite> = identity
         .catalog
         .values()
         .map(|resolved| {
@@ -85,12 +82,14 @@ pub fn summarize_sdk_local_jsonl(
             )
         })
         .collect();
-    let mut exercised: BTreeSet<String> = BTreeSet::new();
-    let mut sometimes_success: BTreeSet<String> = BTreeSet::new();
-    let mut reachable_hit: BTreeSet<String> = BTreeSet::new();
+    let mut exercised: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut sometimes_success: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    let mut reachable_hit: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut random_choice_calls = 0u64;
     let mut setup_complete = false;
-    let mut adoption_tracks: BTreeMap<String, u64> = BTreeMap::new();
+    let mut adoption_tracks: std::collections::BTreeMap<String, u64> =
+        std::collections::BTreeMap::new();
 
     for (line_idx, raw_line) in content.lines().enumerate() {
         let line = raw_line.trim();
@@ -398,8 +397,8 @@ pub fn summarize_sdk_local_jsonl(
 }
 
 pub fn write_sdk_local_report(
-    input_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
+    input_path: impl AsRef<std::path::Path>,
+    output_path: impl AsRef<std::path::Path>,
     evidence_class: &str,
 ) -> EvidenceResult<Value> {
     let report = summarize_sdk_local_report(input_path, evidence_class)?;
@@ -511,7 +510,7 @@ pub fn check_sdk_assertion_quality_report(report: &Value) -> EvidenceResult<Asse
 }
 
 pub fn check_sdk_assertion_quality_path(
-    path: impl AsRef<Path>,
+    path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<AssertionQualityGate> {
     let path = path.as_ref();
     let text = crate::bounded_file::read_bounded_regular_file(
@@ -656,7 +655,7 @@ fn assert_tracks(name: &str, content: &str, expected: &[(&str, u64)]) -> Evidenc
     let expected = expected
         .iter()
         .map(|(key, value)| ((*key).to_string(), *value))
-        .collect::<BTreeMap<_, _>>();
+        .collect::<std::collections::BTreeMap<_, _>>();
     let actual = count_object(report.get("adoption_tracks"));
     if actual != expected {
         return Err(EvidenceError::new(format!(
@@ -712,7 +711,7 @@ fn catalog_status_string(
     }
 }
 
-fn count_map_value(values: &BTreeMap<String, u64>) -> Value {
+fn count_map_value(values: &std::collections::BTreeMap<String, u64>) -> Value {
     let mut object = Map::new();
     for (key, value) in values {
         object.insert(key.clone(), Value::from(*value));
@@ -720,7 +719,7 @@ fn count_map_value(values: &BTreeMap<String, u64>) -> Value {
     Value::Object(object)
 }
 
-fn count_object(value: Option<&Value>) -> BTreeMap<String, u64> {
+fn count_object(value: Option<&Value>) -> std::collections::BTreeMap<String, u64> {
     value
         .and_then(Value::as_object)
         .map(|object| {

@@ -1,5 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-
 use serde::{Deserialize, Serialize};
 
 use crate::{EvidenceError, EvidenceResult};
@@ -135,7 +133,7 @@ pub struct KernelBundleSmokeReceipt {
     pub onix: OnixKernelBundleRefs,
     pub mantle: MantleMaterializationRefs,
     pub runner: SmokeRunnerEvidence,
-    pub terminal_classes: BTreeMap<String, String>,
+    pub terminal_classes: std::collections::BTreeMap<String, String>,
     pub observations: Vec<SmokeObservation>,
     pub bounds: SmokeBounds,
     pub non_claims: Vec<String>,
@@ -236,7 +234,7 @@ pub struct KernelBundleKvmRailReceipt {
     pub loader_available: bool,
     pub negative_fixture_matched: bool,
     pub failure_class: Option<String>,
-    pub terminal_classes: BTreeMap<String, String>,
+    pub terminal_classes: std::collections::BTreeMap<String, String>,
     pub observations: Vec<SmokeObservation>,
     pub issues: Vec<String>,
     pub bounds: SmokeBounds,
@@ -376,7 +374,7 @@ pub fn kernel_bundle_kvm_rail_receipt(
     let terminal_classes = if status == "passed" {
         terminal_classes(profile)
     } else {
-        BTreeMap::new()
+        std::collections::BTreeMap::new()
     };
     dedup_issues(&mut issues);
     let negative_fixture_matched = negative_fixture_matched(run);
@@ -622,7 +620,7 @@ fn kvm_status(run: &KernelBundleKvmRun, issues: &[String]) -> String {
 }
 
 fn dedup_issues(issues: &mut Vec<String>) {
-    let mut seen = BTreeSet::new();
+    let mut seen = std::collections::BTreeSet::new();
     issues.retain(|issue| seen.insert(issue.clone()));
 }
 
@@ -677,7 +675,7 @@ fn parse_kvm_marker(line: &str) -> Option<SmokeObservation> {
         .split(';')
         .filter_map(|field| field.split_once('='))
         .map(|(key, value)| (key, trim_marker_value(value)))
-        .collect::<BTreeMap<_, _>>();
+        .collect::<std::collections::BTreeMap<_, _>>();
     let case_id = fields.get("case")?.to_string();
     let class = fields.get("class")?.to_string();
     let detail = fields.get("detail")?.to_string();
@@ -880,7 +878,7 @@ fn validate_non_claims(non_claims: &[String], issues: &mut Vec<String>) {
         issues,
         "non_claims count is outside supported bounds",
     );
-    let claims: BTreeSet<&str> = non_claims.iter().map(String::as_str).collect();
+    let claims: std::collections::BTreeSet<&str> = non_claims.iter().map(String::as_str).collect();
     for required in REQUIRED_NON_CLAIMS {
         push_if(
             !claims.contains(required),
@@ -890,8 +888,10 @@ fn validate_non_claims(non_claims: &[String], issues: &mut Vec<String>) {
     }
 }
 
-fn terminal_classes(profile: &KernelBundleSmokeProfile) -> BTreeMap<String, String> {
-    let mut classes = BTreeMap::new();
+fn terminal_classes(
+    profile: &KernelBundleSmokeProfile,
+) -> std::collections::BTreeMap<String, String> {
+    let mut classes = std::collections::BTreeMap::new();
     classes.insert("boot".to_string(), "ready".to_string());
     classes.insert(
         "module_load".to_string(),

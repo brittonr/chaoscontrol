@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.tools]
 // r[impl chaoscontrol.rust_automation.validation]
 
-use std::collections::{BTreeMap, BTreeSet};
-
 use serde_json::Value;
 
 const ALLOWLIST_VERSION: u64 = 1;
@@ -41,8 +39,14 @@ pub fn validate_report(report: &Value, allowlist: &Value) -> Result<String, Stri
 
     let findings = warning_findings(report);
     let allowed = validate_allowlist(allowlist)?;
-    let finding_keys = findings.keys().cloned().collect::<BTreeSet<_>>();
-    let allowed_keys = allowed.keys().cloned().collect::<BTreeSet<_>>();
+    let finding_keys = findings
+        .keys()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let allowed_keys = allowed
+        .keys()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
     let untriaged = finding_keys
         .difference(&allowed_keys)
         .cloned()
@@ -66,7 +70,7 @@ pub fn validate_report(report: &Value, allowlist: &Value) -> Result<String, Stri
         return Err(lines.join("\n"));
     }
 
-    let mut counts = BTreeMap::<String, usize>::new();
+    let mut counts = std::collections::BTreeMap::<String, usize>::new();
     for key in findings.keys() {
         *counts.entry(key.0.clone()).or_default() += 1;
     }
@@ -77,8 +81,8 @@ pub fn validate_report(report: &Value, allowlist: &Value) -> Result<String, Stri
     ))
 }
 
-fn warning_findings(report: &Value) -> BTreeMap<FindingKey, Value> {
-    let mut findings = BTreeMap::new();
+fn warning_findings(report: &Value) -> std::collections::BTreeMap<FindingKey, Value> {
+    let mut findings = std::collections::BTreeMap::new();
     let Some(warnings) = report.get("warnings").and_then(Value::as_object) else {
         return findings;
     };
@@ -104,7 +108,9 @@ fn finding_key(category: &str, item: &Value) -> FindingKey {
     )
 }
 
-fn validate_allowlist(allowlist: &Value) -> Result<BTreeMap<FindingKey, Value>, String> {
+fn validate_allowlist(
+    allowlist: &Value,
+) -> Result<std::collections::BTreeMap<FindingKey, Value>, String> {
     if allowlist.get("version").and_then(Value::as_u64) != Some(ALLOWLIST_VERSION) {
         return Err(String::from("allowlist version must be 1"));
     }
@@ -112,7 +118,7 @@ fn validate_allowlist(allowlist: &Value) -> Result<BTreeMap<FindingKey, Value>, 
         .get("warnings")
         .and_then(Value::as_array)
         .ok_or_else(|| String::from("allowlist must contain a warnings list"))?;
-    let mut allowed = BTreeMap::new();
+    let mut allowed = std::collections::BTreeMap::new();
     for (index, entry) in entries.iter().enumerate() {
         let number = index + 1;
         let Some(object) = entry.as_object() else {

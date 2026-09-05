@@ -3,7 +3,6 @@
 //! Filesystem access, process execution, persistence, and network transport do
 //! not belong in this module. r[impl chaoscontrol.semantic_history.boundary]
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -347,8 +346,8 @@ pub fn admit_history(history: &SemanticHistory) -> SemanticResult<AdmittedHistor
     require_nonempty(&history.profile.model, "profile.model")?;
     validate_bounds(&history.profile.bounds)?;
 
-    let mut records = BTreeMap::<String, InvocationRecord>::new();
-    let mut logical_latest = BTreeMap::<String, String>::new();
+    let mut records = std::collections::BTreeMap::<String, InvocationRecord>::new();
+    let mut logical_latest = std::collections::BTreeMap::<String, String>::new();
     let mut environment_events = Vec::new();
     let mut prior_time = 0;
 
@@ -501,8 +500,8 @@ fn validate_bounds(bounds: &SearchBounds) -> SemanticResult<()> {
 
 fn validate_invocation(
     invocation: &InvocationEvent,
-    records: &BTreeMap<String, InvocationRecord>,
-    logical_latest: &BTreeMap<String, String>,
+    records: &std::collections::BTreeMap<String, InvocationRecord>,
+    logical_latest: &std::collections::BTreeMap<String, String>,
     source_artifact: &str,
 ) -> SemanticResult<()> {
     require_nonempty(&invocation.logical_operation_id, "logical_operation_id")?;
@@ -671,13 +670,13 @@ impl ModelKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 struct ModelState {
-    values: BTreeMap<String, SemanticValue>,
+    values: std::collections::BTreeMap<String, SemanticValue>,
 }
 
 impl ModelState {
     fn new() -> Self {
         Self {
-            values: BTreeMap::new(),
+            values: std::collections::BTreeMap::new(),
         }
     }
 
@@ -831,12 +830,12 @@ enum SearchAttempt {
 struct SearchContext<'a> {
     model: ModelKind,
     operations: &'a [AdmittedOperation],
-    predecessors: Vec<BTreeSet<usize>>,
+    predecessors: Vec<std::collections::BTreeSet<usize>>,
     bounds: &'a SearchBounds,
     states_seen: usize,
     branches_seen: usize,
     memo_bytes: usize,
-    invalid_memo: BTreeSet<String>,
+    invalid_memo: std::collections::BTreeSet<String>,
 }
 
 impl<'a> SearchContext<'a> {
@@ -848,7 +847,7 @@ impl<'a> SearchContext<'a> {
     fn visit(
         &mut self,
         state: ModelState,
-        remaining: BTreeSet<usize>,
+        remaining: std::collections::BTreeSet<usize>,
         depth: usize,
     ) -> SearchAttempt {
         if remaining.is_empty() {
@@ -963,7 +962,7 @@ fn bound_blocker(class: UnknownClass, name: &str, value: usize, observed: usize)
 
 fn invalid_witness(
     operations: &[AdmittedOperation],
-    remaining: &BTreeSet<usize>,
+    remaining: &std::collections::BTreeSet<usize>,
     state: &ModelState,
 ) -> InvalidWitness {
     InvalidWitness {
@@ -976,7 +975,7 @@ fn invalid_witness(
     }
 }
 
-fn search_memo_key(state: &ModelState, remaining: &BTreeSet<usize>) -> String {
+fn search_memo_key(state: &ModelState, remaining: &std::collections::BTreeSet<usize>) -> String {
     let state_bytes = serde_json::to_vec(state).expect("model state serialization must succeed");
     let remaining_bytes = serde_json::to_vec(remaining).expect("remaining serialization succeeds");
     let mut hasher = blake3::Hasher::new();
@@ -986,8 +985,8 @@ fn search_memo_key(state: &ModelState, remaining: &BTreeSet<usize>) -> String {
     hasher.finalize().to_hex().to_string()
 }
 
-fn build_predecessors(operations: &[AdmittedOperation]) -> Vec<BTreeSet<usize>> {
-    let mut predecessors = vec![BTreeSet::new(); operations.len()];
+fn build_predecessors(operations: &[AdmittedOperation]) -> Vec<std::collections::BTreeSet<usize>> {
+    let mut predecessors = vec![std::collections::BTreeSet::new(); operations.len()];
     for (before_index, before) in operations.iter().enumerate() {
         let Some(before_completion) = before.completion_time_ns else {
             continue;
@@ -1020,7 +1019,7 @@ fn search_operations(
         states_seen: 0,
         branches_seen: 0,
         memo_bytes: 0,
-        invalid_memo: BTreeSet::new(),
+        invalid_memo: std::collections::BTreeSet::new(),
     }
     .search()
 }
@@ -1038,7 +1037,7 @@ fn check_with_decomposition(model: ModelKind, history: &AdmittedHistory) -> Sear
             message: "model does not declare independent-key isolation".to_string(),
         });
     }
-    let mut by_key = BTreeMap::<String, Vec<AdmittedOperation>>::new();
+    let mut by_key = std::collections::BTreeMap::<String, Vec<AdmittedOperation>>::new();
     for operation in &history.operations {
         by_key
             .entry(operation.object_key.clone())
@@ -1621,7 +1620,7 @@ pub fn semantic_timeline(
 ) -> SemanticResult<SemanticTimeline> {
     validate_semantic_report(report, history)?;
     let admitted = admit_history(history)?;
-    let witness: BTreeSet<&str> = report
+    let witness: std::collections::BTreeSet<&str> = report
         .witness
         .iter()
         .map(|step| step.attempt_id.as_str())

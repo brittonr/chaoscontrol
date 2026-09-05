@@ -3,8 +3,8 @@ use chaoscontrol_protocol::guest_process::{
     SupervisorError, SupervisorState,
 };
 use chaoscontrol_protocol::process::ProcessFaultCommand;
-use std::collections::BTreeMap;
-use std::process::{Child, Command};
+
+use std::process::Child;
 
 pub const PROCESS_ID_ENV: &str = "CHAOSCONTROL_PROCESS_ID";
 pub const PROCESS_ROLE_ENV: &str = "CHAOSCONTROL_PROCESS_ROLE";
@@ -122,7 +122,7 @@ impl<R: ProcessRuntime> Supervisor<R> {
 
 #[derive(Default)]
 pub struct StdProcessRuntime {
-    children: BTreeMap<String, Child>,
+    children: std::collections::BTreeMap<String, Child>,
 }
 
 impl ProcessRuntime for StdProcessRuntime {
@@ -135,7 +135,7 @@ impl ProcessRuntime for StdProcessRuntime {
         for directory in &manifest.shared_directories {
             std::fs::create_dir_all(&directory.path).map_err(RuntimeError::Spawn)?;
         }
-        let mut command = Command::new(&spec.executable);
+        let mut command = std::process::Command::new(&spec.executable);
         command.args(&spec.arguments);
         command.envs(&spec.environment);
         command.env(PROCESS_ID_ENV, identity);
@@ -263,7 +263,7 @@ mod tests {
                 role: "writer".to_string(),
                 executable: "/bin/true".to_string(),
                 arguments: Vec::new(),
-                environment: BTreeMap::new(),
+                environment: std::collections::BTreeMap::new(),
                 shared_directories: vec!["data".to_string()],
                 restart: RestartPolicy {
                     mode: RestartMode::OnFailure,

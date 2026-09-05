@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.typed_operator_commands.plan]
 // r[impl chaoscontrol.typed_operator_commands.evidence]
 
-use std::path::{Path, PathBuf};
-
 use serde_json::{json, Value};
 
 use crate::replay_readiness_orchestration::observe_executable_reference;
@@ -30,8 +28,8 @@ const PLAN_FILE_COUNT: usize = 5;
 
 /// Observe one executable and write one typed command plan.
 pub fn write_typed_command_plan(
-    output_path: impl AsRef<Path>,
-    executable_path: impl AsRef<Path>,
+    output_path: impl AsRef<std::path::Path>,
+    executable_path: impl AsRef<std::path::Path>,
     args: Vec<String>,
 ) -> EvidenceResult<()> {
     let executable = observe_executable_reference(executable_path.as_ref(), EXECUTABLE_MAX_BYTES)?;
@@ -43,8 +41,8 @@ pub fn write_typed_command_plan(
 
 /// Observe one packaged executable and write all CI scheduler plans.
 pub fn write_ci_scheduler_plans(
-    output_root: impl AsRef<Path>,
-    executable_path: impl AsRef<Path>,
+    output_root: impl AsRef<std::path::Path>,
+    executable_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<usize> {
     let output_root = output_root.as_ref();
     let executable = observe_executable_reference(executable_path.as_ref(), EXECUTABLE_MAX_BYTES)?;
@@ -58,9 +56,9 @@ pub fn write_ci_scheduler_plans(
 }
 
 fn build_ci_scheduler_plans(
-    output_root: &Path,
+    output_root: &std::path::Path,
     executable: &ExecutableRef,
-) -> EvidenceResult<Vec<(PathBuf, Value)>> {
+) -> EvidenceResult<Vec<(std::path::PathBuf, Value)>> {
     let path = |name: &str| output_root.join(name).display().to_string();
 
     let mut scheduler = sample_scheduler_receipt();
@@ -210,7 +208,7 @@ mod tests {
             blake3: DIGEST.to_string(),
             maximum_bytes: EXECUTABLE_MAX_BYTES,
         };
-        let plans = build_ci_scheduler_plans(Path::new("/tmp/ci-plans"), &executable)
+        let plans = build_ci_scheduler_plans(std::path::Path::new("/tmp/ci-plans"), &executable)
             .expect("build CI plans");
         assert_eq!(plans.len(), PLAN_FILE_COUNT);
         for (_, plan) in &plans {

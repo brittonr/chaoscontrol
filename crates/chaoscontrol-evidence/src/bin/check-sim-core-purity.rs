@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::{Path, PathBuf};
 
 const CORE_MANIFEST: &str = "crates/chaoscontrol-sim-core/Cargo.toml";
 const CORE_SOURCE: &str = "crates/chaoscontrol-sim-core/src";
@@ -60,7 +59,7 @@ fn find_violations(manifest: &str, sources: &[(String, String)]) -> Vec<Violatio
     violations
 }
 
-fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
+fn read_sources(root: &std::path::Path) -> Result<Vec<(String, String)>, String> {
     let source_root = root.join(CORE_SOURCE);
     let mut pending = vec![source_root];
     let mut files = Vec::new();
@@ -100,7 +99,7 @@ fn read_sources(root: &Path) -> Result<Vec<(String, String)>, String> {
     Ok(files)
 }
 
-fn run(root: &Path) -> Result<(), String> {
+fn run(root: &std::path::Path) -> Result<(), String> {
     let manifest_path = root.join(CORE_MANIFEST);
     let manifest = fs::read_to_string(&manifest_path)
         .map_err(|error| format!("read {}: {error}", manifest_path.display()))?;
@@ -130,8 +129,8 @@ fn run(root: &Path) -> Result<(), String> {
 fn main() {
     let root = std::env::args_os()
         .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
     if let Err(error) = run(&root) {
         eprintln!("{error}");
         std::process::exit(1);

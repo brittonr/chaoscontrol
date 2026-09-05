@@ -5,11 +5,10 @@ use chaoscontrol_sim_core::{
     build_protocol_simulation_receipt, validate_protocol_simulation_receipt,
     ProtocolSimulationConfig, ProtocolSimulationReceipt,
 };
-use std::path::Path;
 
 /// Build, validate, and write one protocol-simulation receipt as JSON.
 pub fn emit_protocol_simulation_receipt_path(
-    output_path: impl AsRef<Path>,
+    output_path: impl AsRef<std::path::Path>,
     config: ProtocolSimulationConfig,
     history_bytes: &[u8],
     output_bytes: &[u8],
@@ -29,7 +28,7 @@ pub fn emit_protocol_simulation_receipt_path(
 
 /// Read and validate the self-contained bindings in one receipt file.
 pub fn validate_protocol_simulation_receipt_path(
-    receipt_path: impl AsRef<Path>,
+    receipt_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<ProtocolSimulationReceipt> {
     let bytes = std::fs::read(receipt_path)?;
     let receipt: ProtocolSimulationReceipt = serde_json::from_slice(&bytes)?;

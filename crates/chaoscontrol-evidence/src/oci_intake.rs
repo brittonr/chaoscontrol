@@ -7,11 +7,11 @@ use chaoscontrol_protocol::oci_intake::{
     IntakeReceiptError, OciTopology, ServiceBundlePlan, ServiceIntakeReceipt, OCI_CLAIM_SCOPE,
     OCI_INTAKE_RECEIPT_SCHEMA,
 };
-use std::fs::{File, OpenOptions};
+
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
 
 const KIBIBYTE: u64 = 1024;
 const MEBIBYTE: u64 = KIBIBYTE * KIBIBYTE;
@@ -30,9 +30,9 @@ const FILE_HASH_BUFFER_BYTES: usize = 64 * 1024;
 pub enum IntakeShellError {
     Plan(String),
     Io(std::io::Error),
-    SourceIdentityMismatch { path: PathBuf },
-    LayerIdentityMismatch { path: PathBuf },
-    UnsupportedArchiveEntry { path: PathBuf },
+    SourceIdentityMismatch { path: std::path::PathBuf },
+    LayerIdentityMismatch { path: std::path::PathBuf },
+    UnsupportedArchiveEntry { path: std::path::PathBuf },
     ArchiveLimit,
     UnsafePath,
     OutputExists,
@@ -47,14 +47,14 @@ impl From<std::io::Error> for IntakeShellError {
 
 pub fn materialize_bundle(
     topology: &OciTopology,
-    output: &Path,
+    output: &std::path::Path,
 ) -> Result<IntakeReceipt, IntakeShellError> {
     if output.exists() {
         return Err(IntakeShellError::OutputExists);
     }
     let plan =
         lower_topology(topology).map_err(|error| IntakeShellError::Plan(format!("{error:?}")))?;
-    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
     std::fs::create_dir_all(parent)?;
     let staging = tempfile::tempdir_in(parent)?;
     let stage_root = staging.path();
@@ -106,11 +106,11 @@ pub fn materialize_bundle(
 
 fn materialize_service(
     service: &ServiceBundlePlan,
-    destination: &Path,
+    destination: &std::path::Path,
 ) -> Result<(), IntakeShellError> {
     match service.format {
         ImageFormat::Directory => {
-            let source = Path::new(&service.source_path);
+            let source = std::path::Path::new(&service.source_path);
             let actual_identity = observe_tree_identity(source)?;
             if actual_identity != service.image_identity {
                 return Err(IntakeShellError::SourceIdentityMismatch {
@@ -120,7 +120,7 @@ fn materialize_service(
             copy_bounded_tree(source, destination)?;
         }
         ImageFormat::TarArchive => {
-            let source = Path::new(&service.source_path);
+            let source = std::path::Path::new(&service.source_path);
             if file_identity(source)? != service.image_identity {
                 return Err(IntakeShellError::SourceIdentityMismatch {
                     path: source.to_path_buf(),
@@ -131,10 +131,10 @@ fn materialize_service(
         ImageFormat::OciLayers => {
             if image_identity_from_layers(&service.layers) != service.image_identity {
                 return Err(IntakeShellError::SourceIdentityMismatch {
-                    path: PathBuf::from(&service.source_path),
+                    path: std::path::PathBuf::from(&service.source_path),
                 });
             }
-            let source_root = Path::new(&service.source_path);
+            let source_root = std::path::Path::new(&service.source_path);
             for layer in &service.layers {
                 let source = source_root.join(&layer.path);
                 if file_identity(&source)? != layer.identity {
@@ -159,13 +159,16 @@ fn tree_limits() -> Result<TreeLimits, IntakeShellError> {
     .map_err(|error| IntakeShellError::Plan(format!("invalid tree limits: {error:?}")))
 }
 
-fn prepare(source: &Path) -> Result<bounded_tree_cap::PreparedTree, IntakeShellError> {
+fn prepare(source: &std::path::Path) -> Result<bounded_tree_cap::PreparedTree, IntakeShellError> {
     let source_dir = Dir::open_ambient_dir(source, ambient_authority())?;
     prepare_tree(&source_dir, tree_limits()?, SymlinkPolicy::PreserveInternal)
         .map_err(|error| IntakeShellError::Plan(format!("tree admission failed: {error:?}")))
 }
 
-fn copy_bounded_tree(source: &Path, destination: &Path) -> Result<(), IntakeShellError> {
+fn copy_bounded_tree(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), IntakeShellError> {
     let prepared = prepare(source)?;
     let destination = Dir::open_ambient_dir(destination, ambient_authority())?;
     execute_tree_copy(&prepared, &destination)
@@ -173,7 +176,7 @@ fn copy_bounded_tree(source: &Path, destination: &Path) -> Result<(), IntakeShel
     Ok(())
 }
 
-pub fn observe_tree_identity(source: &Path) -> Result<String, IntakeShellError> {
+pub fn observe_tree_identity(source: &std::path::Path) -> Result<String, IntakeShellError> {
     let prepared = prepare(source)?;
     Ok(tree_plan_identity(prepared.plan()))
 }
@@ -213,12 +216,12 @@ fn hash_part(hasher: &mut blake3::Hasher, bytes: &[u8]) {
     hasher.update(bytes);
 }
 
-fn file_identity(path: &Path) -> Result<String, IntakeShellError> {
+fn file_identity(path: &std::path::Path) -> Result<String, IntakeShellError> {
     let metadata = std::fs::symlink_metadata(path)?;
     if !metadata.file_type().is_file() || metadata.len() > MAX_TREE_BYTES {
         return Err(IntakeShellError::UnsafePath);
     }
-    let mut file = File::open(path)?;
+    let mut file = std::fs::File::open(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; FILE_HASH_BUFFER_BYTES];
     loop {
@@ -231,8 +234,11 @@ fn file_identity(path: &Path) -> Result<String, IntakeShellError> {
     Ok(format!("b3:{}", hasher.finalize().to_hex()))
 }
 
-fn extract_tar(source: &Path, destination: &Path) -> Result<(), IntakeShellError> {
-    let file = File::open(source)?;
+fn extract_tar(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), IntakeShellError> {
+    let file = std::fs::File::open(source)?;
     let mut archive = tar::Archive::new(file);
     let mut entries_seen = 0_u64;
     let mut bytes_seen = 0_u64;
@@ -268,7 +274,7 @@ fn extract_tar(source: &Path, destination: &Path) -> Result<(), IntakeShellError
                 std::fs::create_dir_all(parent)?;
             }
             replace_directory(&output)?;
-            let mut file = OpenOptions::new()
+            let mut file = std::fs::OpenOptions::new()
                 .create(true)
                 .truncate(true)
                 .write(true)
@@ -285,11 +291,11 @@ fn extract_tar(source: &Path, destination: &Path) -> Result<(), IntakeShellError
     Ok(())
 }
 
-fn safe_archive_path(path: &Path) -> Result<PathBuf, IntakeShellError> {
+fn safe_archive_path(path: &std::path::Path) -> Result<std::path::PathBuf, IntakeShellError> {
     if path.as_os_str().as_bytes().len() > MAX_TREE_PATH_BYTES as usize {
         return Err(IntakeShellError::UnsafePath);
     }
-    let mut result = PathBuf::new();
+    let mut result = std::path::PathBuf::new();
     for component in path.components() {
         match component {
             Component::Normal(value) => result.push(value),
@@ -305,12 +311,17 @@ fn safe_archive_path(path: &Path) -> Result<PathBuf, IntakeShellError> {
     Ok(result)
 }
 
-fn apply_whiteout(destination: &Path, relative: &Path) -> Result<bool, IntakeShellError> {
+fn apply_whiteout(
+    destination: &std::path::Path,
+    relative: &std::path::Path,
+) -> Result<bool, IntakeShellError> {
     let Some(name) = relative.file_name().and_then(|name| name.to_str()) else {
         return Err(IntakeShellError::UnsafePath);
     };
     if name == ".wh..wh..opq" {
-        let directory = relative.parent().unwrap_or_else(|| Path::new(""));
+        let directory = relative
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(""));
         let target = destination.join(directory);
         if target.exists() {
             std::fs::remove_dir_all(&target)?;
@@ -324,27 +335,29 @@ fn apply_whiteout(destination: &Path, relative: &Path) -> Result<bool, IntakeShe
     if removed_name.is_empty() {
         return Err(IntakeShellError::UnsafePath);
     }
-    let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+    let parent = relative
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new(""));
     let target = destination.join(parent).join(removed_name);
     remove_any(&target)?;
     Ok(true)
 }
 
-fn replace_non_directory(path: &Path) -> Result<(), IntakeShellError> {
+fn replace_non_directory(path: &std::path::Path) -> Result<(), IntakeShellError> {
     if path.exists() && !path.is_dir() {
         std::fs::remove_file(path)?;
     }
     Ok(())
 }
 
-fn replace_directory(path: &Path) -> Result<(), IntakeShellError> {
+fn replace_directory(path: &std::path::Path) -> Result<(), IntakeShellError> {
     if path.is_dir() {
         std::fs::remove_dir_all(path)?;
     }
     Ok(())
 }
 
-fn remove_any(path: &Path) -> Result<(), IntakeShellError> {
+fn remove_any(path: &std::path::Path) -> Result<(), IntakeShellError> {
     if path.is_dir() {
         std::fs::remove_dir_all(path)?;
     } else if path.exists() {
@@ -353,18 +366,24 @@ fn remove_any(path: &Path) -> Result<(), IntakeShellError> {
     Ok(())
 }
 
-fn write_json(path: PathBuf, value: &impl serde::Serialize) -> Result<(), IntakeShellError> {
+fn write_json(
+    path: std::path::PathBuf,
+    value: &impl serde::Serialize,
+) -> Result<(), IntakeShellError> {
     let bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| IntakeShellError::Plan(error.to_string()))?;
-    let mut file = OpenOptions::new().create_new(true).write(true).open(path)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)?;
     file.write_all(&bytes)?;
     file.write_all(b"\n")?;
     file.sync_all()?;
     Ok(())
 }
 
-fn sync_tree_root(path: &Path) -> Result<(), IntakeShellError> {
-    File::open(path)?.sync_all()?;
+fn sync_tree_root(path: &std::path::Path) -> Result<(), IntakeShellError> {
+    std::fs::File::open(path)?.sync_all()?;
     Ok(())
 }
 
@@ -379,8 +398,8 @@ mod tests {
 
     const RESTART_LIMIT: u32 = 2;
 
-    fn make_tar(path: &Path, member: &str, bytes: &[u8]) {
-        let file = File::create(path).unwrap();
+    fn make_tar(path: &std::path::Path, member: &str, bytes: &[u8]) {
+        let file = std::fs::File::create(path).unwrap();
         let mut builder = tar::Builder::new(file);
         let mut header = tar::Header::new_gnu();
         header.set_size(bytes.len() as u64);

@@ -2,11 +2,9 @@
 
 // r[impl chaoscontrol.architecture_modules.evidence]
 
-use std::path::Path;
-
 use crate::EvidenceResult;
 
-pub(crate) fn write_bytes(path: &Path, bytes: &[u8]) -> EvidenceResult<()> {
+pub(crate) fn write_bytes(path: &std::path::Path, bytes: &[u8]) -> EvidenceResult<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

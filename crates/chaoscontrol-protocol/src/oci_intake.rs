@@ -5,7 +5,6 @@ use crate::guest_process::{
     SharedDirectorySpec, PROCESS_MANIFEST_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 
 pub const OCI_TOPOLOGY_SCHEMA: &str = "chaoscontrol.oci-topology.v1";
 pub const OCI_BUNDLE_PLAN_SCHEMA: &str = "chaoscontrol.oci-bundle-plan.v1";
@@ -109,7 +108,7 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
     if topology.services.is_empty() || topology.services.len() > MAX_SERVICES {
         return Err(IntakePlanError::ServiceLimit);
     }
-    let mut roles = BTreeSet::new();
+    let mut roles = std::collections::BTreeSet::new();
     let mut process_specs = Vec::with_capacity(topology.services.len());
     let mut service_plans = Vec::with_capacity(topology.services.len());
     for service in &topology.services {
@@ -143,7 +142,7 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
         {
             return Err(IntakePlanError::InvalidIdentity);
         }
-        let mut layer_paths = BTreeSet::new();
+        let mut layer_paths = std::collections::BTreeSet::new();
         for layer in &service.source.layers {
             validate_relative_path(&layer.path).map_err(|()| IntakePlanError::InvalidLayer)?;
             validate_b3(&layer.identity).map_err(|()| IntakePlanError::InvalidIdentity)?;

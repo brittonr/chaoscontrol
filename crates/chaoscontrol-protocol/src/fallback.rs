@@ -14,7 +14,6 @@ use crate::identity::{
     MAX_ASSERTION_NAMESPACE_BYTES,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 pub const FALLBACK_RECORD_SCHEMA_VERSION: u8 = 1;
 pub const MAX_FALLBACK_RECORDS: usize = crate::admission::MAX_ASSERTION_CATALOG_ENTRIES;
@@ -474,7 +473,7 @@ pub fn catalog_with_fallback(
     let mut builder =
         CatalogBuilder::begin(expected).map_err(FallbackAdmissionError::InvalidCatalog)?;
     let mut descriptors = Vec::with_capacity(expected);
-    let mut seen = BTreeMap::new();
+    let mut seen = std::collections::BTreeMap::new();
     for admitted in base.assertions.values() {
         builder
             .insert(admitted.descriptor.clone())

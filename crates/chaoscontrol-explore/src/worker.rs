@@ -10,7 +10,6 @@ use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
 use log::{debug, info};
-use std::sync::Arc;
 
 /// A unit of work dispatched to a worker thread.
 #[derive(Clone)]
@@ -41,7 +40,7 @@ pub struct WorkerPool {
     /// Ticks per branch.
     ticks_per_branch: u64,
     /// Per-VM base memory images for incremental snapshots.
-    memory_bases: Vec<Arc<Vec<u8>>>,
+    memory_bases: Vec<std::sync::Arc<Vec<u8>>>,
 }
 
 impl WorkerPool {
@@ -147,7 +146,7 @@ impl WorkerPool {
     }
 
     /// Set per-VM base memory images for incremental snapshots.
-    pub fn set_memory_bases(&mut self, bases: Vec<Arc<Vec<u8>>>) {
+    pub fn set_memory_bases(&mut self, bases: Vec<std::sync::Arc<Vec<u8>>>) {
         self.memory_bases = bases;
     }
 

@@ -6,7 +6,6 @@ use chaoscontrol_protocol::branch_marker::{
     BRANCH_MARKER_LIMIT_EVENT,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
 
 pub const MARKER_NOVELTY_BONUS: f64 = 32.0;
 pub const MARKER_RARITY_NUMERATOR: f64 = 16.0;
@@ -118,11 +117,13 @@ pub fn coverage_report(
     declared: impl IntoIterator<Item = String>,
     report: &OracleReport,
 ) -> Result<MarkerCoverageReport, MarkerBindingError> {
-    let declared = declared.into_iter().collect::<BTreeSet<_>>();
+    let declared = declared
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
     let reached = observations(report)?
         .into_iter()
         .map(|observation| observation.marker.identity)
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     let gaps = declared.difference(&reached).cloned().collect::<Vec<_>>();
     let limit_events = report
         .events
@@ -179,7 +180,10 @@ pub fn validate_replay_binding(binding: &MarkerReplayBinding) -> Result<(), Mark
     Ok(())
 }
 
-pub fn update_hit_counts(counts: &mut BTreeMap<String, u32>, marker_identity: &str) -> u32 {
+pub fn update_hit_counts(
+    counts: &mut std::collections::BTreeMap<String, u32>,
+    marker_identity: &str,
+) -> u32 {
     let prior = counts.get(marker_identity).copied().unwrap_or(0);
     counts.insert(marker_identity.to_string(), prior.saturating_add(1));
     prior

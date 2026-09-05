@@ -4,7 +4,7 @@
 //! It does not apply process, network, clock, or transport effects.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+
 use std::fmt;
 
 /// r[protocol-fault-sim.faults]
@@ -46,8 +46,8 @@ pub struct ScheduledProtocolFault {
 pub struct ProtocolFaultContext {
     pub current_tick: u64,
     pub expected_sequence: u64,
-    pub known_nodes: BTreeSet<String>,
-    pub known_messages: BTreeSet<String>,
+    pub known_nodes: std::collections::BTreeSet<String>,
+    pub known_messages: std::collections::BTreeSet<String>,
     pub maximum_partition_nodes: usize,
     pub maximum_additional_copies: u32,
 }
@@ -293,8 +293,8 @@ fn normalized_partition_side(
     context: &ProtocolFaultContext,
     side_name: &'static str,
     nodes: &[String],
-) -> Result<BTreeSet<String>, ProtocolFaultError> {
-    let mut normalized = BTreeSet::new();
+) -> Result<std::collections::BTreeSet<String>, ProtocolFaultError> {
+    let mut normalized = std::collections::BTreeSet::new();
     for node_id in nodes {
         require_known_node(context, node_id)?;
         if !normalized.insert(node_id.clone()) {
@@ -323,12 +323,15 @@ mod tests {
         ProtocolFaultContext {
             current_tick: TEST_TICK,
             expected_sequence: TEST_SEQUENCE,
-            known_nodes: BTreeSet::from([
+            known_nodes: std::collections::BTreeSet::from([
                 "node-a".to_string(),
                 "node-b".to_string(),
                 "node-c".to_string(),
             ]),
-            known_messages: BTreeSet::from(["message-a".to_string(), "message-b".to_string()]),
+            known_messages: std::collections::BTreeSet::from([
+                "message-a".to_string(),
+                "message-b".to_string(),
+            ]),
             maximum_partition_nodes: TEST_MAXIMUM_PARTITION_NODES,
             maximum_additional_copies: TEST_MAXIMUM_ADDITIONAL_COPIES,
         }

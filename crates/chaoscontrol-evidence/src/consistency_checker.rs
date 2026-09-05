@@ -1,6 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -278,7 +275,7 @@ impl ConsistencyChecker for SingleRegisterChecker {
     }
 }
 
-pub fn validate_history_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+pub fn validate_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<String> {
     let history = read_history_path(path)?;
     validate_history(&history)?;
     Ok(format!(
@@ -290,12 +287,14 @@ pub fn validate_history_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
     ))
 }
 
-pub fn check_history_path(path: impl AsRef<Path>) -> EvidenceResult<ConsistencyCheckReport> {
+pub fn check_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<ConsistencyCheckReport> {
     let history = read_history_path(path)?;
     SingleRegisterChecker.check(&history)
 }
 
-pub fn write_adapter_sample_history_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_adapter_sample_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -313,7 +312,10 @@ pub fn write_adapter_sample_history_path(path: impl AsRef<Path>) -> EvidenceResu
     Ok(())
 }
 
-pub fn write_sample_history_path(path: impl AsRef<Path>, bad: bool) -> EvidenceResult<()> {
+pub fn write_sample_history_path(
+    path: impl AsRef<std::path::Path>,
+    bad: bool,
+) -> EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -329,8 +331,8 @@ pub fn write_sample_history_path(path: impl AsRef<Path>, bad: bool) -> EvidenceR
 }
 
 pub fn write_check_report_path(
-    history_path: impl AsRef<Path>,
-    report_path: impl AsRef<Path>,
+    history_path: impl AsRef<std::path::Path>,
+    report_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let report_path = report_path.as_ref();
     if let Some(parent) = report_path.parent() {
@@ -429,8 +431,8 @@ pub fn validate_history(history: &OperationHistory) -> EvidenceResult<()> {
         !history.operations.is_empty(),
         "history must contain at least one operation",
     )?;
-    let mut operation_ids = BTreeSet::new();
-    let mut process_by_id = BTreeMap::new();
+    let mut operation_ids = std::collections::BTreeSet::new();
+    let mut process_by_id = std::collections::BTreeMap::new();
     for op in &history.operations {
         require(
             operation_ids.insert(op.operation_id.clone()),
@@ -514,7 +516,7 @@ pub fn history_digest(history: &OperationHistory) -> EvidenceResult<String> {
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-pub fn read_history_path(path: impl AsRef<Path>) -> EvidenceResult<OperationHistory> {
+pub fn read_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<OperationHistory> {
     let path = path.as_ref();
     let text = std::fs::read_to_string(path)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
@@ -523,7 +525,9 @@ pub fn read_history_path(path: impl AsRef<Path>) -> EvidenceResult<OperationHist
     })
 }
 
-pub fn read_report_path(path: impl AsRef<Path>) -> EvidenceResult<ConsistencyCheckReport> {
+pub fn read_report_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<ConsistencyCheckReport> {
     let path = path.as_ref();
     let text = std::fs::read_to_string(path)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;

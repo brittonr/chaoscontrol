@@ -13,10 +13,8 @@ use crate::explorer::{
 use crate::report::format_campaign_report;
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+
 use std::io::Write;
-use std::path::Path;
-use std::time::Instant;
 
 const BYTES_PER_MIB: usize = 1024 * 1024;
 const MIB_PER_GIB: f64 = 1024.0;
@@ -229,10 +227,10 @@ pub struct CampaignProgress {
     /// Output directory.
     pub output_dir: String,
     /// Completed seeds and their summaries.
-    pub completed: BTreeMap<u64, SeedSummary>,
+    pub completed: std::collections::BTreeMap<u64, SeedSummary>,
     /// Seeds that failed (panicked or returned error) with error messages.
     #[serde(default)]
-    pub failed: BTreeMap<u64, String>,
+    pub failed: std::collections::BTreeMap<u64, String>,
 }
 
 fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> Result<(), String> {
@@ -274,7 +272,11 @@ fn validate_campaign_progress(progress: &CampaignProgress, output_dir: &str) -> 
     }) {
         return Err("campaign progress scenario is invalid".to_string());
     }
-    let seeds = progress.seeds.iter().copied().collect::<BTreeSet<_>>();
+    let seeds = progress
+        .seeds
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
     for (seed, summary) in &progress.completed {
         if !seeds.contains(seed) || summary.seed != *seed || progress.failed.contains_key(seed) {
             return Err("campaign progress completed seed is invalid".to_string());
@@ -300,7 +302,7 @@ pub fn save_campaign_progress(
             "campaign progress exceeds the byte limit",
         ));
     }
-    let output_dir = Path::new(output_dir);
+    let output_dir = std::path::Path::new(output_dir);
     let path = output_dir.join("campaign_progress.json");
     let mut temporary = tempfile::NamedTempFile::new_in(output_dir)?;
     temporary.write_all(&bytes)?;
@@ -313,7 +315,7 @@ pub fn save_campaign_progress(
 
 /// Load campaign progress from `{dir}/campaign_progress.json`.
 pub fn load_campaign_progress(dir: &str) -> Result<CampaignProgress, std::io::Error> {
-    let path = Path::new(dir).join("campaign_progress.json");
+    let path = std::path::Path::new(dir).join("campaign_progress.json");
     let json = crate::bounded_json::read_bounded_json(&path, MAX_CAMPAIGN_PROGRESS_BYTES)?;
     let progress: CampaignProgress = serde_json::from_str(&json).map_err(std::io::Error::other)?;
     validate_campaign_progress(&progress, dir).map_err(std::io::Error::other)?;
@@ -343,7 +345,7 @@ enum SeedResult {
 }
 
 fn validate_unique_seeds(seeds: &[u64]) -> Result<(), &'static str> {
-    let mut seen = BTreeSet::new();
+    let mut seen = std::collections::BTreeSet::new();
     for seed in seeds {
         if !seen.insert(*seed) {
             return Err("campaign seeds must be unique");
@@ -394,7 +396,7 @@ impl CampaignRunner {
             if num_seeds == 1 { "" } else { "s" }
         );
 
-        let campaign_start = Instant::now();
+        let campaign_start = std::time::Instant::now();
 
         // Reserve the output path before any seed can mutate a guest.
         std::fs::create_dir_all(&self.config.output_dir).map_err(|error| {
@@ -419,7 +421,7 @@ impl CampaignRunner {
 
                     s.spawn(move || -> SeedResult {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            let thread_start = Instant::now();
+                            let thread_start = std::time::Instant::now();
                             let mut explorer = Explorer::new(explorer_config);
                             let report = explorer.run()?;
                             let elapsed = thread_start.elapsed().as_secs_f64();
@@ -466,8 +468,8 @@ impl CampaignRunner {
                 &self.config.base_explorer_config,
             ),
             output_dir: self.config.output_dir.clone(),
-            completed: BTreeMap::new(),
-            failed: BTreeMap::new(),
+            completed: std::collections::BTreeMap::new(),
+            failed: std::collections::BTreeMap::new(),
         };
 
         let mut reports: Vec<(u64, ExplorationReport, f64)> = Vec::with_capacity(num_seeds);
@@ -605,10 +607,12 @@ pub fn aggregate_reports(
     let mut per_seed = Vec::new();
 
     // Bug dedup: dedup_key → CampaignBug
-    let mut bug_map: BTreeMap<u64, CampaignBug> = BTreeMap::new();
+    let mut bug_map: std::collections::BTreeMap<u64, CampaignBug> =
+        std::collections::BTreeMap::new();
 
     // Assertion merge: structured fingerprint or explicit legacy quarantine key.
-    let mut assertion_map: BTreeMap<String, AssertionDetail> = BTreeMap::new();
+    let mut assertion_map: std::collections::BTreeMap<String, AssertionDetail> =
+        std::collections::BTreeMap::new();
     let mut assertion_identity_conflicts = Vec::new();
     let mut rejected_assertion_keys = std::collections::BTreeSet::new();
     let mut all_sources_accepted = !seed_reports.is_empty();
@@ -1582,7 +1586,7 @@ mod tests {
                 scenario: None,
             },
             output_dir: "results/".into(),
-            completed: BTreeMap::from([(
+            completed: std::collections::BTreeMap::from([(
                 42,
                 SeedSummary {
                     seed: 42,
@@ -1594,7 +1598,7 @@ mod tests {
                     scenario_summary: None,
                 },
             )]),
-            failed: BTreeMap::new(),
+            failed: std::collections::BTreeMap::new(),
         };
 
         let json = serde_json::to_string_pretty(&progress).unwrap();
@@ -1634,8 +1638,8 @@ mod tests {
                 scenario: None,
             },
             output_dir: dir.to_string_lossy().into_owned(),
-            completed: BTreeMap::new(),
-            failed: BTreeMap::new(),
+            completed: std::collections::BTreeMap::new(),
+            failed: std::collections::BTreeMap::new(),
         };
 
         let dir_text = dir.to_string_lossy();

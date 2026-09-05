@@ -22,7 +22,6 @@
 
 use chaoscontrol_fault::engine::ChoiceRecord;
 use rand::Rng;
-use std::collections::BTreeMap;
 
 /// A proposed alternative value for a specific choice point.
 #[derive(Debug, Clone)]
@@ -144,11 +143,12 @@ pub fn select_alternatives(
 pub fn alternatives_to_overrides(
     alternatives: &[ChoiceAlternative],
     num_vms: usize,
-) -> Vec<Vec<BTreeMap<u64, u64>>> {
+) -> Vec<Vec<std::collections::BTreeMap<u64, u64>>> {
     alternatives
         .iter()
         .map(|alt| {
-            let mut per_vm: Vec<BTreeMap<u64, u64>> = vec![BTreeMap::new(); num_vms];
+            let mut per_vm: Vec<std::collections::BTreeMap<u64, u64>> =
+                vec![std::collections::BTreeMap::new(); num_vms];
             if alt.vm_id < num_vms {
                 per_vm[alt.vm_id].insert(alt.sequence_id, alt.alternative_value);
             }

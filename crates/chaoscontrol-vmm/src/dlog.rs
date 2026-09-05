@@ -18,9 +18,8 @@
 //! to KVM_RUN overhead.
 
 use std::fmt;
-use std::fs::File;
+
 use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::Path;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Record format
@@ -374,15 +373,15 @@ impl fmt::Debug for DlogRecord {
 
 /// Buffered binary writer for determinism log records.
 pub struct DlogWriter {
-    writer: BufWriter<File>,
+    writer: BufWriter<std::fs::File>,
     seq: u64,
 }
 
 impl DlogWriter {
     /// Create a new writer that writes to `path`.
     /// Creates the file (truncating if it exists).
-    pub fn create(path: &Path) -> io::Result<Self> {
-        let file = File::create(path)?;
+    pub fn create(path: &std::path::Path) -> io::Result<Self> {
+        let file = std::fs::File::create(path)?;
         Ok(Self {
             writer: BufWriter::with_capacity(64 * 1024, file),
             seq: 0,
@@ -419,14 +418,14 @@ impl Drop for DlogWriter {
 
 /// Sequential reader for determinism log files.
 pub struct DlogReader {
-    reader: BufReader<File>,
+    reader: BufReader<std::fs::File>,
     offset: u64,
 }
 
 impl DlogReader {
     /// Open a dlog file for reading.
-    pub fn open(path: &Path) -> io::Result<Self> {
-        let file = File::open(path)?;
+    pub fn open(path: &std::path::Path) -> io::Result<Self> {
+        let file = std::fs::File::open(path)?;
         Ok(Self {
             reader: BufReader::with_capacity(64 * 1024, file),
             offset: 0,
@@ -572,16 +571,21 @@ impl fmt::Display for DiffResult {
 /// When `structural` is true, only event type and timing are compared
 /// (data payloads are ignored — useful when serial bytes vary due to
 /// kernel timekeeping).
-pub fn dlog_diff(a: &Path, b: &Path, strict: bool) -> io::Result<DiffResult> {
+pub fn dlog_diff(a: &std::path::Path, b: &std::path::Path, strict: bool) -> io::Result<DiffResult> {
     dlog_diff_inner(a, b, strict, false)
 }
 
 /// Structural diff: compares event types and timing but not data payloads.
-pub fn dlog_diff_structural(a: &Path, b: &Path) -> io::Result<DiffResult> {
+pub fn dlog_diff_structural(a: &std::path::Path, b: &std::path::Path) -> io::Result<DiffResult> {
     dlog_diff_inner(a, b, false, true)
 }
 
-fn dlog_diff_inner(a: &Path, b: &Path, strict: bool, structural: bool) -> io::Result<DiffResult> {
+fn dlog_diff_inner(
+    a: &std::path::Path,
+    b: &std::path::Path,
+    strict: bool,
+    structural: bool,
+) -> io::Result<DiffResult> {
     let mut ra = DlogReader::open(a)?;
     let mut rb = DlogReader::open(b)?;
 
@@ -656,7 +660,12 @@ fn dlog_diff_inner(a: &Path, b: &Path, strict: bool, structural: bool) -> io::Re
 /// Dump records from a dlog file as human-readable text.
 ///
 /// Prints records `from..from+count` to the provided writer.
-pub fn dlog_dump(path: &Path, from: u64, count: u64, out: &mut dyn Write) -> io::Result<u64> {
+pub fn dlog_dump(
+    path: &std::path::Path,
+    from: u64,
+    count: u64,
+    out: &mut dyn Write,
+) -> io::Result<u64> {
     let mut reader = DlogReader::open(path)?;
     let mut printed = 0u64;
 
@@ -684,7 +693,7 @@ pub fn dlog_dump(path: &Path, from: u64, count: u64, out: &mut dyn Write) -> io:
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Count records by tag. Returns a map from raw tag byte to count.
-pub fn dlog_stats(path: &Path) -> io::Result<std::collections::BTreeMap<u8, u64>> {
+pub fn dlog_stats(path: &std::path::Path) -> io::Result<std::collections::BTreeMap<u8, u64>> {
     let mut counts = std::collections::BTreeMap::new();
     let reader = DlogReader::open(path)?;
     for rec in reader {
@@ -817,7 +826,7 @@ mod tests {
         let pa = dir.path().join("a.dlog");
         let pb = dir.path().join("b.dlog");
 
-        let write_log = |path: &Path| {
+        let write_log = |path: &std::path::Path| {
             let mut w = DlogWriter::create(path).unwrap();
             for i in 0..50u64 {
                 w.emit(DlogRecord::new(0, i, i, 0, DlogTag::IoIn, 0))

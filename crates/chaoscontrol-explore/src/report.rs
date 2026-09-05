@@ -3,7 +3,6 @@
 use crate::campaign::CampaignReport;
 use crate::corpus::BugReport;
 use crate::explorer::{AssertionDetail, ExplorationReport};
-use std::collections::BTreeMap;
 
 #[derive(Default)]
 struct AssertionExerciseGroup {
@@ -14,8 +13,9 @@ struct AssertionExerciseGroup {
 
 fn assertion_exercise_groups(
     details: &[AssertionDetail],
-) -> BTreeMap<(String, String), AssertionExerciseGroup> {
-    let mut groups: BTreeMap<(String, String), AssertionExerciseGroup> = BTreeMap::new();
+) -> std::collections::BTreeMap<(String, String), AssertionExerciseGroup> {
+    let mut groups: std::collections::BTreeMap<(String, String), AssertionExerciseGroup> =
+        std::collections::BTreeMap::new();
     for detail in details {
         let key = (detail.guest.clone(), detail.category.clone());
         let group = groups.entry(key).or_default();

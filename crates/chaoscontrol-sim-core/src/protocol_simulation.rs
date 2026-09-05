@@ -4,7 +4,7 @@
 //! read configuration, execute a protocol, write receipts, or claim VM replay.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+
 use std::fmt;
 
 /// Schema for an admitted adapter-based protocol-simulation run configuration.
@@ -32,7 +32,7 @@ pub struct ProtocolSimulationConfig {
     pub virtual_clock: ProtocolVirtualClockPolicy,
     pub rng: ProtocolRngPolicy,
     pub protocol: ProtocolIdentity,
-    pub artifact_digests: BTreeMap<String, String>,
+    pub artifact_digests: std::collections::BTreeMap<String, String>,
 }
 
 /// Identity of the exact deterministic schedule supplied to the run.
@@ -359,7 +359,7 @@ pub fn schedule_next_protocol_event<E: Clone>(
         return Err(ProtocolScheduleError::NoPendingEvents);
     }
 
-    let mut sequences = BTreeSet::new();
+    let mut sequences = std::collections::BTreeSet::new();
     for pending in &state.pending {
         if pending.target.is_empty() {
             return Err(ProtocolScheduleError::EmptyTarget {
@@ -447,7 +447,7 @@ mod tests {
                 adapter_id: "lease-replication-test-adapter".to_string(),
                 adapter_version: "v1".to_string(),
             },
-            artifact_digests: BTreeMap::from([
+            artifact_digests: std::collections::BTreeMap::from([
                 ("adapter".to_string(), digest()),
                 ("protocol".to_string(), digest()),
             ]),

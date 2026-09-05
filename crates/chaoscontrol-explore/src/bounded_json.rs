@@ -1,18 +1,16 @@
-use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
 
 pub(crate) const MAX_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_JSON_DEPTH: usize = 64;
 const MAX_JSON_STRUCTURAL_TOKENS: usize = 500_000;
 const MAX_JSON_STRING_BYTES: usize = 8 * 1024 * 1024;
 
-pub(crate) fn read_checkpoint(path: &Path) -> io::Result<String> {
+pub(crate) fn read_checkpoint(path: &std::path::Path) -> io::Result<String> {
     read_bounded_json(path, MAX_CHECKPOINT_BYTES)
 }
 
-pub(crate) fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<String> {
+pub(crate) fn read_bounded_json(path: &std::path::Path, maximum_bytes: u64) -> io::Result<String> {
     let mut file = open_regular_file(path)?;
     let metadata = file.metadata()?;
     if metadata.len() > maximum_bytes {
@@ -30,8 +28,8 @@ pub(crate) fn read_bounded_json(path: &Path, maximum_bytes: u64) -> io::Result<S
     Ok(input)
 }
 
-fn open_regular_file(path: &Path) -> io::Result<File> {
-    let file = OpenOptions::new()
+fn open_regular_file(path: &std::path::Path) -> io::Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;

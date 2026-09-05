@@ -8,8 +8,7 @@
 
 use std::io;
 use std::os::fd::RawFd;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::atomic::AtomicI32;
 
 /// Maximum live perf fds that can own attributed overflow slots.
 pub const MAX_PMU_EXECUTION_THREADS: usize = 256;
@@ -40,19 +39,21 @@ const FCNTL_OWNER_THREAD: libc::c_int = 0;
 /// x86_64 Linux offset of `_sigpoll.si_fd` inside `siginfo_t`.
 const SIGINFO_POLL_FD_OFFSET: usize = 24;
 
-static PMU_SLOT_IN_USE: [AtomicBool; MAX_PMU_EXECUTION_THREADS] =
-    [const { AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
+static PMU_SLOT_IN_USE: [std::sync::atomic::AtomicBool; MAX_PMU_EXECUTION_THREADS] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
 static PMU_SLOT_FDS: [AtomicI32; MAX_PMU_EXECUTION_THREADS] =
     [const { AtomicI32::new(-1) }; MAX_PMU_EXECUTION_THREADS];
 static PMU_SLOT_TIDS: [AtomicI32; MAX_PMU_EXECUTION_THREADS] =
     [const { AtomicI32::new(0) }; MAX_PMU_EXECUTION_THREADS];
-static PMU_OVERFLOW_GENERATIONS: [AtomicU64; MAX_PMU_EXECUTION_THREADS] =
-    [const { AtomicU64::new(0) }; MAX_PMU_EXECUTION_THREADS];
-static PMU_GENERATION_WRAPPED: [AtomicBool; MAX_PMU_EXECUTION_THREADS] =
-    [const { AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
-static PMU_SIGNAL_INSTALL: OnceLock<Result<(), libc::c_int>> = OnceLock::new();
+static PMU_OVERFLOW_GENERATIONS: [std::sync::atomic::AtomicU64; MAX_PMU_EXECUTION_THREADS] =
+    [const { std::sync::atomic::AtomicU64::new(0) }; MAX_PMU_EXECUTION_THREADS];
+static PMU_GENERATION_WRAPPED: [std::sync::atomic::AtomicBool; MAX_PMU_EXECUTION_THREADS] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; MAX_PMU_EXECUTION_THREADS];
+static PMU_SIGNAL_INSTALL: std::sync::OnceLock<Result<(), libc::c_int>> =
+    std::sync::OnceLock::new();
 static PMU_SIGNAL_NUMBER: AtomicI32 = AtomicI32::new(0);
-static PMU_ATTRIBUTION_POISONED: AtomicBool = AtomicBool::new(false);
+static PMU_ATTRIBUTION_POISONED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// `perf_event_attr` layout for the fields used by this module.
 #[repr(C)]
@@ -335,7 +336,7 @@ impl Drop for InstructionCounter {
             return;
         }
         if current_tid() != self.owner_tid {
-            PMU_ATTRIBUTION_POISONED.store(true, Ordering::Release);
+            PMU_ATTRIBUTION_POISONED.store(true, std::sync::atomic::Ordering::Release);
             // SAFETY: closing prevents more events. Global poison forbids reuse.
             unsafe { libc::close(self.fd) };
             if let Some(slot) = self.overflow_slot.take() {
@@ -356,13 +357,13 @@ impl Drop for InstructionCounter {
         });
         self.fd = -1;
         if cleanup.is_err() {
-            PMU_ATTRIBUTION_POISONED.store(true, Ordering::Release);
+            PMU_ATTRIBUTION_POISONED.store(true, std::sync::atomic::Ordering::Release);
         }
     }
 }
 
 fn ensure_attribution_healthy() -> io::Result<()> {
-    if PMU_ATTRIBUTION_POISONED.load(Ordering::Acquire) {
+    if PMU_ATTRIBUTION_POISONED.load(std::sync::atomic::Ordering::Acquire) {
         Err(io::Error::other(
             "PMU signal attribution was poisoned by an unsafe teardown",
         ))
@@ -429,7 +430,7 @@ fn install_pmu_signal_handler() -> io::Result<()> {
         if signal > libc::SIGRTMAX() {
             return Err(libc::EINVAL);
         }
-        PMU_SIGNAL_NUMBER.store(signal, Ordering::Release);
+        PMU_SIGNAL_NUMBER.store(signal, std::sync::atomic::Ordering::Release);
         // SAFETY: installs one process-wide handler for a dedicated RT signal.
         let result = unsafe {
             let mut action: libc::sigaction = std::mem::zeroed();
@@ -440,7 +441,7 @@ fn install_pmu_signal_handler() -> io::Result<()> {
             libc::sigaction(signal, &action, std::ptr::null_mut())
         };
         if result < 0 {
-            PMU_SIGNAL_NUMBER.store(0, Ordering::Release);
+            PMU_SIGNAL_NUMBER.store(0, std::sync::atomic::Ordering::Release);
             Err(io::Error::last_os_error()
                 .raw_os_error()
                 .unwrap_or(libc::EINVAL))
@@ -467,7 +468,7 @@ extern "C" fn pmu_overflow_signal_handler(
 }
 
 fn record_pmu_signal(signal: libc::c_int, info: *const libc::siginfo_t) {
-    if signal != PMU_SIGNAL_NUMBER.load(Ordering::Acquire) || info.is_null() {
+    if signal != PMU_SIGNAL_NUMBER.load(std::sync::atomic::Ordering::Acquire) || info.is_null() {
         return;
     }
     // SAFETY: the kernel supplied `info` for SA_SIGINFO. This workspace targets
@@ -481,15 +482,16 @@ fn record_pmu_signal(signal: libc::c_int, info: *const libc::siginfo_t) {
     };
     let tid = current_tid();
     for slot in 0..MAX_PMU_EXECUTION_THREADS {
-        if PMU_SLOT_IN_USE[slot].load(Ordering::Acquire)
-            && PMU_SLOT_FDS[slot].load(Ordering::Relaxed) == fd
-            && PMU_SLOT_TIDS[slot].load(Ordering::Relaxed) == tid
+        if PMU_SLOT_IN_USE[slot].load(std::sync::atomic::Ordering::Acquire)
+            && PMU_SLOT_FDS[slot].load(std::sync::atomic::Ordering::Relaxed) == fd
+            && PMU_SLOT_TIDS[slot].load(std::sync::atomic::Ordering::Relaxed) == tid
         {
-            let current = PMU_OVERFLOW_GENERATIONS[slot].load(Ordering::Relaxed);
+            let current = PMU_OVERFLOW_GENERATIONS[slot].load(std::sync::atomic::Ordering::Relaxed);
             if current == u64::MAX {
-                PMU_GENERATION_WRAPPED[slot].store(true, Ordering::Release);
+                PMU_GENERATION_WRAPPED[slot].store(true, std::sync::atomic::Ordering::Release);
             } else {
-                PMU_OVERFLOW_GENERATIONS[slot].store(current + 1, Ordering::Release);
+                PMU_OVERFLOW_GENERATIONS[slot]
+                    .store(current + 1, std::sync::atomic::Ordering::Release);
             }
             return;
         }
@@ -504,15 +506,20 @@ fn current_tid() -> libc::pid_t {
 fn register_overflow_slot(fd: RawFd, tid: libc::pid_t) -> io::Result<usize> {
     for slot in 0..MAX_PMU_EXECUTION_THREADS {
         if PMU_SLOT_IN_USE[slot]
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
             .is_ok()
         {
-            PMU_SLOT_FDS[slot].store(fd, Ordering::Relaxed);
-            PMU_SLOT_TIDS[slot].store(tid, Ordering::Relaxed);
-            PMU_OVERFLOW_GENERATIONS[slot].store(0, Ordering::Relaxed);
-            PMU_GENERATION_WRAPPED[slot].store(false, Ordering::Relaxed);
+            PMU_SLOT_FDS[slot].store(fd, std::sync::atomic::Ordering::Relaxed);
+            PMU_SLOT_TIDS[slot].store(tid, std::sync::atomic::Ordering::Relaxed);
+            PMU_OVERFLOW_GENERATIONS[slot].store(0, std::sync::atomic::Ordering::Relaxed);
+            PMU_GENERATION_WRAPPED[slot].store(false, std::sync::atomic::Ordering::Relaxed);
             // Publish initialized fields after ownership was acquired.
-            PMU_SLOT_IN_USE[slot].store(true, Ordering::Release);
+            PMU_SLOT_IN_USE[slot].store(true, std::sync::atomic::Ordering::Release);
             return Ok(slot);
         }
     }
@@ -522,20 +529,20 @@ fn register_overflow_slot(fd: RawFd, tid: libc::pid_t) -> io::Result<usize> {
 }
 
 fn release_overflow_slot(slot: usize) {
-    PMU_SLOT_FDS[slot].store(-1, Ordering::Relaxed);
-    PMU_SLOT_TIDS[slot].store(0, Ordering::Relaxed);
-    PMU_OVERFLOW_GENERATIONS[slot].store(0, Ordering::Relaxed);
-    PMU_GENERATION_WRAPPED[slot].store(false, Ordering::Relaxed);
+    PMU_SLOT_FDS[slot].store(-1, std::sync::atomic::Ordering::Relaxed);
+    PMU_SLOT_TIDS[slot].store(0, std::sync::atomic::Ordering::Relaxed);
+    PMU_OVERFLOW_GENERATIONS[slot].store(0, std::sync::atomic::Ordering::Relaxed);
+    PMU_GENERATION_WRAPPED[slot].store(false, std::sync::atomic::Ordering::Relaxed);
     // Publish availability only after all old-owner fields are cleared.
-    PMU_SLOT_IN_USE[slot].store(false, Ordering::Release);
+    PMU_SLOT_IN_USE[slot].store(false, std::sync::atomic::Ordering::Release);
 }
 
 fn checked_slot_generation(slot: usize) -> io::Result<u64> {
     ensure_attribution_healthy()?;
-    if PMU_GENERATION_WRAPPED[slot].load(Ordering::Acquire) {
+    if PMU_GENERATION_WRAPPED[slot].load(std::sync::atomic::Ordering::Acquire) {
         return Err(io::Error::other("PMU overflow generation wrapped"));
     }
-    Ok(PMU_OVERFLOW_GENERATIONS[slot].load(Ordering::Acquire))
+    Ok(PMU_OVERFLOW_GENERATIONS[slot].load(std::sync::atomic::Ordering::Acquire))
 }
 
 fn with_pmu_signal_blocked<T>(operation: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
@@ -553,7 +560,7 @@ fn with_pmu_signal_blocked<T>(operation: impl FnOnce() -> io::Result<T>) -> io::
     let restore_result =
         unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &previous, std::ptr::null_mut()) };
     if restore_result != 0 {
-        PMU_ATTRIBUTION_POISONED.store(true, Ordering::Release);
+        PMU_ATTRIBUTION_POISONED.store(true, std::sync::atomic::Ordering::Release);
         return Err(io::Error::from_raw_os_error(restore_result));
     }
     result
@@ -621,11 +628,11 @@ mod tests {
     const SECOND_FAKE_TID: libc::pid_t = 201;
 
     fn slot_has_registration(slot: usize, fd: RawFd, tid: libc::pid_t) -> bool {
-        PMU_SLOT_IN_USE[slot].load(Ordering::Acquire)
-            && PMU_SLOT_FDS[slot].load(Ordering::Relaxed) == fd
-            && PMU_SLOT_TIDS[slot].load(Ordering::Relaxed) == tid
-            && PMU_OVERFLOW_GENERATIONS[slot].load(Ordering::Relaxed) == 0
-            && !PMU_GENERATION_WRAPPED[slot].load(Ordering::Relaxed)
+        PMU_SLOT_IN_USE[slot].load(std::sync::atomic::Ordering::Acquire)
+            && PMU_SLOT_FDS[slot].load(std::sync::atomic::Ordering::Relaxed) == fd
+            && PMU_SLOT_TIDS[slot].load(std::sync::atomic::Ordering::Relaxed) == tid
+            && PMU_OVERFLOW_GENERATIONS[slot].load(std::sync::atomic::Ordering::Relaxed) == 0
+            && !PMU_GENERATION_WRAPPED[slot].load(std::sync::atomic::Ordering::Relaxed)
     }
 
     fn synthetic_siginfo(fd: RawFd) -> libc::siginfo_t {
@@ -736,8 +743,8 @@ mod tests {
     #[test]
     fn released_slot_reuse_preserves_new_owner_fields() {
         let slot = register_overflow_slot(FIRST_FAKE_FD, FIRST_FAKE_TID).unwrap();
-        PMU_OVERFLOW_GENERATIONS[slot].store(1, Ordering::Relaxed);
-        PMU_GENERATION_WRAPPED[slot].store(true, Ordering::Relaxed);
+        PMU_OVERFLOW_GENERATIONS[slot].store(1, std::sync::atomic::Ordering::Relaxed);
+        PMU_GENERATION_WRAPPED[slot].store(true, std::sync::atomic::Ordering::Relaxed);
 
         release_overflow_slot(slot);
         let reused_slot = register_overflow_slot(SECOND_FAKE_FD, SECOND_FAKE_TID).unwrap();
@@ -757,15 +764,15 @@ mod tests {
 
         // Model the rejected order: publish availability, acquire for a new
         // owner, and then let the old owner clear fields late.
-        PMU_SLOT_IN_USE[slot].store(false, Ordering::Release);
+        PMU_SLOT_IN_USE[slot].store(false, std::sync::atomic::Ordering::Release);
         let reused_slot = register_overflow_slot(SECOND_FAKE_FD, SECOND_FAKE_TID).unwrap();
         assert_eq!(reused_slot, slot);
-        PMU_SLOT_FDS[slot].store(-1, Ordering::Relaxed);
-        PMU_SLOT_TIDS[slot].store(0, Ordering::Relaxed);
-        PMU_OVERFLOW_GENERATIONS[slot].store(0, Ordering::Relaxed);
-        PMU_GENERATION_WRAPPED[slot].store(false, Ordering::Relaxed);
+        PMU_SLOT_FDS[slot].store(-1, std::sync::atomic::Ordering::Relaxed);
+        PMU_SLOT_TIDS[slot].store(0, std::sync::atomic::Ordering::Relaxed);
+        PMU_OVERFLOW_GENERATIONS[slot].store(0, std::sync::atomic::Ordering::Relaxed);
+        PMU_GENERATION_WRAPPED[slot].store(false, std::sync::atomic::Ordering::Relaxed);
 
-        assert!(PMU_SLOT_IN_USE[slot].load(Ordering::Acquire));
+        assert!(PMU_SLOT_IN_USE[slot].load(std::sync::atomic::Ordering::Acquire));
         assert!(!slot_has_registration(
             reused_slot,
             SECOND_FAKE_FD,
@@ -778,13 +785,13 @@ mod tests {
     fn generation_wrap_is_detected_without_wrapping() {
         install_pmu_signal_handler().unwrap();
         let slot = register_overflow_slot(FIRST_FAKE_FD, current_tid()).unwrap();
-        PMU_OVERFLOW_GENERATIONS[slot].store(u64::MAX, Ordering::Release);
+        PMU_OVERFLOW_GENERATIONS[slot].store(u64::MAX, std::sync::atomic::Ordering::Release);
         let info = synthetic_siginfo(FIRST_FAKE_FD);
 
         record_pmu_signal(pmu_overflow_signal(), &info);
 
         assert_eq!(
-            PMU_OVERFLOW_GENERATIONS[slot].load(Ordering::Acquire),
+            PMU_OVERFLOW_GENERATIONS[slot].load(std::sync::atomic::Ordering::Acquire),
             u64::MAX
         );
         assert!(checked_slot_generation(slot).is_err());
@@ -799,7 +806,7 @@ mod tests {
             owner_tid: current_tid(),
             overflow_slot: Some(slot),
         };
-        PMU_OVERFLOW_GENERATIONS[slot].store(2, Ordering::Release);
+        PMU_OVERFLOW_GENERATIONS[slot].store(2, std::sync::atomic::Ordering::Release);
         assert!(counter.overflow_since(0).is_err());
         counter.overflow_slot.take();
         release_overflow_slot(slot);

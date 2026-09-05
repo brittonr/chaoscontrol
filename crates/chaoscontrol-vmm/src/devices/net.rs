@@ -6,7 +6,6 @@
 //! queue to observe what the guest sends.
 
 use super::virtio_types::{VirtioLimits, DEFAULT_MAX_NET_TX_BYTES, DEFAULT_MAX_NET_TX_PACKETS};
-use std::collections::VecDeque;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NetQueueError {
@@ -36,8 +35,8 @@ pub struct NetStats {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct NetSnapshot {
     mac: [u8; 6],
-    rx_queue: VecDeque<Vec<u8>>,
-    tx_queue: VecDeque<Vec<u8>>,
+    rx_queue: std::collections::VecDeque<Vec<u8>>,
+    tx_queue: std::collections::VecDeque<Vec<u8>>,
     stats: NetStats,
 }
 
@@ -136,7 +135,7 @@ impl NetSnapshot {
 
 fn validate_snapshot_packets(
     queue: NetSnapshotQueue,
-    packets: &VecDeque<Vec<u8>>,
+    packets: &std::collections::VecDeque<Vec<u8>>,
     max_frame_bytes: u64,
 ) -> Result<u64, NetSnapshotValidationError> {
     let mut retained_bytes = 0u64;
@@ -197,9 +196,9 @@ pub struct DeterministicNet {
     /// MAC address of the virtual NIC.
     mac: [u8; 6],
     /// Packets waiting to be delivered to the guest.
-    rx_queue: VecDeque<Vec<u8>>,
+    rx_queue: std::collections::VecDeque<Vec<u8>>,
     /// Slot indices for packets transmitted by the guest.
-    tx_queue: VecDeque<usize>,
+    tx_queue: std::collections::VecDeque<usize>,
     /// Startup-allocated storage for retained TX packets.
     tx_slots: Vec<TxPacketSlot>,
     /// Free startup-allocated TX packet slots.
@@ -271,8 +270,8 @@ impl DeterministicNet {
         free_tx_slots.extend((0..tx_packet_slots).rev());
         Ok(Self {
             mac,
-            rx_queue: VecDeque::new(),
-            tx_queue: VecDeque::with_capacity(tx_packet_slots),
+            rx_queue: std::collections::VecDeque::new(),
+            tx_queue: std::collections::VecDeque::with_capacity(tx_packet_slots),
             tx_slots,
             free_tx_slots,
             tx_slot_bytes,
@@ -506,7 +505,7 @@ fn allocate_packet_slot(requested: usize) -> Result<Vec<u8>, NetQueueError> {
     Ok(bytes)
 }
 
-fn retained_bytes(queue: &VecDeque<Vec<u8>>) -> u64 {
+fn retained_bytes(queue: &std::collections::VecDeque<Vec<u8>>) -> u64 {
     queue.iter().fold(0u64, |total, packet| {
         let length = u64::try_from(packet.len()).unwrap_or(u64::MAX);
         total.saturating_add(length)

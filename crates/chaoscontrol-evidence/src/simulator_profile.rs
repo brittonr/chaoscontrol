@@ -1,5 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-
 use serde::{Deserialize, Serialize};
 
 use crate::in_process_simulator::{
@@ -46,7 +44,7 @@ impl SimulatorProfile {
             .artifacts
             .into_iter()
             .map(|artifact| (artifact.name, artifact.digest))
-            .collect::<BTreeMap<_, _>>();
+            .collect::<std::collections::BTreeMap<_, _>>();
         let config = SimulatorConfig {
             schema_version: self.schema_version,
             run_id: self.run_id,
@@ -93,7 +91,7 @@ pub fn validate_profile_shape(profile: &SimulatorProfile) -> EvidenceResult<()> 
         &profile.fault_schedule.schedule_id,
     )?;
     validate_sha256("fault_schedule.digest", &profile.fault_schedule.digest)?;
-    let mut names = BTreeSet::new();
+    let mut names = std::collections::BTreeSet::new();
     for artifact in &profile.artifacts {
         validate_identifier("artifact.name", &artifact.name)?;
         validate_sha256("artifact.digest", &artifact.digest)?;

@@ -1,0 +1,45 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+   Compiling chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+   Compiling chaoscontrol-replay-evidence-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-replay-evidence-core)
+   Compiling chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+error[E0433]: cannot find type `BTreeMap` in this scope
+   --> crates/chaoscontrol-sdk/src/supervisor.rs:266:30
+    |
+266 |                 environment: BTreeMap::new(),
+    |                              ^^^^^^^^ use of undeclared type `BTreeMap`
+    |
+help: consider importing this struct
+    |
+205 +     use std::collections::BTreeMap;
+    |
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `chaoscontrol-sdk` (lib test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

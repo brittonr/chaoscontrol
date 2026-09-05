@@ -3,9 +3,6 @@
 // r[impl chaoscontrol.rust_automation.kvm]
 // r[impl chaoscontrol.rust_automation.functional_core]
 
-use std::collections::BTreeSet;
-use std::path::Path;
-
 use serde_json::{json, Value};
 
 const REQUIRED_WORKLOAD_COUNT: usize = 2;
@@ -25,7 +22,7 @@ pub fn parse_workloads(raw: &str) -> Result<Vec<String>, String> {
             "--workloads must select at least two workloads for multi-hypervisor smoke",
         ));
     }
-    let unique = workloads.iter().collect::<BTreeSet<_>>();
+    let unique = workloads.iter().collect::<std::collections::BTreeSet<_>>();
     if unique.len() != workloads.len() {
         return Err(String::from(
             "--workloads must not contain duplicate workloads",
@@ -35,7 +32,7 @@ pub fn parse_workloads(raw: &str) -> Result<Vec<String>, String> {
 }
 
 pub fn campaign_plan(
-    out: &Path,
+    out: &std::path::Path,
     workloads: &[String],
     command_plans: &[Value],
 ) -> Result<Value, String> {
@@ -87,7 +84,6 @@ pub fn campaign_plan(
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
 
     use serde_json::json;
 
@@ -96,8 +92,12 @@ mod tests {
     #[test]
     fn distinct_workloads_produce_bounded_plan() {
         let workloads = parse_workloads("raft,rust-workload").expect("workloads");
-        let plan = campaign_plan(Path::new("/tmp/out"), &workloads, &[json!({}), json!({})])
-            .expect("plan");
+        let plan = campaign_plan(
+            std::path::Path::new("/tmp/out"),
+            &workloads,
+            &[json!({}), json!({})],
+        )
+        .expect("plan");
         assert_eq!(plan["max_hypervisors"], 2);
         assert_eq!(plan["queue"]["entries"][1]["workload"], "rust-workload");
     }
@@ -106,6 +106,11 @@ mod tests {
     fn duplicates_short_sets_and_cardinality_fail() {
         assert!(parse_workloads("raft").is_err());
         assert!(parse_workloads("raft,raft").is_err());
-        assert!(campaign_plan(Path::new("/tmp/out"), &[String::from("raft")], &[]).is_err());
+        assert!(campaign_plan(
+            std::path::Path::new("/tmp/out"),
+            &[String::from("raft")],
+            &[]
+        )
+        .is_err());
     }
 }

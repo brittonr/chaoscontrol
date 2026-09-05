@@ -1,6 +1,5 @@
 use crate::process::{ProcessFaultAction, ProcessFaultCommand};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
 
 pub const PROCESS_MANIFEST_SCHEMA: &str = "chaoscontrol.process-manifest.v1";
 pub const MULTIPROCESS_RECEIPT_SCHEMA: &str = "chaoscontrol.multiprocess-receipt.v1";
@@ -50,7 +49,7 @@ pub struct ProcessSpec {
     pub role: String,
     pub executable: String,
     pub arguments: Vec<String>,
-    pub environment: BTreeMap<String, String>,
+    pub environment: std::collections::BTreeMap<String, String>,
     pub shared_directories: Vec<String>,
     pub restart: RestartPolicy,
     pub instrumented: bool,
@@ -115,7 +114,7 @@ pub fn admit_manifest(manifest: &ProcessManifest) -> Result<AdmittedManifest, Ma
         return Err(ManifestError::SharedDirectoryLimit);
     }
 
-    let mut directory_ids = BTreeSet::new();
+    let mut directory_ids = std::collections::BTreeSet::new();
     for directory in &manifest.shared_directories {
         validate_token(&directory.id).map_err(|()| ManifestError::InvalidSharedDirectory)?;
         validate_absolute_path(&directory.path)
@@ -125,8 +124,8 @@ pub fn admit_manifest(manifest: &ProcessManifest) -> Result<AdmittedManifest, Ma
         }
     }
 
-    let mut roles = BTreeSet::new();
-    let mut slots = BTreeSet::new();
+    let mut roles = std::collections::BTreeSet::new();
+    let mut slots = std::collections::BTreeSet::new();
     let mut processes = Vec::with_capacity(manifest.processes.len());
     for process in &manifest.processes {
         validate_token(&process.role).map_err(|()| ManifestError::InvalidRole)?;
@@ -282,8 +281,8 @@ pub struct ProcessRuntimeState {
 pub struct SupervisorState {
     pub manifest_identity: String,
     pub tick: u64,
-    pub processes: BTreeMap<String, ProcessRuntimeState>,
-    pub shared_directory_identities: BTreeMap<String, String>,
+    pub processes: std::collections::BTreeMap<String, ProcessRuntimeState>,
+    pub shared_directory_identities: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -637,12 +636,12 @@ pub fn validate_receipt(
         .processes
         .iter()
         .map(|process| process.identity.clone())
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     let actual_processes = receipt
         .process_identities
         .iter()
         .cloned()
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     if expected_processes != actual_processes
         || actual_processes.len() != receipt.process_identities.len()
     {
@@ -652,12 +651,12 @@ pub fn validate_receipt(
         .shared_directories
         .iter()
         .map(shared_directory_identity)
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     let actual_directories = receipt
         .shared_directory_identities
         .iter()
         .cloned()
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     if expected_directories != actual_directories
         || actual_directories.len() != receipt.shared_directory_identities.len()
     {
@@ -697,7 +696,7 @@ mod tests {
                     role: "writer".to_string(),
                     executable: "/bin/writer".to_string(),
                     arguments: vec!["--data".to_string(), "/data".to_string()],
-                    environment: BTreeMap::new(),
+                    environment: std::collections::BTreeMap::new(),
                     shared_directories: vec!["data".to_string()],
                     restart: RestartPolicy {
                         mode: RestartMode::OnFailure,
@@ -710,7 +709,7 @@ mod tests {
                     role: "checkpoint".to_string(),
                     executable: "/bin/checkpoint".to_string(),
                     arguments: Vec::new(),
-                    environment: BTreeMap::new(),
+                    environment: std::collections::BTreeMap::new(),
                     shared_directories: vec!["data".to_string()],
                     restart: RestartPolicy {
                         mode: RestartMode::Always,

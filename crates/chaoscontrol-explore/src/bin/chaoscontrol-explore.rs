@@ -59,7 +59,6 @@ use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 use clap::{Parser, Subcommand};
 use std::fs;
-use std::path::Path;
 
 const EXIT_ERROR: i32 = 1;
 const ENABLED_SCHEDULE_MUTATION_RATIO: f64 = 1.0;
@@ -882,7 +881,7 @@ fn cmd_export_bugs(
     overwrite: bool,
     filter: CheckpointBugExportFilter,
 ) {
-    let checkpoint_path = Path::new(&checkpoint);
+    let checkpoint_path = std::path::Path::new(&checkpoint);
     if !checkpoint_path.exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint);
         std::process::exit(1);
@@ -891,7 +890,7 @@ fn cmd_export_bugs(
     let output_dir = output.unwrap_or_else(|| {
         checkpoint_path
             .parent()
-            .unwrap_or_else(|| Path::new("."))
+            .unwrap_or_else(|| std::path::Path::new("."))
             .to_string_lossy()
             .into_owned()
     });
@@ -967,20 +966,20 @@ fn cmd_run(
     });
 
     // Validate inputs
-    if !Path::new(&kernel).exists() {
+    if !std::path::Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
     }
 
     if let Some(ref initrd_path) = initrd {
-        if !Path::new(initrd_path).exists() {
+        if !std::path::Path::new(initrd_path).exists() {
             eprintln!("Error: initrd file not found: {}", initrd_path);
             std::process::exit(1);
         }
     }
 
     if let Some(ref disk_image_path) = disk_image {
-        if !Path::new(disk_image_path).exists() {
+        if !std::path::Path::new(disk_image_path).exists() {
             eprintln!("Error: disk image file not found: {}", disk_image_path);
             std::process::exit(1);
         }
@@ -1312,20 +1311,20 @@ fn cmd_campaign(
     }
 
     // Validate inputs
-    if !Path::new(&kernel).exists() {
+    if !std::path::Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
     }
 
     if let Some(ref initrd_path) = initrd {
-        if !Path::new(initrd_path).exists() {
+        if !std::path::Path::new(initrd_path).exists() {
             eprintln!("Error: initrd file not found: {}", initrd_path);
             std::process::exit(1);
         }
     }
 
     if let Some(ref disk_image_path) = disk_image {
-        if !Path::new(disk_image_path).exists() {
+        if !std::path::Path::new(disk_image_path).exists() {
             eprintln!("Error: disk image file not found: {}", disk_image_path);
             std::process::exit(1);
         }
@@ -1561,7 +1560,7 @@ fn persist_exploration_outputs(
 ) -> Result<(), String> {
     use chaoscontrol_explore::snapshot_store::SnapshotStore;
 
-    let output = Path::new(output);
+    let output = std::path::Path::new(output);
     let snapshot_store = chaoscontrol_explore::snapshot_store::FileSnapshotStore::new(output);
     for bug in &report.bugs {
         if let Some(reference) = bug.replay_parent_snapshot_ref.as_ref() {
@@ -1646,7 +1645,7 @@ fn persist_campaign_outputs(
 ) -> Result<(), String> {
     fs::create_dir_all(output)
         .map_err(|error| format!("cannot create output directory: {error}"))?;
-    let output = Path::new(output);
+    let output = std::path::Path::new(output);
     let assertions_path = output.join("assertions.json");
     match fs::remove_file(&assertions_path) {
         Ok(()) => {}
@@ -1662,7 +1661,7 @@ fn persist_campaign_outputs(
 }
 
 fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
-    if !Path::new(&corpus).is_dir() {
+    if !std::path::Path::new(&corpus).is_dir() {
         eprintln!("Error: campaign directory not found: {}", corpus);
         std::process::exit(1);
     }
@@ -1881,14 +1880,14 @@ fn cmd_resume(
     dashboard_host: String,
 ) {
     // Validate corpus directory exists
-    if !Path::new(&corpus).is_dir() {
+    if !std::path::Path::new(&corpus).is_dir() {
         eprintln!("Error: corpus directory not found: {}", corpus);
         std::process::exit(1);
     }
 
     // Load checkpoint
     let checkpoint_path = format!("{}/checkpoint.json", corpus);
-    if !Path::new(&checkpoint_path).exists() {
+    if !std::path::Path::new(&checkpoint_path).exists() {
         eprintln!("Error: checkpoint file not found: {}", checkpoint_path);
         eprintln!("Expected: {}", checkpoint_path);
         std::process::exit(1);
@@ -1911,13 +1910,13 @@ fn cmd_resume(
         .or(checkpoint.config.initrd_path.clone());
 
     // Validate kernel/initrd paths
-    if !Path::new(&kernel_path).exists() {
+    if !std::path::Path::new(&kernel_path).exists() {
         eprintln!("Error: kernel file not found: {}", kernel_path);
         std::process::exit(1);
     }
 
     if let Some(ref initrd) = initrd_path {
-        if !Path::new(initrd).exists() {
+        if !std::path::Path::new(initrd).exists() {
             eprintln!("Error: initrd file not found: {}", initrd);
             std::process::exit(1);
         }
@@ -2074,9 +2073,9 @@ fn load_replay_parent_snapshot_for_verdict(
 
     match serialized_bug.replay_parent_snapshot_ref.as_ref() {
         Some(reference) => {
-            let root = Path::new(bug_path)
+            let root = std::path::Path::new(bug_path)
                 .parent()
-                .unwrap_or_else(|| Path::new("."));
+                .unwrap_or_else(|| std::path::Path::new("."));
             let store = FileSnapshotStore::new(root);
             match store.get_snapshot_artifact(reference) {
                 Ok(artifact)
@@ -2135,11 +2134,11 @@ fn cmd_minimize(
     output: Option<String>,
 ) {
     // Validate inputs
-    if !Path::new(&kernel).exists() {
+    if !std::path::Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
     }
-    if !Path::new(&bug_path).exists() {
+    if !std::path::Path::new(&bug_path).exists() {
         eprintln!("Error: bug file not found: {}", bug_path);
         std::process::exit(1);
     }
@@ -2304,7 +2303,7 @@ fn cmd_reproduce(
     use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 
     // Validate inputs
-    if !Path::new(&kernel).exists() {
+    if !std::path::Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
     }
@@ -2715,7 +2714,7 @@ fn auto_minimize_bugs(
     Ok(())
 }
 
-fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_atomic_replacing(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
 
     let parent = path
@@ -2736,7 +2735,7 @@ fn write_atomic_replacing(path: &Path, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_new_or_exact_bug(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -2757,7 +2756,7 @@ fn write_new_or_exact_bug(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn write_new_synced(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     let file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -2766,7 +2765,11 @@ fn write_new_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
     commit_reserved_file(file, path, bytes)
 }
 
-fn commit_reserved_file(mut file: std::fs::File, path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn commit_reserved_file(
+    mut file: std::fs::File,
+    path: &std::path::Path,
+    bytes: &[u8],
+) -> Result<(), String> {
     use std::io::Write;
 
     if let Err(error) = file.write_all(bytes).and_then(|()| file.sync_all()) {

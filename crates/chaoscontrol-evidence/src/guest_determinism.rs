@@ -8,7 +8,6 @@ use chaoscontrol_sim_core::{
     GuestDeterminismProfile,
 };
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
-use std::path::Path;
 
 pub const GUEST_PROBE_PREFIX: &str = "GUEST_DETERMINISM_PROBE=";
 pub const GUEST_PROBE_READY: &str = "GUEST_DETERMINISM_READY";
@@ -80,8 +79,8 @@ pub enum GuestDeterminismShellError {
 
 /// Execute one fixture guest and return its admitted profile and observation.
 pub fn run_guest_determinism_probe(
-    kernel: &Path,
-    initrd: &Path,
+    kernel: &std::path::Path,
+    initrd: &std::path::Path,
     run_seed: u64,
 ) -> Result<(GuestDeterminismProfile, GuestDeterminismProbe), GuestDeterminismShellError> {
     let mut vm = DeterministicVm::new(probe_config(run_seed))
@@ -117,8 +116,8 @@ pub fn extract_guest_determinism_probe(
 
 /// Compare two continuations from one admitted, quiescent guest snapshot.
 pub fn run_guest_determinism_gate(
-    kernel: &Path,
-    initrd: &Path,
+    kernel: &std::path::Path,
+    initrd: &std::path::Path,
     run_seed: u64,
 ) -> Result<GuestDeterminismDriftReport, GuestDeterminismShellError> {
     let mut vm = DeterministicVm::new(probe_config(run_seed))
@@ -150,7 +149,7 @@ pub fn run_guest_determinism_gate(
 
 /// Persist one canonical JSON report after the caller authorizes the path.
 pub fn write_guest_determinism_report(
-    path: &Path,
+    path: &std::path::Path,
     report: &GuestDeterminismDriftReport,
 ) -> Result<(), GuestDeterminismShellError> {
     let bytes = serde_json::to_vec_pretty(report)

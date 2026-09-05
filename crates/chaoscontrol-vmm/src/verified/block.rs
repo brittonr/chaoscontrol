@@ -17,8 +17,6 @@
 //! | [`check_bounds`]             | `DeterministicBlock::check_bounds()`       |
 //! | [`find_matching_fault`]      | `DeterministicBlock::find_fault()`         |
 
-use std::collections::VecDeque;
-
 use crate::devices::block::{BlockError, BlockFault};
 
 // ─── Bounds checking ────────────────────────────────────────────────
@@ -87,7 +85,7 @@ pub fn check_bounds(device_size: u64, offset: u64, len: u64) -> Result<(), Block
 /// - Returns `Some(i)` where `i < faults.len()` and `predicate(&faults[i])`.
 /// - No faults before index `i` match the predicate.
 pub fn find_matching_fault(
-    faults: &VecDeque<BlockFault>,
+    faults: &std::collections::VecDeque<BlockFault>,
     predicate: impl Fn(&BlockFault) -> bool,
 ) -> Option<usize> {
     let result = faults.iter().position(&predicate);
@@ -224,7 +222,7 @@ mod tests {
 
     #[test]
     fn find_fault_empty_queue() {
-        let faults: VecDeque<BlockFault> = VecDeque::new();
+        let faults: std::collections::VecDeque<BlockFault> = std::collections::VecDeque::new();
         assert!(
             find_matching_fault(&faults, |_| true).is_none(),
             "empty queue must return None"
@@ -233,7 +231,7 @@ mod tests {
 
     #[test]
     fn find_fault_no_match() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::ReadError { offset: 0 });
         faults.push_back(BlockFault::WriteError { offset: 512 });
 
@@ -248,7 +246,7 @@ mod tests {
 
     #[test]
     fn find_fault_first_match() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::ReadError { offset: 0 });
         faults.push_back(BlockFault::ReadError { offset: 512 });
         faults.push_back(BlockFault::ReadError { offset: 1024 });
@@ -261,7 +259,7 @@ mod tests {
 
     #[test]
     fn find_fault_returns_earliest() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::ReadError { offset: 0 });
         faults.push_back(BlockFault::ReadError { offset: 0 });
         faults.push_back(BlockFault::ReadError { offset: 0 });
@@ -274,7 +272,7 @@ mod tests {
 
     #[test]
     fn find_fault_distinguishes_types() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::WriteError { offset: 0 });
         faults.push_back(BlockFault::ReadError { offset: 0 });
 
@@ -287,7 +285,7 @@ mod tests {
 
     #[test]
     fn find_fault_torn_write() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::TornWrite {
             offset: 0,
             bytes_written: 4,
@@ -301,7 +299,7 @@ mod tests {
 
     #[test]
     fn find_fault_corruption() {
-        let mut faults = VecDeque::new();
+        let mut faults = std::collections::VecDeque::new();
         faults.push_back(BlockFault::Corruption {
             offset: 256,
             len: 16,

@@ -17,8 +17,7 @@ use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
 
 /// Page size for dirty tracking granularity (4 KiB).
@@ -40,8 +39,8 @@ pub enum SnapshotMemory {
     /// bootstrap). `dirty_pages` maps page index → page contents for
     /// pages that changed since the base was captured.
     Overlay {
-        base: Arc<Vec<u8>>,
-        dirty_pages: BTreeMap<usize, Box<[u8; PAGE_SIZE]>>,
+        base: std::sync::Arc<Vec<u8>>,
+        dirty_pages: std::collections::BTreeMap<usize, Box<[u8; PAGE_SIZE]>>,
     },
 }
 
@@ -50,7 +49,7 @@ impl Clone for SnapshotMemory {
         match self {
             Self::Full(data) => Self::Full(data.clone()),
             Self::Overlay { base, dirty_pages } => Self::Overlay {
-                base: Arc::clone(base),
+                base: std::sync::Arc::clone(base),
                 dirty_pages: dirty_pages.clone(),
             },
         }
@@ -62,7 +61,7 @@ enum SnapshotMemorySerde {
     Full(Vec<u8>),
     Overlay {
         base: Vec<u8>,
-        dirty_pages: BTreeMap<usize, Vec<u8>>,
+        dirty_pages: std::collections::BTreeMap<usize, Vec<u8>>,
     },
 }
 
@@ -88,7 +87,7 @@ impl TryFrom<SnapshotMemorySerde> for SnapshotMemory {
         match value {
             SnapshotMemorySerde::Full(data) => Ok(Self::Full(data)),
             SnapshotMemorySerde::Overlay { base, dirty_pages } => {
-                let mut pages = BTreeMap::new();
+                let mut pages = std::collections::BTreeMap::new();
                 for (page, data) in dirty_pages {
                     if data.len() != PAGE_SIZE {
                         return Err(format!(
@@ -101,7 +100,7 @@ impl TryFrom<SnapshotMemorySerde> for SnapshotMemory {
                     pages.insert(page, Box::new(page_data));
                 }
                 Ok(Self::Overlay {
-                    base: Arc::new(base),
+                    base: std::sync::Arc::new(base),
                     dirty_pages: pages,
                 })
             }
@@ -173,13 +172,13 @@ impl SnapshotMemory {
     /// 4 KB page. Bit N of element `N/64` (bit position `N%64`) is set
     /// if page N was written by the guest.
     pub fn from_dirty(
-        base: &Arc<Vec<u8>>,
+        base: &std::sync::Arc<Vec<u8>>,
         dirty_bitmap: &[u64],
         guest_memory: &GuestMemoryMmap,
     ) -> Self {
         let mem_size = base.len();
         let total_pages = mem_size / PAGE_SIZE;
-        let mut dirty_pages = BTreeMap::new();
+        let mut dirty_pages = std::collections::BTreeMap::new();
 
         for page_idx in 0..total_pages {
             let word = page_idx / 64;
@@ -194,7 +193,7 @@ impl SnapshotMemory {
         }
 
         Self::Overlay {
-            base: Arc::clone(base),
+            base: std::sync::Arc::clone(base),
             dirty_pages,
         }
     }
@@ -1283,16 +1282,16 @@ mod tests {
     #[test]
     fn overlay_materialize_applies_dirty_pages() {
         let base = make_base(PAGE_SIZE * 4);
-        let base_arc = Arc::new(base.clone());
+        let base_arc = std::sync::Arc::new(base.clone());
 
-        let mut dirty = BTreeMap::new();
+        let mut dirty = std::collections::BTreeMap::new();
         // Override page 1 with all 0xFF
         dirty.insert(1, Box::new([0xFF; PAGE_SIZE]));
         // Override page 3 with all 0xAA
         dirty.insert(3, Box::new([0xAA; PAGE_SIZE]));
 
         let snap = SnapshotMemory::Overlay {
-            base: Arc::clone(&base_arc),
+            base: std::sync::Arc::clone(&base_arc),
             dirty_pages: dirty,
         };
 
@@ -1317,18 +1316,18 @@ mod tests {
 
     #[test]
     fn overlay_memory_size() {
-        let base = Arc::new(vec![0u8; PAGE_SIZE * 8]);
+        let base = std::sync::Arc::new(vec![0u8; PAGE_SIZE * 8]);
         let snap = SnapshotMemory::Overlay {
             base,
-            dirty_pages: BTreeMap::new(),
+            dirty_pages: std::collections::BTreeMap::new(),
         };
         assert_eq!(snap.memory_size(), PAGE_SIZE * 8);
     }
 
     #[test]
     fn overlay_dirty_page_count() {
-        let base = Arc::new(vec![0u8; PAGE_SIZE * 4]);
-        let mut dirty = BTreeMap::new();
+        let base = std::sync::Arc::new(vec![0u8; PAGE_SIZE * 4]);
+        let mut dirty = std::collections::BTreeMap::new();
         dirty.insert(0, Box::new([0u8; PAGE_SIZE]));
         dirty.insert(2, Box::new([0u8; PAGE_SIZE]));
         let snap = SnapshotMemory::Overlay {
@@ -1340,12 +1339,12 @@ mod tests {
 
     #[test]
     fn clone_overlay_shares_base_arc() {
-        let base = Arc::new(vec![0u8; PAGE_SIZE * 4]);
-        let mut dirty = BTreeMap::new();
+        let base = std::sync::Arc::new(vec![0u8; PAGE_SIZE * 4]);
+        let mut dirty = std::collections::BTreeMap::new();
         dirty.insert(1, Box::new([0xBB; PAGE_SIZE]));
 
         let snap = SnapshotMemory::Overlay {
-            base: Arc::clone(&base),
+            base: std::sync::Arc::clone(&base),
             dirty_pages: dirty,
         };
         let cloned = snap.clone();
@@ -1362,7 +1361,7 @@ mod tests {
             },
         ) = (&snap, &cloned)
         {
-            assert!(Arc::ptr_eq(b1, b2), "clone must share Arc base");
+            assert!(std::sync::Arc::ptr_eq(b1, b2), "clone must share Arc base");
             assert_eq!(d1.len(), d2.len());
         } else {
             panic!("expected Overlay variants");
@@ -1376,8 +1375,8 @@ mod tests {
     fn empty_overlay_materializes_to_base() {
         let base = make_base(PAGE_SIZE * 2);
         let snap = SnapshotMemory::Overlay {
-            base: Arc::new(base.clone()),
-            dirty_pages: BTreeMap::new(),
+            base: std::sync::Arc::new(base.clone()),
+            dirty_pages: std::collections::BTreeMap::new(),
         };
         assert_eq!(snap.materialize(), base);
     }
@@ -1398,7 +1397,7 @@ mod tests {
         }
 
         // Base is all zeros (different from guest memory)
-        let base = Arc::new(vec![0u8; mem_size]);
+        let base = std::sync::Arc::new(vec![0u8; mem_size]);
 
         // Dirty bitmap: pages 1 and 3 are dirty
         // Word 0: bit 1 and bit 3 set = 0b1010 = 10

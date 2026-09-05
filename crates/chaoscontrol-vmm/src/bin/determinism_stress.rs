@@ -23,10 +23,8 @@ use chaoscontrol_vmm::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT;
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
 use crc32fast::Hasher;
 use std::env;
-use std::fs::File;
+
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 const DEFAULT_RUNS: usize = 10;
 const SINGLE_VM_MAX_EXITS: u64 = DEFAULT_SCHEDULE_JOURNAL_LIMIT as u64;
@@ -100,9 +98,9 @@ struct Args {
     kernel: String,
     initrd: String,
     runs: usize,
-    receipt: Option<PathBuf>,
-    matrix_receipt: Option<PathBuf>,
-    dlog_dir: Option<PathBuf>,
+    receipt: Option<std::path::PathBuf>,
+    matrix_receipt: Option<std::path::PathBuf>,
+    dlog_dir: Option<std::path::PathBuf>,
     cases: Vec<String>,
     single_clock_profile: SingleClockProfile,
 }
@@ -124,20 +122,20 @@ fn parse_args_from(args: Vec<String>) -> Result<Args, String> {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--receipt" => {
-                receipt = Some(PathBuf::from(
+                receipt = Some(std::path::PathBuf::from(
                     iter.next()
                         .ok_or_else(|| "--receipt requires a path".to_string())?,
                 ));
             }
             "--matrix-receipt" => {
                 matrix_receipt =
-                    Some(PathBuf::from(iter.next().ok_or_else(|| {
+                    Some(std::path::PathBuf::from(iter.next().ok_or_else(|| {
                         "--matrix-receipt requires a path".to_string()
                     })?));
             }
             "--dlog-dir" => {
                 dlog_dir =
-                    Some(PathBuf::from(iter.next().ok_or_else(|| {
+                    Some(std::path::PathBuf::from(iter.next().ok_or_else(|| {
                         "--dlog-dir requires a directory".to_string()
                     })?));
             }
@@ -228,7 +226,7 @@ fn run_single_vm(
     initrd: &str,
     num_vcpus: usize,
     max_exits: u64,
-    dlog_path: Option<PathBuf>,
+    dlog_path: Option<std::path::PathBuf>,
     extra_cmdline: Option<&str>,
     hide_tsc: bool,
 ) -> VmFingerprint {
@@ -276,7 +274,7 @@ fn run_controller(
     kernel: &str,
     initrd: &str,
     config: ControllerRunConfig,
-    dlog_dir: Option<PathBuf>,
+    dlog_dir: Option<std::path::PathBuf>,
 ) -> ControllerFingerprint {
     let ControllerRunConfig {
         num_vms,
@@ -354,14 +352,14 @@ fn run_controller(
 fn run_case<F>(
     name: &str,
     runs: usize,
-    dlog_root: Option<&Path>,
+    dlog_root: Option<&std::path::Path>,
     mut run_once: F,
 ) -> DeterminismCaseReport
 where
-    F: FnMut(usize, Option<PathBuf>) -> RunFingerprint,
+    F: FnMut(usize, Option<std::path::PathBuf>) -> RunFingerprint,
 {
     println!("━━━ {name}: {runs} runs ━━━");
-    let start = Instant::now();
+    let start = std::time::Instant::now();
     let mut observations = Vec::new();
 
     for run_index in 1..=runs {
@@ -430,7 +428,7 @@ where
     report
 }
 
-fn dlog_path_for(root: &Path, case_name: &str, run_index: usize) -> PathBuf {
+fn dlog_path_for(root: &std::path::Path, case_name: &str, run_index: usize) -> std::path::PathBuf {
     let safe_name = case_name
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
@@ -458,8 +456,8 @@ fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<Vec<DlogDivergen
             continue;
         };
         mismatches.extend(structural_dlog_path_mismatches(
-            Path::new(reference_path),
-            Path::new(path),
+            std::path::Path::new(reference_path),
+            std::path::Path::new(path),
             observation.run_index,
         ));
     }
@@ -467,8 +465,8 @@ fn compare_case_dlogs(report: &DeterminismCaseReport) -> Option<Vec<DlogDivergen
 }
 
 fn structural_dlog_path_mismatches(
-    reference: &Path,
-    actual: &Path,
+    reference: &std::path::Path,
+    actual: &std::path::Path,
     run_index: usize,
 ) -> Vec<DlogDivergenceDetail> {
     if reference.is_dir() || actual.is_dir() {
@@ -492,8 +490,8 @@ fn structural_dlog_path_mismatches(
 }
 
 fn dlog_file_mismatch(
-    reference: &Path,
-    actual: &Path,
+    reference: &std::path::Path,
+    actual: &std::path::Path,
     run_index: usize,
 ) -> Option<DlogDivergenceDetail> {
     match dlog_diff_structural(reference, actual) {
@@ -605,7 +603,7 @@ fn print_observation(run_index: usize, fingerprint: &RunFingerprint, reference: 
 }
 
 fn crc32_file(path: &str) -> io::Result<String> {
-    let mut file = File::open(path)?;
+    let mut file = std::fs::File::open(path)?;
     let mut hasher = Hasher::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
@@ -891,7 +889,10 @@ mod tests {
             "matrix.json".to_string(),
         ])
         .unwrap();
-        assert_eq!(args.matrix_receipt, Some(PathBuf::from("matrix.json")));
+        assert_eq!(
+            args.matrix_receipt,
+            Some(std::path::PathBuf::from("matrix.json"))
+        );
     }
 
     #[test]

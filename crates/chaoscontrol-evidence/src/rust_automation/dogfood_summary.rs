@@ -3,12 +3,10 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.parity]
 
-use std::path::Path;
-
 use serde_json::{json, Map, Value};
 
 pub fn summarize_values(
-    output: &Path,
+    output: &std::path::Path,
     accepted: Option<&Value>,
     attempts: Option<&Value>,
 ) -> Result<Value, String> {
@@ -184,7 +182,7 @@ fn basename_or_null(value: Option<&Value>) -> Value {
     let Some(text) = value.and_then(Value::as_str) else {
         return Value::Null;
     };
-    Path::new(text)
+    std::path::Path::new(text)
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
@@ -222,7 +220,6 @@ fn pair(name: &str, value: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
 
     use serde_json::json;
 
@@ -243,8 +240,8 @@ mod tests {
             "accepted_bug": "path/bug_1.json",
             "accepted_verdict": "path/verdict.json"
         });
-        let summary =
-            summarize_values(Path::new("/tmp/output"), Some(&accepted), None).expect("accepted");
+        let summary = summarize_values(std::path::Path::new("/tmp/output"), Some(&accepted), None)
+            .expect("accepted");
         assert_eq!(summary["accepted_bug"], "bug_1.json");
         assert!(format_line(&summary).contains("accepted=true"));
 
@@ -253,8 +250,8 @@ mod tests {
             "run_exit_status": 2, "export_exit_status": null, "reproduce_exit_status": null,
             "bugs": [], "verdict": null
         }]});
-        let summary =
-            summarize_values(Path::new("/tmp/output"), None, Some(&attempts)).expect("attempts");
+        let summary = summarize_values(std::path::Path::new("/tmp/output"), None, Some(&attempts))
+            .expect("attempts");
         assert_eq!(summary["attempts"], 1);
         assert!(format_line(&summary).contains("accepted=false"));
     }
@@ -262,14 +259,14 @@ mod tests {
     #[test]
     fn malformed_and_empty_attempts_fail() {
         assert!(summarize_values(
-            Path::new("/tmp/output"),
+            std::path::Path::new("/tmp/output"),
             None,
             Some(&json!({"attempts": []}))
         )
         .expect_err("empty")
         .contains("must not be empty"));
         assert!(summarize_values(
-            Path::new("/tmp/output"),
+            std::path::Path::new("/tmp/output"),
             Some(&json!({"accepted": false})),
             None
         )

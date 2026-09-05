@@ -5,10 +5,8 @@
 //! setup/scenario/report shape.
 
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+
 use std::io;
-use std::path::Path;
-use std::time::Instant;
 
 const MAX_LOCAL_JSONL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_LOCAL_JSONL_LINE_BYTES: usize = 16 * 1024;
@@ -22,7 +20,7 @@ pub struct WorkloadAdapterIdentity {
     pub scenario: String,
     pub seed_or_schedule_ref: String,
     pub evidence_class: WorkloadEvidenceClass,
-    pub artifact_digests: BTreeMap<String, String>,
+    pub artifact_digests: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +43,7 @@ impl WorkloadEvidenceClass {
 pub struct WorkloadHarness {
     name: String,
     adapter_version: Option<String>,
-    artifact_digests: BTreeMap<String, String>,
+    artifact_digests: std::collections::BTreeMap<String, String>,
 }
 
 impl WorkloadHarness {
@@ -54,7 +52,7 @@ impl WorkloadHarness {
         Self {
             name: name.into(),
             adapter_version: None,
-            artifact_digests: BTreeMap::new(),
+            artifact_digests: std::collections::BTreeMap::new(),
         }
     }
 
@@ -172,8 +170,8 @@ impl WorkloadHarness {
     ambient_clock,
     reason = "workload harness shell measures host-side scenario lifecycle duration"
 )]
-fn scenario_clock_now() -> Instant {
-    Instant::now()
+fn scenario_clock_now() -> std::time::Instant {
+    std::time::Instant::now()
 }
 
 #[allow(unknown_lints)]
@@ -181,7 +179,7 @@ fn scenario_clock_now() -> Instant {
     ambient_clock,
     reason = "workload harness shell measures host-side scenario lifecycle duration"
 )]
-fn scenario_elapsed_ms(started: Instant) -> u128 {
+fn scenario_elapsed_ms(started: std::time::Instant) -> u128 {
     started.elapsed().as_millis()
 }
 
@@ -205,7 +203,7 @@ pub struct LocalDryRunReport {
     /// This compatibility parser is diagnostic-only and never collision-safe.
     pub collision_safe_evidence: bool,
     pub setup_complete: bool,
-    pub lifecycle_events: BTreeMap<String, usize>,
+    pub lifecycle_events: std::collections::BTreeMap<String, usize>,
     pub cataloged_assertions: usize,
     pub exercised_assertions: usize,
     pub failed_assertions: usize,
@@ -215,12 +213,12 @@ pub struct LocalDryRunReport {
     pub random_choice_calls: usize,
     pub assertion_coverage: Vec<AssertionCoverage>,
     pub unobserved_assertions: Vec<String>,
-    pub adoption_tracks: BTreeMap<String, usize>,
+    pub adoption_tracks: std::collections::BTreeMap<String, usize>,
 }
 
 impl LocalDryRunReport {
     /// Parse a local JSONL output file emitted by the SDK.
-    pub fn from_path(path: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn from_path(path: impl AsRef<std::path::Path>) -> io::Result<Self> {
         let content = crate::local_json_security::read_bounded_regular_file(
             path.as_ref(),
             MAX_LOCAL_JSONL_BYTES,
@@ -237,10 +235,10 @@ impl LocalDryRunReport {
             return Err(invalid_data("SDK JSONL exceeds the input byte limit"));
         }
         let mut report = LocalDryRunReport::default();
-        let mut catalog = BTreeMap::<String, CatalogSite>::new();
-        let mut exercised = BTreeSet::<String>::new();
-        let mut sometimes_success = BTreeSet::<String>::new();
-        let mut reachable_hit = BTreeSet::<String>::new();
+        let mut catalog = std::collections::BTreeMap::<String, CatalogSite>::new();
+        let mut exercised = std::collections::BTreeSet::<String>::new();
+        let mut sometimes_success = std::collections::BTreeSet::<String>::new();
+        let mut reachable_hit = std::collections::BTreeSet::<String>::new();
 
         fn details_track(details: &Value) -> Option<String> {
             details

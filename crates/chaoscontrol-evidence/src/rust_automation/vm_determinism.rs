@@ -3,8 +3,6 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.nix]
 
-use std::collections::BTreeSet;
-
 use serde_json::Value;
 
 const EXPECTED_DRIFT_CASES: [&str; 4] = [
@@ -84,8 +82,10 @@ pub fn validate_drift_receipt(receipt: &Value) -> Result<String, String> {
     let seen = cases
         .iter()
         .filter_map(|case| case.get("name").and_then(Value::as_str))
-        .collect::<BTreeSet<_>>();
-    let expected = EXPECTED_DRIFT_CASES.into_iter().collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = EXPECTED_DRIFT_CASES
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
     require(seen == expected, &format!("unexpected cases: {seen:?}"))?;
     let mut lines = vec![String::from("vm-determinism-drift receipt: pass")];
     for case in cases {

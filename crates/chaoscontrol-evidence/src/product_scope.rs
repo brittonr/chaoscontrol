@@ -1,7 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{ensure, EvidenceError, EvidenceResult};
@@ -172,8 +168,8 @@ fn validate_authority(authority: &ScopeAuthority) -> EvidenceResult<()> {
 }
 
 fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()> {
-    let mut ids = BTreeSet::new();
-    let mut names = BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
+    let mut names = std::collections::BTreeSet::new();
     for capability in capabilities {
         ensure(
             ids.insert(capability.id.as_str()),
@@ -230,7 +226,7 @@ fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()>
 }
 
 fn validate_change_intents(intents: &[ChangeScopeIntent]) -> EvidenceResult<()> {
-    let mut names = BTreeSet::new();
+    let mut names = std::collections::BTreeSet::new();
     for intent in intents {
         ensure(
             names.insert(intent.change.as_str()),
@@ -251,7 +247,7 @@ fn validate_prohibited_claims(claims: &[String]) -> EvidenceResult<()> {
         !claims.is_empty(),
         "product-scope registry has no prohibited current claims",
     )?;
-    let mut unique = BTreeSet::new();
+    let mut unique = std::collections::BTreeSet::new();
     for claim in claims {
         ensure(
             !claim.trim().is_empty() && unique.insert(claim.as_str()),
@@ -269,7 +265,7 @@ pub fn validate_active_change_intents(
         .change_intents
         .iter()
         .map(|intent| intent.change.as_str())
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     for change in active_changes {
         ensure(
             intents.contains(change.as_str()),
@@ -362,7 +358,7 @@ pub fn parse_workspace_members(manifest: &str) -> EvidenceResult<Vec<String>> {
         !members.is_empty(),
         "Cargo workspace has no explicit members",
     )?;
-    let unique = members.iter().collect::<BTreeSet<_>>();
+    let unique = members.iter().collect::<std::collections::BTreeSet<_>>();
     ensure(
         unique.len() == members.len(),
         "Cargo workspace contains duplicate members",
@@ -485,15 +481,17 @@ pub fn render_product_scope_status(
     output
 }
 
-fn scope_state_counts(registry: &ProductScopeRegistry) -> BTreeMap<ScopeState, usize> {
-    let mut counts = BTreeMap::new();
+fn scope_state_counts(
+    registry: &ProductScopeRegistry,
+) -> std::collections::BTreeMap<ScopeState, usize> {
+    let mut counts = std::collections::BTreeMap::new();
     for capability in &registry.capabilities {
         *counts.entry(capability.state).or_insert(0) += 1;
     }
     counts
 }
 
-fn count_for(counts: &BTreeMap<ScopeState, usize>, state: ScopeState) -> usize {
+fn count_for(counts: &std::collections::BTreeMap<ScopeState, usize>, state: ScopeState) -> usize {
     counts.get(&state).copied().unwrap_or(0)
 }
 
@@ -530,7 +528,10 @@ pub fn replace_marked_block(
 
 // r[impl chaoscontrol.product_scope.change_admission]
 // r[impl chaoscontrol.product_scope.validation]
-pub fn check_product_scope(root: impl AsRef<Path>, write: bool) -> EvidenceResult<&'static str> {
+pub fn check_product_scope(
+    root: impl AsRef<std::path::Path>,
+    write: bool,
+) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
     let registry = load_and_check_registry_projection(root)?;
     validate_product_scope_registry(&registry)?;
@@ -541,7 +542,9 @@ pub fn check_product_scope(root: impl AsRef<Path>, write: bool) -> EvidenceResul
     Ok(PRODUCT_SCOPE_SUCCESS)
 }
 
-fn load_and_check_registry_projection(root: &Path) -> EvidenceResult<ProductScopeRegistry> {
+fn load_and_check_registry_projection(
+    root: &std::path::Path,
+) -> EvidenceResult<ProductScopeRegistry> {
     let generated_path = root.join(PRODUCT_SCOPE_REGISTRY_JSON);
     let generated = crate::bounded_file::read_bounded_regular_file(
         &generated_path,
@@ -562,8 +565,8 @@ fn load_and_check_registry_projection(root: &Path) -> EvidenceResult<ProductScop
     parse_product_scope_registry(&generated)
 }
 
-fn export_nickel(root: &Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
-    let output = Command::new("nickel")
+fn export_nickel(root: &std::path::Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
+    let output = std::process::Command::new("nickel")
         .args(["export", "--format", "json"])
         .arg(root.join(relative_path))
         .current_dir(root)
@@ -579,7 +582,7 @@ fn export_nickel(root: &Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
     Ok(output.stdout)
 }
 
-fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
+fn check_invalid_nickel_fixtures(root: &std::path::Path) -> EvidenceResult<()> {
     let directory = root.join(INVALID_FIXTURES_DIRECTORY);
     let mut fixtures = std::fs::read_dir(&directory)
         .map_err(|error| EvidenceError::new(format!("failed to read invalid fixtures: {error}")))?
@@ -596,7 +599,7 @@ fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
             path.extension().is_some_and(|extension| extension == "ncl"),
             format!("unexpected invalid fixture file: {}", path.display()),
         )?;
-        let output = Command::new("nickel")
+        let output = std::process::Command::new("nickel")
             .args(["export", "--format", "json"])
             .arg(&path)
             .current_dir(root)
@@ -611,7 +614,7 @@ fn check_invalid_nickel_fixtures(root: &Path) -> EvidenceResult<()> {
 }
 
 fn collect_repository_facts(
-    root: &Path,
+    root: &std::path::Path,
     registry: &ProductScopeRegistry,
 ) -> EvidenceResult<RepositoryFacts> {
     let manifest_path = root.join(&registry.authority.workspace_manifest);
@@ -630,7 +633,7 @@ fn collect_repository_facts(
     })
 }
 
-fn discover_active_changes(root: &Path) -> EvidenceResult<Vec<String>> {
+fn discover_active_changes(root: &std::path::Path) -> EvidenceResult<Vec<String>> {
     let directory = root.join(ACTIVE_CHANGES_DIRECTORY);
     let mut changes = Vec::new();
     for entry in std::fs::read_dir(&directory)
@@ -660,7 +663,7 @@ fn discover_active_changes(root: &Path) -> EvidenceResult<Vec<String>> {
 }
 
 fn update_or_check_documents(
-    root: &Path,
+    root: &std::path::Path,
     registry: &ProductScopeRegistry,
     facts: &RepositoryFacts,
     write: bool,
@@ -684,7 +687,10 @@ fn update_or_check_documents(
     check_or_write(&status_path, &actual_status, &expected_status, write)
 }
 
-fn validate_document_targets(root: &Path, registry: &ProductScopeRegistry) -> EvidenceResult<()> {
+fn validate_document_targets(
+    root: &std::path::Path,
+    registry: &ProductScopeRegistry,
+) -> EvidenceResult<()> {
     for capability in &registry.capabilities {
         for target in &capability.documentation_targets {
             let path = root.join(target);
@@ -706,14 +712,19 @@ fn validate_document_targets(root: &Path, registry: &ProductScopeRegistry) -> Ev
     Ok(())
 }
 
-fn read_optional_bounded(path: &Path) -> EvidenceResult<String> {
+fn read_optional_bounded(path: &std::path::Path) -> EvidenceResult<String> {
     if !path.exists() {
         return Ok(String::new());
     }
     crate::bounded_file::read_bounded_regular_file(path, MAX_PRODUCT_SCOPE_FILE_BYTES)
 }
 
-fn check_or_write(path: &Path, actual: &str, expected: &str, write: bool) -> EvidenceResult<()> {
+fn check_or_write(
+    path: &std::path::Path,
+    actual: &str,
+    expected: &str,
+    write: bool,
+) -> EvidenceResult<()> {
     if actual == expected {
         return Ok(());
     }
@@ -731,7 +742,9 @@ fn check_or_write(path: &Path, actual: &str, expected: &str, write: bool) -> Evi
     })
 }
 
-pub fn product_scope_paths(root: impl AsRef<Path>) -> (PathBuf, PathBuf) {
+pub fn product_scope_paths(
+    root: impl AsRef<std::path::Path>,
+) -> (std::path::PathBuf, std::path::PathBuf) {
     let root = root.as_ref();
     (root.join(README_PATH), root.join(PRODUCT_SCOPE_STATUS_DOC))
 }

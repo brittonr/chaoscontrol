@@ -1,5 +1,3 @@
-use std::collections::{BTreeMap, VecDeque};
-
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -35,7 +33,7 @@ pub struct SimulatorConfig {
     pub network: NetworkProfile,
     pub disk: DiskProfile,
     pub fault_schedule: FaultScheduleRef,
-    pub artifacts: BTreeMap<String, String>,
+    pub artifacts: std::collections::BTreeMap<String, String>,
     pub scope: String,
 }
 
@@ -51,7 +49,7 @@ pub struct WorkloadIdentity {
 pub struct ReceiptBridgeMetadata {
     pub workload: WorkloadIdentity,
     pub seed_or_schedule_ref: String,
-    pub artifact_digests: BTreeMap<String, String>,
+    pub artifact_digests: std::collections::BTreeMap<String, String>,
     pub evidence_class: EvidenceClass,
 }
 
@@ -66,7 +64,7 @@ pub enum EvidenceClass {
 pub struct VmReplayReceiptBridgeMetadata {
     pub workload: WorkloadIdentity,
     pub seed_or_schedule_ref: String,
-    pub artifact_digests: BTreeMap<String, String>,
+    pub artifact_digests: std::collections::BTreeMap<String, String>,
     pub evidence_class: EvidenceClass,
 }
 
@@ -77,7 +75,7 @@ pub struct SimulatorVmReceiptBridgeComparison {
     pub adapter_version_match: bool,
     pub scenario_match: bool,
     pub seed_or_schedule_match: bool,
-    pub artifact_digest_matches: BTreeMap<String, bool>,
+    pub artifact_digest_matches: std::collections::BTreeMap<String, bool>,
     pub simulator_evidence_class: EvidenceClass,
     pub vm_evidence_class: EvidenceClass,
     pub summary: String,
@@ -188,7 +186,7 @@ pub struct DeterministicRng {
 pub struct DeterministicScheduler {
     max_steps: u64,
     emitted_steps: u64,
-    runnable_tasks: VecDeque<String>,
+    runnable_tasks: std::collections::VecDeque<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -239,8 +237,8 @@ pub enum SimulatorOperationResult {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RegisterSimulatorAdapter {
     adapter_id: String,
-    state: BTreeMap<String, i64>,
-    script: VecDeque<SimulatorOperation>,
+    state: std::collections::BTreeMap<String, i64>,
+    script: std::collections::VecDeque<SimulatorOperation>,
     events: Vec<SimulatorAdapterEvent>,
 }
 
@@ -279,7 +277,7 @@ pub struct NetworkMessage {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SimulatedDisk {
     pub profile_id: String,
-    pub writes: BTreeMap<String, String>,
+    pub writes: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -437,7 +435,7 @@ impl RegisterSimulatorAdapter {
         )?;
         Ok(Self {
             adapter_id,
-            state: BTreeMap::new(),
+            state: std::collections::BTreeMap::new(),
             script: script.into(),
             events: Vec::new(),
         })
@@ -526,7 +524,7 @@ impl SimulatedFaultHooks {
             },
             disk: SimulatedDisk {
                 profile_id: disk_profile_id,
-                writes: BTreeMap::new(),
+                writes: std::collections::BTreeMap::new(),
             },
             faults: Vec::new(),
             unsupported_environment_hooks: Vec::new(),
@@ -545,7 +543,7 @@ impl SimulatedFaultHooks {
         &mut self,
         step: &SchedulerStep,
         operation: &SimulatorOperation,
-        state: &mut BTreeMap<String, i64>,
+        state: &mut std::collections::BTreeMap<String, i64>,
     ) -> EvidenceResult<SimulatorOperationResult> {
         match operation {
             SimulatorOperation::RegisterWrite { key, value } => {
@@ -815,7 +813,7 @@ pub fn compare_simulator_vm_receipt_bridge(
     let adapter_version_match = simulator.workload.adapter_version == vm.workload.adapter_version;
     let scenario_match = simulator.workload.scenario_id == vm.workload.scenario_id;
     let seed_or_schedule_match = simulator.seed_or_schedule_ref == vm.seed_or_schedule_ref;
-    let mut artifact_digest_matches = BTreeMap::new();
+    let mut artifact_digest_matches = std::collections::BTreeMap::new();
     for key in simulator
         .artifact_digests
         .keys()
@@ -869,7 +867,9 @@ fn validate_bridge_workload_identity(workload: &WorkloadIdentity) -> EvidenceRes
     Ok(())
 }
 
-fn validate_bridge_digest_map(digests: &BTreeMap<String, String>) -> EvidenceResult<()> {
+fn validate_bridge_digest_map(
+    digests: &std::collections::BTreeMap<String, String>,
+) -> EvidenceResult<()> {
     require(
         !digests.is_empty(),
         "bridge artifact digests must be non-empty",
@@ -1045,7 +1045,7 @@ pub fn compare_simulator_receipts(
 }
 
 pub fn sample_simulator_config() -> SimulatorConfig {
-    let mut artifacts = BTreeMap::new();
+    let mut artifacts = std::collections::BTreeMap::new();
     artifacts.insert(
         "workload-adapter".to_string(),
         "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),

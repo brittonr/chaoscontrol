@@ -24,6 +24,8 @@ pub mod oracle;
 mod oracle_event_validation;
 mod oracle_record_validation;
 mod oracle_snapshot_validation;
+#[path = "observation/collection.rs"]
+pub mod protocol_collection;
 pub use oracle_snapshot_validation::resolve_snapshot_assertion_evidence;
 pub mod oracle_validation;
 pub mod outcomes;

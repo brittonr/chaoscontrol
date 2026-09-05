@@ -1,0 +1,4 @@
+this derivation will be built:
+  /nix/store/ic0sajk7b8iffp07rr1j2czaa28xdch6-chaoscontrol-license-boundary.drv
+building '/nix/store/ic0sajk7b8iffp07rr1j2czaa28xdch6-chaoscontrol-license-boundary.drv'...
+chaoscontrol-license-boundary> license boundary valid: 59 rules

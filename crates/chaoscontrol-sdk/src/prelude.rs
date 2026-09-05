@@ -70,6 +70,10 @@ pub use crate::{
 pub use crate::lifecycle::{send_event, setup_complete};
 #[cfg(feature = "full")]
 pub use crate::marker::branch_marker;
+#[cfg(feature = "full")]
+pub use crate::protocol_observation::{
+    MarkerContext, ObservationEmissionInput, ProjectionPayload, ProtocolObservationEmitter,
+};
 pub use crate::resources::memory_ceiling_bytes;
 
 // ── Random ───────────────────────────────────────────────────────────

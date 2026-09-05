@@ -17,6 +17,10 @@
 //! ```
 
 use crate::acpi;
+#[cfg(test)]
+#[path = "vm/protocol.rs"]
+mod protocol_tests;
+
 use crate::cpu::{self, CpuConfig, VirtualTsc};
 use crate::devices::entropy::DeterministicEntropy;
 use crate::devices::pit::DeterministicPit;
@@ -38,6 +42,7 @@ use crate::memory::{
     HIMEM_START, PML4_START, RNG_SETUP_DATA_START, ZERO_PAGE_START,
 };
 use chaoscontrol_fault::engine::{EngineConfig, FaultEngine};
+use chaoscontrol_protocol::protocol_observation::SchedulerPosition;
 use chaoscontrol_protocol::{
     HypercallPage, COVERAGE_BITMAP_ADDR, COVERAGE_BITMAP_SIZE, COVERAGE_PORT, HYPERCALL_PAGE_ADDR,
     HYPERCALL_PAGE_SIZE, SDK_PORT, VMCALL_NR,
@@ -4754,7 +4759,19 @@ impl DeterministicVm {
                 Err(_) => (0, chaoscontrol_protocol::STATUS_ERROR),
             }
         } else {
-            self.fault_engine.handle_hypercall(&page)
+            // The committed scheduler can already select the next vCPU.
+            // This exit still belongs to the executing shell vCPU.
+            let scheduler_position = u32::try_from(self.active_vcpu)
+                .ok()
+                .zip(u32::try_from(self.vm_id).ok())
+                .map(|(active_vcpu, vm_id)| SchedulerPosition {
+                    schedule_state_ref: self.scheduler.state_id().to_reference(),
+                    vm_id,
+                    active_vcpu,
+                    guest_exit_sequence: self.exit_count,
+                });
+            self.fault_engine
+                .handle_hypercall_at(&page, scheduler_position)
         };
 
         // Write result and status back to the guest page.

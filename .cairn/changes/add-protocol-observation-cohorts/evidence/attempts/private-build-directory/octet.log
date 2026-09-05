@@ -1,0 +1,167 @@
+these 126 derivations will be built:
+  /nix/store/00ha557syg7kk6nv2s8bybj0ql409d41-cargo-package-hyper-1.8.1.drv
+  /nix/store/0k1kg8gd64snv92lhg6xrz6xgm1q71lx-cargo-package-tar-0.4.46.drv
+  /nix/store/0y72bb11x1q3y6s5rk1pgihm5pwn6khc-cargo-package-regex-syntax-0.8.9.drv
+  /nix/store/0zi5kainwxcyabcskc82b915b5hnka9z-cargo-package-http-1.4.0.drv
+  /nix/store/11a2y2ax8cb991qxk4qhgbbkidlilccs-cargo-package-pin-utils-0.1.0.drv
+  /nix/store/13fdn4s1v6wc88cfffcw8fxagmjlbbma-cargo-package-matchit-0.8.4.drv
+  /nix/store/17rjr7r0kryrfg4r3szdfncws88xr9b0-cargo-package-cap-fs-ext-4.0.2.drv
+  /nix/store/1fdpgrlsi390gcijsszhsfraqrs0hdzc-cargo-package-tower-0.5.3.drv
+  /nix/store/2h2haiilijc2zmzkhiz5w2ch10qv5fyn-cargo-package-nu-ansi-term-0.50.3.drv
+  /nix/store/2kjgf1d9w4hzvxg9c5hnpdj79cs62ggs-cargo-package-rand-0.9.5.drv
+  /nix/store/2m99f4yp36hilayj5gi1gvq4zmgpzkzj-cargo-package-mime-0.3.17.drv
+  /nix/store/2rdxbp4fl9my82svb1f02b3crw9r66yw-cargo-package-proc-macro-error2-2.0.1.drv
+  /nix/store/2wm1mwxms5nzycv86wjfzn6kpa7mz1k6-cargo-package-mio-1.1.1.drv
+  /nix/store/34840f0nz0bz2lva3zazkq97s1cs19cb-cargo-package-defmt-0.3.100.drv
+  /nix/store/36cqkxlgq5zz2677539bvcka04zggwm6-cargo-package-futures-core-0.3.32.drv
+  /nix/store/3d5gb58zb5hxd6s3s2yw0rpwq3nx22z1-cargo-package-wasm-bindgen-shared-0.2.108.drv
+  /nix/store/3ki77dvvf6h9f8i95ryvcnkazmdcmjki-cargo-package-async-stream-impl-0.3.6.drv
+  /nix/store/3kpg142p1d022sskivlalj59rfk4y9ig-cargo-package-wasm-bindgen-0.2.108.drv
+  /nix/store/3qnq7afshiln2q5l7b1324hwmh1v7xh3-cargo-package-libbpf-rs-0.26.0.drv
+  /nix/store/3zzsv9xkf3xfdz7jch3knv9dwdzwc3sg-cargo-package-xattr-1.6.1.drv
+  /nix/store/4cv97244dw68b05lvddb22b3zlv1yxy9-cargo-package-serde_urlencoded-0.7.1.drv
+  /nix/store/4p51hlj01z77ji8nb9saw6rvsqmc7v11-cargo-package-zstd-0.13.3.drv
+  /nix/store/4pjyf1zzrqkz4jncx0kipldqg2qq5q9j-cargo-package-blake3-1.8.2.drv
+  /nix/store/4y8wjglbka895dvfkpxf9nh2dhbv1gz8-cargo-package-httparse-1.10.1.drv
+  /nix/store/52rx920sb3vr7mi9092mh8y0l43as6z4-cargo-package-kvm-bindings-0.10.0.drv
+  /nix/store/5382sngbf2mv1f4c2y4lrrk41wr5vvcj-cargo-package-proptest-1.11.0.drv
+  /nix/store/55hd5hqwpxzzfc54iy8c5yqjyjamhdz6-cargo-package-rand-0.8.6.drv
+  /nix/store/59a25g0b7jcdcdkxh39rn05mf86hl4lz-cargo-package-libbpf-sys-1.6.3+v1.6.3.drv
+  /nix/store/5aix78azzi77w499rjm7k21ggvdh2vrn-cargo-package-libbpf-cargo-0.26.0.drv
+  /nix/store/6vv7nbl6nn0jq6qfzg930dq7mjybdsff-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525.drv
+  /nix/store/6xzy2saj2bayfrw336dw59v4zyckbk3l-cargo-package-futures-util-0.3.32.drv
+  /nix/store/6y2h1hwj588fdrgxad1q83krhg66c7hx-cargo-package-wasm-bindgen-macro-0.2.108.drv
+  /nix/store/711s3ijds797pk86psm6l9idwlcl3pip-cargo-package-linux-loader-0.13.2.drv
+  /nix/store/76nwlv7j4rn2zhmwxs6c952vglmff5dj-cargo-package-byteorder-1.5.0.drv
+  /nix/store/7hzn2akndrrfpjrba4mrrjby79fdaili-cargo-package-vmm-sys-util-0.12.1.drv
+  /nix/store/7nz3w879jfy571k8cb0s14bfj9zg9yvj-cargo-package-axum-core-0.5.6.drv
+  /nix/store/7rngxziwsdfd3d9x88mfr70zfyfd94dc-cargo-package-cap-primitives-4.0.2.drv
+  /nix/store/7sz3n7b3j1cqpn76fl3bl5n3g9npvz35-cargo-package-heapless-0.8.0.drv
+  /nix/store/87p2rl3vcfl8sr2b0bnfqrx9k16h1yb1-cargo-package-nix-0.31.1.drv
+  /nix/store/x7cz493rx91mcf7n12bxkyl0amgw30m8-cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149.drv
+  /nix/store/8g4cadsiagjpmq7ds2ginlkvgzixr50f-linkLockedDeps.drv
+  /nix/store/8hmcxji9a29nbapyzdil8m8hvlynhmvb-cargo-package-js-sys-0.3.85.drv
+  /nix/store/8p0rwswf8z1qknjcx14w9ls47hm5225f-cargo-package-portable-atomic-1.13.1.drv
+  /nix/store/8q3hfps87vzsn7i5jf0qkb3xmnvqyzi4-cargo-package-sharded-slab-0.1.7.drv
+  /nix/store/8qqnxsikizx61ygqgdr0y0lpmh9dyjjw-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1.drv
+  /nix/store/rj0b608lf91s2jq7in1qqwhpgavircxl-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd.drv
+  /nix/store/8yi9p6qgdb2j0f51qgk8ckbk0npfq272-linkLockedDeps.drv
+  /nix/store/95pjh36z3k4fmgvwbak4adgxpi2rk0m9-cargo-package-tracing-attributes-0.1.31.drv
+  /nix/store/9fcm7y2dj1hcdjis2p0z0i78h31s3pxw-cargo-package-futures-task-0.3.32.drv
+  /nix/store/9fy1f7w12cn5900nvmipbqbj9gxws0mw-cargo-package-clap_builder-4.5.59.drv
+  /nix/store/9ilcggzyywpbqyfz4ygsayrsiq6wfssq-cargo-package-zerocopy-derive-0.7.35.drv
+  /nix/store/9jqyy1vi8i2d606d3zvc9nzhb3lp3900-cargo-package-httpdate-1.0.3.drv
+  /nix/store/9n97h547mz03ig54h9dmyhjhap8rsihl-cargo-package-zerocopy-0.7.35.drv
+  /nix/store/a0pqachnm1k5v4dkpwsi6j9rmbm72581-cargo-package-defmt-macros-1.0.1.drv
+  /nix/store/a2a4w2fznync5220hz9s9ma04nh01pls-cargo-package-io-lifetimes-3.0.1.drv
+  /nix/store/aj1a6vh08b5y4ikjqcgyrs6az611flvn-cargo-package-winapi-x86_64-pc-windows-gnu-0.4.0.drv
+  /nix/store/aq5zz1zvj11a2ckyvrriwvd8ka35s1rx-cargo-package-tracing-subscriber-0.3.22.drv
+  /nix/store/aqh4n3qx6j32mkiyaa6173y1y6f4alkn-cargo-package-tracing-core-0.1.36.drv
+  /nix/store/aqmy1gd1rh2f519i58y8rxjl7w59a4ng-cargo-package-winapi-0.3.9.drv
+  /nix/store/arixyhf9spc5mgxaqj5igr1xa7nmsib3-cargo-package-defmt-parser-1.0.0.drv
+  /nix/store/as41gsm1p4zifrcp1zmi61f43hdjwpvx-cargo-package-zstd-safe-7.2.4.drv
+  /nix/store/b5imnbfr8sszigcs9fb2fvkz4z7izq32-cargo-package-http-body-1.0.1.drv
+  /nix/store/b8zngxmx1nyl0g2ihzsc8vjlarm46pd2-cargo-package-managed-0.8.0.drv
+  /nix/store/bbdgaxdniv5c6wjfb3jw0p9c8108fmwh-cargo-package-rand_chacha-0.3.1.drv
+  /nix/store/bnrckkk1grz09721mdb60i2qf0avz4yb-cargo-package-wasm-bindgen-macro-support-0.2.108.drv
+  /nix/store/ca5sv4hsj4nrzk532ywnba3vs35f49ly-cargo-package-io-extras-0.19.0.drv
+  /nix/store/cnsaxszkmb3igqkxg6j8yyhql6dcpvhb-cargo-package-chrono-0.4.43.drv
+  /nix/store/cy069qn83dd35k212cl96vfay9fj0lg7-cargo-package-jiff-static-0.2.20.drv
+  /nix/store/czfgrz2argak9f6qg3d741ydafm5il8a-cargo-package-kvm-ioctls-0.19.1.drv
+  /nix/store/d26yhmhxdfdgidkq84yvgd8gxgwgll95-cargo-package-vm-memory-0.17.1.drv
+  /nix/store/d7x2hk210ba06l3h4fr942q19qbybjm6-cargo-package-proc-macro-error-attr2-2.0.0.drv
+  /nix/store/dalsqfihmhmvhwfpib66s1cqipp1lf2m-cargo-package-axum-0.8.8.drv
+  /nix/store/dl7wm9kxjlsrsi8apbsdli9awvwv0110-cargo-package-defmt-1.0.1.drv
+  /nix/store/dmaclwhl6sknk8xl2c606yn8803xw50v-cargo-package-pin-project-lite-0.2.16.drv
+  /nix/store/dvdi910qq2m73ws1m88si1lyhzpsqss5-cargo-package-tempfile-3.25.0.drv
+  /nix/store/fhjw2cxcd8lgqwyvhrpjcpcmyyfrhl2m-cargo-package-linkme-0.3.35.drv
+  /nix/store/g1j673bwqk6sqjparb0nmp6qzyla6fhj-cargo-package-zerocopy-0.8.39.drv
+  /nix/store/g8hddmzdw9s5jpp4k3vg72zr26sgz3qn-cargo-package-tower-layer-0.3.3.drv
+  /nix/store/gdyl4gjs566kn93z2p2id5vr29g4rnv9-cargo-package-tower-service-0.3.3.drv
+  /nix/store/gs4x2jgrxrfjvxrp5zrfz91dc647fkgr-cargo-package-redb-3.1.1.drv
+  /nix/store/gxygqrzp71zllfhhb2md42y577ibvs9h-cargo-package-linkme-impl-0.3.35.drv
+  /nix/store/h3wyic4zryg1qdffj66skjmp8ipkrcpw-cargo-package-socket2-0.6.3.drv
+  /nix/store/hap1l5rakfk3bvna91gb5i8bx0rb7hqi-cargo-package-clap-4.5.59.drv
+  /nix/store/hlb7ba8aln08hg4s6p4kbarmy3xd1p50-cargo-package-cargo_metadata-0.19.2.drv
+  /nix/store/hmd86p87scfc3q6qcld9z6bzhb4a68a6-cargo-package-zerocopy-derive-0.8.39.drv
+  /nix/store/imqg7byk8ddb0ngkjzvkmq55y4cp27w7-cargo-package-memfd-0.6.5.drv
+  /nix/store/j0m0fng718k462ps0fwv4b95snriv5bf-cargo-package-ryu-1.0.23.drv
+  /nix/store/j2wl93mdhw70p04xypj4pfwwd704sfq8-cargo-package-hyper-util-0.1.20.drv
+  /nix/store/j7dlldpmsq0ys71zmk10cwgix661lqya-cargo-package-vsprintf-2.0.0.drv
+  /nix/store/jd93ij9icmi69w3bq6snfbdc7rdigbcv-cargo-package-tokio-macros-2.6.1.drv
+  /nix/store/mm0laaf4n77jaj41wqfz72kbk5xx7pdh-octet-dylint-lib.drv
+  /nix/store/qylm941gcxb06hv6rrhz2lhlpbnvaqnb-linkLockedDeps.drv
+  /nix/store/jnbdbx692hmvaaf3bkib8pf01fwjgppy-cargo-package-hash32-0.3.1.drv
+  /nix/store/k79i7m8cpb04pppv5v5h2wblpjhkphmw-cargo-package-serde_path_to_error-0.1.20.drv
+  /nix/store/kl9rlrzbchxn1j34xwsajha4k9n3g753-cargo-package-filetime-0.2.29.drv
+  /nix/store/kmyap9z4b5f3brchkn6b66g6nymyiwjm-cargo-package-async-stream-0.3.6.drv
+  /nix/store/kr6fzw9z3fyfhfqkhwnhlm4m06xhzd57-cargo-package-tokio-1.50.0.drv
+  /nix/store/lkpxbxkd0iarl8r0rr89rypwmphjblp3-cargo-package-nix-0.30.1.drv
+  /nix/store/lnsyqvhp95rbb51qbd5ksp2i9sypq0g0-cargo-package-atomic-waker-1.1.2.drv
+  /nix/store/lyy0d0f4d528ywxc8vnac57i3qjrzd8p-cargo-package-http-body-util-0.1.3.drv
+  /nix/store/ma5mkrjnp50g4ja36gznwz52b44r1h7g-cargo-package-bytes-1.11.1.drv
+  /nix/store/mnply9i8xfll2avap0zprdwf9bpfx4j6-cargo-package-syn-2.0.116.drv
+  /nix/store/n4hiz1sv94nizy7f1lkvxz9cnm6rydx7-cargo-package-tower-http-0.6.8.drv
+  /nix/store/na0d10dh4qmfiq1qiykksrhqzbbml6fb-cargo-package-ipnet-2.12.1.drv
+  /nix/store/nwxw3h1wz6jx9fb1kwl97w4apjkz50l3-cargo-package-smoltcp-0.12.0.drv
+  /nix/store/pz1jaxp2mfy2hclk5p4cw3ajjvfis9v9-cargo-package-futures-channel-0.3.32.drv
+  /nix/store/q9d8blqs0vdp9rp0qdz6g4rwvwldj6w5-cargo-package-slab-0.4.12.drv
+  /nix/store/r63ic1w17v3zy3k01b2kq4r7136lk72h-cargo-package-portable-atomic-util-0.2.5.drv
+  /nix/store/s26cw8lh3wn4dcvxsrj3z9nffy0vdghh-cargo-package-bitflags-1.3.2.drv
+  /nix/store/shzpnsgw7ypcn09ypllsghzznaz8n15b-cargo-package-zstd-sys-2.0.16+zstd.1.5.7.drv
+  /nix/store/v065x9c6as6zfzh2dlmvj1lcl5qkab8w-cargo-package-jiff-0.2.20.drv
+  /nix/store/vh9xyl28gw5d71v0vjddk2zrbc4kcv1c-cargo-package-env_logger-0.11.9.drv
+  /nix/store/vz221k8a5scxs18wiy9fwagrsdibjq90-cargo-package-winapi-i686-pc-windows-gnu-0.4.0.drv
+  /nix/store/w3i577g4zah2di2nd1b6vgg9y60qpdgg-cargo-package-memmap2-0.9.10.drv
+  /nix/store/x44iifr27rjgq37rwg4gz102ncsy154s-cargo-package-sync_wrapper-1.0.2.drv
+  /nix/store/x9xv0gqcsirj7f5k9zz10qcn3rbhpylk-cargo-package-constant_time_eq-0.3.1.drv
+  /nix/store/xbmvfggm93chlwxyi82crshf46s5aqwd-cargo-package-cargo-platform-0.1.9.drv
+  /nix/store/y1lm9dq9wbnc41rjcxpkiljgbq9xcadi-cargo-package-anyhow-1.0.101.drv
+  /nix/store/yc246xmx9fs4bbm6zbphgh7wxqs63why-cargo-package-env_filter-1.0.0.drv
+  /nix/store/yshw6w96h8n0y4y083ax41rxmwbmji41-cargo-package-tracing-0.1.44.drv
+  /nix/store/yvffzfpyxdxw1hzj3vq7jpq2g6pppqi7-cargo-package-cap-std-4.0.2.drv
+  /nix/store/z8j3r2nc3r2m2wixmk54x09z4in590yp-cargo-package-vm-superio-0.8.1.drv
+  /nix/store/wpir8m7idl6kdvmvxskr62bb9vr81v0b-vendor-registry.drv
+  /nix/store/y2smbmq20w4vmmyg1gqv857fclah1fj7-linkLockedDeps.drv
+  /nix/store/s07x2f7m2azlrz1d1hnnkcjfd1bz8cy3-vendor-cargo-deps.drv
+  /nix/store/jl8s9h5kb15g6iid2ny5x4bbdcl8j3l6-octet-consumer-check.drv
+these 19 paths will be fetched (1.9 MiB download, 18.6 MiB unpacked):
+  /nix/store/g7pdqyr39x1qk74hbb1d0jw7ynhi8gwx-cargo-package-android_system_properties-0.1.5
+  /nix/store/x5j07n4rla6cm446gwqk4kbyhw67ngdg-cargo-package-cc-1.2.56
+  /nix/store/w1nxsvirnfpnj5lwi5z960digclb6sn2-cargo-package-cfg_aliases-0.2.1
+  /nix/store/n2ypgahznv369lc5hb615asy4x5lgn00-cargo-package-clap_derive-4.5.55
+  /nix/store/8ffnaf76lslfazlzgzx0s2f6sxq84ikw-cargo-package-clap_lex-1.0.0
+  /nix/store/rjhd6xv6dqmq4yinfm9rzl6gf0nb9xas-cargo-package-core-foundation-sys-0.8.7
+  /nix/store/mrg8xjj3shdbf30hzp6wbwiwd0fc4p5b-cargo-package-iana-time-zone-0.1.65
+  /nix/store/cwgpdr326ipfdmf40sy3hsfpahy47hwv-cargo-package-iana-time-zone-haiku-0.1.2
+  /nix/store/kd8ybaqs60p1li42ijzh72yzai9gq3jg-cargo-package-linux-raw-sys-0.11.0
+  /nix/store/ihf3pjmb6q7gxig7mhpzridjmpxkf6la-cargo-package-once_cell-1.21.3
+  /nix/store/kjfka9f7b56gmsny5h4w0hh12cgy0r71-cargo-package-rustix-1.1.3
+  /nix/store/25nh0pfhac0hqkwkx4dvwwhhj5ffqasv-cargo-package-snafu-0.8.9
+  /nix/store/208mn46wj7hfqbk9i80sdxi7hv2vc2gy-cargo-package-snafu-derive-0.8.9
+  /nix/store/7lap8dzgm9jmwk5gihw613w83gplzfn1-cargo-package-thread_local-1.1.9
+  /nix/store/wxgafmr0cvr2lcygvgky827dq7068wnz-cargo-package-windows-core-0.62.2
+  /nix/store/98pkk6wyvr3sj0xh78dni8qv0yl4n299-cargo-package-windows-implement-0.60.2
+  /nix/store/6cnapy3jz4kvjpr6vw3vbvk4ijdh33vq-cargo-package-windows-interface-0.59.3
+  /nix/store/imxkffhwwsk1nxx8bk719pfj9ks3plmb-cargo-package-windows-result-0.4.1
+  /nix/store/7mlj0hy77zid8y32a0qw20n91pg425jk-cargo-package-windows-strings-0.5.1
+copying path '/nix/store/g7pdqyr39x1qk74hbb1d0jw7ynhi8gwx-cargo-package-android_system_properties-0.1.5' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/w1nxsvirnfpnj5lwi5z960digclb6sn2-cargo-package-cfg_aliases-0.2.1' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/n2ypgahznv369lc5hb615asy4x5lgn00-cargo-package-clap_derive-4.5.55' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/x5j07n4rla6cm446gwqk4kbyhw67ngdg-cargo-package-cc-1.2.56' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/8ffnaf76lslfazlzgzx0s2f6sxq84ikw-cargo-package-clap_lex-1.0.0' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/mrg8xjj3shdbf30hzp6wbwiwd0fc4p5b-cargo-package-iana-time-zone-0.1.65' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/cwgpdr326ipfdmf40sy3hsfpahy47hwv-cargo-package-iana-time-zone-haiku-0.1.2' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/kd8ybaqs60p1li42ijzh72yzai9gq3jg-cargo-package-linux-raw-sys-0.11.0' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/ihf3pjmb6q7gxig7mhpzridjmpxkf6la-cargo-package-once_cell-1.21.3' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/rjhd6xv6dqmq4yinfm9rzl6gf0nb9xas-cargo-package-core-foundation-sys-0.8.7' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/kjfka9f7b56gmsny5h4w0hh12cgy0r71-cargo-package-rustix-1.1.3' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/208mn46wj7hfqbk9i80sdxi7hv2vc2gy-cargo-package-snafu-derive-0.8.9' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/25nh0pfhac0hqkwkx4dvwwhhj5ffqasv-cargo-package-snafu-0.8.9' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/7lap8dzgm9jmwk5gihw613w83gplzfn1-cargo-package-thread_local-1.1.9' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/wxgafmr0cvr2lcygvgky827dq7068wnz-cargo-package-windows-core-0.62.2' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/98pkk6wyvr3sj0xh78dni8qv0yl4n299-cargo-package-windows-implement-0.60.2' from 'https://nix-community.cachix.org'...
+error:
+       … while setting up the build environment
+
+       error: getting attributes of path "/home/brittonr/.cache/chaoscontrol-protocol-build-20260905/nix-2004433-3887198281/build": Permission denied

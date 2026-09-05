@@ -1,0 +1,1 @@
+error: Path "/var/tmp" is world-writable or a symlink. That's not allowed for security.

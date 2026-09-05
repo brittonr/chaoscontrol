@@ -1,0 +1,143 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Checking chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+warning: constant `CODE_REGION_END` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:39:7
+   |
+39 | const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / 2;
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `fnv1a` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:42:4
+   |
+42 | fn fnv1a(data: &[u8]) -> u64 {
+   |    ^^^^^
+
+warning: `chaoscontrol-sdk` (lib) generated 2 warnings
+error[E0432]: unresolved import `chaoscontrol_protocol::guest_process`
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:1:28
+   |
+ 1 | use chaoscontrol_protocol::guest_process::{
+   |                            ^^^^^^^^^^^^^ could not find `guest_process` in `chaoscontrol_protocol`
+   |
+note: found an item that was configured out
+  --> crates/chaoscontrol-protocol/src/lib.rs:33:9
+   |
+32 | #[cfg(feature = "std")]
+   |       --------------- the item is gated behind the `std` feature
+33 | pub mod guest_process;
+   |         ^^^^^^^^^^^^^
+
+error[E0432]: unresolved import `chaoscontrol_sdk::supervisor`
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:5:23
+   |
+ 5 | use chaoscontrol_sdk::supervisor::{StdProcessRuntime, Supervisor};
+   |                       ^^^^^^^^^^ could not find `supervisor` in `chaoscontrol_sdk`
+   |
+note: found an item that was configured out
+  --> crates/chaoscontrol-sdk/src/lib.rs:93:9
+   |
+92 | #[cfg(feature = "full")]
+   |       ---------------- the item is gated behind the `full` feature
+93 | pub mod supervisor;
+   |         ^^^^^^^^^^
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:64:10
+   |
+64 |         &serde_json::json!({"role": role, "claim_scope": "declared-processes-only"}),
+   |          ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:93:21
+   |
+93 |     setup_complete(&serde_json::json!({
+   |                     ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+   --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:118:61
+    |
+118 |             &serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({})),
+    |                                                             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+
+error[E0433]: cannot find `process` in `chaoscontrol_sdk`
+   --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:100:50
+    |
+100 |         if let Some(command) = chaoscontrol_sdk::process::poll_fault()? {
+    |                                                  ^^^^^^^ could not find `process` in `chaoscontrol_sdk`
+    |
+note: found an item that was configured out
+   --> crates/chaoscontrol-sdk/src/lib.rs:68:9
+    |
+ 67 | #[cfg(feature = "full")]
+    |       ---------------- the item is gated behind the `full` feature
+ 68 | pub mod process;
+    |         ^^^^^^^
+
+error[E0425]: cannot find function `guest_init` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:31:5
+   |
+31 |     guest_init();
+   |     ^^^^^^^^^^ not found in this scope
+
+error[E0433]: cannot find module or crate `libc` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:67:18
+   |
+67 |         unsafe { libc::pause() };
+   |                  ^^^^ use of unresolved module or unlinked crate `libc`
+   |
+   = help: if you wanted to use a crate named `libc`, use `cargo add libc` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:84:9
+   |
+84 |         serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+   |         ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+   |
+   = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0425]: cannot find function `guest_init` in this scope
+  --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:89:5
+   |
+89 |     guest_init();
+   |     ^^^^^^^^^^ not found in this scope
+
+error[E0433]: cannot find module or crate `serde_json` in this scope
+   --> crates/chaoscontrol-sdk/src/bin/chaoscontrol-guest-supervisor.rs:118:14
+    |
+118 |             &serde_json::to_value(event).unwrap_or_else(|_| serde_json::json!({})),
+    |              ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+    |
+    = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+Some errors have detailed explanations: E0425, E0432, E0433.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `chaoscontrol-sdk` (bin "chaoscontrol-guest-supervisor") due to 11 previous errors

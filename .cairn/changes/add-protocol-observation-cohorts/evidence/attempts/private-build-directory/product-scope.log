@@ -1,0 +1,6 @@
+copying path '/nix/store/zrixy24w32w2y3ilcy712vg06i46jq30-rust-src-1.98.0.tar.xz' from 'https://nix-community.cachix.org'...
+warning: killing stray builder process 2004309 ()...
+error:
+       … while setting up the build environment
+
+       error: getting attributes of path "/home/brittonr/.cache/chaoscontrol-protocol-build-20260905/nix-2003562-2973187626/build": Permission denied

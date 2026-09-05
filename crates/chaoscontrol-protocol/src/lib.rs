@@ -40,6 +40,8 @@ pub mod oci_intake;
 #[cfg(feature = "std")]
 pub mod process;
 #[cfg(feature = "std")]
+pub mod protocol_observation;
+#[cfg(feature = "std")]
 pub mod transport;
 
 pub use memory::HypercallPage;
@@ -164,6 +166,9 @@ pub const CMD_LIFECYCLE_SETUP_COMPLETE: u8 = 0x10;
 
 /// Lifecycle: emit a named structured event.
 pub const CMD_LIFECYCLE_SEND_EVENT: u8 = 0x11;
+
+/// Protocol observation: emit one bounded source record for host binding.
+pub const CMD_PROTOCOL_OBSERVATION: u8 = 0x12;
 
 /// Random: request a guided random u64 from the VMM.
 pub const CMD_RANDOM_GET: u8 = 0x20;

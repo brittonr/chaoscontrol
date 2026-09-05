@@ -94,6 +94,8 @@ pub mod minimizer;
 pub mod mutator;
 mod non_null_option;
 pub mod profile;
+#[path = "protocol/mod.rs"]
+pub mod protocol_observation;
 pub mod replay_verdict;
 pub mod report;
 #[cfg(feature = "dashboard")]

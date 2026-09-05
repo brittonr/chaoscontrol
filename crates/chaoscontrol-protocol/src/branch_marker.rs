@@ -33,9 +33,9 @@ pub struct BranchMarker {
     pub key: String,
     pub owner: String,
     pub details: serde_json::Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub state_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logical_position_ref: Option<String>,
 }
 
@@ -182,6 +182,37 @@ mod tests {
         .unwrap();
         assert_eq!(first.identity, second.identity);
         assert_ne!(first.collapse_key(), second.collapse_key());
+    }
+
+    #[test]
+    fn omitted_optional_refs_round_trip_but_wrong_types_fail() {
+        let marker = BranchMarker::new(
+            "raft",
+            "declared",
+            "fixture",
+            serde_json::json!({}),
+            None,
+            None,
+        )
+        .unwrap();
+        let value = serde_json::to_value(&marker).unwrap();
+        assert!(value.get("state_ref").is_none());
+        assert!(value.get("logical_position_ref").is_none());
+        assert_eq!(BranchMarker::from_value(&value).unwrap(), marker);
+        for field in ["state_ref", "logical_position_ref"] {
+            let mut bad = value.clone();
+            bad[field] = true.into();
+            assert_eq!(
+                BranchMarker::from_value(&bad),
+                Err(BranchMarkerError::InvalidSchema)
+            );
+        }
+        let mut missing = value;
+        missing.as_object_mut().unwrap().remove("identity");
+        assert_eq!(
+            BranchMarker::from_value(&missing),
+            Err(BranchMarkerError::InvalidSchema)
+        );
     }
 
     #[test]

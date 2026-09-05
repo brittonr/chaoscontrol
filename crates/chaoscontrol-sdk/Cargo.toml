@@ -6,6 +6,11 @@ authors.workspace = true
 license.workspace = true
 description = "Guest-side SDK for ChaosControl deterministic simulation testing"
 
+[[bin]]
+name = "chaoscontrol-guest-supervisor"
+path = "src/bin/chaoscontrol-guest-supervisor.rs"
+required-features = ["full"]
+
 [features]
 default = ["full"]
 full = ["dep:libc", "dep:rand", "dep:serde_json", "dep:linkme", "chaoscontrol-protocol/std"]

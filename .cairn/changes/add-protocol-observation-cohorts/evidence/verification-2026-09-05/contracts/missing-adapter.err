@@ -1,0 +1,11 @@
+error: contract broken by the value of `adapter_ref`
+   ┌─ /nix/store/0m8r5yh9rfgq29k6y4phz03p830bmnai-source/contracts/protocol-observation/profile.ncl:55:19
+   │
+55 │     adapter_ref | Reference "oracle-adapter",
+   │                   -------------------------- expected type
+   │
+   ┌─ /nix/store/0m8r5yh9rfgq29k6y4phz03p830bmnai-source/contracts/protocol-observation/fixtures/invalid/missing-adapter.ncl:2:61
+   │
+ 2 │ ((import "../profile.ncl") & { oracle.adapter_ref | force = "" }) | Profile
+   │                                                             ^^ applied to this expression
+

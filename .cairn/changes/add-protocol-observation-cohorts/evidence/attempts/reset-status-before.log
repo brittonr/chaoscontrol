@@ -1,0 +1,95 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+   Compiling chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+   Compiling chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+   Compiling chaoscontrol-sim-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sim-core)
+   Compiling chaoscontrol-vmm v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-vmm)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.93s
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-3864102dc2b6ce6d)
+
+running 12 tests
+test adversarial::finite_implementation_limits_reject_maximum_integer_profiles ... ok
+test invalid_profiles_or_authority_cannot_create_evidence ... ok
+test admission::canonical_projection_and_reference_boundaries_fail_closed ... ok
+test adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles ... ok
+test adversarial::post_final_records_and_mixed_executions_cannot_complete ... ok
+test incomplete_and_conflicting_cohorts_fail_closed ... ok
+test admission::nickel_projection_matches_rust_fixture_and_rejects_envelope_drift ... ok
+test adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts ... ok
+test admission::forged_profile_and_wrong_boundary_cannot_reuse_complete_evidence ... ok
+test marker::oracle_results_cannot_change_verdict_work_or_cohort_identity ... ok
+test marker::marker_linkage_requires_declared_record_and_exact_snapshot_context ... FAILED
+test complete_cohort_builds_replay_stable_evidence ... ok
+
+failures:
+
+---- marker::marker_linkage_requires_declared_record_and_exact_snapshot_context stdout ----
+
+thread 'marker::marker_linkage_requires_declared_record_and_exact_snapshot_context' (1911955) panicked at crates/chaoscontrol-protocol/tests/protocol/marker.rs:33:5:
+assertion `left == right` failed: a structural link does not establish snapshot reachability
+  left: String("reachable")
+ right: "identity-linked"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    marker::marker_linkage_requires_declared_record_and_exact_snapshot_context
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p chaoscontrol-protocol --test protocol_observation`
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-a78d18bd30781e7e)
+
+running 5 tests
+test self_reported_or_wrong_adapter_is_rejected_before_retention ... ok
+test emitter_accounts_transport_loss_and_denies_post_final_or_oversized_effects ... ok
+test fault_run_reset_cannot_erase_protocol_source_history_or_host_loss ... FAILED
+test rejected_wire_suffix_and_unbound_host_frames_are_not_success ... ok
+test guest_host_round_trip_and_independent_raft_oracle ... ok
+
+failures:
+
+---- fault_run_reset_cannot_erase_protocol_source_history_or_host_loss stdout ----
+
+thread 'fault_run_reset_cannot_erase_protocol_source_history_or_host_loss' (1911959) panicked at crates/chaoscontrol-vmm/tests/protocol_observation.rs:185:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    fault_run_reset_cannot_erase_protocol_source_history_or_host_loss
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p chaoscontrol-vmm --test protocol_observation`
+error: 2 targets failed:
+    `-p chaoscontrol-protocol --test protocol_observation`
+    `-p chaoscontrol-vmm --test protocol_observation`

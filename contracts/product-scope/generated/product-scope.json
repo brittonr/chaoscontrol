@@ -330,6 +330,16 @@
   ],
   "change_intents": [
     {
+      "change": "add-protocol-observation-cohorts",
+      "evidence_prerequisite": "Exact profile admission, bounded cohort accounting, independent consumer fixtures, and replay linkage must pass.",
+      "non_claims": [
+        "No protocol semantic ownership.",
+        "No universal correctness, production readiness, or release eligibility."
+      ],
+      "owner": "chaoscontrol-protocol",
+      "target_state": "experimental"
+    },
+    {
       "change": "add-adversarial-wasm-component-rail",
       "evidence_prerequisite": "A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass.",
       "non_claims": [

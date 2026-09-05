@@ -38,6 +38,27 @@ let Registry = {
 
   families = [
     {
+      id = "protocol-observation-profile",
+      ownership = "nickel-authored",
+      owner = "contracts/protocol-observation/profile.ncl",
+      source_paths = ["contracts/protocol-observation/profile.ncl", "contracts/protocol-observation/fixtures/profile.ncl"],
+      artifact_paths = ["contracts/protocol-observation/fixtures/valid.json"],
+      validation_commands = ["nix build .#checks.x86_64-linux.protocol-observation-contracts", "cargo test -p chaoscontrol-protocol --features std --test protocol_observation"],
+      fixture_coverage = ["contracts/protocol-observation/fixtures/valid.ncl", "contracts/protocol-observation/fixtures/invalid/unknown-field.ncl", "contracts/protocol-observation/fixtures/invalid/impossible-bound.ncl", "contracts/protocol-observation/fixtures/invalid/self-oracle.ncl"],
+      freshness = "Nickel exports must match the committed projection. Rust binds the exact profile and bounds with BLAKE3.",
+      rationale = "Consumers declare protocol schemas and independent oracle identities. ChaosControl owns bounded admission, not protocol meaning.",
+    },
+    {
+      id = "protocol-observation-records",
+      ownership = "rust-derived",
+      owner = "chaoscontrol-protocol",
+      source_paths = ["crates/chaoscontrol-protocol/src/protocol_observation/", "crates/chaoscontrol-fault/src/observation/", "crates/chaoscontrol-explore/src/protocol/"],
+      validation_commands = ["nix build .#checks.x86_64-linux.protocol-observation-tests"],
+      fixture_coverage = ["crates/chaoscontrol-protocol/tests/protocol/", "crates/chaoscontrol-vmm/tests/protocol_observation.rs", "crates/chaoscontrol-explore/tests/protocol_observation.rs"],
+      freshness = "Every oracle, receipt, and replay boundary revalidates the exact cohort and its bounded source journal.",
+      rationale = "Runtime records bind source accounting and host scheduler observations. Consumer adapters retain semantic authority.",
+    },
+    {
       id = "run-config",
       ownership = "nickel-authored",
       owner = "contracts/evidence/run-config.ncl",

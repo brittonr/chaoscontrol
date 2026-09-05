@@ -1,0 +1,415 @@
+these 24 derivations will be built:
+  /nix/store/111q21bl8yx7viy2w93z2q18kcfwmrvz-Cargo.toml.drv
+  /nix/store/cmli60x1qb48k8qbblnxsakxlz3izp3s-linkLockedDeps.drv
+  /nix/store/lnjmgkrx2skpwmxgx5ay41d181kg1mh1-linkLockedDeps.drv
+  /nix/store/biyv13mnv1giipvn0lnsxvbh4y9l36wc-cargo-src-memfd-0.6.5.drv
+  /nix/store/k4y2g4y0dcr2fz01xa6480cg5fzyy7dr-cargo-package-memfd-0.6.5.drv
+  /nix/store/nr636a38fxkjfmj58476csi2md6iksdq-cargo-package-tar-0.4.46.drv
+  /nix/store/vij6zldqn7c1imbfzgh1rlxzivxblvg8-cargo-package-filetime-0.2.29.drv
+  /nix/store/x4fp6ry4jxnj1p6qf540v3nbg4zm68hk-cargo-package-xattr-1.6.1.drv
+  /nix/store/nrx2pz43f8cs6w618lvdny9lc964mnah-vendor-registry.drv
+  /nix/store/qf9wjp0pjv2rgfjmdria6fxps2fxmbc4-linkLockedDeps.drv
+  /nix/store/mjavdxi8fkngjfsdjg60npvz83in6zna-rust-default-1.98.0.drv
+  /nix/store/61vld4hfnwgzy0x4bzdbkc18i31f9h9f-cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149.drv
+  /nix/store/sq54p820a13h6c85kalblvhgb56yc23j-linkLockedDeps.drv
+  /nix/store/ar88va87yb8a1smn88606d1agi7312iq-vendor-cargo-deps.drv
+  /nix/store/2g0iyn6gwz5qyfvqhn7gzp9mn8fli51j-Cargo.toml.drv
+  /nix/store/6f7np9x7rgxwbnxklrzy0fs2im0lwrjk-Cargo.toml.drv
+  /nix/store/89bl7qf4wi8vx6l5qadmd38bdvrlm3x0-Cargo.toml.drv
+  /nix/store/g01r03f909rmni08gzmqd020dsn2zjmj-Cargo.toml.drv
+  /nix/store/nsrg1k5c6qfhsrfchiifbxpjd0273hnl-Cargo.toml.drv
+  /nix/store/p7b9aar86bm8v0ackrcpnblsl1mj091h-Cargo.toml.drv
+  /nix/store/x41niq16plgnxj50sjh53dvig5azkx0i-Cargo.toml.drv
+  /nix/store/kmhya8pkah8cd732bnf9c58brvn5a45a-source.drv
+  /nix/store/25vlsq3sc1k7112igy7ichmjcj7dwgb1-chaoscontrol-deps-0.1.0.drv
+  /nix/store/yy5qx44lsc56yc97kzn4fzl72jnqx13l-chaoscontrol-test-0.1.0.drv
+these 10 paths will be fetched (2.8 MiB download, 2.8 MiB unpacked):
+  /nix/store/1f2dkbnj6n9svdpkqy9wyb2zipr2ffdl-Cargo.toml
+  /nix/store/6mar4m21hikwbn9622zn7il2ihsif1r4-Cargo.toml
+  /nix/store/bmzx9gf2bgvhv00xcg3dnkrwkh62z73m-Cargo.toml
+  /nix/store/8narws0d1jsp30ysn29z4l5jwgh038wl-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525
+  /nix/store/xv6f4g579kvgn218cp5kkr1065yiv9ps-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd
+  /nix/store/ccx4j0w58n8bgpa2l9500a8i46hb8d2c-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1
+  /nix/store/b98i67q192kx1wv9y8hm0m0qhr4hs5d8-cargo-package-nix-0.30.1
+  /nix/store/qd21d12hggwspcmb2wyr0x3kvnhy3rm6-cargo-src-filetime-0.2.29
+  /nix/store/4hwg3m65lfqczm5ki6kxl4qvj07i1238-cargo-src-tar-0.4.46
+  /nix/store/w2pqn7sh0chqkpxdm3dsm9xdz3y5jxg7-cargo-src-xattr-1.6.1
+building '/nix/store/mjavdxi8fkngjfsdjg60npvz83in6zna-rust-default-1.98.0.drv'...
+copying path '/nix/store/8narws0d1jsp30ysn29z4l5jwgh038wl-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/xv6f4g579kvgn218cp5kkr1065yiv9ps-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/ccx4j0w58n8bgpa2l9500a8i46hb8d2c-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/b98i67q192kx1wv9y8hm0m0qhr4hs5d8-cargo-package-nix-0.30.1' from 'http://100.100.103.95:5000'...
+warning: file 'nar/0y8rvzrg85wwk7slrd6rhsc5x5xxwiymz45bfx36i735sc8av6l1.nar?hash=8narws0d1jsp30ysn29z4l5jwgh038wl' does not exist in binary cache 'http://100.100.103.95:5000'
+warning: file 'nar/0xhhww5qffvcc1wnv4dvki6sfw0fw4wmhpbwxgqwk4ig7sn5x668.nar?hash=xv6f4g579kvgn218cp5kkr1065yiv9ps' does not exist in binary cache 'http://100.100.103.95:5000'
+warning: file 'nar/00q06258hcf2mxmw4kb0nj9w2fa66s14ck29yinp4fy9cs5ch5z2.nar?hash=ccx4j0w58n8bgpa2l9500a8i46hb8d2c' does not exist in binary cache 'http://100.100.103.95:5000'
+copying path '/nix/store/qd21d12hggwspcmb2wyr0x3kvnhy3rm6-cargo-src-filetime-0.2.29' from 'https://cache.nixos.org'...
+copying path '/nix/store/4hwg3m65lfqczm5ki6kxl4qvj07i1238-cargo-src-tar-0.4.46' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/w2pqn7sh0chqkpxdm3dsm9xdz3y5jxg7-cargo-src-xattr-1.6.1' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/1f2dkbnj6n9svdpkqy9wyb2zipr2ffdl-Cargo.toml' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/6mar4m21hikwbn9622zn7il2ihsif1r4-Cargo.toml' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/bmzx9gf2bgvhv00xcg3dnkrwkh62z73m-Cargo.toml' from 'http://100.100.103.95:5000'...
+building '/nix/store/qk21yibl6zn529hlladxq5ls3kiy68lm-cargo-src-memfd-0.6.5.drv'...
+building '/nix/store/111q21bl8yx7viy2w93z2q18kcfwmrvz-Cargo.toml.drv'...
+building '/nix/store/2g0iyn6gwz5qyfvqhn7gzp9mn8fli51j-Cargo.toml.drv'...
+warning: file 'nar/1libjws3hh9kvw6p92c208pgyp1wz3lvzplcig85j1853xar8f95.nar?hash=6mar4m21hikwbn9622zn7il2ihsif1r4' does not exist in binary cache 'http://100.100.103.95:5000'
+warning: file 'nar/1j8bjkm1ir6j8xiy15sbsfiplpwbhkri69n9s9h2wbrkv1dyhamc.nar?hash=bmzx9gf2bgvhv00xcg3dnkrwkh62z73m' does not exist in binary cache 'http://100.100.103.95:5000'
+cargo-src-memfd> structuredAttrs is enabled
+cargo-src-memfd> 
+cargo-src-memfd> trying https://static.crates.io/crates/memfd/0.6.5/download
+cargo-src-memfd>   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+cargo-src-memfd>                                  Dload  Upload   Total   Spent    Left  Speed
+cargo-src-memfd> 100 12909 100 12909   0     0 206085     0  --:--:-- --:--:-- --:--:-- 208209
+building '/nix/store/89bl7qf4wi8vx6l5qadmd38bdvrlm3x0-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/p7b9aar86bm8v0ackrcpnblsl1mj091h-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/x4fp6ry4jxnj1p6qf540v3nbg4zm68hk-cargo-package-xattr-1.6.1.drv'...
+Cargo.toml> 
+building '/nix/store/g01r03f909rmni08gzmqd020dsn2zjmj-Cargo.toml.drv'...
+cargo-package-xattr> Running phase: unpackPhase
+cargo-package-xattr> setting SOURCE_DATE_EPOCH to timestamp 1153704088 of file "./crate/tests/main.rs"
+cargo-package-xattr> Running phase: patchPhase
+cargo-package-xattr> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-package-xattr> Running phase: installPhase
+Cargo.toml> 
+building '/nix/store/hj26lskmmmjvwxypp56h2xa4nq2n61ci-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/nsrg1k5c6qfhsrfchiifbxpjd0273hnl-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/x41niq16plgnxj50sjh53dvig5azkx0i-Cargo.toml.drv'...
+building '/nix/store/39qj21w4jsxf2n50kvkgpnnlv37w6nnz-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/6f7np9x7rgxwbnxklrzy0fs2im0lwrjk-Cargo.toml.drv'...
+Cargo.toml> 
+building '/nix/store/k4y2g4y0dcr2fz01xa6480cg5fzyy7dr-cargo-package-memfd-0.6.5.drv'...
+Cargo.toml> 
+building '/nix/store/nr636a38fxkjfmj58476csi2md6iksdq-cargo-package-tar-0.4.46.drv'...
+cargo-package-memfd> Running phase: unpackPhase
+cargo-package-memfd> setting SOURCE_DATE_EPOCH to timestamp 1153704088 of file "./crate/tests/sealing.rs"
+cargo-package-memfd> Running phase: patchPhase
+cargo-package-memfd> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-package-memfd> Running phase: installPhase
+Cargo.toml> 
+building '/nix/store/vij6zldqn7c1imbfzgh1rlxzivxblvg8-cargo-package-filetime-0.2.29.drv'...
+cargo-package-tar> Running phase: unpackPhase
+cargo-package-tar> setting SOURCE_DATE_EPOCH to timestamp 1153704088 of file "./crate/tests/header/mod.rs"
+cargo-package-tar> Running phase: patchPhase
+cargo-package-tar> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-package-tar> Running phase: installPhase
+cargo-package-filetime> Running phase: unpackPhase
+cargo-package-filetime> setting SOURCE_DATE_EPOCH to timestamp 1153704088 of file "./crate/src/windows.rs"
+cargo-package-filetime> Running phase: patchPhase
+cargo-package-filetime> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-package-filetime> Running phase: installPhase
+building '/nix/store/kmhya8pkah8cd732bnf9c58brvn5a45a-source.drv'...
+building '/nix/store/nrx2pz43f8cs6w618lvdny9lc964mnah-vendor-registry.drv'...
+rust-default> nullglob                  on
+rust-default> warning: entry 48 in symbol table refers to a non-existent section, skipping
+building '/nix/store/15ya0ihqyyx610rvllik8rx6ql4w9a0n-cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git-29dac88ecded94457572db3fdfaaaab95fa91525.drv'...
+building '/nix/store/hih8mq9hv5xh0y78a0h1bfbrw0n7fb5a-cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd.drv'...
+building '/nix/store/yvrxnl6gfi8ckfvc2b0qmkvpz2aypg2z-cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1.drv'...
+building '/nix/store/61vld4hfnwgzy0x4bzdbkc18i31f9h9f-cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149.drv'...
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: unpackPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> unpacking source archive /nix/store/42kh9d4vr3zkiixs84f0vrf54n5d3x15-source
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> source root is source
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: patchPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-git.onix.computer-z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git> Running phase: installPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: unpackPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> unpacking source archive /nix/store/3x4pdzl4zslh1q8iynx4xy9vwhac8lcg-source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: unpackPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> unpacking source archive /nix/store/wn6655z652d358mxmblh5rpcw657hzny-source
+building '/nix/store/lnjmgkrx2skpwmxgx5ay41d181kg1mh1-linkLockedDeps.drv'...
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: unpackPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> unpacking source archive /nix/store/8cybzvk98sjkm7h3bi5vr9mwcrznwa99-source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> source root is source
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: patchPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-seed.radicle.garden-zqhtZvsteJhxCJE96dMAZSZ9y1PX.git-b0fd0103bc9eed2c1b6d852045959462d105d8f1> Running phase: installPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> source root is source
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: patchPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-rad-z2QJLUqyAZnnHPiZQ1BFjLsX9ush3-ab123e3673b6dd616b3df5d044026b5e85755149> Running phase: installPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> source root is source
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: patchPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: updateAutotoolsGnuConfigScriptsPhase
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> Running phase: installPhase
+building '/nix/store/qf9wjp0pjv2rgfjmdria6fxps2fxmbc4-linkLockedDeps.drv'...
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd> warning: manifest has no description, license, license-file, documentation, homepage or repository
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd>   |
+cargo-git-https-seed.radicle.garden-z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git-cad5a7cb6c6502b0ec5dc76c51e03352260d8efd>   = note: see https://doc.rust-lang.org/cargo/reference/manifest.html#package-metadata for more info
+building '/nix/store/sq54p820a13h6c85kalblvhgb56yc23j-linkLockedDeps.drv'...
+building '/nix/store/cmli60x1qb48k8qbblnxsakxlz3izp3s-linkLockedDeps.drv'...
+building '/nix/store/ar88va87yb8a1smn88606d1agi7312iq-vendor-cargo-deps.drv'...
+building '/nix/store/25vlsq3sc1k7112igy7ichmjcj7dwgb1-chaoscontrol-deps-0.1.0.drv'...
+chaoscontrol-deps> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deps> Running phase: unpackPhase
+chaoscontrol-deps> unpacking source archive /nix/store/apk53m5s4c50fpccx1izl4l3xrqq6gav-source
+chaoscontrol-deps> source root is source
+chaoscontrol-deps> Running phase: patchPhase
+chaoscontrol-deps> Executing configureCargoCommonVars
+chaoscontrol-deps> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deps> Running phase: configurePhase
+chaoscontrol-deps> will append /build/source/.cargo-home/config.toml with contents of /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/config.toml
+chaoscontrol-deps> default configurePhase, nothing to do
+chaoscontrol-deps> Running phase: buildPhase
+chaoscontrol-deps> +++ command cargo --version
+chaoscontrol-deps> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-deps> +++ command cargo check --release --locked --all-targets
+chaoscontrol-deps>    Compiling libc v0.2.180
+chaoscontrol-deps>    Compiling proc-macro2 v1.0.106
+chaoscontrol-deps>    Compiling unicode-ident v1.0.24
+chaoscontrol-deps>    Compiling quote v1.0.44
+chaoscontrol-deps>    Compiling shlex v1.3.0
+chaoscontrol-deps>    Compiling find-msvc-tools v0.1.9
+chaoscontrol-deps>     Checking cfg-if v1.0.4
+chaoscontrol-deps>    Compiling serde_core v1.0.228
+chaoscontrol-deps>    Compiling syn v2.0.116
+chaoscontrol-deps>    Compiling serde v1.0.228
+chaoscontrol-deps>    Compiling jobserver v0.1.34
+chaoscontrol-deps>    Compiling zmij v1.0.21
+chaoscontrol-deps>    Compiling cc v1.2.56
+chaoscontrol-deps>     Checking itoa v1.0.17
+chaoscontrol-deps>     Checking memchr v2.8.0
+chaoscontrol-deps>     Checking arrayvec v0.7.8
+chaoscontrol-deps>     Checking constant_time_eq v0.3.1
+chaoscontrol-deps>     Checking arrayref v0.3.9
+chaoscontrol-deps>    Compiling serde_json v1.0.149
+chaoscontrol-deps>    Compiling zerocopy v0.8.39
+chaoscontrol-deps>     Checking bitflags v2.11.0
+chaoscontrol-deps>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-deps>     Checking getrandom v0.2.17
+chaoscontrol-deps>     Checking rand_core v0.6.4
+chaoscontrol-deps>    Compiling heck v0.5.0
+chaoscontrol-deps>    Compiling blake3 v1.8.2
+chaoscontrol-deps>    Compiling thiserror v2.0.18
+chaoscontrol-deps>     Checking log v0.4.29
+chaoscontrol-deps>     Checking byteorder v1.5.0
+chaoscontrol-deps>     Checking bitflags v1.3.2
+chaoscontrol-deps>     Checking regex-syntax v0.8.9
+chaoscontrol-deps>     Checking utf8parse v0.2.2
+chaoscontrol-deps>     Checking anstyle-parse v0.2.7
+chaoscontrol-deps>     Checking aho-corasick v1.1.4
+chaoscontrol-deps>    Compiling serde_derive v1.0.228
+chaoscontrol-deps>    Compiling zerocopy-derive v0.8.39
+chaoscontrol-deps>    Compiling thiserror-impl v2.0.18
+chaoscontrol-deps>    Compiling snafu-derive v0.8.9
+chaoscontrol-deps>     Checking colorchoice v1.0.4
+chaoscontrol-deps>     Checking anstyle-query v1.1.5
+chaoscontrol-deps>     Checking is_terminal_polyfill v1.70.2
+chaoscontrol-deps>     Checking anstyle v1.0.13
+chaoscontrol-deps>     Checking anstream v0.6.21
+chaoscontrol-deps>     Checking regex-automata v0.4.14
+chaoscontrol-deps>     Checking snafu v0.8.9
+chaoscontrol-deps>    Compiling zerocopy-derive v0.7.35
+chaoscontrol-deps>     Checking zerocopy v0.7.35
+chaoscontrol-deps>     Checking vmm-sys-util v0.12.1
+chaoscontrol-deps>     Checking jiff v0.2.20
+chaoscontrol-deps>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-deps>    Compiling kvm-ioctls v0.19.1
+chaoscontrol-deps>     Checking regex v1.12.3
+chaoscontrol-deps>     Checking kvm-bindings v0.10.0
+chaoscontrol-deps>     Checking env_filter v1.0.0
+chaoscontrol-deps>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-deps>     Checking vm-memory v0.17.1
+chaoscontrol-deps>    Compiling rustix v1.1.3
+chaoscontrol-deps>     Checking linux-raw-sys v0.11.0
+chaoscontrol-deps>     Checking ppv-lite86 v0.2.21
+chaoscontrol-deps>    Compiling crc32fast v1.5.0
+chaoscontrol-deps>     Checking rand_chacha v0.3.1
+chaoscontrol-deps>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-deps>     Checking rand v0.8.6
+chaoscontrol-deps>     Checking linux-loader v0.13.2
+chaoscontrol-deps>     Checking vm-superio v0.8.1
+chaoscontrol-deps>     Checking once_cell v1.21.3
+chaoscontrol-deps>    Compiling getrandom v0.3.4
+chaoscontrol-deps>     Checking fastrand v2.3.0
+chaoscontrol-deps>    Compiling cfg_aliases v0.2.1
+chaoscontrol-deps>    Compiling version_check v0.9.5
+chaoscontrol-deps>    Compiling io-lifetimes v2.0.4
+chaoscontrol-deps>    Compiling generic-array v0.14.7
+chaoscontrol-deps>    Compiling io-lifetimes v3.0.1
+chaoscontrol-deps>     Checking env_logger v0.11.9
+chaoscontrol-deps>     Checking typenum v1.20.0
+chaoscontrol-deps>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-deps>    Compiling io-extras v0.19.0
+chaoscontrol-deps>    Compiling cap-primitives v4.0.2
+chaoscontrol-deps>    Compiling cap-std v4.0.2
+chaoscontrol-deps>     Checking maybe-owned v0.3.4
+chaoscontrol-deps>     Checking ambient-authority v0.0.2
+chaoscontrol-deps>     Checking ipnet v2.12.1
+chaoscontrol-deps>    Compiling nix v0.30.1
+chaoscontrol-deps>     Checking tempfile v3.25.0
+chaoscontrol-deps>     Checking rustix-linux-procfs v0.1.1
+chaoscontrol-deps>     Checking fs-set-times v0.20.3
+chaoscontrol-deps>    Compiling chaoscontrol-snapshot-descriptor v0.1.0 (/build/source/crates/chaoscontrol-snapshot-descriptor)
+chaoscontrol-deps>    Compiling cap-fs-ext v4.0.2
+chaoscontrol-deps>     Checking block-buffer v0.10.4
+chaoscontrol-deps>     Checking crypto-common v0.1.7
+chaoscontrol-deps>     Checking cpufeatures v0.2.17
+chaoscontrol-deps>    Compiling chaoscontrol-replay-evidence-core v0.1.0 (/build/source/crates/chaoscontrol-replay-evidence-core)
+chaoscontrol-deps>     Checking digest v0.10.7
+chaoscontrol-deps>     Checking sha2 v0.10.9
+chaoscontrol-deps>     Checking xattr v1.6.1
+chaoscontrol-deps>     Checking filetime v0.2.29
+chaoscontrol-deps>     Checking bounded-exec-core v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+chaoscontrol-deps>    Compiling chaoscontrol-evidence v0.1.0 (/build/source/crates/chaoscontrol-evidence)
+chaoscontrol-deps>     Checking bounded-tree-core v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+chaoscontrol-deps>     Checking tar v0.4.46
+chaoscontrol-deps>     Checking bounded-tree-cap v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+chaoscontrol-deps>    Compiling linkme-impl v0.3.35
+chaoscontrol-deps>     Checking bounded-exec v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+chaoscontrol-deps>    Compiling linkme v0.3.35
+chaoscontrol-deps>    Compiling pkg-config v0.3.32
+chaoscontrol-deps>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-deps>    Compiling clap_derive v4.5.55
+chaoscontrol-deps>     Checking clap_lex v1.0.0
+chaoscontrol-deps>     Checking strsim v0.11.1
+chaoscontrol-deps>     Checking pin-project-lite v0.2.16
+chaoscontrol-deps>     Checking futures-core v0.3.32
+chaoscontrol-deps>     Checking clap_builder v4.5.59
+chaoscontrol-deps>    Compiling autocfg v1.5.0
+chaoscontrol-deps>     Checking bytes v1.11.1
+chaoscontrol-deps>    Compiling nix v0.31.1
+chaoscontrol-deps>     Checking http v1.4.0
+chaoscontrol-deps>    Compiling zstd-sys v2.0.16+zstd.1.5.7
+chaoscontrol-deps>    Compiling tokio-macros v2.6.1
+chaoscontrol-deps>     Checking http-body v1.0.1
+chaoscontrol-deps>     Checking socket2 v0.6.3
+chaoscontrol-deps>     Checking mio v1.1.1
+chaoscontrol-deps>     Checking clap v4.5.59
+chaoscontrol-deps>     Checking tower-service v0.3.3
+chaoscontrol-deps>    Compiling httparse v1.10.1
+chaoscontrol-deps>     Checking tokio v1.50.0
+chaoscontrol-deps>     Checking tracing-core v0.1.36
+chaoscontrol-deps>     Checking tower-layer v0.3.3
+chaoscontrol-deps>     Checking tracing v0.1.44
+chaoscontrol-deps>    Compiling libbpf-sys v1.6.3+v1.6.3
+chaoscontrol-deps>     Checking futures-channel v0.3.32
+chaoscontrol-deps>    Compiling vsprintf v2.0.0
+chaoscontrol-deps>     Checking httpdate v1.0.3
+chaoscontrol-deps>     Checking sync_wrapper v1.0.2
+chaoscontrol-deps>     Checking smallvec v1.15.1
+chaoscontrol-deps>     Checking futures-task v0.3.32
+chaoscontrol-deps>     Checking atomic-waker v1.1.2
+chaoscontrol-deps>     Checking slab v0.4.12
+chaoscontrol-deps>    Compiling zstd-safe v7.2.4
+chaoscontrol-deps>     Checking percent-encoding v2.3.2
+chaoscontrol-deps>     Checking pin-utils v0.1.0
+chaoscontrol-deps>     Checking form_urlencoded v1.2.2
+chaoscontrol-deps>     Checking futures-util v0.3.32
+chaoscontrol-deps>     Checking hyper v1.8.1
+chaoscontrol-deps>     Checking http-body-util v0.1.3
+chaoscontrol-deps>     Checking half v2.7.1
+chaoscontrol-deps>     Checking ryu v1.0.23
+chaoscontrol-deps>     Checking ciborium-io v0.2.2
+chaoscontrol-deps>     Checking mime v0.3.17
+chaoscontrol-deps>     Checking serde_urlencoded v0.7.1
+chaoscontrol-deps>     Checking axum-core v0.5.6
+chaoscontrol-deps>     Checking ciborium-ll v0.2.2
+chaoscontrol-deps>     Checking hyper-util v0.1.20
+chaoscontrol-deps>     Checking tower v0.5.3
+chaoscontrol-deps>    Compiling num-traits v0.2.19
+chaoscontrol-deps>    Compiling async-stream-impl v0.3.6
+chaoscontrol-deps>     Checking serde_path_to_error v0.1.20
+chaoscontrol-deps>    Compiling chaoscontrol-explore v0.1.0 (/build/source/crates/chaoscontrol-explore)
+chaoscontrol-deps>     Checking matchit v0.8.4
+chaoscontrol-deps>    Compiling anyhow v1.0.101
+chaoscontrol-deps>     Checking axum v0.8.8
+chaoscontrol-deps>     Checking async-stream v0.3.6
+chaoscontrol-deps>     Checking ciborium v0.2.2
+chaoscontrol-deps>     Checking tower-http v0.6.8
+chaoscontrol-deps>    Compiling camino v1.2.2
+chaoscontrol-deps>    Compiling lazy_static v1.5.0
+chaoscontrol-deps>    Compiling iana-time-zone v0.1.65
+chaoscontrol-deps>    Compiling chrono v0.4.43
+chaoscontrol-deps>    Compiling sharded-slab v0.1.7
+chaoscontrol-deps>    Compiling cargo-platform v0.1.9
+chaoscontrol-deps>    Compiling semver v1.0.27
+chaoscontrol-deps>    Compiling thread_local v1.1.9
+chaoscontrol-deps>    Compiling nu-ansi-term v0.50.3
+chaoscontrol-deps>    Compiling tracing-subscriber v0.3.22
+chaoscontrol-deps>    Compiling cargo_metadata v0.19.2
+chaoscontrol-deps>    Compiling libbpf-rs v0.26.0
+chaoscontrol-deps>    Compiling memmap2 v0.9.10
+chaoscontrol-deps>    Compiling libbpf-cargo v0.26.0
+chaoscontrol-deps>    Compiling heapless v0.8.0
+chaoscontrol-deps>     Checking rand_core v0.9.5
+chaoscontrol-deps>    Compiling chaoscontrol-trace v0.1.0 (/build/source/crates/chaoscontrol-trace)
+chaoscontrol-deps>     Checking hash32 v0.3.1
+chaoscontrol-deps>     Checking wait-timeout v0.2.1
+chaoscontrol-deps>     Checking stable_deref_trait v1.2.1
+chaoscontrol-deps>    Compiling smoltcp v0.12.0
+chaoscontrol-deps>    Compiling redb v3.1.1
+chaoscontrol-deps>    Compiling chaoscontrol-dashboard v0.1.0 (/build/source/crates/chaoscontrol-dashboard)
+chaoscontrol-deps>    Compiling chaoscontrol-property-suite v0.1.0 (/build/source/crates/chaoscontrol-property-suite)
+chaoscontrol-deps>    Compiling chaoscontrol-redb-guest v0.1.0 (/build/source/crates/chaoscontrol-redb-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-replay v0.1.0 (/build/source/crates/chaoscontrol-replay)
+chaoscontrol-deps>    Compiling chaoscontrol-raft-guest v0.1.0 (/build/source/crates/chaoscontrol-raft-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-guest-net v0.1.0 (/build/source/crates/chaoscontrol-guest-net)
+chaoscontrol-deps>     Checking managed v0.8.0
+chaoscontrol-deps>    Compiling chaoscontrol-wasm-differential v0.1.0 (/build/source/crates/chaoscontrol-wasm-differential)
+chaoscontrol-deps>     Checking memfd v0.6.5
+chaoscontrol-deps>     Checking differential-execution-core v0.1.0 (https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git?rev=cad5a7cb6c6502b0ec5dc76c51e03352260d8efd#cad5a7cb)
+chaoscontrol-deps>     Checking vm-cohort-core v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps>     Checking quick-error v1.2.3
+chaoscontrol-deps>     Checking fnv v1.0.7
+chaoscontrol-deps>     Checking bit-vec v0.8.0
+chaoscontrol-deps>     Checking rusty-fork v0.3.1
+chaoscontrol-deps>     Checking bit-set v0.8.0
+chaoscontrol-deps>     Checking vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps>     Checking rand_chacha v0.9.0
+chaoscontrol-deps>     Checking rand v0.9.5
+chaoscontrol-deps>     Checking rand_xorshift v0.4.0
+chaoscontrol-deps>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-deps>    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+chaoscontrol-deps>    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+chaoscontrol-deps>     Checking unarray v0.1.4
+chaoscontrol-deps>    Compiling chaoscontrol-guest-determinism-probe v0.1.0 (/build/source/crates/chaoscontrol-guest-determinism-probe)
+chaoscontrol-deps>    Compiling chaoscontrol-guest v0.1.0 (/build/source/crates/chaoscontrol-guest)
+chaoscontrol-deps>     Checking proptest v1.11.0
+chaoscontrol-deps>     Checking vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-deps> error: couldn't read `/nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+chaoscontrol-deps>   --> /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/standard.rs:33:34
+chaoscontrol-deps>    |
+chaoscontrol-deps> 33 |     let profile = decode_profile(include_bytes!("../../../config/generated/profile.json"))
+chaoscontrol-deps>    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+chaoscontrol-deps> 
+chaoscontrol-deps> error: could not compile `vm-cohort-conformance` (lib) due to 1 previous error
+chaoscontrol-deps> warning: build failed, waiting for other jobs to finish...
+error: Cannot build '/nix/store/25vlsq3sc1k7112igy7ichmjcj7dwgb1-chaoscontrol-deps-0.1.0.drv'.
+       Reason: builder failed with exit code 101.
+       Output paths:
+         /nix/store/1656gvxwsx4wl7r14zhj66sdx5xcjbrz-chaoscontrol-deps-0.1.0
+       Last 25 log lines:
+       >     Checking quick-error v1.2.3
+       >     Checking fnv v1.0.7
+       >     Checking bit-vec v0.8.0
+       >     Checking rusty-fork v0.3.1
+       >     Checking bit-set v0.8.0
+       >     Checking vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+       >     Checking rand_chacha v0.9.0
+       >     Checking rand v0.9.5
+       >     Checking rand_xorshift v0.4.0
+       >    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+       >    Compiling chaoscontrol-rust-workload-guest v0.1.0 (/build/source/crates/chaoscontrol-rust-workload-guest)
+       >    Compiling chaoscontrol-net-guest v0.1.0 (/build/source/crates/chaoscontrol-net-guest)
+       >     Checking unarray v0.1.4
+       >    Compiling chaoscontrol-guest-determinism-probe v0.1.0 (/build/source/crates/chaoscontrol-guest-determinism-probe)
+       >    Compiling chaoscontrol-guest v0.1.0 (/build/source/crates/chaoscontrol-guest)
+       >     Checking proptest v1.11.0
+       >     Checking vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+       > error: couldn't read `/nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+       >   --> /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/51608c43add5cb786f3949d51c2014d4336c9b937bf14553b1c8ce72fc4fb320/vm-cohort-conformance-0.1.0/src/standard.rs:33:34
+       >    |
+       > 33 |     let profile = decode_profile(include_bytes!("../../../config/generated/profile.json"))
+       >    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       >
+       > error: could not compile `vm-cohort-conformance` (lib) due to 1 previous error
+       > warning: build failed, waiting for other jobs to finish...
+       For full logs, run:
+         nix log /nix/store/25vlsq3sc1k7112igy7ichmjcj7dwgb1-chaoscontrol-deps-0.1.0.drv
+error: Cannot build '/nix/store/yy5qx44lsc56yc97kzn4fzl72jnqx13l-chaoscontrol-test-0.1.0.drv'.
+       Reason: 1 dependency failed.
+       Output paths:
+         /nix/store/x1q0mh8zfz5fl9lbsy4c6w9fv02cvk60-chaoscontrol-test-0.1.0

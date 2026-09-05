@@ -13,7 +13,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::de::{self, DeserializeOwned, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use std::fmt;
+use std::fmt::{self, Write};
 
 /// Canonical schedule-state schema version.
 pub const SCHEDULE_STATE_SCHEMA_VERSION: u16 = 1;
@@ -23,6 +23,8 @@ pub const MAX_SCHEDULE_VCPUS: usize = 256;
 pub const DEFAULT_SCHEDULE_JOURNAL_LIMIT: usize = 65_536;
 
 const SCHEDULE_STATE_DOMAIN: &[u8] = b"chaoscontrol.schedule-state.v1";
+const SCHEDULE_STATE_REFERENCE_PREFIX: &str = "schedule-state:";
+const SCHEDULE_STATE_HEX_BYTES: usize = 64;
 const SCHEDULER_SEED_DOMAIN: u64 = 0x5343_4845_4430;
 
 /// BLAKE3 identity of one canonical [`ScheduleState`].
@@ -36,6 +38,20 @@ impl fmt::Debug for ScheduleStateId {
             write!(formatter, "{byte:02x}")?;
         }
         write!(formatter, ")")
+    }
+}
+
+impl ScheduleStateId {
+    /// Render the complete scheduler identity for cross-component evidence.
+    pub fn to_reference(self) -> String {
+        let capacity = SCHEDULE_STATE_REFERENCE_PREFIX.len() + SCHEDULE_STATE_HEX_BYTES;
+        let mut reference = String::with_capacity(capacity);
+        reference.push_str(SCHEDULE_STATE_REFERENCE_PREFIX);
+        for byte in self.0 {
+            let result = write!(&mut reference, "{byte:02x}");
+            debug_assert!(result.is_ok());
+        }
+        reference
     }
 }
 

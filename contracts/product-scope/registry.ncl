@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "add-protocol-observation-cohorts",
+      owner = "chaoscontrol-protocol",
+      target_state = "experimental",
+      evidence_prerequisite = "Exact profile admission, bounded cohort accounting, independent consumer fixtures, and replay linkage must pass.",
+      non_claims = ["No protocol semantic ownership.", "No universal correctness, production readiness, or release eligibility."],
+    },
+    {
       change = "add-adversarial-wasm-component-rail",
       owner = "chaoscontrol-wasm-differential",
       target_state = "experimental",

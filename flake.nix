@@ -174,6 +174,7 @@
             let
               relPath = pkgs.lib.removePrefix "${toString ./.}/" (toString path);
               isEvidenceFixture = pkgs.lib.hasPrefix "contracts/evidence/fixtures/" relPath;
+              isProtocolObservationFixture = pkgs.lib.hasPrefix "contracts/protocol-observation/fixtures/" relPath;
               isArchitectureFixture = pkgs.lib.hasPrefix "contracts/architecture-modules/fixtures/" relPath;
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
@@ -183,6 +184,7 @@
             in
             (craneLib.filterCargoSources path type)
             || isEvidenceFixture
+            || isProtocolObservationFixture
             || isArchitectureFixture
             || isPropertyCoverageFixture
             || isKvmReleaseMatrix
@@ -1554,6 +1556,55 @@
           checks = {
             # Build the full workspace
             package = chaoscontrol;
+
+            protocol-observation-tests =
+              let
+                focusedArgs = commonArgs // {
+                  pname = "chaoscontrol-protocol-observation";
+                  cargoExtraArgs = "-p chaoscontrol-protocol -p chaoscontrol-vmm -p chaoscontrol-explore --features chaoscontrol-protocol/std --test protocol_observation";
+                };
+              in
+              craneLib.cargoTest (
+                focusedArgs
+                // {
+                  cargoArtifacts = craneLib.buildDepsOnly (
+                    focusedArgs
+                    // {
+                      # Crane adds all-target scope during its dependency check.
+                      cargoExtraArgs = "-p chaoscontrol-protocol -p chaoscontrol-vmm -p chaoscontrol-explore --features chaoscontrol-protocol/std";
+                    }
+                  );
+                }
+              );
+
+            protocol-observation-contracts =
+              pkgs.runCommand "protocol-observation-contracts"
+                {
+                  nativeBuildInputs = [
+                    pkgs.nickel
+                    pkgs.diffutils
+                    pkgs.gnugrep
+                    pkgs.b3sum
+                  ];
+                }
+                ''
+                  set -euo pipefail
+                  cd ${self}
+                  mkdir -p "$out"
+                  nickel export --format json contracts/protocol-observation/fixtures/valid.ncl > "$out/profile.json"
+                  cmp contracts/protocol-observation/fixtures/valid.json "$out/profile.json"
+                  for fixture in contracts/protocol-observation/fixtures/invalid/*.ncl; do
+                    name=$(basename "$fixture" .ncl)
+                    if nickel export --format json "$fixture" > "$out/$name.out" 2> "$out/$name.err"; then
+                      echo "invalid protocol profile admitted: $name" >&2
+                      exit 1
+                    fi
+                    grep -q 'contract broken' "$out/$name.err"
+                  done
+                  b3sum contracts/protocol-observation/profile.ncl \
+                    contracts/protocol-observation/fixtures/profile.ncl \
+                    contracts/protocol-observation/fixtures/valid.json > "$out/source-identities.b3"
+                '';
 
             # Repository-owned package, artifact, template, prior-grant, and
             # third-party license boundary.

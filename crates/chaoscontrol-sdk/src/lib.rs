@@ -66,6 +66,8 @@ pub mod marker;
 pub mod prelude;
 #[cfg(feature = "full")]
 pub mod process;
+#[cfg(feature = "full")]
+pub mod protocol_observation;
 pub mod random;
 pub mod resources;
 mod transport;

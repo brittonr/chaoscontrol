@@ -1,0 +1,3 @@
+contracts/protocol-observation/profile.ncl: OK
+contracts/protocol-observation/fixtures/profile.ncl: OK
+contracts/protocol-observation/fixtures/valid.json: OK

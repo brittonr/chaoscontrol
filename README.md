@@ -140,6 +140,13 @@ See [the VM Cohort adoption boundary](docs/vm-cohort-adoption.md) for pins, mapp
   interleavings, while neutralization outcomes rank probable causes. See
   [`docs/causality-analysis.md`](docs/causality-analysis.md).
 
+### Protocol-observation cohorts
+
+An experimental library contract adds bounded opaque observations, exact cohort assembly, stable BLAKE3 novelty, and consumer-owned pure oracles.
+The dedicated SDK command preserves host VM and scheduler identity outside free-form events.
+Explicit sessions bind marker and snapshot replay facts without changing the default explorer CLI.
+See [the protocol cohort contract](docs/protocol-observation-cohorts.md) for admission, accounting, checks, and non-claims.
+
 ### Pure Simulation Core
 - **Machine-independent decisions**: `chaoscontrol-sim-core` owns scheduling, virtual time, network transitions, fault selection, and canonical round traces.
 - **Typed shell boundary**: The core emits commands and validates observations. `chaoscontrol-vmm` retains KVM, device, filesystem, and snapshot effects.

@@ -14,6 +14,9 @@ use crate::outcomes::{
 };
 use crate::schedule::FaultSchedule;
 use chaoscontrol_protocol::admission::{BoundAssertionEvent, CatalogBuilder, CatalogConflict};
+use chaoscontrol_protocol::protocol_observation::{
+    CollectedObservation, SchedulerPosition, PROTOCOL_OBSERVATION_EVENT,
+};
 use chaoscontrol_protocol::transport::{
     decode_catalog_begin, decode_catalog_complete, decode_descriptor_frame, decode_event_frame,
 };
@@ -176,8 +179,11 @@ pub struct EngineSnapshot {
     /// align with overrides set by the explorer.
     choice_count: u64,
     /// Host-directed process commands not yet observed by the guest supervisor.
-    #[serde(default)]
+    #[serde(default = "std::collections::VecDeque::new")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Host-bound protocol observations retained outside free-form oracle events.
+    #[serde(default)]
+    protocol_observations: crate::protocol_collection::Collection,
 }
 
 impl EngineSnapshot {
@@ -342,6 +348,8 @@ pub struct FaultEngine {
     catalog_builder: Option<CatalogBuilder>,
     /// Bounded host-to-supervisor process fault queue.
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+    /// Bounded protocol-observation transport, separate from free-form oracle events.
+    protocol_observations: crate::protocol_collection::Collection,
 }
 
 impl FaultEngine {
@@ -372,6 +380,7 @@ impl FaultEngine {
             choice_count: 0,
             catalog_builder: None,
             process_fault_queue: VecDeque::new(),
+            protocol_observations: crate::protocol_collection::Collection::default(),
         }
     }
 
@@ -385,6 +394,7 @@ impl FaultEngine {
         self.next_random_fault_time_ns = self.config.random_fault_interval_ns;
         self.choice_history.clear();
         self.process_fault_queue.clear();
+        // Protocol journals span the admitted execution, not this fault run.
         match self.run_sequence.checked_add(1) {
             Some(run_sequence) => {
                 self.run_sequence = run_sequence;
@@ -508,6 +518,15 @@ impl FaultEngine {
     /// Reads the hypercall page, dispatches the command, and returns
     /// the result and status to write back.
     pub fn handle_hypercall(&mut self, page: &HypercallPage) -> (u64, u8) {
+        self.handle_hypercall_at(page, None)
+    }
+
+    /// Handle a guest hypercall with an exact host scheduler position.
+    pub fn handle_hypercall_at(
+        &mut self,
+        page: &HypercallPage,
+        scheduler_position: Option<SchedulerPosition>,
+    ) -> (u64, u8) {
         match page.command {
             CMD_ASSERT_CATALOG_BEGIN => self.handle_catalog_begin(page),
             CMD_ASSERT_CATALOG_DESCRIPTOR => self.handle_catalog_descriptor(page),
@@ -525,6 +544,10 @@ impl FaultEngine {
             },
             CMD_LIFECYCLE_SEND_EVENT => {
                 let (name, json_details) = self.decode_event(page);
+                if name == PROTOCOL_OBSERVATION_EVENT {
+                    self.protocol_observations.reject();
+                    return (0, STATUS_ERROR);
+                }
                 let details = serde_json::from_slice::<serde_json::Value>(&json_details)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
                 match self.oracle.record_event(&name, details) {
@@ -532,6 +555,7 @@ impl FaultEngine {
                     Err(_) => (0, STATUS_ERROR),
                 }
             }
+            CMD_PROTOCOL_OBSERVATION => self.handle_protocol_observation(page, scheduler_position),
             CMD_RANDOM_GET => {
                 let seq = self.choice_count;
                 self.choice_count += 1;
@@ -1016,6 +1040,7 @@ impl FaultEngine {
             next_random_fault_time_ns: self.next_random_fault_time_ns,
             choice_count: self.choice_count,
             process_fault_queue: self.process_fault_queue.clone(),
+            protocol_observations: self.protocol_observations.clone(),
         }
     }
 
@@ -1025,6 +1050,9 @@ impl FaultEngine {
         snapshot: &EngineSnapshot,
     ) -> Result<(), FaultTransitionError> {
         validate_fault_outcome_ledger(&snapshot.outcomes)?;
+        self.protocol_observations
+            .admit_snapshot(&snapshot.protocol_observations)
+            .map_err(|_| FaultTransitionError::SnapshotRunStateMismatch)?;
         if snapshot.process_fault_queue.len() > MAX_PROCESS_FAULT_QUEUE
             || snapshot
                 .process_fault_queue
@@ -1231,6 +1259,28 @@ impl FaultEngine {
         self.choice_history.clear();
         self.catalog_builder = None;
         self.process_fault_queue = snapshot.process_fault_queue.clone();
+        self.protocol_observations = snapshot.protocol_observations.clone();
+    }
+
+    /// Return host-bound protocol observations without free-form event conversion.
+    pub fn protocol_observations(&self) -> &[CollectedObservation] {
+        self.protocol_observations.records()
+    }
+
+    /// Read the complete bounded collection, including host rejections.
+    pub fn protocol_collection(&self) -> &crate::protocol_collection::Collection {
+        &self.protocol_observations
+    }
+
+    /// Configure the consumer-owned oracle before guest execution.
+    pub fn configure_protocol<
+        O: chaoscontrol_protocol::protocol_observation::ProtocolOracle + ?Sized,
+    >(
+        &mut self,
+        profile: chaoscontrol_protocol::protocol_observation::AdmittedProfile,
+        oracle: &O,
+    ) -> Result<(), chaoscontrol_protocol::protocol_observation::ProtocolObservationError> {
+        self.protocol_observations.configure(profile, oracle)
     }
 
     // ── Input tree exploration ────────────────────────────────
@@ -1263,6 +1313,14 @@ impl FaultEngine {
     }
 
     // ── Internal ────────────────────────────────────────────────
+
+    fn handle_protocol_observation(
+        &mut self,
+        page: &HypercallPage,
+        scheduler_position: Option<SchedulerPosition>,
+    ) -> (u64, u8) {
+        self.protocol_observations.receive(page, scheduler_position)
+    }
 
     fn rng_from_seed(seed: u64) -> ChaCha20Rng {
         let mut key = [0u8; 32];

@@ -1,0 +1,4 @@
+error:
+       … while setting up the build environment
+
+       error: getting attributes of path "/home/brittonr/.cache/chaoscontrol-protocol-build-20260905/nix-2004616-3736859628/build": Permission denied

@@ -662,6 +662,7 @@ dependencies = [
  "blake3",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
+ "chaoscontrol-sdk",
  "chaoscontrol-sim-core",
  "crc32fast",
  "env_logger",

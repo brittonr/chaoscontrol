@@ -1,0 +1,58 @@
+{
+  "bounds": {
+    "max_cohort_backlog": 16,
+    "max_diagnostic_refs": 4,
+    "max_logical_boundaries": 4,
+    "max_oracle_work_items": 32,
+    "max_participants": 2,
+    "max_projection_bytes": 512,
+    "max_records_per_producer": 8,
+    "max_total_projection_bytes": 4096
+  },
+  "cohort_ref": "cohort:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "completion_rule": "all-required-participants",
+  "execution_ref": "execution:7777777777777777777777777777777777777777777777777777777777777777",
+  "logical_boundary_schema_ref": "logical-boundary-schema:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "marker_policy": "optional-declared",
+  "non_claims": [
+    "does not establish production readiness",
+    "does not establish protocol semantics",
+    "does not establish release eligibility",
+    "does not establish universal correctness",
+    "does not infer a cross-producer total order",
+    "does not synchronize wall clocks"
+  ],
+  "novelty_selectors": [
+    "projection-ref",
+    "logical-boundary-ref",
+    "transition-class"
+  ],
+  "oracle": {
+    "adapter_ref": "oracle-adapter:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "authority": "consumer-independent",
+    "requires_complete_cohort": true
+  },
+  "producers": [
+    {
+      "admitted_generation": 0,
+      "participant_ref": "participant:3333333333333333333333333333333333333333333333333333333333333333",
+      "process_ref": "process:5555555555555555555555555555555555555555555555555555555555555555",
+      "producer_ref": "producer:1111111111111111111111111111111111111111111111111111111111111111",
+      "vm_id": 7
+    },
+    {
+      "admitted_generation": 0,
+      "participant_ref": "participant:4444444444444444444444444444444444444444444444444444444444444444",
+      "process_ref": "process:6666666666666666666666666666666666666666666666666666666666666666",
+      "producer_ref": "producer:2222222222222222222222222222222222222222222222222222222222222222",
+      "vm_id": 9
+    }
+  ],
+  "projection_schema_ref": "projection-schema:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "protocol_ref": "protocol:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "required_participants": [
+    "participant:3333333333333333333333333333333333333333333333333333333333333333",
+    "participant:4444444444444444444444444444444444444444444444444444444444444444"
+  ],
+  "schema": "chaoscontrol.protocol-observation-profile.v1"
+}

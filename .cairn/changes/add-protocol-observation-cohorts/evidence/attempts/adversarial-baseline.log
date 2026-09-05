@@ -1,0 +1,79 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.89s
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-6b3521d6ba62574e)
+
+running 7 tests
+test adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles ... FAILED
+test adversarial::finite_implementation_limits_reject_maximum_integer_profiles ... FAILED
+test invalid_profiles_or_authority_cannot_create_evidence ... ok
+test adversarial::post_final_records_and_mixed_executions_cannot_complete ... FAILED
+test complete_cohort_builds_replay_stable_evidence ... ok
+test incomplete_and_conflicting_cohorts_fail_closed ... ok
+test adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts ... FAILED
+
+failures:
+
+---- adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles stdout ----
+
+thread 'adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles' (1709887) panicked at crates/chaoscontrol-protocol/tests/protocol/adversarial.rs:51:5:
+assertion `left != right` failed
+  left: Unsupported
+ right: Unsupported
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- adversarial::finite_implementation_limits_reject_maximum_integer_profiles stdout ----
+
+thread 'adversarial::finite_implementation_limits_reject_maximum_integer_profiles' (1709886) panicked at crates/chaoscontrol-protocol/tests/protocol/adversarial.rs:67:5:
+assertion failed: admit_profile(oversized).is_err()
+
+---- adversarial::post_final_records_and_mixed_executions_cannot_complete stdout ----
+
+thread 'adversarial::post_final_records_and_mixed_executions_cannot_complete' (1709888) panicked at crates/chaoscontrol-protocol/tests/protocol/adversarial.rs:32:5:
+assertion `left != right` failed
+  left: Complete
+ right: Complete
+
+---- adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts stdout ----
+
+thread 'adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts' (1709885) panicked at crates/chaoscontrol-protocol/tests/protocol/adversarial.rs:20:5:
+assertion `left == right` failed
+  left: Complete
+ right: Conflicting
+
+
+failures:
+    adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts
+    adversarial::finite_implementation_limits_reject_maximum_integer_profiles
+    adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles
+    adversarial::post_final_records_and_mixed_executions_cannot_complete
+
+test result: FAILED. 3 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p chaoscontrol-protocol --test protocol_observation`

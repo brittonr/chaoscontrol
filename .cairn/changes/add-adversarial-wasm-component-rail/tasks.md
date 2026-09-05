@@ -1,7 +1,7 @@
 ## Tasks
 
 - [x] [serial] Define the typed Nickel Wasm exploration profile, Mantle bundle ref, pinned tool/runtime cohort vector, corpus/outcome classes, deterministic configuration, observation model, limits, retention, and non-claims. r[chaoscontrol.wasm_component.profile] r[chaoscontrol.wasm_component.materialization] r[chaoscontrol.wasm_component.bounds] r[chaoscontrol.wasm_component.evidence]
-- [ ] [depends:wasm-exploration-profile] Implement pure case/profile/materialization validation, seed/identity construction, expected/outcome classification, normalized comparison, failure predicates, shrink/promotion admission, bound decisions, and evidence DTOs. r[chaoscontrol.wasm_component.functional_core]
+- [x] [depends:wasm-exploration-profile] Implement pure case/profile/materialization validation, seed/identity construction, expected/outcome classification, normalized comparison, failure predicates, shrink/promotion admission, bound decisions, and evidence DTOs. r[chaoscontrol.wasm_component.functional_core]
 - [ ] [depends:wasm-exploration-profile] Materialize the pinned harness/tool closure, baseline components/WIT, and fixed-seed fast corpus through Mantle with exact BLAKE3 replay manifests. r[chaoscontrol.wasm_component.materialization] r[chaoscontrol.wasm_component.corpus]
 - [ ] [depends:wasm-component-materialization] Add bounded wasm-smith/wit-smith/componentization exploration generation with exact replay manifests and BLAKE3 outputs outside the build derivation. r[chaoscontrol.wasm_component.corpus]
 - [ ] [depends:wasm-component-corpus] Add wasm-mutate and profile-aware mutation plans with distinct static/profile/compile/link/trap/result outcome classes. r[chaoscontrol.wasm_component.mutation]

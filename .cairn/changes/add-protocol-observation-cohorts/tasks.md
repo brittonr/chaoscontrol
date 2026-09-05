@@ -25,14 +25,14 @@
 
 ## Markers, snapshots, and consumers
 
-- [ ] [depends:sut-declared-event-branching] Bind declared markers to logical boundaries, projection refs, cohort refs, and restorable parent snapshots. r[chaoscontrol.protocol_observation.snapshot_binding]
-- [ ] [parallel] Add positive marker replay and negative stale-marker, wrong-cohort, missing-snapshot, incomplete-cohort, and identity-drift fixtures. r[chaoscontrol.protocol_observation.snapshot_binding] r[chaoscontrol.protocol_observation.validation]
+- [x] [depends:sut-declared-event-branching] Bind declared markers to logical boundaries, projection refs, cohort refs, and restorable parent snapshots. r[chaoscontrol.protocol_observation.snapshot_binding]
+- [x] [parallel] Add positive marker replay and negative stale-marker, wrong-cohort, missing-snapshot, incomplete-cohort, and identity-drift fixtures. r[chaoscontrol.protocol_observation.snapshot_binding] r[chaoscontrol.protocol_observation.validation]
 - [ ] [serial] Publish the immutable envelope and cohort contract for storage-recovery, projected role-protocol, Molten, and later Campaign adapters. r[chaoscontrol.protocol_observation.oracle_boundary] r[chaoscontrol.protocol_observation.evidence]
 
 ## Evidence and closeout
 
 - [x] [serial] Bind profile, producer, participant, schema, record, cohort, completeness, oracle, novelty, marker, snapshot, scheduler, fault, replay, bound, and non-claim refs into receipts. r[chaoscontrol.protocol_observation.evidence]
 - [x] [parallel] Add bounded operator status for participant coverage, sequence gaps, cohort state, oracle result, novelty, marker reachability, and blockers. r[chaoscontrol.protocol_observation.evidence]
-- [ ] [serial] Run focused pure, SDK, VMM, explorer, oracle, replay, evidence, positive, and negative tests. r[chaoscontrol.protocol_observation.validation]
+- [x] [serial] Run focused pure, SDK, VMM, explorer, oracle, replay, evidence, positive, and negative tests. r[chaoscontrol.protocol_observation.validation]
 - [ ] [serial] Run formatting, Clippy, Octet, Cairn gates, and the smallest relevant KVM or Nix checks. r[chaoscontrol.protocol_observation.validation]
 - [x] [serial] Retain protocol-semantic, universal-correctness, production, release, and total-order non-claims before sync or archive. r[chaoscontrol.protocol_observation.evidence] r[chaoscontrol.protocol_observation.validation]

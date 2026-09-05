@@ -1,0 +1,4 @@
+
+thread 'main' (2391535) panicked at src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs:248:40:
+called `Option::unwrap()` on a `None` value
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,0 +1,56 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.12s
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-9e47aee4a9a7845d)
+
+running 4 tests
+test replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort ... protocol fixture: parent stored, begin guest continuation
+protocol fixture: guest continuation returned
+protocol fixture: begin stored-parent replay
+ok
+test replay::invalid_replay_inputs_leave_the_running_state_unchanged ... protocol fixture: parent stored, begin guest continuation
+protocol fixture: guest continuation returned
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+ok
+test replay::malformed_guest_image_is_not_a_replay_fixture ... ok
+test replay::stored_parent_replays_executed_guest_observations ... protocol fixture: parent stored, begin guest continuation
+protocol fixture: guest continuation returned
+protocol fixture: begin stored-parent replay
+protocol fixture: begin stored-parent replay
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 55.80s
+

@@ -1,0 +1,58 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+   Compiling chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+error[E0583]: file not found for module `fixture`
+ --> crates/chaoscontrol-explore/tests/protocol/replay.rs:4:1
+  |
+4 | mod fixture;
+  | ^^^^^^^^^^^^
+  |
+  = help: to create the module `fixture`, create file "crates/chaoscontrol-explore/tests/protocol/fixture.rs" or "crates/chaoscontrol-explore/tests/protocol/fixture/mod.rs"
+  = note: if there is a `mod fixture` elsewhere in the crate already, import it with `use crate::...` instead
+
+error[E0583]: file not found for module `guest`
+ --> crates/chaoscontrol-explore/tests/protocol/replay.rs:5:1
+  |
+5 | mod guest;
+  | ^^^^^^^^^^
+  |
+  = help: to create the module `guest`, create file "crates/chaoscontrol-explore/tests/protocol/guest.rs" or "crates/chaoscontrol-explore/tests/protocol/guest/mod.rs"
+  = note: if there is a `mod guest` elsewhere in the crate already, import it with `use crate::...` instead
+
+error[E0583]: file not found for module `machine`
+ --> crates/chaoscontrol-explore/tests/protocol/replay.rs:6:1
+  |
+6 | mod machine;
+  | ^^^^^^^^^^^^
+  |
+  = help: to create the module `machine`, create file "crates/chaoscontrol-explore/tests/protocol/machine.rs" or "crates/chaoscontrol-explore/tests/protocol/machine/mod.rs"
+  = note: if there is a `mod machine` elsewhere in the crate already, import it with `use crate::...` instead
+
+For more information about this error, try `rustc --explain E0583`.
+error: could not compile `chaoscontrol-explore` (test "protocol_observation") due to 3 previous errors

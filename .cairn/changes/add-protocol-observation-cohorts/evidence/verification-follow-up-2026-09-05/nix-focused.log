@@ -1,0 +1,84 @@
+these 2 derivations will be built:
+  /nix/store/kfnfdwpkvzajdhdzkbc802ly6fmxcvj2-protocol-observation-contracts.drv
+  /nix/store/lx0aw15g9xk6aawf979v07rqv3fv6k5r-chaoscontrol-protocol-observation-test-0.1.0.drv
+building '/nix/store/lx0aw15g9xk6aawf979v07rqv3fv6k5r-chaoscontrol-protocol-observation-test-0.1.0.drv'...
+building '/nix/store/kfnfdwpkvzajdhdzkbc802ly6fmxcvj2-protocol-observation-contracts.drv'...
+chaoscontrol-protocol-observation-test> Running phase: unpackPhase
+chaoscontrol-protocol-observation-test> unpacking source archive /nix/store/cmkm6ga7jf5p0hma03f9r18yaspk9264-source
+chaoscontrol-protocol-observation-test> source root is source
+chaoscontrol-protocol-observation-test> Running phase: patchPhase
+chaoscontrol-protocol-observation-test> Executing configureCargoCommonVars
+chaoscontrol-protocol-observation-test> decompressing cargo artifacts from /nix/store/6hs58mvsi6262n52vpqzlbxgyzgxaf0m-chaoscontrol-protocol-observation-deps-0.1.0/target.tar.zst to target
+chaoscontrol-protocol-observation-test> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-protocol-observation-test> Running phase: configurePhase
+chaoscontrol-protocol-observation-test> will append /build/source/.cargo-home/config.toml with contents of /nix/store/07nn2pn5xcf8j8pq7kbm1x5rvg6rcnkp-vendor-cargo-deps/config.toml
+chaoscontrol-protocol-observation-test> default configurePhase, nothing to do
+chaoscontrol-protocol-observation-test> Running phase: buildPhase
+chaoscontrol-protocol-observation-test> +++ command cargo --version
+chaoscontrol-protocol-observation-test> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-protocol-observation-test> Running phase: checkPhase
+chaoscontrol-protocol-observation-test> +++ command cargo test --release -p chaoscontrol-protocol -p chaoscontrol-vmm -p chaoscontrol-explore --features chaoscontrol-protocol/std --test protocol_observation
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-snapshot-descriptor v0.1.0 (/build/source/crates/chaoscontrol-snapshot-descriptor)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-smr v0.1.0 (/build/source/crates/chaoscontrol-smr)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-replay-evidence-core v0.1.0 (/build/source/crates/chaoscontrol-replay-evidence-core)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-sdk v0.1.0 (/build/source/crates/chaoscontrol-sdk)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-evidence v0.1.0 (/build/source/crates/chaoscontrol-evidence)
+chaoscontrol-protocol-observation-test>    Compiling chaoscontrol-explore v0.1.0 (/build/source/crates/chaoscontrol-explore)
+chaoscontrol-protocol-observation-test>     Finished `release` profile [optimized] target(s) in 43.21s
+chaoscontrol-protocol-observation-test>      Running tests/protocol_observation.rs (target/release/deps/protocol_observation-5faff4f6b48431fc)
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> running 6 tests
+chaoscontrol-protocol-observation-test> test replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort ... ignored, requires /dev/kvm for observed replay drift
+chaoscontrol-protocol-observation-test> test replay::invalid_replay_inputs_leave_the_running_state_unchanged ... ignored, requires /dev/kvm for replay preflight mutation checks
+chaoscontrol-protocol-observation-test> test replay::malformed_guest_image_is_not_a_replay_fixture ... ignored, requires /dev/kvm for the production kernel-loader rejection path
+chaoscontrol-protocol-observation-test> test replay::stored_parent_replays_executed_guest_observations ... ignored, requires /dev/kvm for an executed guest continuation
+chaoscontrol-protocol-observation-test> test forged_collection_and_incomplete_marker_never_create_guidance ... ok
+chaoscontrol-protocol-observation-test> test cross_vm_collection_preserves_full_novelty_and_rejects_replay_drift ... ok
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> test result: ok. 2 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test>      Running tests/protocol_observation.rs (target/release/deps/protocol_observation-5c9d92b107edadb0)
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> running 13 tests
+chaoscontrol-protocol-observation-test> test admission::canonical_projection_and_reference_boundaries_fail_closed ... ok
+chaoscontrol-protocol-observation-test> test admission::omitted_optional_fields_preserve_compatibility_but_required_fields_fail ... ok
+chaoscontrol-protocol-observation-test> test admission::nickel_projection_matches_rust_fixture_and_rejects_envelope_drift ... ok
+chaoscontrol-protocol-observation-test> test adversarial::finite_implementation_limits_reject_maximum_integer_profiles ... ok
+chaoscontrol-protocol-observation-test> test admission::forged_profile_and_wrong_boundary_cannot_reuse_complete_evidence ... ok
+chaoscontrol-protocol-observation-test> test adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles ... ok
+chaoscontrol-protocol-observation-test> test adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts ... ok
+chaoscontrol-protocol-observation-test> test adversarial::post_final_records_and_mixed_executions_cannot_complete ... ok
+chaoscontrol-protocol-observation-test> test invalid_profiles_or_authority_cannot_create_evidence ... ok
+chaoscontrol-protocol-observation-test> test incomplete_and_conflicting_cohorts_fail_closed ... ok
+chaoscontrol-protocol-observation-test> test marker::oracle_results_cannot_change_verdict_work_or_cohort_identity ... ok
+chaoscontrol-protocol-observation-test> test complete_cohort_builds_replay_stable_evidence ... ok
+chaoscontrol-protocol-observation-test> test marker::marker_linkage_requires_declared_record_and_exact_snapshot_context ... ok
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test>      Running tests/protocol_observation.rs (target/release/deps/protocol_observation-84d7b6333045e951)
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> running 8 tests
+chaoscontrol-protocol-observation-test> test compatibility::scheduler_reference_keeps_every_digest_byte_and_rejects_truncation ... ok
+chaoscontrol-protocol-observation-test> test compatibility::old_empty_snapshots_decode_but_malformed_collections_fail ... ok
+chaoscontrol-protocol-observation-test> test emitter_accounts_transport_loss_and_denies_post_final_or_oversized_effects ... ok
+chaoscontrol-protocol-observation-test> test framed_suffix_and_reserved_event_spoof_never_enter_the_journal ... ok
+chaoscontrol-protocol-observation-test> test self_reported_or_wrong_adapter_is_rejected_before_retention ... ok
+chaoscontrol-protocol-observation-test> test fault_run_reset_cannot_erase_protocol_source_history_or_host_loss ... ok
+chaoscontrol-protocol-observation-test> test rejected_wire_suffix_and_unbound_host_frames_are_not_success ... ok
+chaoscontrol-protocol-observation-test> test guest_host_round_trip_and_independent_raft_oracle ... ok
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-protocol-observation-test> 
+chaoscontrol-protocol-observation-test> checkPhase completed in 44 seconds
+chaoscontrol-protocol-observation-test> Running phase: installPhase
+chaoscontrol-protocol-observation-test> linking previous artifacts /nix/store/6hs58mvsi6262n52vpqzlbxgyzgxaf0m-chaoscontrol-protocol-observation-deps-0.1.0/target.tar.zst to /nix/store/8likibjmc9bk2wm47vlzfbvrrdvpr414-chaoscontrol-protocol-observation-test-0.1.0/target.tar.zst
+chaoscontrol-protocol-observation-test> /*stdin*\            : 28.86%   (   204 MiB =>   58.8 MiB, /nix/store/8likibjmc9bk2wm47vlzfbvrrdvpr414-chaoscontrol-protocol-observation-test-0.1.0/target.tar.zst)
+chaoscontrol-protocol-observation-test> Running phase: fixupPhase
+chaoscontrol-protocol-observation-test> shrinking RPATHs of ELF executables and libraries in /nix/store/8likibjmc9bk2wm47vlzfbvrrdvpr414-chaoscontrol-protocol-observation-test-0.1.0
+chaoscontrol-protocol-observation-test> checking for references to /build/ in /nix/store/8likibjmc9bk2wm47vlzfbvrrdvpr414-chaoscontrol-protocol-observation-test-0.1.0...
+chaoscontrol-protocol-observation-test> patching script interpreter paths in /nix/store/8likibjmc9bk2wm47vlzfbvrrdvpr414-chaoscontrol-protocol-observation-test-0.1.0

@@ -14,6 +14,58 @@ pub const GUEST_PROBE_PREFIX: &str = "GUEST_DETERMINISM_PROBE=";
 pub const GUEST_PROBE_READY: &str = "GUEST_DETERMINISM_READY";
 pub const GUEST_PROBE_DONE: &str = "chaoscontrol-guest-determinism-probe: done";
 
+// Pin the existing probe cohort. The compatibility test detects VMM default drift.
+const PROBE_MEMORY_BYTES: usize = 0x1000_0000;
+const PROBE_CPU_FAMILY: u8 = 6;
+const PROBE_CPU_MODEL: u8 = 85;
+const PROBE_CPU_STEPPING: u8 = 4;
+const PROBE_CMDLINE: &[u8] = b"console=ttyS0 earlyprintk=serial \
+    clocksource=tsc tsc=reliable \
+    lpj=6000000 \
+    nokaslr noapic nosmp \
+    nohpet \
+    randomize_kstack_offset=off norandmaps \
+    random.trust_cpu=off random.trust_bootloader=off \
+    kfence.sample_interval=0 \
+    no_hash_pointers \
+    virtio_mmio.device=4K@0xd0000000:5 \
+    virtio_mmio.device=4K@0xd0001000:6 \
+    virtio_mmio.device=4K@0xd0002000:7 \
+    panic=0\0";
+
+fn probe_config(run_seed: u64) -> VmConfig {
+    VmConfig {
+        memory_size: PROBE_MEMORY_BYTES,
+        num_vcpus: 1,
+        scheduling_strategy: chaoscontrol_vmm::scheduler::SchedulingStrategy::RoundRobin,
+        smp_progress_mode: chaoscontrol_sim_core::scheduler::core::ProgressMode::ExactSingleStep,
+        smp_instruction_quantum: chaoscontrol_sim_core::scheduler::DEFAULT_SMP_INSTRUCTION_QUANTUM,
+        smp_schedule_journal_limit:
+            chaoscontrol_sim_core::scheduler::core::DEFAULT_SCHEDULE_JOURNAL_LIMIT,
+        cpu: chaoscontrol_vmm::cpu::CpuConfig {
+            tsc_khz: chaoscontrol_vmm::cpu::DEFAULT_TSC_KHZ,
+            allow_avx2: false,
+            allow_avx512: false,
+            hide_hypervisor: true,
+            hide_tsc: true,
+            fixed_family: Some(PROBE_CPU_FAMILY),
+            fixed_model: Some(PROBE_CPU_MODEL),
+            fixed_stepping: Some(PROBE_CPU_STEPPING),
+            fixed_frequency_mhz: None,
+            seed: run_seed,
+            tsc_advance_per_tick: chaoscontrol_vmm::cpu::DEFAULT_TSC_ADVANCE,
+        },
+        cmdline: PROBE_CMDLINE.to_vec(),
+        disk_image_path: None,
+        extra_cmdline: None,
+        core_affinity: None,
+        vm_id: 0,
+        dlog_path: None,
+        dlog_register_interval: 0,
+        dlog_memory_hash: false,
+    }
+}
+
 #[derive(Debug)]
 pub enum GuestDeterminismShellError {
     Vm(String),
@@ -32,10 +84,7 @@ pub fn run_guest_determinism_probe(
     initrd: &Path,
     run_seed: u64,
 ) -> Result<(GuestDeterminismProfile, GuestDeterminismProbe), GuestDeterminismShellError> {
-    let mut config = VmConfig::default();
-    config.cpu.seed = run_seed;
-    config.cpu.hide_tsc = true;
-    let mut vm = DeterministicVm::new(config)
+    let mut vm = DeterministicVm::new(probe_config(run_seed))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
@@ -72,10 +121,7 @@ pub fn run_guest_determinism_gate(
     initrd: &Path,
     run_seed: u64,
 ) -> Result<GuestDeterminismDriftReport, GuestDeterminismShellError> {
-    let mut config = VmConfig::default();
-    config.cpu.seed = run_seed;
-    config.cpu.hide_tsc = true;
-    let mut vm = DeterministicVm::new(config)
+    let mut vm = DeterministicVm::new(probe_config(run_seed))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
@@ -128,6 +174,33 @@ mod tests {
             signal_order: vec![libc::SIGUSR1 as u32, libc::SIGUSR2 as u32],
         };
         serde_json::to_string(&probe).expect("serialize fixture")
+    }
+
+    #[test]
+    fn explicit_probe_cohort_preserves_the_previous_configuration() {
+        let mut previous = VmConfig::default();
+        previous.cpu.seed = u64::MAX;
+        previous.cpu.hide_tsc = true;
+        // Both types derive Debug over every field, including the nested CPU configuration.
+        assert_eq!(
+            format!("{previous:?}"),
+            format!("{:?}", probe_config(u64::MAX))
+        );
+    }
+
+    #[test]
+    fn pins_probe_resources_without_truncating_the_seed() {
+        let first = probe_config(0);
+        let last = probe_config(u64::MAX);
+        assert_eq!(first.memory_size, PROBE_MEMORY_BYTES);
+        assert_eq!(last.memory_size, first.memory_size);
+        assert_eq!(first.num_vcpus, 1);
+        assert_eq!(last.num_vcpus, first.num_vcpus);
+        assert_eq!(first.cpu.seed, 0);
+        assert_eq!(last.cpu.seed, u64::MAX);
+        assert_ne!(first.cpu.seed, last.cpu.seed);
+        assert!(first.cpu.hide_tsc);
+        assert!(last.cpu.hide_tsc);
     }
 
     #[test]

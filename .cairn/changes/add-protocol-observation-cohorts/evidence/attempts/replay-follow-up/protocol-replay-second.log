@@ -1,0 +1,70 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.84s
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-9e47aee4a9a7845d)
+
+running 4 tests
+test replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort ... FAILED
+test replay::invalid_replay_inputs_leave_the_running_state_unchanged ... FAILED
+test replay::malformed_guest_image_is_not_a_replay_fixture ... ok
+test replay::stored_parent_replays_executed_guest_observations ... FAILED
+
+failures:
+
+---- replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort stdout ----
+
+thread 'replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort' (2212190) panicked at crates/chaoscontrol-explore/tests/protocol/replay/fixture.rs:116:9:
+assertion `left == right` failed
+  left: Incomplete
+ right: Complete
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- replay::invalid_replay_inputs_leave_the_running_state_unchanged stdout ----
+
+thread 'replay::invalid_replay_inputs_leave_the_running_state_unchanged' (2212650) panicked at crates/chaoscontrol-explore/tests/protocol/replay/fixture.rs:116:9:
+assertion `left == right` failed
+  left: Incomplete
+ right: Complete
+
+---- replay::stored_parent_replays_executed_guest_observations stdout ----
+
+thread 'replay::stored_parent_replays_executed_guest_observations' (2213943) panicked at crates/chaoscontrol-explore/tests/protocol/replay/fixture.rs:116:9:
+assertion `left == right` failed
+  left: Incomplete
+ right: Complete
+
+
+failures:
+    replay::a_restorable_parent_cannot_hide_an_incomplete_guest_cohort
+    replay::invalid_replay_inputs_leave_the_running_state_unchanged
+    replay::stored_parent_replays_executed_guest_observations
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 2 filtered out; finished in 11.79s
+
+error: test failed, to rerun pass `-p chaoscontrol-explore --test protocol_observation`

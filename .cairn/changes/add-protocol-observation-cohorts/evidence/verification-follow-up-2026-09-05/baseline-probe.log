@@ -1,0 +1,463 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-evidence v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-evidence)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.52s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/chaoscontrol_evidence-27d68f57fd0435cd)
+
+running 2 tests
+test guest_determinism::tests::rejects_missing_duplicate_and_malformed_probe_lines ... ok
+test guest_determinism::tests::extracts_one_complete_probe_line ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 142 filtered out; finished in 0.00s
+
+     Running unittests src/bin/accepted-snapshot-verdict-dogfood.rs (/home/brittonr/.cargo-target/debug/deps/accepted_snapshot_verdict_dogfood-7deeb680bde58a33)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-accepted-dogfood-config.rs (/home/brittonr/.cargo-target/debug/deps/check_accepted_dogfood_config-0625aab09da9bd93)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-architecture-boundaries.rs (/home/brittonr/.cargo-target/debug/deps/check_architecture_boundaries-3ca8bc68d9562357)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-assertion-readiness-boundary.rs (/home/brittonr/.cargo-target/debug/deps/check_assertion_readiness_boundary-173e27ba9ccc5936)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-assertion-readiness-promotion-gate.rs (/home/brittonr/.cargo-target/debug/deps/check_assertion_readiness_promotion_gate-9c22d39e02dcb1e2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-cargo-audit-report.rs (/home/brittonr/.cargo-target/debug/deps/check_cargo_audit_report-2f8572beb0492a00)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-causality-analysis.rs (/home/brittonr/.cargo-target/debug/deps/check_causality_analysis-ce3b2220f32f61ea)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-consistency-fixtures.rs (/home/brittonr/.cargo-target/debug/deps/check_consistency_fixtures-c20e4e8c45858d71)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-consistency-history.rs (/home/brittonr/.cargo-target/debug/deps/check_consistency_history-ed97a9afc31e65f8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-contract-registry.rs (/home/brittonr/.cargo-target/debug/deps/check_contract_registry-ede529a4c295d288)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-dogfood-artifact-sizes.rs (/home/brittonr/.cargo-target/debug/deps/check_dogfood_artifact_sizes-173ff0f81856fc6f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-evidence-contracts.rs (/home/brittonr/.cargo-target/debug/deps/check_evidence_contracts-b02b7eefca8c2cc8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-findability.rs (/home/brittonr/.cargo-target/debug/deps/check_findability-8a3cec4e311a7364)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-history-phenomena.rs (/home/brittonr/.cargo-target/debug/deps/check_history_phenomena-0193d9fba36a607e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-kvm-release-matrix.rs (/home/brittonr/.cargo-target/debug/deps/check_kvm_release_matrix-2233ec5ecb239485)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-product-scope.rs (/home/brittonr/.cargo-target/debug/deps/check_product_scope-29edf6a6642aad48)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-profile-projections.rs (/home/brittonr/.cargo-target/debug/deps/check_profile_projections-3e881bae90d829c5)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-readiness-promotion-gate.rs (/home/brittonr/.cargo-target/debug/deps/check_readiness_promotion_gate-0eb778b963920a97)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-readiness-surface-drift.rs (/home/brittonr/.cargo-target/debug/deps/check_readiness_surface_drift-04749bfef14a9bd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-replay-proof-coverage.rs (/home/brittonr/.cargo-target/debug/deps/check_replay_proof_coverage-586831f027bca7b1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-replay-verdict-artifact.rs (/home/brittonr/.cargo-target/debug/deps/check_replay_verdict_artifact-bd1e3f2e2ce0d217)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-rust-product-automation-source.rs (/home/brittonr/.cargo-target/debug/deps/check_rust_product_automation_source-aa0e75a8abd6f810)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-sdk-assertion-quality.rs (/home/brittonr/.cargo-target/debug/deps/check_sdk_assertion_quality-339d86a3607f4c62)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-sdk-local-report-tracks.rs (/home/brittonr/.cargo-target/debug/deps/check_sdk_local_report_tracks-aa7f9c1563861437)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-sim-core-purity.rs (/home/brittonr/.cargo-target/debug/deps/check_sim_core_purity-fc9411b510bf38e0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-smr-chain-fixtures.rs (/home/brittonr/.cargo-target/debug/deps/check_smr_chain_fixtures-a8b7b86ad5176daf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-snapshot-descriptor-contracts.rs (/home/brittonr/.cargo-target/debug/deps/check_snapshot_descriptor_contracts-7008a87a0549d62f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check-vm-determinism-drift-receipt.rs (/home/brittonr/.cargo-target/debug/deps/check_vm_determinism_drift_receipt-b6504600b19aa4fe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/generate-assertion-readiness-report.rs (/home/brittonr/.cargo-target/debug/deps/generate_assertion_readiness_report-b62ff4386286f6e2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/generate-replay-readiness-report.rs (/home/brittonr/.cargo-target/debug/deps/generate_replay_readiness_report-9a669f08738496f9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/guest-determinism-gate.rs (/home/brittonr/.cargo-target/debug/deps/guest_determinism_gate-84028e307126494a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/in-process-simulator-receipt.rs (/home/brittonr/.cargo-target/debug/deps/in_process_simulator_receipt-6ad6bbd8948529a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/kernel-bundle-delete-module.rs (/home/brittonr/.cargo-target/debug/deps/kernel_bundle_delete_module-e64f2aa00c57ae50)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/kernel-bundle-vm-compat-smoke.rs (/home/brittonr/.cargo-target/debug/deps/kernel_bundle_vm_compat_smoke-5b14340ed085f2b6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/local-multi-hypervisor-kvm-smoke.rs (/home/brittonr/.cargo-target/debug/deps/local_multi_hypervisor_kvm_smoke-76bd8011940af371)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/materialize-dogfood-receipt.rs (/home/brittonr/.cargo-target/debug/deps/materialize_dogfood_receipt-c4c1c460fa79c6b6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/materialize-replay-readiness-receipt.rs (/home/brittonr/.cargo-target/debug/deps/materialize_replay_readiness_receipt-2df11fa871a14682)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/materialize-snapshot-chunks.rs (/home/brittonr/.cargo-target/debug/deps/materialize_snapshot_chunks-4fe0133be2fb66e3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/oci-intake.rs (/home/brittonr/.cargo-target/debug/deps/oci_intake-717f4e97506d63cd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/render-vm-determinism-matrix-summary.rs (/home/brittonr/.cargo-target/debug/deps/render_vm_determinism_matrix_summary-0256ecdbce7fc752)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-dashboard.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_dashboard-f65277a29b66236c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-decision-receipt.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_decision_receipt-47ed1d2616d7833c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-fleet-index.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_fleet_index-b4730824c597a30f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-readme-status.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_readme_status-0a3ea3f9e023de97)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-scheduler-receipt.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_scheduler_receipt-ebf25c13150fd750)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-summary.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_summary-25a65de90cfd8e23)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/replay-readiness-triage.rs (/home/brittonr/.cargo-target/debug/deps/replay_readiness_triage-c4ca815de4cbeccc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/run-kvm-release-matrix.rs (/home/brittonr/.cargo-target/debug/deps/run_kvm_release_matrix-a3ecfb9a219cd6e9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/scaffold-rust-workload.rs (/home/brittonr/.cargo-target/debug/deps/scaffold_rust_workload-647d385192f5b2df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/snapshot-descriptor-fixture.rs (/home/brittonr/.cargo-target/debug/deps/snapshot_descriptor_fixture-ef9bf6dcb30d02f1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/summarize-accepted-dogfood-output.rs (/home/brittonr/.cargo-target/debug/deps/summarize_accepted_dogfood_output-34cc72681d494321)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/summarize-sdk-local-output.rs (/home/brittonr/.cargo-target/debug/deps/summarize_sdk_local_output-4cbc5202b5586b92)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/assertion_summary_fatal.rs (/home/brittonr/.cargo-target/debug/deps/assertion_summary_fatal-7508a289f6f84d75)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/assertion_summary_identity.rs (/home/brittonr/.cargo-target/debug/deps/assertion_summary_identity-6d50f44d84801cf4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests/assertion_summary_legacy.rs (/home/brittonr/.cargo-target/debug/deps/assertion_summary_legacy-e368b9742b765382)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/causality_shell.rs (/home/brittonr/.cargo-target/debug/deps/causality_shell-f04607a80ba240d3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/findability_shell.rs (/home/brittonr/.cargo-target/debug/deps/findability_shell-f2dad3f5dbbfa327)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/history_phenomena_shell.rs (/home/brittonr/.cargo-target/debug/deps/history_phenomena_shell-2cf178c3a6e67fae)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/json_preflight.rs (/home/brittonr/.cargo-target/debug/deps/json_preflight-876b02d4dbf22a73)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/models.rs (/home/brittonr/.cargo-target/debug/deps/models-093cff6116d892f8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out; finished in 0.00s
+
+     Running tests/promotion_bounded_file.rs (/home/brittonr/.cargo-target/debug/deps/promotion_bounded_file-662a728bd4762cf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/replay_verdict_artifact.rs (/home/brittonr/.cargo-target/debug/deps/replay_verdict_artifact-99ea90a787a8eb14)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/replay_verdict_contract.rs (/home/brittonr/.cargo-target/debug/deps/replay_verdict_contract-97af797d8665536f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_bounded_file.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_bounded_file-cc66138bf97ced27)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_identity.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_identity-55453ddad96e899c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_legacy_bounds.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_legacy_bounds-e15f25119216c022)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_legacy_identity.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_legacy_identity-112f5dc681506fc6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_setup_bounds.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_setup_bounds-d509760e7337b5d0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/sdk_local_verdicts.rs (/home/brittonr/.cargo-target/debug/deps/sdk_local_verdicts-78ad8098eaecda5e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/snapshot_descriptor.rs (/home/brittonr/.cargo-target/debug/deps/snapshot_descriptor-74edec0cec5264dc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/typed_operator_execution.rs (/home/brittonr/.cargo-target/debug/deps/typed_operator_execution-bb3f7c4090793e07)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+

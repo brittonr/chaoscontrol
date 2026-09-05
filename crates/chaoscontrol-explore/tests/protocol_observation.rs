@@ -1,3 +1,6 @@
+#[path = "protocol/replay.rs"]
+mod replay;
+
 use chaoscontrol_explore::coverage::CoverageBitmap;
 use chaoscontrol_explore::protocol_observation::{
     collect_cohort, enrich_coverage, validate_replay,

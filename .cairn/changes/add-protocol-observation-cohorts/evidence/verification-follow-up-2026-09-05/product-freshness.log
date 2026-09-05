@@ -1,0 +1,13 @@
+Cargo.lock: OK
+README.md: OK
+contracts/product-scope/generated/product-scope.json: OK
+contracts/product-scope/registry.ncl: OK
+crates/chaoscontrol-evidence/src/guest_determinism.rs: OK
+crates/chaoscontrol-explore/Cargo.toml: OK
+crates/chaoscontrol-explore/tests/protocol/replay.rs: OK
+crates/chaoscontrol-explore/tests/protocol/replay/fixture.rs: OK
+crates/chaoscontrol-explore/tests/protocol/replay/guest.rs: OK
+crates/chaoscontrol-explore/tests/protocol/replay/machine.rs: OK
+crates/chaoscontrol-explore/tests/protocol_observation.rs: OK
+docs/product-scope-status.md: OK
+docs/protocol-observation-cohorts.md: OK

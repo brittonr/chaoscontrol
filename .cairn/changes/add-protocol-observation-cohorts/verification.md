@@ -4,8 +4,10 @@
 
 The change remains active and unarchived.
 The user requested an unfinished checkpoint commit and branch push on 2026-09-05.
-Five tasks remain open, including snapshot-backed session replay and publication of the accepted contract.
+Checkpoint `c50e01cfca4b9e441587a570bd7ed9fc37bdb558` is on the change branch at `origin`.
+Two tasks remain open. Stored-parent replay now passes its explicit KVM tests.
 The checkpoint does not authorize lifecycle completion or integration into `main`.
+Follow-up details are in `evidence/verification-follow-up-2026-09-05/README.md`.
 
 The worktree starts at `31300fa1a2d29c7496e8316f065c156f80343143`.
 The branch is `drain/protocol-observation-cohorts-20260904`.
@@ -40,9 +42,10 @@ The no-default SDK build initially failed because the guest-supervisor binary la
 `evidence/attempts/sdk-no-default-before-bin-gate.log` retains that failure.
 The corrected build succeeds. Two inherited coverage-helper warnings remain in that configuration.
 
-## Validation
+## Checkpoint validation
 
-Final logs use `evidence/verification-2026-09-05/`.
+The checkpoint logs use `evidence/verification-2026-09-05/`.
+The table describes that source checkpoint, not every later edit.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
@@ -78,22 +81,29 @@ No license grant or third-party notice changed.
 
 ## Remaining boundaries
 
-`Session::replay` still lacks a test that restores a stored parent and executes a real protocol-aware guest continuation.
-The marker and snapshot completion tasks remain open until that evidence exists.
-Pure identity equality and host-only dispatch cannot replace this test.
+Four explicit KVM tests now cover `Session::replay` through the production controller and file store.
+The guest copies an SDK-produced frame, emits port I/O, and increments a memory counter.
+A bounded slice stops before HLT. Changed counters prove that replay restores and resumes the guest instead of reusing a stale journal.
+Negative cases cover bindings, bounds, missing or corrupted snapshots, incomplete observations, and malformed ELF input.
+This result does not establish Linux boot, in-guest SDK initialization, or general halt behavior.
 
-The Octet check now reaches `crates/chaoscontrol-evidence/src/guest_determinism.rs`.
-It rejects `VmConfig::default()` at lines 35 and 75.
-That file is unchanged by this change. A separate repair must establish explicit guest-probe configuration.
-The output also contains warnings, including naming and owner-path findings in the new code.
-No clean Octet claim is available. No lint catalog, warning budget, baseline, or severity changed.
+The checkpoint Octet check rejected two implicit guest-probe defaults.
+Both probe paths now use one fully explicit constructor for the reviewed CPU, memory, boot, and scheduler configuration.
+The seed retains its full width. Four probe tests pass, including an exact comparison with the previous configuration.
+The pinned Octet check now reports zero errors and 2,458 warnings.
+The warnings include unresolved naming and owner-path findings in the new code.
+This warning-only result is not strict acceptance evidence. The quality task remains open.
+No lint catalog, warning budget, baseline, or severity changed.
 
-The product-scope projection now matches its Nickel source.
-The next guard rejects the unrelated active `adopt-campaign-core` package because it lacks an admitted intent.
-The guard remains unchanged. This change does not invent that package's product authority.
-The final stable-input flake check failed in `checks.x86_64-linux.dependency-policy`.
-Cargo metadata panicked at `package_id_spec.rs:248:40` during the locked offline Cargo deny check.
-The dependency policy remains enabled. No release-wide validation pass is available.
+The product-scope guard now passes after review of ten missing intents against their existing proposals.
+The registry retains all capability states and records the publication and parity prerequisites for those plans.
+The guard itself remains unchanged. Generated documents now match the repository facts.
+
+The checkpoint flake check failed in `checks.x86_64-linux.dependency-policy`.
+A direct locked offline Cargo metadata call reproduces the panic at `package_id_spec.rs:248:40`.
+Cargo formats the pathless Radicle URL through an unchecked path-segment lookup.
+The apparent trailing-slash workaround fails because `git-remote-rad` rejects that URL as an invalid namespace.
+The dependency policy and immutable VM Cohort pin remain unchanged. No release-wide validation pass is available.
 
 Task 559 passed the scoped Nix checks, KVM case, and formatting.
 Task 560 retained the Octet failure. Task 573 retained the product-scope blocker after projection export.

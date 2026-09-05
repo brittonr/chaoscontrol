@@ -47,3 +47,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"]
 tower-http = { version = "0.6", features = ["cors"], optional = true }
 async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
+
+[dev-dependencies]
+chaoscontrol-sdk = { path = "../chaoscontrol-sdk", features = ["full"] }

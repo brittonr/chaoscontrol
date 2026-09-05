@@ -421,6 +421,7 @@ dependencies = [
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
  "chaoscontrol-replay-evidence-core",
+ "chaoscontrol-sdk",
  "chaoscontrol-vmm",
  "ciborium",
  "clap",

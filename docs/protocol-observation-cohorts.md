@@ -120,6 +120,17 @@ Run the focused tests:
 nix develop -c cargo test -p chaoscontrol-protocol -p chaoscontrol-vmm -p chaoscontrol-explore --features chaoscontrol-protocol/std --test protocol_observation
 ```
 
+If `/dev/kvm` is available, run the stored-parent replay cases:
+
+```console
+nix develop -c cargo test -p chaoscontrol-explore --test protocol_observation replay:: -- --ignored --test-threads=1
+```
+
+These four cases execute bounded ELF guests through the production controller and file snapshot store.
+Changed counters distinguish resumed guest execution from stale journal reuse.
+The guests stop in a declared pre-halt range. These cases do not establish Linux boot, in-guest SDK initialization, or general halt behavior.
+The default tests and portable Nix checks leave these KVM cases ignored.
+
 Run the contract and portable Nix checks:
 
 ```console

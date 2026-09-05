@@ -1,0 +1,80 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.40s
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-9e47aee4a9a7845d)
+
+running 1 test
+test replay::stored_parent_replays_executed_guest_observations ... FAILED
+
+failures:
+
+---- replay::stored_parent_replays_executed_guest_observations stdout ----
+
+thread 'replay::stored_parent_replays_executed_guest_observations' (2233504) panicked at crates/chaoscontrol-explore/tests/protocol/replay/fixture.rs:116:9:
+assertion `left == right` failed: cohort=CohortResult {
+    cohort_identity: "protocol-cohort:0ca358a9e749c42fd56d9279ad505acd8bd52fbc15d0e6e105ac5fa03efd2e91",
+    profile_ref: "protocol-observation-profile:2b4ba100a808eaa86049877b48013300f76cde3e7d1e852cbf59bc93b58a3af0",
+    projection_support: Available,
+    source_records: [],
+    host_loss_count: 0,
+    cohort_ref: "cohort:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    logical_boundary_ref: "logical-boundary:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    classification: Incomplete,
+    records: [],
+    issues: [
+        CohortIssue {
+            kind: FailedFinalDrain,
+            subject: "producer:1111111111111111111111111111111111111111111111111111111111111111",
+        },
+        CohortIssue {
+            kind: FailedFinalDrain,
+            subject: "producer:2222222222222222222222222222222222222222222222222222222222222222",
+        },
+        CohortIssue {
+            kind: MissingParticipant,
+            subject: "participant:3333333333333333333333333333333333333333333333333333333333333333",
+        },
+        CohortIssue {
+            kind: MissingParticipant,
+            subject: "participant:4444444444444444444444444444444444444444444444444444444444444444",
+        },
+    ],
+    novelty_identities: [],
+}, machine=[(4, 0, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0]), (4, 0, [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0])]
+  left: Incomplete
+ right: Complete
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    replay::stored_parent_replays_executed_guest_observations
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 3.68s
+
+error: test failed, to rerun pass `-p chaoscontrol-explore --test protocol_observation`

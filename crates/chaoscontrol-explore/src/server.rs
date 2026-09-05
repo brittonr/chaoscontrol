@@ -12,7 +12,7 @@ use axum::Router;
 use log::{info, warn};
 use std::convert::Infallible;
 use std::sync::mpsc::{Receiver, SyncSender};
-use std::sync::{Arc, RwLock};
+
 use tokio::sync::broadcast;
 
 const INDEX_HTML: &str = include_str!("../assets/index.html");
@@ -21,7 +21,7 @@ const ANNOTATION_JS: &str = include_str!("../assets/chartjs-plugin-annotation.mi
 
 /// Shared state between the axum handlers and the event receiver.
 struct AppState {
-    state: RwLock<DashboardState>,
+    state: std::sync::RwLock<DashboardState>,
     tx: broadcast::Sender<DashboardEvent>,
 }
 
@@ -48,12 +48,12 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
     let (event_tx, event_rx) = std::sync::mpsc::sync_channel::<DashboardEvent>(64);
     let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(256);
 
-    let app_state = Arc::new(AppState {
-        state: RwLock::new(DashboardState::empty()),
+    let app_state = std::sync::Arc::new(AppState {
+        state: std::sync::RwLock::new(DashboardState::empty()),
         tx: broadcast_tx.clone(),
     });
 
-    let app_state_clone = Arc::clone(&app_state);
+    let app_state_clone = std::sync::Arc::clone(&app_state);
 
     let ip = match parse_dashboard_host(host) {
         Some(ip) => ip,
@@ -85,7 +85,7 @@ pub fn start(host: &str, port: u16) -> Option<SyncSender<DashboardEvent>> {
             .expect("dashboard tokio runtime");
 
         rt.block_on(async move {
-            let state_for_receiver = Arc::clone(&app_state_clone);
+            let state_for_receiver = std::sync::Arc::clone(&app_state_clone);
             let broadcast_for_receiver = broadcast_tx;
 
             tokio::spawn(async move {
@@ -113,8 +113,8 @@ pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<
     let ip = parse_dashboard_host(host)
         .ok_or_else(|| format!("invalid host '{}' (expected an IP address)", host))?;
     let (broadcast_tx, _) = broadcast::channel::<DashboardEvent>(16);
-    let app_state = Arc::new(AppState {
-        state: RwLock::new(state),
+    let app_state = std::sync::Arc::new(AppState {
+        state: std::sync::RwLock::new(state),
         tx: broadcast_tx,
     });
 
@@ -140,7 +140,7 @@ pub fn start_standalone(state: DashboardState, host: &str, port: u16) -> Result<
     })
 }
 
-fn build_router(state: Arc<AppState>) -> Router {
+fn build_router(state: std::sync::Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index_handler))
         .route("/assets/chart.umd.min.js", get(chart_js_handler))
@@ -175,7 +175,7 @@ async fn annotation_js_handler() -> impl IntoResponse {
     )
 }
 
-async fn state_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn state_handler(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
     let data = state.state.read().unwrap();
     let json = serde_json::to_string(&*data).unwrap_or_else(|_| "{}".to_string());
     (
@@ -186,7 +186,7 @@ async fn state_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
 }
 
 async fn sse_handler(
-    State(state): State<Arc<AppState>>,
+    State(state): State<std::sync::Arc<AppState>>,
 ) -> Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.tx.subscribe();
 
@@ -220,7 +220,7 @@ async fn sse_handler(
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
-async fn bugs_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn bugs_handler(State(state): State<std::sync::Arc<AppState>>) -> impl IntoResponse {
     let data = state.state.read().unwrap();
     let json = serde_json::to_string(&data.bugs).unwrap_or_else(|_| "[]".to_string());
     (
@@ -231,7 +231,7 @@ async fn bugs_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 async fn bug_detail_handler(
-    State(state): State<Arc<AppState>>,
+    State(state): State<std::sync::Arc<AppState>>,
     axum::extract::Path(id): axum::extract::Path<usize>,
 ) -> impl IntoResponse {
     let data = state.state.read().unwrap();
@@ -253,7 +253,7 @@ async fn bug_detail_handler(
 
 async fn event_receiver_loop(
     rx: Receiver<DashboardEvent>,
-    state: Arc<AppState>,
+    state: std::sync::Arc<AppState>,
     broadcast_tx: broadcast::Sender<DashboardEvent>,
 ) {
     tokio::task::spawn_blocking(move || {

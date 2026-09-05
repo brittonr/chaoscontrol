@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_consistency_history_path, validate_consistency_history_path,
     write_adapter_sample_consistency_history_path, write_consistency_check_report_path,
@@ -45,7 +43,7 @@ fn run() -> EvidenceResult<()> {
             write_consistency_sample(path, true)?;
         }
         [cmd, path] if cmd == "adapter-sample" => {
-            let path = PathBuf::from(path);
+            let path = std::path::PathBuf::from(path);
             write_adapter_sample_consistency_history_path(&path)?;
             println!("wrote {}", path.display());
         }
@@ -59,7 +57,7 @@ fn run() -> EvidenceResult<()> {
 }
 
 fn write_consistency_sample(path: &str, bad: bool) -> EvidenceResult<()> {
-    let path = PathBuf::from(path);
+    let path = std::path::PathBuf::from(path);
     write_sample_consistency_history_path(&path, bad)?;
     println!("wrote {}", path.display());
     Ok(())

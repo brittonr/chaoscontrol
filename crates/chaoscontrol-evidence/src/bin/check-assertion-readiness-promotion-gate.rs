@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_assertion_readiness_promotion, check_assertion_readiness_promotion_paths,
     run_assertion_readiness_promotion_selftest,
@@ -7,10 +5,10 @@ use chaoscontrol_evidence::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
-    manifest: Option<PathBuf>,
-    report: Option<PathBuf>,
+    manifest: Option<std::path::PathBuf>,
+    report: Option<std::path::PathBuf>,
     selftest: bool,
-    root: PathBuf,
+    root: std::path::PathBuf,
 }
 
 fn usage() -> &'static str {
@@ -32,17 +30,17 @@ fn parse_args() -> Result<Args, String> {
             "--selftest" => selftest = true,
             "--manifest" => {
                 manifest =
-                    Some(PathBuf::from(args.next().ok_or_else(|| {
+                    Some(std::path::PathBuf::from(args.next().ok_or_else(|| {
                         format!("--manifest requires a path\n{}", usage())
                     })?));
             }
             "--report" => {
                 report =
-                    Some(PathBuf::from(args.next().ok_or_else(|| {
+                    Some(std::path::PathBuf::from(args.next().ok_or_else(|| {
                         format!("--report requires a path\n{}", usage())
                     })?));
             }
-            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ if root.is_none() => root = Some(std::path::PathBuf::from(arg)),
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
@@ -50,7 +48,7 @@ fn parse_args() -> Result<Args, String> {
         manifest,
         report,
         selftest,
-        root: root.unwrap_or_else(|| PathBuf::from(".")),
+        root: root.unwrap_or_else(|| std::path::PathBuf::from(".")),
     })
 }
 

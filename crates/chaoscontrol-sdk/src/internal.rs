@@ -6,10 +6,9 @@
 //! This module is only compiled with the `full` feature.
 
 use chaoscontrol_protocol::{HypercallPage, HYPERCALL_PAGE_ADDR};
-use std::fs::{File, OpenOptions};
+
 use std::io::{BufWriter, Write};
 use std::os::unix::io::AsRawFd;
-use std::sync::{Mutex, OnceLock};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Transport mode
@@ -22,7 +21,9 @@ enum TransportMode {
     /// Running inside a ChaosControl VM — use port I/O via shared page.
     VmPortIo { page_ptr: *mut HypercallPage },
     /// Running locally — log assertions to a JSON file.
-    LocalOutput { writer: Mutex<BufWriter<File>> },
+    LocalOutput {
+        writer: std::sync::Mutex<BufWriter<std::fs::File>>,
+    },
     /// No output — silently discard everything.
     Noop,
 }
@@ -42,12 +43,12 @@ pub const PROCESS_TRANSPORT_LOCK: &str = "CHAOSCONTROL_SDK_TRANSPORT_LOCK";
 
 enum ProcessTransportLock {
     Disabled,
-    File(File),
+    File(std::fs::File),
     Failed,
 }
 
 pub(crate) struct ProcessTransportGuard {
-    file: Option<&'static File>,
+    file: Option<&'static std::fs::File>,
 }
 
 impl Drop for ProcessTransportGuard {
@@ -58,15 +59,15 @@ impl Drop for ProcessTransportGuard {
     }
 }
 
-static MODE: OnceLock<TransportMode> = OnceLock::new();
-static PROCESS_LOCK: OnceLock<ProcessTransportLock> = OnceLock::new();
+static MODE: std::sync::OnceLock<TransportMode> = std::sync::OnceLock::new();
+static PROCESS_LOCK: std::sync::OnceLock<ProcessTransportLock> = std::sync::OnceLock::new();
 
 pub(crate) fn acquire_process_transport() -> Result<ProcessTransportGuard, ()> {
     let lock = PROCESS_LOCK.get_or_init(|| {
         let Ok(path) = std::env::var(PROCESS_TRANSPORT_LOCK) else {
             return ProcessTransportLock::Disabled;
         };
-        match OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
@@ -121,9 +122,13 @@ fn detect_mode() -> TransportMode {
 
     // Not in a VM — check for local output env var.
     if let Ok(path) = std::env::var(LOCAL_OUTPUT) {
-        if let Ok(file) = OpenOptions::new().create(true).append(true).open(&path) {
+        if let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
             return TransportMode::LocalOutput {
-                writer: Mutex::new(BufWriter::new(file)),
+                writer: std::sync::Mutex::new(BufWriter::new(file)),
             };
         }
         eprintln!(
@@ -138,7 +143,7 @@ fn detect_mode() -> TransportMode {
 /// Returns `Some(ptr)` if successful (we're in a ChaosControl VM),
 /// `None` if `/dev/mem` is unavailable or mmap fails.
 fn try_mmap_hypercall_page() -> Option<*mut HypercallPage> {
-    let fd = OpenOptions::new()
+    let fd = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .open("/dev/mem")
@@ -170,7 +175,7 @@ fn get_mode() -> &'static TransportMode {
 //  Catalog init
 // ═══════════════════════════════════════════════════════════════════════
 
-static INITIALIZED: OnceLock<()> = OnceLock::new();
+static INITIALIZED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
 /// Initialize the SDK.
 ///

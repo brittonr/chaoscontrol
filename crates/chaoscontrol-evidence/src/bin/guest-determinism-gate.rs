@@ -1,7 +1,6 @@
 use chaoscontrol_evidence::guest_determinism::{
     run_guest_determinism_gate, write_guest_determinism_report,
 };
-use std::path::PathBuf;
 
 const EXIT_USAGE: i32 = 64;
 const EXIT_DRIFT: i32 = 2;
@@ -25,9 +24,9 @@ fn main() {
     if arguments.next().is_some() {
         usage();
     }
-    let kernel = PathBuf::from(kernel);
-    let initrd = PathBuf::from(initrd);
-    let receipt = PathBuf::from(receipt);
+    let kernel = std::path::PathBuf::from(kernel);
+    let initrd = std::path::PathBuf::from(initrd);
+    let receipt = std::path::PathBuf::from(receipt);
     let run_seed = match run_seed.parse::<u64>() {
         Ok(seed) => seed,
         Err(error) => {

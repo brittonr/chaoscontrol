@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::check_evidence_contracts;
 
 fn usage() -> &'static str {
@@ -7,7 +5,7 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut root = PathBuf::from(".");
+    let mut root = std::path::PathBuf::from(".");
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -16,7 +14,7 @@ fn main() {
                 return;
             }
             "--root" => {
-                root = PathBuf::from(args.next().unwrap_or_else(|| {
+                root = std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--root requires a path\n{}", usage());
                     std::process::exit(2);
                 }));

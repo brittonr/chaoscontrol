@@ -1,6 +1,5 @@
-use std::fs::{self, File};
+use std::fs::{self};
 use std::io::Read;
-use std::path::Path;
 
 use chaoscontrol_evidence::{
     expected_kernel_bundle_kvm_observations, extract_kvm_observations,
@@ -107,15 +106,15 @@ fn run(args: Vec<String>) -> EvidenceResult<()> {
         return Ok(());
     }
     if args.len() == EXPECTED_CHECK_ARG_COUNT && args[1] == ARG_CHECK_PROFILE {
-        let profile = read_profile(Path::new(&args[2]))?;
+        let profile = read_profile(std::path::Path::new(&args[2]))?;
         validate_kernel_bundle_smoke_profile(&profile)?;
         let receipt = kernel_bundle_smoke_receipt(&profile)?;
         print_json(&receipt)?;
         return Ok(());
     }
     if args.len() == EXPECTED_KVM_SERIAL_ARG_COUNT && args[1] == ARG_CHECK_KVM_SERIAL {
-        let profile = read_profile(Path::new(&args[2]))?;
-        let serial = fs::read_to_string(Path::new(&args[3]))?;
+        let profile = read_profile(std::path::Path::new(&args[2]))?;
+        let serial = fs::read_to_string(std::path::Path::new(&args[3]))?;
         let run = kvm_run_from_serial(&profile, &serial, DEFAULT_KVM_MAX_EXITS)?;
         let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run)?;
         print_json(&receipt)?;
@@ -150,12 +149,12 @@ fn build_private_kfunc_initrd(args: &[String]) -> EvidenceResult<()> {
     let expected_kernel_release = optional_arg(args, ARG_EXPECTED_KERNEL_RELEASE)
         .unwrap_or(PRIVATE_KFUNC_EXPECTED_KERNEL_RELEASE);
     let request = PrivateKfuncInitrdRequest {
-        output_path: Path::new(out_path),
-        artifacts_dir: Path::new(artifacts_dir),
-        busybox_path: Path::new(busybox_path),
-        bpftool_path: Path::new(bpftool_path),
-        delete_module_helper_path: Path::new(delete_module_helper_path),
-        closure_list_path: Path::new(closure_list_path),
+        output_path: std::path::Path::new(out_path),
+        artifacts_dir: std::path::Path::new(artifacts_dir),
+        busybox_path: std::path::Path::new(busybox_path),
+        bpftool_path: std::path::Path::new(bpftool_path),
+        delete_module_helper_path: std::path::Path::new(delete_module_helper_path),
+        closure_list_path: std::path::Path::new(closure_list_path),
         expected_kernel_release,
     };
     let summary = write_private_kfunc_initrd(&request)?;
@@ -182,22 +181,22 @@ fn run_kvm_profile(args: &[String]) -> EvidenceResult<()> {
         .map(parse_memory_mib)
         .transpose()?
         .unwrap_or(DEFAULT_MEMORY_MIB);
-    let profile = read_profile(Path::new(profile_path))?;
+    let profile = read_profile(std::path::Path::new(profile_path))?;
     let expected_images = ExpectedImageDigests {
         kernel: expected_kernel_blake3.to_string(),
         initrd: expected_initrd_blake3.to_string(),
     };
     let run = execute_kvm_run(
         &profile,
-        Path::new(kernel_path),
-        Path::new(initrd_path),
+        std::path::Path::new(kernel_path),
+        std::path::Path::new(initrd_path),
         max_exits,
         memory_mib,
         scenario,
         &expected_images,
     )?;
     let receipt = kernel_bundle_kvm_rail_receipt(&profile, &run)?;
-    write_json(Path::new(out_path), &receipt)?;
+    write_json(std::path::Path::new(out_path), &receipt)?;
     eprintln!(
         "{STATUS_STDERR_PREFIX}: status={} receipt={} out={}",
         receipt.status, receipt.receipt_identity_blake3, out_path
@@ -207,8 +206,8 @@ fn run_kvm_profile(args: &[String]) -> EvidenceResult<()> {
 
 fn execute_kvm_run(
     profile: &KernelBundleSmokeProfile,
-    kernel_path: &Path,
-    initrd_path: &Path,
+    kernel_path: &std::path::Path,
+    initrd_path: &std::path::Path,
     max_exits: u64,
     memory_mib: usize,
     scenario: KernelBundleKvmScenario,
@@ -253,7 +252,7 @@ fn execute_kvm_run(
             "stale-digest scenario requires at least one mismatched expected image digest",
         ));
     }
-    if !Path::new("/dev/kvm").exists() {
+    if !std::path::Path::new("/dev/kvm").exists() {
         let images = ImageDigests::measured(
             expected_kernel_blake3,
             expected_initrd_blake3,
@@ -454,7 +453,7 @@ fn loader_blocked_run(
         expected_initrd_image_blake3: images.expected_initrd,
         kernel_image_blake3: images.kernel,
         initrd_image_blake3: images.initrd,
-        kvm_available: Path::new("/dev/kvm").exists(),
+        kvm_available: std::path::Path::new("/dev/kvm").exists(),
         loader_available: false,
         max_exits,
         exits_executed: 0,
@@ -480,8 +479,8 @@ fn input_digest_blocked_run(
     loader_blocked_run(profile_identity_blake3, scenario, images, max_exits, reason)
 }
 
-fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
-    let mut file = File::open(path)?;
+fn hash_file_blake3(path: &std::path::Path) -> EvidenceResult<String> {
+    let mut file = std::fs::File::open(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buffer = [0_u8; FILE_HASH_BUFFER_BYTES];
     loop {
@@ -494,13 +493,13 @@ fn hash_file_blake3(path: &Path) -> EvidenceResult<String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-fn read_profile(path: &Path) -> EvidenceResult<KernelBundleSmokeProfile> {
+fn read_profile(path: &std::path::Path) -> EvidenceResult<KernelBundleSmokeProfile> {
     let text = fs::read_to_string(path)?;
     let profile = serde_json::from_str(&text)?;
     Ok(profile)
 }
 
-fn path_str(path: &Path) -> EvidenceResult<&str> {
+fn path_str(path: &std::path::Path) -> EvidenceResult<&str> {
     path.to_str()
         .ok_or_else(|| EvidenceError::new(format!("path is not UTF-8: {}", path.display())))
 }
@@ -556,7 +555,7 @@ fn print_json<T: serde::Serialize>(value: &T) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> EvidenceResult<()> {
+fn write_json<T: serde::Serialize>(path: &std::path::Path, value: &T) -> EvidenceResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

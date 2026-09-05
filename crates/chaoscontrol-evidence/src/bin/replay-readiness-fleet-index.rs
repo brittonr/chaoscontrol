@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     sample_replay_readiness_receipt, write_fleet_triage_index_path, EvidenceResult,
 };
@@ -16,7 +14,7 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<()> {
-    let mut output: Option<PathBuf> = None;
+    let mut output: Option<std::path::PathBuf> = None;
     let mut receipts = Vec::new();
     let mut sample = false;
     let mut args = std::env::args_os().skip(1);
@@ -30,10 +28,10 @@ fn run() -> EvidenceResult<()> {
                 let value = args.next().ok_or_else(|| {
                     chaoscontrol_evidence::EvidenceError::new("--output requires a path")
                 })?;
-                output = Some(PathBuf::from(value));
+                output = Some(std::path::PathBuf::from(value));
             }
             "--sample" => sample = true,
-            _ => receipts.push(PathBuf::from(arg)),
+            _ => receipts.push(std::path::PathBuf::from(arg)),
         }
     }
     let output = output.ok_or_else(|| {

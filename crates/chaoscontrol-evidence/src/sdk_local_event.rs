@@ -6,7 +6,6 @@ use chaoscontrol_protocol::identity::{
     MAX_ASSERTION_MESSAGE_BYTES,
 };
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
 
 const ASSERTION_IDENTITY_FIELD_COUNT: usize = 4;
 const MAX_LEGACY_DIAGNOSTIC_ID_BYTES: usize = ASSERTION_FINGERPRINT_HEX_BYTES;
@@ -21,8 +20,8 @@ pub(crate) struct ResolvedLocalIdentity {
 
 #[derive(Debug, Default)]
 pub(crate) struct LocalEventState {
-    pub events: BTreeMap<usize, ResolvedLocalIdentity>,
-    legacy: BTreeMap<String, LegacyMetadata>,
+    pub events: std::collections::BTreeMap<usize, ResolvedLocalIdentity>,
+    legacy: std::collections::BTreeMap<String, LegacyMetadata>,
 }
 
 #[derive(serde::Deserialize)]

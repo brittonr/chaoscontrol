@@ -1,11 +1,10 @@
-use std::collections::BTreeSet;
 use std::ffi::OsString;
-use std::fs::{self, File};
+use std::fs::{self};
 use std::io::{BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+
+use std::process::ExitStatus;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chaoscontrol_evidence::kvm_release::{
     artifact_set_identity, classify, command_identity, matrix_identity, validate_matrix,
@@ -29,9 +28,9 @@ const SUMMARY_FILE: &str = "release-summary.md";
 
 #[derive(Debug)]
 struct Config {
-    root: PathBuf,
-    matrix: PathBuf,
-    output: Option<PathBuf>,
+    root: std::path::PathBuf,
+    matrix: std::path::PathBuf,
+    output: Option<std::path::PathBuf>,
     expected_revision: Option<String>,
     dry_run: bool,
 }
@@ -48,7 +47,7 @@ struct ExecutionResult {
 struct ArtifactCollector {
     artifacts: Vec<ArtifactIdentity>,
     total_bytes: u64,
-    visited_directories: BTreeSet<PathBuf>,
+    visited_directories: std::collections::BTreeSet<std::path::PathBuf>,
 }
 
 fn main() {
@@ -83,15 +82,21 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     while index < args.len() {
         match args[index].to_string_lossy().as_ref() {
             "--root" => {
-                root = Some(PathBuf::from(required_value(&args, index, "--root")?));
+                root = Some(std::path::PathBuf::from(required_value(
+                    &args, index, "--root",
+                )?));
                 index += 2;
             }
             "--matrix" => {
-                matrix = Some(PathBuf::from(required_value(&args, index, "--matrix")?));
+                matrix = Some(std::path::PathBuf::from(required_value(
+                    &args, index, "--matrix",
+                )?));
                 index += 2;
             }
             "--out" => {
-                output = Some(PathBuf::from(required_value(&args, index, "--out")?));
+                output = Some(std::path::PathBuf::from(required_value(
+                    &args, index, "--out",
+                )?));
                 index += 2;
             }
             "--expected-revision" => {
@@ -209,14 +214,14 @@ fn run(config: Config) -> Result<bool, String> {
     Ok(decision.terminal_class == ReleaseClass::ReleaseEligible)
 }
 
-fn read_matrix(path: &Path) -> Result<KvmReleaseMatrix, String> {
+fn read_matrix(path: &std::path::Path) -> Result<KvmReleaseMatrix, String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("failed to read matrix {}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse matrix {}: {error}", path.display()))
 }
 
-fn resolve_path(root: &Path, path: &Path) -> PathBuf {
+fn resolve_path(root: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -239,7 +244,7 @@ fn print_dry_run(matrix: &KvmReleaseMatrix) {
     }
 }
 
-fn observe_source(root: &Path) -> Result<SourceFacts, String> {
+fn observe_source(root: &std::path::Path) -> Result<SourceFacts, String> {
     let revision = git_output(root, &["rev-parse", "HEAD"])?;
     let status = git_output(root, &["status", "--porcelain", "--untracked-files=all"])?;
     Ok(SourceFacts {
@@ -248,8 +253,8 @@ fn observe_source(root: &Path) -> Result<SourceFacts, String> {
     })
 }
 
-fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+fn git_output(root: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
         .args(args)
         .current_dir(root)
         .output()
@@ -285,8 +290,8 @@ fn observe_worker() -> WorkerFacts {
 }
 
 fn run_row(
-    root: &Path,
-    output: &Path,
+    root: &std::path::Path,
+    output: &std::path::Path,
     worker: &WorkerFacts,
     row: &chaoscontrol_evidence::kvm_release::MatrixRow,
 ) -> Result<RowReceipt, String> {
@@ -345,8 +350,8 @@ fn run_row(
 }
 
 fn execute_command(
-    root: &Path,
-    row_output: &Path,
+    root: &std::path::Path,
+    row_output: &std::path::Path,
     row: &chaoscontrol_evidence::kvm_release::MatrixRow,
 ) -> Result<ExecutionResult, String> {
     let args = row
@@ -355,15 +360,15 @@ fn execute_command(
         .iter()
         .map(|arg| expand_argument(arg, root, row_output))
         .collect::<Vec<_>>();
-    let stdout = File::create(row_output.join("stdout.log"))
+    let stdout = std::fs::File::create(row_output.join("stdout.log"))
         .map_err(|error| format!("failed to create row stdout: {error}"))?;
-    let stderr = File::create(row_output.join("stderr.log"))
+    let stderr = std::fs::File::create(row_output.join("stderr.log"))
         .map_err(|error| format!("failed to create row stderr: {error}"))?;
-    let mut child = match Command::new(&row.command.program)
+    let mut child = match std::process::Command::new(&row.command.program)
         .args(&args)
         .current_dir(root)
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stdout(std::process::Stdio::from(stdout))
+        .stderr(std::process::Stdio::from(stderr))
         .spawn()
     {
         Ok(child) => child,
@@ -376,8 +381,8 @@ fn execute_command(
             });
         }
     };
-    let deadline = Duration::from_secs(row.limits.timeout_seconds);
-    let started = Instant::now();
+    let deadline = std::time::Duration::from_secs(row.limits.timeout_seconds);
+    let started = std::time::Instant::now();
     loop {
         match child
             .try_wait()
@@ -407,7 +412,7 @@ fn execute_command(
                     )],
                 });
             }
-            None => thread::sleep(Duration::from_millis(WAIT_POLL_MILLISECONDS)),
+            None => thread::sleep(std::time::Duration::from_millis(WAIT_POLL_MILLISECONDS)),
         }
     }
 }
@@ -437,24 +442,24 @@ fn executed_argv(program: &str, args: &[String]) -> Vec<String> {
     argv
 }
 
-fn expand_argument(argument: &str, root: &Path, row_output: &Path) -> String {
+fn expand_argument(argument: &str, root: &std::path::Path, row_output: &std::path::Path) -> String {
     argument
         .replace("%ROOT%", &root.to_string_lossy())
         .replace("%ROW_OUT%", &row_output.to_string_lossy())
 }
 
 fn collect_artifacts(
-    row_output: &Path,
+    row_output: &std::path::Path,
     row: &chaoscontrol_evidence::kvm_release::MatrixRow,
 ) -> (Vec<ArtifactIdentity>, Option<String>) {
     let mut collector = ArtifactCollector {
         artifacts: Vec::new(),
         total_bytes: 0,
-        visited_directories: BTreeSet::new(),
+        visited_directories: std::collections::BTreeSet::new(),
     };
     let result = collect_node(
         row_output,
-        Path::new("."),
+        std::path::Path::new("."),
         0,
         row.limits.max_artifacts,
         row.limits.max_artifact_bytes,
@@ -465,8 +470,8 @@ fn collect_artifacts(
 }
 
 fn collect_node(
-    actual_path: &Path,
-    logical_path: &Path,
+    actual_path: &std::path::Path,
+    logical_path: &std::path::Path,
     depth: usize,
     max_artifacts: usize,
     max_artifact_bytes: u64,
@@ -554,7 +559,7 @@ fn collect_node(
     Ok(())
 }
 
-fn normalized_artifact_path(path: &Path) -> String {
+fn normalized_artifact_path(path: &std::path::Path) -> String {
     let normalized = path.to_string_lossy().replace('\\', "/");
     normalized
         .strip_prefix("./")
@@ -562,8 +567,8 @@ fn normalized_artifact_path(path: &Path) -> String {
         .to_string()
 }
 
-fn hash_file(path: &Path) -> Result<String, String> {
-    let file = File::open(path)
+fn hash_file(path: &std::path::Path) -> Result<String, String> {
+    let file = std::fs::File::open(path)
         .map_err(|error| format!("failed to open artifact {}: {error}", path.display()))?;
     let mut reader = BufReader::with_capacity(HASH_BUFFER_BYTES, file);
     let mut buffer = vec![0_u8; HASH_BUFFER_BYTES];
@@ -580,10 +585,10 @@ fn hash_file(path: &Path) -> Result<String, String> {
     Ok(format!("blake3:{}", hasher.finalize().to_hex()))
 }
 
-fn write_receipt(output: &Path, receipt: &KvmReleaseReceipt) -> Result<(), String> {
+fn write_receipt(output: &std::path::Path, receipt: &KvmReleaseReceipt) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(receipt)
         .map_err(|error| format!("failed to serialize release receipt: {error}"))?;
-    let mut file = File::create(output.join(RECEIPT_FILE))
+    let mut file = std::fs::File::create(output.join(RECEIPT_FILE))
         .map_err(|error| format!("failed to create release receipt: {error}"))?;
     file.write_all(&bytes)
         .and_then(|()| file.write_all(b"\n"))
@@ -591,7 +596,7 @@ fn write_receipt(output: &Path, receipt: &KvmReleaseReceipt) -> Result<(), Strin
 }
 
 fn write_summary(
-    output: &Path,
+    output: &std::path::Path,
     receipt: &KvmReleaseReceipt,
     decision: &KvmReleaseDecision,
 ) -> Result<(), String> {

@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-
 fn main() {
-    let mut root = PathBuf::from(".");
+    let mut root = std::path::PathBuf::from(".");
     let mut write = false;
     let mut args = std::env::args().skip(1);
     while let Some(argument) = args.next() {
@@ -9,7 +7,7 @@ fn main() {
             "--root" => {
                 root = args
                     .next()
-                    .map(PathBuf::from)
+                    .map(std::path::PathBuf::from)
                     .unwrap_or_else(|| fail("--root requires a path"));
             }
             "--write" => write = true,

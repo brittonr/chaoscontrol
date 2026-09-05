@@ -5,8 +5,6 @@
 
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController};
 use chaoscontrol_vmm::vm::{DeterministicVm, VmConfig};
-use std::sync::Arc;
-use std::time::Instant;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
@@ -44,10 +42,10 @@ fn bench_single_vm(kernel: &str, initrd: &str) {
     vm.run_bounded(50_000).expect("boot");
 
     // Take a full snapshot (this is our base).
-    let t0 = Instant::now();
+    let t0 = std::time::Instant::now();
     let base_snap = vm.snapshot().expect("base snapshot");
     let full_snap_time = t0.elapsed();
-    let base_memory = Arc::new(base_snap.memory.materialize());
+    let base_memory = std::sync::Arc::new(base_snap.memory.materialize());
     println!(
         "  Base snapshot:       {:>8.2} ms  ({} MB)",
         full_snap_time.as_secs_f64() * 1000.0,
@@ -73,7 +71,7 @@ fn bench_single_vm(kernel: &str, initrd: &str) {
         let _ = vm.get_dirty_bitmap(); // drain
         vm.run_bounded(ticks).expect("run");
 
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         let _full = vm.snapshot().expect("full snap");
         let full_time = t0.elapsed();
 
@@ -82,7 +80,7 @@ fn bench_single_vm(kernel: &str, initrd: &str) {
         let _ = vm.get_dirty_bitmap(); // drain
         vm.run_bounded(ticks).expect("run");
 
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         let (_, dirty) = vm.snapshot_incremental(&base_memory).expect("incr snap");
         let incr_time = t0.elapsed();
 
@@ -132,7 +130,7 @@ fn bench_controller(kernel: &str, initrd: &str) {
         println!("  --- {} ticks ---", ticks);
 
         // Measure full restore alone.
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         ctrl.restore_all(&base_snap).expect("restore");
         ctrl.reset_vm_statuses();
         let full_restore_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -143,12 +141,12 @@ fn bench_controller(kernel: &str, initrd: &str) {
         }
 
         // Measure run alone.
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         ctrl.run(ticks).expect("run");
         let run_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
         // Measure full snapshot alone.
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         let _ = ctrl.snapshot_all().expect("full snap");
         let full_snap_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
@@ -166,7 +164,7 @@ fn bench_controller(kernel: &str, initrd: &str) {
         ctrl.reset_vm_statuses();
 
         // Measure incremental restore alone.
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         ctrl.restore_all_incremental(&branch_snap)
             .expect("incr restore");
         ctrl.reset_vm_statuses();
@@ -180,7 +178,7 @@ fn bench_controller(kernel: &str, initrd: &str) {
         ctrl.run(ticks).expect("run");
 
         // Measure incremental snapshot alone.
-        let t0 = Instant::now();
+        let t0 = std::time::Instant::now();
         let _ = ctrl.snapshot_all_incremental();
         let incr_snap_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
@@ -233,7 +231,7 @@ fn measure_memory(kernel: &str, initrd: &str) {
     vm.run_bounded(50_000).expect("boot");
 
     let base_snap = vm.snapshot().expect("base snapshot");
-    let base_memory = Arc::new(base_snap.memory.materialize());
+    let base_memory = std::sync::Arc::new(base_snap.memory.materialize());
     let _ = vm.get_dirty_bitmap();
 
     let rss_before = get_rss_kb();

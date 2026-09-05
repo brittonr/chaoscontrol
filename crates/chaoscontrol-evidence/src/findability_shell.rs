@@ -3,9 +3,8 @@ use chaoscontrol_sim_core::findability::{
     assemble_observations, fit_findability, validate_report, BugInstance, FindabilityPolicy,
     FindabilityReport, SubtreeObservation,
 };
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::io::Write;
-use std::path::Path;
 
 pub const FINDABILITY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 pub const MAX_FINDABILITY_ARTIFACT_BYTES: u64 = 4 * 1_024 * 1_024;
@@ -82,7 +81,7 @@ pub fn validate_findability_artifact(artifact: &FindabilityRoundArtifact) -> Evi
 }
 
 pub fn read_findability_artifact_path(
-    path: impl AsRef<Path>,
+    path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<FindabilityRoundArtifact> {
     let path = path.as_ref();
     let bytes =
@@ -98,7 +97,7 @@ pub fn read_findability_artifact_path(
 }
 
 pub fn check_findability_artifact_path(
-    path: impl AsRef<Path>,
+    path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<FindabilityReport> {
     let artifact = read_findability_artifact_path(path)?;
     let observations = artifact_observations(&artifact)?;
@@ -110,8 +109,8 @@ pub fn check_findability_artifact_path(
 }
 
 pub fn write_findability_report_path(
-    artifact_path: impl AsRef<Path>,
-    report_path: impl AsRef<Path>,
+    artifact_path: impl AsRef<std::path::Path>,
+    report_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let report = check_findability_artifact_path(artifact_path)?;
     let mut bytes = serde_json::to_vec_pretty(&report)?;
@@ -120,7 +119,7 @@ pub fn write_findability_report_path(
     if let Some(parent) = report_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut file = OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(report_path)

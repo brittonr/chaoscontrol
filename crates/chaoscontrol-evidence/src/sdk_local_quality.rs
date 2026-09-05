@@ -3,7 +3,6 @@ use chaoscontrol_protocol::admission::{CatalogBuilder, MAX_ASSERTION_REPORT_ENTR
 use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::de::Deserialize;
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
 
 pub const LOCAL_REPORT_SCHEMA: &str = "chaoscontrol.sdk.local_report.v2";
 pub const LOCAL_REPLAY_BOUNDARY: &str = "local SDK JSONL proves instrumentation shape only; VM campaign and replay artifacts must be reviewed separately";
@@ -50,7 +49,7 @@ pub(crate) struct QualityFacts {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LocalReportV2 {
-    adoption_tracks: BTreeMap<String, u64>,
+    adoption_tracks: std::collections::BTreeMap<String, u64>,
     assertion_coverage: Vec<CoverageEntry>,
     cataloged_assertions: u64,
     catalog_status: String,
@@ -59,8 +58,8 @@ struct LocalReportV2 {
     exercised_assertions: u64,
     failed_assertions: u64,
     gaps: Vec<String>,
-    instrumentation_sources: BTreeMap<String, u64>,
-    lifecycle_events: BTreeMap<String, u64>,
+    instrumentation_sources: std::collections::BTreeMap<String, u64>,
+    lifecycle_events: std::collections::BTreeMap<String, u64>,
     observed_assertions: u64,
     random_choice_calls: u64,
     reachable_without_hit: Vec<String>,
@@ -172,7 +171,7 @@ fn validate_strict_entries(entries: &[CoverageEntry]) -> EvidenceResult<()> {
         .iter()
         .filter(|entry| entry.identity.is_some())
         .collect::<Vec<_>>();
-    let mut fingerprints = BTreeSet::new();
+    let mut fingerprints = std::collections::BTreeSet::new();
     let mut catalog_token = None;
     let mut builder = CatalogBuilder::begin(strict_entries.len())
         .map_err(|error| EvidenceError::new(format!("invalid report catalog: {error:?}")))?;

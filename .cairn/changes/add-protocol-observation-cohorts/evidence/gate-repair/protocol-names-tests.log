@@ -1,0 +1,126 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Blocking waiting for file lock on build directory
+   Compiling serde v1.0.228
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.08s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-44030cdb7ffec5b7)
+
+running 36 tests
+test admission::evidence::tests::canonical_legacy_descriptor_is_not_catalog_authority ... ok
+test branch_marker::tests::stable_identity_ignores_instance_details_and_refs ... ok
+test branch_marker::tests::malformed_identity_refs_and_bounds_fail_closed ... ok
+test branch_marker::tests::omitted_optional_refs_round_trip_but_wrong_types_fail ... ok
+test admission::evidence::tests::redundant_alias_matches_present_or_absent_descriptor_alias ... ok
+test fallback::tests::canonical_record_identity_ignores_object_key_order ... ok
+test fallback::tests::accepts_ordered_records_and_recomputes_sink_identity ... ok
+test fallback::tests::rejects_reordered_and_missing_process_records ... ok
+test fallback::tests::rejects_sink_identity_drift ... ok
+test fallback::tests::emits_overflow_without_corrupting_accepted_prefix ... ok
+test guest_process::tests::cooperating_processes_restart_without_replacing_shared_state ... ok
+test fallback::tests::reports_catalog_conflict_with_existing_and_candidate_identities ... ok
+test process::tests::malformed_target_and_pause_fail_closed ... ok
+test guest_process::tests::role_faults_are_targeted_and_pause_resumes_at_exact_tick ... ok
+test guest_process::tests::invalid_target_transport_collision_and_state_overclaim_fail_closed ... ok
+test process::tests::valid_commands_round_trip ... ok
+test tests::condition_flag_preserves_other_bits ... ok
+test oci_intake::tests::topology_lowers_to_bound_manifest_and_receipt ... ok
+test oci_intake::tests::unsupported_format_conflicting_role_and_provenance_fail_closed ... ok
+test tests::condition_flag_roundtrip ... ok
+test tests::coverage_bitmap_does_not_overlap_hypercall_page ... ok
+test tests::coverage_bitmap_in_e820_gap ... ok
+test tests::coverage_port_does_not_conflict ... ok
+test tests::decode_empty_payload ... ok
+test tests::encode_buffer_too_small ... ok
+test tests::decode_truncated_message ... ok
+test tests::encode_decode_roundtrip ... ok
+test tests::encode_empty_message_and_empty_json ... ok
+test tests::encode_message_with_json_details ... ok
+test tests::encode_simple_message_with_empty_json ... ok
+test tests::hypercall_page_addr_in_e820_gap ... ok
+test tests::hypercall_page_is_one_page ... ok
+test tests::sdk_port_does_not_conflict_with_serial_or_pit ... ok
+test tests::vmcall_nr_fits_in_bitmask ... ok
+test tests::vmcall_nr_no_conflict_with_kvm_builtins ... ok
+test tests::zeroed_page_is_all_zeros ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/assertion_catalog_adversarial.rs (/home/brittonr/.cargo-target/debug/deps/assertion_catalog_adversarial-7e43557d6f43e673)
+
+running 11 tests
+test bounded_category_tokens_include_shipped_template_vocabulary ... ok
+test automatic_identity_must_match_normalized_source_site ... ok
+test builder_exposes_bounded_frame_counts ... ok
+test completion_rejects_a_single_injected_fingerprint ... ok
+test accepted_catalog_validation_recomputes_all_identity_fields ... ok
+test descriptor_error_poisons_builder ... ok
+test legacy_descriptors_are_diagnostic_but_never_strict ... ok
+test fingerprint_collision_poisons_builder ... ok
+test forged_legacy_accepted_catalog_cannot_resolve_events ... ok
+test strict_descriptor_rejects_legacy_alias_and_zero_source_position ... ok
+test every_admission_conflict_poisons_builder ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/assertion_identity.rs (/home/brittonr/.cargo-target/debug/deps/assertion_identity-2935f438104edcc7)
+
+running 11 tests
+test assertion_kind_discriminants_are_stable ... ok
+test canonical_descriptor_and_wire_round_trip_are_stable ... ok
+test event_wire_round_trip_retains_binding_and_details ... ok
+test automatic_compatibility_alias_collision_is_fatal ... ok
+test compatibility_id_none_serializes_as_missing_and_accepts_explicit_null ... ok
+test events_require_the_accepted_token_fingerprint_and_kind ... ok
+test forced_fingerprint_collision_fails_closed ... ok
+test legacy_alias_conflict_is_diagnostic_and_never_admitted ... ok
+test exact_duplicate_is_idempotent ... ok
+test malformed_and_over_limit_inputs_fail_before_admission ... ok
+test logical_key_metadata_conflicts_are_typed ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/protocol_observation.rs (/home/brittonr/.cargo-target/debug/deps/protocol_observation-6b3521d6ba62574e)
+
+running 13 tests
+test adversarial::finite_implementation_limits_reject_maximum_integer_profiles ... ok
+test invalid_profiles_or_authority_cannot_create_evidence ... ok
+test admission::omitted_optional_fields_preserve_compatibility_but_required_fields_fail ... ok
+test admission::canonical_projection_and_reference_boundaries_fail_closed ... ok
+test adversarial::malformed_support_and_forged_complete_flags_do_not_admit_oracles ... ok
+test incomplete_and_conflicting_cohorts_fail_closed ... ok
+test admission::nickel_projection_matches_rust_fixture_and_rejects_envelope_drift ... ok
+test adversarial::post_final_records_and_mixed_executions_cannot_complete ... ok
+test adversarial::duplicate_journal_replay_is_equivalent_but_changed_metadata_conflicts ... ok
+test admission::forged_profile_and_wrong_boundary_cannot_reuse_complete_evidence ... ok
+test marker::oracle_results_cannot_change_verdict_work_or_cohort_identity ... ok
+test complete_cohort_builds_replay_stable_evidence ... ok
+test marker::marker_linkage_requires_declared_record_and_exact_snapshot_context ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

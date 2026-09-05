@@ -4,7 +4,7 @@ use crate::branch_marker::BranchMarker;
 /// Identity linkage only. The snapshot shell must establish restorability.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MarkerSnapshotBinding {
+pub struct Binding {
     pub marker_identity: String,
     pub projection_ref: String,
     pub record_ref: String,
@@ -14,13 +14,13 @@ pub struct MarkerSnapshotBinding {
     pub scheduler_state_ref: String,
 }
 
-pub fn bind_marker_snapshot(
+pub fn bind_snapshot(
     profile: &AdmittedProfile,
     cohort: &CohortResult,
     marker: &BranchMarker,
     projection_ref: &str,
     parent_snapshot_ref: &str,
-) -> Result<MarkerSnapshotBinding, ProtocolObservationError> {
+) -> Result<Binding, ProtocolObservationError> {
     validate_cohort(profile, cohort)?;
     marker
         .validate()
@@ -43,7 +43,7 @@ pub fn bind_marker_snapshot(
                     == Some(marker.identity.as_str())
         })
         .ok_or(ProtocolObservationError::MarkerMismatch)?;
-    let binding = MarkerSnapshotBinding {
+    let binding = Binding {
         marker_identity: marker.identity.clone(),
         projection_ref: projection_ref.to_string(),
         record_ref: record.record_identity.clone(),
@@ -56,14 +56,14 @@ pub fn bind_marker_snapshot(
             .schedule_state_ref
             .clone(),
     };
-    validate_marker_binding(profile, cohort, &binding)?;
+    validate_binding(profile, cohort, &binding)?;
     Ok(binding)
 }
 
-pub fn validate_marker_binding(
+pub fn validate_binding(
     profile: &AdmittedProfile,
     cohort: &CohortResult,
-    binding: &MarkerSnapshotBinding,
+    binding: &Binding,
 ) -> Result<(), ProtocolObservationError> {
     validate_cohort(profile, cohort)?;
     if profile.profile.marker_policy != MarkerPolicy::OptionalDeclared

@@ -1,17 +1,19 @@
 use crate::{EvidenceError, EvidenceResult};
-use std::fs::{File, OpenOptions};
+
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
 
-pub(crate) fn read_bounded_regular_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
+pub(crate) fn read_bounded_regular_file(
+    path: &std::path::Path,
+    maximum_bytes: u64,
+) -> EvidenceResult<String> {
     let bytes = read_bounded_regular_bytes(path, maximum_bytes)?;
     String::from_utf8(bytes)
         .map_err(|error| EvidenceError::new(format!("{}: invalid UTF-8: {error}", path.display())))
 }
 
 pub(crate) fn read_bounded_regular_bytes(
-    path: &Path,
+    path: &std::path::Path,
     maximum_bytes: u64,
 ) -> EvidenceResult<Vec<u8>> {
     let mut file = open_regular_file(path)?;
@@ -41,8 +43,8 @@ pub(crate) fn read_bounded_regular_bytes(
     Ok(bytes)
 }
 
-fn open_regular_file(path: &Path) -> EvidenceResult<File> {
-    let file = OpenOptions::new()
+fn open_regular_file(path: &std::path::Path) -> EvidenceResult<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)

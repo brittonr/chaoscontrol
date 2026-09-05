@@ -15,11 +15,11 @@ pub fn bind_scheduler_position(
     })
 }
 
-pub fn admit_observation(
+pub fn admit(
     profile: &AdmittedProfile,
     collected: CollectedObservation,
 ) -> Result<AdmittedObservation, ProtocolObservationError> {
-    validate_collected_observation(profile, &collected)?;
+    validate_collected(profile, &collected)?;
     let bytes =
         serde_json::to_vec(&collected).map_err(|_| ProtocolObservationError::InvalidSchema)?;
     Ok(AdmittedObservation {
@@ -28,7 +28,7 @@ pub fn admit_observation(
     })
 }
 
-pub fn validate_collected_observation(
+pub fn validate_collected(
     profile: &AdmittedProfile,
     collected: &CollectedObservation,
 ) -> Result<(), ProtocolObservationError> {
@@ -36,7 +36,7 @@ pub fn validate_collected_observation(
         return Err(ProtocolObservationError::InvalidSchema);
     }
     validate_scheduler_position(&collected.scheduler_position)?;
-    validate_observation_draft(profile, &collected.draft)?;
+    validate_draft(profile, &collected.draft)?;
     let producer = profile
         .profile
         .producers
@@ -49,7 +49,7 @@ pub fn validate_collected_observation(
     Ok(())
 }
 
-pub fn validate_observation_draft(
+pub fn validate_draft(
     profile: &AdmittedProfile,
     draft: &ObservationDraft,
 ) -> Result<(), ProtocolObservationError> {

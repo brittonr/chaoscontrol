@@ -1,6 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-
 use serde_json::Value;
 
 use crate::{ensure, AcceptedWorkloadProofs, EvidenceError, EvidenceResult, REQUIRED_REPLAY_CLASS};
@@ -9,7 +6,7 @@ pub const DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES: u64 = 50 * 1024 * 1024;
 const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
 
 pub fn check_dogfood_artifact_sizes(
-    root: impl AsRef<Path>,
+    root: impl AsRef<std::path::Path>,
     max_bytes: u64,
 ) -> EvidenceResult<String> {
     ensure(max_bytes > 0, "--max-bytes must be positive")?;
@@ -54,9 +51,9 @@ pub fn check_dogfood_artifact_sizes(
 }
 
 pub fn validate_accepted_dogfood_config(
-    config_path: impl AsRef<Path>,
-    expectations_path: impl AsRef<Path>,
-    manifest_path: impl AsRef<Path>,
+    config_path: impl AsRef<std::path::Path>,
+    expectations_path: impl AsRef<std::path::Path>,
+    manifest_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<String> {
     let config_path = config_path.as_ref();
     let expectations_path = expectations_path.as_ref();
@@ -79,9 +76,15 @@ pub fn validate_accepted_dogfood_config(
         .proofs
         .iter()
         .map(|proof| proof.workload.clone())
-        .collect::<BTreeSet<_>>();
-    let config_workloads = config.keys().cloned().collect::<BTreeSet<_>>();
-    let expectation_workloads = expectations.keys().cloned().collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
+    let config_workloads = config
+        .keys()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let expectation_workloads = expectations
+        .keys()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
 
     push_missing(
         &mut errors,
@@ -217,9 +220,9 @@ pub fn validate_accepted_dogfood_config(
 
     let repo_root = manifest_path
         .parent()
-        .and_then(Path::parent)
-        .unwrap_or(Path::new("."));
-    let config_by_workload: BTreeMap<_, _> = config.iter().collect();
+        .and_then(std::path::Path::parent)
+        .unwrap_or(std::path::Path::new("."));
+    let config_by_workload: std::collections::BTreeMap<_, _> = config.iter().collect();
     for proof in &manifest.proofs {
         let Some(cfg) = config_by_workload
             .get(&proof.workload)
@@ -361,8 +364,8 @@ pub fn run_dogfood_guards_selftest() -> EvidenceResult<()> {
 }
 
 fn scan_files(
-    root: &Path,
-    visit: &mut impl FnMut(&Path) -> EvidenceResult<()>,
+    root: &std::path::Path,
+    visit: &mut impl FnMut(&std::path::Path) -> EvidenceResult<()>,
 ) -> EvidenceResult<()> {
     let mut entries = std::fs::read_dir(root)?
         .collect::<Result<Vec<_>, _>>()?
@@ -380,7 +383,7 @@ fn scan_files(
     Ok(())
 }
 
-fn load_json(path: &Path) -> EvidenceResult<Value> {
+fn load_json(path: &std::path::Path) -> EvidenceResult<Value> {
     let input =
         crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
     crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;

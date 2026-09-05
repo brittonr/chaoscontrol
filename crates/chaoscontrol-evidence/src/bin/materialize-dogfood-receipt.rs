@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::{BufReader, Read};
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::dogfood_receipt::{
@@ -32,7 +32,7 @@ const FIXED_ARTIFACTS: [&str; 5] = [
 
 #[derive(Debug)]
 struct Options {
-    output: PathBuf,
+    output: std::path::PathBuf,
     git_revision: String,
     replay_status: String,
     replay_message: String,
@@ -118,7 +118,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let output = args
         .first()
         .filter(|value| !value.starts_with('-'))
-        .map(PathBuf::from)
+        .map(std::path::PathBuf::from)
         .ok_or_else(|| String::from("output directory is required"))?;
     let mut git_revision = None;
     let mut replay_status = String::from(DEFAULT_STATUS);
@@ -157,7 +157,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     })
 }
 
-fn load_json(path: &Path) -> Result<Value, String> {
+fn load_json(path: &std::path::Path) -> Result<Value, String> {
     let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
     if metadata.len() > MAX_JSON_BYTES {
         return Err(format!("{} exceeds JSON byte bound", path.display()));
@@ -167,14 +167,18 @@ fn load_json(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
 }
 
-fn write_json(path: &Path, value: &Value) -> Result<(), String> {
+fn write_json(path: &std::path::Path, value: &Value) -> Result<(), String> {
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("{}: encode failed: {error}", path.display()))?;
     bytes.push(b'\n');
     fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
 }
 
-fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf>, String> {
+fn matching_files(
+    root: &std::path::Path,
+    prefix: &str,
+    suffix: &str,
+) -> Result<Vec<std::path::PathBuf>, String> {
     let mut paths = fs::read_dir(root)
         .map_err(|error| format!("{}: {error}", root.display()))?
         .filter_map(Result::ok)
@@ -189,7 +193,7 @@ fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf
     Ok(paths)
 }
 
-fn sha256(path: &Path) -> Result<String, String> {
+fn sha256(path: &std::path::Path) -> Result<String, String> {
     let file = fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();

@@ -11,23 +11,76 @@ mod oracle;
 mod profile;
 
 pub use admission::{
-    admit_observation, bind_scheduler_position, validate_collected_observation,
-    validate_observation_draft, validate_scheduler_position, validate_transport_draft,
+    bind_scheduler_position, validate_scheduler_position, validate_transport_draft,
 };
-pub use cohort::{assemble_cohort, assemble_with_losses, bounded_record, validate_cohort};
-pub use evidence::{
-    build_receipt, build_status, validate_claim, validate_receipt, ProtocolObservationClaim,
+pub use cohort::{assemble_with_losses, bounded_record};
+pub use evidence::{build_receipt, build_status, validate_claim, validate_receipt};
+pub use model::{
+    AdmittedProfile, CohortClassification, CohortIssue, CohortIssueKind, CohortResult,
+    CompletionRule, DrainState, MarkerPolicy, MarkerReachability, NoveltySelector,
+    OracleAdapterProfile, OracleAuthority, ProducerProfile, ProjectionSupport, SchedulerPosition,
+    BLAKE3_HEX_BYTES, COLLECTED_SCHEMA, DRAFT_SCHEMA, MAX_ACTIVE_VCPUS,
+    MAX_INLINE_PROJECTION_BYTES, MAX_NON_CLAIMS, MAX_NOVELTY_SELECTORS, MAX_PROFILE_PARTICIPANTS,
+    MAX_PROFILE_PRODUCERS, MAX_REFERENCE_BYTES, MAX_TRANSITION_CLASS_BYTES, PROFILE_SCHEMA,
+    PROTOCOL_OBSERVATION_EVENT, RECEIPT_SCHEMA,
 };
-pub use model::*;
-pub use oracle::{
-    bind_marker_snapshot, run_consumer_oracle, validate_marker_binding, validate_oracle_adapter,
-    validate_oracle_result, MarkerSnapshotBinding, OracleDecision, ProtocolOracle,
-    ProtocolOracleResult, ProtocolVerdict,
-};
-pub use profile::{
-    admit_profile, decode_profile, validate_profile_identity, MAX_COHORT_RECORDS,
-    MAX_PROFILE_BYTES, REQUIRED_NON_CLAIMS,
-};
+pub use oracle::ProtocolOracle;
+pub use profile::{MAX_COHORT_RECORDS, MAX_PROFILE_BYTES, REQUIRED_NON_CLAIMS};
+
+// Compatibility: preserve the existing root admission entry point.
+pub use admission::admit as admit_observation;
+// Compatibility: preserve the existing collected-record validator.
+pub use admission::validate_collected as validate_collected_observation;
+// Compatibility: preserve the existing draft validator.
+pub use admission::validate_draft as validate_observation_draft;
+// Compatibility: preserve the existing cohort assembly entry point.
+pub use cohort::assemble as assemble_cohort;
+// Compatibility: preserve the existing cohort validator.
+pub use cohort::validate as validate_cohort;
+// Compatibility: preserve the existing claim type.
+pub use evidence::Claim as ProtocolObservationClaim;
+// Compatibility: preserve the existing admitted-record type.
+pub use model::Admitted as AdmittedObservation;
+// Compatibility: preserve the existing bound type.
+pub use model::Bounds as ProtocolObservationBounds;
+// Compatibility: preserve the existing collected-record type.
+pub use model::Collected as CollectedObservation;
+// Compatibility: preserve the existing draft type.
+pub use model::Draft as ObservationDraft;
+// Compatibility: preserve the existing error type and its variants.
+pub use model::Error as ProtocolObservationError;
+// Compatibility: preserve the existing evidence context.
+pub use model::EvidenceContext as ProtocolEvidenceContext;
+// Compatibility: preserve the existing profile type.
+pub use model::Profile as ProtocolObservationProfile;
+// Compatibility: preserve the existing receipt type.
+pub use model::Receipt as ProtocolObservationReceipt;
+// Compatibility: preserve the existing status type.
+pub use model::Status as ProtocolObservationStatus;
+// Compatibility: preserve the existing snapshot binding entry point.
+pub use oracle::bind_snapshot as bind_marker_snapshot;
+// Compatibility: preserve the existing consumer adapter entry point.
+pub use oracle::run_consumer as run_consumer_oracle;
+// Compatibility: preserve the existing adapter validator.
+pub use oracle::validate_adapter as validate_oracle_adapter;
+// Compatibility: preserve the existing marker validator.
+pub use oracle::validate_binding as validate_marker_binding;
+// Compatibility: preserve the existing result validator.
+pub use oracle::validate_result as validate_oracle_result;
+// Compatibility: preserve the existing snapshot binding type.
+pub use oracle::Binding as MarkerSnapshotBinding;
+// Compatibility: preserve the existing consumer decision type.
+pub use oracle::Decision as OracleDecision;
+// Compatibility: preserve the existing result type.
+pub use oracle::Outcome as ProtocolOracleResult;
+// Compatibility: preserve the existing verdict type and its variants.
+pub use oracle::Verdict as ProtocolVerdict;
+// Compatibility: preserve the existing profile admission entry point.
+pub use profile::admit as admit_profile;
+// Compatibility: preserve the existing profile decoder.
+pub use profile::decode as decode_profile;
+// Compatibility: preserve the existing profile identity validator.
+pub use profile::validate_identity as validate_profile_identity;
 
 const PROFILE_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.protocol-observation.profile.v1\0";
 const BOUNDS_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.protocol-observation.bounds.v1\0";

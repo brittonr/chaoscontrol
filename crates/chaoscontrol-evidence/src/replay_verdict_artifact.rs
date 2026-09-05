@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use serde_json::Value;
 
 use crate::{ensure, BugRecord, EvidenceError, EvidenceResult, ReplayVerdict};
@@ -13,8 +11,8 @@ pub struct ReplayVerdictArtifactSummary {
 }
 
 pub fn validate_snapshot_backed_replay_artifact(
-    verdict_path: impl AsRef<Path>,
-    expected_bug_path: impl AsRef<Path>,
+    verdict_path: impl AsRef<std::path::Path>,
+    expected_bug_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<ReplayVerdictArtifactSummary> {
     let verdict_path = verdict_path.as_ref();
     let expected_bug_path = expected_bug_path.as_ref();
@@ -27,7 +25,7 @@ pub fn validate_snapshot_backed_replay_artifact(
         "expected bug path must be absolute",
     )?;
 
-    let filesystem_root = Path::new("/");
+    let filesystem_root = std::path::Path::new("/");
     let verdict_value: Value = crate::load_json(filesystem_root, verdict_path)?;
     crate::validate_replay_verdict_with_options(&verdict_value, true, true, filesystem_root)?;
     let verdict: ReplayVerdict = serde_json::from_value(verdict_value).map_err(|error| {
@@ -38,7 +36,7 @@ pub fn validate_snapshot_backed_replay_artifact(
     })?;
     verdict.validate_shape()?;
     ensure(
-        Path::new(&verdict.bug_path) == expected_bug_path,
+        std::path::Path::new(&verdict.bug_path) == expected_bug_path,
         "replay verdict bug path differs from the selected bug",
     )?;
 

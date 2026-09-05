@@ -5,8 +5,6 @@ use chaoscontrol_sim_core::causality::{
     MinimizationCandidate, MinimizationResult,
 };
 use serde::ser::Serialize;
-use std::collections::BTreeSet;
-use std::path::Path;
 
 pub const CAUSALITY_REQUEST_SCHEMA_VERSION: u32 = 1;
 pub const CAUSALITY_RECEIPT_SCHEMA_VERSION: u32 = 1;
@@ -77,7 +75,9 @@ pub struct CausalityReceipt {
     pub non_claims: Vec<String>,
 }
 
-pub fn read_causality_request_path(path: impl AsRef<Path>) -> EvidenceResult<CausalityRequest> {
+pub fn read_causality_request_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<CausalityRequest> {
     let path = path.as_ref();
     let bytes =
         crate::bounded_file::read_bounded_regular_bytes(path, MAX_CAUSALITY_ARTIFACT_BYTES)?;
@@ -93,7 +93,7 @@ pub fn read_causality_request_path(path: impl AsRef<Path>) -> EvidenceResult<Cau
 
 pub fn read_causality_receipt_path(
     request: &CausalityRequest,
-    path: impl AsRef<Path>,
+    path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<CausalityReceipt> {
     let path = path.as_ref();
     let bytes =
@@ -348,7 +348,7 @@ fn validate_snapshots(snapshots: &[String]) -> EvidenceResult<()> {
         "snapshot identities are empty or exceed the supported bound",
     )?;
     let mut previous = None;
-    let mut unique = BTreeSet::new();
+    let mut unique = std::collections::BTreeSet::new();
     for snapshot in snapshots {
         validate_digest("snapshot_blake3", snapshot)?;
         require(

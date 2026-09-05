@@ -1,6 +1,5 @@
 use chaoscontrol_evidence::oci_intake::materialize_bundle;
 use chaoscontrol_protocol::oci_intake::OciTopology;
-use std::path::PathBuf;
 
 const MAX_TOPOLOGY_BYTES: u64 = 1024 * 1024;
 
@@ -17,8 +16,8 @@ fn run() -> Result<(), String> {
     let mut arguments = std::env::args_os().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.to_string_lossy().as_ref() {
-            "--topology" => topology = arguments.next().map(PathBuf::from),
-            "--output" => output = arguments.next().map(PathBuf::from),
+            "--topology" => topology = arguments.next().map(std::path::PathBuf::from),
+            "--output" => output = arguments.next().map(std::path::PathBuf::from),
             other => return Err(format!("unexpected argument: {other}")),
         }
     }

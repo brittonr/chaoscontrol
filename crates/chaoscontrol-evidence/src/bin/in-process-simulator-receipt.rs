@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     sample_simulator_run_evidence, validate_in_process_simulator_receipt_path,
     write_sample_in_process_simulator_receipt_path,
@@ -7,8 +5,8 @@ use chaoscontrol_evidence::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
-    Sample { output: PathBuf },
-    Check { path: PathBuf },
+    Sample { output: std::path::PathBuf },
+    Check { path: std::path::PathBuf },
 }
 
 fn usage() -> &'static str {
@@ -18,8 +16,8 @@ fn usage() -> &'static str {
 fn parse_args() -> Result<Mode, String> {
     let mut args = std::env::args_os().skip(1);
     let mut sample = false;
-    let mut output: Option<PathBuf> = None;
-    let mut check: Option<PathBuf> = None;
+    let mut output: Option<std::path::PathBuf> = None;
+    let mut check: Option<std::path::PathBuf> = None;
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
             "-h" | "--help" => {
@@ -31,13 +29,13 @@ fn parse_args() -> Result<Mode, String> {
                 let path = args
                     .next()
                     .ok_or_else(|| format!("--output requires a path\n{}", usage()))?;
-                output = Some(PathBuf::from(path));
+                output = Some(std::path::PathBuf::from(path));
             }
             "--check" => {
                 let path = args
                     .next()
                     .ok_or_else(|| format!("--check requires a path\n{}", usage()))?;
-                check = Some(PathBuf::from(path));
+                check = Some(std::path::PathBuf::from(path));
             }
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }

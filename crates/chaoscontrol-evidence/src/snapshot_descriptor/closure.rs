@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chaoscontrol_snapshot_descriptor as snapshot_core;
 use sha2::Digest as _;
 
@@ -13,7 +11,7 @@ const HEX_DIGITS: &[u8; HEX_ALPHABET_BYTES] = b"0123456789abcdef";
 
 // r[impl chaoscontrol.snapshot_descriptor.closure]
 pub fn monolithic_closure_from_file(
-    path: impl AsRef<Path>,
+    path: impl AsRef<std::path::Path>,
     maximum_bytes: u64,
 ) -> EvidenceResult<snapshot_core::PayloadClosure> {
     let path = path.as_ref();
@@ -46,8 +44,8 @@ pub fn monolithic_closure_from_file(
 }
 
 pub fn chunked_closure_from_manifest(
-    manifest_path: impl AsRef<Path>,
-    artifact_root: impl AsRef<Path>,
+    manifest_path: impl AsRef<std::path::Path>,
+    artifact_root: impl AsRef<std::path::Path>,
     maximum_bytes: u64,
 ) -> EvidenceResult<snapshot_core::PayloadClosure> {
     let manifest_path = manifest_path.as_ref();

@@ -6,7 +6,6 @@ use chaoscontrol_protocol::admission::{
     token_for_descriptors, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
 };
 use chaoscontrol_protocol::identity::AssertionFingerprint;
-use std::collections::{BTreeMap, BTreeSet};
 
 pub const MAX_ORACLE_REPORTS: usize = 1024;
 
@@ -24,7 +23,7 @@ pub fn merge_oracle_reports(
     reports: &[(u32, OracleReport)],
 ) -> Result<OracleReport, ReportMergeConflict> {
     let bounds = validate_report_set(reports)?;
-    let mut assertions = BTreeMap::new();
+    let mut assertions = std::collections::BTreeMap::new();
     let mut events = Vec::with_capacity(bounds.event_count);
     let mut total_runs = 0_u32;
     for (vm_instance, report) in reports {
@@ -39,7 +38,7 @@ pub fn merge_oracle_reports(
                 }
                 None => {
                     let mut inserted = record.clone();
-                    inserted.vm_instances = BTreeSet::from([*vm_instance]);
+                    inserted.vm_instances = std::collections::BTreeSet::from([*vm_instance]);
                     inserted.catalog_tokens.clear();
                     assertions.insert(*fingerprint, inserted);
                 }
@@ -59,11 +58,11 @@ pub fn merge_oracle_reports(
     let merged_token =
         token_for_descriptors(&descriptors).map_err(|_| ReportMergeConflict::CatalogConflict)?;
     for record in assertions.values_mut() {
-        record.catalog_tokens = BTreeSet::from([merged_token]);
+        record.catalog_tokens = std::collections::BTreeSet::from([merged_token]);
     }
     let (passed, failed, unexercised) = verdict_counts(&assertions);
     let mut output = OracleReport {
-        assertions: BTreeMap::new(),
+        assertions: std::collections::BTreeMap::new(),
         catalog_size: assertions.len(),
         structured_assertions: assertions,
         catalog_status: CatalogValidationStatus::Accepted,
@@ -82,8 +81,8 @@ pub fn merge_oracle_reports(
 
 pub fn rejected_merge_report(conflict: ReportMergeConflict) -> OracleReport {
     OracleReport {
-        assertions: BTreeMap::new(),
-        structured_assertions: BTreeMap::new(),
+        assertions: std::collections::BTreeMap::new(),
+        structured_assertions: std::collections::BTreeMap::new(),
         catalog_status: CatalogValidationStatus::FatalConflict,
         identity_conflicts: vec![format!("report merge rejected: {conflict:?}")],
         collision_safe_evidence: false,
@@ -106,7 +105,7 @@ fn validate_report_set(
     if reports.is_empty() || reports.len() > MAX_ORACLE_REPORTS {
         return Err(ReportMergeConflict::CardinalityOverflow);
     }
-    let mut vm_instances = BTreeSet::new();
+    let mut vm_instances = std::collections::BTreeSet::new();
     let mut assertion_count = 0_usize;
     let mut event_count = 0_usize;
     for (vm_instance, report) in reports {
@@ -172,7 +171,7 @@ fn checked_sum(left: u64, right: u64) -> Result<u64, ReportMergeConflict> {
 }
 
 fn verdict_counts(
-    assertions: &BTreeMap<AssertionFingerprint, AssertionRecord>,
+    assertions: &std::collections::BTreeMap<AssertionFingerprint, AssertionRecord>,
 ) -> (usize, usize, usize) {
     assertions.values().fold((0, 0, 0), |mut counts, record| {
         match record.verdict() {

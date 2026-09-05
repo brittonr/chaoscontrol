@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 use serde_json::{json, Value};
 
 use crate::replay_readiness_core::summarize_receipt;
@@ -14,12 +12,12 @@ const MANIFEST_PATH: &str = "dogfood-results/accepted-workload-proofs.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TriageReceiptSource<'a> {
-    Path(&'a Path),
+    Path(&'a std::path::Path),
     Sample,
 }
 
 pub fn render_operator_triage_runbook_path(
-    root: impl AsRef<Path>,
+    root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
 ) -> EvidenceResult<String> {
     let root = root.as_ref();
@@ -31,9 +29,9 @@ pub fn render_operator_triage_runbook_path(
 }
 
 pub fn write_operator_triage_runbook_path(
-    root: impl AsRef<Path>,
+    root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
-    output: impl AsRef<Path>,
+    output: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let rendered = render_operator_triage_runbook_path(root, receipt_source)?;
     let output = output.as_ref();
@@ -45,9 +43,9 @@ pub fn write_operator_triage_runbook_path(
 }
 
 pub fn check_operator_triage_runbook_path(
-    root: impl AsRef<Path>,
+    root: impl AsRef<std::path::Path>,
     receipt_source: TriageReceiptSource<'_>,
-    expected_path: impl AsRef<Path>,
+    expected_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let expected = render_operator_triage_runbook_path(root, receipt_source)?;
     let expected_path = expected_path.as_ref();
@@ -63,7 +61,10 @@ pub fn check_operator_triage_runbook_path(
     )
 }
 
-pub fn render_operator_triage_runbook(root: &Path, receipt: &Value) -> EvidenceResult<String> {
+pub fn render_operator_triage_runbook(
+    root: &std::path::Path,
+    receipt: &Value,
+) -> EvidenceResult<String> {
     let summary_line = summarize_receipt(receipt)?;
     let selected_workload = selected_workload(receipt)?;
     let manifest = AcceptedWorkloadProofs::from_path(root.join(MANIFEST_PATH)).map_err(|err| {
@@ -114,7 +115,10 @@ pub fn render_operator_triage_runbook(root: &Path, receipt: &Value) -> EvidenceR
     Ok(output)
 }
 
-fn render_proof_section(root: &Path, proof: &AcceptedWorkloadProof) -> EvidenceResult<String> {
+fn render_proof_section(
+    root: &std::path::Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<String> {
     let evidence_dir = root.join(&proof.evidence_dir);
     let summary: AcceptedVerdictSummary = read_json(&evidence_dir.join(&proof.summary))?;
     let bug: BugRecord = read_json(&evidence_dir.join(&proof.bug))?;
@@ -256,18 +260,20 @@ fn contains_raw_log_reference(text: &str) -> bool {
     .any(|needle| text.contains(needle))
 }
 
-fn read_json_value(path: &Path) -> EvidenceResult<Value> {
+fn read_json_value(path: &std::path::Path) -> EvidenceResult<Value> {
     let input = std::fs::read_to_string(path)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> EvidenceResult<T> {
+fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> EvidenceResult<T> {
     let input = std::fs::read_to_string(path)
         .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&input).map_err(Into::into)
 }
 
-pub fn committed_operator_triage_runbook_path(root: impl AsRef<Path>) -> PathBuf {
+pub fn committed_operator_triage_runbook_path(
+    root: impl AsRef<std::path::Path>,
+) -> std::path::PathBuf {
     root.as_ref().join("docs/operator-triage-runbook.md")
 }

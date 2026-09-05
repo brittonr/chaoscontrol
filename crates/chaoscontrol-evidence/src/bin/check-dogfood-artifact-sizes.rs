@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{check_dogfood_artifact_sizes, DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES};
 
 fn usage() -> &'static str {
@@ -7,7 +5,7 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut root = PathBuf::from("dogfood-results");
+    let mut root = std::path::PathBuf::from("dogfood-results");
     let mut max_bytes = DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -17,7 +15,7 @@ fn main() {
                 return;
             }
             "--root" => {
-                root = PathBuf::from(args.next().unwrap_or_else(|| {
+                root = std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--root requires a path\n{}", usage());
                     std::process::exit(2);
                 }));

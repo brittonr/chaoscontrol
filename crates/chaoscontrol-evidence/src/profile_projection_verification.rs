@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::profile_projection::{
     blake3_identity, bound_file, canonical_pretty_json, ProjectionReceipt, EVALUATOR_IDENTITY,
     MAX_PROFILE_BYTES, NON_CLAIMS, RECEIPT_SCHEMA,
@@ -8,9 +6,9 @@ use crate::profile_projection_spec::{find_spec, validate_receipt_against_spec, P
 use crate::{EvidenceError, EvidenceResult};
 
 pub(crate) fn verify_profile_projection(
-    root: &Path,
-    projection: &Path,
-    receipt: &Path,
+    root: &std::path::Path,
+    projection: &std::path::Path,
+    receipt: &std::path::Path,
     expected_profile_id: &str,
 ) -> EvidenceResult<String> {
     let spec = find_spec(expected_profile_id)?;
@@ -18,9 +16,9 @@ pub(crate) fn verify_profile_projection(
 }
 
 pub(crate) fn verify_profile_projection_for_spec(
-    root: &Path,
-    projection: &Path,
-    receipt: &Path,
+    root: &std::path::Path,
+    projection: &std::path::Path,
+    receipt: &std::path::Path,
     spec: &ProjectionSpec,
 ) -> EvidenceResult<String> {
     validate_requested_paths(projection, receipt, spec)?;
@@ -53,11 +51,13 @@ pub(crate) fn verify_profile_projection_for_spec(
 }
 
 fn validate_requested_paths(
-    projection: &Path,
-    receipt: &Path,
+    projection: &std::path::Path,
+    receipt: &std::path::Path,
     spec: &ProjectionSpec,
 ) -> EvidenceResult<()> {
-    if projection != Path::new(spec.projection.path) || receipt != Path::new(spec.receipt) {
+    if projection != std::path::Path::new(spec.projection.path)
+        || receipt != std::path::Path::new(spec.receipt)
+    {
         return Err(EvidenceError::new(
             "profile projection or receipt path differs from the trusted specification",
         ));
@@ -87,7 +87,7 @@ fn validate_receipt_header(
 }
 
 fn validate_bound_source(
-    root: &Path,
+    root: &std::path::Path,
     expected: &crate::profile_projection::BoundArtifact,
 ) -> EvidenceResult<()> {
     let actual = bound_file(root, &expected.path)?;
@@ -100,7 +100,7 @@ fn validate_bound_source(
     Ok(())
 }
 
-fn rooted(root: &Path, path: &Path) -> std::path::PathBuf {
+fn rooted(root: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
     if path.is_absolute() {
         return path.to_path_buf();
     }

@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 use chaoscontrol_evidence::architecture_boundaries::{
     validate_core_source, validate_unsafe_owner, BoundaryViolation,
 };
@@ -13,19 +11,19 @@ const CORE_PATHS: &[&str] = &[
 const VMM_SOURCE_PATH: &str = "crates/chaoscontrol-vmm/src";
 const UNSAFE_OWNER_FILE: &str = "unsafe_owner.rs";
 
-fn repository_root() -> PathBuf {
+fn repository_root() -> std::path::PathBuf {
     std::env::args_os()
         .nth(1)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
-fn load_source(root: &Path, relative_path: &str) -> Result<String, String> {
+fn load_source(root: &std::path::Path, relative_path: &str) -> Result<String, String> {
     let path = root.join(relative_path);
     std::fs::read_to_string(&path).map_err(|error| format!("read {}: {error}", path.display()))
 }
 
-fn collect_violations(root: &Path) -> Result<Vec<BoundaryViolation>, String> {
+fn collect_violations(root: &std::path::Path) -> Result<Vec<BoundaryViolation>, String> {
     let mut violations = Vec::new();
     for relative_path in CORE_PATHS {
         let source = load_source(root, relative_path)?;

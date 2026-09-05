@@ -1,11 +1,10 @@
 //! Exact receipt projection and bounded status.
 
 use super::*;
-use std::collections::BTreeSet;
 const RECEIPT_DOMAIN: &[u8] = b"chaoscontrol.protocol-observation.receipt.v1\0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProtocolObservationClaim {
+pub enum Claim {
     BoundedObservation,
     ProtocolSemantics,
     UniversalCorrectness,
@@ -14,8 +13,8 @@ pub enum ProtocolObservationClaim {
     ReleaseEligibility,
 }
 
-pub fn validate_claim(claim: ProtocolObservationClaim) -> Result<(), ProtocolObservationError> {
-    if claim == ProtocolObservationClaim::BoundedObservation {
+pub fn validate_claim(claim: Claim) -> Result<(), ProtocolObservationError> {
+    if claim == Claim::BoundedObservation {
         Ok(())
     } else {
         Err(ProtocolObservationError::ClaimOverreach)
@@ -58,7 +57,7 @@ pub fn build_receipt(
             .source_records
             .iter()
             .map(|record| record.scheduler_position.schedule_state_ref.clone())
-            .collect::<BTreeSet<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect(),
         fault_refs: sorted_unique(context.fault_refs),
@@ -143,7 +142,7 @@ pub fn build_status(
         .records
         .iter()
         .map(|record| record.collected.draft.participant_ref.as_str())
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     let missing_participants = profile
         .profile
         .required_participants
@@ -183,7 +182,7 @@ pub fn build_status(
             .issues
             .iter()
             .map(|issue| issue.kind)
-            .collect::<BTreeSet<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect(),
     })
@@ -200,7 +199,7 @@ fn count_issue(cohort: &CohortResult, kind: CohortIssueKind) -> usize {
 fn sorted_unique(values: Vec<String>) -> Vec<String> {
     values
         .into_iter()
-        .collect::<BTreeSet<_>>()
+        .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect()
 }

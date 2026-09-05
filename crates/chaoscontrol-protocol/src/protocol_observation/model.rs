@@ -1,5 +1,3 @@
-use super::oracle::{MarkerSnapshotBinding, ProtocolOracleResult, ProtocolVerdict};
-
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.protocol-observation-profile.v1";
 pub const DRAFT_SCHEMA: &str = "chaoscontrol.protocol-observation-draft.v1";
 pub const COLLECTED_SCHEMA: &str = "chaoscontrol.protocol-observation-collected.v1";
@@ -61,7 +59,7 @@ pub enum DrainState {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolObservationBounds {
+pub struct Bounds {
     pub max_records_per_producer: u32,
     pub max_projection_bytes: u32,
     pub max_total_projection_bytes: u64,
@@ -92,7 +90,7 @@ pub struct OracleAdapterProfile {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolObservationProfile {
+pub struct Profile {
     pub schema: String,
     pub execution_ref: String,
     pub protocol_ref: String,
@@ -105,7 +103,7 @@ pub struct ProtocolObservationProfile {
     pub oracle: OracleAdapterProfile,
     pub novelty_selectors: Vec<NoveltySelector>,
     pub marker_policy: MarkerPolicy,
-    pub bounds: ProtocolObservationBounds,
+    pub bounds: Bounds,
     pub non_claims: Vec<String>,
 }
 
@@ -113,12 +111,12 @@ pub struct ProtocolObservationProfile {
 pub struct AdmittedProfile {
     pub profile_ref: String,
     pub bounds_ref: String,
-    pub profile: ProtocolObservationProfile,
+    pub profile: Profile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ObservationDraft {
+pub struct Draft {
     pub schema: String,
     pub profile_ref: String,
     pub protocol_ref: String,
@@ -155,17 +153,17 @@ pub struct SchedulerPosition {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CollectedObservation {
+pub struct Collected {
     pub schema: String,
-    pub draft: ObservationDraft,
+    pub draft: Draft,
     pub scheduler_position: SchedulerPosition,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AdmittedObservation {
+pub struct Admitted {
     pub record_identity: String,
-    pub collected: CollectedObservation,
+    pub collected: Collected,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -208,28 +206,28 @@ pub struct CohortResult {
     pub cohort_identity: String,
     pub profile_ref: String,
     pub projection_support: ProjectionSupport,
-    pub source_records: Vec<CollectedObservation>,
+    pub source_records: Vec<Collected>,
     pub host_loss_count: u64,
     pub cohort_ref: String,
     pub logical_boundary_ref: String,
     pub classification: CohortClassification,
-    pub records: Vec<AdmittedObservation>,
+    pub records: Vec<Admitted>,
     pub issues: Vec<CohortIssue>,
     pub novelty_identities: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolEvidenceContext {
+pub struct EvidenceContext {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub marker_binding: Option<MarkerSnapshotBinding>,
+    pub marker_binding: Option<super::oracle::Binding>,
     pub fault_refs: Vec<String>,
     pub replay_refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolObservationReceipt {
+pub struct Receipt {
     pub schema: String,
     pub receipt_ref: String,
     pub profile_ref: String,
@@ -243,10 +241,10 @@ pub struct ProtocolObservationReceipt {
     pub logical_boundary_ref: String,
     pub classification: CohortClassification,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub oracle_result: Option<ProtocolOracleResult>,
+    pub oracle_result: Option<super::oracle::Outcome>,
     pub novelty_identities: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub marker_binding: Option<MarkerSnapshotBinding>,
+    pub marker_binding: Option<super::oracle::Binding>,
     pub scheduler_state_refs: Vec<String>,
     pub fault_refs: Vec<String>,
     pub replay_refs: Vec<String>,
@@ -263,7 +261,7 @@ pub enum MarkerReachability {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolObservationStatus {
+pub struct Status {
     pub classification: CohortClassification,
     pub required_participants: usize,
     pub observed_participants: usize,
@@ -272,14 +270,14 @@ pub struct ProtocolObservationStatus {
     pub loss_count: usize,
     pub conflict_count: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub oracle_verdict: Option<ProtocolVerdict>,
+    pub oracle_verdict: Option<super::oracle::Verdict>,
     pub novelty_count: usize,
     pub marker_reachability: MarkerReachability,
     pub blocker_kinds: Vec<CohortIssueKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProtocolObservationError {
+pub enum Error {
     BoundExceeded(&'static str),
     CardinalityOverflow,
     ClaimOverreach,

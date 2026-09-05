@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fmt;
 
 pub const MAX_FINDABILITY_SUBTREES: usize = 16_384;
@@ -99,7 +98,7 @@ pub fn assemble_observations(
             "subtree count exceeds the supported bound",
         ));
     }
-    let mut subtree_ids = BTreeSet::new();
+    let mut subtree_ids = std::collections::BTreeSet::new();
     let mut generation = None;
     let mut assembled = Vec::with_capacity(subtrees.len());
     for subtree in subtrees {
@@ -164,7 +163,7 @@ pub(crate) fn validate_assembled(
             "assembled observations are empty or exceed the supported bound",
         ));
     }
-    let mut subtrees = BTreeSet::new();
+    let mut subtrees = std::collections::BTreeSet::new();
     let mut generation = None;
     let mut previous = None;
     for observation in observations {

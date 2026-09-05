@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     execute_replay_readiness_fleet_scheduler_receipt_path,
     execute_replay_readiness_hosted_shared_state_receipt_path,
@@ -34,24 +32,24 @@ fn usage() -> &'static str {
 
 #[derive(Default)]
 struct Args {
-    output: Option<PathBuf>,
-    ci_plan_output: Option<PathBuf>,
-    command_plan_output: Option<PathBuf>,
-    replay_readiness: Option<PathBuf>,
-    executable: Option<PathBuf>,
+    output: Option<std::path::PathBuf>,
+    ci_plan_output: Option<std::path::PathBuf>,
+    command_plan_output: Option<std::path::PathBuf>,
+    replay_readiness: Option<std::path::PathBuf>,
+    executable: Option<std::path::PathBuf>,
     arguments: Vec<String>,
-    check: Option<PathBuf>,
-    run_plan: Option<PathBuf>,
-    run_fleet_plan: Option<PathBuf>,
-    check_execution: Option<PathBuf>,
-    check_fleet: Option<PathBuf>,
-    run_multi_hypervisor_plan: Option<PathBuf>,
-    check_multi_hypervisor: Option<PathBuf>,
-    render_multi_hypervisor_dashboard: Option<PathBuf>,
-    run_hosted_shared_state_plan: Option<PathBuf>,
-    check_hosted_shared_state: Option<PathBuf>,
-    run_networked_hosted_plan: Option<PathBuf>,
-    check_networked_hosted: Option<PathBuf>,
+    check: Option<std::path::PathBuf>,
+    run_plan: Option<std::path::PathBuf>,
+    run_fleet_plan: Option<std::path::PathBuf>,
+    check_execution: Option<std::path::PathBuf>,
+    check_fleet: Option<std::path::PathBuf>,
+    run_multi_hypervisor_plan: Option<std::path::PathBuf>,
+    check_multi_hypervisor: Option<std::path::PathBuf>,
+    render_multi_hypervisor_dashboard: Option<std::path::PathBuf>,
+    run_hosted_shared_state_plan: Option<std::path::PathBuf>,
+    check_hosted_shared_state: Option<std::path::PathBuf>,
+    run_networked_hosted_plan: Option<std::path::PathBuf>,
+    check_networked_hosted: Option<std::path::PathBuf>,
     sample: bool,
     sample_fleet: bool,
     sample_fleet_plan: bool,
@@ -380,13 +378,13 @@ fn parse_args() -> EvidenceResult<Args> {
 fn next_path(
     args: &mut impl Iterator<Item = std::ffi::OsString>,
     flag: &str,
-) -> EvidenceResult<PathBuf> {
+) -> EvidenceResult<std::path::PathBuf> {
     args.next()
-        .map(PathBuf::from)
+        .map(std::path::PathBuf::from)
         .ok_or_else(|| chaoscontrol_evidence::EvidenceError::new(format!("{flag} requires a path")))
 }
 
-fn require_output(output: Option<PathBuf>) -> EvidenceResult<PathBuf> {
+fn require_output(output: Option<std::path::PathBuf>) -> EvidenceResult<std::path::PathBuf> {
     output.ok_or_else(|| chaoscontrol_evidence::EvidenceError::new("--output requires a path"))
 }
 

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::write_replay_readiness_dashboard_path;
 
 fn usage() -> &'static str {
@@ -7,8 +5,8 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut receipt: Option<PathBuf> = None;
-    let mut output: Option<PathBuf> = None;
+    let mut receipt: Option<std::path::PathBuf> = None;
+    let mut output: Option<std::path::PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -17,12 +15,12 @@ fn main() {
                 return;
             }
             "--output" | "-o" => {
-                output = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                output = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--output requires a path\n{}", usage());
                     std::process::exit(2);
                 })));
             }
-            _ if receipt.is_none() => receipt = Some(PathBuf::from(arg)),
+            _ if receipt.is_none() => receipt = Some(std::path::PathBuf::from(arg)),
             other => {
                 eprintln!("unexpected argument: {other}\n{}", usage());
                 std::process::exit(2);

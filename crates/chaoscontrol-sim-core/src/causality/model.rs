@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fmt;
 
 pub const MAX_INTERLEAVING_STEPS: usize = 4_096;
@@ -73,8 +72,8 @@ pub fn validate_steps(steps: &[InterleavingStep]) -> Result<(), CausalityError> 
             "interleaving steps are empty or exceed the supported bound",
         ));
     }
-    let mut ids = BTreeSet::new();
-    let mut sequences = BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
+    let mut sequences = std::collections::BTreeSet::new();
     let mut prior_sequence = None;
     for step in steps {
         validate_identifier("step_id", &step.step_id)?;
@@ -105,7 +104,7 @@ pub fn validate_candidates(candidates: &[CauseCandidate]) -> Result<(), Causalit
             "attribution candidates are empty or exceed the supported bound",
         ));
     }
-    let mut ids = BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
     let mut previous = None;
     for candidate in candidates {
         validate_identifier("candidate_id", &candidate.candidate_id)?;

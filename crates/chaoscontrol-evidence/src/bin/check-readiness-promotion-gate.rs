@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::{
@@ -11,8 +11,16 @@ fn usage() -> &'static str {
     "usage: check-readiness-promotion-gate [--root DIR] [--manifest PATH] [--report PATH] [--selftest]"
 }
 
-fn parse_args() -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>, bool), String> {
-    let mut root = PathBuf::from(".");
+fn parse_args() -> Result<
+    (
+        std::path::PathBuf,
+        Option<std::path::PathBuf>,
+        Option<std::path::PathBuf>,
+        bool,
+    ),
+    String,
+> {
+    let mut root = std::path::PathBuf::from(".");
     let mut manifest = None;
     let mut report = None;
     let mut selftest = false;
@@ -23,19 +31,19 @@ fn parse_args() -> Result<(PathBuf, Option<PathBuf>, Option<PathBuf>, bool), Str
                 let value = args
                     .next()
                     .ok_or_else(|| "--root requires a path".to_string())?;
-                root = PathBuf::from(value);
+                root = std::path::PathBuf::from(value);
             }
             "--manifest" => {
                 let value = args
                     .next()
                     .ok_or_else(|| "--manifest requires a path".to_string())?;
-                manifest = Some(PathBuf::from(value));
+                manifest = Some(std::path::PathBuf::from(value));
             }
             "--report" => {
                 let value = args
                     .next()
                     .ok_or_else(|| "--report requires a path".to_string())?;
-                report = Some(PathBuf::from(value));
+                report = Some(std::path::PathBuf::from(value));
             }
             "--selftest" => selftest = true,
             "-h" | "--help" => return Err(usage().to_string()),

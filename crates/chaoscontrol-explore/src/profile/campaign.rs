@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use super::{valid_identifier, ArtifactReference, RunProfile};
 use crate::campaign::CampaignConfig;
 use chaoscontrol_fault::scenario::ScenarioConfig;
@@ -151,7 +149,11 @@ impl CampaignProfile {
         {
             return Err("campaign profile declared bounds are invalid".to_string());
         }
-        let unique = self.seeds.iter().copied().collect::<BTreeSet<_>>();
+        let unique = self
+            .seeds
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
         if self.seeds.is_empty()
             || self.seeds.len() > MAX_SEEDS
             || self.seeds.len() > self.bounds.maximum_seeds

@@ -1,7 +1,3 @@
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-
 use chaoscontrol_snapshot_descriptor as snapshot_core;
 use serde::ser::Serialize;
 use serde_json::Value;
@@ -59,7 +55,7 @@ struct FreshnessFile {
 
 // r[impl chaoscontrol.snapshot_descriptor.projection]
 pub fn check_snapshot_descriptor_contracts(
-    root: impl AsRef<Path>,
+    root: impl AsRef<std::path::Path>,
     write: bool,
 ) -> EvidenceResult<()> {
     let root = root.as_ref();
@@ -94,7 +90,7 @@ pub fn check_snapshot_descriptor_contracts(
     Ok(())
 }
 
-fn validate_schema_snapshot(path: &Path) -> EvidenceResult<()> {
+fn validate_schema_snapshot(path: &std::path::Path) -> EvidenceResult<()> {
     let schema: Value = serde_json::from_slice(&std::fs::read(path)?)?;
     if schema.get("$id").and_then(Value::as_str) != Some(snapshot_core::DESCRIPTOR_SCHEMA) {
         return Err(EvidenceError::new("snapshot descriptor schema ID is stale"));
@@ -106,8 +102,10 @@ fn validate_schema_snapshot(path: &Path) -> EvidenceResult<()> {
     let property_names = properties
         .keys()
         .map(String::as_str)
-        .collect::<BTreeSet<_>>();
-    let expected_names = DESCRIPTOR_FIELDS.into_iter().collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_names = DESCRIPTOR_FIELDS
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
     if property_names != expected_names {
         return Err(EvidenceError::new(
             "snapshot descriptor schema properties differ from the Rust owner",
@@ -120,7 +118,7 @@ fn validate_schema_snapshot(path: &Path) -> EvidenceResult<()> {
     let required_names = required
         .iter()
         .filter_map(Value::as_str)
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     if required_names != expected_names {
         return Err(EvidenceError::new(
             "snapshot descriptor schema required fields differ from the Rust owner",
@@ -130,12 +128,12 @@ fn validate_schema_snapshot(path: &Path) -> EvidenceResult<()> {
 }
 
 fn validate_nickel_contract(
-    root: &Path,
-    contract_root: &Path,
+    root: &std::path::Path,
+    contract_root: &std::path::Path,
     fixture: &snapshot_core::SnapshotDescriptor,
 ) -> EvidenceResult<()> {
     let nickel = nickel_command()?;
-    let output = Command::new(&nickel[0])
+    let output = std::process::Command::new(&nickel[0])
         .args(&nickel[1..])
         .args(["export", "--format", "json"])
         .arg(contract_root.join(EXAMPLE_FILE))
@@ -154,13 +152,13 @@ fn validate_nickel_contract(
             "snapshot descriptor Nickel projection differs from the Rust fixture",
         ));
     }
-    let invalid_status = Command::new(&nickel[0])
+    let invalid_status = std::process::Command::new(&nickel[0])
         .args(&nickel[1..])
         .arg("export")
         .arg(contract_root.join(INVALID_SCHEMA_FILE))
         .current_dir(root)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map_err(|error| {
             EvidenceError::new(format!("cannot run negative Nickel fixture: {error}"))
@@ -173,7 +171,7 @@ fn validate_nickel_contract(
     Ok(())
 }
 
-fn build_freshness(root: &Path) -> EvidenceResult<FreshnessManifest> {
+fn build_freshness(root: &std::path::Path) -> EvidenceResult<FreshnessManifest> {
     let mut files = FRESHNESS_INPUTS
         .iter()
         .map(|relative| {
@@ -192,10 +190,10 @@ fn build_freshness(root: &Path) -> EvidenceResult<FreshnessManifest> {
 }
 
 fn nickel_command() -> EvidenceResult<Vec<String>> {
-    let status = Command::new("nickel")
+    let status = std::process::Command::new("nickel")
         .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status();
     if status.is_ok_and(|value| value.success()) {
         return Ok(vec!["nickel".to_string()]);
@@ -205,7 +203,7 @@ fn nickel_command() -> EvidenceResult<Vec<String>> {
     ))
 }
 
-fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> EvidenceResult<()> {
+fn write_json(path: impl AsRef<std::path::Path>, value: &impl Serialize) -> EvidenceResult<()> {
     let path = path.as_ref();
     let parent = path
         .parent()
@@ -217,7 +215,7 @@ fn write_json(path: impl AsRef<Path>, value: &impl Serialize) -> EvidenceResult<
     Ok(())
 }
 
-pub fn contract_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
+pub fn contract_paths(root: impl AsRef<std::path::Path>) -> Vec<std::path::PathBuf> {
     let root = root.as_ref().join(CONTRACT_DIR);
     [
         CONTRACT_FILE,

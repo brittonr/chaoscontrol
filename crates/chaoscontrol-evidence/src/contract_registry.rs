@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use serde_json::Value;
 
 use crate::{EvidenceError, EvidenceResult};
@@ -49,9 +47,11 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
     let empty = Vec::new();
     let families = families.unwrap_or(&empty);
 
-    let allowed = ALLOWED_OWNERSHIP.into_iter().collect::<BTreeSet<_>>();
-    let mut ids = BTreeSet::new();
-    let mut ownerships = BTreeSet::new();
+    let allowed = ALLOWED_OWNERSHIP
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut ids = std::collections::BTreeSet::new();
+    let mut ownerships = std::collections::BTreeSet::new();
 
     for (index, entry) in families.iter().enumerate() {
         let prefix = format!("families[{index}]");
@@ -142,7 +142,7 @@ pub fn validate_contract_registry(registry: &Value) -> EvidenceResult<String> {
     let required = REQUIRED_CONTRACT_IDS
         .into_iter()
         .map(ToString::to_string)
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     let missing = required.difference(&ids).cloned().collect::<Vec<_>>();
     require(
         missing.is_empty(),

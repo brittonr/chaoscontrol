@@ -1,13 +1,11 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::check_product_scope;
 
 fn usage() -> &'static str {
     "usage: check-product-scope [--root PATH] [--write]"
 }
 
-fn parse_args() -> Result<(PathBuf, bool), String> {
-    let mut root = PathBuf::from(".");
+fn parse_args() -> Result<(std::path::PathBuf, bool), String> {
+    let mut root = std::path::PathBuf::from(".");
     let mut write = false;
     let mut arguments = std::env::args_os().skip(1);
     while let Some(argument) = arguments.next() {
@@ -17,7 +15,7 @@ fn parse_args() -> Result<(PathBuf, bool), String> {
                 std::process::exit(0);
             }
             "--root" => {
-                root = PathBuf::from(
+                root = std::path::PathBuf::from(
                     arguments
                         .next()
                         .ok_or_else(|| format!("--root requires a path\n{}", usage()))?,

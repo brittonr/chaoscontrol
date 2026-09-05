@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_assertion_readiness_status, render_assertion_readiness_status,
     write_assertion_readiness_status, ASSERTION_READINESS_STATUS_DOC,
@@ -16,9 +14,9 @@ fn usage() -> &'static str {
     "usage: generate-assertion-readiness-report [--check|--write] [ROOT]\n\nGenerate or check docs/assertion-readiness-status.md from accepted workload proofs and assertions."
 }
 
-fn parse_args() -> Result<(Mode, PathBuf), String> {
+fn parse_args() -> Result<(Mode, std::path::PathBuf), String> {
     let mut mode = Mode::Print;
-    let mut root: Option<PathBuf> = None;
+    let mut root: Option<std::path::PathBuf> = None;
     for arg in std::env::args_os().skip(1) {
         match arg.to_string_lossy().as_ref() {
             "-h" | "--help" => {
@@ -27,11 +25,11 @@ fn parse_args() -> Result<(Mode, PathBuf), String> {
             }
             "--check" => mode = Mode::Check,
             "--write" => mode = Mode::Write,
-            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ if root.is_none() => root = Some(std::path::PathBuf::from(arg)),
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
-    Ok((mode, root.unwrap_or_else(|| PathBuf::from("."))))
+    Ok((mode, root.unwrap_or_else(|| std::path::PathBuf::from("."))))
 }
 
 fn main() {

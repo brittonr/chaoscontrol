@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_operator_triage_runbook_path, render_operator_triage_runbook_path,
     write_operator_triage_runbook_path, TriageReceiptSource,
@@ -10,11 +8,11 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut receipt: Option<PathBuf> = None;
+    let mut receipt: Option<std::path::PathBuf> = None;
     let mut sample_receipt = false;
-    let mut root = PathBuf::from(".");
-    let mut output: Option<PathBuf> = None;
-    let mut check: Option<PathBuf> = None;
+    let mut root = std::path::PathBuf::from(".");
+    let mut output: Option<std::path::PathBuf> = None;
+    let mut check: Option<std::path::PathBuf> = None;
 
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -24,25 +22,25 @@ fn main() {
                 return;
             }
             "--root" => {
-                root = PathBuf::from(args.next().unwrap_or_else(|| {
+                root = std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--root requires a path\n{}", usage());
                     std::process::exit(2);
                 }));
             }
             "--output" | "-o" => {
-                output = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                output = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--output requires a path\n{}", usage());
                     std::process::exit(2);
                 })));
             }
             "--check" => {
-                check = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                check = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--check requires a path\n{}", usage());
                     std::process::exit(2);
                 })));
             }
             "--sample-receipt" => sample_receipt = true,
-            _ if receipt.is_none() => receipt = Some(PathBuf::from(arg)),
+            _ if receipt.is_none() => receipt = Some(std::path::PathBuf::from(arg)),
             other => {
                 eprintln!("unexpected argument: {other}\n{}", usage());
                 std::process::exit(2);

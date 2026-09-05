@@ -6,9 +6,9 @@
 // r[impl chaoscontrol.typed_operator_commands.evidence]
 
 use std::ffi::OsString;
-use std::fs::File;
+
 use std::io::Read;
-use std::path::{Path, PathBuf};
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bounded_exec::{run, CommandSpec, EnvironmentMode, Input, RunRequest, TerminationScope};
@@ -33,7 +33,7 @@ pub struct CapturedPlanCommand {
 /// Execute one admitted command through the pinned bounded process mechanism.
 pub(crate) fn run_plan_command(
     plan: &CommandPlan,
-    execution_root: &Path,
+    execution_root: &std::path::Path,
 ) -> EvidenceResult<CommandObservation> {
     Ok(run_plan_command_captured(plan, execution_root)?.observation)
 }
@@ -41,9 +41,9 @@ pub(crate) fn run_plan_command(
 /// Execute one admitted command and retain its bounded output for a Rust shell.
 pub fn run_plan_command_captured(
     plan: &CommandPlan,
-    execution_root: &Path,
+    execution_root: &std::path::Path,
 ) -> EvidenceResult<CapturedPlanCommand> {
-    let executable = PathBuf::from(&plan.executable.path);
+    let executable = std::path::PathBuf::from(&plan.executable.path);
     let executable_blake3 = hash_file_bounded(&executable, plan.executable.maximum_bytes)?;
     ensure(
         executable_blake3 == plan.executable.blake3,
@@ -126,7 +126,7 @@ pub fn run_plan_command_captured(
 }
 
 pub fn observe_executable_reference(
-    path: &Path,
+    path: &std::path::Path,
     maximum_bytes: u64,
 ) -> EvidenceResult<ExecutableRef> {
     let canonical = std::fs::canonicalize(path).map_err(|error| {
@@ -152,8 +152,8 @@ fn stream_observation(output: &bounded_exec::CapturedOutput) -> StreamObservatio
     }
 }
 
-fn hash_file_bounded(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
-    let mut file = File::open(path).map_err(|error| {
+fn hash_file_bounded(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResult<String> {
+    let mut file = std::fs::File::open(path).map_err(|error| {
         EvidenceError::new(format!(
             "typed command executable open {}: {error}",
             path.display()

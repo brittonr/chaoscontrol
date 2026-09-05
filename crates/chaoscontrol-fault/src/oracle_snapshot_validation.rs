@@ -6,7 +6,6 @@ use chaoscontrol_protocol::admission::{
     MAX_ASSERTION_CATALOG_ENTRIES,
 };
 use chaoscontrol_protocol::identity::AssertionFingerprint;
-use std::collections::{BTreeMap, BTreeSet};
 
 pub fn validate_oracle_snapshot(snapshot: &OracleSnapshot) -> Result<(), OracleValidationError> {
     crate::oracle_event_validation::validate_bounds(
@@ -215,7 +214,7 @@ fn validate_immediate_failure(snapshot: &OracleSnapshot) -> Result<(), OracleVal
 
 fn validate_catalog_record_equality(
     catalog: &AcceptedCatalog,
-    records: &BTreeMap<AssertionFingerprint, AssertionRecord>,
+    records: &std::collections::BTreeMap<AssertionFingerprint, AssertionRecord>,
 ) -> Result<(), OracleValidationError> {
     if catalog.assertions.len() != records.len() {
         return Err(OracleValidationError::Catalog);
@@ -230,7 +229,7 @@ fn validate_catalog_record_equality(
             || record.guest != admitted.descriptor.guest
             || record.category != admitted.descriptor.category
             || record.compatibility_id != admitted.descriptor.compatibility_id
-            || record.catalog_tokens != BTreeSet::from([catalog.token])
+            || record.catalog_tokens != std::collections::BTreeSet::from([catalog.token])
             || !record.vm_instances.is_empty()
         {
             return Err(OracleValidationError::Record);

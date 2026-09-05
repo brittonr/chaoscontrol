@@ -6,7 +6,6 @@ use chaoscontrol_protocol::identity::{
     AssertionFingerprint, AssertionKind, MAX_ASSERTION_CATEGORY_BYTES,
     MAX_ASSERTION_EVENT_DETAILS_BYTES, MAX_ASSERTION_GUEST_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
 };
-use std::collections::BTreeSet;
 
 pub(crate) fn validate_assertion_details(
     assertions: &[AssertionDetail],
@@ -33,7 +32,7 @@ pub(crate) fn validate_assertion_details(
 }
 
 fn validate_legacy(assertions: &[AssertionDetail]) -> Result<(), String> {
-    let mut ids = BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
     for detail in assertions {
         validate_common(detail)?;
         if !ids.insert(detail.id) {
@@ -59,7 +58,7 @@ pub(crate) fn validate_fatal_details(assertions: &[AssertionDetail]) -> Result<(
 fn validate_strict(assertions: &[AssertionDetail]) -> Result<(), String> {
     let mut builder = CatalogBuilder::begin(assertions.len())
         .map_err(|error| format!("invalid assertion catalog: {error:?}"))?;
-    let mut fingerprints = BTreeSet::new();
+    let mut fingerprints = std::collections::BTreeSet::new();
     let mut catalog_token: Option<AssertionFingerprint> = None;
     for detail in assertions {
         validate_common(detail)?;

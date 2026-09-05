@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -28,8 +28,8 @@ fn run(args: Vec<String>) -> Result<String, String> {
             "usage: render-vm-determinism-matrix-summary RECEIPT OUTPUT",
         ));
     }
-    let receipt_path = PathBuf::from(&args[0]);
-    let output_path = PathBuf::from(&args[1]);
+    let receipt_path = std::path::PathBuf::from(&args[0]);
+    let output_path = std::path::PathBuf::from(&args[1]);
     let metadata = fs::metadata(&receipt_path)
         .map_err(|error| format!("{}: {error}", receipt_path.display()))?;
     validate_byte_length(

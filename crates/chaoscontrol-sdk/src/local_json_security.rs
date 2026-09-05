@@ -1,13 +1,14 @@
-use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
 
 const MAX_JSON_DEPTH: usize = 64;
 const MAX_JSONL_STRUCTURAL_TOKENS: usize = 4_096;
 const MAX_JSONL_STRING_BYTES: usize = 12 * 1024;
 
-pub(crate) fn read_bounded_regular_file(path: &Path, maximum: usize) -> io::Result<String> {
+pub(crate) fn read_bounded_regular_file(
+    path: &std::path::Path,
+    maximum: usize,
+) -> io::Result<String> {
     let mut file = open_regular_file(path)?;
     let metadata = file.metadata()?;
     if metadata.len() > maximum as u64 {
@@ -26,8 +27,8 @@ pub(crate) fn read_bounded_regular_file(path: &Path, maximum: usize) -> io::Resu
     String::from_utf8(bytes).map_err(|_| invalid_data("SDK JSONL is not UTF-8"))
 }
 
-fn open_regular_file(path: &Path) -> io::Result<File> {
-    let file = OpenOptions::new()
+fn open_regular_file(path: &std::path::Path) -> io::Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)?;

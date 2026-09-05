@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -40,9 +40,9 @@ fn run(args: Vec<String>) -> Result<String, (u8, String)> {
             String::from("usage: scaffold-rust-workload DEST [WORKLOAD_NAME]"),
         ));
     }
-    let destination = PathBuf::from(&args[0]);
+    let destination = std::path::PathBuf::from(&args[0]);
     let workload = args.get(1).map_or(DEFAULT_WORKLOAD, String::as_str);
-    let template = PathBuf::from(required_env("CHAOSCONTROL_SCAFFOLD_TEMPLATE")?);
+    let template = std::path::PathBuf::from(required_env("CHAOSCONTROL_SCAFFOLD_TEMPLATE")?);
     let source_root = required_env("CHAOSCONTROL_SOURCE_ROOT")?;
     if destination.exists() {
         return Err((
@@ -77,16 +77,24 @@ fn required_env(name: &str) -> Result<String, (u8, String)> {
         .ok_or_else(|| (USAGE_EXIT, format!("{name} is required")))
 }
 
-fn copy_template(source: &Path, destination: &Path) -> Result<(), String> {
+fn copy_template(source: &std::path::Path, destination: &std::path::Path) -> Result<(), String> {
     if !source.is_dir() {
         return Err(format!("template is not a directory: {}", source.display()));
     }
-    fs::create_dir_all(destination.parent().unwrap_or_else(|| Path::new(".")))
-        .map_err(|error| format!("{}: {error}", destination.display()))?;
+    fs::create_dir_all(
+        destination
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(".")),
+    )
+    .map_err(|error| format!("{}: {error}", destination.display()))?;
     copy_directory(source, destination, &mut 0)
 }
 
-fn copy_directory(source: &Path, destination: &Path, count: &mut usize) -> Result<(), String> {
+fn copy_directory(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+    count: &mut usize,
+) -> Result<(), String> {
     fs::create_dir(destination).map_err(|error| format!("{}: {error}", destination.display()))?;
     let entries = fs::read_dir(source).map_err(|error| format!("{}: {error}", source.display()))?;
     for entry in entries {
@@ -127,7 +135,10 @@ fn copy_directory(source: &Path, destination: &Path, count: &mut usize) -> Resul
     Ok(())
 }
 
-fn transform_files(root: &Path, replacements: &[(String, String)]) -> Result<(), String> {
+fn transform_files(
+    root: &std::path::Path,
+    replacements: &[(String, String)],
+) -> Result<(), String> {
     let mut pending = vec![root.to_path_buf()];
     let mut count = 0;
     while let Some(path) = pending.pop() {
@@ -163,7 +174,7 @@ fn transform_files(root: &Path, replacements: &[(String, String)]) -> Result<(),
     Ok(())
 }
 
-fn has_text_extension(path: &Path) -> bool {
+fn has_text_extension(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
         .is_some_and(|value| TEXT_EXTENSIONS.contains(&value))

@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::validate_snapshot_backed_replay_artifact;
@@ -9,14 +8,14 @@ fn usage() -> &'static str {
     "usage: check-replay-verdict-artifact --verdict PATH --bug PATH"
 }
 
-fn parse_args() -> Result<(PathBuf, PathBuf), String> {
+fn parse_args() -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let mut verdict = None;
     let mut bug = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
-            "--verdict" => verdict = args.next().map(PathBuf::from),
-            "--bug" => bug = args.next().map(PathBuf::from),
+            "--verdict" => verdict = args.next().map(std::path::PathBuf::from),
+            "--bug" => bug = args.next().map(std::path::PathBuf::from),
             "-h" | "--help" => return Err(usage().to_string()),
             other => return Err(format!("unexpected argument {other:?}\n{}", usage())),
         }

@@ -1,6 +1,6 @@
 use std::env;
-use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+
+use std::process::ExitCode;
 
 use chaoscontrol_evidence::validate_contract_registry_json;
 
@@ -20,7 +20,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let output = match Command::new(&command[0])
+    let output = match std::process::Command::new(&command[0])
         .args(&command[1..])
         .current_dir(&root)
         .output()
@@ -51,8 +51,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn parse_root() -> PathBuf {
-    let mut root = PathBuf::from(".");
+fn parse_root() -> std::path::PathBuf {
+    let mut root = std::path::PathBuf::from(".");
     let args = env::args_os().skip(1);
     for arg in args {
         match arg.to_string_lossy().as_ref() {
@@ -60,7 +60,7 @@ fn parse_root() -> PathBuf {
                 println!("{}", usage());
                 std::process::exit(0);
             }
-            other if root == Path::new(".") => root = PathBuf::from(other),
+            other if root == std::path::Path::new(".") => root = std::path::PathBuf::from(other),
             other => {
                 eprintln!("unexpected argument: {other}\n{}", usage());
                 std::process::exit(2);
@@ -71,7 +71,7 @@ fn parse_root() -> PathBuf {
 }
 
 // r[impl chaoscontrol.nickel_toolchain.cohort]
-fn nickel_export_command(registry: &Path) -> Option<Vec<String>> {
+fn nickel_export_command(registry: &std::path::Path) -> Option<Vec<String>> {
     which("nickel").map(|_| {
         vec![
             "nickel".to_string(),
@@ -81,7 +81,7 @@ fn nickel_export_command(registry: &Path) -> Option<Vec<String>> {
     })
 }
 
-fn which(program: &str) -> Option<PathBuf> {
+fn which(program: &str) -> Option<std::path::PathBuf> {
     let path = env::var_os("PATH")?;
     env::split_paths(&path)
         .map(|dir| dir.join(program))

@@ -3,11 +3,10 @@
 #[path = "cohort/accounting.rs"]
 mod accounting;
 use super::*;
-use std::collections::BTreeSet;
 
 pub const MAX_COLLECTED_RECORD_BYTES: usize = 16_384;
 
-pub fn assemble_cohort(
+pub fn assemble(
     profile: &AdmittedProfile,
     logical_boundary_ref: &str,
     collected: &[CollectedObservation],
@@ -84,7 +83,7 @@ pub fn assemble_with_losses(
     let novelty_identities = records
         .iter()
         .map(|record| record.collected.draft.novelty_identity.clone())
-        .collect::<BTreeSet<_>>()
+        .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
     let mut result = CohortResult {
@@ -104,7 +103,7 @@ pub fn assemble_with_losses(
     Ok(result)
 }
 
-pub fn validate_cohort(
+pub fn validate(
     profile: &AdmittedProfile,
     cohort: &CohortResult,
 ) -> Result<(), ProtocolObservationError> {

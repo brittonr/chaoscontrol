@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -27,8 +27,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             "usage: materialize-replay-readiness-receipt OUTPUT",
         ));
     }
-    let output = PathBuf::from(&args[0]);
-    let expectations = load_json(Path::new(&required("DOGFOOD_EXPECTATIONS")?))?;
+    let output = std::path::PathBuf::from(&args[0]);
+    let expectations = load_json(std::path::Path::new(&required("DOGFOOD_EXPECTATIONS")?))?;
     let dogfood_summary = optional("DOGFOOD_SUMMARY_JSON")
         .filter(|value| !value.is_empty())
         .map(|value| {
@@ -95,7 +95,7 @@ fn optional_nonempty(name: &str) -> Option<String> {
     optional(name).filter(|value| !value.is_empty())
 }
 
-fn load_json(path: &Path) -> Result<Value, String> {
+fn load_json(path: &std::path::Path) -> Result<Value, String> {
     let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
     validate_byte_length(
         &format!("{}: expectations", path.display()),
@@ -107,10 +107,10 @@ fn load_json(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
 }
 
-fn write_atomic(path: &Path, value: &Value) -> Result<(), String> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+fn write_atomic(path: &std::path::Path, value: &Value) -> Result<(), String> {
+    let parent = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
-    let temporary = PathBuf::from(format!("{}.tmp", path.display()));
+    let temporary = std::path::PathBuf::from(format!("{}.tmp", path.display()));
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("receipt encode failed: {error}"))?;
     bytes.push(b'\n');

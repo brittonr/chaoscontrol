@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_sdk_assertion_quality_fixtures, check_sdk_assertion_quality_path,
 };
@@ -9,7 +7,7 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut input: Option<PathBuf> = None;
+    let mut input: Option<std::path::PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -18,7 +16,7 @@ fn main() {
                 return;
             }
             "--input" => {
-                input = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                input = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--input requires a path\n{}", usage());
                     std::process::exit(2);
                 })));

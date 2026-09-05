@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use chaoscontrol_evidence::{
     check_consistency_history_path, read_consistency_history_path, read_consistency_report_path,
     semantic_history_selftest, validate_consistency_report,
@@ -15,7 +13,7 @@ fn main() {
 
 fn run() -> EvidenceResult<()> {
     let root = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
-    let root = Path::new(&root);
+    let root = std::path::Path::new(&root);
     let good_path = root.join("dogfood-results/consistency-checker-fixtures/register-good.json");
     let good_report_path =
         root.join("dogfood-results/consistency-checker-fixtures/register-good.report.json");

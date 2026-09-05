@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 
@@ -95,8 +93,14 @@ impl FaultDescriptor {
         }
         match self {
             Self::NetworkPartition { side_a, side_b, .. } => {
-                let a = side_a.iter().copied().collect::<BTreeSet<_>>();
-                let b = side_b.iter().copied().collect::<BTreeSet<_>>();
+                let a = side_a
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::BTreeSet<_>>();
+                let b = side_b
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::BTreeSet<_>>();
                 if side_a.is_empty()
                     || side_b.is_empty()
                     || a.len() != side_a.len()

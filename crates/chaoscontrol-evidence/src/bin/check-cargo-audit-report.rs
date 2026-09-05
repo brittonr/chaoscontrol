@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::audit::validate_report;
@@ -35,18 +35,20 @@ fn run(args: Vec<String>) -> Result<String, String> {
     validate_report(&report, &allowlist)
 }
 
-fn parse_args(args: &[String]) -> Result<(PathBuf, PathBuf), String> {
+fn parse_args(args: &[String]) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let mut report = None;
-    let mut allowlist = PathBuf::from(DEFAULT_ALLOWLIST);
+    let mut allowlist = std::path::PathBuf::from(DEFAULT_ALLOWLIST);
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--report" => {
-                report = Some(PathBuf::from(value_after(args, index, "--report")?));
+                report = Some(std::path::PathBuf::from(value_after(
+                    args, index, "--report",
+                )?));
                 index += 2;
             }
             "--allowlist" => {
-                allowlist = PathBuf::from(value_after(args, index, "--allowlist")?);
+                allowlist = std::path::PathBuf::from(value_after(args, index, "--allowlist")?);
                 index += 2;
             }
             _ => return Err(format!("{PROGRAM}: unknown argument: {}", args[index])),
@@ -63,7 +65,7 @@ fn value_after<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a s
         .ok_or_else(|| format!("{flag} requires a value"))
 }
 
-fn load_json(path: &Path) -> Result<Value, String> {
+fn load_json(path: &std::path::Path) -> Result<Value, String> {
     let metadata = fs::metadata(path)
         .map_err(|error| format!("invalid JSON in {}: {error}", path.display()))?;
     validate_byte_length(

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{check_readiness_surface_drift, run_readiness_surface_drift_selftest};
 
 fn usage() -> &'static str {
@@ -7,9 +5,9 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut flake: Option<PathBuf> = None;
+    let mut flake: Option<std::path::PathBuf> = None;
     let mut selftest = false;
-    let mut root: Option<PathBuf> = None;
+    let mut root: Option<std::path::PathBuf> = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_string_lossy().as_ref() {
@@ -19,19 +17,19 @@ fn main() {
             }
             "--selftest" => selftest = true,
             "--flake" => {
-                flake = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                flake = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--flake requires a path\n{}", usage());
                     std::process::exit(2);
                 })));
             }
-            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ if root.is_none() => root = Some(std::path::PathBuf::from(arg)),
             other => {
                 eprintln!("unexpected argument: {other}\n{}", usage());
                 std::process::exit(2);
             }
         }
     }
-    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    let root = root.unwrap_or_else(|| std::path::PathBuf::from("."));
     let result = if selftest {
         run_readiness_surface_drift_selftest(&root).map(|()| {
             println!("readiness surface drift selftest ok");

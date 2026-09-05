@@ -5,7 +5,6 @@ use chaoscontrol_protocol::admission::{
 use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
 use serde::de::Deserialize;
 use serde_json::Value;
-use std::collections::BTreeSet;
 
 const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 
@@ -172,7 +171,7 @@ pub(crate) fn validate(
 }
 
 fn validate_legacy(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
-    let mut ids = BTreeSet::new();
+    let mut ids = std::collections::BTreeSet::new();
     for assertion in assertions {
         validate_common(assertion)?;
         if !ids.insert(assertion.id) {
@@ -185,7 +184,7 @@ fn validate_legacy(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
 }
 
 fn validate_structured(assertions: &[ReviewAssertion]) -> EvidenceResult<()> {
-    let mut fingerprints = BTreeSet::new();
+    let mut fingerprints = std::collections::BTreeSet::new();
     let mut catalog_token = None;
     let mut builder = CatalogBuilder::begin(assertions.len())
         .map_err(|error| EvidenceError::new(format!("assertion-summary: {error:?}")))?;

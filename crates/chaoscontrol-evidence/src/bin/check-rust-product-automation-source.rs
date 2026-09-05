@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -28,7 +28,7 @@ fn run(args: Vec<String>) -> Result<String, String> {
             "usage: check-rust-product-automation-source ROOT",
         ));
     }
-    let root = PathBuf::from(&args[0]);
+    let root = std::path::PathBuf::from(&args[0]);
     let scripts = list_files(&root.join("scripts"))?;
     let bins = list_files(&root.join("crates/chaoscontrol-evidence/src/bin"))?;
     let flake_path = root.join("flake.nix");
@@ -44,7 +44,7 @@ fn run(args: Vec<String>) -> Result<String, String> {
     ))
 }
 
-fn list_files(root: &Path) -> Result<Vec<String>, String> {
+fn list_files(root: &std::path::Path) -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {

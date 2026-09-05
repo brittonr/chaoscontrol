@@ -4,15 +4,16 @@ use chaoscontrol_smr::phenomena::{
     DependencyKind, HistoryOperation, OperationKind, OperationStatus, PhenomenaHistory,
     PhenomenaReport, ReadObservation,
 };
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::io::Write;
-use std::path::Path;
 
 pub const MAX_PHENOMENA_HISTORY_BYTES: u64 = 4 * 1_024 * 1_024;
 const REGISTER_KEY: &str = "register";
 const ROUND_ARTIFACT_DOMAIN: &[u8] = b"chaoscontrol.phenomena.round-artifact.v1\0";
 
-pub fn read_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult<PhenomenaHistory> {
+pub fn read_phenomena_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<PhenomenaHistory> {
     let path = path.as_ref();
     let bytes = crate::bounded_file::read_bounded_regular_bytes(path, MAX_PHENOMENA_HISTORY_BYTES)?;
     let history = serde_json::from_slice::<PhenomenaHistory>(&bytes).map_err(|error| {
@@ -138,7 +139,9 @@ pub fn adapt_consistency_history(
         .map_err(|error| EvidenceError::new(error.to_string()))
 }
 
-pub fn check_consistency_phenomena_path(path: impl AsRef<Path>) -> EvidenceResult<PhenomenaReport> {
+pub fn check_consistency_phenomena_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<PhenomenaReport> {
     let source = crate::consistency_checker::read_history_path(path)?;
     let history = adapt_consistency_history(&source)?;
     let report = check_history(&history).map_err(|error| EvidenceError::new(error.to_string()))?;
@@ -147,7 +150,9 @@ pub fn check_consistency_phenomena_path(path: impl AsRef<Path>) -> EvidenceResul
     Ok(report)
 }
 
-pub fn validate_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
+pub fn validate_phenomena_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<String> {
     let history = read_phenomena_history_path(path)?;
     Ok(format!(
         "history={} workload={} operations={} gaps={} source={}",
@@ -159,7 +164,9 @@ pub fn validate_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult
     ))
 }
 
-pub fn check_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult<PhenomenaReport> {
+pub fn check_phenomena_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> EvidenceResult<PhenomenaReport> {
     let history = read_phenomena_history_path(path)?;
     let report = check_history(&history).map_err(|error| EvidenceError::new(error.to_string()))?;
     validate_report_for_history(&report, &history)
@@ -168,8 +175,8 @@ pub fn check_phenomena_history_path(path: impl AsRef<Path>) -> EvidenceResult<Ph
 }
 
 pub fn write_phenomena_report_path(
-    history_path: impl AsRef<Path>,
-    report_path: impl AsRef<Path>,
+    history_path: impl AsRef<std::path::Path>,
+    report_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let report = check_phenomena_history_path(history_path)?;
     let mut bytes = serde_json::to_vec_pretty(&report)?;
@@ -178,7 +185,7 @@ pub fn write_phenomena_report_path(
     if let Some(parent) = report_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut file = OpenOptions::new()
+    let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(report_path)

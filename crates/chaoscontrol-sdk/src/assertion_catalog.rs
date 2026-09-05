@@ -13,8 +13,6 @@ use chaoscontrol_protocol::{
     CMD_ASSERT_CATALOG_BEGIN, CMD_ASSERT_CATALOG_COMPLETE, CMD_ASSERT_CATALOG_DESCRIPTOR,
     PAYLOAD_MAX,
 };
-use std::collections::BTreeMap;
-use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BoundIdentity {
@@ -29,7 +27,7 @@ struct SdkCatalog {
     accepted: Result<Option<AcceptedCatalog>, CatalogConflict>,
 }
 
-static SDK_CATALOG: OnceLock<SdkCatalog> = OnceLock::new();
+static SDK_CATALOG: std::sync::OnceLock<SdkCatalog> = std::sync::OnceLock::new();
 
 pub(crate) fn emit_catalog() {
     let catalog = SDK_CATALOG.get_or_init(build_catalog);
@@ -160,7 +158,7 @@ fn accept_descriptors(
     for descriptor in descriptors {
         builder.insert(descriptor.clone())?;
     }
-    let mut assertions = BTreeMap::new();
+    let mut assertions = std::collections::BTreeMap::new();
     for descriptor in descriptors {
         let fingerprint = descriptor
             .fingerprint()

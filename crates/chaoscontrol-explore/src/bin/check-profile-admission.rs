@@ -1,14 +1,12 @@
-use std::path::{Path, PathBuf};
-
 fn main() {
     let mut arguments = std::env::args().skip(1);
     let Some(kind) = arguments.next() else {
         fail("usage: check-profile-admission <run|campaign|simulator|schedule> <projection> <receipt>");
     };
-    let Some(projection) = arguments.next().map(PathBuf::from) else {
+    let Some(projection) = arguments.next().map(std::path::PathBuf::from) else {
         fail("profile projection path is required");
     };
-    let Some(receipt) = arguments.next().map(PathBuf::from) else {
+    let Some(receipt) = arguments.next().map(std::path::PathBuf::from) else {
         fail("profile receipt path is required");
     };
     if arguments.next().is_some() {
@@ -22,7 +20,7 @@ fn main() {
         _ => fail(&format!("unknown profile kind: {kind}")),
     };
     let projection_json = chaoscontrol_evidence::profile_projection::verify_profile_projection(
-        Path::new("."),
+        std::path::Path::new("."),
         &projection,
         &receipt,
         profile_id,

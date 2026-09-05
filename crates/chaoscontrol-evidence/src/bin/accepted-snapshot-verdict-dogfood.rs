@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::io::{BufReader, Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -50,13 +50,13 @@ const HASH_BUFFER_BYTES: usize = 64 * 1_024;
 
 #[derive(Debug)]
 struct Options {
-    output: Option<PathBuf>,
-    kernel: Option<PathBuf>,
-    initrd: Option<PathBuf>,
-    explore: PathBuf,
-    cohort: Option<PathBuf>,
+    output: Option<std::path::PathBuf>,
+    kernel: Option<std::path::PathBuf>,
+    initrd: Option<std::path::PathBuf>,
+    explore: std::path::PathBuf,
+    cohort: Option<std::path::PathBuf>,
     evidence_prefix: String,
-    refresh_output: Option<PathBuf>,
+    refresh_output: Option<std::path::PathBuf>,
     max_attempts: usize,
     start_seed: i64,
     run_timeout_seconds: u64,
@@ -67,7 +67,7 @@ struct Options {
     branches: i64,
     ticks: i64,
     memory_mib: i64,
-    disk_image: Option<PathBuf>,
+    disk_image: Option<std::path::PathBuf>,
     workload: String,
     assertion_id: i64,
     cmdline_template: String,
@@ -134,7 +134,7 @@ fn run(args: Vec<String>) -> Result<i32, String> {
     }
     let output = match &options.output {
         Some(path) => absolute(path)?,
-        None => absolute(Path::new(&format!(
+        None => absolute(std::path::Path::new(&format!(
             "dogfood-results/{}-accepted-verdict-dogfood-{}",
             options.workload,
             now()?
@@ -340,18 +340,18 @@ fn run(args: Vec<String>) -> Result<i32, String> {
 
 #[allow(clippy::too_many_arguments)]
 fn accept_output(
-    output: &Path,
-    run_dir: &Path,
-    bug_path: &Path,
-    verdict_path: &Path,
+    output: &std::path::Path,
+    run_dir: &std::path::Path,
+    bug_path: &std::path::Path,
+    verdict_path: &std::path::Path,
     evidence_prefix: &str,
     workload: &str,
     cohort: &Value,
     workload_profile: &Value,
-    explore: &Path,
-    kernel: &Path,
-    initrd: &Path,
-    disk_image: Option<&Path>,
+    explore: &std::path::Path,
+    kernel: &std::path::Path,
+    initrd: &std::path::Path,
+    disk_image: Option<&std::path::Path>,
     seed: i64,
     fail_after: i64,
     run_rc: i32,
@@ -417,9 +417,9 @@ fn accept_output(
 fn run_command(
     executable: chaoscontrol_evidence::typed_operator_command::ExecutableRef,
     args: Vec<String>,
-    execution_root: &Path,
+    execution_root: &std::path::Path,
     timeout_seconds: u64,
-    log: &Path,
+    log: &std::path::Path,
 ) -> Result<i32, String> {
     let timeout_ms = timeout_seconds
         .checked_mul(1_000)
@@ -451,7 +451,7 @@ fn run_command(
     };
     let captured = execute_typed_operator_command_captured(&plan, execution_root)
         .map_err(|error| error.to_string())?;
-    let parent = log.parent().unwrap_or_else(|| Path::new("."));
+    let parent = log.parent().unwrap_or_else(|| std::path::Path::new("."));
     fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     let mut file = fs::File::create(log).map_err(|error| format!("{}: {error}", log.display()))?;
     file.write_all(&captured.stdout)
@@ -476,10 +476,10 @@ fn run_command(
 }
 
 fn select_snapshot_bug(
-    run_dir: &Path,
+    run_dir: &std::path::Path,
     assertion_id: i64,
     assertion_profile: &Value,
-) -> Result<Option<(PathBuf, Value)>, String> {
+) -> Result<Option<(std::path::PathBuf, Value)>, String> {
     for path in matching_files(run_dir, "bug_", ".json")? {
         let bug = load_json(&path)?;
         if !snapshot_bug_is_candidate(&bug, assertion_id, assertion_profile) {
@@ -500,12 +500,15 @@ fn select_snapshot_bug(
     Ok(None)
 }
 
-fn safe_snapshot_path(run_dir: &Path, reference: &Value) -> Result<PathBuf, String> {
+fn safe_snapshot_path(
+    run_dir: &std::path::Path,
+    reference: &Value,
+) -> Result<std::path::PathBuf, String> {
     let raw = reference
         .get("path")
         .and_then(Value::as_str)
         .ok_or_else(|| String::from("snapshot ref path is missing"))?;
-    let relative = Path::new(raw);
+    let relative = std::path::Path::new(raw);
     let mut components = relative.components();
     if relative.is_absolute()
         || components.next() != Some(Component::Normal("snapshots".as_ref()))
@@ -522,7 +525,7 @@ fn safe_snapshot_path(run_dir: &Path, reference: &Value) -> Result<PathBuf, Stri
 }
 
 fn rewrite_public_paths(
-    output: &Path,
+    output: &std::path::Path,
     bug_name: &str,
     verdict_name: &str,
     evidence_prefix: &str,
@@ -561,7 +564,7 @@ fn rewrite_public_paths(
 }
 
 fn refresh_existing_output(
-    output: &Path,
+    output: &std::path::Path,
     evidence_prefix: &str,
     workload: &str,
 ) -> Result<(), String> {
@@ -595,7 +598,7 @@ fn refresh_existing_output(
 }
 
 fn write_proof_receipt(
-    output: &Path,
+    output: &std::path::Path,
     cohort: &Value,
     profile: &Value,
     bug_name: &str,
@@ -631,10 +634,10 @@ fn write_proof_receipt(
 }
 
 fn runtime_artifacts(
-    explore: &Path,
-    kernel: &Path,
-    initrd: &Path,
-    disk: Option<&Path>,
+    explore: &std::path::Path,
+    kernel: &std::path::Path,
+    initrd: &std::path::Path,
+    disk: Option<&std::path::Path>,
 ) -> Result<Vec<Value>, String> {
     let mut facts = vec![
         artifact("host-binary", explore)?,
@@ -647,11 +650,11 @@ fn runtime_artifacts(
     Ok(facts)
 }
 
-fn artifact(role: &str, path: &Path) -> Result<Value, String> {
+fn artifact(role: &str, path: &std::path::Path) -> Result<Value, String> {
     Ok(json!({"role": role, "path": path, "sha256": sha256(path)?}))
 }
 
-fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
+fn chunk_snapshot(snapshot: &std::path::Path) -> Result<(), String> {
     let size = fs::metadata(snapshot)
         .map_err(|error| format!("{}: {error}", snapshot.display()))?
         .len();
@@ -692,9 +695,9 @@ fn chunk_snapshot(snapshot: &Path) -> Result<(), String> {
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         output: None,
-        kernel: env::var_os("KERNEL").map(PathBuf::from),
-        initrd: env::var_os("INITRD").map(PathBuf::from),
-        explore: PathBuf::from(
+        kernel: env::var_os("KERNEL").map(std::path::PathBuf::from),
+        initrd: env::var_os("INITRD").map(std::path::PathBuf::from),
+        explore: std::path::PathBuf::from(
             env::var("CHAOSCONTROL_EXPLORE")
                 .unwrap_or_else(|_| String::from("chaoscontrol-explore")),
         ),
@@ -724,13 +727,13 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             .get(index + 1)
             .ok_or_else(|| format!("{flag} requires a value"))?;
         match flag {
-            "--output" => options.output = Some(PathBuf::from(value)),
-            "--kernel" => options.kernel = Some(PathBuf::from(value)),
-            "--initrd" => options.initrd = Some(PathBuf::from(value)),
-            "--explore" => options.explore = PathBuf::from(value),
-            "--cohort" => options.cohort = Some(PathBuf::from(value)),
+            "--output" => options.output = Some(std::path::PathBuf::from(value)),
+            "--kernel" => options.kernel = Some(std::path::PathBuf::from(value)),
+            "--initrd" => options.initrd = Some(std::path::PathBuf::from(value)),
+            "--explore" => options.explore = std::path::PathBuf::from(value),
+            "--cohort" => options.cohort = Some(std::path::PathBuf::from(value)),
             "--evidence-prefix" => options.evidence_prefix = value.clone(),
-            "--refresh-output" => options.refresh_output = Some(PathBuf::from(value)),
+            "--refresh-output" => options.refresh_output = Some(std::path::PathBuf::from(value)),
             "--max-attempts" => options.max_attempts = parse(value, flag)?,
             "--start-seed" => options.start_seed = parse(value, flag)?,
             "--run-timeout" => options.run_timeout_seconds = parse(value, flag)?,
@@ -741,7 +744,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--branches" => options.branches = parse(value, flag)?,
             "--ticks" => options.ticks = parse(value, flag)?,
             "--memory-mb" => options.memory_mib = parse(value, flag)?,
-            "--disk-image" => options.disk_image = Some(PathBuf::from(value)),
+            "--disk-image" => options.disk_image = Some(std::path::PathBuf::from(value)),
             "--workload" => options.workload = value.clone(),
             "--assertion-id" => options.assertion_id = parse(value, flag)?,
             "--cmdline-template" => options.cmdline_template = value.clone(),
@@ -781,21 +784,25 @@ fn render_cmdline(template: &str, fail_after: i64, seed: i64, attempt: usize) ->
         .replace("{attempt}", &attempt.to_string())
 }
 
-fn append_disk(args: &mut Vec<String>, disk: Option<&Path>) {
+fn append_disk(args: &mut Vec<String>, disk: Option<&std::path::Path>) {
     if let Some(path) = disk {
         args.push(String::from("--disk-image"));
         args.push(path.display().to_string());
     }
 }
 
-fn load_bugs(root: &Path) -> Result<Vec<(String, Value)>, String> {
+fn load_bugs(root: &std::path::Path) -> Result<Vec<(String, Value)>, String> {
     matching_files(root, "bug_", ".json")?
         .into_iter()
         .map(|path| Ok((file_name(&path)?, load_json(&path)?)))
         .collect()
 }
 
-fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf>, String> {
+fn matching_files(
+    root: &std::path::Path,
+    prefix: &str,
+    suffix: &str,
+) -> Result<Vec<std::path::PathBuf>, String> {
     let mut paths = fs::read_dir(root)
         .map_err(|error| format!("{}: {error}", root.display()))?
         .filter_map(Result::ok)
@@ -810,7 +817,7 @@ fn matching_files(root: &Path, prefix: &str, suffix: &str) -> Result<Vec<PathBuf
     Ok(paths)
 }
 
-fn load_json(path: &Path) -> Result<Value, String> {
+fn load_json(path: &std::path::Path) -> Result<Value, String> {
     let metadata = fs::metadata(path).map_err(|error| format!("{}: {error}", path.display()))?;
     if metadata.len() > MAX_JSON_BYTES {
         return Err(format!("{} exceeds JSON byte bound", path.display()));
@@ -820,14 +827,14 @@ fn load_json(path: &Path) -> Result<Value, String> {
         .map_err(|error| format!("{}: invalid JSON: {error}", path.display()))
 }
 
-fn write_json(path: &Path, value: &Value) -> Result<(), String> {
+fn write_json(path: &std::path::Path, value: &Value) -> Result<(), String> {
     let mut bytes =
         serde_json::to_vec_pretty(value).map_err(|error| format!("{}: {error}", path.display()))?;
     bytes.push(b'\n');
     fs::write(path, bytes).map_err(|error| format!("{}: {error}", path.display()))
 }
 
-fn sha256(path: &Path) -> Result<String, String> {
+fn sha256(path: &std::path::Path) -> Result<String, String> {
     let mut reader = BufReader::new(
         fs::File::open(path).map_err(|error| format!("{}: {error}", path.display()))?,
     );
@@ -845,7 +852,7 @@ fn sha256(path: &Path) -> Result<String, String> {
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-fn prepare_output(output: &Path) -> Result<(), String> {
+fn prepare_output(output: &std::path::Path) -> Result<(), String> {
     if output.exists()
         && fs::read_dir(output)
             .map_err(|error| format!("{}: {error}", output.display()))?
@@ -870,7 +877,7 @@ fn require_kvm() -> Result<(), String> {
         .map_err(|_| String::from("/dev/kvm must be readable and writable"))
 }
 
-fn absolute(path: &Path) -> Result<PathBuf, String> {
+fn absolute(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
     if path.is_absolute() {
         Ok(path.to_path_buf())
     } else {
@@ -883,13 +890,13 @@ fn absolute(path: &Path) -> Result<PathBuf, String> {
 fn basename(value: Option<&Value>) -> Result<String, String> {
     value
         .and_then(Value::as_str)
-        .and_then(|text| Path::new(text).file_name())
+        .and_then(|text| std::path::Path::new(text).file_name())
         .and_then(|name| name.to_str())
         .map(str::to_string)
         .ok_or_else(|| String::from("artifact path has no UTF-8 basename"))
 }
 
-fn file_name(path: &Path) -> Result<String, String> {
+fn file_name(path: &std::path::Path) -> Result<String, String> {
     path.file_name()
         .and_then(|name| name.to_str())
         .map(str::to_string)

@@ -3,13 +3,13 @@
 #[path = "oracle/marker.rs"]
 mod marker;
 use super::*;
-pub use marker::{bind_marker_snapshot, validate_marker_binding, MarkerSnapshotBinding};
+pub use marker::{bind_snapshot, validate_binding, Binding};
 
 const RESULT_DOMAIN: &[u8] = b"chaoscontrol.protocol-observation.oracle-result.v1\0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ProtocolVerdict {
+pub enum Verdict {
     Pass,
     Fail,
     Unsupported,
@@ -17,19 +17,19 @@ pub enum ProtocolVerdict {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OracleDecision {
-    pub verdict: ProtocolVerdict,
+pub struct Decision {
+    pub verdict: Verdict,
     pub diagnostic_refs: Vec<String>,
     pub work_items: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ProtocolOracleResult {
+pub struct Outcome {
     pub adapter_ref: String,
     pub cohort_identity: String,
     pub result_ref: String,
-    pub decision: OracleDecision,
+    pub decision: Decision,
 }
 
 /// A reviewed pure adapter. The consumer owns its source and semantic authority.
@@ -42,10 +42,10 @@ pub trait ProtocolOracle {
         &self,
         cohort: &CohortResult,
         work_limit: u32,
-    ) -> Result<OracleDecision, ProtocolObservationError>;
+    ) -> Result<Decision, ProtocolObservationError>;
 }
 
-pub fn validate_oracle_adapter<O: ProtocolOracle + ?Sized>(
+pub fn validate_adapter<O: ProtocolOracle + ?Sized>(
     profile: &AdmittedProfile,
     oracle: &O,
 ) -> Result<(), ProtocolObservationError> {
@@ -61,12 +61,12 @@ pub fn validate_oracle_adapter<O: ProtocolOracle + ?Sized>(
     Ok(())
 }
 
-pub fn run_consumer_oracle<O: ProtocolOracle + ?Sized>(
+pub fn run_consumer<O: ProtocolOracle + ?Sized>(
     profile: &AdmittedProfile,
     cohort: &CohortResult,
     oracle: &O,
-) -> Result<ProtocolOracleResult, ProtocolObservationError> {
-    validate_oracle_adapter(profile, oracle)?;
+) -> Result<Outcome, ProtocolObservationError> {
+    validate_adapter(profile, oracle)?;
     validate_cohort(profile, cohort)?;
     if cohort.classification != CohortClassification::Complete {
         return Err(ProtocolObservationError::CohortNotComplete);
@@ -76,7 +76,7 @@ pub fn run_consumer_oracle<O: ProtocolOracle + ?Sized>(
         return Err(ProtocolObservationError::OracleWorkExceeded);
     }
     let decision = oracle.evaluate(cohort, work_limit)?;
-    let mut result = ProtocolOracleResult {
+    let mut result = Outcome {
         adapter_ref: profile.profile.oracle.adapter_ref.clone(),
         cohort_identity: cohort.cohort_identity.clone(),
         result_ref: String::new(),
@@ -87,10 +87,10 @@ pub fn run_consumer_oracle<O: ProtocolOracle + ?Sized>(
     Ok(result)
 }
 
-pub fn validate_oracle_result(
+pub fn validate_result(
     profile: &AdmittedProfile,
     cohort: &CohortResult,
-    result: &ProtocolOracleResult,
+    result: &Outcome,
 ) -> Result<(), ProtocolObservationError> {
     validate_cohort(profile, cohort)?;
     if cohort.classification != CohortClassification::Complete {
@@ -110,7 +110,7 @@ pub fn validate_oracle_result(
 
 fn validate_decision(
     profile: &AdmittedProfile,
-    result: &OracleDecision,
+    result: &Decision,
 ) -> Result<(), ProtocolObservationError> {
     if result.work_items == 0 || result.work_items > profile.profile.bounds.max_oracle_work_items {
         return Err(ProtocolObservationError::OracleWorkExceeded);
@@ -120,7 +120,7 @@ fn validate_decision(
             "oracle-diagnostics",
         ));
     }
-    if result.verdict == ProtocolVerdict::Unsupported && result.diagnostic_refs.is_empty() {
+    if result.verdict == Verdict::Unsupported && result.diagnostic_refs.is_empty() {
         return Err(ProtocolObservationError::OracleMismatch);
     }
     if !result
@@ -139,7 +139,7 @@ fn validate_decision(
     Ok(())
 }
 
-fn result_identity(result: &ProtocolOracleResult) -> Result<String, ProtocolObservationError> {
+fn result_identity(result: &Outcome) -> Result<String, ProtocolObservationError> {
     let bytes = serde_json::to_vec(&(
         &result.adapter_ref,
         &result.cohort_identity,

@@ -1,7 +1,6 @@
 //! Profile admission and implementation resource ceilings.
 
 use super::*;
-use std::collections::BTreeSet;
 
 pub const MAX_PROFILE_BYTES: usize = 262_144;
 pub const MAX_COHORT_RECORDS: u32 = 4_096;
@@ -19,16 +18,16 @@ pub const REQUIRED_NON_CLAIMS: [&str; 6] = [
     "does not synchronize wall clocks",
 ];
 
-pub fn decode_profile(bytes: &[u8]) -> Result<AdmittedProfile, ProtocolObservationError> {
+pub fn decode(bytes: &[u8]) -> Result<AdmittedProfile, ProtocolObservationError> {
     if bytes.len() > MAX_PROFILE_BYTES {
         return Err(ProtocolObservationError::BoundExceeded("profile-bytes"));
     }
     let profile =
         serde_json::from_slice(bytes).map_err(|_| ProtocolObservationError::InvalidSchema)?;
-    admit_profile(profile)
+    admit(profile)
 }
 
-pub fn admit_profile(
+pub fn admit(
     profile: ProtocolObservationProfile,
 ) -> Result<AdmittedProfile, ProtocolObservationError> {
     validate(&profile)?;
@@ -40,9 +39,7 @@ pub fn admit_profile(
     })
 }
 
-pub fn validate_profile_identity(
-    profile: &AdmittedProfile,
-) -> Result<(), ProtocolObservationError> {
+pub fn validate_identity(profile: &AdmittedProfile) -> Result<(), ProtocolObservationError> {
     validate(&profile.profile)?;
     let expected = identities(&profile.profile)?;
     if (profile.profile_ref.as_str(), profile.bounds_ref.as_str())
@@ -114,9 +111,9 @@ fn validate(profile: &ProtocolObservationProfile) -> Result<(), ProtocolObservat
 }
 
 fn validate_members(profile: &ProtocolObservationProfile) -> Result<(), ProtocolObservationError> {
-    let mut producers = BTreeSet::new();
-    let mut participants = BTreeSet::new();
-    let mut processes = BTreeSet::new();
+    let mut producers = std::collections::BTreeSet::new();
+    let mut participants = std::collections::BTreeSet::new();
+    let mut processes = std::collections::BTreeSet::new();
     for producer in &profile.producers {
         validate_exact_reference(&producer.producer_ref, "producer")?;
         validate_exact_reference(&producer.participant_ref, "participant")?;
@@ -133,7 +130,7 @@ fn validate_members(profile: &ProtocolObservationProfile) -> Result<(), Protocol
     let required = profile
         .required_participants
         .iter()
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     if required.len() != profile.required_participants.len() {
         return Err(ProtocolObservationError::DuplicateParticipant);
     }

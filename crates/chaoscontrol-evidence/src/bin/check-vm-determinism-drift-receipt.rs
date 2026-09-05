@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -28,7 +28,7 @@ fn run(args: Vec<String>) -> Result<String, String> {
             "usage: check-vm-determinism-drift-receipt RECEIPT",
         ));
     }
-    let path = PathBuf::from(&args[0]);
+    let path = std::path::PathBuf::from(&args[0]);
     let metadata = fs::metadata(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     validate_byte_length(
         &format!("{}: receipt", path.display()),

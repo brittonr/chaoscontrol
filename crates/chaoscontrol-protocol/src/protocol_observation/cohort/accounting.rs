@@ -9,7 +9,7 @@ pub(super) fn validate(
     let boundaries = records
         .iter()
         .map(|record| &record.collected.draft.logical_boundary_ref)
-        .collect::<BTreeSet<_>>();
+        .collect::<std::collections::BTreeSet<_>>();
     if boundaries.len() > bounds.max_logical_boundaries as usize {
         issues.push(issue(CohortIssueKind::BoundExceeded, "logical-boundaries"));
     }
@@ -93,7 +93,7 @@ pub(super) fn participants(
             .iter()
             .filter(|record| record.collected.draft.participant_ref == *participant)
             .map(|record| &record.collected.draft.projection_ref)
-            .collect::<BTreeSet<_>>();
+            .collect::<std::collections::BTreeSet<_>>();
         if projections.is_empty() {
             issues.push(issue(CohortIssueKind::MissingParticipant, participant));
         } else if projections.len() > 1 {

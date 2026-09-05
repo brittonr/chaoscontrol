@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -29,10 +29,10 @@ const USAGE_EXIT: u8 = 2;
 
 #[derive(Debug)]
 struct Options {
-    out: PathBuf,
+    out: std::path::PathBuf,
     workloads: Vec<String>,
-    replay_readiness: PathBuf,
-    scheduler: PathBuf,
+    replay_readiness: std::path::PathBuf,
+    scheduler: std::path::PathBuf,
     dogfood_extra: Vec<String>,
 }
 
@@ -185,7 +185,7 @@ fn command_plan(
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
-    let mut out = PathBuf::from(DEFAULT_OUT);
+    let mut out = std::path::PathBuf::from(DEFAULT_OUT);
     let mut workloads = String::from(DEFAULT_WORKLOADS);
     let mut replay = env::var("REPLAY_READINESS").unwrap_or_else(|_| String::from(DEFAULT_REPLAY));
     let mut scheduler = env::var("REPLAY_READINESS_SCHEDULER_RECEIPT")
@@ -199,7 +199,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                     .get(index + 1)
                     .ok_or_else(|| format!("{} requires a value", args[index]))?;
                 match args[index].as_str() {
-                    "--out" => out = PathBuf::from(value),
+                    "--out" => out = std::path::PathBuf::from(value),
                     "--workloads" => workloads = value.clone(),
                     "--replay-readiness" => replay = value.clone(),
                     _ => scheduler = value.clone(),
@@ -220,8 +220,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     Ok(Options {
         out,
         workloads,
-        replay_readiness: PathBuf::from(replay),
-        scheduler: PathBuf::from(scheduler),
+        replay_readiness: std::path::PathBuf::from(replay),
+        scheduler: std::path::PathBuf::from(scheduler),
         dogfood_extra,
     })
 }
@@ -238,7 +238,7 @@ fn require_kvm() -> Result<(), String> {
         })
 }
 
-fn absolute(path: &Path) -> Result<PathBuf, String> {
+fn absolute(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
     if path.is_absolute() {
         Ok(path.to_path_buf())
     } else {
@@ -248,7 +248,7 @@ fn absolute(path: &Path) -> Result<PathBuf, String> {
     }
 }
 
-fn prepare_output(out: &Path) -> Result<(), String> {
+fn prepare_output(out: &std::path::Path) -> Result<(), String> {
     if out.exists()
         && fs::read_dir(out)
             .map_err(|error| format!("{}: {error}", out.display()))?
@@ -264,10 +264,10 @@ fn prepare_output(out: &Path) -> Result<(), String> {
 }
 
 fn write_summary(
-    out: &Path,
+    out: &std::path::Path,
     summary: &str,
-    receipt: &Path,
-    plan: &Path,
+    receipt: &std::path::Path,
+    plan: &std::path::Path,
     exit_code: i32,
     command_output: &str,
 ) -> Result<(), String> {
@@ -285,7 +285,7 @@ fn write_summary(
         .map_err(|error| format!("{}: {error}", out.join("summary.txt").display()))
 }
 
-fn write_json(path: &Path, value: &Value) -> Result<(), String> {
+fn write_json(path: &std::path::Path, value: &Value) -> Result<(), String> {
     let mut bytes = serde_json::to_vec_pretty(value)
         .map_err(|error| format!("{}: encode failed: {error}", path.display()))?;
     bytes.push(b'\n');

@@ -1,7 +1,5 @@
-use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Component, Path};
-use std::process::{Command, Stdio};
+use std::path::Component;
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -35,7 +33,7 @@ const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 =
 const BYTES_PER_MIB: u64 = 1024 * 1024;
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
 
-pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
+pub fn check_evidence_contracts(root: impl AsRef<std::path::Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
     run_nickel_examples(root)?;
     crate::profile_projection::check_profile_projections(root, false)?;
@@ -45,7 +43,7 @@ pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'stat
     Ok(EVIDENCE_CONTRACTS_SUCCESS)
 }
 
-pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
     let contracts = root.join("contracts/evidence");
     let dogfood = root.join("dogfood-results/raft-20260506-095025");
@@ -205,7 +203,7 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     Ok(())
 }
 
-pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
     let root = root.as_ref();
     let command = nickel_command().ok_or_else(|| {
         EvidenceError::new("neither nickel nor nix is available for Nickel export checks")
@@ -228,11 +226,11 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/spacewasm-mvp-differential-profile.ncl",
         "examples/typed-operator-command.ncl",
     ] {
-        let status = Command::new(&command[0])
+        let status = std::process::Command::new(&command[0])
             .args(&command[1..])
             .arg(root.join("contracts/evidence").join(rel))
             .current_dir(root)
-            .stdout(Stdio::null())
+            .stdout(std::process::Stdio::null())
             .status()
             .map_err(|err| {
                 EvidenceError::new(format!("failed to run Nickel export for {rel}: {err}"))
@@ -253,7 +251,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             "fixtures/valid/operator-command.valid.json",
         ),
     ] {
-        let output = Command::new(&command[0])
+        let output = std::process::Command::new(&command[0])
             .args(&command[1..])
             .args(["--format", "json"])
             .arg(root.join("contracts/evidence").join(source))
@@ -339,12 +337,12 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/assertions.nickel-verdict.invalid.ncl",
         "fixtures/invalid/assertions.nickel-wrong-logical-key.invalid.ncl",
     ] {
-        let status = Command::new(&command[0])
+        let status = std::process::Command::new(&command[0])
             .args(&command[1..])
             .arg(root.join("contracts/evidence").join(rel))
             .current_dir(root)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map_err(|err| {
                 EvidenceError::new(format!(
@@ -415,12 +413,12 @@ pub fn validate_artifact_hash(value: &Value) -> EvidenceResult<()> {
 }
 
 pub fn validate_snapshot_ref(value: &Value) -> EvidenceResult<()> {
-    validate_snapshot_ref_with_root(value, Path::new("."), false)
+    validate_snapshot_ref_with_root(value, std::path::Path::new("."), false)
 }
 
 pub fn validate_snapshot_ref_with_root(
     value: &Value,
-    root: &Path,
+    root: &std::path::Path,
     check_files: bool,
 ) -> EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
@@ -452,7 +450,7 @@ pub fn validate_snapshot_ref_with_root(
         "snapshot-ref.schema_version: unsupported",
     )?;
     let path_value = require_str(value.get("path"), "snapshot-ref.path")?;
-    let path = Path::new(path_value);
+    let path = std::path::Path::new(path_value);
     ensure(
         is_safe_snapshot_path(path),
         "snapshot-ref.path: must stay under snapshots/",
@@ -606,7 +604,7 @@ pub fn validate_checkpoint_reference(value: Option<&Value>) -> EvidenceResult<()
 }
 
 pub fn validate_replay_verdict(value: &Value) -> EvidenceResult<()> {
-    validate_replay_verdict_with_options(value, false, false, Path::new("."))?;
+    validate_replay_verdict_with_options(value, false, false, std::path::Path::new("."))?;
     // Public evidence boundary: committed verdicts must publish confined
     // relative paths. Local replay tooling (absolute paths) uses
     // validate_replay_verdict_with_options directly.
@@ -627,7 +625,7 @@ pub fn validate_replay_verdict_with_options(
     value: &Value,
     accepted_snapshot_proof: bool,
     check_files: bool,
-    root: &Path,
+    root: &std::path::Path,
 ) -> EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
         value,
@@ -744,7 +742,7 @@ pub fn validate_replay_verdict_with_options(
         .get("artifact_hashes")
         .and_then(Value::as_array)
         .ok_or_else(|| EvidenceError::new("replay-verdict.artifact_hashes: expected list"))?;
-    let mut artifact_paths = BTreeSet::new();
+    let mut artifact_paths = std::collections::BTreeSet::new();
     for item in hashes {
         validate_artifact_hash(item)?;
         let artifact_path = item["path"]
@@ -892,9 +890,9 @@ pub fn validate_replay_verdict_with_options(
                     == Some(ACCEPTED_SNAPSHOT_SCHEMA_VERSION),
             "accepted replay proof requires the current CBOR v2 snapshot codec",
         )?;
-        let bug_parent = Path::new(bug_path)
+        let bug_parent = std::path::Path::new(bug_path)
             .parent()
-            .unwrap_or_else(|| Path::new("."));
+            .unwrap_or_else(|| std::path::Path::new("."));
         let snapshot_artifact_path = bug_parent
             .join(reference_path)
             .to_string_lossy()
@@ -1063,12 +1061,12 @@ fn validate_replay_assertion_identity(value: &Value) -> EvidenceResult<()> {
 }
 
 pub fn validate_receipt(value: &Value) -> EvidenceResult<()> {
-    validate_receipt_with_root(value, Path::new("."), false)
+    validate_receipt_with_root(value, std::path::Path::new("."), false)
 }
 
 pub fn validate_receipt_with_root(
     value: &Value,
-    root: &Path,
+    root: &std::path::Path,
     check_files: bool,
 ) -> EvidenceResult<()> {
     ensure(value.is_object(), "receipt: expected object")?;
@@ -1165,8 +1163,12 @@ pub fn validate_receipt_with_root(
             .filter(|value| !value.is_null())
         {
             let snapshot_root = if check_files {
-                let bug_path = Path::new(bug["path"].as_str().unwrap());
-                root.join(bug_path.parent().unwrap_or_else(|| Path::new("")))
+                let bug_path = std::path::Path::new(bug["path"].as_str().unwrap());
+                root.join(
+                    bug_path
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("")),
+                )
             } else {
                 root.to_path_buf()
             };
@@ -1216,7 +1218,7 @@ pub fn validate_receipt_with_root(
     Ok(())
 }
 
-pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult<()> {
+pub fn validate_markdown_receipt(data: &Value, dogfood: &std::path::Path) -> EvidenceResult<()> {
     let md_path = dogfood.join("receipt.md");
     let md = std::fs::read_to_string(&md_path).map_err(|err| {
         EvidenceError::new(format!("{}: invalid receipt.md: {err}", md_path.display()))
@@ -1243,7 +1245,7 @@ pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult
     Ok(())
 }
 
-fn load_json(path: &Path) -> EvidenceResult<Value> {
+fn load_json(path: &std::path::Path) -> EvidenceResult<Value> {
     let text = crate::bounded_file::read_bounded_regular_file(path, MAX_EVIDENCE_JSON_BYTES)?;
     crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
     serde_json::from_str(&text)
@@ -1251,7 +1253,7 @@ fn load_json(path: &Path) -> EvidenceResult<Value> {
 }
 
 fn expect_invalid(
-    path: &Path,
+    path: &std::path::Path,
     validator: impl FnOnce(&Value) -> EvidenceResult<()>,
 ) -> EvidenceResult<()> {
     let value = load_json(path)?;
@@ -1311,7 +1313,7 @@ fn is_prefixed_sha256(value: &str) -> bool {
     chaoscontrol_replay_evidence_core::validate::is_prefixed_sha256(value)
 }
 
-fn is_safe_snapshot_path(path: &Path) -> bool {
+fn is_safe_snapshot_path(path: &std::path::Path) -> bool {
     !path.is_absolute()
         && path
             .components()
@@ -1319,12 +1321,14 @@ fn is_safe_snapshot_path(path: &Path) -> bool {
         && path.components().next() == Some(Component::Normal("snapshots".as_ref()))
 }
 
-fn sha256_file(path: &Path, maximum_bytes: u64) -> EvidenceResult<String> {
+fn sha256_file(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResult<String> {
     let bytes = crate::bounded_file::read_bounded_regular_bytes(path, maximum_bytes)?;
     let digest = Sha256::digest(&bytes);
     Ok(format!("sha256:{digest:x}"))
 }
 
 fn sorted<const N: usize>(values: [&'static str; N]) -> Vec<&'static str> {
-    BTreeSet::from(values).into_iter().collect()
+    std::collections::BTreeSet::from(values)
+        .into_iter()
+        .collect()
 }

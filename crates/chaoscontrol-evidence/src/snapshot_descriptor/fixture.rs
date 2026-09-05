@@ -1,5 +1,3 @@
-use std::path::{Path, PathBuf};
-
 use chaoscontrol_snapshot_descriptor as snapshot_core;
 
 use crate::snapshot_descriptor::{
@@ -68,7 +66,9 @@ pub fn example_descriptor() -> EvidenceResult<snapshot_core::SnapshotDescriptor>
     )
 }
 
-pub fn write_fixture_bundle(root: impl AsRef<Path>) -> EvidenceResult<DescriptorFixtureBundle> {
+pub fn write_fixture_bundle(
+    root: impl AsRef<std::path::Path>,
+) -> EvidenceResult<DescriptorFixtureBundle> {
     let root = root.as_ref();
     std::fs::create_dir_all(root)?;
     let payload_path = root.join(MONOLITHIC_PAYLOAD_FILE);
@@ -126,7 +126,7 @@ pub fn write_fixture_bundle(root: impl AsRef<Path>) -> EvidenceResult<Descriptor
     Ok(bundle)
 }
 
-pub fn fixture_paths(root: impl AsRef<Path>) -> Vec<PathBuf> {
+pub fn fixture_paths(root: impl AsRef<std::path::Path>) -> Vec<std::path::PathBuf> {
     let root = root.as_ref();
     [
         MONOLITHIC_DESCRIPTOR_FILE,
@@ -237,7 +237,10 @@ fn content(
     })
 }
 
-fn write_json(path: impl AsRef<Path>, value: &impl serde::Serialize) -> EvidenceResult<()> {
+fn write_json(
+    path: impl AsRef<std::path::Path>,
+    value: &impl serde::Serialize,
+) -> EvidenceResult<()> {
     std::fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
 }

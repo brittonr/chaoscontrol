@@ -2,7 +2,6 @@ use super::model::{
     observation_set_identity, validate_assembled, AssembledObservation, FindabilityError,
     MAX_EXACT_F64_INTEGER,
 };
-use std::collections::BTreeMap;
 
 pub const FINDABILITY_REPORT_SCHEMA_VERSION: u32 = 1;
 const REQUIRED_ASSUMPTION_COUNT: usize = 5;
@@ -249,7 +248,7 @@ fn assess_independence(observations: &[AssembledObservation]) -> IndependenceAss
         } else {
             Vec::new()
         };
-    let mut groups = BTreeMap::new();
+    let mut groups = std::collections::BTreeMap::new();
     for observation in observations {
         *groups
             .entry(observation.independence_group.as_str())

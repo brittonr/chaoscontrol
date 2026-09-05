@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     sample_replay_readiness_decision_receipt, validate_replay_readiness_decision_receipt_path,
     write_replay_readiness_decision_receipt_path, EvidenceResult,
@@ -17,8 +15,8 @@ fn main() {
 }
 
 fn run() -> EvidenceResult<()> {
-    let mut output: Option<PathBuf> = None;
-    let mut check: Option<PathBuf> = None;
+    let mut output: Option<std::path::PathBuf> = None;
+    let mut check: Option<std::path::PathBuf> = None;
     let mut sample = false;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -31,13 +29,13 @@ fn run() -> EvidenceResult<()> {
                 let value = args.next().ok_or_else(|| {
                     chaoscontrol_evidence::EvidenceError::new("--output requires a path")
                 })?;
-                output = Some(PathBuf::from(value));
+                output = Some(std::path::PathBuf::from(value));
             }
             "--check" => {
                 let value = args.next().ok_or_else(|| {
                     chaoscontrol_evidence::EvidenceError::new("--check requires a path")
                 })?;
-                check = Some(PathBuf::from(value));
+                check = Some(std::path::PathBuf::from(value));
             }
             "--sample" => sample = true,
             _ => {

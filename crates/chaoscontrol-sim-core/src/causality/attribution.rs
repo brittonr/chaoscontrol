@@ -1,5 +1,4 @@
 use super::model::{validate_candidates, CausalityError, CauseCandidate};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,8 +57,9 @@ pub fn rank_candidates(
     let candidate_map = candidates
         .iter()
         .map(|candidate| (candidate.candidate_id.as_str(), candidate))
-        .collect::<BTreeMap<_, _>>();
-    let mut grouped: BTreeMap<&str, Vec<&AttributionObservation>> = BTreeMap::new();
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut grouped: std::collections::BTreeMap<&str, Vec<&AttributionObservation>> =
+        std::collections::BTreeMap::new();
     for observation in observations {
         if !candidate_map.contains_key(observation.candidate_id.as_str()) {
             return Err(CausalityError::new(

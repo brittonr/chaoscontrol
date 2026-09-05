@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 fn main() {
     let mut output = None;
     let mut args = std::env::args().skip(1);
@@ -8,7 +6,7 @@ fn main() {
             "--out" => {
                 output = Some(
                     args.next()
-                        .map(PathBuf::from)
+                        .map(std::path::PathBuf::from)
                         .unwrap_or_else(|| fail("--out requires a path")),
                 );
             }

@@ -1,12 +1,10 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     materialize_snapshot_chunks, run_materialize_snapshot_chunks_selftest,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
-    manifest: Option<PathBuf>,
+    manifest: Option<std::path::PathBuf>,
     force: bool,
     selftest: bool,
 }
@@ -29,7 +27,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--force" => parsed.force = true,
             "--selftest" => parsed.selftest = true,
-            _ if parsed.manifest.is_none() => parsed.manifest = Some(PathBuf::from(arg)),
+            _ if parsed.manifest.is_none() => parsed.manifest = Some(std::path::PathBuf::from(arg)),
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }

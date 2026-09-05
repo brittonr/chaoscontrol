@@ -1,10 +1,9 @@
 use crate::oracle::AssertionRecord;
 use crate::oracle_validation::OracleValidationError;
 use chaoscontrol_protocol::identity::{AssertionKind, MAX_ASSERTION_EVENT_DETAILS_BYTES};
-use std::collections::BTreeMap;
 
 pub(crate) fn validate_legacy_records(
-    records: &BTreeMap<u32, AssertionRecord>,
+    records: &std::collections::BTreeMap<u32, AssertionRecord>,
     total_runs: u32,
 ) -> Result<(), OracleValidationError> {
     for (id, record) in records {

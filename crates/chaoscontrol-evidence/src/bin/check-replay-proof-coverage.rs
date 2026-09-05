@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{
     check_replay_proof_coverage_doc, render_replay_proof_coverage,
     render_replay_proof_coverage_doc, review_replay_proof_coverage, validate_replay_proof_coverage,
@@ -19,9 +17,9 @@ fn usage() -> &'static str {
     "usage: check-replay-proof-coverage [--strict|--check-doc|--print-doc|--write-doc] [ROOT]\n\nReviews committed replay proof coverage. --strict requires every row to have fresh admitted identity. Doc modes derive docs/replay-proof-coverage.md from the accepted workload proof manifest."
 }
 
-fn parse_args() -> Result<(Mode, PathBuf), String> {
+fn parse_args() -> Result<(Mode, std::path::PathBuf), String> {
     let mut mode = Mode::Coverage;
-    let mut root: Option<PathBuf> = None;
+    let mut root: Option<std::path::PathBuf> = None;
     for arg in std::env::args_os().skip(1) {
         match arg.to_string_lossy().as_ref() {
             "-h" | "--help" => {
@@ -32,11 +30,11 @@ fn parse_args() -> Result<(Mode, PathBuf), String> {
             "--check-doc" => mode = Mode::CheckDoc,
             "--print-doc" => mode = Mode::PrintDoc,
             "--write-doc" => mode = Mode::WriteDoc,
-            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ if root.is_none() => root = Some(std::path::PathBuf::from(arg)),
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
-    Ok((mode, root.unwrap_or_else(|| PathBuf::from("."))))
+    Ok((mode, root.unwrap_or_else(|| std::path::PathBuf::from("."))))
 }
 
 fn main() {

@@ -8,7 +8,6 @@ use chaoscontrol_fault::outcomes::{
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use std::collections::VecDeque;
 
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
 const NETWORK_TICKS_PER_SECOND: u64 = 1_000;
@@ -263,7 +262,7 @@ pub struct NetworkFabric {
     /// Cumulative packet-level statistics.
     pub stats: NetworkStats,
     /// Bounded observations waiting for the controller ledger.
-    pub fault_observations: VecDeque<FaultObservation>,
+    pub fault_observations: std::collections::VecDeque<FaultObservation>,
     /// Next deterministic network operation sequence.
     pub fault_observation_sequence: u64,
     /// Observations rejected because the bounded queue was full.
@@ -299,7 +298,9 @@ impl NetworkFabric {
             duplicate_attempt_ids: vec![None; num_vms],
             rng: ChaCha20Rng::from_seed(rng_key),
             stats: NetworkStats::default(),
-            fault_observations: VecDeque::with_capacity(MAX_PENDING_FAULT_OBSERVATIONS),
+            fault_observations: std::collections::VecDeque::with_capacity(
+                MAX_PENDING_FAULT_OBSERVATIONS,
+            ),
             fault_observation_sequence: 0,
             fault_observation_overflowed: 0,
         }

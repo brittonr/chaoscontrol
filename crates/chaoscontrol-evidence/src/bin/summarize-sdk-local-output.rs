@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::{write_sdk_local_report, DEFAULT_SDK_LOCAL_EVIDENCE_CLASS};
 
 fn usage() -> &'static str {
@@ -7,8 +5,8 @@ fn usage() -> &'static str {
 }
 
 fn main() {
-    let mut input: Option<PathBuf> = None;
-    let mut output: Option<PathBuf> = None;
+    let mut input: Option<std::path::PathBuf> = None;
+    let mut output: Option<std::path::PathBuf> = None;
     let mut evidence_class = DEFAULT_SDK_LOCAL_EVIDENCE_CLASS.to_string();
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -18,13 +16,13 @@ fn main() {
                 return;
             }
             "--input" => {
-                input = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                input = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--input requires a path\n{}", usage());
                     std::process::exit(2);
                 })));
             }
             "--output" => {
-                output = Some(PathBuf::from(args.next().unwrap_or_else(|| {
+                output = Some(std::path::PathBuf::from(args.next().unwrap_or_else(|| {
                     eprintln!("--output requires a path\n{}", usage());
                     std::process::exit(2);
                 })));

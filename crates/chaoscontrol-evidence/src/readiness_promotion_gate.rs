@@ -1,6 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
-
 use serde_json::Value;
 
 use crate::{EvidenceError, EvidenceResult};
@@ -54,8 +51,8 @@ struct ManifestWorkload {
 }
 
 pub fn validate_readiness_promotion_files(
-    manifest_path: impl AsRef<Path>,
-    report_path: impl AsRef<Path>,
+    manifest_path: impl AsRef<std::path::Path>,
+    report_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<ReadinessPromotionSummary> {
     let manifest = load_manifest(manifest_path.as_ref())?;
     let report = load_report(report_path.as_ref())?;
@@ -154,8 +151,8 @@ pub fn validate_readiness_promotion(
 }
 
 pub fn run_readiness_promotion_selftest(
-    manifest_path: impl AsRef<Path>,
-    report_path: impl AsRef<Path>,
+    manifest_path: impl AsRef<std::path::Path>,
+    report_path: impl AsRef<std::path::Path>,
 ) -> EvidenceResult<()> {
     let manifest = load_manifest(manifest_path.as_ref())?;
     let report = load_report(report_path.as_ref())?;
@@ -376,7 +373,7 @@ pub fn run_readiness_promotion_selftest(
     Ok(())
 }
 
-fn load_manifest(path: &Path) -> EvidenceResult<Value> {
+fn load_manifest(path: &std::path::Path) -> EvidenceResult<Value> {
     let input =
         crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)?;
     crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
@@ -384,11 +381,13 @@ fn load_manifest(path: &Path) -> EvidenceResult<Value> {
         .map_err(|error| EvidenceError::new(format!("invalid JSON in {}: {error}", path.display())))
 }
 
-fn load_report(path: &Path) -> EvidenceResult<String> {
+fn load_report(path: &std::path::Path) -> EvidenceResult<String> {
     crate::bounded_file::read_bounded_regular_file(path, crate::MAX_EVIDENCE_JSON_BYTES)
 }
 
-pub fn default_readiness_promotion_paths(root: impl AsRef<Path>) -> (PathBuf, PathBuf) {
+pub fn default_readiness_promotion_paths(
+    root: impl AsRef<std::path::Path>,
+) -> (std::path::PathBuf, std::path::PathBuf) {
     let root = root.as_ref();
     (
         root.join("dogfood-results/accepted-workload-proofs.json"),
@@ -398,7 +397,7 @@ pub fn default_readiness_promotion_paths(root: impl AsRef<Path>) -> (PathBuf, Pa
 
 fn manifest_workload_entries(
     manifest: &Value,
-) -> EvidenceResult<BTreeMap<String, ManifestWorkload>> {
+) -> EvidenceResult<std::collections::BTreeMap<String, ManifestWorkload>> {
     let object = manifest
         .as_object()
         .ok_or_else(|| EvidenceError::new("manifest must be a JSON object".to_string()))?;
@@ -442,8 +441,8 @@ fn manifest_workload_entries(
         "manifest proofs must be a non-empty list",
     )?;
 
-    let mut workloads = BTreeMap::new();
-    let mut assertion_ids = BTreeSet::new();
+    let mut workloads = std::collections::BTreeMap::new();
+    let mut assertion_ids = std::collections::BTreeSet::new();
     for (index, proof) in proofs.iter().enumerate() {
         let proof = proof
             .as_object()
@@ -499,8 +498,10 @@ fn manifest_workload_entries(
     Ok(workloads)
 }
 
-fn report_workloads(report: &str) -> EvidenceResult<BTreeMap<String, ReportedWorkload>> {
-    let mut rows = BTreeMap::new();
+fn report_workloads(
+    report: &str,
+) -> EvidenceResult<std::collections::BTreeMap<String, ReportedWorkload>> {
+    let mut rows = std::collections::BTreeMap::new();
     let mut in_workload_table = false;
     for line in report.lines() {
         if line == "## Bounded replay evidence promotion status" {
@@ -547,8 +548,8 @@ fn report_workloads(report: &str) -> EvidenceResult<BTreeMap<String, ReportedWor
     Ok(rows)
 }
 
-fn report_experimental_surfaces(report: &str) -> BTreeMap<String, String> {
-    let mut surfaces = BTreeMap::new();
+fn report_experimental_surfaces(report: &str) -> std::collections::BTreeMap<String, String> {
+    let mut surfaces = std::collections::BTreeMap::new();
     let mut in_experimental = false;
     for line in report.lines() {
         if line == "## Experimental or unproven surfaces" {

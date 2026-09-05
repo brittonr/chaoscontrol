@@ -1,7 +1,6 @@
 use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chaoscontrol_evidence::kvm_release::{
@@ -43,12 +42,12 @@ const EMPTY_BLAKE3: &str =
 
 #[derive(Debug)]
 struct Config {
-    root: PathBuf,
-    matrix: PathBuf,
-    receipt: Option<PathBuf>,
+    root: std::path::PathBuf,
+    matrix: std::path::PathBuf,
+    receipt: Option<std::path::PathBuf>,
     expected_revision: Option<String>,
     now_unix_seconds: Option<u64>,
-    curated_output: Option<PathBuf>,
+    curated_output: Option<std::path::PathBuf>,
     write_fixtures: bool,
 }
 
@@ -112,8 +111,8 @@ fn usage() -> &'static str {
 }
 
 fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
-    let mut root = PathBuf::from(".");
-    let mut matrix = PathBuf::from(DEFAULT_MATRIX_PROJECTION);
+    let mut root = std::path::PathBuf::from(".");
+    let mut matrix = std::path::PathBuf::from(DEFAULT_MATRIX_PROJECTION);
     let mut receipt = None;
     let mut expected_revision = None;
     let mut now_unix_seconds = None;
@@ -123,15 +122,19 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
     while index < args.len() {
         match args[index].to_string_lossy().as_ref() {
             "--root" => {
-                root = PathBuf::from(required_value(&args, index, "--root")?);
+                root = std::path::PathBuf::from(required_value(&args, index, "--root")?);
                 index += 2;
             }
             "--matrix" => {
-                matrix = PathBuf::from(required_value(&args, index, "--matrix")?);
+                matrix = std::path::PathBuf::from(required_value(&args, index, "--matrix")?);
                 index += 2;
             }
             "--receipt" => {
-                receipt = Some(PathBuf::from(required_value(&args, index, "--receipt")?));
+                receipt = Some(std::path::PathBuf::from(required_value(
+                    &args,
+                    index,
+                    "--receipt",
+                )?));
                 index += 2;
             }
             "--expected-revision" => {
@@ -152,7 +155,7 @@ fn parse_args(args: Vec<OsString>) -> Result<Config, String> {
                 index += 2;
             }
             "--curated-out" => {
-                curated_output = Some(PathBuf::from(required_value(
+                curated_output = Some(std::path::PathBuf::from(required_value(
                     &args,
                     index,
                     "--curated-out",
@@ -245,7 +248,7 @@ fn run(config: Config) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_path(root: &Path, path: &Path) -> PathBuf {
+fn resolve_path(root: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -253,15 +256,15 @@ fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
+fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to parse {}: {error}", path.display()))
 }
 
-fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
-    let output = nickel_export(root, Path::new(DEFAULT_MATRIX_SOURCE), true)?;
+fn check_projection(root: &std::path::Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
+    let output = nickel_export(root, std::path::Path::new(DEFAULT_MATRIX_SOURCE), true)?;
     let exported = serde_json::from_slice::<KvmReleaseMatrix>(&output)
         .map_err(|error| format!("Nickel matrix projection is invalid JSON: {error}"))?;
     if exported != *matrix {
@@ -269,7 +272,7 @@ fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String
             "stale matrix projection: {DEFAULT_MATRIX_PROJECTION}"
         ));
     }
-    let negative_status = nickel_status(root, Path::new(INVALID_NICKEL_FIXTURE))?;
+    let negative_status = nickel_status(root, std::path::Path::new(INVALID_NICKEL_FIXTURE))?;
     if negative_status.success() {
         return Err(format!(
             "negative Nickel fixture unexpectedly passed: {INVALID_NICKEL_FIXTURE}"
@@ -278,7 +281,11 @@ fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String
     Ok(())
 }
 
-fn nickel_export(root: &Path, source: &Path, json: bool) -> Result<Vec<u8>, String> {
+fn nickel_export(
+    root: &std::path::Path,
+    source: &std::path::Path,
+    json: bool,
+) -> Result<Vec<u8>, String> {
     let mut command = nickel_command();
     if json {
         command.args(["--format", "json"]);
@@ -298,24 +305,27 @@ fn nickel_export(root: &Path, source: &Path, json: bool) -> Result<Vec<u8>, Stri
     Ok(output.stdout)
 }
 
-fn nickel_status(root: &Path, source: &Path) -> Result<std::process::ExitStatus, String> {
+fn nickel_status(
+    root: &std::path::Path,
+    source: &std::path::Path,
+) -> Result<std::process::ExitStatus, String> {
     nickel_command()
         .arg(root.join(source))
         .current_dir(root)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map_err(|error| format!("failed to export {}: {error}", source.display()))
 }
 
 // r[impl chaoscontrol.nickel_toolchain.cohort]
-fn nickel_command() -> Command {
-    let mut command = Command::new("nickel");
+fn nickel_command() -> std::process::Command {
+    let mut command = std::process::Command::new("nickel");
     command.arg("export");
     command
 }
 
-fn check_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
+fn check_fixture_cases(root: &std::path::Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
     let valid = read_json::<FixtureCase>(&root.join(VALID_RECEIPT_FIXTURE))?;
     let valid_decision = validate_receipt(
         matrix,
@@ -356,7 +366,7 @@ fn check_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), Str
 }
 
 // Fixture generation is an imperative shell around the same pure classifier.
-fn write_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
+fn write_fixture_cases(root: &std::path::Path, matrix: &KvmReleaseMatrix) -> Result<(), String> {
     let valid = fixture_case(matrix);
     write_json(root.join(VALID_RECEIPT_FIXTURE), &valid)?;
 
@@ -467,8 +477,8 @@ fn set_blocked(fixture: &mut FixtureCase, blocker: Blocker) {
 }
 
 fn write_curated_receipt(
-    output: &Path,
-    full_receipt_path: &Path,
+    output: &std::path::Path,
+    full_receipt_path: &std::path::Path,
     receipt: &KvmReleaseReceipt,
     checked_unix_seconds: u64,
 ) -> Result<(), String> {
@@ -519,7 +529,7 @@ fn write_curated_receipt(
     write_json(output.to_path_buf(), &curated)
 }
 
-fn write_json(path: PathBuf, value: &impl Serialize) -> Result<(), String> {
+fn write_json(path: std::path::PathBuf, value: &impl Serialize) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("fixture path has no parent: {}", path.display()))?;

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use chaoscontrol_evidence::check_assertion_readiness_boundary;
 
 const EXIT_ERROR: i32 = 1;
@@ -9,7 +7,7 @@ fn usage() -> &'static str {
     "usage: check-assertion-readiness-boundary [ROOT]\n\nChecks exact assertion evidence classification without promoting diagnostic-only artifacts."
 }
 
-fn parse_root() -> Result<PathBuf, String> {
+fn parse_root() -> Result<std::path::PathBuf, String> {
     let mut root = None;
     for arg in std::env::args_os().skip(1) {
         match arg.to_string_lossy().as_ref() {
@@ -17,11 +15,11 @@ fn parse_root() -> Result<PathBuf, String> {
                 println!("{}", usage());
                 std::process::exit(0);
             }
-            _ if root.is_none() => root = Some(PathBuf::from(arg)),
+            _ if root.is_none() => root = Some(std::path::PathBuf::from(arg)),
             other => return Err(format!("unexpected argument: {other}\n{}", usage())),
         }
     }
-    Ok(root.unwrap_or_else(|| PathBuf::from(".")))
+    Ok(root.unwrap_or_else(|| std::path::PathBuf::from(".")))
 }
 
 fn main() {

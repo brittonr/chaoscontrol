@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+
 use std::process::ExitCode;
 
 use chaoscontrol_evidence::rust_automation::bounded_input::validate_byte_length;
@@ -43,7 +43,7 @@ fn run(args: Vec<String>) -> Result<String, String> {
     }
 }
 
-fn parse_args(args: &[String]) -> Result<(PathBuf, bool), String> {
+fn parse_args(args: &[String]) -> Result<(std::path::PathBuf, bool), String> {
     let mut output = None;
     let mut json_mode = false;
     for arg in args {
@@ -51,7 +51,7 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, bool), String> {
             json_mode = true;
         } else if arg.starts_with('-') {
             return Err(format!("unknown argument: {arg}"));
-        } else if output.replace(PathBuf::from(arg)).is_some() {
+        } else if output.replace(std::path::PathBuf::from(arg)).is_some() {
             return Err(String::from("expected one output directory"));
         }
     }
@@ -62,7 +62,7 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, bool), String> {
     ))
 }
 
-fn read_optional(path: &Path) -> Result<Option<Value>, String> {
+fn read_optional(path: &std::path::Path) -> Result<Option<Value>, String> {
     if !path.is_file() {
         return Ok(None);
     }

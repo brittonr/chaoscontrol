@@ -6,7 +6,6 @@
 use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
-use std::time::Instant;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
@@ -29,7 +28,7 @@ fn main() {
 
     // ── Task 7.2: Determinism under parallelism ───────────────────
     print!("  [1] Determinism: --workers 1 vs --workers 2 ... ");
-    let t0 = Instant::now();
+    let t0 = std::time::Instant::now();
     if test_parallel_determinism(kernel, initrd) {
         println!("✅ PASS ({:.1}s)", t0.elapsed().as_secs_f64());
         passed += 1;
@@ -40,7 +39,7 @@ fn main() {
 
     // ── Task 7.4: Stress test ─────────────────────────────────────
     print!("  [2] Stress: 5 rounds × 4 branches × 2 workers ... ");
-    let t0 = Instant::now();
+    let t0 = std::time::Instant::now();
     if test_stress(kernel, initrd) {
         println!("✅ PASS ({:.1}s)", t0.elapsed().as_secs_f64());
         passed += 1;

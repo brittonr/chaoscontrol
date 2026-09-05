@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use chaoscontrol_snapshot_descriptor as snapshot_core;
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 use serde_json::Value;
 
 use crate::snapshot_descriptor::fixture::example_descriptor;
@@ -43,14 +43,14 @@ const FRESHNESS_INPUTS: [&str; 6] = [
     "contracts/evidence/schema/snapshot-descriptor-v1.schema.json",
 ];
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FreshnessManifest {
     schema: String,
     files: Vec<FreshnessFile>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FreshnessFile {
     path: String,

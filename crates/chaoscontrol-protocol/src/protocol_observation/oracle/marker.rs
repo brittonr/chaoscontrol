@@ -2,7 +2,7 @@ use super::*;
 use crate::branch_marker::BranchMarker;
 
 /// Identity linkage only. The snapshot shell must establish restorability.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerSnapshotBinding {
     pub marker_identity: String,

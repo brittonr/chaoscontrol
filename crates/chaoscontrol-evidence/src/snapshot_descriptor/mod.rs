@@ -5,7 +5,6 @@ pub mod fixture;
 use std::path::Path;
 
 use chaoscontrol_snapshot_descriptor as snapshot_core;
-use serde::{Deserialize, Serialize};
 
 use crate::{EvidenceError, EvidenceResult};
 
@@ -24,7 +23,7 @@ pub struct DescriptorBuildInput {
     pub payload: snapshot_core::PayloadClosure,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DescriptorFixtureBundle {
     pub monolithic_descriptor: snapshot_core::TaggedDigest,

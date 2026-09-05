@@ -4,7 +4,7 @@ use chaoscontrol_sim_core::causality::{
     AttributionObservation, AttributionReport, CauseCandidate, DdminState, InterleavingStep,
     MinimizationCandidate, MinimizationResult,
 };
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -25,7 +25,7 @@ const REQUIRED_NON_CLAIMS: [&str; REQUIRED_NON_CLAIM_COUNT] = [
     "analysis evidence is not release eligibility",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CausalityRequest {
     pub schema_version: u32,
@@ -37,7 +37,7 @@ pub struct CausalityRequest {
     pub budget: AnalysisBudget,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionBinding {
     pub replay_verdict_blake3: String,
@@ -45,14 +45,14 @@ pub struct ExecutionBinding {
     pub reproduced: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MinimizationExecution {
     pub candidate: MinimizationCandidate,
     pub binding: ExecutionBinding,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttributionExecution {
     pub candidate_id: String,
@@ -60,7 +60,7 @@ pub struct AttributionExecution {
     pub binding: ExecutionBinding,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CausalityReceipt {
     pub schema_version: u32,
@@ -365,7 +365,7 @@ fn validate_snapshots(snapshots: &[String]) -> EvidenceResult<()> {
 }
 
 fn request_identity(request: &CausalityRequest) -> EvidenceResult<String> {
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         replay_verdict_blake3: &'a str,
@@ -386,7 +386,7 @@ fn request_identity(request: &CausalityRequest) -> EvidenceResult<String> {
 }
 
 fn receipt_identity(receipt: &CausalityReceipt) -> EvidenceResult<String> {
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         request_blake3: &'a str,

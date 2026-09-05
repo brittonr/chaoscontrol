@@ -1,8 +1,7 @@
 use super::model::{validate_candidates, CausalityError, CauseCandidate};
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttributionObservation {
     pub candidate_id: String,
@@ -10,7 +9,7 @@ pub struct AttributionObservation {
     pub neutralized_reproduced: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttributionRanking {
     pub candidate: CauseCandidate,
@@ -20,7 +19,7 @@ pub struct AttributionRanking {
     pub causal_probability_estimate: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttributionReport {
     pub rankings: Vec<AttributionRanking>,

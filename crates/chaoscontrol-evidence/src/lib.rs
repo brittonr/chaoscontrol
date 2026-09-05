@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::de::Deserialize;
 use sha2::{Digest, Sha256};
 
 pub mod architecture_boundaries;
@@ -1827,20 +1827,20 @@ fn local_assertion_support(root: &Path, workload: &str) -> EvidenceResult<LocalA
     Ok(support)
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 struct LocalAssertionHarnessManifest {
     schema_version: u64,
     harnesses: Vec<LocalAssertionHarness>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 struct LocalAssertionHarness {
     workload: String,
     evidence: String,
     covered_assertions: Vec<LocalAssertionHarnessAssertion>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 struct LocalAssertionHarnessAssertion {
     id: Option<u64>,
     message: String,
@@ -2443,7 +2443,7 @@ fn rel_display(root: &Path, path: &Path) -> String {
         .into_owned()
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct AcceptedWorkloadProofs {
     pub schema_version: u64,
     pub scope: String,
@@ -2496,7 +2496,7 @@ impl AcceptedWorkloadProofs {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct AcceptedWorkloadProof {
     pub workload: String,
     pub assertion_id: u64,
@@ -2534,7 +2534,7 @@ impl AcceptedWorkloadProof {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct AcceptedVerdictSummary {
     pub workload: String,
     pub seed: Option<u64>,
@@ -2549,7 +2549,7 @@ pub struct AcceptedVerdictSummary {
     pub accepted_verdict: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SummaryBugRef {
     pub file: String,
     pub assertion_id: u64,
@@ -2557,7 +2557,7 @@ pub struct SummaryBugRef {
     pub has_snapshot_ref: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SummaryVerdictRef {
     pub path: String,
     pub replay_class: String,
@@ -2566,7 +2566,7 @@ pub struct SummaryVerdictRef {
     pub snapshot_status: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct BugRecord {
     pub bug_id: u64,
     pub assertion_id: u64,
@@ -2582,7 +2582,7 @@ pub struct BugRecord {
     pub dedup_key: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ReplayVerdict {
     pub schema_version: u64,
@@ -2674,13 +2674,13 @@ impl ReplayVerdict {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ReplayCommand {
     pub command: String,
     pub exit_status: i32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SnapshotVerdict {
     pub status: String,
     pub present: bool,
@@ -2701,7 +2701,7 @@ impl SnapshotVerdict {
 /// Compatibility alias: the shared core owns the snapshot reference DTO.
 pub type SnapshotRef = ReplayParentSnapshotRef;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct AssertionSummaryEntry {
     pub id: Option<serde_json::Value>,
     pub message: Option<serde_json::Value>,
@@ -2761,7 +2761,7 @@ impl AssertionSummaryEntry {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SnapshotChunkManifest {
     pub schema_version: u64,
     pub original_path: String,
@@ -2797,7 +2797,7 @@ impl SnapshotChunkManifest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SnapshotChunk {
     pub path: String,
     pub size: u64,

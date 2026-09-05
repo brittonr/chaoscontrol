@@ -1,9 +1,8 @@
 //! Profile-bound collection separate from free-form oracle events.
 
 use chaoscontrol_protocol::protocol_observation::*;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Collection {
     profile: Option<ProtocolObservationProfile>,

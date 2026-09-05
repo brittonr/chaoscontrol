@@ -1,17 +1,16 @@
 use super::model::{domain_hash, validate_steps, CausalityError, InterleavingStep};
-use serde::{Deserialize, Serialize};
 
 const MINIMUM_GRANULARITY: usize = 2;
 const CANDIDATE_DOMAIN: &[u8] = b"chaoscontrol.causality.minimization-candidate.v1\0";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MinimizationCandidate {
     pub candidate_blake3: String,
     pub steps: Vec<InterleavingStep>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MinimizationResult {
     pub minimized_steps: Vec<InterleavingStep>,

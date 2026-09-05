@@ -1,0 +1,503 @@
+copying path '/nix/store/zrixy24w32w2y3ilcy712vg06i46jq30-rust-src-1.98.0.tar.xz' from 'https://nix-community.cachix.org'...
+building '/nix/store/lpxvackwzsz4l5pi999zl864pp4w6kjl-rust-src-1.98.0-x86_64-unknown-linux-gnu.drv'...
+building '/nix/store/nbri3pzygcx1c57vrcim1rmaavsdl5is-rust-analyzer-1.98.0-x86_64-unknown-linux-gnu.tar.xz.drv'...
+building '/nix/store/gbhrqh45xzdhny99as887w42pmri2fhi-rust-std-1.98.0-x86_64-unknown-linux-musl.tar.xz.drv'...
+building '/nix/store/xk6svvzamv6h9xnxm2nn0qn8jj0wlbha-rust-analyzer-preview-1.98.0-x86_64-unknown-linux-gnu.drv'...
+building '/nix/store/cr29lk7jc0q293ci7hs3a7gmmasc9pnj-rust-std-1.98.0-x86_64-unknown-linux-musl.drv'...
+building '/nix/store/jgcv4i96mmd837zmhlpr9pvypy60m4j4-rust-default-1.98.0.drv'...
+building '/nix/store/s1k7asxvp11pf5l83h9rq0lc0kz4rw5y-nix-shell-env.drv'...
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Checking chaoscontrol-smr v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-smr)
+    Checking chaoscontrol-snapshot-descriptor v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-snapshot-descriptor)
+error: cannot find derive macro `Serialize` in this scope
+ --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:5:39
+  |
+5 | #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+  |                                       ^^^^^^^^^
+  |
+note: `Serialize` is imported here, but it is only a trait, without a derive macro
+ --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:1:5
+  |
+1 | use super::*;
+  |     ^^^^^^^^
+
+error: cannot find derive macro `Deserialize` in this scope
+ --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:5:50
+  |
+5 | #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+  |                                                  ^^^^^^^^^^^
+  |
+note: `Deserialize` is imported here, but it is only a trait, without a derive macro
+ --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:1:5
+  |
+1 | use super::*;
+  |     ^^^^^^^^
+
+error: cannot find attribute `serde` in this scope
+ --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:6:3
+  |
+6 | #[serde(deny_unknown_fields)]
+  |   ^^^^^
+  |
+  = note: `serde` is in scope, but it is a crate, not an attribute
+help: `serde` is an attribute that can be used by the derive macros `Deserialize` and `Serialize`, you might be missing a `derive` attribute
+  |
+7 + #[derive(Deserialize, Serialize)]
+8 | pub struct MarkerSnapshotBinding {
+  |
+
+warning: unused imports: `de::Deserialize` and `ser::Serialize`
+ --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:2:13
+  |
+2 | use serde::{de::Deserialize, ser::Serialize};
+  |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Serialize` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:218:39
+    |
+218 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                       ^^^^^^^^^^^^^^^^ unsatisfied trait bound
+...
+221 |     #[serde(skip_serializing_if = "Option::is_none")]
+    |     - required by a bound introduced by this call
+    |
+help: the trait `admission::_::_serde::Serialize` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Serialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Serialize`:
+              &'a T
+              &'a mut T
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+              (T0, T1, T2, T3)
+              (T0, T1, T2, T3, T4)
+            and 199 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Serialize`
+note: required by a bound in `admission::_::_serde::ser::SerializeStruct::serialize_field`
+   --> <WORKSPACE>/src/ser/mod.rs:1915:4
+    = note: this error originates in the derive macro `serde::Serialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:222:25
+    |
+222 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_element`
+   --> <WORKSPACE>/src/de/mod.rs:1769:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:222:25
+    |
+222 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_value`
+   --> <WORKSPACE>/src/de/mod.rs:1914:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:218:57
+    |
+218 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                                         ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `admission::_::_serde::__private228::de::missing_field`
+   --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:24:0
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+    = note: this error originates in the derive macro `serde::Deserialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Serialize` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:227:39
+    |
+227 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                       ^^^^^^^^^^^^^^^^ unsatisfied trait bound
+...
+245 |     #[serde(skip_serializing_if = "Option::is_none")]
+    |     - required by a bound introduced by this call
+    |
+help: the trait `admission::_::_serde::Serialize` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Serialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Serialize`:
+              &'a T
+              &'a mut T
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+              (T0, T1, T2, T3)
+              (T0, T1, T2, T3, T4)
+            and 199 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Serialize`
+note: required by a bound in `admission::_::_serde::ser::SerializeStruct::serialize_field`
+   --> <WORKSPACE>/src/ser/mod.rs:1915:4
+    = note: this error originates in the derive macro `serde::Serialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:246:25
+    |
+246 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_element`
+   --> <WORKSPACE>/src/de/mod.rs:1769:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:246:25
+    |
+246 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_value`
+   --> <WORKSPACE>/src/de/mod.rs:1914:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:227:57
+    |
+227 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                                         ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `admission::_::_serde::__private228::de::missing_field`
+   --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:24:0
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-4c0c189e14c8282f.long-type-11343073264158295727.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+    = note: this error originates in the derive macro `serde::Deserialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+For more information about this error, try `rustc --explain E0277`.
+warning: `chaoscontrol-protocol` (lib) generated 1 warning
+error: could not compile `chaoscontrol-protocol` (lib) due to 11 previous errors; 1 warning emitted
+warning: build failed, waiting for other jobs to finish...
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:222:25
+    |
+222 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_element`
+   --> <WORKSPACE>/src/de/mod.rs:1769:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:222:25
+    |
+222 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_value`
+   --> <WORKSPACE>/src/de/mod.rs:1914:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:218:57
+    |
+218 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                                         ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `admission::_::_serde::__private228::de::missing_field`
+   --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:24:0
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+    = note: this error originates in the derive macro `serde::Deserialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:246:25
+    |
+246 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_element`
+   --> <WORKSPACE>/src/de/mod.rs:1769:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:246:25
+    |
+246 |     pub marker_binding: Option<MarkerSnapshotBinding>,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `next_value`
+   --> <WORKSPACE>/src/de/mod.rs:1914:4
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0277]: the trait bound `oracle::marker::MarkerSnapshotBinding: serde::Deserialize<'de>` is not satisfied
+   --> crates/chaoscontrol-protocol/src/protocol_observation/model.rs:227:57
+    |
+227 | #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    |                                                         ^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+help: the trait `admission::_::_serde::Deserialize<'_>` is not implemented for `oracle::marker::MarkerSnapshotBinding`
+   --> crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs:7:1
+    |
+  7 | pub struct MarkerSnapshotBinding {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: for local types consider adding `#[derive(serde::Deserialize)]` to your `oracle::marker::MarkerSnapshotBinding` type
+    = note: for types from other crates check whether the crate offers a `serde` feature flag
+    = help: the following other types implement trait `admission::_::_serde::Deserialize<'de>`:
+              &'a Path
+              &'a RawValue
+              &'a [u8]
+              &'a str
+              ()
+              (T,)
+              (T0, T1)
+              (T0, T1, T2)
+            and 234 others
+    = note: required for `std::option::Option<oracle::marker::MarkerSnapshotBinding>` to implement `admission::_::_serde::Deserialize<'_>`
+note: required by a bound in `admission::_::_serde::__private228::de::missing_field`
+   --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:24:0
+    = note: the full name for the type has been written to '/home/brittonr/.cargo-target/debug/deps/chaoscontrol_protocol-c83c27ffa6de5835.long-type-9816097191633572863.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+    = note: this error originates in the derive macro `serde::Deserialize` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: `chaoscontrol-protocol` (lib test) generated 1 warning (1 duplicate)
+error: could not compile `chaoscontrol-protocol` (lib test) due to 11 previous errors; 1 warning emitted

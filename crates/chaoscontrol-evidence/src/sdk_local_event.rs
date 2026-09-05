@@ -5,7 +5,6 @@ use chaoscontrol_protocol::identity::{
     ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_CATEGORY_BYTES, MAX_ASSERTION_GUEST_BYTES,
     MAX_ASSERTION_MESSAGE_BYTES,
 };
-use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
@@ -26,13 +25,13 @@ pub(crate) struct LocalEventState {
     legacy: BTreeMap<String, LegacyMetadata>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AssertionEnvelope {
     antithesis_assert: AssertionBody,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AssertionBody {
     assert_type: String,

@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use super::{checked_usize, valid_identifier, ArtifactReference};
 use crate::explorer::{ExplorationMode, ExplorerConfig};
 use crate::mutator::MutationConfig;
@@ -14,7 +12,7 @@ const MAX_VMS: u64 = 64;
 const MAX_VCPUS: u64 = 64;
 const MAX_GUEST_CMDLINE_BYTES: usize = 1024;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunProfile {
     pub schema: String,
@@ -30,7 +28,7 @@ pub struct RunProfile {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunArtifacts {
     pub kernel: ArtifactReference,
@@ -38,7 +36,7 @@ pub struct RunArtifacts {
     pub disk: Option<ArtifactReference>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunTopology {
     pub num_vms: u64,
@@ -47,7 +45,7 @@ pub struct RunTopology {
     pub scheduling: SchedulingProfile,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SchedulingProfile {
     pub strategy: SchedulingMode,
@@ -56,14 +54,14 @@ pub struct SchedulingProfile {
     pub diversity: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum SchedulingMode {
     RoundRobin,
     Randomized,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExplorationProfile {
     pub mode: ExplorationProfileMode,
@@ -76,7 +74,7 @@ pub struct ExplorationProfile {
     pub stale_round_limit: u64,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExplorationProfileMode {
     FaultSchedule,
@@ -84,21 +82,21 @@ pub enum ExplorationProfileMode {
     Hybrid,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CoverageProfile {
     pub mode: CoverageMode,
     pub bitmap_gpa: u64,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum CoverageMode {
     Blind,
     Bitmap,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingProfile {
     pub raw_log_policy: RawLogPolicy,
@@ -108,14 +106,14 @@ pub struct LoggingProfile {
     pub memory_hash: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RawLogPolicy {
     Disabled,
     DebugOnlyExcludedFromGit,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum DeterminismLogPolicy {
     Disabled,

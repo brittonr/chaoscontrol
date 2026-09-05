@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
-
 use chaoscontrol_fault::faults::Fault;
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
 
@@ -17,7 +15,7 @@ const MAX_VMS: u64 = 64;
 const MAX_RATE_PPM: u32 = 1_000_000;
 const MAX_CLOCK_SKEW_NS: i64 = 86_400_000_000_000;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FaultScheduleProfile {
     pub schema: String,
@@ -28,7 +26,7 @@ pub struct FaultScheduleProfile {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum FaultDescriptor {
     ProcessKill {

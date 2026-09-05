@@ -5,20 +5,19 @@ use chaoscontrol_protocol::admission::{
 use chaoscontrol_protocol::identity::{
     AssertionDescriptor, AssertionFingerprint, MAX_ASSERTION_CANONICAL_BYTES,
 };
-use serde::Deserialize;
 
 const HEX_CHARACTERS_PER_BYTE: usize = 2;
 const HEX_HIGH_NIBBLE_SHIFT: u32 = 4;
 const HEX_ALPHA_DIGIT_OFFSET: u8 = 10;
 const MAX_CANONICAL_HEX_BYTES: usize = MAX_ASSERTION_CANONICAL_BYTES * HEX_CHARACTERS_PER_BYTE;
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CatalogEnvelope {
     chaoscontrol_assertion_catalog: CatalogRecord,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(tag = "record", rename_all = "snake_case", deny_unknown_fields)]
 enum CatalogRecord {
     Begin {

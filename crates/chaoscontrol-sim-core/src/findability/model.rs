@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
@@ -11,7 +10,7 @@ const BLAKE3_PREFIX: &str = "blake3:";
 const OBSERVATION_DOMAIN: &[u8] = b"chaoscontrol.findability.observation.v1\0";
 const OBSERVATION_SET_DOMAIN: &[u8] = b"chaoscontrol.findability.observation-set.v1\0";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SubtreeObservation {
     pub generation_id: String,
@@ -22,14 +21,14 @@ pub struct SubtreeObservation {
     pub bugs: Vec<BugInstance>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BugInstance {
     pub found_at: u64,
     pub bug_blake3: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssembledObservation {
     pub generation_id: String,
@@ -272,7 +271,7 @@ fn validate_subtree(subtree: &SubtreeObservation) -> Result<(), FindabilityError
 }
 
 fn observation_identity(observation: &AssembledObservation) -> Result<String, FindabilityError> {
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct Material<'a> {
         generation_id: &'a str,
         subtree_id: &'a str,

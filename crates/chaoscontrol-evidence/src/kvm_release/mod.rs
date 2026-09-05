@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 
 pub const MATRIX_SCHEMA_VERSION: u32 = 1;
 pub const RECEIPT_SCHEMA_VERSION: u32 = 1;
@@ -37,7 +37,9 @@ const REQUIRED_BASE_KINDS: [RowKind; 5] = [
     RowKind::FreshWorkloadReplay,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum RowKind {
     CohortBinaryBuild,
@@ -50,7 +52,9 @@ pub enum RowKind {
     Pmu,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum RowStatus {
     Passed,
@@ -61,14 +65,18 @@ pub enum RowStatus {
     Absent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReleaseClass {
     ReleaseEligible,
     Blocked,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Blocker {
     InvalidMatrix,
@@ -101,20 +109,20 @@ pub enum Blocker {
     TerminalClassMismatch,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowLimits {
     pub timeout_seconds: u64,
     pub max_artifacts: usize,
     pub max_artifact_bytes: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MatrixRow {
     pub id: String,
     pub kind: RowKind,
@@ -125,7 +133,7 @@ pub struct MatrixRow {
     pub retained_artifacts: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KvmReleaseMatrix {
     pub schema_version: u32,
     pub profile_id: String,
@@ -138,13 +146,13 @@ pub struct KvmReleaseMatrix {
     pub rows: Vec<MatrixRow>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFacts {
     pub revision: String,
     pub dirty: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WorkerFacts {
     pub architecture: String,
     pub kernel_release: String,
@@ -152,14 +160,14 @@ pub struct WorkerFacts {
     pub capabilities: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactIdentity {
     pub path: String,
     pub bytes: u64,
     pub blake3: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowReceipt {
     pub id: String,
     pub kind: RowKind,
@@ -176,7 +184,7 @@ pub struct RowReceipt {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KvmReleaseReceipt {
     pub schema_version: u32,
     pub matrix_profile: String,
@@ -192,7 +200,7 @@ pub struct KvmReleaseReceipt {
     pub terminal_class: ReleaseClass,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KvmReleaseDecision {
     pub terminal_class: ReleaseClass,
     pub blockers: Vec<Blocker>,

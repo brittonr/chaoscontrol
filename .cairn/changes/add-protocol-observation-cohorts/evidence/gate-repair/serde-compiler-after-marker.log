@@ -1,0 +1,79 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+       Fixed crates/chaoscontrol-protocol/src/protocol_observation/model.rs (1 fix)
+       Fixed crates/chaoscontrol-protocol/src/protocol_observation/oracle.rs (1 fix)
+    Checking chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+    Checking chaoscontrol-replay-evidence-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-replay-evidence-core)
+    Checking chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+       Fixed crates/chaoscontrol-fault/src/observation/collection.rs (1 fix)
+    Checking chaoscontrol-sim-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sim-core)
+       Fixed crates/chaoscontrol-sim-core/src/findability/model.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/causality/model.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/causality/minimization.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/findability/statistics.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/causality/attribution.rs (1 fix)
+warning: unused import: `de::Deserialize`
+  --> crates/chaoscontrol-sim-core/src/network.rs:11:13
+   |
+11 | use serde::{de::Deserialize, ser::Serialize};
+   |             ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ser::Serialize`
+  --> crates/chaoscontrol-sim-core/src/network.rs:11:30
+   |
+11 | use serde::{de::Deserialize, ser::Serialize};
+   |                              ^^^^^^^^^^^^^^
+
+warning: `chaoscontrol-sim-core` (lib) generated 2 warnings
+    Checking chaoscontrol-vmm v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-vmm)
+       Fixed crates/chaoscontrol-sim-core/src/network.rs (1 fix)
+       Fixed crates/chaoscontrol-vmm/src/registers.rs (1 fix)
+    Checking chaoscontrol-evidence v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-evidence)
+       Fixed crates/chaoscontrol-evidence/src/snapshot_descriptor/contracts.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/profile_projection.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/typed_operator_command.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/sdk_local_report.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/sdk_local_event.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/sdk_local_catalog.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/lib.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/sdk_local_quality.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/findability_shell.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/causality_shell.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/kvm_release/mod.rs (1 fix)
+    Checking chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+       Fixed crates/chaoscontrol-explore/src/profile/campaign.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/profile/schedule.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/profile/run.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/profile/mod.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/assertion_summary.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/bin/check-kvm-release-matrix.rs (1 fix)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 59.74s

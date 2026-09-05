@@ -1,7 +1,7 @@
 use crate::{EvidenceError, EvidenceResult};
 use chaoscontrol_protocol::admission::{CatalogBuilder, MAX_ASSERTION_REPORT_ENTRIES};
 use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
-use serde::{Deserialize, Serialize};
+use serde::de::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,7 +9,7 @@ pub const LOCAL_REPORT_SCHEMA: &str = "chaoscontrol.sdk.local_report.v2";
 pub const LOCAL_REPLAY_BOUNDARY: &str = "local SDK JSONL proves instrumentation shape only; VM campaign and replay artifacts must be reviewed separately";
 const LOCAL_EVIDENCE_CLASS: &str = "instrumentation-dry-run";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LocalReportIdentity {
     pub descriptor: AssertionDescriptor,
@@ -47,7 +47,7 @@ pub(crate) struct QualityFacts {
     pub sometimes_without_success: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LocalReportV2 {
     adoption_tracks: BTreeMap<String, u64>,
@@ -75,7 +75,7 @@ struct LocalReportV2 {
     unobserved_assertions: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CoverageEntry {
     id: String,

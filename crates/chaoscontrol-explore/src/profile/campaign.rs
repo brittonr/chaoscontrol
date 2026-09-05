@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
-
 use super::{valid_identifier, ArtifactReference, RunProfile};
 use crate::campaign::CampaignConfig;
 use chaoscontrol_fault::scenario::ScenarioConfig;
@@ -16,7 +14,7 @@ const MAX_WORKERS: usize = 256;
 const PROBABILITY_TOTAL: f64 = 1.0;
 const PROBABILITY_EPSILON: f64 = f64::EPSILON * 8.0;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignProfile {
     pub schema: String,
@@ -32,14 +30,14 @@ pub struct CampaignProfile {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkerProfile {
     pub count: usize,
     pub failure_policy: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MutationProfile {
     pub maximum_tick: u64,
@@ -53,14 +51,14 @@ pub struct MutationProfile {
     pub havoc_maximum_mutations: u32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetricsProfile {
     pub enabled: bool,
     pub output: Option<ArtifactReference>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutputProfile {
     pub root: ArtifactReference,
@@ -68,7 +66,7 @@ pub struct OutputProfile {
     pub checkpoint_name: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignBounds {
     pub maximum_seeds: usize,

@@ -12,7 +12,6 @@ use std::collections::BTreeSet;
 use std::path::{Component, Path};
 
 use bounded_exec::{Completion, Disposition, ExecutionLimits, OutcomePolicy};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const PLAN_SCHEMA: &str = "chaoscontrol.typed-command-plan.v1";
@@ -21,7 +20,7 @@ const BLAKE3_HEX_LENGTH: usize = 64;
 const HEX_CHARACTERS_PER_BYTE: usize = 2;
 const HEX_RADIX: u32 = 16;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CommandPlan {
     pub schema: String,
@@ -39,7 +38,7 @@ pub struct CommandPlan {
     pub evidence_eligible: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutableRef {
     pub path: String,
@@ -47,35 +46,35 @@ pub struct ExecutableRef {
     pub maximum_bytes: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EnvironmentSpec {
     pub mode: EnvironmentMode,
     pub entries: Vec<EnvironmentEntry>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum EnvironmentMode {
     Clear,
     Inherit,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct EnvironmentEntry {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "mode", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum StdinSpec {
     Null,
     Bytes { hex: String, blake3: String },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct LimitSpec {
     pub timeout_ms: u64,
@@ -86,14 +85,14 @@ pub struct LimitSpec {
     pub teardown_timeout_ms: u64,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum TerminationScope {
     Child,
     ProcessGroup,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct CommandObservation {
     pub schema: &'static str,
     pub mechanism_revision: &'static str,
@@ -109,7 +108,7 @@ pub struct CommandObservation {
     pub stderr: StreamObservation,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct StreamObservation {
     pub observed_bytes: usize,
     pub retained_bytes: usize,

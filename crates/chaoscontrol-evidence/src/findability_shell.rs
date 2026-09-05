@@ -3,7 +3,6 @@ use chaoscontrol_sim_core::findability::{
     assemble_observations, fit_findability, validate_report, BugInstance, FindabilityPolicy,
     FindabilityReport, SubtreeObservation,
 };
-use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -12,7 +11,7 @@ pub const FINDABILITY_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 pub const MAX_FINDABILITY_ARTIFACT_BYTES: u64 = 4 * 1_024 * 1_024;
 const ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.findability.round-artifact.v1\0";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FindabilityRoundArtifact {
     pub schema_version: u32,
@@ -22,7 +21,7 @@ pub struct FindabilityRoundArtifact {
     pub subtrees: Vec<RoundSubtree>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoundSubtree {
     pub subtree_id: String,
@@ -159,7 +158,7 @@ fn artifact_observations(
 }
 
 fn artifact_identity(artifact: &FindabilityRoundArtifact) -> EvidenceResult<String> {
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         generation_id: &'a str,

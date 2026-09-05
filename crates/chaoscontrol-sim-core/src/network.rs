@@ -8,7 +8,6 @@ use chaoscontrol_fault::outcomes::{
 use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 pub const MAX_PENDING_FAULT_OBSERVATIONS: usize = 4_096;
@@ -110,7 +109,7 @@ fn usize_targets_to_u32(targets: &[usize]) -> Result<Vec<u32>, FaultTransitionEr
 }
 
 /// A message in the virtual network.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkMessage {
     /// Source VM index.
     pub from: usize,
@@ -123,7 +122,7 @@ pub struct NetworkMessage {
 }
 
 /// Disk fault injection flags.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DiskFaultFlags {
     /// Probability (0.0-1.0) of I/O error.
     pub error_rate: f64,
@@ -142,7 +141,7 @@ pub struct DiskFaultFlags {
 /// Tracks how many packets were affected by each fault type so the
 /// effects of jitter, bandwidth, loss, corruption, reorder, and
 /// duplication are visible in reports and logs.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct NetworkStats {
     /// Total packets submitted to `send()`.
@@ -201,7 +200,7 @@ impl std::fmt::Display for NetworkStats {
 ///
 /// Used for VM-to-VM packet bridging through the NetworkFabric's
 /// fault injection pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PacketInFlight {
     /// Source VM index.
     pub from: usize,
@@ -218,7 +217,7 @@ pub struct PacketInFlight {
 /// Models real-world network impairments: latency, jitter, bandwidth limits,
 /// packet loss, corruption, reordering, and duplication.  All values are
 /// per-VM and bidirectional (max of sender/receiver is used).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkFabric {
     /// Active partition rules — (side_a, side_b) pairs.
     pub partitions: Vec<(Vec<usize>, Vec<usize>)>,

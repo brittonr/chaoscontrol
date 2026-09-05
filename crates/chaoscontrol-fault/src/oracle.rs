@@ -28,7 +28,7 @@ use chaoscontrol_protocol::fallback::{
 };
 use chaoscontrol_protocol::identity::AssertionFingerprint;
 pub use chaoscontrol_protocol::identity::AssertionKind;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Deserialize, ser::Serialize, Deserializer, Serializer};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const MAX_PROCESS_INSTANCES_PER_ASSERTION: usize = 32;

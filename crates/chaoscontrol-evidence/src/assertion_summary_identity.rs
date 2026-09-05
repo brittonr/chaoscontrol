@@ -3,13 +3,13 @@ use chaoscontrol_protocol::admission::{
     CatalogBuilder, CatalogValidationStatus, MAX_ASSERTION_REPORT_ENTRIES,
 };
 use chaoscontrol_protocol::identity::{AssertionDescriptor, AssertionFingerprint, AssertionKind};
-use serde::Deserialize;
+use serde::de::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
 const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SummaryEnvelope {
     schema: String,
@@ -18,7 +18,7 @@ struct SummaryEnvelope {
     assertions: Vec<ReviewAssertion>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReviewIdentity {
     descriptor: AssertionDescriptor,
@@ -27,7 +27,7 @@ struct ReviewIdentity {
     catalog_tokens: Vec<AssertionFingerprint>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReviewAssertion {
     id: u32,

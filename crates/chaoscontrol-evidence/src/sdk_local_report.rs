@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{EvidenceError, EvidenceResult};
@@ -10,20 +9,20 @@ pub const DEFAULT_SDK_LOCAL_EVIDENCE_CLASS: &str = "instrumentation-dry-run";
 const MAX_SETUP_DETAIL_FIELDS: usize = 64;
 const MAX_SETUP_DETAIL_KEY_BYTES: usize = 128;
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetupEnvelope {
     antithesis_setup: SetupRecord,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetupRecord {
     status: String,
     details: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 struct AssertionSite {
     id: String,

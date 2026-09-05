@@ -2,7 +2,6 @@ use super::model::{
     observation_set_identity, validate_assembled, AssembledObservation, FindabilityError,
     MAX_EXACT_F64_INTEGER,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const FINDABILITY_REPORT_SCHEMA_VERSION: u32 = 1;
@@ -19,7 +18,7 @@ const MODEL_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.findability.model.v1\0";
 const REPORT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.findability.report.v1\0";
 const BLAKE3_PREFIX: &str = "blake3:";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FindabilityPolicy {
     pub prior_shape: f64,
@@ -28,7 +27,7 @@ pub struct FindabilityPolicy {
     pub maximum_projected_runs: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FindabilityStatus {
     Fitted,
@@ -37,7 +36,7 @@ pub enum FindabilityStatus {
     IndependenceViolation,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExponentialFit {
     pub first_bug_count: usize,
@@ -46,7 +45,7 @@ pub struct ExponentialFit {
     pub mean_time_to_bug: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LomaxProjection {
     pub prior_shape: f64,
@@ -61,7 +60,7 @@ pub struct LomaxProjection {
     pub projection_capped: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IndependenceAssessment {
     pub supported: bool,
@@ -69,7 +68,7 @@ pub struct IndependenceAssessment {
     pub correlated_groups: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FindabilityReport {
     pub schema_version: u32,
@@ -322,7 +321,7 @@ fn model_identity(policy: &FindabilityPolicy) -> Result<String, FindabilityError
 }
 
 fn report_identity(report: &FindabilityReport) -> Result<String, FindabilityError> {
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct Material<'a> {
         schema_version: u32,
         generation_id: &'a str,

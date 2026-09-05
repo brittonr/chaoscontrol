@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 
 use crate::profile_projection_spec::{validate_receipt_against_spec, ProjectionSpec, SPECS};
 use crate::{EvidenceError, EvidenceResult};
@@ -14,7 +14,7 @@ pub(crate) const NON_CLAIMS: [&str; 2] = [
     "no KVM, guest, replay, fault-effect, completion, or evidence-acceptance claim",
 ];
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectionReceipt {
     pub schema: String,
@@ -27,14 +27,14 @@ pub struct ProjectionReceipt {
     pub non_claims: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BoundArtifact {
     pub path: String,
     pub identity: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct BoundIdentity {
     pub name: String,

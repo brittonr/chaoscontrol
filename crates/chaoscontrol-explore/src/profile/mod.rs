@@ -8,15 +8,13 @@ pub use campaign::{CampaignProfile, PreparedScenario};
 pub use run::RunProfile;
 pub use schedule::FaultScheduleProfile;
 
-use serde::{Deserialize, Serialize};
-
 const MAX_PATH_BYTES: usize = 4096;
 const MAX_IDENTIFIER_BYTES: usize = 128;
 const MAX_PROFILE_JSON_BYTES: u64 = 1024 * 1024;
 const BLAKE3_PREFIX: &str = "blake3:";
 const BLAKE3_HEX_LENGTH: usize = 64;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactReference {
     pub kind: ArtifactReferenceKind,
@@ -24,7 +22,7 @@ pub struct ArtifactReference {
     pub identity: String,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ArtifactReferenceKind {
     AbsolutePath,

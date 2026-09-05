@@ -4,11 +4,10 @@
 mod marker;
 use super::*;
 pub use marker::{bind_marker_snapshot, validate_marker_binding, MarkerSnapshotBinding};
-use serde::{Deserialize, Serialize};
 
 const RESULT_DOMAIN: &[u8] = b"chaoscontrol.protocol-observation.oracle-result.v1\0";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProtocolVerdict {
     Pass,
@@ -16,7 +15,7 @@ pub enum ProtocolVerdict {
     Unsupported,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OracleDecision {
     pub verdict: ProtocolVerdict,
@@ -24,7 +23,7 @@ pub struct OracleDecision {
     pub work_items: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolOracleResult {
     pub adapter_ref: String,

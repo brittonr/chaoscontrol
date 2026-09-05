@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer};
+use serde::{de::Deserialize, Deserializer};
 
 pub(crate) fn deserialize<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where

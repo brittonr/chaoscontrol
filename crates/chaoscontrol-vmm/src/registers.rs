@@ -1,6 +1,5 @@
 //! Guest register state — portable representation for debugger and dlog.
 
-use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
@@ -8,7 +7,7 @@ use std::str::FromStr;
 ///
 /// This is a VMM-independent representation that can be serialized and
 /// passed to the replay debugger without depending on kvm_bindings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RegisterState {
     pub rip: u64,
     pub rsp: u64,
@@ -140,7 +139,9 @@ impl fmt::Display for RegisterState {
 }
 
 /// Named register for individual register modifications.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Register {
     // NOTE: Display and FromStr impls are below.
     Rip,
@@ -268,7 +269,7 @@ impl FromStr for Register {
 }
 
 /// Register modification for counterfactual replay.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RegisterModification {
     /// Which VM to modify.
     pub vm_index: usize,

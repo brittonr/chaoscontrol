@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fmt;
 
@@ -10,7 +9,7 @@ const BLAKE3_PREFIX: &str = "blake3:";
 const STEP_SET_DOMAIN: &[u8] = b"chaoscontrol.causality.step-set.v1\0";
 const CANDIDATE_SET_DOMAIN: &[u8] = b"chaoscontrol.causality.candidate-set.v1\0";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InterleavingStep {
     pub step_id: String,
@@ -18,7 +17,9 @@ pub struct InterleavingStep {
     pub policy_blake3: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CauseClass {
     Seed,
@@ -27,7 +28,7 @@ pub enum CauseClass {
     VariantPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CauseCandidate {
     pub candidate_id: String,
@@ -35,7 +36,7 @@ pub struct CauseCandidate {
     pub evidence_blake3: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisBudget {
     pub minimization_executions: u64,

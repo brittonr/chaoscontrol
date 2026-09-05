@@ -1,5 +1,4 @@
 use super::oracle::{MarkerSnapshotBinding, ProtocolOracleResult, ProtocolVerdict};
-use serde::{Deserialize, Serialize};
 
 pub const PROFILE_SCHEMA: &str = "chaoscontrol.protocol-observation-profile.v1";
 pub const DRAFT_SCHEMA: &str = "chaoscontrol.protocol-observation-draft.v1";
@@ -16,27 +15,29 @@ pub const MAX_INLINE_PROJECTION_BYTES: usize = 2_048;
 pub const MAX_ACTIVE_VCPUS: u32 = 256;
 pub const BLAKE3_HEX_BYTES: usize = 64;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum OracleAuthority {
     ConsumerIndependent,
     RuntimeSelfReport,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CompletionRule {
     AllRequiredParticipants,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MarkerPolicy {
     Denied,
     OptionalDeclared,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum NoveltySelector {
     ProjectionRef,
@@ -44,21 +45,21 @@ pub enum NoveltySelector {
     TransitionClass,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectionSupport {
     Available,
     Unavailable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DrainState {
     Open,
     Final,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolObservationBounds {
     pub max_records_per_producer: u32,
@@ -71,7 +72,7 @@ pub struct ProtocolObservationBounds {
     pub max_diagnostic_refs: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProducerProfile {
     pub producer_ref: String,
@@ -81,7 +82,7 @@ pub struct ProducerProfile {
     pub admitted_generation: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OracleAdapterProfile {
     pub adapter_ref: String,
@@ -89,7 +90,7 @@ pub struct OracleAdapterProfile {
     pub requires_complete_cohort: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolObservationProfile {
     pub schema: String,
@@ -115,7 +116,7 @@ pub struct AdmittedProfile {
     pub profile: ProtocolObservationProfile,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObservationDraft {
     pub schema: String,
@@ -143,7 +144,7 @@ pub struct ObservationDraft {
     pub parent_snapshot_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SchedulerPosition {
     pub schedule_state_ref: String,
@@ -152,7 +153,7 @@ pub struct SchedulerPosition {
     pub guest_exit_sequence: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CollectedObservation {
     pub schema: String,
@@ -160,14 +161,14 @@ pub struct CollectedObservation {
     pub scheduler_position: SchedulerPosition,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmittedObservation {
     pub record_identity: String,
     pub collected: CollectedObservation,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CohortClassification {
     Complete,
@@ -176,7 +177,9 @@ pub enum CohortClassification {
     Unsupported,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum CohortIssueKind {
     BoundExceeded,
@@ -192,14 +195,14 @@ pub enum CohortIssueKind {
     UnsupportedProjection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CohortIssue {
     pub kind: CohortIssueKind,
     pub subject: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CohortResult {
     pub cohort_identity: String,
@@ -215,7 +218,7 @@ pub struct CohortResult {
     pub novelty_identities: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolEvidenceContext {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -224,7 +227,7 @@ pub struct ProtocolEvidenceContext {
     pub replay_refs: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolObservationReceipt {
     pub schema: String,
@@ -250,7 +253,7 @@ pub struct ProtocolObservationReceipt {
     pub non_claims: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MarkerReachability {
     NotBound,
@@ -258,7 +261,7 @@ pub enum MarkerReachability {
     IdentityLinked,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolObservationStatus {
     pub classification: CohortClassification,

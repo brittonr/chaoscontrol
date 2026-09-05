@@ -9,7 +9,7 @@ use chaoscontrol_evidence::kvm_release::{
     ArtifactIdentity, Blocker, KvmReleaseMatrix, KvmReleaseReceipt, ReleaseClass, RowKind,
     RowReceipt, RowStatus, SourceFacts, WorkerFacts, RECEIPT_SCHEMA_VERSION, REQUIRED_WORKER_ARCH,
 };
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 
 // The portable and KVM workflow lanes call this checker separately.
 // r[impl chaoscontrol.kvm_release_rail.ci]
@@ -52,7 +52,7 @@ struct Config {
     write_fixtures: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct FixtureCase {
     expected_revision: String,
     now_unix_seconds: u64,
@@ -60,7 +60,7 @@ struct FixtureCase {
     receipt: KvmReleaseReceipt,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct CuratedValidationReceipt {
     schema: &'static str,
     source: SourceFacts,
@@ -79,7 +79,7 @@ struct CuratedValidationReceipt {
     non_claims: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, serde::Serialize)]
 struct CuratedRow {
     id: String,
     kind: RowKind,

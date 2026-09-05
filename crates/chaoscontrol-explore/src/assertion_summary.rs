@@ -2,7 +2,7 @@ use crate::assertion_summary_validation::validate_fatal_details;
 use crate::campaign::CampaignReport;
 use crate::explorer::{AssertionDetail, ExplorationReport};
 use chaoscontrol_protocol::admission::CatalogValidationStatus;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{de::Deserialize, Deserializer};
 
 pub(crate) use crate::assertion_summary_validation::{
     derive_detail_verdict, validate_assertion_details,
@@ -10,7 +10,7 @@ pub(crate) use crate::assertion_summary_validation::{
 
 pub const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssertionSummaryV2 {
     schema: String,
@@ -19,7 +19,7 @@ pub struct AssertionSummaryV2 {
     assertions: Vec<AssertionDetail>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawAssertionSummaryV2 {
     schema: String,

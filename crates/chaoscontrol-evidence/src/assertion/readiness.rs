@@ -1,11 +1,3 @@
-use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
-use chaoscontrol_protocol::identity::{
-    encode_lower_hex, AssertionDescriptor, AssertionFingerprint,
-};
-use serde_json::Value;
-
-use crate::{AssertionSummaryEntry, EvidenceError, EvidenceResult};
-
 pub(crate) const ACCEPTED_V2_STATUS: &str = "accepted-v2";
 pub(crate) const DIAGNOSTIC_ONLY_STATUS: &str = "legacy-diagnostic";
 
@@ -26,8 +18,11 @@ impl IdentityStatus {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IdentityAdmission {
-    pub(crate) entries: Vec<AssertionSummaryEntry>,
-    pub(crate) identities: Vec<(u64, AssertionEvidenceIdentity)>,
+    pub(crate) entries: Vec<crate::AssertionSummaryEntry>,
+    pub(crate) identities: Vec<(
+        u64,
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    )>,
     pub(crate) status: IdentityStatus,
     pub(crate) promotion_blocker: Option<String>,
 }
@@ -40,10 +35,10 @@ struct SummaryIdentityCarrier {
 
 #[derive(serde::Deserialize)]
 struct SummaryIdentity {
-    descriptor: AssertionDescriptor,
-    fingerprint: AssertionFingerprint,
+    descriptor: ::chaoscontrol_protocol::identity::AssertionDescriptor,
+    fingerprint: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     canonical_descriptor: String,
-    catalog_tokens: Vec<AssertionFingerprint>,
+    catalog_tokens: Vec<::chaoscontrol_protocol::identity::AssertionFingerprint>,
 }
 
 impl IdentityAdmission {
@@ -51,13 +46,13 @@ impl IdentityAdmission {
         &self,
         workload: &str,
         selected_alias: u64,
-    ) -> EvidenceResult<()> {
+    ) -> crate::EvidenceResult<()> {
         if self.status != IdentityStatus::AcceptedV2 {
             let blocker = self
                 .promotion_blocker
                 .as_deref()
                 .unwrap_or("assertion summary is diagnostic-only");
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "{workload}: assertions.json is diagnostic-only and cannot promote: {blocker}; fresh admitted v2 KVM evidence is required"
             )));
         }
@@ -68,7 +63,7 @@ impl IdentityAdmission {
             .filter(|(alias, _)| *alias == selected_alias)
             .count();
         if matching_aliases != 1 {
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "{workload}: selected assertion alias {selected_alias} resolves to {matching_aliases} accepted v2 entries"
             )));
         }
@@ -79,8 +74,8 @@ impl IdentityAdmission {
         &self,
         workload: &str,
         selected_alias: u64,
-        expected: &AssertionEvidenceIdentity,
-    ) -> EvidenceResult<()> {
+        expected: &::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    ) -> crate::EvidenceResult<()> {
         self.require_selected_alias(workload, selected_alias)?;
         let (_, actual) = self
             .identities
@@ -88,7 +83,7 @@ impl IdentityAdmission {
             .find(|(alias, _)| *alias == selected_alias)
             .expect("selected alias count was checked");
         if actual != expected {
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "{workload}: bug assertion identity does not match accepted v2 assertions.json"
             )));
         }
@@ -103,7 +98,7 @@ pub(crate) struct WorkloadIdentityStatus<'a> {
     pub(crate) report_status: &'a str,
 }
 
-pub(crate) fn classify(value: &Value) -> EvidenceResult<IdentityAdmission> {
+pub(crate) fn classify(value: &::serde_json::Value) -> crate::EvidenceResult<IdentityAdmission> {
     crate::validate_assertion_summary(value)?;
     let promotion_blocker = crate::validate_assertion_summary_for_promotion(value)
         .err()
@@ -116,11 +111,17 @@ pub(crate) fn classify(value: &Value) -> EvidenceResult<IdentityAdmission> {
     let entries_value = value
         .as_array()
         .cloned()
-        .or_else(|| value.get("assertions").and_then(Value::as_array).cloned())
-        .ok_or_else(|| EvidenceError::new("assertions.json has no assertion entries"))?;
-    let entries = serde_json::from_value(Value::Array(entries_value.clone())).map_err(|error| {
-        EvidenceError::new(format!("assertions.json entries are invalid: {error}"))
-    })?;
+        .or_else(|| {
+            value
+                .get("assertions")
+                .and_then(::serde_json::Value::as_array)
+                .cloned()
+        })
+        .ok_or_else(|| crate::EvidenceError::new("assertions.json has no assertion entries"))?;
+    let entries = serde_json::from_value(::serde_json::Value::Array(entries_value.clone()))
+        .map_err(|error| {
+            crate::EvidenceError::new(format!("assertions.json entries are invalid: {error}"))
+        })?;
     let identities = if status == IdentityStatus::AcceptedV2 {
         accepted_identities(&entries_value)?
     } else {
@@ -135,38 +136,50 @@ pub(crate) fn classify(value: &Value) -> EvidenceResult<IdentityAdmission> {
     })
 }
 
-fn accepted_identities(values: &[Value]) -> EvidenceResult<Vec<(u64, AssertionEvidenceIdentity)>> {
+fn accepted_identities(
+    values: &[::serde_json::Value],
+) -> crate::EvidenceResult<
+    Vec<(
+        u64,
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+    )>,
+> {
     values
         .iter()
         .map(|value| {
             let carrier: SummaryIdentityCarrier =
                 serde_json::from_value(value.clone()).map_err(|error| {
-                    EvidenceError::new(format!("accepted v2 identity is invalid: {error}"))
+                    crate::EvidenceError::new(format!("accepted v2 identity is invalid: {error}"))
                 })?;
             if carrier.identity.catalog_tokens.len() != 1 {
-                return Err(EvidenceError::new(
+                return Err(crate::EvidenceError::new(
                     "accepted v2 identity requires one catalog token",
                 ));
             }
-            let canonical_descriptor = carrier
-                .identity
-                .descriptor
-                .canonical_bytes()
-                .map_err(|error| EvidenceError::new(format!("invalid descriptor: {error}")))?;
-            if encode_lower_hex(&canonical_descriptor) != carrier.identity.canonical_descriptor {
-                return Err(EvidenceError::new(
+            let canonical_descriptor =
+                carrier
+                    .identity
+                    .descriptor
+                    .canonical_bytes()
+                    .map_err(|error| {
+                        crate::EvidenceError::new(format!("invalid descriptor: {error}"))
+                    })?;
+            if ::chaoscontrol_protocol::identity::encode_lower_hex(&canonical_descriptor)
+                != carrier.identity.canonical_descriptor
+            {
+                return Err(crate::EvidenceError::new(
                     "accepted v2 canonical descriptor does not match",
                 ));
             }
-            let identity = AssertionEvidenceIdentity {
+            let identity = ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity {
                 descriptor: carrier.identity.descriptor,
                 fingerprint: carrier.identity.fingerprint,
                 canonical_descriptor,
                 catalog_token: carrier.identity.catalog_tokens[0],
             };
-            identity
-                .validate_for_catalog_admission()
-                .map_err(|error| EvidenceError::new(format!("invalid v2 identity: {error:?}")))?;
+            identity.validate_for_catalog_admission().map_err(|error| {
+                crate::EvidenceError::new(format!("invalid v2 identity: {error:?}"))
+            })?;
             Ok((carrier.id, identity))
         })
         .collect()
@@ -174,10 +187,10 @@ fn accepted_identities(values: &[Value]) -> EvidenceResult<Vec<(u64, AssertionEv
 
 pub(crate) fn require_report_bindings(
     statuses: &[WorkloadIdentityStatus<'_>],
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     for status in statuses {
         if status.report_status != status.artifact_status {
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "{}: report identity status {} does not match assertion artifact {}",
                 status.workload, status.report_status, status.artifact_status
             )));
@@ -186,14 +199,16 @@ pub(crate) fn require_report_bindings(
     Ok(())
 }
 
-pub(crate) fn require_all_accepted(statuses: &[WorkloadIdentityStatus<'_>]) -> EvidenceResult<()> {
+pub(crate) fn require_all_accepted(
+    statuses: &[WorkloadIdentityStatus<'_>],
+) -> crate::EvidenceResult<()> {
     let blockers = statuses
         .iter()
         .filter(|status| status.artifact_status != ACCEPTED_V2_STATUS)
         .map(|status| format!("{}={}", status.workload, status.artifact_status))
         .collect::<Vec<_>>();
     if !blockers.is_empty() {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "assertion-readiness promotion requires fresh admitted v2 KVM evidence; diagnostic-only artifacts: {}",
             blockers.join(", ")
         )));

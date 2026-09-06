@@ -4,8 +4,6 @@
 //! injected into a running VM.  Faults are deterministic: given the
 //! same seed and schedule, the same faults fire at the same points.
 
-use std::fmt;
-
 const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
 
 const fn default_memory_pressure_duration_ticks() -> u64 {
@@ -33,8 +31,8 @@ pub enum GpRegister {
     R15,
 }
 
-impl fmt::Display for GpRegister {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for GpRegister {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         let name = match self {
             GpRegister::Rax => "rax",
             GpRegister::Rbx => "rbx",
@@ -545,8 +543,8 @@ impl Fault {
     }
 }
 
-impl fmt::Display for Fault {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for Fault {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match self {
             Fault::NetworkPartition { side_a, side_b } => {
                 write!(f, "network-partition({side_a:?} | {side_b:?})")
@@ -718,8 +716,8 @@ pub enum FaultCategory {
     Cpu,
 }
 
-impl fmt::Display for FaultCategory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for FaultCategory {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match self {
             FaultCategory::Network => write!(f, "network"),
             FaultCategory::Disk => write!(f, "disk"),

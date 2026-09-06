@@ -6,13 +6,6 @@
 // r[impl chaoscontrol.architecture_modules.controller]
 // r[impl chaoscontrol.architecture_modules.boundary]
 
-use chaoscontrol_fault::outcomes::{
-    validate_pending_fault_effect, FaultApplicationFailureDisposition,
-    FaultApplicationFailureReason, FaultAttemptId, FaultOutcomeLedger, FaultPlanEffect,
-    FaultTransitionError, FaultVmStatus,
-};
-use chaoscontrol_sim_core::CoreVmStatus;
-
 /// Current status of one VM in a controller round.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VmStatus {
@@ -30,8 +23,8 @@ pub enum VmStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FaultApplicationError {
-    pub(crate) reason: FaultApplicationFailureReason,
-    pub(crate) disposition: FaultApplicationFailureDisposition,
+    pub(crate) reason: ::chaoscontrol_fault::outcomes::FaultApplicationFailureReason,
+    pub(crate) disposition: ::chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition,
 }
 
 pub(crate) fn all_setup_complete(statuses: impl Iterator<Item = bool>) -> bool {
@@ -45,23 +38,23 @@ pub(crate) fn all_setup_complete(statuses: impl Iterator<Item = bool>) -> bool {
     saw_vm
 }
 
-pub(crate) fn fault_vm_status(status: VmStatus) -> FaultVmStatus {
+pub(crate) fn fault_vm_status(status: VmStatus) -> ::chaoscontrol_fault::outcomes::FaultVmStatus {
     match status {
-        VmStatus::Running => FaultVmStatus::Running,
-        VmStatus::Paused => FaultVmStatus::Paused,
-        VmStatus::Crashed => FaultVmStatus::Crashed,
-        VmStatus::Restarting { .. } => FaultVmStatus::Restarting,
-        VmStatus::Resuming { .. } => FaultVmStatus::Resuming,
+        VmStatus::Running => ::chaoscontrol_fault::outcomes::FaultVmStatus::Running,
+        VmStatus::Paused => ::chaoscontrol_fault::outcomes::FaultVmStatus::Paused,
+        VmStatus::Crashed => ::chaoscontrol_fault::outcomes::FaultVmStatus::Crashed,
+        VmStatus::Restarting { .. } => ::chaoscontrol_fault::outcomes::FaultVmStatus::Restarting,
+        VmStatus::Resuming { .. } => ::chaoscontrol_fault::outcomes::FaultVmStatus::Resuming,
     }
 }
 
-pub(crate) fn core_vm_status(status: VmStatus) -> CoreVmStatus {
+pub(crate) fn core_vm_status(status: VmStatus) -> ::chaoscontrol_sim_core::CoreVmStatus {
     match status {
-        VmStatus::Running => CoreVmStatus::Running,
-        VmStatus::Paused => CoreVmStatus::Paused,
-        VmStatus::Crashed => CoreVmStatus::Crashed,
-        VmStatus::Restarting { .. } => CoreVmStatus::Restarting,
-        VmStatus::Resuming { .. } => CoreVmStatus::Resuming,
+        VmStatus::Running => ::chaoscontrol_sim_core::CoreVmStatus::Running,
+        VmStatus::Paused => ::chaoscontrol_sim_core::CoreVmStatus::Paused,
+        VmStatus::Crashed => ::chaoscontrol_sim_core::CoreVmStatus::Crashed,
+        VmStatus::Restarting { .. } => ::chaoscontrol_sim_core::CoreVmStatus::Restarting,
+        VmStatus::Resuming { .. } => ::chaoscontrol_sim_core::CoreVmStatus::Resuming,
     }
 }
 
@@ -79,53 +72,55 @@ pub(crate) fn u32_targets_to_usize(values: &[u32]) -> Result<Vec<usize>, FaultAp
 
 pub(crate) fn internal_application_error() -> FaultApplicationError {
     FaultApplicationError {
-        reason: FaultApplicationFailureReason::InternalInvariant,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
+        reason: ::chaoscontrol_fault::outcomes::FaultApplicationFailureReason::InternalInvariant,
+        disposition: ::chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition::RolledBack,
     }
 }
 
 pub(crate) fn target_state_application_error() -> FaultApplicationError {
     FaultApplicationError {
-        reason: FaultApplicationFailureReason::TargetStateChanged,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
+        reason: ::chaoscontrol_fault::outcomes::FaultApplicationFailureReason::TargetStateChanged,
+        disposition: ::chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition::RolledBack,
     }
 }
 
 pub(crate) fn device_disappeared_application_error() -> FaultApplicationError {
     FaultApplicationError {
-        reason: FaultApplicationFailureReason::DeviceDisappeared,
-        disposition: FaultApplicationFailureDisposition::RolledBack,
+        reason: ::chaoscontrol_fault::outcomes::FaultApplicationFailureReason::DeviceDisappeared,
+        disposition: ::chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition::RolledBack,
     }
 }
 
 pub(crate) fn non_runnable_application_error() -> FaultApplicationError {
     FaultApplicationError {
-        reason: FaultApplicationFailureReason::BackendRejected,
-        disposition: FaultApplicationFailureDisposition::NonRunnable,
+        reason: ::chaoscontrol_fault::outcomes::FaultApplicationFailureReason::BackendRejected,
+        disposition:
+            ::chaoscontrol_fault::outcomes::FaultApplicationFailureDisposition::NonRunnable,
     }
 }
 
 pub(crate) fn validate_process_snapshot_effect(
-    ledger: &FaultOutcomeLedger,
+    ledger: &::chaoscontrol_fault::outcomes::FaultOutcomeLedger,
     target: u32,
     status: VmStatus,
-    attempt_id: Option<FaultAttemptId>,
+    attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     has_pending_observation: bool,
-) -> Result<(), FaultTransitionError> {
+) -> Result<(), ::chaoscontrol_fault::outcomes::FaultTransitionError> {
     let effect = match (status, attempt_id) {
-        (VmStatus::Crashed, Some(attempt_id)) => {
-            Some((attempt_id, FaultPlanEffect::ProcessKill { target }))
-        }
+        (VmStatus::Crashed, Some(attempt_id)) => Some((
+            attempt_id,
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessKill { target },
+        )),
         (VmStatus::Restarting { restart_at_tick }, Some(attempt_id)) => Some((
             attempt_id,
-            FaultPlanEffect::ProcessRestart {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessRestart {
                 target,
                 restart_at_tick,
             },
         )),
         (VmStatus::Resuming { resume_at_tick }, Some(attempt_id)) => Some((
             attempt_id,
-            FaultPlanEffect::ProcessPause {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessPause {
                 target,
                 resume_at_tick,
             },
@@ -134,23 +129,25 @@ pub(crate) fn validate_process_snapshot_effect(
             let state = ledger
                 .attempts
                 .get(&attempt_id)
-                .ok_or(FaultTransitionError::UnknownAttempt)?;
+                .ok_or(::chaoscontrol_fault::outcomes::FaultTransitionError::UnknownAttempt)?;
             match state.applicable_effect.as_ref() {
-                Some(FaultPlanEffect::ProcessRestart {
+                Some(::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessRestart {
                     target: effect_target,
                     ..
                 }) if *effect_target == target => None,
-                _ => return Err(FaultTransitionError::SnapshotPendingStateMismatch),
+                _ => return Err(::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch),
             }
         }
         (VmStatus::Restarting { .. } | VmStatus::Resuming { .. }, None)
         | (VmStatus::Running | VmStatus::Paused, Some(_)) => {
-            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
+            return Err(
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
+            );
         }
         (VmStatus::Running | VmStatus::Paused | VmStatus::Crashed, None) => None,
     };
     if let Some((attempt_id, effect)) = effect {
-        validate_pending_fault_effect(ledger, attempt_id, &effect)?;
+        ::chaoscontrol_fault::outcomes::validate_pending_fault_effect(ledger, attempt_id, &effect)?;
     }
     Ok(())
 }

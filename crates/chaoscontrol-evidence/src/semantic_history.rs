@@ -3,9 +3,7 @@
 //! Filesystem access, process execution, persistence, and network transport do
 //! not belong in this module. r[impl chaoscontrol.semantic_history.boundary]
 
-use std::fmt;
-
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 
 pub const SEMANTIC_HISTORY_SCHEMA_VERSION: u64 = 2;
 pub const SEMANTIC_REPORT_SCHEMA_VERSION: u64 = 1;
@@ -79,8 +77,8 @@ impl SemanticError {
     }
 }
 
-impl fmt::Display for SemanticError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ::std::fmt::Display for SemanticError {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         write!(formatter, "{:?}: {}", self.class, self.message)
     }
 }
@@ -1261,7 +1259,7 @@ pub fn read_legacy_history_value(
             format!("legacy history serialization failed: {error}"),
         )
     })?;
-    let mut hasher = Sha256::new();
+    let mut hasher = ::sha2::Sha256::new();
     hasher.update(bytes);
     Ok(LegacyHistoryEvidence {
         schema_version: LEGACY_HISTORY_SCHEMA_VERSION,

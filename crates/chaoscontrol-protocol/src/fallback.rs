@@ -4,16 +4,6 @@
 //! the Rust SDK. Filesystem or shared-device adapters supply complete lines;
 //! this module validates, orders, bounds, identifies, and admits them.
 
-use crate::admission::{
-    token_for_descriptors, validate_accepted_catalog, AcceptedCatalog, CatalogBuilder,
-    CatalogConflict,
-};
-use crate::identity::{
-    AssertionDescriptor, AssertionFingerprint, AssertionKind, AssertionLogicalKey,
-    ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_KEY_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
-    MAX_ASSERTION_NAMESPACE_BYTES,
-};
-
 pub const FALLBACK_RECORD_SCHEMA_VERSION: u8 = 1;
 pub const MAX_FALLBACK_RECORDS: usize = crate::admission::MAX_ASSERTION_CATALOG_ENTRIES;
 pub const MAX_FALLBACK_LINE_BYTES: usize = 8_192;
@@ -67,12 +57,12 @@ pub enum FallbackRecordType {
 }
 
 impl FallbackRecordType {
-    pub fn assertion_kind(self) -> Option<AssertionKind> {
+    pub fn assertion_kind(self) -> Option<crate::identity::AssertionKind> {
         match self {
-            Self::Always => Some(AssertionKind::Always),
-            Self::Sometimes => Some(AssertionKind::Sometimes),
-            Self::Reachable => Some(AssertionKind::Reachable),
-            Self::Unreachable => Some(AssertionKind::Unreachable),
+            Self::Always => Some(crate::identity::AssertionKind::Always),
+            Self::Sometimes => Some(crate::identity::AssertionKind::Sometimes),
+            Self::Reachable => Some(crate::identity::AssertionKind::Reachable),
+            Self::Unreachable => Some(crate::identity::AssertionKind::Unreachable),
             Self::Lifecycle => None,
         }
     }
@@ -114,9 +104,21 @@ impl FallbackRecord {
             });
         }
         self.process.validate()?;
-        validate_text("namespace", &self.namespace, MAX_ASSERTION_NAMESPACE_BYTES)?;
-        validate_text("logical_key", &self.logical_key, MAX_ASSERTION_KEY_BYTES)?;
-        validate_text("message", &self.message, MAX_ASSERTION_MESSAGE_BYTES)?;
+        validate_text(
+            "namespace",
+            &self.namespace,
+            crate::identity::MAX_ASSERTION_NAMESPACE_BYTES,
+        )?;
+        validate_text(
+            "logical_key",
+            &self.logical_key,
+            crate::identity::MAX_ASSERTION_KEY_BYTES,
+        )?;
+        validate_text(
+            "message",
+            &self.message,
+            crate::identity::MAX_ASSERTION_MESSAGE_BYTES,
+        )?;
         let details =
             serde_json::to_vec(&self.details).map_err(|_| FallbackErrorKind::MalformedDetails)?;
         if details.len() > MAX_FALLBACK_DETAILS_BYTES {
@@ -136,14 +138,16 @@ impl FallbackRecord {
         Ok(())
     }
 
-    pub fn assertion_descriptor(&self) -> Result<Option<AssertionDescriptor>, FallbackErrorKind> {
+    pub fn assertion_descriptor(
+        &self,
+    ) -> Result<Option<crate::identity::AssertionDescriptor>, FallbackErrorKind> {
         let Some(kind) = self.record_type.assertion_kind() else {
             return Ok(None);
         };
-        let descriptor = AssertionDescriptor {
-            identity_version: ASSERTION_IDENTITY_VERSION,
+        let descriptor = crate::identity::AssertionDescriptor {
+            identity_version: crate::identity::ASSERTION_IDENTITY_VERSION,
             namespace: self.namespace.clone(),
-            logical_key: AssertionLogicalKey::Stable {
+            logical_key: crate::identity::AssertionLogicalKey::Stable {
                 key: self.logical_key.clone(),
             },
             compatibility_id: None,
@@ -213,7 +217,7 @@ pub struct FallbackAssertionScope {
     pub record_sequence: u64,
     pub record_blake3: String,
     pub sink_blake3: String,
-    pub assertion_fingerprint: AssertionFingerprint,
+    pub assertion_fingerprint: crate::identity::AssertionFingerprint,
 }
 
 impl FallbackAssertionScope {
@@ -388,15 +392,15 @@ pub enum FallbackErrorKind {
 pub struct FallbackCatalogEvent {
     pub process: FallbackProcessIdentity,
     pub record_sequence: u64,
-    pub candidate_fingerprint: AssertionFingerprint,
-    pub existing_fingerprint: Option<AssertionFingerprint>,
-    pub conflict: CatalogConflict,
+    pub candidate_fingerprint: crate::identity::AssertionFingerprint,
+    pub existing_fingerprint: Option<crate::identity::AssertionFingerprint>,
+    pub conflict: crate::admission::CatalogConflict,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FallbackAdmissionError {
     Catalog(Box<FallbackCatalogEvent>),
-    InvalidCatalog(CatalogConflict),
+    InvalidCatalog(crate::admission::CatalogConflict),
     InvalidSink(FallbackError),
     RecordCountOverflow,
 }
@@ -453,10 +457,11 @@ pub fn validate_fallback_sink_evidence(
 }
 
 pub fn catalog_with_fallback(
-    base: &AcceptedCatalog,
+    base: &crate::admission::AcceptedCatalog,
     evidence: &FallbackSinkEvidence,
-) -> Result<AcceptedCatalog, FallbackAdmissionError> {
-    validate_accepted_catalog(base).map_err(FallbackAdmissionError::InvalidCatalog)?;
+) -> Result<crate::admission::AcceptedCatalog, FallbackAdmissionError> {
+    crate::admission::validate_accepted_catalog(base)
+        .map_err(FallbackAdmissionError::InvalidCatalog)?;
     validate_fallback_sink_evidence(evidence).map_err(FallbackAdmissionError::InvalidSink)?;
 
     let fallback_count = evidence
@@ -469,8 +474,8 @@ pub fn catalog_with_fallback(
         .len()
         .checked_add(fallback_count)
         .ok_or(FallbackAdmissionError::RecordCountOverflow)?;
-    let mut builder =
-        CatalogBuilder::begin(expected).map_err(FallbackAdmissionError::InvalidCatalog)?;
+    let mut builder = crate::admission::CatalogBuilder::begin(expected)
+        .map_err(FallbackAdmissionError::InvalidCatalog)?;
     let mut descriptors = Vec::with_capacity(expected);
     let mut seen = std::collections::BTreeMap::new();
     for admitted in base.assertions.values() {
@@ -499,7 +504,7 @@ pub fn catalog_with_fallback(
         };
         let candidate_fingerprint = descriptor
             .fingerprint()
-            .map_err(CatalogConflict::Descriptor)
+            .map_err(crate::admission::CatalogConflict::Descriptor)
             .map_err(FallbackAdmissionError::InvalidCatalog)?;
         let key = (descriptor.namespace.clone(), descriptor.logical_key.clone());
         let existing_fingerprint = seen.get(&key).copied();
@@ -517,8 +522,8 @@ pub fn catalog_with_fallback(
         seen.insert(key, candidate_fingerprint);
         descriptors.push(descriptor);
     }
-    let token =
-        token_for_descriptors(&descriptors).map_err(FallbackAdmissionError::InvalidCatalog)?;
+    let token = crate::admission::token_for_descriptors(&descriptors)
+        .map_err(FallbackAdmissionError::InvalidCatalog)?;
     builder
         .complete(token)
         .map_err(FallbackAdmissionError::InvalidCatalog)
@@ -651,10 +656,13 @@ mod tests {
         }
     }
 
-    fn base_catalog(descriptor: AssertionDescriptor) -> AcceptedCatalog {
+    fn base_catalog(
+        descriptor: crate::identity::AssertionDescriptor,
+    ) -> crate::admission::AcceptedCatalog {
         let descriptors = vec![descriptor];
-        let token = token_for_descriptors(&descriptors).expect("token");
-        let mut builder = CatalogBuilder::begin(descriptors.len()).expect("builder");
+        let token = crate::admission::token_for_descriptors(&descriptors).expect("token");
+        let mut builder =
+            crate::admission::CatalogBuilder::begin(descriptors.len()).expect("builder");
         for descriptor in descriptors {
             builder.insert(descriptor).expect("descriptor");
         }
@@ -795,7 +803,10 @@ mod tests {
                     .expect("SDK descriptor fingerprint")
             )
         );
-        assert_eq!(event.conflict, CatalogConflict::MessageConflict);
+        assert_eq!(
+            event.conflict,
+            crate::admission::CatalogConflict::MessageConflict
+        );
     }
 
     #[test]

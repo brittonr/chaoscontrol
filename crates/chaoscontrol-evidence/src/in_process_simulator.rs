@@ -1,7 +1,5 @@
 use serde::ser::Serialize;
-use sha2::{Digest, Sha256};
-
-use crate::{EvidenceError, EvidenceResult};
+use sha2::Digest;
 
 pub const SIMULATOR_CONFIG_SCHEMA_VERSION: u64 = 1;
 pub const SIMULATOR_RECEIPT_SCHEMA_VERSION: u64 = 1;
@@ -249,8 +247,8 @@ pub trait InProcessWorkloadAdapter {
         &mut self,
         step: SchedulerStep,
         hooks: &mut SimulatedFaultHooks,
-    ) -> EvidenceResult<SimulatorAdapterEvent>;
-    fn history_bytes(&self) -> EvidenceResult<Vec<u8>>;
+    ) -> crate::EvidenceResult<SimulatorAdapterEvent>;
+    fn history_bytes(&self) -> crate::EvidenceResult<Vec<u8>>;
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -308,7 +306,7 @@ pub struct SimulatorReceiptMismatch {
 }
 
 impl DeterministicSimulatorCore {
-    pub fn new(config: SimulatorConfig, task_ids: Vec<String>) -> EvidenceResult<Self> {
+    pub fn new(config: SimulatorConfig, task_ids: Vec<String>) -> crate::EvidenceResult<Self> {
         validate_simulator_config(&config)?;
         Ok(Self {
             clock: DeterministicClock::new(config.virtual_clock.clone())?,
@@ -338,7 +336,7 @@ impl DeterministicSimulatorCore {
         history_bytes: &[u8],
         output_bytes: &[u8],
         observations: Vec<SimulatorObservation>,
-    ) -> EvidenceResult<SimulatorReceipt> {
+    ) -> crate::EvidenceResult<SimulatorReceipt> {
         let receipt = SimulatorReceipt {
             schema_version: SIMULATOR_RECEIPT_SCHEMA_VERSION,
             run_id: self.config.run_id.clone(),
@@ -356,7 +354,7 @@ impl DeterministicSimulatorCore {
 }
 
 impl DeterministicClock {
-    pub fn new(policy: VirtualClockPolicy) -> EvidenceResult<Self> {
+    pub fn new(policy: VirtualClockPolicy) -> crate::EvidenceResult<Self> {
         require(
             policy.tick_quantum > 0,
             "virtual clock tick_quantum must be > 0",
@@ -395,7 +393,7 @@ impl DeterministicRng {
 }
 
 impl DeterministicScheduler {
-    pub fn new(policy: SchedulerPolicy, task_ids: Vec<String>) -> EvidenceResult<Self> {
+    pub fn new(policy: SchedulerPolicy, task_ids: Vec<String>) -> crate::EvidenceResult<Self> {
         require(policy.max_steps > 0, "scheduler max_steps must be > 0")?;
         require(!task_ids.is_empty(), "scheduler requires at least one task")?;
         for task_id in &task_ids {
@@ -423,7 +421,7 @@ impl RegisterSimulatorAdapter {
     pub fn new(
         adapter_id: impl Into<String>,
         script: Vec<SimulatorOperation>,
-    ) -> EvidenceResult<Self> {
+    ) -> crate::EvidenceResult<Self> {
         let adapter_id = adapter_id.into();
         require(
             !adapter_id.is_empty(),
@@ -441,7 +439,7 @@ impl RegisterSimulatorAdapter {
         })
     }
 
-    pub fn sample() -> EvidenceResult<Self> {
+    pub fn sample() -> crate::EvidenceResult<Self> {
         Self::new(
             "register-simulator-adapter-v1",
             vec![
@@ -482,11 +480,11 @@ impl InProcessWorkloadAdapter for RegisterSimulatorAdapter {
         &mut self,
         step: SchedulerStep,
         hooks: &mut SimulatedFaultHooks,
-    ) -> EvidenceResult<SimulatorAdapterEvent> {
+    ) -> crate::EvidenceResult<SimulatorAdapterEvent> {
         let operation = self
             .script
             .pop_front()
-            .ok_or_else(|| EvidenceError::new("simulator adapter script exhausted"))?;
+            .ok_or_else(|| crate::EvidenceError::new("simulator adapter script exhausted"))?;
         let result = hooks.apply(&step, &operation, &mut self.state)?;
         let event = SimulatorAdapterEvent {
             step,
@@ -497,7 +495,7 @@ impl InProcessWorkloadAdapter for RegisterSimulatorAdapter {
         Ok(event)
     }
 
-    fn history_bytes(&self) -> EvidenceResult<Vec<u8>> {
+    fn history_bytes(&self) -> crate::EvidenceResult<Vec<u8>> {
         Ok(serde_json::to_vec(&self.events)?)
     }
 }
@@ -506,7 +504,7 @@ impl SimulatedFaultHooks {
     pub fn new(
         network_profile_id: impl Into<String>,
         disk_profile_id: impl Into<String>,
-    ) -> EvidenceResult<Self> {
+    ) -> crate::EvidenceResult<Self> {
         let network_profile_id = network_profile_id.into();
         let disk_profile_id = disk_profile_id.into();
         require(
@@ -531,7 +529,7 @@ impl SimulatedFaultHooks {
         })
     }
 
-    pub fn with_faults(mut self, faults: Vec<SimulatorFault>) -> EvidenceResult<Self> {
+    pub fn with_faults(mut self, faults: Vec<SimulatorFault>) -> crate::EvidenceResult<Self> {
         for fault in &faults {
             validate_simulator_fault(fault)?;
         }
@@ -544,7 +542,7 @@ impl SimulatedFaultHooks {
         step: &SchedulerStep,
         operation: &SimulatorOperation,
         state: &mut std::collections::BTreeMap<String, i64>,
-    ) -> EvidenceResult<SimulatorOperationResult> {
+    ) -> crate::EvidenceResult<SimulatorOperationResult> {
         match operation {
             SimulatorOperation::RegisterWrite { key, value } => {
                 require(!key.is_empty(), "register write key must be non-empty")?;
@@ -611,7 +609,7 @@ pub fn run_simulator_adapter<A: InProcessWorkloadAdapter>(
     config: SimulatorConfig,
     adapter: &mut A,
     hooks: &mut SimulatedFaultHooks,
-) -> EvidenceResult<Vec<SimulatorAdapterEvent>> {
+) -> crate::EvidenceResult<Vec<SimulatorAdapterEvent>> {
     require(
         adapter.adapter_id() == config.workload.adapter_version,
         format!(
@@ -647,7 +645,7 @@ pub fn run_simulator_adapter_receipt<A: InProcessWorkloadAdapter>(
     config: SimulatorConfig,
     adapter: &mut A,
     hooks: &mut SimulatedFaultHooks,
-) -> EvidenceResult<SimulatorRunEvidence> {
+) -> crate::EvidenceResult<SimulatorRunEvidence> {
     let config_for_receipt = config.clone();
     let adapter_id = adapter.adapter_id().to_string();
     let events = run_simulator_adapter(config, adapter, hooks)?;
@@ -687,7 +685,7 @@ pub fn run_simulator_adapter_receipt<A: InProcessWorkloadAdapter>(
     })
 }
 
-pub fn sample_simulator_run_evidence() -> EvidenceResult<SimulatorRunEvidence> {
+pub fn sample_simulator_run_evidence() -> crate::EvidenceResult<SimulatorRunEvidence> {
     let config = sample_simulator_config();
     let mut adapter = RegisterSimulatorAdapter::sample()?;
     let mut hooks = sample_simulated_fault_hooks(&config)?;
@@ -696,7 +694,7 @@ pub fn sample_simulator_run_evidence() -> EvidenceResult<SimulatorRunEvidence> {
 
 pub fn write_sample_simulator_receipt_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     let evidence = sample_simulator_run_evidence()?;
     if let Some(parent) = path.parent() {
@@ -708,7 +706,7 @@ pub fn write_sample_simulator_receipt_path(
 
 pub fn validate_simulator_receipt_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<String> {
+) -> crate::EvidenceResult<String> {
     let bytes = std::fs::read(path)?;
     let receipt: SimulatorReceipt = serde_json::from_slice(&bytes)?;
     validate_simulator_receipt(&receipt)?;
@@ -730,7 +728,7 @@ fn summarize_simulator_run(
     events: &[SimulatorAdapterEvent],
     hooks: &SimulatedFaultHooks,
     receipt: &SimulatorReceipt,
-) -> EvidenceResult<SimulatorRunSummary> {
+) -> crate::EvidenceResult<SimulatorRunSummary> {
     validate_simulator_receipt(receipt)?;
     let fault_count = events
         .iter()
@@ -773,7 +771,9 @@ pub fn sample_vm_replay_bridge_metadata() -> VmReplayReceiptBridgeMetadata {
     }
 }
 
-pub fn validate_receipt_bridge_metadata(metadata: &ReceiptBridgeMetadata) -> EvidenceResult<()> {
+pub fn validate_receipt_bridge_metadata(
+    metadata: &ReceiptBridgeMetadata,
+) -> crate::EvidenceResult<()> {
     validate_bridge_workload_identity(&metadata.workload)?;
     validate_bridge_digest_map(&metadata.artifact_digests)?;
     require(
@@ -785,7 +785,7 @@ pub fn validate_receipt_bridge_metadata(metadata: &ReceiptBridgeMetadata) -> Evi
 
 pub fn validate_vm_replay_bridge_metadata(
     metadata: &VmReplayReceiptBridgeMetadata,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     validate_bridge_workload_identity(&metadata.workload)?;
     validate_bridge_digest_map(&metadata.artifact_digests)?;
     require(
@@ -802,7 +802,7 @@ pub fn validate_vm_replay_bridge_metadata(
 pub fn compare_simulator_vm_receipt_bridge(
     simulator: &ReceiptBridgeMetadata,
     vm: &VmReplayReceiptBridgeMetadata,
-) -> EvidenceResult<SimulatorVmReceiptBridgeComparison> {
+) -> crate::EvidenceResult<SimulatorVmReceiptBridgeComparison> {
     validate_receipt_bridge_metadata(simulator)?;
     validate_vm_replay_bridge_metadata(vm)?;
     require(
@@ -851,7 +851,7 @@ pub fn compare_simulator_vm_receipt_bridge(
     })
 }
 
-fn validate_bridge_workload_identity(workload: &WorkloadIdentity) -> EvidenceResult<()> {
+fn validate_bridge_workload_identity(workload: &WorkloadIdentity) -> crate::EvidenceResult<()> {
     require(
         !workload.name.is_empty(),
         "bridge workload name must be non-empty",
@@ -869,7 +869,7 @@ fn validate_bridge_workload_identity(workload: &WorkloadIdentity) -> EvidenceRes
 
 fn validate_bridge_digest_map(
     digests: &std::collections::BTreeMap<String, String>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     require(
         !digests.is_empty(),
         "bridge artifact digests must be non-empty",
@@ -886,14 +886,14 @@ fn validate_bridge_digest_map(
 
 pub fn sample_simulated_fault_hooks(
     config: &SimulatorConfig,
-) -> EvidenceResult<SimulatedFaultHooks> {
+) -> crate::EvidenceResult<SimulatedFaultHooks> {
     SimulatedFaultHooks::new(
         config.network.profile_id.clone(),
         config.disk.profile_id.clone(),
     )
 }
 
-pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()> {
+pub fn validate_simulator_config(config: &SimulatorConfig) -> crate::EvidenceResult<()> {
     require(
         config.schema_version == SIMULATOR_CONFIG_SCHEMA_VERSION,
         format!("simulator config schema_version must be {SIMULATOR_CONFIG_SCHEMA_VERSION}"),
@@ -974,7 +974,7 @@ pub fn validate_simulator_config(config: &SimulatorConfig) -> EvidenceResult<()>
     Ok(())
 }
 
-pub fn validate_simulator_receipt(receipt: &SimulatorReceipt) -> EvidenceResult<()> {
+pub fn validate_simulator_receipt(receipt: &SimulatorReceipt) -> crate::EvidenceResult<()> {
     require(
         receipt.schema_version == SIMULATOR_RECEIPT_SCHEMA_VERSION,
         format!("simulator receipt schema_version must be {SIMULATOR_RECEIPT_SCHEMA_VERSION}"),
@@ -1017,7 +1017,7 @@ pub fn validate_simulator_receipt(receipt: &SimulatorReceipt) -> EvidenceResult<
 pub fn compare_simulator_receipts(
     left: &SimulatorReceipt,
     right: &SimulatorReceipt,
-) -> EvidenceResult<SimulatorReceiptComparison> {
+) -> crate::EvidenceResult<SimulatorReceiptComparison> {
     validate_simulator_receipt(left)?;
     validate_simulator_receipt(right)?;
     for (class, left_value, right_value) in [
@@ -1089,7 +1089,7 @@ pub fn sample_simulator_config() -> SimulatorConfig {
     }
 }
 
-fn validate_simulator_fault(fault: &SimulatorFault) -> EvidenceResult<()> {
+fn validate_simulator_fault(fault: &SimulatorFault) -> crate::EvidenceResult<()> {
     require(
         !fault.fault_id.is_empty(),
         "simulator fault_id must be non-empty",
@@ -1106,7 +1106,7 @@ fn validate_simulator_fault(fault: &SimulatorFault) -> EvidenceResult<()> {
     }
 }
 
-fn validate_simulator_observation(observation: &SimulatorObservation) -> EvidenceResult<()> {
+fn validate_simulator_observation(observation: &SimulatorObservation) -> crate::EvidenceResult<()> {
     require(
         !observation.task_id.is_empty(),
         "simulator observation task_id must be non-empty",
@@ -1119,34 +1119,34 @@ fn validate_simulator_observation(observation: &SimulatorObservation) -> Evidenc
         EntropySource::SimulatorClock
         | EntropySource::SimulatorRng
         | EntropySource::SimulatorIo => Ok(()),
-        EntropySource::HostWallClock => Err(EvidenceError::new(
+        EntropySource::HostWallClock => Err(crate::EvidenceError::new(
             "unbound nondeterminism: host wall-clock time is unsupported simulator evidence",
         )),
-        EntropySource::HostRandom => Err(EvidenceError::new(
+        EntropySource::HostRandom => Err(crate::EvidenceError::new(
             "unbound nondeterminism: host randomness is unsupported simulator evidence",
         )),
-        EntropySource::ExternalIo => Err(EvidenceError::new(
+        EntropySource::ExternalIo => Err(crate::EvidenceError::new(
             "unbound nondeterminism: external I/O is unsupported simulator evidence",
         )),
     }
 }
 
-fn digest_json<T: Serialize>(value: &T) -> EvidenceResult<String> {
+fn digest_json<T: Serialize>(value: &T) -> crate::EvidenceResult<String> {
     let bytes = serde_json::to_vec(value)?;
     Ok(digest_bytes(&bytes))
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
+    let mut hasher = ::sha2::Sha256::new();
     hasher.update(bytes);
     format!("sha256:{:x}", hasher.finalize())
 }
 
-fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
+fn require(condition: bool, message: impl Into<String>) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message.into()))
+        Err(crate::EvidenceError::new(message.into()))
     }
 }
 

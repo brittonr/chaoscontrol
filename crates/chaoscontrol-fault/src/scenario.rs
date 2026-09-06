@@ -2,11 +2,8 @@
 //!
 //! Named multi-phase fault generators that rotate failures around
 //! the cluster. Each [`ScenarioFamily`] deterministically materializes
-//! a concrete [`FaultSchedule`] and [`PhaseSummary`] from a
+//! a concrete [`FaultSchedule`](crate::schedule::FaultSchedule) and [`PhaseSummary`] from a
 //! [`ScenarioConfig`] plus seed.
-
-use crate::faults::Fault;
-use crate::schedule::{FaultSchedule, FaultScheduleBuilder};
 
 /// Built-in helical scenario families.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -116,7 +113,7 @@ pub struct PhaseSummary {
 /// Result of materializing a scenario: a concrete schedule + phase summary.
 pub struct MaterializedScenario {
     /// The concrete fault schedule (ready for the engine).
-    pub schedule: FaultSchedule,
+    pub schedule: crate::schedule::FaultSchedule,
     /// Human-readable phase summary.
     pub summary: PhaseSummary,
 }
@@ -144,7 +141,7 @@ pub fn materialize(config: &ScenarioConfig, seed: u64) -> MaterializedScenario {
 ///   3. After the full phase window, heal + restart
 ///   4. Recovery window before next turn
 fn materialize_network_ring(config: &ScenarioConfig, _seed: u64) -> MaterializedScenario {
-    let mut builder = FaultScheduleBuilder::new();
+    let mut builder = crate::schedule::FaultScheduleBuilder::new();
     let mut phases = Vec::new();
     let mut t = 0u64;
     let phase = config.phase_ticks;
@@ -157,7 +154,7 @@ fn materialize_network_ring(config: &ScenarioConfig, _seed: u64) -> Materialized
         let inject_start = t;
         builder = builder.at_ns_labeled(
             t,
-            Fault::NetworkPartition {
+            crate::faults::Fault::NetworkPartition {
                 side_a: vec![target],
                 side_b: others.clone(),
             },
@@ -168,7 +165,7 @@ fn materialize_network_ring(config: &ScenarioConfig, _seed: u64) -> Materialized
         let kill_time = t + phase / 2;
         builder = builder.at_ns_labeled(
             kill_time,
-            Fault::ProcessKill { target },
+            crate::faults::Fault::ProcessKill { target },
             &format!("turn{}-kill-vm{}", turn, target),
         );
         t += phase;
@@ -191,10 +188,14 @@ fn materialize_network_ring(config: &ScenarioConfig, _seed: u64) -> Materialized
 
         // Phase 2: heal + restart + recovery window
         let recovery_start = t;
-        builder = builder.at_ns_labeled(t, Fault::NetworkHeal, &format!("turn{}-heal", turn));
         builder = builder.at_ns_labeled(
             t,
-            Fault::ProcessRestart { target },
+            crate::faults::Fault::NetworkHeal,
+            &format!("turn{}-heal", turn),
+        );
+        builder = builder.at_ns_labeled(
+            t,
+            crate::faults::Fault::ProcessRestart { target },
             &format!("turn{}-restart-vm{}", turn, target),
         );
         t += phase;
@@ -232,7 +233,7 @@ fn materialize_network_ring(config: &ScenarioConfig, _seed: u64) -> Materialized
 ///   3. Restart the target
 ///   4. Recovery window (no new disk faults on previous target)
 fn materialize_volatile_write_ring(config: &ScenarioConfig, _seed: u64) -> MaterializedScenario {
-    let mut builder = FaultScheduleBuilder::new();
+    let mut builder = crate::schedule::FaultScheduleBuilder::new();
     let mut phases = Vec::new();
     let mut t = 0u64;
     let phase = config.phase_ticks;
@@ -244,14 +245,14 @@ fn materialize_volatile_write_ring(config: &ScenarioConfig, _seed: u64) -> Mater
         let inject_start = t;
         builder = builder.at_ns_labeled(
             t,
-            Fault::DiskFsyncLie { target },
+            crate::faults::Fault::DiskFsyncLie { target },
             &format!("turn{}-fsync-lie-vm{}", turn, target),
         );
 
         let kill_time = t + phase / 2;
         builder = builder.at_ns_labeled(
             kill_time,
-            Fault::ProcessKill { target },
+            crate::faults::Fault::ProcessKill { target },
             &format!("turn{}-kill-vm{}", turn, target),
         );
         t += phase;
@@ -275,7 +276,7 @@ fn materialize_volatile_write_ring(config: &ScenarioConfig, _seed: u64) -> Mater
         let recovery_start = t;
         builder = builder.at_ns_labeled(
             t,
-            Fault::ProcessRestart { target },
+            crate::faults::Fault::ProcessRestart { target },
             &format!("turn{}-restart-vm{}", turn, target),
         );
         t += phase;
@@ -314,7 +315,7 @@ fn materialize_volatile_write_ring(config: &ScenarioConfig, _seed: u64) -> Mater
 fn materialize_degraded_io_ring(config: &ScenarioConfig, seed: u64) -> MaterializedScenario {
     use rand::SeedableRng;
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
-    let mut builder = FaultScheduleBuilder::new();
+    let mut builder = crate::schedule::FaultScheduleBuilder::new();
     let mut phases = Vec::new();
     let mut t = 0u64;
     let phase = config.phase_ticks;
@@ -332,7 +333,7 @@ fn materialize_degraded_io_ring(config: &ScenarioConfig, seed: u64) -> Materiali
         if use_partial_read {
             builder = builder.at_ns_labeled(
                 t,
-                Fault::DiskPartialRead {
+                crate::faults::Fault::DiskPartialRead {
                     target,
                     offset: 0,
                     max_bytes: 256,
@@ -342,7 +343,7 @@ fn materialize_degraded_io_ring(config: &ScenarioConfig, seed: u64) -> Materiali
         } else {
             builder = builder.at_ns_labeled(
                 t,
-                Fault::DiskSlow {
+                crate::faults::Fault::DiskSlow {
                     target,
                     delay_ns: 50_000_000, // 50ms per I/O
                 },
@@ -354,7 +355,7 @@ fn materialize_degraded_io_ring(config: &ScenarioConfig, seed: u64) -> Materiali
         let restart_time = t + phase / 2;
         builder = builder.at_ns_labeled(
             restart_time,
-            Fault::ProcessRestart { target },
+            crate::faults::Fault::ProcessRestart { target },
             &format!("turn{}-restart-vm{}", turn, target),
         );
 
@@ -365,7 +366,7 @@ fn materialize_degraded_io_ring(config: &ScenarioConfig, seed: u64) -> Materiali
         if !use_partial_read {
             builder = builder.at_ns_labeled(
                 t,
-                Fault::DiskSlow {
+                crate::faults::Fault::DiskSlow {
                     target,
                     delay_ns: 0,
                 },
@@ -493,7 +494,7 @@ mod tests {
             .schedule
             .faults()
             .iter()
-            .any(|f| matches!(f.fault, Fault::DiskFsyncLie { .. }));
+            .any(|f| matches!(f.fault, crate::faults::Fault::DiskFsyncLie { .. }));
         assert!(
             has_fsync_lie,
             "volatile-write-ring must include DiskFsyncLie"
@@ -503,7 +504,7 @@ mod tests {
             .schedule
             .faults()
             .iter()
-            .any(|f| matches!(f.fault, Fault::ProcessKill { .. }));
+            .any(|f| matches!(f.fault, crate::faults::Fault::ProcessKill { .. }));
         assert!(has_kill, "volatile-write-ring must include ProcessKill");
     }
 
@@ -515,7 +516,8 @@ mod tests {
         let has_disk_fault = result.schedule.faults().iter().any(|f| {
             matches!(
                 f.fault,
-                Fault::DiskSlow { .. } | Fault::DiskPartialRead { .. }
+                crate::faults::Fault::DiskSlow { .. }
+                    | crate::faults::Fault::DiskPartialRead { .. }
             )
         });
         assert!(
@@ -527,7 +529,7 @@ mod tests {
             .schedule
             .faults()
             .iter()
-            .any(|f| matches!(f.fault, Fault::ProcessRestart { .. }));
+            .any(|f| matches!(f.fault, crate::faults::Fault::ProcessRestart { .. }));
         assert!(has_restart, "degraded-io-ring must include ProcessRestart");
     }
 

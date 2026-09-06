@@ -1,5 +1,3 @@
-use crate::{ensure, EvidenceError, EvidenceResult};
-
 pub const PRODUCT_SCOPE_REGISTRY_SOURCE: &str = "contracts/product-scope/registry.ncl";
 pub const PRODUCT_SCOPE_REGISTRY_JSON: &str =
     "contracts/product-scope/generated/product-scope.json";
@@ -124,24 +122,26 @@ pub struct DocumentClaim<'a> {
     pub historical: bool,
 }
 
-pub fn parse_product_scope_registry(text: &str) -> EvidenceResult<ProductScopeRegistry> {
+pub fn parse_product_scope_registry(text: &str) -> crate::EvidenceResult<ProductScopeRegistry> {
     serde_json::from_str(text).map_err(|error| {
-        EvidenceError::new(format!("invalid product-scope registry JSON: {error}"))
+        crate::EvidenceError::new(format!("invalid product-scope registry JSON: {error}"))
     })
 }
 
 // r[impl chaoscontrol.product_scope.registry]
 // r[impl chaoscontrol.product_scope.functional_core]
-pub fn validate_product_scope_registry(registry: &ProductScopeRegistry) -> EvidenceResult<()> {
-    ensure(
+pub fn validate_product_scope_registry(
+    registry: &ProductScopeRegistry,
+) -> crate::EvidenceResult<()> {
+    crate::ensure(
         registry.schema_version == PRODUCT_SCOPE_SCHEMA_VERSION,
         "unsupported product-scope registry schema",
     )?;
-    ensure(
+    crate::ensure(
         !registry.capabilities.is_empty(),
         "product-scope registry has no capabilities",
     )?;
-    ensure(
+    crate::ensure(
         !registry.change_intents.is_empty(),
         "product-scope registry has no change intents",
     )?;
@@ -151,35 +151,35 @@ pub fn validate_product_scope_registry(registry: &ProductScopeRegistry) -> Evide
     validate_prohibited_claims(&registry.prohibited_current_claims)
 }
 
-fn validate_authority(authority: &ScopeAuthority) -> EvidenceResult<()> {
-    ensure(
+fn validate_authority(authority: &ScopeAuthority) -> crate::EvidenceResult<()> {
+    crate::ensure(
         authority.workspace_manifest == "Cargo.toml",
         "workspace authority must be Cargo.toml",
     )?;
-    ensure(
+    crate::ensure(
         authority.test_inventory_command.starts_with("cargo test ")
             && authority.test_inventory_command.ends_with(" --list"),
         "test inventory authority must be an explicit Cargo list command",
     )?;
-    ensure(
+    crate::ensure(
         authority.replay_manifest == "dogfood-results/accepted-workload-proofs.json",
         "replay authority must be the accepted workload proof manifest",
     )
 }
 
-fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()> {
+fn validate_capabilities(capabilities: &[CapabilityScope]) -> crate::EvidenceResult<()> {
     let mut ids = std::collections::BTreeSet::new();
     let mut names = std::collections::BTreeSet::new();
     for capability in capabilities {
-        ensure(
+        crate::ensure(
             ids.insert(capability.id.as_str()),
             format!("duplicate product capability id: {}", capability.id),
         )?;
-        ensure(
+        crate::ensure(
             names.insert(capability.name.as_str()),
             format!("duplicate product capability name: {}", capability.name),
         )?;
-        ensure(
+        crate::ensure(
             !capability.owner.is_empty()
                 && !capability.status_label.is_empty()
                 && !capability.evidence.id.is_empty()
@@ -190,7 +190,7 @@ fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()>
                 capability.id
             ),
         )?;
-        ensure(
+        crate::ensure(
             !capability.documentation_targets.is_empty() && !capability.non_claims.is_empty(),
             format!(
                 "capability has incomplete document facts: {}",
@@ -198,13 +198,13 @@ fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()>
             ),
         )?;
         for target in &capability.documentation_targets {
-            ensure(
+            crate::ensure(
                 target == README_PATH || target.starts_with(DOCS_PATH_PREFIX),
                 format!("capability has unsafe document target: {target}"),
             )?;
         }
         if capability.state == ScopeState::Supported {
-            ensure(
+            crate::ensure(
                 capability.evidence.state == EvidenceState::Passed,
                 format!(
                     "supported capability lacks passing evidence: {}",
@@ -213,7 +213,7 @@ fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()>
             )?;
         }
         if capability.state == ScopeState::NonGoal {
-            ensure(
+            crate::ensure(
                 capability.evidence.state == EvidenceState::NotRequired,
                 format!(
                     "non-goal capability has a promoting evidence state: {}",
@@ -225,14 +225,14 @@ fn validate_capabilities(capabilities: &[CapabilityScope]) -> EvidenceResult<()>
     Ok(())
 }
 
-fn validate_change_intents(intents: &[ChangeScopeIntent]) -> EvidenceResult<()> {
+fn validate_change_intents(intents: &[ChangeScopeIntent]) -> crate::EvidenceResult<()> {
     let mut names = std::collections::BTreeSet::new();
     for intent in intents {
-        ensure(
+        crate::ensure(
             names.insert(intent.change.as_str()),
             format!("duplicate change scope intent: {}", intent.change),
         )?;
-        ensure(
+        crate::ensure(
             !intent.owner.is_empty()
                 && !intent.evidence_prerequisite.is_empty()
                 && !intent.non_claims.is_empty(),
@@ -242,14 +242,14 @@ fn validate_change_intents(intents: &[ChangeScopeIntent]) -> EvidenceResult<()> 
     Ok(())
 }
 
-fn validate_prohibited_claims(claims: &[String]) -> EvidenceResult<()> {
-    ensure(
+fn validate_prohibited_claims(claims: &[String]) -> crate::EvidenceResult<()> {
+    crate::ensure(
         !claims.is_empty(),
         "product-scope registry has no prohibited current claims",
     )?;
     let mut unique = std::collections::BTreeSet::new();
     for claim in claims {
-        ensure(
+        crate::ensure(
             !claim.trim().is_empty() && unique.insert(claim.as_str()),
             "product-scope prohibited claims must be non-empty and unique",
         )?;
@@ -260,14 +260,14 @@ fn validate_prohibited_claims(claims: &[String]) -> EvidenceResult<()> {
 pub fn validate_active_change_intents(
     active_changes: &[String],
     registry: &ProductScopeRegistry,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let intents = registry
         .change_intents
         .iter()
         .map(|intent| intent.change.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     for change in active_changes {
-        ensure(
+        crate::ensure(
             intents.contains(change.as_str()),
             format!("active change lacks a product-scope intent: {change}"),
         )?;
@@ -278,7 +278,7 @@ pub fn validate_active_change_intents(
 pub fn validate_document_claim(
     claim: &DocumentClaim<'_>,
     registry: &ProductScopeRegistry,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     if claim.historical {
         return Ok(());
     }
@@ -287,12 +287,12 @@ pub fn validate_document_claim(
         .iter()
         .find(|capability| capability.id == claim.capability_id)
         .ok_or_else(|| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "document claim names an unknown capability: {}",
                 claim.capability_id
             ))
         })?;
-    ensure(
+    crate::ensure(
         capability.state == claim.claimed_state,
         format!(
             "current document claim differs from scope registry: {}",
@@ -306,10 +306,10 @@ pub fn validate_document_claim(
 pub fn validate_current_claim_text(
     text: &str,
     registry: &ProductScopeRegistry,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let lowered = text.to_ascii_lowercase();
     for claim in &registry.prohibited_current_claims {
-        ensure(
+        crate::ensure(
             !lowered.contains(&claim.to_ascii_lowercase()),
             format!("document contains a prohibited current claim: {claim}"),
         )?;
@@ -317,7 +317,7 @@ pub fn validate_current_claim_text(
     Ok(())
 }
 
-pub fn parse_workspace_members(manifest: &str) -> EvidenceResult<Vec<String>> {
+pub fn parse_workspace_members(manifest: &str) -> crate::EvidenceResult<Vec<String>> {
     let mut in_workspace = false;
     let mut in_members = false;
     let mut members = Vec::new();
@@ -347,33 +347,35 @@ pub fn parse_workspace_members(manifest: &str) -> EvidenceResult<Vec<String>> {
             let member = candidate
                 .strip_prefix('"')
                 .and_then(|value| value.strip_suffix('"'));
-            ensure(
+            crate::ensure(
                 member.is_some(),
                 format!("malformed workspace member: {line}"),
             )?;
             members.push(member.expect("member presence asserted").to_string());
         }
     }
-    ensure(
+    crate::ensure(
         !members.is_empty(),
         "Cargo workspace has no explicit members",
     )?;
     let unique = members.iter().collect::<std::collections::BTreeSet<_>>();
-    ensure(
+    crate::ensure(
         unique.len() == members.len(),
         "Cargo workspace contains duplicate members",
     )?;
     Ok(members)
 }
 
-pub fn parse_historical_workload_row_count(manifest: &str) -> EvidenceResult<usize> {
+pub fn parse_historical_workload_row_count(manifest: &str) -> crate::EvidenceResult<usize> {
     let value: serde_json::Value = serde_json::from_str(manifest).map_err(|error| {
-        EvidenceError::new(format!("invalid accepted workload proof manifest: {error}"))
+        crate::EvidenceError::new(format!("invalid accepted workload proof manifest: {error}"))
     })?;
     let proofs = value
         .get("proofs")
         .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| EvidenceError::new("accepted workload proof manifest lacks proofs"))?;
+        .ok_or_else(|| {
+            crate::EvidenceError::new("accepted workload proof manifest lacks proofs")
+        })?;
     Ok(proofs.len())
 }
 
@@ -510,13 +512,13 @@ pub fn replace_marked_block(
     start_marker: &str,
     end_marker: &str,
     replacement: &str,
-) -> EvidenceResult<String> {
-    let start = document
-        .find(start_marker)
-        .ok_or_else(|| EvidenceError::new(format!("missing start marker: {start_marker}")))?;
+) -> crate::EvidenceResult<String> {
+    let start = document.find(start_marker).ok_or_else(|| {
+        crate::EvidenceError::new(format!("missing start marker: {start_marker}"))
+    })?;
     let relative_end = document[start..]
         .find(end_marker)
-        .ok_or_else(|| EvidenceError::new(format!("missing end marker: {end_marker}")))?;
+        .ok_or_else(|| crate::EvidenceError::new(format!("missing end marker: {end_marker}")))?;
     let end = start + relative_end + end_marker.len();
     Ok(format!(
         "{}{}{}",
@@ -531,7 +533,7 @@ pub fn replace_marked_block(
 pub fn check_product_scope(
     root: impl AsRef<std::path::Path>,
     write: bool,
-) -> EvidenceResult<&'static str> {
+) -> crate::EvidenceResult<&'static str> {
     let root = root.as_ref();
     let registry = load_and_check_registry_projection(root)?;
     validate_product_scope_registry(&registry)?;
@@ -544,20 +546,20 @@ pub fn check_product_scope(
 
 fn load_and_check_registry_projection(
     root: &std::path::Path,
-) -> EvidenceResult<ProductScopeRegistry> {
+) -> crate::EvidenceResult<ProductScopeRegistry> {
     let generated_path = root.join(PRODUCT_SCOPE_REGISTRY_JSON);
     let generated = crate::bounded_file::read_bounded_regular_file(
         &generated_path,
         MAX_PRODUCT_SCOPE_FILE_BYTES,
     )?;
     let generated_value: serde_json::Value = serde_json::from_str(&generated).map_err(|error| {
-        EvidenceError::new(format!("invalid generated product-scope JSON: {error}"))
+        crate::EvidenceError::new(format!("invalid generated product-scope JSON: {error}"))
     })?;
     let exported = export_nickel(root, PRODUCT_SCOPE_REGISTRY_SOURCE)?;
     let exported_value: serde_json::Value = serde_json::from_slice(&exported).map_err(|error| {
-        EvidenceError::new(format!("invalid Nickel product-scope export: {error}"))
+        crate::EvidenceError::new(format!("invalid Nickel product-scope export: {error}"))
     })?;
-    ensure(
+    crate::ensure(
         generated_value == exported_value,
         "product-scope projection drift; export contracts/product-scope/registry.ncl",
     )?;
@@ -565,14 +567,14 @@ fn load_and_check_registry_projection(
     parse_product_scope_registry(&generated)
 }
 
-fn export_nickel(root: &std::path::Path, relative_path: &str) -> EvidenceResult<Vec<u8>> {
+fn export_nickel(root: &std::path::Path, relative_path: &str) -> crate::EvidenceResult<Vec<u8>> {
     let output = std::process::Command::new("nickel")
         .args(["export", "--format", "json"])
         .arg(root.join(relative_path))
         .current_dir(root)
         .output()
-        .map_err(|error| EvidenceError::new(format!("failed to run Nickel: {error}")))?;
-    ensure(
+        .map_err(|error| crate::EvidenceError::new(format!("failed to run Nickel: {error}")))?;
+    crate::ensure(
         output.status.success(),
         format!(
             "Nickel rejected product-scope source: {}",
@@ -582,20 +584,24 @@ fn export_nickel(root: &std::path::Path, relative_path: &str) -> EvidenceResult<
     Ok(output.stdout)
 }
 
-fn check_invalid_nickel_fixtures(root: &std::path::Path) -> EvidenceResult<()> {
+fn check_invalid_nickel_fixtures(root: &std::path::Path) -> crate::EvidenceResult<()> {
     let directory = root.join(INVALID_FIXTURES_DIRECTORY);
     let mut fixtures = std::fs::read_dir(&directory)
-        .map_err(|error| EvidenceError::new(format!("failed to read invalid fixtures: {error}")))?
+        .map_err(|error| {
+            crate::EvidenceError::new(format!("failed to read invalid fixtures: {error}"))
+        })?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| EvidenceError::new(format!("failed to list invalid fixtures: {error}")))?;
+        .map_err(|error| {
+            crate::EvidenceError::new(format!("failed to list invalid fixtures: {error}"))
+        })?;
     fixtures.sort_by_key(std::fs::DirEntry::file_name);
-    ensure(
+    crate::ensure(
         !fixtures.is_empty(),
         "product-scope registry has no invalid Nickel fixtures",
     )?;
     for fixture in fixtures {
         let path = fixture.path();
-        ensure(
+        crate::ensure(
             path.extension().is_some_and(|extension| extension == "ncl"),
             format!("unexpected invalid fixture file: {}", path.display()),
         )?;
@@ -604,8 +610,8 @@ fn check_invalid_nickel_fixtures(root: &std::path::Path) -> EvidenceResult<()> {
             .arg(&path)
             .current_dir(root)
             .output()
-            .map_err(|error| EvidenceError::new(format!("failed to run Nickel: {error}")))?;
-        ensure(
+            .map_err(|error| crate::EvidenceError::new(format!("failed to run Nickel: {error}")))?;
+        crate::ensure(
             !output.status.success(),
             format!("invalid product-scope fixture passed: {}", path.display()),
         )?;
@@ -616,7 +622,7 @@ fn check_invalid_nickel_fixtures(root: &std::path::Path) -> EvidenceResult<()> {
 fn collect_repository_facts(
     root: &std::path::Path,
     registry: &ProductScopeRegistry,
-) -> EvidenceResult<RepositoryFacts> {
+) -> crate::EvidenceResult<RepositoryFacts> {
     let manifest_path = root.join(&registry.authority.workspace_manifest);
     let manifest = crate::bounded_file::read_bounded_regular_file(
         &manifest_path,
@@ -633,19 +639,19 @@ fn collect_repository_facts(
     })
 }
 
-fn discover_active_changes(root: &std::path::Path) -> EvidenceResult<Vec<String>> {
+fn discover_active_changes(root: &std::path::Path) -> crate::EvidenceResult<Vec<String>> {
     let directory = root.join(ACTIVE_CHANGES_DIRECTORY);
     let mut changes = Vec::new();
-    for entry in std::fs::read_dir(&directory)
-        .map_err(|error| EvidenceError::new(format!("failed to read active changes: {error}")))?
-    {
+    for entry in std::fs::read_dir(&directory).map_err(|error| {
+        crate::EvidenceError::new(format!("failed to read active changes: {error}"))
+    })? {
         let entry = entry.map_err(|error| {
-            EvidenceError::new(format!("failed to list active changes: {error}"))
+            crate::EvidenceError::new(format!("failed to list active changes: {error}"))
         })?;
         let file_type = entry.file_type().map_err(|error| {
-            EvidenceError::new(format!("failed to inspect active change: {error}"))
+            crate::EvidenceError::new(format!("failed to inspect active change: {error}"))
         })?;
-        ensure(
+        crate::ensure(
             file_type.is_dir() && !file_type.is_symlink(),
             format!(
                 "active change entry is not a directory: {}",
@@ -655,7 +661,7 @@ fn discover_active_changes(root: &std::path::Path) -> EvidenceResult<Vec<String>
         let name = entry
             .file_name()
             .into_string()
-            .map_err(|_| EvidenceError::new("active change name is not valid UTF-8"))?;
+            .map_err(|_| crate::EvidenceError::new("active change name is not valid UTF-8"))?;
         changes.push(name);
     }
     changes.sort();
@@ -667,7 +673,7 @@ fn update_or_check_documents(
     registry: &ProductScopeRegistry,
     facts: &RepositoryFacts,
     write: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let readme_path = root.join(README_PATH);
     let readme =
         crate::bounded_file::read_bounded_regular_file(&readme_path, MAX_PRODUCT_SCOPE_FILE_BYTES)?;
@@ -690,7 +696,7 @@ fn update_or_check_documents(
 fn validate_document_targets(
     root: &std::path::Path,
     registry: &ProductScopeRegistry,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     for capability in &registry.capabilities {
         for target in &capability.documentation_targets {
             let path = root.join(target);
@@ -699,7 +705,7 @@ fn validate_document_targets(
                 MAX_PRODUCT_SCOPE_FILE_BYTES,
             )?;
             if target == PRODUCT_SCOPE_STATUS_DOC || target == "docs/replay-readiness-status.md" {
-                ensure(
+                crate::ensure(
                     text.contains(&capability.status_label),
                     format!(
                         "document target lacks capability status label: {} in {}",
@@ -712,7 +718,7 @@ fn validate_document_targets(
     Ok(())
 }
 
-fn read_optional_bounded(path: &std::path::Path) -> EvidenceResult<String> {
+fn read_optional_bounded(path: &std::path::Path) -> crate::EvidenceResult<String> {
     if !path.exists() {
         return Ok(String::new());
     }
@@ -724,18 +730,18 @@ fn check_or_write(
     actual: &str,
     expected: &str,
     write: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     if actual == expected {
         return Ok(());
     }
     if !write {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "product-scope document drift: {}",
             path.display()
         )));
     }
     std::fs::write(path, expected).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "failed to write product-scope document {}: {error}",
             path.display()
         ))

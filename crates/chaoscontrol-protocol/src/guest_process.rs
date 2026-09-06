@@ -1,5 +1,3 @@
-use crate::process::{ProcessFaultAction, ProcessFaultCommand};
-
 pub const PROCESS_MANIFEST_SCHEMA: &str = "chaoscontrol.process-manifest.v1";
 pub const MULTIPROCESS_RECEIPT_SCHEMA: &str = "chaoscontrol.multiprocess-receipt.v1";
 pub const PROCESS_CLAIM_SCOPE: &str = "declared-processes-only";
@@ -452,7 +450,7 @@ impl SupervisorState {
 
     pub fn apply_fault(
         &self,
-        command: &ProcessFaultCommand,
+        command: &crate::process::ProcessFaultCommand,
     ) -> Result<SupervisorTransition, SupervisorError> {
         command
             .validate()
@@ -464,14 +462,14 @@ impl SupervisorState {
             .get_mut(&identity)
             .ok_or(SupervisorError::UnknownProcess)?;
         let (effect_kind, event_kind) = match command.action {
-            ProcessFaultAction::Kill => {
+            crate::process::ProcessFaultAction::Kill => {
                 if process.status != ProcessStatus::Running {
                     return Err(SupervisorError::InvalidState);
                 }
                 process.status = ProcessStatus::Exited;
                 (SupervisorEffectKind::Kill, LifecycleKind::Killed)
             }
-            ProcessFaultAction::Pause => {
+            crate::process::ProcessFaultAction::Pause => {
                 if process.status != ProcessStatus::Running {
                     return Err(SupervisorError::InvalidState);
                 }
@@ -484,7 +482,7 @@ impl SupervisorState {
                 process.status = ProcessStatus::Paused;
                 (SupervisorEffectKind::Pause, LifecycleKind::Paused)
             }
-            ProcessFaultAction::Restart => {
+            crate::process::ProcessFaultAction::Restart => {
                 if !matches!(
                     process.status,
                     ProcessStatus::Running | ProcessStatus::Paused
@@ -506,7 +504,7 @@ impl SupervisorState {
         };
         let events = vec![event(process, next.tick, event_kind)];
         let mut effects = Vec::new();
-        if command.action == ProcessFaultAction::Restart {
+        if command.action == crate::process::ProcessFaultAction::Restart {
             effects.push(SupervisorEffect {
                 process_identity: identity.clone(),
                 kind: SupervisorEffectKind::Kill,
@@ -740,10 +738,10 @@ mod tests {
     fn role_faults_are_targeted_and_pause_resumes_at_exact_tick() {
         let admitted = admit_manifest(&manifest()).unwrap();
         let started = SupervisorState::new(&admitted).start_all().unwrap();
-        let command = ProcessFaultCommand::new(
+        let command = crate::process::ProcessFaultCommand::new(
             "fault-1",
             "writer",
-            ProcessFaultAction::Pause,
+            crate::process::ProcessFaultAction::Pause,
             Some(PAUSE_TICKS),
         )
         .unwrap();
@@ -772,8 +770,13 @@ mod tests {
 
         let admitted = admit_manifest(&manifest()).unwrap();
         let started = SupervisorState::new(&admitted).start_all().unwrap();
-        let unknown =
-            ProcessFaultCommand::new("fault-1", "missing", ProcessFaultAction::Kill, None).unwrap();
+        let unknown = crate::process::ProcessFaultCommand::new(
+            "fault-1",
+            "missing",
+            crate::process::ProcessFaultAction::Kill,
+            None,
+        )
+        .unwrap();
         assert_eq!(
             started.next.apply_fault(&unknown),
             Err(SupervisorError::UnknownProcess)

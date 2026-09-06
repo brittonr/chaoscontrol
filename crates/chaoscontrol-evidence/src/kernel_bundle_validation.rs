@@ -1,7 +1,5 @@
 use serde::ser::Serialize;
 
-use crate::{EvidenceError, EvidenceResult};
-
 pub const KERNEL_BUNDLE_SMOKE_SCHEMA_VERSION: u64 = 1;
 pub const KERNEL_BUNDLE_SMOKE_ROLE: &str = "kernel-bundle/vm-compat-smoke";
 pub const KERNEL_BUNDLE_SMOKE_SCOPE: &str = "bounded disposable-VM compatibility smoke for one exact kernel-bundle cohort; not universal bootability, not module safety proof, not eBPF safety proof, not build correctness proof, not physical readiness";
@@ -170,7 +168,7 @@ impl KernelBundleKvmScenario {
         }
     }
 
-    pub fn parse(value: &str) -> EvidenceResult<Self> {
+    pub fn parse(value: &str) -> crate::EvidenceResult<Self> {
         match value {
             "positive" => Ok(Self::Positive),
             "stale-digest" => Ok(Self::StaleDigest),
@@ -178,7 +176,7 @@ impl KernelBundleKvmScenario {
             "verifier-rejection" => Ok(Self::VerifierRejection),
             "wrong-attach-target" => Ok(Self::WrongAttachTarget),
             "cleanup-failure" => Ok(Self::CleanupFailure),
-            _ => Err(EvidenceError::new(format!(
+            _ => Err(crate::EvidenceError::new(format!(
                 "unsupported kernel-bundle KVM scenario: {value}"
             ))),
         }
@@ -244,7 +242,7 @@ pub struct KernelBundleKvmRailReceipt {
 
 pub fn validate_kernel_bundle_smoke_profile(
     profile: &KernelBundleSmokeProfile,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let mut issues = Vec::new();
     validate_profile_shape(profile, &mut issues);
     validate_identity_refs(profile, &mut issues);
@@ -253,19 +251,19 @@ pub fn validate_kernel_bundle_smoke_profile(
     if issues.is_empty() {
         Ok(())
     } else {
-        Err(EvidenceError::new(issues.join("; ")))
+        Err(crate::EvidenceError::new(issues.join("; ")))
     }
 }
 
 pub fn kernel_bundle_smoke_profile_identity(
     profile: &KernelBundleSmokeProfile,
-) -> EvidenceResult<String> {
+) -> crate::EvidenceResult<String> {
     domain_hash(PROFILE_DOMAIN, profile)
 }
 
 pub fn kernel_bundle_smoke_receipt(
     profile: &KernelBundleSmokeProfile,
-) -> EvidenceResult<KernelBundleSmokeReceipt> {
+) -> crate::EvidenceResult<KernelBundleSmokeReceipt> {
     validate_kernel_bundle_smoke_profile(profile)?;
     let profile_identity_blake3 = kernel_bundle_smoke_profile_identity(profile)?;
     let terminal_classes = terminal_classes(profile);
@@ -354,14 +352,14 @@ pub fn sample_mantle_private_kfunc_profile() -> KernelBundleSmokeProfile {
     }
 }
 
-pub fn sample_mantle_private_kfunc_receipt() -> EvidenceResult<KernelBundleSmokeReceipt> {
+pub fn sample_mantle_private_kfunc_receipt() -> crate::EvidenceResult<KernelBundleSmokeReceipt> {
     kernel_bundle_smoke_receipt(&sample_mantle_private_kfunc_profile())
 }
 
 pub fn kernel_bundle_kvm_rail_receipt(
     profile: &KernelBundleSmokeProfile,
     run: &KernelBundleKvmRun,
-) -> EvidenceResult<KernelBundleKvmRailReceipt> {
+) -> crate::EvidenceResult<KernelBundleKvmRailReceipt> {
     validate_kernel_bundle_smoke_profile(profile)?;
     let profile_identity_blake3 = kernel_bundle_smoke_profile_identity(profile)?;
     let mut issues = kvm_run_issues(profile, run, &profile_identity_blake3);
@@ -950,7 +948,7 @@ fn smoke_observations(profile: &KernelBundleSmokeProfile) -> Vec<SmokeObservatio
     ]
 }
 
-fn domain_hash<T: Serialize>(domain: &str, value: &T) -> EvidenceResult<String> {
+fn domain_hash<T: Serialize>(domain: &str, value: &T) -> crate::EvidenceResult<String> {
     let bytes = serde_json::to_vec(value)?;
     let mut hasher = blake3::Hasher::new();
     hasher.update(domain.as_bytes());

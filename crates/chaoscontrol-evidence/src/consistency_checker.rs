@@ -1,6 +1,4 @@
-use sha2::{Digest, Sha256};
-
-use crate::{EvidenceError, EvidenceResult};
+use sha2::Digest;
 
 pub const HISTORY_SCHEMA_VERSION: u64 = 1;
 pub const CHECKER_REPORT_SCHEMA_VERSION: u64 = 1;
@@ -33,7 +31,7 @@ pub struct RegisterWorkloadHistoryAdapter {
 }
 
 impl RegisterWorkloadHistoryAdapter {
-    pub fn new(config: RegisterHistoryAdapterConfig) -> EvidenceResult<Self> {
+    pub fn new(config: RegisterHistoryAdapterConfig) -> crate::EvidenceResult<Self> {
         validate_adapter_config(&config)?;
         Ok(Self {
             config,
@@ -48,7 +46,7 @@ impl RegisterWorkloadHistoryAdapter {
         invoked_at: u64,
         completed_at: u64,
         value: i64,
-    ) -> EvidenceResult<()> {
+    ) -> crate::EvidenceResult<()> {
         self.record_operation(HistoryOperation {
             operation_id: operation_id.into(),
             process: process.into(),
@@ -66,7 +64,7 @@ impl RegisterWorkloadHistoryAdapter {
         invoked_at: u64,
         completed_at: u64,
         value: Option<i64>,
-    ) -> EvidenceResult<()> {
+    ) -> crate::EvidenceResult<()> {
         self.record_operation(HistoryOperation {
             operation_id: operation_id.into(),
             process: process.into(),
@@ -85,7 +83,7 @@ impl RegisterWorkloadHistoryAdapter {
         completed_at: u64,
         invocation: OperationInvocation,
         error: impl Into<String>,
-    ) -> EvidenceResult<()> {
+    ) -> crate::EvidenceResult<()> {
         self.record_operation(HistoryOperation {
             operation_id: operation_id.into(),
             process: process.into(),
@@ -98,7 +96,7 @@ impl RegisterWorkloadHistoryAdapter {
         })
     }
 
-    pub fn record_operation(&mut self, operation: HistoryOperation) -> EvidenceResult<()> {
+    pub fn record_operation(&mut self, operation: HistoryOperation) -> crate::EvidenceResult<()> {
         validate_operation(&operation)?;
         require(
             !self
@@ -111,7 +109,7 @@ impl RegisterWorkloadHistoryAdapter {
         Ok(())
     }
 
-    pub fn emit_history(self) -> EvidenceResult<OperationHistory> {
+    pub fn emit_history(self) -> crate::EvidenceResult<OperationHistory> {
         require(
             !self.operations.is_empty(),
             "adapter history must contain at least one typed operation",
@@ -193,7 +191,7 @@ pub struct Counterexample {
 pub trait ConsistencyChecker {
     fn name(&self) -> &'static str;
     fn model(&self) -> &'static str;
-    fn check(&self, history: &OperationHistory) -> EvidenceResult<ConsistencyCheckReport>;
+    fn check(&self, history: &OperationHistory) -> crate::EvidenceResult<ConsistencyCheckReport>;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -208,7 +206,7 @@ impl ConsistencyChecker for SingleRegisterChecker {
         REGISTER_MODEL
     }
 
-    fn check(&self, history: &OperationHistory) -> EvidenceResult<ConsistencyCheckReport> {
+    fn check(&self, history: &OperationHistory) -> crate::EvidenceResult<ConsistencyCheckReport> {
         validate_history(history)?;
         require(
             history.model == self.model(),
@@ -274,7 +272,7 @@ impl ConsistencyChecker for SingleRegisterChecker {
     }
 }
 
-pub fn validate_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<String> {
+pub fn validate_history_path(path: impl AsRef<std::path::Path>) -> crate::EvidenceResult<String> {
     let history = read_history_path(path)?;
     validate_history(&history)?;
     Ok(format!(
@@ -288,12 +286,14 @@ pub fn validate_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResul
 
 pub fn check_history_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<ConsistencyCheckReport> {
+) -> crate::EvidenceResult<ConsistencyCheckReport> {
     let history = read_history_path(path)?;
     SingleRegisterChecker.check(&history)
 }
 
-pub fn write_adapter_sample_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
+pub fn write_adapter_sample_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -314,7 +314,7 @@ pub fn write_adapter_sample_history_path(path: impl AsRef<std::path::Path>) -> E
 pub fn write_sample_history_path(
     path: impl AsRef<std::path::Path>,
     bad: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -332,7 +332,7 @@ pub fn write_sample_history_path(
 pub fn write_check_report_path(
     history_path: impl AsRef<std::path::Path>,
     report_path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     let report_path = report_path.as_ref();
     if let Some(parent) = report_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -343,7 +343,7 @@ pub fn write_check_report_path(
     Ok(())
 }
 
-pub fn validate_report(report: &ConsistencyCheckReport) -> EvidenceResult<()> {
+pub fn validate_report(report: &ConsistencyCheckReport) -> crate::EvidenceResult<()> {
     require(
         report.schema_version == CHECKER_REPORT_SCHEMA_VERSION,
         format!("checker report schema_version must be {CHECKER_REPORT_SCHEMA_VERSION}"),
@@ -370,10 +370,9 @@ pub fn validate_report(report: &ConsistencyCheckReport) -> EvidenceResult<()> {
         "checker report limitations must separate checker evidence from replay proof",
     )?;
     if report.verdict == CheckerVerdict::Failed {
-        let counterexample = report
-            .counterexample
-            .as_ref()
-            .ok_or_else(|| EvidenceError::new("failed checker report lacks counterexample"))?;
+        let counterexample = report.counterexample.as_ref().ok_or_else(|| {
+            crate::EvidenceError::new("failed checker report lacks counterexample")
+        })?;
         require(
             !counterexample.operation_ids.is_empty(),
             "failed checker counterexample must cite operation ids",
@@ -385,7 +384,7 @@ pub fn validate_report(report: &ConsistencyCheckReport) -> EvidenceResult<()> {
 pub fn validate_report_for_history(
     report: &ConsistencyCheckReport,
     history: &OperationHistory,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     validate_report(report)?;
     require(
         report.history_id == history.history_id,
@@ -405,7 +404,7 @@ pub fn validate_report_for_history(
     Ok(())
 }
 
-pub fn validate_history(history: &OperationHistory) -> EvidenceResult<()> {
+pub fn validate_history(history: &OperationHistory) -> crate::EvidenceResult<()> {
     require(
         history.schema_version == HISTORY_SCHEMA_VERSION,
         format!("history schema_version must be {HISTORY_SCHEMA_VERSION}"),
@@ -455,7 +454,7 @@ pub fn validate_history(history: &OperationHistory) -> EvidenceResult<()> {
     Ok(())
 }
 
-fn validate_adapter_config(config: &RegisterHistoryAdapterConfig) -> EvidenceResult<()> {
+fn validate_adapter_config(config: &RegisterHistoryAdapterConfig) -> crate::EvidenceResult<()> {
     require(
         !config.history_id.is_empty(),
         "adapter history_id must be non-empty",
@@ -475,7 +474,7 @@ fn validate_adapter_config(config: &RegisterHistoryAdapterConfig) -> EvidenceRes
     Ok(())
 }
 
-fn validate_operation(op: &HistoryOperation) -> EvidenceResult<()> {
+fn validate_operation(op: &HistoryOperation) -> crate::EvidenceResult<()> {
     require(
         !op.operation_id.is_empty(),
         "operation_id must be non-empty",
@@ -493,7 +492,7 @@ fn validate_operation(op: &HistoryOperation) -> EvidenceResult<()> {
         (OperationInvocation::Read, OperationCompletion::Ok { value: None }) => {}
         (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: None }) => {}
         (OperationInvocation::Write { .. }, OperationCompletion::Ok { value: Some(_) }) => {
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "{}: write completion must not return a value",
                 op.operation_id
             )))
@@ -508,30 +507,32 @@ fn validate_operation(op: &HistoryOperation) -> EvidenceResult<()> {
     Ok(())
 }
 
-pub fn history_digest(history: &OperationHistory) -> EvidenceResult<String> {
+pub fn history_digest(history: &OperationHistory) -> crate::EvidenceResult<String> {
     let bytes = serde_json::to_vec(history)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = ::sha2::Sha256::new();
     hasher.update(bytes);
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-pub fn read_history_path(path: impl AsRef<std::path::Path>) -> EvidenceResult<OperationHistory> {
+pub fn read_history_path(
+    path: impl AsRef<std::path::Path>,
+) -> crate::EvidenceResult<OperationHistory> {
     let path = path.as_ref();
     let text = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+        .map_err(|err| crate::EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&text).map_err(|err| {
-        EvidenceError::new(format!("{}: invalid history JSON: {err}", path.display()))
+        crate::EvidenceError::new(format!("{}: invalid history JSON: {err}", path.display()))
     })
 }
 
 pub fn read_report_path(
     path: impl AsRef<std::path::Path>,
-) -> EvidenceResult<ConsistencyCheckReport> {
+) -> crate::EvidenceResult<ConsistencyCheckReport> {
     let path = path.as_ref();
     let text = std::fs::read_to_string(path)
-        .map_err(|err| EvidenceError::new(format!("{}: {err}", path.display())))?;
+        .map_err(|err| crate::EvidenceError::new(format!("{}: {err}", path.display())))?;
     serde_json::from_str(&text).map_err(|err| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "{}: invalid checker report JSON: {err}",
             path.display()
         ))
@@ -577,11 +578,11 @@ pub fn sample_bad_history() -> OperationHistory {
     history
 }
 
-fn require(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
+fn require(condition: bool, message: impl Into<String>) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message.into()))
+        Err(crate::EvidenceError::new(message.into()))
     }
 }
 

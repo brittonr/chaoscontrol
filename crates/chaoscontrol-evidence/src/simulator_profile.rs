@@ -1,9 +1,3 @@
-use crate::in_process_simulator::{
-    validate_simulator_config, DiskProfile, FaultScheduleRef, NetworkProfile, RngPolicy,
-    SchedulerPolicy, SimulatorConfig, VirtualClockPolicy, WorkloadIdentity,
-};
-use crate::{EvidenceError, EvidenceResult};
-
 const MAX_ARTIFACTS: usize = 64;
 const MAX_PROFILE_BYTES: u64 = 1024 * 1024;
 const MAX_IDENTIFIER_BYTES: usize = 128;
@@ -17,13 +11,13 @@ pub struct SimulatorProfile {
     pub schema_version: u64,
     pub run_id: String,
     pub seed: u64,
-    pub workload: WorkloadIdentity,
-    pub scheduler: SchedulerPolicy,
-    pub virtual_clock: VirtualClockPolicy,
-    pub rng: RngPolicy,
-    pub network: NetworkProfile,
-    pub disk: DiskProfile,
-    pub fault_schedule: FaultScheduleRef,
+    pub workload: crate::in_process_simulator::WorkloadIdentity,
+    pub scheduler: crate::in_process_simulator::SchedulerPolicy,
+    pub virtual_clock: crate::in_process_simulator::VirtualClockPolicy,
+    pub rng: crate::in_process_simulator::RngPolicy,
+    pub network: crate::in_process_simulator::NetworkProfile,
+    pub disk: crate::in_process_simulator::DiskProfile,
+    pub fault_schedule: crate::in_process_simulator::FaultScheduleRef,
     pub artifacts: Vec<ArtifactBinding>,
     pub scope: String,
 }
@@ -36,14 +30,16 @@ pub struct ArtifactBinding {
 }
 
 impl SimulatorProfile {
-    pub fn try_into_config(self) -> EvidenceResult<SimulatorConfig> {
+    pub fn try_into_config(
+        self,
+    ) -> crate::EvidenceResult<crate::in_process_simulator::SimulatorConfig> {
         validate_profile_shape(&self)?;
         let artifacts = self
             .artifacts
             .into_iter()
             .map(|artifact| (artifact.name, artifact.digest))
             .collect::<std::collections::BTreeMap<_, _>>();
-        let config = SimulatorConfig {
+        let config = crate::in_process_simulator::SimulatorConfig {
             schema_version: self.schema_version,
             run_id: self.run_id,
             seed: self.seed,
@@ -57,21 +53,22 @@ impl SimulatorProfile {
             artifacts,
             scope: self.scope,
         };
-        validate_simulator_config(&config)?;
+        crate::in_process_simulator::validate_simulator_config(&config)?;
         Ok(config)
     }
 }
 
-pub fn load_simulator_profile(path: &std::path::Path) -> EvidenceResult<SimulatorProfile> {
+pub fn load_simulator_profile(path: &std::path::Path) -> crate::EvidenceResult<SimulatorProfile> {
     let input = crate::bounded_file::read_bounded_regular_file(path, MAX_PROFILE_BYTES)?;
     crate::json_preflight::preflight_json(&input, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
-    serde_json::from_str(&input)
-        .map_err(|error| EvidenceError::new(format!("invalid simulator profile JSON: {error}")))
+    serde_json::from_str(&input).map_err(|error| {
+        crate::EvidenceError::new(format!("invalid simulator profile JSON: {error}"))
+    })
 }
 
-pub fn validate_profile_shape(profile: &SimulatorProfile) -> EvidenceResult<()> {
+pub fn validate_profile_shape(profile: &SimulatorProfile) -> crate::EvidenceResult<()> {
     if profile.artifacts.is_empty() || profile.artifacts.len() > MAX_ARTIFACTS {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "simulator profile artifact count is invalid",
         ));
     }
@@ -94,34 +91,36 @@ pub fn validate_profile_shape(profile: &SimulatorProfile) -> EvidenceResult<()> 
         validate_identifier("artifact.name", &artifact.name)?;
         validate_sha256("artifact.digest", &artifact.digest)?;
         if !names.insert(&artifact.name) {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "simulator profile artifact names must be unique",
             ));
         }
     }
     if profile.scope != REQUIRED_SCOPE {
-        return Err(EvidenceError::new("simulator profile scope is not exact"));
+        return Err(crate::EvidenceError::new(
+            "simulator profile scope is not exact",
+        ));
     }
     Ok(())
 }
 
-fn validate_identifier(field: &str, value: &str) -> EvidenceResult<()> {
+fn validate_identifier(field: &str, value: &str) -> crate::EvidenceResult<()> {
     let valid = !value.is_empty()
         && value.len() <= MAX_IDENTIFIER_BYTES
         && value.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
         });
     if !valid {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "simulator profile {field} is not a bounded identifier"
         )));
     }
     Ok(())
 }
 
-fn validate_sha256(field: &str, value: &str) -> EvidenceResult<()> {
+fn validate_sha256(field: &str, value: &str) -> crate::EvidenceResult<()> {
     let Some(hex) = value.strip_prefix(SHA256_PREFIX) else {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "simulator profile {field} is not sha256-bound"
         )));
     };
@@ -130,7 +129,7 @@ fn validate_sha256(field: &str, value: &str) -> EvidenceResult<()> {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
     {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "simulator profile {field} has an invalid sha256 digest"
         )));
     }

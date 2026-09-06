@@ -1,0 +1,39 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+35 edits: crates/chaoscontrol-evidence/src/assertion/readiness.rs
+32 edits: crates/chaoscontrol-evidence/src/consistency_checker.rs
+40 edits: crates/chaoscontrol-evidence/src/in_process_simulator.rs
+10 edits: crates/chaoscontrol-evidence/src/kernel_bundle_validation.rs
+71 edits: crates/chaoscontrol-evidence/src/product_scope.rs
+6 edits: crates/chaoscontrol-evidence/src/semantic_history.rs
+24 edits: crates/chaoscontrol-evidence/src/simulator_profile.rs
+10 edits: crates/chaoscontrol-fault/src/faults.rs
+22 edits: crates/chaoscontrol-fault/src/scenario.rs
+30 edits: crates/chaoscontrol-protocol/src/fallback.rs
+10 edits: crates/chaoscontrol-protocol/src/guest_process.rs
+35 edits: crates/chaoscontrol-vmm/src/controller_core.rs

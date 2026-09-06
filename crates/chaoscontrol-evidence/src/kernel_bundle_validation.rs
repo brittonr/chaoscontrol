@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 
 use crate::{EvidenceError, EvidenceResult};
 
@@ -40,7 +40,7 @@ const EXPECTED_PRIVATE_KFUNC_PROFILE_ID: &str =
 const EXPECTED_PRIVATE_KFUNC_RECEIPT_ID: &str =
     "fb37d05d6ee328b05d8f1bdc80ae0d622dcdef590f0dbf7e2721bb3993e76119";
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct KernelBundleSmokeProfile {
     pub schema_version: u64,
     pub role: String,
@@ -55,7 +55,7 @@ pub struct KernelBundleSmokeProfile {
     pub non_claims: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct OnixKernelBundleRefs {
     pub architecture: String,
     pub kernel_release: String,
@@ -66,7 +66,7 @@ pub struct OnixKernelBundleRefs {
     pub bpf_pack_identity: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct MantleMaterializationRefs {
     pub observation_blake3: String,
     pub module_blake3: String,
@@ -75,7 +75,7 @@ pub struct MantleMaterializationRefs {
     pub bpf_object_ref: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SmokeRunnerEvidence {
     pub runner: String,
     pub runner_receipt_blake3: String,
@@ -83,14 +83,14 @@ pub struct SmokeRunnerEvidence {
     pub evidence_class: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct BootCase {
     pub observed_architecture: String,
     pub observed_kernel_release: String,
     pub readiness_observation: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ModuleCase {
     pub pack_identity: String,
     pub member_path: String,
@@ -100,7 +100,7 @@ pub struct ModuleCase {
     pub cleanup_class: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct BpfCase {
     pub pack_identity: String,
     pub object_path: String,
@@ -115,7 +115,7 @@ pub struct BpfCase {
     pub required_kfuncs: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SmokeBounds {
     pub max_boot_seconds: u64,
     pub max_module_seconds: u64,
@@ -123,7 +123,7 @@ pub struct SmokeBounds {
     pub max_observations: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct KernelBundleSmokeReceipt {
     pub schema_version: u64,
     pub role: String,
@@ -140,14 +140,14 @@ pub struct KernelBundleSmokeReceipt {
     pub receipt_identity_blake3: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SmokeObservation {
     pub case_id: String,
     pub class: String,
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum KernelBundleKvmScenario {
     Positive,
@@ -185,7 +185,7 @@ impl KernelBundleKvmScenario {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct KernelBundleKvmRun {
     pub profile_identity_blake3: String,
     pub runner: String,
@@ -204,7 +204,7 @@ pub struct KernelBundleKvmRun {
     pub failure_class: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum KernelBundleEvidenceUse {
     VmCompatibilitySmoke,
@@ -216,7 +216,7 @@ pub enum KernelBundleEvidenceUse {
     ReleaseEligibility,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct KernelBundleKvmRailReceipt {
     pub schema_version: u64,
     pub role: String,

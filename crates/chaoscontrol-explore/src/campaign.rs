@@ -12,7 +12,6 @@ use crate::explorer::{
 };
 use crate::report::format_campaign_report;
 use log::info;
-use serde::{Deserialize, Serialize};
 
 use std::io::Write;
 
@@ -35,7 +34,7 @@ pub struct CampaignConfig {
 }
 
 /// Per-seed summary in the campaign report.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SeedSummary {
     pub seed: u64,
@@ -50,7 +49,7 @@ pub struct SeedSummary {
 }
 
 /// A bug deduplicated across seeds.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignBug {
     /// The underlying bug report (from whichever seed found it first).
@@ -64,7 +63,7 @@ pub struct CampaignBug {
 }
 
 /// Aggregated report across all seeds in a campaign.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignReport {
     /// All seeds that were run.
@@ -170,7 +169,7 @@ fn validate_campaign_bug_carriers(bugs: &[CampaignBug]) -> Result<(), BugSetIden
 // ═══════════════════════════════════════════════════════════════════════
 
 /// Serializable subset of ExplorerConfig for campaign checkpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SerializableCampaignConfig {
     pub kernel_path: String,
@@ -217,7 +216,7 @@ impl SerializableCampaignConfig {
 }
 
 /// Incremental campaign checkpoint — updated after each seed completes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignProgress {
     /// All seeds in the campaign.

@@ -7,10 +7,9 @@
 
 use crate::faults::Fault;
 use crate::schedule::{FaultSchedule, FaultScheduleBuilder};
-use serde::{Deserialize, Serialize};
 
 /// Built-in helical scenario families.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScenarioFamily {
     /// Rotating network partitions and restarts.
@@ -60,7 +59,7 @@ impl std::fmt::Display for ScenarioFamily {
 }
 
 /// Configuration for materializing a helical scenario.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenarioConfig {
     /// Which scenario family to generate.
@@ -85,7 +84,7 @@ impl ScenarioConfig {
 }
 
 /// Summary of a single phase within a materialized scenario.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PhaseEntry {
     /// Turn index (0-based).
@@ -103,7 +102,7 @@ pub struct PhaseEntry {
 }
 
 /// Complete phase summary for a materialized scenario.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PhaseSummary {
     /// The scenario config that produced this summary.

@@ -1,0 +1,100 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking cfg-if v1.0.4
+    Checking libc v0.2.180
+    Checking serde_core v1.0.228
+    Checking itoa v1.0.17
+    Checking memchr v2.8.0
+    Checking constant_time_eq v0.3.1
+    Checking arrayvec v0.7.8
+    Checking arrayref v0.3.9
+    Checking zmij v1.0.21
+    Checking blake3 v1.8.2
+    Checking zerocopy v0.8.39
+    Checking snafu v0.8.9
+    Checking bitflags v2.11.0
+    Checking pin-project-lite v0.2.16
+    Checking once_cell v1.21.3
+    Checking getrandom v0.2.17
+    Checking log v0.4.29
+    Checking rand_core v0.6.4
+    Checking serde v1.0.228
+    Checking serde_json v1.0.149
+    Checking utf8parse v0.2.2
+    Checking anstyle-parse v0.2.7
+    Checking tracing-core v0.1.36
+    Checking aho-corasick v1.1.4
+    Checking anstyle-query v1.1.5
+    Checking colorchoice v1.0.4
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Checking regex-syntax v0.8.9
+error: unused imports: `de::Deserialize` and `ser::Serialize`
+ --> crates/chaoscontrol-protocol/src/branch_marker.rs:3:13
+  |
+3 | use serde::{de::Deserialize, ser::Serialize};
+  |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error: unused imports: `de::Deserialize` and `ser::Serialize`
+  --> crates/chaoscontrol-protocol/src/fallback.rs:16:13
+   |
+16 | use serde::{de::Deserialize, ser::Serialize};
+   |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+error: unused imports: `de::Deserialize` and `ser::Serialize`
+ --> crates/chaoscontrol-protocol/src/guest_process.rs:2:13
+  |
+2 | use serde::{de::Deserialize, ser::Serialize};
+  |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+error: unused imports: `de::Deserialize` and `ser::Serialize`
+ --> crates/chaoscontrol-protocol/src/oci_intake.rs:7:13
+  |
+7 | use serde::{de::Deserialize, ser::Serialize};
+  |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+error: unused imports: `de::Deserialize` and `ser::Serialize`
+ --> crates/chaoscontrol-protocol/src/process.rs:3:13
+  |
+3 | use serde::{de::Deserialize, ser::Serialize};
+  |             ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+
+    Checking is_terminal_polyfill v1.70.2
+    Checking anstyle v1.0.13
+    Checking anstream v0.6.21
+    Checking tracing v0.1.44
+    Checking bitflags v1.3.2
+    Checking byteorder v1.5.0
+    Checking regex-automata v0.4.14
+    Checking zerocopy v0.7.35
+    Checking ppv-lite86 v0.2.21
+    Checking vmm-sys-util v0.12.1
+error: could not compile `chaoscontrol-protocol` (lib) due to 5 previous errors
+warning: build failed, waiting for other jobs to finish...

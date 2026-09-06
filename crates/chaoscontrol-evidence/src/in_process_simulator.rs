@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::{EvidenceError, EvidenceResult};
@@ -20,7 +20,7 @@ fn is_sha256_digest(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SimulatorConfig {
     pub schema_version: u64,
@@ -37,7 +37,7 @@ pub struct SimulatorConfig {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WorkloadIdentity {
     pub name: String,
@@ -45,7 +45,7 @@ pub struct WorkloadIdentity {
     pub scenario_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ReceiptBridgeMetadata {
     pub workload: WorkloadIdentity,
     pub seed_or_schedule_ref: String,
@@ -53,14 +53,14 @@ pub struct ReceiptBridgeMetadata {
     pub evidence_class: EvidenceClass,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceClass {
     SimulatorLocal,
     VmSnapshotReplay,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct VmReplayReceiptBridgeMetadata {
     pub workload: WorkloadIdentity,
     pub seed_or_schedule_ref: String,
@@ -68,7 +68,7 @@ pub struct VmReplayReceiptBridgeMetadata {
     pub evidence_class: EvidenceClass,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorVmReceiptBridgeComparison {
     pub comparable: bool,
     pub workload_match: bool,
@@ -81,49 +81,49 @@ pub struct SimulatorVmReceiptBridgeComparison {
     pub summary: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SchedulerPolicy {
     pub name: String,
     pub max_steps: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct VirtualClockPolicy {
     pub start_tick: u64,
     pub tick_quantum: u64,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RngPolicy {
     pub algorithm: String,
     pub seed_derivation: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkProfile {
     pub profile_id: String,
     pub simulated: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DiskProfile {
     pub profile_id: String,
     pub simulated: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FaultScheduleRef {
     pub schedule_id: String,
     pub digest: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorReceipt {
     pub schema_version: u64,
     pub run_id: String,
@@ -136,7 +136,7 @@ pub struct SimulatorReceipt {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorObservation {
     pub tick: u64,
     pub task_id: String,
@@ -144,7 +144,7 @@ pub struct SimulatorObservation {
     pub entropy: EntropySource,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EntropySource {
     SimulatorClock,
@@ -155,7 +155,7 @@ pub enum EntropySource {
     ExternalIo,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SchedulerStep {
     pub step_index: u64,
     pub task_id: String,
@@ -189,14 +189,14 @@ pub struct DeterministicScheduler {
     runnable_tasks: std::collections::VecDeque<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorRunEvidence {
     pub events: Vec<SimulatorAdapterEvent>,
     pub receipt: SimulatorReceipt,
     pub summary: SimulatorRunSummary,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorRunSummary {
     pub run_id: String,
     pub adapter_id: String,
@@ -208,14 +208,14 @@ pub struct SimulatorRunSummary {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorAdapterEvent {
     pub step: SchedulerStep,
     pub operation: SimulatorOperation,
     pub result: SimulatorOperationResult,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SimulatorOperation {
     RegisterWrite { key: String, value: i64 },
@@ -224,7 +224,7 @@ pub enum SimulatorOperation {
     DiskWrite { path: String, value: String },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SimulatorOperationResult {
     WriteOk,
@@ -234,7 +234,7 @@ pub enum SimulatorOperationResult {
     FaultInjected { fault_id: String, reason: String },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct RegisterSimulatorAdapter {
     adapter_id: String,
     state: std::collections::BTreeMap<String, i64>,
@@ -253,7 +253,7 @@ pub trait InProcessWorkloadAdapter {
     fn history_bytes(&self) -> EvidenceResult<Vec<u8>>;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatedFaultHooks {
     pub network: SimulatedNetwork,
     pub disk: SimulatedDisk,
@@ -261,46 +261,46 @@ pub struct SimulatedFaultHooks {
     pub unsupported_environment_hooks: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatedNetwork {
     pub profile_id: String,
     pub delivered: Vec<NetworkMessage>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct NetworkMessage {
     pub from: String,
     pub to: String,
     pub payload: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatedDisk {
     pub profile_id: String,
     pub writes: std::collections::BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorFault {
     pub fault_id: String,
     pub step_index: u64,
     pub action: FaultAction,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FaultAction {
     DropNetwork { to: String },
     FailDiskWrite { path: String },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorReceiptComparison {
     pub matched: bool,
     pub mismatch: Option<SimulatorReceiptMismatch>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SimulatorReceiptMismatch {
     pub class: String,
     pub left: String,

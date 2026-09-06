@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::{ensure, EvidenceError, EvidenceResult};
 
 pub const PRODUCT_SCOPE_REGISTRY_SOURCE: &str = "contracts/product-scope/registry.ncl";
@@ -22,7 +20,9 @@ const ACTIVE_CHANGES_DIRECTORY: &str = ".cairn/changes";
 const TEST_INVENTORY_NOTE: &str =
     "The selected Cargo command owns the test inventory. This projection does not copy a test count.";
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScopeState {
     Supported,
@@ -44,7 +44,7 @@ impl ScopeState {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum EvidenceState {
     Passed,
@@ -64,14 +64,14 @@ impl EvidenceState {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct EvidencePrerequisite {
     pub id: String,
     pub state: EvidenceState,
     pub source: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct CapabilityScope {
     pub id: String,
     pub name: String,
@@ -84,7 +84,7 @@ pub struct CapabilityScope {
     pub non_claims: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ChangeScopeIntent {
     pub change: String,
     pub owner: String,
@@ -93,14 +93,14 @@ pub struct ChangeScopeIntent {
     pub non_claims: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ScopeAuthority {
     pub workspace_manifest: String,
     pub test_inventory_command: String,
     pub replay_manifest: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ProductScopeRegistry {
     pub schema_version: u32,
     pub authority: ScopeAuthority,

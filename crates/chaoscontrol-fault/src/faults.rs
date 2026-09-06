@@ -4,7 +4,6 @@
 //! injected into a running VM.  Faults are deterministic: given the
 //! same seed and schedule, the same faults fire at the same points.
 
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
@@ -14,7 +13,7 @@ const fn default_memory_pressure_duration_ticks() -> u64 {
 }
 
 /// General-purpose register identifier for CPU fault injection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum GpRegister {
     Rax,
     Rbx,
@@ -81,7 +80,7 @@ impl GpRegister {
 }
 
 /// Stable public fault-variant inventory for conformance checks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FaultVariant {
     NetworkPartition,
     NetworkLatency,
@@ -151,7 +150,7 @@ impl FaultVariant {
 }
 
 /// A fault that can be injected into a running VM.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Fault {
     // ── Network faults ──────────────────────────────────────────
     /// Partition: drop all packets between two sets of VMs.
@@ -708,7 +707,7 @@ impl Fault {
 }
 
 /// Broad category for a fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FaultCategory {
     Network,
     Disk,

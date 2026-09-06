@@ -3,13 +3,11 @@
 //! This module validates scheduled protocol faults and returns typed effects.
 //! It does not apply process, network, clock, or transport effects.
 
-use serde::{Deserialize, Serialize};
-
 use std::fmt;
 
 /// r[protocol-fault-sim.faults]
 /// One explicit protocol fault hook from the admitted schedule.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProtocolFaultHook {
     NodeLoss {
@@ -33,7 +31,7 @@ pub enum ProtocolFaultHook {
 }
 
 /// One fault hook bound to its exact schedule position.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduledProtocolFault {
     pub sequence: u64,
@@ -53,7 +51,7 @@ pub struct ProtocolFaultContext {
 }
 
 /// Exact effect that a shell or adapter can apply after pure admission.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProtocolFaultEffect {
     MarkNodeLost {

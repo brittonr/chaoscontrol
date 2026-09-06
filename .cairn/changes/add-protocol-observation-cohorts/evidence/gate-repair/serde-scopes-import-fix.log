@@ -1,0 +1,161 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Checking rand_chacha v0.3.1
+    Checking thiserror v2.0.18
+    Checking regex v1.12.3
+    Checking vm-memory v0.17.1
+    Checking rand v0.8.6
+    Checking env_filter v1.0.0
+    Checking kvm-bindings v0.10.0
+    Checking jiff v0.2.20
+    Checking linux-loader v0.13.2
+    Checking kvm-ioctls v0.19.1
+    Checking crc32fast v1.5.0
+    Checking vm-superio v0.8.1
+    Checking linux-raw-sys v0.11.0
+    Checking getrandom v0.3.4
+    Checking fastrand v2.3.0
+    Checking rustix v1.1.3
+    Checking typenum v1.20.0
+    Checking generic-array v0.14.7
+    Checking env_logger v0.11.9
+    Checking io-lifetimes v3.0.1
+    Checking io-lifetimes v2.0.4
+       Fixed crates/chaoscontrol-protocol/src/oci_intake.rs (1 fix)
+       Fixed crates/chaoscontrol-protocol/src/fallback.rs (1 fix)
+       Fixed crates/chaoscontrol-protocol/src/process.rs (1 fix)
+       Fixed crates/chaoscontrol-protocol/src/branch_marker.rs (1 fix)
+       Fixed crates/chaoscontrol-protocol/src/guest_process.rs (1 fix)
+    Checking chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+    Checking io-extras v0.19.0
+    Checking ambient-authority v0.0.2
+    Checking ipnet v2.12.1
+    Checking maybe-owned v0.3.4
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking cpufeatures v0.2.17
+    Checking digest v0.10.7
+    Checking nix v0.30.1
+    Checking tempfile v3.25.0
+    Checking rustix-linux-procfs v0.1.1
+    Checking fs-set-times v0.20.3
+    Checking sha2 v0.10.9
+    Checking cap-primitives v4.0.2
+    Checking xattr v1.6.1
+    Checking filetime v0.2.29
+    Checking bounded-tree-core v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+    Checking bounded-exec-core v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+    Checking cap-std v4.0.2
+    Checking bounded-exec v0.1.0 (https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git?rev=29dac88ecded94457572db3fdfaaaab95fa91525#29dac88e)
+    Checking tar v0.4.46
+    Checking chaoscontrol-snapshot-descriptor v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-snapshot-descriptor)
+    Checking cap-fs-ext v4.0.2
+    Checking bounded-tree-cap v0.1.0 (https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git?rev=b0fd0103bc9eed2c1b6d852045959462d105d8f1#b0fd0103)
+    Checking chaoscontrol-replay-evidence-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-replay-evidence-core)
+    Checking chaoscontrol-smr v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-smr)
+    Checking linkme v0.3.35
+    Checking chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+    Checking futures-core v0.3.32
+    Checking bytes v1.11.1
+    Checking http v1.4.0
+    Checking mio v1.1.1
+    Checking http-body v1.0.1
+    Checking socket2 v0.6.3
+    Checking tower-service v0.3.3
+    Checking tower-layer v0.3.3
+    Checking tokio v1.50.0
+    Checking httparse v1.10.1
+    Checking futures-channel v0.3.32
+    Checking smallvec v1.15.1
+       Fixed crates/chaoscontrol-fault/src/faults.rs (1 fix)
+       Fixed crates/chaoscontrol-fault/src/outcomes.rs (1 fix)
+       Fixed crates/chaoscontrol-fault/src/scenario.rs (1 fix)
+    Checking chaoscontrol-sim-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sim-core)
+    Checking atomic-waker v1.1.2
+    Checking sync_wrapper v1.0.2
+    Checking pin-utils v0.1.0
+    Checking slab v0.4.12
+    Checking httpdate v1.0.3
+    Checking futures-task v0.3.32
+    Checking percent-encoding v2.3.2
+    Checking futures-util v0.3.32
+    Checking form_urlencoded v1.2.2
+    Checking zstd-sys v2.0.16+zstd.1.5.7
+    Checking http-body-util v0.1.3
+    Checking half v2.7.1
+    Checking clap_lex v1.0.0
+    Checking mime v0.3.17
+    Checking hyper v1.8.1
+    Checking ciborium-io v0.2.2
+    Checking ryu v1.0.23
+    Checking strsim v0.11.1
+    Checking serde_urlencoded v0.7.1
+    Checking clap_builder v4.5.59
+    Checking tower v0.5.3
+    Checking hyper-util v0.1.20
+    Checking ciborium-ll v0.2.2
+    Checking axum-core v0.5.6
+    Checking zstd-safe v7.2.4
+    Checking serde_path_to_error v0.1.20
+    Checking matchit v0.8.4
+    Checking async-stream v0.3.6
+    Checking clap v4.5.59
+    Checking zstd v0.13.3
+    Checking ciborium v0.2.2
+    Checking axum v0.8.8
+    Checking tower-http v0.6.8
+       Fixed crates/chaoscontrol-sim-core/src/boundary.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/kernel.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/scheduler/core.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/guest_determinism.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/protocol_replay.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/runtime_capacity.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/protocol_simulation.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/snapshot.rs (1 fix)
+       Fixed crates/chaoscontrol-sim-core/src/protocol_fault.rs (1 fix)
+    Checking chaoscontrol-vmm v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-vmm)
+       Fixed crates/chaoscontrol-vmm/src/devices/block.rs (1 fix)
+       Fixed crates/chaoscontrol-vmm/src/determinism_gate.rs (1 fix)
+       Fixed crates/chaoscontrol-vmm/src/controller_core.rs (1 fix)
+    Checking chaoscontrol-evidence v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-evidence)
+       Fixed crates/chaoscontrol-evidence/src/assertion/readiness.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/simulator_profile.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/kernel_bundle_validation.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/consistency_checker.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/product_scope.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/in_process_simulator.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs (1 fix)
+       Fixed crates/chaoscontrol-evidence/src/semantic_history.rs (1 fix)
+    Checking chaoscontrol-explore v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-explore)
+       Fixed crates/chaoscontrol-explore/src/snapshot_store.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/marker_branching.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/checkpoint.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/dashboard_types.rs (1 fix)
+       Fixed crates/chaoscontrol-explore/src/campaign.rs (1 fix)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 56.63s

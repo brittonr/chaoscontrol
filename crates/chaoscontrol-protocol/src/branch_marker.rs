@@ -1,7 +1,5 @@
 //! Bounded guest-declared branch-marker identity and admission.
 
-use serde::{Deserialize, Serialize};
-
 pub const BRANCH_MARKER_EVENT: &str = "chaoscontrol_branch_marker";
 pub const BRANCH_MARKER_LIMIT_EVENT: &str = "chaoscontrol_branch_marker_limit";
 pub const BRANCH_MARKER_SCHEMA: &str = "chaoscontrol.branch-marker.v1";
@@ -24,7 +22,7 @@ pub enum BranchMarkerError {
     TextTooLarge,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BranchMarker {
     pub schema: String,

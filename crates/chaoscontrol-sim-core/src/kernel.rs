@@ -1,7 +1,6 @@
 use crate::boundary::{
     validate_exchange, BoundaryError, BoundaryState, ExecutionCommand, ExitObservation,
 };
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Virtual nanoseconds represented by one simulation tick.
@@ -20,7 +19,7 @@ const CONFIG_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.config.v1";
 const ARTIFACT_SET_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.artifact-set.v1";
 
 /// Shell-neutral VM state observed before a round.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoreVmStatus {
     Running,
@@ -31,7 +30,7 @@ pub enum CoreVmStatus {
 }
 
 /// Explicit input to one deterministic scheduling round.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RoundInput {
     pub current_tick: u64,
     pub seed: u64,
@@ -58,7 +57,7 @@ pub struct RoundObservation {
 }
 
 /// One canonical decision or accepted observation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CanonicalEvent {
     RoundPlanned {
@@ -89,7 +88,7 @@ pub enum CanonicalEvent {
 }
 
 /// Bounded canonical trace for one pure round.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CanonicalTrace {
     pub events: Vec<CanonicalEvent>,
 }

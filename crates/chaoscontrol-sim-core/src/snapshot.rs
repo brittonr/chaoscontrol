@@ -1,11 +1,10 @@
 use crate::kernel::MAX_SIMULATION_VMS;
 use crate::network::NetworkFabric;
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const CORE_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimulationCoreSnapshot {
     pub schema_version: u16,
     pub tick: u64,

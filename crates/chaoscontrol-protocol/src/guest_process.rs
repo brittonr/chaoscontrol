@@ -1,5 +1,4 @@
 use crate::process::{ProcessFaultAction, ProcessFaultCommand};
-use serde::{Deserialize, Serialize};
 
 pub const PROCESS_MANIFEST_SCHEMA: &str = "chaoscontrol.process-manifest.v1";
 pub const MULTIPROCESS_RECEIPT_SCHEMA: &str = "chaoscontrol.multiprocess-receipt.v1";
@@ -13,14 +12,14 @@ pub const MAX_PATH_BYTES: usize = 1024;
 pub const MAX_RESTARTS: u32 = 64;
 const HASH_DOMAIN: &[u8] = b"chaoscontrol.guest-process.v1\0";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SharedDeviceKind {
     Memory,
     Block,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SharedDirectorySpec {
     pub id: String,
@@ -28,7 +27,7 @@ pub struct SharedDirectorySpec {
     pub device: SharedDeviceKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RestartMode {
     Never,
@@ -36,14 +35,14 @@ pub enum RestartMode {
     Always,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RestartPolicy {
     pub mode: RestartMode,
     pub max_restarts: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessSpec {
     pub role: String,
@@ -56,7 +55,7 @@ pub struct ProcessSpec {
     pub transport_slot: Option<u16>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessManifest {
     pub schema: String,
@@ -65,14 +64,14 @@ pub struct ProcessManifest {
     pub processes: Vec<ProcessSpec>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmittedProcess {
     pub identity: String,
     pub spec: ProcessSpec,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdmittedManifest {
     pub manifest_identity: String,
@@ -256,7 +255,7 @@ fn validate_absolute_path(value: &str) -> Result<(), ()> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessStatus {
     Stopped,
@@ -265,7 +264,7 @@ pub enum ProcessStatus {
     Exited,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessRuntimeState {
     pub identity: String,
@@ -276,7 +275,7 @@ pub struct ProcessRuntimeState {
     pub resume_at_tick: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SupervisorState {
     pub manifest_identity: String,
@@ -285,7 +284,7 @@ pub struct SupervisorState {
     pub shared_directory_identities: std::collections::BTreeMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleKind {
     Spawned,
@@ -296,7 +295,7 @@ pub enum LifecycleKind {
     Resumed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessLifecycleEvent {
     pub process_identity: String,
@@ -579,7 +578,7 @@ fn event(process: &ProcessRuntimeState, tick: u64, kind: LifecycleKind) -> Proce
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MultiprocessReceipt {
     pub schema: String,

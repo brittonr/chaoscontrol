@@ -4,7 +4,6 @@ use crate::guest_process::{
     admit_manifest, AdmittedManifest, ProcessManifest, ProcessSpec, RestartPolicy,
     SharedDirectorySpec, PROCESS_MANIFEST_SCHEMA,
 };
-use serde::{Deserialize, Serialize};
 
 pub const OCI_TOPOLOGY_SCHEMA: &str = "chaoscontrol.oci-topology.v1";
 pub const OCI_BUNDLE_PLAN_SCHEMA: &str = "chaoscontrol.oci-bundle-plan.v1";
@@ -15,7 +14,7 @@ pub const MAX_LAYERS_PER_SERVICE: usize = 64;
 pub const MAX_SOURCE_PATH_BYTES: usize = 1024;
 const HASH_DOMAIN: &[u8] = b"chaoscontrol.oci-intake.v1\0";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageFormat {
     OciLayers,
@@ -23,14 +22,14 @@ pub enum ImageFormat {
     TarArchive,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LayerDescriptor {
     pub path: String,
     pub identity: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageSource {
     pub format: String,
@@ -39,7 +38,7 @@ pub struct ImageSource {
     pub layers: Vec<LayerDescriptor>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageService {
     pub role: String,
@@ -53,7 +52,7 @@ pub struct ImageService {
     pub transport_slot: Option<u16>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OciTopology {
     pub schema: String,
@@ -62,7 +61,7 @@ pub struct OciTopology {
     pub services: Vec<ImageService>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServiceBundlePlan {
     pub role: String,
@@ -73,7 +72,7 @@ pub struct ServiceBundlePlan {
     pub root_path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BundlePlan {
     pub schema: String,
@@ -270,7 +269,7 @@ fn validate_relative_path(value: &str) -> Result<(), ()> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServiceIntakeReceipt {
     pub role: String,
@@ -279,7 +278,7 @@ pub struct ServiceIntakeReceipt {
     pub root_identity: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntakeReceipt {
     pub schema: String,

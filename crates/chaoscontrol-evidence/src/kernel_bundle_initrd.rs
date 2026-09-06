@@ -8,7 +8,6 @@ use std::path::{Component, Path, PathBuf};
 use bounded_tree_cap::{execute as execute_tree_copy, prepare as prepare_tree};
 use bounded_tree_core::{LimitValues, RelativePath, SymlinkPolicy, TreeLimits, TreePlan};
 use cap_std::{ambient_authority, fs::Dir};
-use serde::Serialize;
 
 use crate::{EvidenceError, EvidenceResult};
 
@@ -113,7 +112,7 @@ pub struct PrivateKfuncInitrdRequest<'a> {
     pub expected_kernel_release: &'a str,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct PrivateKfuncInitrdSummary {
     pub schema_version: u64,
     pub output_path: String,

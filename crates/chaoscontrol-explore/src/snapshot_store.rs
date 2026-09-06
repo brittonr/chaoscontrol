@@ -5,7 +5,7 @@
 //! bounded paths rather than owning VM internals.
 
 use chaoscontrol_vmm::controller::SimulationSnapshot;
-use serde::{Deserialize, Serialize};
+use serde::ser::Serialize;
 use sha2::{Digest, Sha256};
 use snafu::Snafu;
 use std::fs::{self, OpenOptions};
@@ -28,7 +28,7 @@ const MAX_DECOMPRESSED_SNAPSHOT_BYTES: u64 = 2048 * BYTES_PER_MIB;
 const READ_LIMIT_SENTINEL_BYTES: u64 = 1;
 const SNAPSHOT_COMPRESSION_LEVEL: i32 = 3;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotArtifactEnvelope {
     pub schema_version: u32,

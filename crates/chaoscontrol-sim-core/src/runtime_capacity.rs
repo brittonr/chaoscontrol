@@ -1,7 +1,5 @@
 //! Pure admission, identity, and accounting for selected runtime capacity.
 
-use serde::{Deserialize, Serialize};
-
 const CAPACITY_PLAN_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.runtime-capacity.plan.v1\0";
 pub const RUNTIME_CAPACITY_PLAN_SCHEMA: &str = "chaoscontrol.runtime-capacity-plan.v1";
 pub const MAX_RUNTIME_JOURNAL_RECORD_SLOTS: usize =
@@ -14,14 +12,14 @@ pub const MAX_RUNTIME_PACKET_SLOT_BYTES: usize = 64 * 1024;
 pub const MAX_RUNTIME_QUEUE_METADATA_SLOTS: usize = MAX_RUNTIME_PACKET_SLOTS;
 pub const MAX_RUNTIME_PREALLOCATED_BYTES: usize = 256 * 1024 * 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScratchClassLimit {
     pub slot_bytes: usize,
     pub slots: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeCapacityLimits {
     pub journal_record_slots: usize,
@@ -32,7 +30,7 @@ pub struct RuntimeCapacityLimits {
     pub queue_metadata_slots: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeCapacityPlan {
     pub schema: String,
@@ -107,7 +105,7 @@ pub enum RuntimeCapacityError {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapacitySlotState {
     Free,
@@ -135,7 +133,7 @@ impl CapacityLease {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CapacityPoolState {
     generation: u64,
@@ -290,14 +288,14 @@ impl CapacityPoolState {
 pub const RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA: &str =
     "chaoscontrol.runtime-capacity-observations.v1";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeCapacityStartupResult {
     Admitted,
     AllocationFailed,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CapacityUsageObservation {
     pub allocated_slots: usize,
@@ -308,7 +306,7 @@ pub struct CapacityUsageObservation {
     pub release_count: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeCapacityClaims {
     pub deterministic_latency: bool,
@@ -317,7 +315,7 @@ pub struct RuntimeCapacityClaims {
     pub host_memory_guaranteed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuntimeCapacityObservations {
     pub schema: String,

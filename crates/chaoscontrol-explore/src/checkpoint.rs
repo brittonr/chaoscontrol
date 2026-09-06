@@ -15,7 +15,6 @@ use crate::corpus::BugReport;
 use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
-use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 use std::fs;
 use std::io::Write;
@@ -63,7 +62,7 @@ pub enum CheckpointError {
 }
 
 /// Configuration subset needed to resume exploration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointConfig {
     pub num_vms: usize,
     pub kernel_path: String,
@@ -109,7 +108,7 @@ fn default_bootstrap_budget() -> u64 {
 }
 
 /// Serializable fault representation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum SerializableFault {
     NetworkPartition {
         side_a: Vec<usize>,
@@ -542,7 +541,7 @@ impl From<&SerializableFault> for Fault {
 }
 
 /// Serializable scheduled fault.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SerializableScheduledFault {
     pub time_ns: u64,
@@ -551,7 +550,7 @@ pub struct SerializableScheduledFault {
 }
 
 /// Serializable fault schedule.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SerializableSchedule {
     pub faults: Vec<SerializableScheduledFault>,
@@ -588,7 +587,7 @@ impl From<&SerializableSchedule> for FaultSchedule {
 }
 
 /// Serializable bug report.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SerializableBug {
     pub bug_id: u64,
@@ -757,7 +756,7 @@ impl TryFrom<&SerializableBug> for BugReport {
 }
 
 /// Complete checkpoint — everything needed to resume exploration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExplorationCheckpoint {
     pub config: CheckpointConfig,

@@ -8,7 +8,6 @@ use crate::campaign::SeedSummary;
 use crate::checkpoint::ExplorationCheckpoint;
 use crate::coverage::CoverageStats;
 use crate::explorer::{AssertionDetail, AssertionStats, RoundHistory};
-use serde::{Deserialize, Serialize};
 
 /// Events emitted by the explorer for live dashboard consumption.
 ///
@@ -16,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// client misses an event, the next one carries full cumulative state
 /// for its category. The client can also fetch `GET /api/state` for
 /// the complete picture.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type")]
 pub enum DashboardEvent {
     /// Emitted once after bootstrap completes, before the first round.
@@ -99,7 +98,7 @@ pub enum DashboardEvent {
 ///
 /// This is a cumulative snapshot of the entire exploration. Updated
 /// after each round by the event receiver loop.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DashboardState {
     /// Whether an exploration is currently running.
     pub running: bool,
@@ -144,7 +143,7 @@ pub struct DashboardState {
 }
 
 /// Exploration config summary for dashboard display.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DashboardConfig {
     pub num_vms: usize,
     pub seed: u64,
@@ -159,7 +158,7 @@ pub struct DashboardConfig {
 ///
 /// We can't impl Serialize on the VMM type (orphan rule), so the
 /// dashboard uses its own copy.  Conversion is via `From`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DashboardNetworkStats {
     pub packets_sent: u64,
     pub packets_delivered: u64,
@@ -193,7 +192,7 @@ impl From<&chaoscontrol_vmm::controller::NetworkStats> for DashboardNetworkStats
 }
 
 /// Bug summary for the dashboard.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DashboardBug {
     pub bug_id: u64,
     pub assertion_id: u64,

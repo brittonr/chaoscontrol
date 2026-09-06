@@ -13,7 +13,6 @@ use crate::identity::{
     ASSERTION_IDENTITY_VERSION, MAX_ASSERTION_KEY_BYTES, MAX_ASSERTION_MESSAGE_BYTES,
     MAX_ASSERTION_NAMESPACE_BYTES,
 };
-use serde::{Deserialize, Serialize};
 
 pub const FALLBACK_RECORD_SCHEMA_VERSION: u8 = 1;
 pub const MAX_FALLBACK_RECORDS: usize = crate::admission::MAX_ASSERTION_CATALOG_ENTRIES;
@@ -27,7 +26,7 @@ const FALLBACK_SINK_DOMAIN: &[u8] = b"chaoscontrol.fallback-assertion-sink.v1\0"
 const FALLBACK_RECORD_DOMAIN: &[u8] = b"chaoscontrol.fallback-assertion-record.v1\0";
 const LOWER_HEX_BYTES: usize = crate::identity::ASSERTION_FINGERPRINT_HEX_BYTES;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FallbackProcessIdentity {
     pub guest: String,
@@ -57,7 +56,7 @@ impl FallbackProcessIdentity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FallbackRecordType {
     Always,
@@ -83,7 +82,7 @@ impl FallbackRecordType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FallbackRecord {
     pub schema_version: u8,
@@ -189,7 +188,7 @@ impl FallbackRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FallbackOverflowEvent {
     pub limit: usize,
@@ -197,7 +196,7 @@ pub struct FallbackOverflowEvent {
     pub process: FallbackProcessIdentity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FallbackSinkEvidence {
     pub limit: usize,
@@ -207,7 +206,7 @@ pub struct FallbackSinkEvidence {
     pub sink_blake3: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FallbackAssertionScope {
     pub process: FallbackProcessIdentity,

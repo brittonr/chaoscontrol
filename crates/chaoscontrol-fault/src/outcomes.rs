@@ -4,7 +4,6 @@
 //! not access devices, KVM, files, clocks, processes, logs, or ambient state.
 
 use crate::faults::{Fault, FaultCategory, FaultVariant, GpRegister};
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -30,19 +29,27 @@ const FAULT_OPERATION_DOMAIN: &[u8] = b"chaoscontrol.fault-operation.v1";
 const RANDOM_SCHEDULE_ENTRY_DOMAIN: &[u8] = b"random";
 
 /// Stable BLAKE3 identity for one schedule.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct FaultScheduleId(pub [u8; 32]);
 
 /// Stable BLAKE3 identity for one engine run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct FaultRunId(pub [u8; 32]);
 
 /// Stable BLAKE3 identity for one selected fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct FaultAttemptId(pub [u8; 32]);
 
 /// Stable BLAKE3 identity for one operation affected by a fault.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct FaultOperationId(pub [u8; 32]);
 
 macro_rules! impl_hex_display {
@@ -63,7 +70,7 @@ impl_hex_display!(FaultRunId);
 impl_hex_display!(FaultAttemptId);
 impl_hex_display!(FaultOperationId);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultAttemptSource {
     Direct,
     Scheduled {
@@ -74,7 +81,7 @@ pub enum FaultAttemptSource {
 }
 
 /// One deterministic selection from a schedule or the seeded random source.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultAttempt {
     pub id: FaultAttemptId,
     pub run_id: FaultRunId,
@@ -466,7 +473,7 @@ fn register_index(register: GpRegister) -> u8 {
 }
 
 /// Controller policy for applicability decisions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultApplicationPolicy {
     pub rejection_is_fatal: bool,
     pub max_duration_ns: u64,
@@ -485,7 +492,7 @@ impl Default for FaultApplicationPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultVmStatus {
     Running,
     Paused,
@@ -494,7 +501,7 @@ pub enum FaultVmStatus {
     Resuming,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VmFaultFacts {
     pub status: FaultVmStatus,
     pub vcpu_count: u32,
@@ -511,20 +518,20 @@ pub struct VmFaultFacts {
     pub tsc_khz: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultPlanningFacts {
     pub current_tick: u64,
     pub network_supported: bool,
     pub vms: Vec<VmFaultFacts>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultEffectTiming {
     Immediate,
     Armed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultMechanism {
     NetworkPartition,
     NetworkLatency,
@@ -558,7 +565,7 @@ pub enum FaultMechanism {
     MemoryPressure,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultPlan {
     pub attempt_id: FaultAttemptId,
     pub effect: FaultPlanEffect,
@@ -590,7 +597,7 @@ impl FaultPlan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultPlanEffect {
     NetworkPartition {
         side_a: Vec<u32>,
@@ -795,7 +802,7 @@ impl FaultPlanEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultRejectionReason {
     TooManyVms {
         count: u64,
@@ -1530,7 +1537,7 @@ fn checked_signed_add(value: u64, delta: i64) -> Result<u64, FaultRejectionReaso
         .ok_or(FaultRejectionReason::ArithmeticOverflow)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultObservationSubsystem {
     Network = 1,
     Block = 2,
@@ -1541,7 +1548,7 @@ pub enum FaultObservationSubsystem {
     Interrupt = 7,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultObservationEffect {
     PacketDroppedByPartition,
     PacketDroppedByLoss,
@@ -1571,7 +1578,7 @@ pub enum FaultObservationEffect {
     NmiInjected,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultObservation {
     pub attempt_id: FaultAttemptId,
     pub operation_id: FaultOperationId,
@@ -1602,14 +1609,14 @@ impl FaultObservation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultApplicationFailureDisposition {
     RolledBack,
     NonRunnable,
     Indeterminate,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultApplicationFailureReason {
     BackendRejected,
     DeviceDisappeared,
@@ -1617,7 +1624,7 @@ pub enum FaultApplicationFailureReason {
     InternalInvariant,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultStageKind {
     Selected,
     Applicable {
@@ -1638,14 +1645,14 @@ pub enum FaultStageKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultStageEvent {
     pub sequence: u64,
     pub attempt_id: FaultAttemptId,
     pub kind: FaultStageKind,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultStageCounters {
     pub selected: u64,
     pub rejected: u64,
@@ -1654,7 +1661,7 @@ pub struct FaultStageCounters {
     pub observed: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum FaultAuthoritativeStage {
     Selected,
     Applicable,
@@ -1668,7 +1675,7 @@ fn no_applicable_effect() -> Option<FaultPlanEffect> {
     None
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultAttemptState {
     pub attempt: FaultAttempt,
     pub stage: FaultAuthoritativeStage,
@@ -1677,7 +1684,7 @@ pub struct FaultAttemptState {
     pub observed_operations: BTreeSet<FaultOperationId>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultOutcomeLedger {
     pub attempts: BTreeMap<FaultAttemptId, FaultAttemptState>,
     pub events: Vec<FaultStageEvent>,

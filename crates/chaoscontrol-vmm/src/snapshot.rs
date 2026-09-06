@@ -15,7 +15,7 @@ use kvm_bindings::{
 };
 use kvm_ioctls::{VcpuFd, VmFd};
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserialize, ser::Serialize};
 use snafu::ResultExt;
 
 use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
@@ -56,7 +56,7 @@ impl Clone for SnapshotMemory {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 enum SnapshotMemorySerde {
     Full(Vec<u8>),
     Overlay {
@@ -274,14 +274,14 @@ const VIRTIO_NET_DEVICE_ID: u32 = 1;
 const VIRTIO_BLOCK_DEVICE_ID: u32 = 2;
 const VIRTIO_ENTROPY_DEVICE_ID: u32 = 4;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct VirtioDeviceIdentity {
     pub base_addr: u64,
     pub irq: u32,
     pub device_id: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum SnapshotComponent {
     GuestMemory,
     InKernelIrqChip,
@@ -315,7 +315,7 @@ pub enum SnapshotComponent {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotTopology {
     pub vcpu_count: u32,
     /// Canonical KVM MSR capability inventory required by every vCPU.
@@ -323,7 +323,7 @@ pub struct SnapshotTopology {
     pub virtio_devices: Vec<(VirtioDeviceIdentity, u32)>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotMetadata {
     pub state_schema_version: u32,
     pub completeness_profile: String,
@@ -408,7 +408,7 @@ pub fn validate_snapshot_metadata(
     Ok(())
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VirtioBackendSnapshot {
     Block(Box<BlockSnapshot>),
     Net(Box<NetSnapshot>),
@@ -426,7 +426,7 @@ impl VirtioBackendSnapshot {
 }
 
 /// Snapshot of a single virtio device's transport and backend state.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct VirtioDeviceSnapshot {
     pub transport: VirtioMmioSnapshot,
     pub backend: VirtioBackendSnapshot,
@@ -464,7 +464,7 @@ pub struct CaptureParams {
     pub hlt_latched_vcpus: Vec<bool>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MsrSnapshot {
     pub index: u32,
     pub data: u64,
@@ -513,7 +513,7 @@ fn pod_from_bytes<T>(bytes: &[u8], field: &'static str) -> Result<T, String> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct VcpuSnapshotSerde {
     regs: Vec<u8>,
     sregs: Vec<u8>,
@@ -594,7 +594,7 @@ impl<'de> Deserialize<'de> for VcpuSnapshot {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SerialStateSerde {
     baud_divisor_low: u8,
     baud_divisor_high: u8,
@@ -684,7 +684,7 @@ where
     deserializer.deserialize_seq(HltLatchVisitor)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct VmSnapshotSerde {
     #[serde(default)]
     metadata: Option<SnapshotMetadata>,

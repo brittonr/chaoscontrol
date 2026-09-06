@@ -2,7 +2,6 @@ use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use chaoscontrol_protocol::identity::{
     encode_lower_hex, AssertionDescriptor, AssertionFingerprint,
 };
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{AssertionSummaryEntry, EvidenceError, EvidenceResult};
@@ -33,13 +32,13 @@ pub(crate) struct IdentityAdmission {
     pub(crate) promotion_blocker: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 struct SummaryIdentityCarrier {
     id: u64,
     identity: SummaryIdentity,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 struct SummaryIdentity {
     descriptor: AssertionDescriptor,
     fingerprint: AssertionFingerprint,

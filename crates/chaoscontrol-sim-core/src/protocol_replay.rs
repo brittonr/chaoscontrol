@@ -2,10 +2,9 @@
 
 use crate::protocol_receipt::{validate_protocol_simulation_receipt, ProtocolReceiptError};
 use crate::protocol_simulation::ProtocolSimulationReceipt;
-use serde::{Deserialize, Serialize};
 
 /// Ordered, bounded mismatch classes for protocol-simulation replay.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolReplayMismatchClass {
     Seed,
@@ -16,14 +15,14 @@ pub enum ProtocolReplayMismatchClass {
 }
 
 /// First mismatch between two otherwise valid protocol receipts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolReplayMismatch {
     pub class: ProtocolReplayMismatchClass,
 }
 
 /// Pure comparison result for two protocol-simulation receipts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolReplayComparison {
     pub matched: bool,
@@ -99,7 +98,7 @@ mod tests {
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const FAILURE_OUTPUT: &[u8] = b"failure:lease-renewal-blocked-by-partition";
 
-    #[derive(Serialize)]
+    #[derive(serde::Serialize)]
     struct FailingFixtureHistory<'a> {
         seed: u64,
         schedule_id: &'a str,

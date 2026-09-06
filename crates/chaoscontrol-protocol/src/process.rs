@@ -1,12 +1,10 @@
 //! Process-scoped guest supervisor commands shared by the host and SDK.
 
-use serde::{Deserialize, Serialize};
-
 pub const PROCESS_FAULT_SCHEMA: &str = "chaoscontrol.process-fault.v1";
 pub const MAX_PROCESS_ID_BYTES: usize = 96;
 pub const MAX_PROCESS_FAULT_BYTES: usize = 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessFaultAction {
     Kill,
@@ -14,7 +12,7 @@ pub enum ProcessFaultAction {
     Restart,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProcessFaultCommand {
     pub schema: String,

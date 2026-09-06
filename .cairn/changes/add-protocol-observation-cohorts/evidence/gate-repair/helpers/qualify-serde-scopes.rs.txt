@@ -1,0 +1,222 @@
+#!/usr/bin/env -S nix shell github:nix-community/fenix/03864c059200a8a96f2ee6bb050c69eae96f57ca#minimal.toolchain nixpkgs#gcc -c cargo -q -Zscript
+---
+[package]
+edition = "2024"
+[dependencies]
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+---
+//! Qualify Serde derives across admitted inline scopes. Reject ambiguous scopes.
+use syn::visit::Visit;
+type Failure = Box<dyn std::error::Error>;
+type Names = std::collections::BTreeSet<String>;
+const MAX_SOURCE_BYTES: usize = 2_097_152;
+const MAX_FILES: usize = 512;
+const MAX_SCOPE_DEPTH: usize = 32;
+const SERIALIZE: &str = "Serialize";
+const DESERIALIZE: &str = "Deserialize";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Replacement { range: std::ops::Range<usize>, before: String, after: String }
+struct Scan<'a> {
+    source: &'a str, names: Names, changes: Vec<Replacement>,
+    blocked: Option<String>, depth: usize,
+}
+impl Scan<'_> {
+    fn replace(&mut self, span: proc_macro2::Span, after: String) {
+        let range = span.byte_range();
+        match self.source.get(range.clone()) {
+            Some(before) => self.changes.push(Replacement { range, before: before.into(), after }),
+            None => self.blocked = Some("invalid source span".into()),
+        }
+    }
+    fn import(&mut self, tree: &syn::UseTree, prefix: &str) {
+        match tree {
+            syn::UseTree::Path(path) => {
+                let next = if prefix.is_empty() { path.ident.to_string() } else { format!("{prefix}::{}", path.ident) };
+                self.import(&path.tree, &next);
+            }
+            syn::UseTree::Group(group) => for item in &group.items { self.import(item, prefix); },
+            syn::UseTree::Name(name) => {
+                let binding = name.ident.to_string();
+                if prefix == "serde" && [SERIALIZE, DESERIALIZE].contains(&binding.as_str()) {
+                    let owner = if binding == SERIALIZE { "ser" } else { "de" };
+                    self.names.insert(binding.clone());
+                    self.replace(name.ident.span(), format!("{owner}::{binding}"));
+                } else if self.names.contains(&binding) && prefix != "super" {
+                    self.blocked = Some(format!("foreign import shadows {binding}"));
+                }
+            }
+            syn::UseTree::Rename(rename) => {
+                if self.names.contains(&rename.ident.to_string()) || self.names.contains(&rename.rename.to_string())
+                    || (prefix == "serde" && [SERIALIZE, DESERIALIZE].contains(&rename.ident.to_string().as_str())) {
+                    self.blocked = Some("renamed Serde binding needs review".into());
+                }
+            }
+            syn::UseTree::Glob(_) if prefix != "super" => self.blocked = Some("unknown glob needs review".into()),
+            _ => {}
+        }
+    }
+    fn declaration(&mut self, name: &proc_macro2::Ident) {
+        if self.names.contains(&name.to_string()) { self.blocked = Some(format!("declaration shadows {name}")); }
+    }
+    fn macro_names(&mut self, tokens: proc_macro2::TokenStream) {
+        for token in tokens {
+            match token {
+                proc_macro2::TokenTree::Group(group) => self.macro_names(group.stream()),
+                proc_macro2::TokenTree::Ident(ident) if self.names.contains(&ident.to_string()) => {
+                    self.blocked = Some("Serde binding inside macro tokens needs review".into());
+                }
+                _ => {}
+            }
+        }
+    }
+}
+impl<'ast> Visit<'ast> for Scan<'_> {
+    fn visit_attribute(&mut self, attribute: &'ast syn::Attribute) {
+        if attribute.path().is_ident("cfg_attr") {
+            self.blocked = Some("conditional attribute needs review".into()); return;
+        }
+        if !attribute.path().is_ident("derive") { return; }
+        let parsed = attribute.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated);
+        match parsed {
+            Ok(paths) => for path in paths {
+                if let Some(ident) = path.get_ident() {
+                    if self.names.contains(&ident.to_string()) { self.replace(ident.span(), format!("serde::{ident}")); }
+                }
+            },
+            Err(_) => self.blocked = Some("malformed derive attribute".into()),
+        }
+    }
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        // Module imports are processed separately. A block import can shadow later derives.
+        let mut tokens = Names::new();
+        fn bindings(tree: &syn::UseTree, names: &mut Names) {
+            match tree {
+                syn::UseTree::Path(path) => bindings(&path.tree, names),
+                syn::UseTree::Group(group) => for item in &group.items { bindings(item, names); },
+                syn::UseTree::Name(name) => { names.insert(name.ident.to_string()); },
+                syn::UseTree::Rename(name) => { names.insert(name.rename.to_string()); },
+                syn::UseTree::Glob(_) => { names.insert("*".into()); },
+            }
+        }
+        bindings(&item.tree, &mut tokens);
+        if tokens.contains("*") || tokens.iter().any(|name| self.names.contains(name)) {
+            self.blocked = Some("block-local binding needs review".into());
+        }
+    }
+    fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
+        self.declaration(&module.ident);
+        for attr in &module.attrs { self.visit_attribute(attr); }
+        match &module.content {
+            Some((_, items)) => match scan_scope(self.source, items, self.names.clone(), self.depth + 1) {
+                Ok(changes) => self.changes.extend(changes),
+                Err(error) => self.blocked = Some(error.to_string()),
+            },
+            None if !self.names.is_empty() => self.blocked = Some("external module inheritance needs review".into()),
+            None => {}
+        }
+    }
+    fn visit_macro(&mut self, node: &'ast syn::Macro) { self.macro_names(node.tokens.clone()); }
+    fn visit_item_struct(&mut self, item: &'ast syn::ItemStruct) { self.declaration(&item.ident); syn::visit::visit_item_struct(self, item); }
+    fn visit_item_enum(&mut self, item: &'ast syn::ItemEnum) { self.declaration(&item.ident); syn::visit::visit_item_enum(self, item); }
+    fn visit_item_type(&mut self, item: &'ast syn::ItemType) { self.declaration(&item.ident); syn::visit::visit_item_type(self, item); }
+    fn visit_item_trait(&mut self, item: &'ast syn::ItemTrait) { self.declaration(&item.ident); syn::visit::visit_item_trait(self, item); }
+}
+fn scan_scope(source: &str, items: &[syn::Item], inherited: Names, depth: usize) -> Result<Vec<Replacement>, Failure> {
+    if depth > MAX_SCOPE_DEPTH { return Err("scope depth exceeds bound".into()); }
+    let mut scan = Scan { source, names: inherited, changes: Vec::new(), blocked: None, depth };
+    // Collect Serde bindings first so source order cannot conceal a shadowing import.
+    for item in items {
+        if let syn::Item::Use(item) = item {
+            if matches!(item.vis, syn::Visibility::Inherited) {
+                let before = scan.blocked.take();
+                scan.import(&item.tree, "");
+                scan.blocked = before.or(scan.blocked);
+            }
+        }
+    }
+    // Recheck imports after the full binding set is known, without duplicating edits.
+    let edits = scan.changes.clone();
+    for item in items {
+        if let syn::Item::Use(item) = item {
+            if matches!(item.vis, syn::Visibility::Inherited) { scan.import(&item.tree, ""); }
+            else if !scan.names.is_empty() { scan.visit_item_use(item); }
+        }
+    }
+    scan.changes = edits;
+    for item in items { if !matches!(item, syn::Item::Use(_)) { scan.visit_item(item); } }
+    if let Some(error) = scan.blocked { return Err(error.into()); }
+    Ok(scan.changes)
+}
+fn propose(source: &str) -> Result<Vec<Replacement>, Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds byte bound".into()); }
+    let file = syn::parse_file(source)?;
+    let mut changes = scan_scope(source, &file.items, Names::new(), 0)?;
+    changes.sort_by_key(|change| change.range.start);
+    Ok(changes)
+}
+fn apply(source: &str, changes: &[Replacement]) -> Result<String, Failure> {
+    let mut previous_end = 0;
+    for change in changes {
+        if change.range.start < previous_end || source.get(change.range.clone()) != Some(change.before.as_str()) {
+            return Err("overlapping or stale source edit".into());
+        }
+        previous_end = change.range.end;
+    }
+    let mut result = source.to_owned();
+    for change in changes.iter().rev() { result.replace_range(change.range.clone(), &change.after); }
+    syn::parse_file(&result)?;
+    Ok(result)
+}
+fn self_test() -> Result<(), Failure> {
+    let source = "// λ\nuse serde::{Serialize, Deserialize}; #[derive(Serialize)] struct Row; mod tests { use super::*; #[derive(Deserialize)] struct Test; }";
+    let output = apply(source, &propose(source)?)?;
+    assert_eq!(output, "// λ\nuse serde::{ser::Serialize, de::Deserialize}; #[derive(serde::Serialize)] struct Row; mod tests { use super::*; #[derive(serde::Deserialize)] struct Test; }");
+    assert!(propose(&output)?.is_empty());
+    let nested = "mod nested { use serde::Serialize; #[derive(Serialize)] struct Row; mod child { use super::Serialize; #[derive(Serialize)] struct Child; } }";
+    assert!(apply(nested, &propose(nested)?)?.contains("#[derive(serde::Serialize)] struct Child"));
+    for invalid in [
+        "use serde::Serialize as S;", "use serde::Serialize; mod external;",
+        "use serde::Serialize; mod child { use other::Serialize; #[derive(Serialize)] struct Row; }",
+        "use serde::Serialize; mod child { use super::Serialize as S; #[derive(S)] struct Row; }",
+        "use other::Serialize; use serde::Serialize;", "use serde::Serialize; struct Serialize;",
+        "use serde::Serialize; #[cfg_attr(test, derive(Serialize))] struct Row;",
+        "use serde::Serialize; macro_rules! row { () => { #[derive(Serialize)] struct Row; } }",
+        "use serde::Serialize; mod child { use other::*; #[derive(Serialize)] struct Row; }",
+        "use serde::Serialize; fn f() { use other::Serialize; #[derive(Serialize)] struct Row; }",
+        "use serde::Serialize; mod child { pub use other::Serialize; }", "this is not Rust",
+    ] { assert!(propose(invalid).is_err(), "accepted invalid scope: {invalid}"); }
+    assert!(propose("use other::Serialize; #[derive(Serialize)] struct Row;")?.is_empty());
+    assert!(propose("pub use serde::Serialize; #[derive(Serialize)] struct Row;")?.is_empty());
+    assert!(apply("stale", &propose(source)?).is_err());
+    let mut overlap = propose(source)?;
+    overlap.push(overlap[0].clone());
+    assert!(apply(source, &overlap).is_err());
+    assert!(scan_scope("", &[], Names::new(), MAX_SCOPE_DEPTH + 1).is_err());
+    println!("Serde inline-scope positive and negative controls passed");
+    Ok(())
+}
+fn main() -> Result<(), Failure> {
+    let mut args = std::env::args().skip(1);
+    let mode = args.next().ok_or("expected --check, --write, or --self-test")?;
+    if mode == "--self-test" { return self_test(); }
+    if mode != "--check" && mode != "--write" { return Err("unknown mode".into()); }
+    let paths: Vec<_> = args.collect();
+    if paths.is_empty() || paths.len() > MAX_FILES { return Err("invalid file count".into()); }
+    for path in paths {
+        let source = std::fs::read_to_string(&path)?;
+        let changes = match propose(&source) {
+            Ok(changes) => changes,
+            Err(error) => { eprintln!("REVIEW {path}: {error}"); continue; }
+        };
+        if changes.is_empty() { continue; }
+        let output = apply(&source, &changes)?;
+        println!("{} edits: {path}", changes.len());
+        if mode == "--write" {
+            if std::fs::read_to_string(&path)? != source { return Err("source changed before write".into()); }
+            std::fs::write(path, output)?;
+        }
+    }
+    Ok(())
+}

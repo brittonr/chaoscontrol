@@ -3,8 +3,6 @@
 //! These types bind deterministic run inputs and receipt facts. They do not
 //! read configuration, execute a protocol, write receipts, or claim VM replay.
 
-use serde::{Deserialize, Serialize};
-
 use std::fmt;
 
 /// Schema for an admitted adapter-based protocol-simulation run configuration.
@@ -13,7 +11,7 @@ pub const PROTOCOL_SIMULATION_CONFIG_SCHEMA: &str = "chaoscontrol.protocol-simul
 pub const PROTOCOL_SIMULATION_RECEIPT_SCHEMA: &str = "chaoscontrol.protocol-simulation-receipt.v1";
 
 /// Evidence class for this rail. It is separate from VM and in-process evidence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProtocolSimulationEvidenceClass {
     #[serde(rename = "adapter-protocol-simulation")]
     AdapterProtocolSimulation,
@@ -22,7 +20,7 @@ pub enum ProtocolSimulationEvidenceClass {
 /// r[protocol-fault-sim.contract]
 /// r[protocol-fault-sim.contract.config]
 /// Complete deterministic input binding for one protocol-simulation run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolSimulationConfig {
     pub schema: String,
@@ -36,7 +34,7 @@ pub struct ProtocolSimulationConfig {
 }
 
 /// Identity of the exact deterministic schedule supplied to the run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolScheduleRef {
     pub schedule_id: String,
@@ -44,7 +42,7 @@ pub struct ProtocolScheduleRef {
 }
 
 /// Deterministic scheduler policy selected for the protocol adapter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolSchedulerPolicy {
     pub policy_id: String,
@@ -52,7 +50,7 @@ pub struct ProtocolSchedulerPolicy {
 }
 
 /// Virtual clock policy selected for the protocol adapter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolVirtualClockPolicy {
     pub policy_id: String,
@@ -61,7 +59,7 @@ pub struct ProtocolVirtualClockPolicy {
 }
 
 /// Deterministic random-number policy selected for the protocol adapter.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolRngPolicy {
     pub algorithm: String,
@@ -69,7 +67,7 @@ pub struct ProtocolRngPolicy {
 }
 
 /// Identity of the protocol and the adapter that supplies its transitions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolIdentity {
     pub protocol_id: String,
@@ -82,7 +80,7 @@ pub struct ProtocolIdentity {
 ///
 /// The shell emits this DTO. The embedded configuration makes the seed,
 /// schedule, clock, RNG, protocol, adapter, and artifact bindings explicit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolSimulationReceipt {
     pub schema: String,
@@ -107,7 +105,7 @@ pub struct ProtocolTransitionInput<I> {
 ///
 /// Admitted requests bind effects to simulation-owned sources. The legacy host
 /// variants exist only so validation and negative fixtures can fail closed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProtocolEffectRequest {
     VirtualClockRead,
@@ -201,7 +199,7 @@ fn require_effect_binding(
 }
 
 /// A typed protocol fact emitted by a deterministic adapter transition.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProtocolFact {
     pub kind: ProtocolFactKind,
@@ -210,7 +208,7 @@ pub struct ProtocolFact {
 }
 
 /// Supported fact classes for ownership, replication, and reacquisition adapters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolFactKind {
     Ownership,

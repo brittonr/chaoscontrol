@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Maximum payload bytes carried by one boundary DTO.
 pub const MAX_BOUNDARY_PAYLOAD_BYTES: usize = 1_048_576;
 
 /// A machine effect selected by the deterministic core.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExecutionCommand {
     RunVcpu {
@@ -55,7 +54,7 @@ impl ExecutionCommand {
 }
 
 /// A typed shell observation returned after one command.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExitObservation {
     VcpuCompleted {
@@ -135,7 +134,7 @@ impl ExitObservation {
 }
 
 /// Sequence state owned by the pure command/observation boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BoundaryState {
     pub next_sequence: u64,
     pub vm_count: usize,

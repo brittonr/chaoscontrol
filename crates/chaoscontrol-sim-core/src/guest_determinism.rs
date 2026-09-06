@@ -3,8 +3,6 @@
 //! The imperative VMM shell applies this plan to Linux boot inputs. This
 //! module does not read clocks, entropy, files, processes, or guest memory.
 
-use serde::{Deserialize, Serialize};
-
 pub const GUEST_DETERMINISM_PROFILE_SCHEMA: &str = "chaoscontrol.guest-determinism-profile.v1";
 pub const GUEST_DETERMINISM_PROBE_SCHEMA: &str = "chaoscontrol.guest-determinism-probe.v1";
 pub const GUEST_DETERMINISM_DRIFT_SCHEMA: &str = "chaoscontrol.guest-determinism-drift.v1";
@@ -39,7 +37,9 @@ const REQUIRED_NON_CLAIMS: [&str; 5] = [
 ];
 
 /// One guest-visible surface admitted by the bounded profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum GuestDeterminismSurface {
     BootEntropy,
@@ -56,7 +56,7 @@ const ADMITTED_SURFACES: [GuestDeterminismSurface; 4] = [
 ];
 
 /// Guest clock selected by the bounded profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GuestClockMode {
     VirtualTsc,
@@ -64,7 +64,7 @@ pub enum GuestClockMode {
 }
 
 /// Inputs that fully select one guest determinism profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GuestDeterminismInput {
     pub run_seed: u64,
     pub vm_id: u32,
@@ -74,7 +74,7 @@ pub struct GuestDeterminismInput {
 }
 
 /// Pure plan applied by the VMM and bound into validation receipts.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GuestDeterminismProfile {
     pub schema: String,
     pub profile_id: String,
@@ -90,7 +90,7 @@ pub struct GuestDeterminismProfile {
 }
 
 /// One guest-produced observation over every admitted surface.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GuestDeterminismProbe {
     pub schema: String,
     pub entropy_hex: String,
@@ -102,7 +102,7 @@ pub struct GuestDeterminismProbe {
 }
 
 /// Result of comparing two observations selected by one profile.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GuestDeterminismDriftReport {
     pub schema: String,
     pub profile_id: String,

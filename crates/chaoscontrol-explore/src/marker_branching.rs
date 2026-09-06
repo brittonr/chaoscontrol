@@ -5,7 +5,6 @@ use chaoscontrol_protocol::branch_marker::{
     marker_identity, BranchMarker, BRANCH_MARKER_ASSERTION_CATEGORY, BRANCH_MARKER_EVENT,
     BRANCH_MARKER_LIMIT_EVENT,
 };
-use serde::{Deserialize, Serialize};
 
 pub const MARKER_NOVELTY_BONUS: f64 = 32.0;
 pub const MARKER_RARITY_NUMERATOR: f64 = 16.0;
@@ -17,7 +16,7 @@ pub struct MarkerObservation {
     pub marker: BranchMarker,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerFrontierMetadata {
     pub marker_identity: String,
@@ -28,7 +27,7 @@ pub struct MarkerFrontierMetadata {
     pub observed_tick: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerCoverageReport {
     pub declared: Vec<String>,
@@ -37,7 +36,7 @@ pub struct MarkerCoverageReport {
     pub limit_events: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerReplayBinding {
     pub schema: String,

@@ -12,7 +12,7 @@ use rand::RngCore;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::de::{self, DeserializeOwned, SeqAccess, Visitor};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Deserializer;
 use std::fmt::{self, Write};
 
 /// Canonical schedule-state schema version.
@@ -28,7 +28,7 @@ const SCHEDULE_STATE_HEX_BYTES: usize = 64;
 const SCHEDULER_SEED_DOMAIN: u64 = 0x5343_4845_4430;
 
 /// BLAKE3 identity of one canonical [`ScheduleState`].
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleStateId(pub [u8; 32]);
 
 impl fmt::Debug for ScheduleStateId {
@@ -56,7 +56,7 @@ impl ScheduleStateId {
 }
 
 /// Declared source of deterministic guest-instruction progress.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProgressMode {
     /// Portable correctness baseline: KVM exits after each guest instruction.
     ExactSingleStep,
@@ -81,7 +81,7 @@ pub struct ProgressCapabilities {
 }
 
 /// Exact-step state at the current quantum boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ExactStepState {
     /// The selected progress source can run normally.
     Inactive,
@@ -93,7 +93,7 @@ pub enum ExactStepState {
 }
 
 /// Complete deterministic scheduling state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleState {
     /// State schema version.
     pub schema_version: u16,
@@ -128,7 +128,7 @@ pub struct ScheduleState {
 }
 
 /// Deterministic progress source attached to an observation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ProgressSource {
     /// One exact guest instruction completed under KVM single-step.
     ExactSingleStep,
@@ -137,7 +137,7 @@ pub enum ProgressSource {
 }
 
 /// One canonical change to the runnable set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableChange {
     /// vCPU whose runnable state changed.
     pub vcpu: usize,
@@ -146,7 +146,7 @@ pub struct RunnableChange {
 }
 
 /// Host-owned input that must not have deterministic schedule authority.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum HostEventKind {
     /// `VcpuExit::Intr` or an `EINTR` error.
     SignalInterrupt,
@@ -157,7 +157,7 @@ pub enum HostEventKind {
 }
 
 /// Typed input to the pure schedule transition.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleEvent {
     /// Replay-stable cumulative guest-instruction progress.
     GuestProgress {
@@ -207,7 +207,7 @@ impl ScheduleEvent {
 }
 
 /// Reason for a deterministic vCPU selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SwitchReason {
     /// The selected vCPU reached its exact instruction boundary.
     QuantumBoundary,
@@ -216,7 +216,7 @@ pub enum SwitchReason {
 }
 
 /// Auditable action selected by the pure transition.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ScheduleAction {
     /// Continue the selected vCPU with the declared progress source.
     Continue,
@@ -248,7 +248,7 @@ pub enum ScheduleAction {
 ///
 /// The containing [`ScheduleTrace`] owns the initial state. Each record owns the
 /// event, action, and pre/post identities needed to recompute the next state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleTransitionRecord {
     /// BLAKE3 identity before the event.
     pub pre_state_id: ScheduleStateId,
@@ -261,7 +261,7 @@ pub struct ScheduleTransitionRecord {
 }
 
 /// Bounded, independently verifiable transition chain.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleTrace {
     /// Full state before the first record.
     pub initial_state: ScheduleState,

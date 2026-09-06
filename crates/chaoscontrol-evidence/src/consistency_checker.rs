@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{EvidenceError, EvidenceResult};
@@ -8,7 +7,7 @@ pub const CHECKER_REPORT_SCHEMA_VERSION: u64 = 1;
 pub const REGISTER_MODEL: &str = "single-register-sequential";
 const REQUIRED_SCOPE_FRAGMENT: &str = "not snapshot replay proof";
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct OperationHistory {
     pub schema_version: u64,
     pub history_id: String,
@@ -19,7 +18,7 @@ pub struct OperationHistory {
     pub limitations: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct RegisterHistoryAdapterConfig {
     pub history_id: String,
     pub workload: String,
@@ -27,7 +26,7 @@ pub struct RegisterHistoryAdapterConfig {
     pub limitations: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct RegisterWorkloadHistoryAdapter {
     config: RegisterHistoryAdapterConfig,
     operations: Vec<HistoryOperation>,
@@ -140,7 +139,7 @@ impl RegisterWorkloadHistoryAdapter {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct HistoryOperation {
     pub operation_id: String,
     pub process: String,
@@ -150,21 +149,21 @@ pub struct HistoryOperation {
     pub completion: OperationCompletion,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OperationInvocation {
     Read,
     Write { value: i64 },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OperationCompletion {
     Ok { value: Option<i64> },
     Failed { error: String },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ConsistencyCheckReport {
     pub schema_version: u64,
     pub checker: String,
@@ -178,14 +177,14 @@ pub struct ConsistencyCheckReport {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CheckerVerdict {
     Passed,
     Failed,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct Counterexample {
     pub operation_ids: Vec<String>,
     pub reason: String,

@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-
 use crate::in_process_simulator::{
     validate_simulator_config, DiskProfile, FaultScheduleRef, NetworkProfile, RngPolicy,
     SchedulerPolicy, SimulatorConfig, VirtualClockPolicy, WorkloadIdentity,
@@ -13,7 +11,7 @@ const SHA256_PREFIX: &str = "sha256:";
 const SHA256_HEX_BYTES: usize = 64;
 const REQUIRED_SCOPE: &str = "adapter-based in-process simulator evidence; not VM replay proof, not arbitrary binary support, not full FoundationDB parity";
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SimulatorProfile {
     pub schema_version: u64,
@@ -30,7 +28,7 @@ pub struct SimulatorProfile {
     pub scope: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactBinding {
     pub name: String,

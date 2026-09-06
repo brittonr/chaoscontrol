@@ -5,7 +5,6 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const SEMANTIC_HISTORY_SCHEMA_VERSION: u64 = 2;
@@ -47,7 +46,7 @@ const FORBIDDEN_SCOPE_FRAGMENTS: [&str; 6] = [
     "caused by",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SemanticErrorClass {
     Schema,
@@ -65,7 +64,7 @@ pub enum SemanticErrorClass {
     ClaimBoundary,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticError {
     pub class: SemanticErrorClass,
     pub message: String,
@@ -90,7 +89,7 @@ impl std::error::Error for SemanticError {}
 
 pub type SemanticResult<T> = Result<T, SemanticError>;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum SemanticValue {
     Null,
@@ -99,7 +98,7 @@ pub enum SemanticValue {
     Text(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "function", rename_all = "snake_case")]
 pub enum OperationInput {
     Read,
@@ -112,7 +111,7 @@ pub enum OperationInput {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompletionOutcome {
     Ok,
@@ -120,7 +119,7 @@ pub enum CompletionOutcome {
     Info,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EffectiveOutcome {
     Ok,
@@ -129,13 +128,13 @@ pub enum EffectiveOutcome {
     Pending,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PendingFinalization {
     pub policy_id: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InvocationEvent {
     pub event_index: usize,
     pub logical_operation_id: String,
@@ -148,7 +147,7 @@ pub struct InvocationEvent {
     pub source_artifact: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CompletionEvent {
     pub event_index: usize,
     pub attempt_id: String,
@@ -158,7 +157,7 @@ pub struct CompletionEvent {
     pub finalization: Option<PendingFinalization>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FaultEffectPhase {
     Selected,
@@ -166,7 +165,7 @@ pub enum FaultEffectPhase {
     Observed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FaultEvent {
     pub event_index: usize,
     pub fault_attempt_id: String,
@@ -175,14 +174,14 @@ pub struct FaultEvent {
     pub controller_time_ns: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LifecycleEvent {
     pub event_index: usize,
     pub phase: String,
     pub controller_time_ns: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SemanticEvent {
     Invoke(InvocationEvent),
@@ -211,7 +210,7 @@ impl SemanticEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SearchBounds {
     pub max_operations: usize,
     pub max_states: usize,
@@ -234,7 +233,7 @@ impl Default for SearchBounds {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CheckerProfile {
     pub profile_id: String,
     pub model: String,
@@ -242,7 +241,7 @@ pub struct CheckerProfile {
     pub bounds: SearchBounds,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CompletenessAccounting {
     pub invocations: usize,
     pub completions: usize,
@@ -251,7 +250,7 @@ pub struct CompletenessAccounting {
     pub observed_faults: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticHistory {
     pub schema_version: u64,
     pub workload_profile: String,
@@ -261,7 +260,7 @@ pub struct SemanticHistory {
     pub events: Vec<SemanticEvent>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AdmittedOperation {
     pub logical_operation_id: String,
     pub attempt_id: String,
@@ -276,7 +275,7 @@ pub struct AdmittedOperation {
     pub completion_time_ns: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AdmittedHistory {
     pub history_id: String,
     pub workload_profile: String,
@@ -668,7 +667,7 @@ impl ModelKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 struct ModelState {
     values: std::collections::BTreeMap<String, SemanticValue>,
 }
@@ -733,7 +732,7 @@ fn transition(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinearizabilityVerdict {
     Valid,
@@ -741,7 +740,7 @@ pub enum LinearizabilityVerdict {
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnknownClass {
     PendingOperations,
@@ -754,7 +753,7 @@ pub enum UnknownClass {
     MaxMemoBytes,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnknownBlocker {
     pub class: UnknownClass,
     pub bound_name: Option<String>,
@@ -763,7 +762,7 @@ pub struct UnknownBlocker {
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LinearizationStep {
     pub attempt_id: String,
     pub took_effect: bool,
@@ -771,14 +770,14 @@ pub struct LinearizationStep {
     pub state_after: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InvalidWitness {
     pub remaining_attempt_ids: Vec<String>,
     pub model_state: String,
     pub failure_class: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReductionStatus {
     NotApplicable,
@@ -786,14 +785,14 @@ pub enum ReductionStatus {
     BudgetLimited,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReducedHistory {
     pub status: ReductionStatus,
     pub retained_attempt_ids: Vec<String>,
     pub attempts: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferenceStatus {
     NotRun,
@@ -801,7 +800,7 @@ pub enum ReferenceStatus {
     Disagreement,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticCheckReport {
     pub schema_version: u64,
     pub history_id: String,
@@ -1243,7 +1242,7 @@ pub fn validate_semantic_report(
     Ok(())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LegacyHistoryEvidence {
     pub schema_version: u64,
     pub history_sha256: String,
@@ -1283,7 +1282,7 @@ pub fn reject_legacy_promotion(_legacy: &LegacyHistoryEvidence) -> SemanticResul
     ))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReferenceEventType {
     Invoke,
@@ -1292,7 +1291,7 @@ pub enum ReferenceEventType {
     Info,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceEvent {
     pub index: usize,
     pub process: String,
@@ -1303,7 +1302,7 @@ pub struct ReferenceEvent {
     pub attempt_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct JepsenCompatibleHistory {
     pub schema_version: u64,
     pub source_history_id: String,
@@ -1509,21 +1508,21 @@ fn operation_function(input: &OperationInput) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceVerdict {
     pub tool_id: String,
     pub history_id: String,
     pub verdict: LinearizabilityVerdict,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConformanceStatus {
     Agreement,
     Disagreement,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ConformanceReport {
     pub status: ConformanceStatus,
     pub history_id: String,
@@ -1583,7 +1582,7 @@ pub fn bind_reference_conformance(
     Ok(bound)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimelineKind {
     Invocation,
@@ -1594,7 +1593,7 @@ pub enum TimelineKind {
     FaultObserved,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimelineEntry {
     pub event_index: usize,
     pub controller_time_ns: u64,
@@ -1604,7 +1603,7 @@ pub struct TimelineEntry {
     pub latency_ns: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticTimeline {
     pub history_id: String,
     pub verdict: LinearizabilityVerdict,

@@ -12,10 +12,9 @@ use chaoscontrol_fault::outcomes::{
     FaultTransitionError, FaultVmStatus,
 };
 use chaoscontrol_sim_core::CoreVmStatus;
-use serde::{Deserialize, Serialize};
 
 /// Current status of one VM in a controller round.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VmStatus {
     /// VM is running normally.
     Running,

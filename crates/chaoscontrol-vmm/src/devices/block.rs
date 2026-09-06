@@ -21,7 +21,6 @@ use chaoscontrol_fault::outcomes::{
     FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultOutcomeLedger,
     FaultPlanEffect, FaultTransitionError,
 };
-use serde::{Deserialize, Serialize};
 use snafu::Snafu;
 
 /// Dirty + volatile page overlays extracted for restart preservation.
@@ -80,7 +79,7 @@ pub enum BlockError {
 /// Faults are consumed in FIFO order: the next matching I/O operation
 /// triggers the oldest queued fault whose variant applies (read vs write)
 /// and whose `offset` matches the request offset.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BlockFault {
     /// Fail the next read that touches `offset`.
     ReadError { offset: u64 },
@@ -96,7 +95,7 @@ pub enum BlockFault {
 }
 
 /// Read/write statistics for a [`DeterministicBlock`].
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BlockStats {
     /// Number of successful read operations.
     pub reads: u64,
@@ -113,7 +112,7 @@ pub struct BlockStats {
 ///
 /// Cheap to create: the base image is shared via `Arc`, only dirty pages
 /// and metadata are cloned.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BlockSnapshot {
     base: std::sync::Arc<Vec<u8>>,
     dirty: std::collections::BTreeMap<usize, Vec<u8>>,

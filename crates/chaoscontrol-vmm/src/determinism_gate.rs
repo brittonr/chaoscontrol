@@ -4,10 +4,8 @@
 //! while this pure layer classifies mismatches and emits a machine-readable
 //! receipt that CI/operator tooling can archive.
 
-use serde::{Deserialize, Serialize};
-
 /// Stable fingerprint for one VM run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VmFingerprint {
     /// Number of VM exits observed before the run stopped.
     pub exit_count: u64,
@@ -18,7 +16,7 @@ pub struct VmFingerprint {
 }
 
 /// Stable fingerprint for one multi-VM controller run.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ControllerFingerprint {
     /// Final controller tick.
     pub tick: u64,
@@ -31,7 +29,7 @@ pub struct ControllerFingerprint {
 }
 
 /// Fingerprint shape used by the generic comparison/reporting layer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RunFingerprint {
     SingleVm(VmFingerprint),
@@ -39,7 +37,7 @@ pub enum RunFingerprint {
 }
 
 /// One run inside a determinism case.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RunObservation {
     pub run_index: usize,
     pub fingerprint: RunFingerprint,
@@ -48,7 +46,7 @@ pub struct RunObservation {
 }
 
 /// Machine-readable mismatch details.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct MismatchDetail {
     pub run_index: usize,
     pub field: String,
@@ -59,7 +57,7 @@ pub struct MismatchDetail {
 }
 
 /// Coarse first-divergence classes used to make drift receipts actionable.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DivergenceClass {
     FingerprintCounters,
@@ -78,7 +76,7 @@ pub enum DivergenceClass {
 }
 
 /// Machine-readable dlog first-divergence detail.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct DlogDivergenceDetail {
     pub run_index: usize,
     pub class: DivergenceClass,
@@ -86,7 +84,7 @@ pub struct DlogDivergenceDetail {
 }
 
 /// Result for one deterministic configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeterminismCaseReport {
     pub name: String,
     pub runs: usize,
@@ -111,7 +109,7 @@ pub struct DeterminismCaseReport {
 }
 
 /// Top-level receipt for a determinism drift-gate run.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeterminismGateReceipt {
     pub schema_version: u32,
     pub gate: String,
@@ -147,7 +145,7 @@ impl DeterminismGateReceipt {
 }
 
 /// One required profile row in a bounded determinism matrix.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeterminismMatrixProfile {
     /// Stable row identifier, unique within one matrix receipt.
     pub row_id: String,
@@ -172,7 +170,7 @@ pub struct DeterminismMatrixProfile {
 }
 
 /// One validated row in a bounded determinism matrix receipt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeterminismMatrixRow {
     pub profile: DeterminismMatrixProfile,
     pub report: DeterminismCaseReport,
@@ -181,7 +179,7 @@ pub struct DeterminismMatrixRow {
     pub status: MatrixRowStatus,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MatrixRowStatus {
     Passed,
@@ -203,7 +201,7 @@ impl MatrixRowStatus {
 }
 
 /// Top-level bounded device/profile matrix receipt.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DeterminismMatrixReceipt {
     pub schema_version: u32,
     pub gate: String,

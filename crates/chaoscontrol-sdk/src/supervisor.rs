@@ -1,10 +1,4 @@
-use chaoscontrol_protocol::guest_process::{
-    AdmittedManifest, ProcessLifecycleEvent, ProcessSpec, SupervisorEffect, SupervisorEffectKind,
-    SupervisorError, SupervisorState,
-};
-use chaoscontrol_protocol::process::ProcessFaultCommand;
-
-use std::process::Child;
+use chaoscontrol_protocol::guest_process::ProcessSpec;
 
 pub const PROCESS_ID_ENV: &str = "CHAOSCONTROL_PROCESS_ID";
 pub const PROCESS_ROLE_ENV: &str = "CHAOSCONTROL_PROCESS_ROLE";
@@ -18,7 +12,7 @@ pub enum RuntimeError {
     Signal(std::io::Error),
     Wait(std::io::Error),
     UnknownProcess,
-    Core(SupervisorError),
+    Core(::chaoscontrol_protocol::guest_process::SupervisorError),
 }
 
 pub trait ProcessRuntime {
@@ -26,30 +20,37 @@ pub trait ProcessRuntime {
         &mut self,
         identity: &str,
         spec: &ProcessSpec,
-        manifest: &AdmittedManifest,
+        manifest: &::chaoscontrol_protocol::guest_process::AdmittedManifest,
     ) -> Result<(), RuntimeError>;
-    fn signal(&mut self, identity: &str, signal: SupervisorEffectKind) -> Result<(), RuntimeError>;
+    fn signal(
+        &mut self,
+        identity: &str,
+        signal: ::chaoscontrol_protocol::guest_process::SupervisorEffectKind,
+    ) -> Result<(), RuntimeError>;
     fn exited(&mut self, identity: &str) -> Result<Option<bool>, RuntimeError>;
 }
 
 pub struct Supervisor<R> {
-    manifest: AdmittedManifest,
-    state: SupervisorState,
+    manifest: ::chaoscontrol_protocol::guest_process::AdmittedManifest,
+    state: ::chaoscontrol_protocol::guest_process::SupervisorState,
     runtime: R,
-    events: Vec<ProcessLifecycleEvent>,
+    events: Vec<::chaoscontrol_protocol::guest_process::ProcessLifecycleEvent>,
 }
 
 impl<R: ProcessRuntime> Supervisor<R> {
-    pub fn new(manifest: AdmittedManifest, runtime: R) -> Self {
+    pub fn new(
+        manifest: ::chaoscontrol_protocol::guest_process::AdmittedManifest,
+        runtime: R,
+    ) -> Self {
         Self {
-            state: SupervisorState::new(&manifest),
+            state: ::chaoscontrol_protocol::guest_process::SupervisorState::new(&manifest),
             manifest,
             runtime,
             events: Vec::new(),
         }
     }
 
-    pub fn state(&self) -> &SupervisorState {
+    pub fn state(&self) -> &::chaoscontrol_protocol::guest_process::SupervisorState {
         &self.state
     }
 
@@ -61,7 +62,10 @@ impl<R: ProcessRuntime> Supervisor<R> {
         Ok(())
     }
 
-    pub fn apply_fault(&mut self, command: &ProcessFaultCommand) -> Result<(), RuntimeError> {
+    pub fn apply_fault(
+        &mut self,
+        command: &::chaoscontrol_protocol::process::ProcessFaultCommand,
+    ) -> Result<(), RuntimeError> {
         let transition = self
             .state
             .apply_fault(command)
@@ -97,13 +101,18 @@ impl<R: ProcessRuntime> Supervisor<R> {
         Ok(())
     }
 
-    pub fn drain_events(&mut self) -> Vec<ProcessLifecycleEvent> {
+    pub fn drain_events(
+        &mut self,
+    ) -> Vec<::chaoscontrol_protocol::guest_process::ProcessLifecycleEvent> {
         std::mem::take(&mut self.events)
     }
 
-    fn execute(&mut self, effects: &[SupervisorEffect]) -> Result<(), RuntimeError> {
+    fn execute(
+        &mut self,
+        effects: &[::chaoscontrol_protocol::guest_process::SupervisorEffect],
+    ) -> Result<(), RuntimeError> {
         for effect in effects {
-            if effect.kind == SupervisorEffectKind::Spawn {
+            if effect.kind == ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Spawn {
                 let process = self
                     .manifest
                     .processes
@@ -122,7 +131,7 @@ impl<R: ProcessRuntime> Supervisor<R> {
 
 #[derive(Default)]
 pub struct StdProcessRuntime {
-    children: std::collections::BTreeMap<String, Child>,
+    children: std::collections::BTreeMap<String, ::std::process::Child>,
 }
 
 impl ProcessRuntime for StdProcessRuntime {
@@ -130,7 +139,7 @@ impl ProcessRuntime for StdProcessRuntime {
         &mut self,
         identity: &str,
         spec: &ProcessSpec,
-        manifest: &AdmittedManifest,
+        manifest: &::chaoscontrol_protocol::guest_process::AdmittedManifest,
     ) -> Result<(), RuntimeError> {
         for directory in &manifest.shared_directories {
             std::fs::create_dir_all(&directory.path).map_err(RuntimeError::Spawn)?;
@@ -159,19 +168,26 @@ impl ProcessRuntime for StdProcessRuntime {
         Ok(())
     }
 
-    fn signal(&mut self, identity: &str, signal: SupervisorEffectKind) -> Result<(), RuntimeError> {
+    fn signal(
+        &mut self,
+        identity: &str,
+        signal: ::chaoscontrol_protocol::guest_process::SupervisorEffectKind,
+    ) -> Result<(), RuntimeError> {
         let child = self
             .children
             .get_mut(identity)
             .ok_or(RuntimeError::UnknownProcess)?;
         match signal {
-            SupervisorEffectKind::Kill => {
+            ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Kill => {
                 child.kill().map_err(RuntimeError::Signal)?;
                 child.wait().map_err(RuntimeError::Wait)?;
                 self.children.remove(identity);
             }
-            SupervisorEffectKind::Pause | SupervisorEffectKind::Resume => {
-                let signal_number = if signal == SupervisorEffectKind::Pause {
+            ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Pause
+            | ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Resume => {
+                let signal_number = if signal
+                    == ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Pause
+                {
                     libc::SIGSTOP
                 } else {
                     libc::SIGCONT
@@ -182,7 +198,9 @@ impl ProcessRuntime for StdProcessRuntime {
                     return Err(RuntimeError::Signal(std::io::Error::last_os_error()));
                 }
             }
-            SupervisorEffectKind::Spawn => return Err(RuntimeError::UnknownProcess),
+            ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Spawn => {
+                return Err(RuntimeError::UnknownProcess)
+            }
         }
         Ok(())
     }
@@ -223,7 +241,7 @@ mod tests {
             &mut self,
             identity: &str,
             _spec: &ProcessSpec,
-            _manifest: &AdmittedManifest,
+            _manifest: &::chaoscontrol_protocol::guest_process::AdmittedManifest,
         ) -> Result<(), RuntimeError> {
             self.running.insert(identity.to_string());
             Ok(())
@@ -232,9 +250,9 @@ mod tests {
         fn signal(
             &mut self,
             identity: &str,
-            signal: SupervisorEffectKind,
+            signal: ::chaoscontrol_protocol::guest_process::SupervisorEffectKind,
         ) -> Result<(), RuntimeError> {
-            if signal == SupervisorEffectKind::Kill {
+            if signal == ::chaoscontrol_protocol::guest_process::SupervisorEffectKind::Kill {
                 self.running.remove(identity);
             }
             Ok(())
@@ -250,7 +268,7 @@ mod tests {
         }
     }
 
-    fn admitted() -> AdmittedManifest {
+    fn admitted() -> ::chaoscontrol_protocol::guest_process::AdmittedManifest {
         admit_manifest(&ProcessManifest {
             schema: PROCESS_MANIFEST_SCHEMA.to_string(),
             guest: "fixture".to_string(),
@@ -286,9 +304,13 @@ mod tests {
             supervisor.state().processes[&identity].status,
             ProcessStatus::Running
         );
-        let command =
-            ProcessFaultCommand::new("request-1", "writer", ProcessFaultAction::Restart, None)
-                .unwrap();
+        let command = ::chaoscontrol_protocol::process::ProcessFaultCommand::new(
+            "request-1",
+            "writer",
+            ProcessFaultAction::Restart,
+            None,
+        )
+        .unwrap();
         supervisor.apply_fault(&command).unwrap();
         assert_eq!(
             supervisor.state().processes[&identity].status,

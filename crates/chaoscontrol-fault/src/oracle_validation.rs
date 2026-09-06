@@ -1,15 +1,8 @@
-use crate::oracle::{AssertionRecord, OracleReport};
 pub use crate::oracle_event_validation::{MAX_IDENTITY_CONFLICTS, MAX_ORACLE_EVENTS};
-use crate::oracle_record_validation::{validate_active_record, validate_final_record};
+
 pub use crate::oracle_snapshot_validation::{
     validate_oracle_snapshot, validate_restorable_oracle_snapshot,
 };
-use chaoscontrol_protocol::admission::{
-    AcceptedCatalog, AssertionEvidenceIdentity, CatalogBuilder, CatalogValidationStatus,
-    MAX_ASSERTION_CATALOG_ENTRIES,
-};
-use chaoscontrol_protocol::identity::AssertionFingerprint;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OracleValidationError {
@@ -27,27 +20,27 @@ pub enum OracleValidationError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrictReportFacts {
-    pub catalog_token: AssertionFingerprint,
+    pub catalog_token: ::chaoscontrol_protocol::identity::AssertionFingerprint,
     pub catalog_size: usize,
-    pub catalog: AcceptedCatalog,
+    pub catalog: ::chaoscontrol_protocol::admission::AcceptedCatalog,
 }
 
 pub fn validate_strict_oracle_report(
-    report: &OracleReport,
+    report: &crate::oracle::OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     validate_final_oracle_report(report, true)
 }
 
 pub fn validate_oracle_report_claim(
-    report: &OracleReport,
+    report: &crate::oracle::OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     validate_final_oracle_report(report, false)
 }
 
 pub fn resolve_assertion_evidence<'a>(
-    report: &'a OracleReport,
-    identity: &AssertionEvidenceIdentity,
-) -> Result<&'a AssertionRecord, OracleValidationError> {
+    report: &'a crate::oracle::OracleReport,
+    identity: &::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+) -> Result<&'a crate::oracle::AssertionRecord, OracleValidationError> {
     let facts = validate_oracle_report_claim(report)?;
     identity
         .validate_for_catalog(&facts.catalog)
@@ -72,13 +65,13 @@ pub fn resolve_assertion_evidence<'a>(
 }
 
 pub(crate) fn validate_prepared_oracle_report(
-    report: &OracleReport,
+    report: &crate::oracle::OracleReport,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     validate_oracle_report_facts(report, false)
 }
 
 fn validate_final_oracle_report(
-    report: &OracleReport,
+    report: &crate::oracle::OracleReport,
     reject_vm_provenance: bool,
 ) -> Result<StrictReportFacts, OracleValidationError> {
     let facts = validate_oracle_report_facts(report, reject_vm_provenance)?;
@@ -89,10 +82,11 @@ fn validate_final_oracle_report(
 }
 
 fn validate_oracle_report_facts(
-    report: &OracleReport,
+    report: &crate::oracle::OracleReport,
     reject_vm_provenance: bool,
 ) -> Result<StrictReportFacts, OracleValidationError> {
-    if report.catalog_status != CatalogValidationStatus::Accepted
+    if report.catalog_status
+        != ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
         || !report.assertions.is_empty()
         || !report.identity_conflicts.is_empty()
     {
@@ -120,26 +114,31 @@ fn validate_oracle_report_facts(
 }
 
 pub(crate) fn validate_strict_records(
-    records: &BTreeMap<AssertionFingerprint, AssertionRecord>,
+    records: &::std::collections::BTreeMap<
+        ::chaoscontrol_protocol::identity::AssertionFingerprint,
+        crate::oracle::AssertionRecord,
+    >,
     total_runs: u32,
     reject_vm_provenance: bool,
     active_run: Option<&crate::oracle::RunState>,
 ) -> Result<StrictReportFacts, OracleValidationError> {
-    if records.is_empty() || records.len() > MAX_ASSERTION_CATALOG_ENTRIES {
+    if records.is_empty()
+        || records.len() > ::chaoscontrol_protocol::admission::MAX_ASSERTION_CATALOG_ENTRIES
+    {
         return Err(OracleValidationError::Cardinality);
     }
     let mut token = None;
-    let mut builder =
-        CatalogBuilder::begin(records.len()).map_err(|_| OracleValidationError::Catalog)?;
+    let mut builder = ::chaoscontrol_protocol::admission::CatalogBuilder::begin(records.len())
+        .map_err(|_| OracleValidationError::Catalog)?;
     for (fingerprint, record) in records {
         match active_run {
-            Some(run) => validate_active_record(
+            Some(run) => crate::oracle_record_validation::validate_active_record(
                 record,
                 total_runs,
                 run.strict_hit_ids.contains(fingerprint),
                 run.strict_satisfied_ids.contains(fingerprint),
             )?,
-            None => validate_final_record(record, total_runs)?,
+            None => crate::oracle_record_validation::validate_final_record(record, total_runs)?,
         }
         if reject_vm_provenance && !record.vm_instances.is_empty() {
             return Err(OracleValidationError::VmProvenance);
@@ -216,7 +215,10 @@ pub(crate) fn validate_strict_records(
 }
 
 fn verdict_counts(
-    assertions: &BTreeMap<AssertionFingerprint, AssertionRecord>,
+    assertions: &::std::collections::BTreeMap<
+        ::chaoscontrol_protocol::identity::AssertionFingerprint,
+        crate::oracle::AssertionRecord,
+    >,
 ) -> (usize, usize, usize) {
     assertions.values().fold((0, 0, 0), |mut counts, record| {
         match record.verdict() {

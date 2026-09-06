@@ -3,22 +3,30 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.parity]
 
-use serde_json::{json, Map, Value};
+use serde_json::json;
 
 pub fn summarize_values(
     output: &std::path::Path,
-    accepted: Option<&Value>,
-    attempts: Option<&Value>,
-) -> Result<Value, String> {
+    accepted: Option<&::serde_json::Value>,
+    attempts: Option<&::serde_json::Value>,
+) -> Result<::serde_json::Value, String> {
     let canonical_output = output.display().to_string();
     if let Some(summary) = accepted {
         require_object(summary, "accepted summary")?;
-        if summary.get("accepted").and_then(Value::as_bool) != Some(true) {
+        if summary
+            .get("accepted")
+            .and_then(::serde_json::Value::as_bool)
+            != Some(true)
+        {
             return Err(String::from("accepted must be true"));
         }
         let mut result = compact_attempt(summary)?;
-        insert(&mut result, "accepted", Value::Bool(true))?;
-        insert(&mut result, "output", Value::String(canonical_output))?;
+        insert(&mut result, "accepted", ::serde_json::Value::Bool(true))?;
+        insert(
+            &mut result,
+            "output",
+            ::serde_json::Value::String(canonical_output),
+        )?;
         insert(
             &mut result,
             "accepted_bug",
@@ -35,15 +43,19 @@ pub fn summarize_values(
         require_object(summary, "attempts summary")?;
         let values = summary
             .get("attempts")
-            .and_then(Value::as_array)
+            .and_then(::serde_json::Value::as_array)
             .ok_or_else(|| String::from("attempts must be a list"))?;
         let last = values
             .last()
             .ok_or_else(|| String::from("attempts must not be empty"))?;
         require_object(last, "last attempt")?;
         let mut result = compact_attempt(last)?;
-        insert(&mut result, "accepted", Value::Bool(false))?;
-        insert(&mut result, "output", Value::String(canonical_output))?;
+        insert(&mut result, "accepted", ::serde_json::Value::Bool(false))?;
+        insert(
+            &mut result,
+            "output",
+            ::serde_json::Value::String(canonical_output),
+        )?;
         insert(&mut result, "attempts", json!(values.len()))?;
         return Ok(result);
     }
@@ -52,9 +64,11 @@ pub fn summarize_values(
     ))
 }
 
-pub fn format_line(summary: &Value) -> String {
-    let verdict = summary.get("verdict").and_then(Value::as_object);
-    let accepted = if summary.get("accepted") == Some(&Value::Bool(true)) {
+pub fn format_line(summary: &::serde_json::Value) -> String {
+    let verdict = summary
+        .get("verdict")
+        .and_then(::serde_json::Value::as_object);
+    let accepted = if summary.get("accepted") == Some(&::serde_json::Value::Bool(true)) {
         "true"
     } else {
         "false"
@@ -102,15 +116,15 @@ pub fn format_line(summary: &Value) -> String {
     parts.join(" ")
 }
 
-fn compact_attempt(attempt: &Value) -> Result<Value, String> {
+fn compact_attempt(attempt: &::serde_json::Value) -> Result<::serde_json::Value, String> {
     let object = require_object(attempt, "attempt")?;
     let bug_count = match object.get("bugs") {
-        None | Some(Value::Null) => Value::Null,
-        Some(Value::Array(items)) => json!(items.len()),
+        None | Some(::serde_json::Value::Null) => ::serde_json::Value::Null,
+        Some(::serde_json::Value::Array(items)) => json!(items.len()),
         Some(_) => return Err(String::from("attempt.bugs: expected list or null")),
     };
     let verdict = match object.get("verdict") {
-        None | Some(Value::Null) => Value::Null,
+        None | Some(::serde_json::Value::Null) => ::serde_json::Value::Null,
         Some(value) => {
             let verdict = require_object(value, "attempt.verdict")?;
             let reproduced =
@@ -139,58 +153,77 @@ fn compact_attempt(attempt: &Value) -> Result<Value, String> {
     }))
 }
 
-fn require_object<'a>(value: &'a Value, field: &str) -> Result<&'a Map<String, Value>, String> {
+fn require_object<'a>(
+    value: &'a ::serde_json::Value,
+    field: &str,
+) -> Result<&'a ::serde_json::Map<String, ::serde_json::Value>, String> {
     value
         .as_object()
         .ok_or_else(|| format!("{field}: expected object"))
 }
 
-fn optional_integer(value: Option<&Value>, field: &str) -> Result<Value, String> {
+fn optional_integer(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> Result<::serde_json::Value, String> {
     match value {
-        None | Some(Value::Null) => Ok(Value::Null),
-        Some(Value::Number(number)) if number.as_i64().is_some() => {
-            Ok(Value::Number(number.clone()))
+        None | Some(::serde_json::Value::Null) => Ok(::serde_json::Value::Null),
+        Some(::serde_json::Value::Number(number)) if number.as_i64().is_some() => {
+            Ok(::serde_json::Value::Number(number.clone()))
         }
         _ => Err(format!("{field}: expected integer or null")),
     }
 }
 
-fn optional_bool(value: Option<&Value>, field: &str) -> Result<Value, String> {
+fn optional_bool(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> Result<::serde_json::Value, String> {
     match value {
-        None | Some(Value::Null) => Ok(Value::Null),
-        Some(Value::Bool(value)) => Ok(Value::Bool(*value)),
+        None | Some(::serde_json::Value::Null) => Ok(::serde_json::Value::Null),
+        Some(::serde_json::Value::Bool(value)) => Ok(::serde_json::Value::Bool(*value)),
         _ => Err(format!("{field}: expected boolean or null")),
     }
 }
 
-fn require_token(value: Option<&Value>, field: &str) -> Result<String, String> {
+fn require_token(value: Option<&::serde_json::Value>, field: &str) -> Result<String, String> {
     let text = value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|text| !text.is_empty() && !text.chars().any(char::is_whitespace))
         .ok_or_else(|| format!("{field}: expected non-empty whitespace-free string"))?;
     Ok(text.to_string())
 }
 
-fn optional_token(value: Option<&Value>, field: &str) -> Result<Value, String> {
+fn optional_token(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> Result<::serde_json::Value, String> {
     match value {
-        None | Some(Value::Null) => Ok(Value::Null),
-        Some(value) => Ok(Value::String(require_token(Some(value), field)?)),
+        None | Some(::serde_json::Value::Null) => Ok(::serde_json::Value::Null),
+        Some(value) => Ok(::serde_json::Value::String(require_token(
+            Some(value),
+            field,
+        )?)),
     }
 }
 
-fn basename_or_null(value: Option<&Value>) -> Value {
-    let Some(text) = value.and_then(Value::as_str) else {
-        return Value::Null;
+fn basename_or_null(value: Option<&::serde_json::Value>) -> ::serde_json::Value {
+    let Some(text) = value.and_then(::serde_json::Value::as_str) else {
+        return ::serde_json::Value::Null;
     };
     std::path::Path::new(text)
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
-        .map(|name| Value::String(name.to_string()))
-        .unwrap_or(Value::Null)
+        .map(|name| ::serde_json::Value::String(name.to_string()))
+        .unwrap_or(::serde_json::Value::Null)
 }
 
-fn insert(target: &mut Value, key: &str, value: Value) -> Result<(), String> {
+fn insert(
+    target: &mut ::serde_json::Value,
+    key: &str,
+    value: ::serde_json::Value,
+) -> Result<(), String> {
     let object = target
         .as_object_mut()
         .ok_or_else(|| String::from("summary projection is not an object"))?;
@@ -198,17 +231,17 @@ fn insert(target: &mut Value, key: &str, value: Value) -> Result<(), String> {
     Ok(())
 }
 
-fn scalar_or(value: Option<&Value>, fallback: &str) -> String {
+fn scalar_or(value: Option<&::serde_json::Value>, fallback: &str) -> String {
     match value {
-        Some(Value::Number(value)) => value.to_string(),
-        Some(Value::String(value)) if !value.is_empty() => value.clone(),
+        Some(::serde_json::Value::Number(value)) => value.to_string(),
+        Some(::serde_json::Value::String(value)) if !value.is_empty() => value.clone(),
         _ => fallback.to_string(),
     }
 }
 
-fn text_or(value: Option<&Value>, fallback: &str) -> String {
+fn text_or(value: Option<&::serde_json::Value>, fallback: &str) -> String {
     value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .unwrap_or(fallback)
         .to_string()

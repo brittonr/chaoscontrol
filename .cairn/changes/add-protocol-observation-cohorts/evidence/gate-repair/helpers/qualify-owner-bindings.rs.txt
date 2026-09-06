@@ -1,0 +1,445 @@
+#!/usr/bin/env -S nix shell github:nix-community/fenix/03864c059200a8a96f2ee6bb050c69eae96f57ca#minimal.toolchain nixpkgs#gcc -c cargo -q -Zscript
+---
+[package]
+edition = "2024"
+[dependencies]
+proc-macro2 = { version = "=1.0.106", features = ["span-locations"] }
+quote = "1"
+syn = { version = "=2.0.117", features = ["full", "visit"] }
+---
+//! Qualify one compiler-reported binding at a time in admitted inline scopes.
+//! Preserve unrelated attributed exports. Reject namespace conflicts and opaque uses.
+
+use syn::visit::Visit;
+use syn::spanned::Spanned;
+use quote::ToTokens;
+
+type Failure = Box<dyn std::error::Error>;
+const MAX_SOURCE_BYTES: usize = 2_097_152;
+const MAX_FILES: usize = 512;
+const MAX_REPORT_BYTES: usize = 16_777_216;
+const GENERATED_TRACE_PREFIX: &str = "/build/source/target/";
+const GENERATED_TRACE_SUFFIX: &str = "/out/kvm_trace.skel.rs";
+type Selection = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
+const OWNERS: &[&str] = &[
+    "std::collections::BTreeMap", "std::collections::BTreeSet",
+    "std::collections::HashMap", "std::collections::HashSet", "std::collections::VecDeque",
+    "std::path::Path", "std::path::PathBuf", "std::sync::Arc", "std::sync::Mutex",
+    "std::sync::RwLock", "std::sync::OnceLock", "std::sync::atomic::AtomicBool",
+    "std::sync::atomic::AtomicU64", "std::sync::atomic::AtomicUsize",
+    "std::sync::atomic::Ordering", "std::time::Duration", "std::time::Instant",
+    "std::io::Error", "std::io::ErrorKind", "std::io::Cursor", "std::fs::File",
+    "std::fs::OpenOptions", "std::process::Command", "std::process::Stdio",
+];
+
+#[derive(Clone, Debug)]
+struct Edit { range: std::ops::Range<usize>, old: String, new: String }
+
+struct Scan<'a> {
+    source: &'a str,
+    owners: std::collections::BTreeMap<String, String>,
+    bindings: std::collections::BTreeMap<String, String>,
+    allow_new_owners: bool,
+    selected: Option<&'a std::collections::BTreeSet<String>>,
+    namespace_roots: std::collections::BTreeSet<String>,
+    edits: Vec<Edit>,
+    blocked: Option<String>,
+}
+
+impl Scan<'_> {
+    fn edit(&mut self, range: std::ops::Range<usize>, new: String) {
+        match self.source.get(range.clone()) {
+            Some(old) if old.contains("//") || old.contains("/*") => {
+                self.blocked = Some("edit overlaps a source comment".into());
+            }
+            Some(old) => self.edits.push(Edit { range, old: old.into(), new }),
+            None => self.blocked = Some("invalid source span".into()),
+        }
+    }
+    fn constrained_import(&mut self, item: &syn::ItemUse) -> bool {
+        if matches!(item.vis, syn::Visibility::Inherited) && item.attrs.is_empty() { return false; }
+        let names = self.selected.cloned().unwrap_or_else(|| self.owners.keys().cloned().collect());
+        let opaque_attribute = item.attrs.iter().any(|attribute| {
+            !attribute.path().is_ident("cfg") && !attribute.path().is_ident("doc")
+        });
+        if self.selected.is_none() || opaque_attribute || has_name(item.tree.to_token_stream(), &names) {
+            self.blocked = Some("conditional or exported selected import needs review".into());
+        } else {
+            // Keep the import intact, but record its namespace for collision checks.
+            let prefix = if item.leading_colon.is_some() { "::" } else { "" };
+            let _ = self.imports(&item.tree, prefix);
+            for attribute in &item.attrs { self.visit_attribute(attribute); }
+        }
+        true
+    }
+    fn declaration(&mut self, ident: &proc_macro2::Ident) {
+        if self.owners.contains_key(&ident.to_string()) || self.namespace_roots.contains(&ident.to_string()) {
+            self.blocked = Some(format!("shadowed import {ident}"));
+        }
+    }
+    fn imports(&mut self, tree: &syn::UseTree, prefix: &str) -> Option<syn::UseTree> {
+        match tree {
+            syn::UseTree::Path(path) => {
+                let next = if prefix.is_empty() { path.ident.to_string() } else if prefix == "::" { format!("::{ident}", ident = path.ident) } else { format!("{prefix}::{}", path.ident) };
+                self.imports(&path.tree, &next).map(|tree| {
+                    let mut path = path.clone(); path.tree = Box::new(tree); syn::UseTree::Path(path)
+                })
+            }
+            syn::UseTree::Group(group) => {
+                let items: syn::punctuated::Punctuated<_, syn::Token![,]> = group.items.iter().filter_map(|item| self.imports(item, prefix)).collect();
+                if items.is_empty() { None } else {
+                    let mut group = group.clone(); group.items = items; Some(syn::UseTree::Group(group))
+                }
+            }
+            syn::UseTree::Name(name) => self.leaf(tree, prefix, &name.ident, &name.ident),
+            syn::UseTree::Rename(name) => self.leaf(tree, prefix, &name.ident, &name.rename),
+            syn::UseTree::Glob(_) => {
+                if self.allow_new_owners || prefix != "super" {
+                    self.blocked = Some("unknown glob import needs scope review".into());
+                }
+                Some(tree.clone())
+            }
+        }
+    }
+    fn leaf(&mut self, tree: &syn::UseTree, prefix: &str, name: &proc_macro2::Ident, alias: &proc_macro2::Ident) -> Option<syn::UseTree> {
+        let binding = alias.to_string();
+        let owner = if !self.allow_new_owners && prefix == "super" {
+            self.owners.get(&name.to_string()).cloned().unwrap_or_else(|| format!("{prefix}::{name}"))
+        } else { format!("{prefix}::{name}") };
+        let relative = owner.starts_with("super::") || owner.starts_with("self::");
+        let owner = if self.selected.is_some() && !relative && !owner.starts_with("crate::") && !owner.starts_with("::") { format!("::{owner}") } else { owner };
+        if self.bindings.insert(binding.clone(), owner.clone()).is_some_and(|previous| previous != owner) {
+            self.blocked = Some(format!("conflicting import {binding}"));
+        }
+        let requested = self.selected.map_or_else(|| OWNERS.contains(&owner.as_str()), |names| names.contains(&binding));
+        let selected = requested && !relative
+            && (self.allow_new_owners || self.owners.get(&binding) == Some(&owner));
+        if selected {
+            if self.selected.is_some() && !owner.starts_with("crate::") {
+                if let Some(root) = owner.split("::").find(|part| !part.is_empty()) { self.namespace_roots.insert(root.to_owned()); }
+            }
+            self.owners.insert(binding, owner); None
+        } else { Some(tree.clone()) }
+    }
+    fn macro_tokens(&mut self, tokens: proc_macro2::TokenStream) {
+        let tokens: Vec<_> = tokens.into_iter().collect();
+        for (index, token) in tokens.iter().enumerate() {
+            match token {
+                proc_macro2::TokenTree::Group(group) => self.macro_tokens(group.stream()),
+                proc_macro2::TokenTree::Literal(literal) => {
+                    if self.owners.keys().any(|name| literal.to_string().contains(&format!("{{{name}"))) {
+                        self.blocked = Some("implicit format capture needs review".into());
+                    }
+                }
+                proc_macro2::TokenTree::Ident(ident) => {
+                    let Some(owner) = self.owners.get(&ident.to_string()).cloned() else { continue; };
+                    let previous_colon = matches!(&tokens[..index], [.., proc_macro2::TokenTree::Punct(first), proc_macro2::TokenTree::Punct(last)] if first.as_char() == ':' && last.as_char() == ':');
+                    if previous_colon { continue; }
+                    let next_colon = tokens.get(index + 1).is_some_and(|token| matches!(token, proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ':' && punct.spacing() == proc_macro2::Spacing::Joint));
+                    if !next_colon {
+                        self.blocked = Some("bare macro identifier needs review".into());
+                        continue;
+                    }
+                    self.edit(ident.span().byte_range(), owner);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for Scan<'_> {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        if path.leading_colon.is_some() { syn::visit::visit_path(self, path); return; }
+        if let Some(first) = path.segments.first() {
+            if first.ident == "self" && path.segments.iter().nth(1).is_some_and(|segment| self.owners.contains_key(&segment.ident.to_string())) {
+                self.blocked = Some("self-qualified import needs scope review".into());
+            }
+            if let Some(owner) = self.owners.get(&first.ident.to_string()).cloned() {
+                self.edit(first.ident.span().byte_range(), owner);
+            }
+        }
+        syn::visit::visit_path(self, path);
+    }
+    fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
+        if self.constrained_import(item) { return; }
+        let tree = self.imports(&item.tree, "");
+        let replacement = match tree {
+            Some(tree) => {
+                if tree.to_token_stream().to_string() == item.tree.to_token_stream().to_string() { return; }
+                let mut replacement = item.clone(); replacement.tree = tree;
+                replacement.into_token_stream().to_string()
+            }
+            None => String::new(),
+        };
+        self.edit(item.span().byte_range(), replacement);
+    }
+    fn visit_attribute(&mut self, attribute: &'ast syn::Attribute) {
+        if attribute.path().is_ident("doc") { return; }
+        let names = self.owners.keys().cloned().collect();
+        if attribute_has_name(attribute.meta.to_token_stream(), &names) {
+            self.blocked = Some("attribute references a selected binding".into());
+        }
+    }
+    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+        self.declaration(&item.ident);
+        if item.content.is_none() {
+            self.blocked = Some("external child module needs scope review".into());
+            return;
+        }
+        syn::visit::visit_item_mod(self, item);
+    }
+    fn visit_item_macro(&mut self, _: &'ast syn::ItemMacro) { self.blocked = Some("macro definition needs scope review".into()); }
+    fn visit_item_extern_crate(&mut self, _: &'ast syn::ItemExternCrate) { self.blocked = Some("extern crate binding needs scope review".into()); }
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) { self.visit_path(&mac.path); self.macro_tokens(mac.tokens.clone()); }
+    fn visit_pat_ident(&mut self, pat: &'ast syn::PatIdent) { self.declaration(&pat.ident); syn::visit::visit_pat_ident(self, pat); }
+    fn visit_type_param(&mut self, param: &'ast syn::TypeParam) { self.declaration(&param.ident); syn::visit::visit_type_param(self, param); }
+    fn visit_item_struct(&mut self, item: &'ast syn::ItemStruct) { self.declaration(&item.ident); syn::visit::visit_item_struct(self, item); }
+    fn visit_item_enum(&mut self, item: &'ast syn::ItemEnum) { self.declaration(&item.ident); syn::visit::visit_item_enum(self, item); }
+    fn visit_item_type(&mut self, item: &'ast syn::ItemType) { self.declaration(&item.ident); syn::visit::visit_item_type(self, item); }
+    fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) { self.declaration(&item.sig.ident); syn::visit::visit_item_fn(self, item); }
+    fn visit_item_const(&mut self, item: &'ast syn::ItemConst) { self.declaration(&item.ident); syn::visit::visit_item_const(self, item); }
+    fn visit_item_static(&mut self, item: &'ast syn::ItemStatic) { self.declaration(&item.ident); syn::visit::visit_item_static(self, item); }
+    fn visit_item_trait(&mut self, item: &'ast syn::ItemTrait) { self.declaration(&item.ident); syn::visit::visit_item_trait(self, item); }
+}
+
+fn has_name(tokens: proc_macro2::TokenStream, names: &std::collections::BTreeSet<String>) -> bool {
+    tokens.into_iter().any(|token| match token {
+        proc_macro2::TokenTree::Ident(ident) => names.contains(&ident.to_string()),
+        proc_macro2::TokenTree::Group(group) => has_name(group.stream(), names),
+        _ => false,
+    })
+}
+
+fn attribute_has_name(tokens: proc_macro2::TokenStream, names: &std::collections::BTreeSet<String>) -> bool {
+    tokens.into_iter().any(|token| match token {
+        proc_macro2::TokenTree::Group(group) => attribute_has_name(group.stream(), names),
+        proc_macro2::TokenTree::Literal(literal) => {
+            syn::parse_str::<syn::LitStr>(&literal.to_string()).ok().is_some_and(|value| {
+                value.value().parse().ok().is_some_and(|tokens| has_name(tokens, names))
+            })
+        }
+        proc_macro2::TokenTree::Ident(ident) => names.contains(&ident.to_string()),
+        _ => false,
+    })
+}
+
+fn transform_each(source: &str, names: &std::collections::BTreeSet<String>) -> Result<(String, usize, Vec<String>), Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds byte bound".into()); }
+    let mut output = source.to_owned();
+    let mut total = 0_usize;
+    let mut retained = Vec::new();
+    for name in names {
+        let selected = [name.clone()].into_iter().collect();
+        match transform_selected(&output, Some(&selected)) {
+            Ok((changed, count)) => {
+                total = total.checked_add(count).ok_or("edit count overflow")?;
+                output = changed;
+            }
+            Err(error) => retained.push(format!("{name}: {error}")),
+        }
+    }
+    Ok((output, total, retained))
+}
+
+fn transform(source: &str) -> Result<(String, usize), Failure> { transform_selected(source, None) }
+
+fn transform_selected<'a>(source: &'a str, selected: Option<&'a std::collections::BTreeSet<String>>) -> Result<(String, usize), Failure> {
+    if source.len() > MAX_SOURCE_BYTES { return Err("source exceeds byte bound".into()); }
+    let file = syn::parse_file(source)?;
+    let mut scan = Scan { source, owners: std::collections::BTreeMap::new(), bindings: std::collections::BTreeMap::new(), allow_new_owners: true, selected, namespace_roots: std::collections::BTreeSet::new(), edits: Vec::new(), blocked: None };
+    for item in &file.items {
+        let syn::Item::Use(item) = item else { continue; };
+        if scan.constrained_import(item) { continue; }
+        let count_before = scan.owners.len();
+        let prefix = if item.leading_colon.is_some() { "::" } else { "" };
+        let tree = scan.imports(&item.tree, prefix);
+        if scan.owners.len() != count_before {
+            let text = match tree {
+                Some(tree) => { let mut replacement = item.clone(); replacement.tree = tree; replacement.into_token_stream().to_string() },
+                None => String::new(),
+            };
+            scan.edit(item.span().byte_range(), text);
+        }
+    }
+    if let Some(reason) = &scan.blocked { return Err(reason.clone().into()); }
+    if scan.owners.is_empty() { return Ok((source.to_owned(), 0)); }
+    if scan.namespace_roots.iter().any(|root| scan.bindings.contains_key(root)) { return Err("owner namespace is also an imported binding".into()); }
+    scan.allow_new_owners = false;
+    for item in &file.items { if !matches!(item, syn::Item::Use(_)) { scan.visit_item(item); } }
+    if let Some(reason) = scan.blocked { return Err(reason.into()); }
+    scan.edits.sort_by_key(|edit| edit.range.start);
+    let mut previous_end = 0;
+    for edit in &scan.edits {
+        if edit.range.start < previous_end || source.get(edit.range.clone()) != Some(edit.old.as_str()) { return Err("overlapping or stale edit".into()); }
+        previous_end = edit.range.end;
+    }
+    let count = scan.edits.len();
+    let mut output = source.to_owned();
+    for edit in scan.edits.iter().rev() { output.replace_range(edit.range.clone(), &edit.new); }
+    syn::parse_file(&output)?;
+    Ok((output, count))
+}
+
+fn self_test() -> Result<(), Failure> {
+    let source = "// Arc λ\nuse std::sync::Arc; fn f() -> Arc<str> { Arc::from(\"Arc\") }";
+    let (output, _) = transform(source)?;
+    assert_eq!(output, "// Arc λ\n fn f() -> std::sync::Arc<str> { std::sync::Arc::from(\"Arc\") }");
+    assert_eq!(transform(&output)?.1, 0);
+    let (output, _) = transform("use std::io::{Read, Cursor}; fn f() { let _ = Cursor::new([]); }")?;
+    assert!(output.contains("Read"));
+    assert!(output.contains("std::io::Cursor::new"));
+    assert!(transform("use std::sync::Arc; fn f<Arc>(x: Arc) {} ").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { let Arc = 0; }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { use other::Arc; Arc::new(); }").is_err());
+    assert!(transform("use std::sync::Arc; fn Arc() {} ").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { m!({Arc: 1}); }").is_err());
+    assert!(transform("pub use std::sync::Arc;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { self::Arc::new(0); }").is_err());
+    assert!(transform("use std::sync::Arc; use other::Arc;").is_err());
+    assert!(transform("use std::sync::Arc; fn f() { println!(\"{Arc}\"); }").is_err());
+    assert!(transform("this is not Rust").is_err());
+    let (output, _) = transform("use std::sync::Arc; fn f() { Arc::new(0); } mod tests { use super::*; fn t() { Arc::new(0); } }")?;
+    assert_eq!(output.matches("std::sync::Arc::new").count(), output.matches("::new").count());
+    assert_eq!(transform(&output)?.1, 0);
+    let (output, _) = transform("use std::sync::Arc; mod tests { use super::Arc; fn t() { Arc::new(0); } }")?;
+    assert!(!output.contains("use super::Arc"));
+    let (output, _) = transform("use std::sync::Arc; mod tests { use std::sync::Arc; fn t() { Arc::new(0); } }")?;
+    assert!(!output.contains("use std::sync::Arc"));
+    assert!(transform("use std::sync::Arc; mod tests { use other::Arc; fn t() { Arc::new(0); } }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests { use other::*; fn t() { Arc::new(0); } }").is_err());
+    assert!(transform("use super::*; mod tests { use std::sync::Arc; }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests { struct Arc; }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests { fn t<Arc>(x: Arc) {} }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests { #[cfg(unix)] use std::sync::Arc; }").is_err());
+    assert!(transform("use std::sync::Arc; mod tests { pub use std::sync::Arc; }").is_err());
+    let (output, _) = transform("use std::collections::BTreeMap; fn f() { vec![Item { environment: BTreeMap::new() }]; }")?;
+    assert!(output.contains("environment: std::collections::BTreeMap::new()"));
+    let (output, _) = transform("use std::collections::BTreeMap; fn f() { vec![Item { environment: other::BTreeMap::new() }]; }")?;
+    assert!(output.contains("environment: other::BTreeMap::new()"));
+    let names = ["Value".to_owned()].into_iter().collect();
+    let (output, _) = transform_selected("use serde_json::Value; fn f(x: Value) -> Value { x }", Some(&names))?;
+    assert!(output.contains("::serde_json::Value"));
+    let (output, _) = transform_selected("use crate::model::Value; mod tests { use super::*; fn f(x: Value) -> Value { x } }", Some(&names))?;
+    assert!(output.contains("crate::model::Value"));
+    assert!(transform_selected("use serde_json::Value; mod serde_json {}", Some(&names)).is_err());
+    assert!(transform_selected("use other as serde_json; use serde_json::Value;", Some(&names)).is_err());
+    assert!(transform_selected("use serde_json::Value; #[derive(Value)] struct T;", Some(&names)).is_err());
+    assert!(transform_selected("use serde_json::Value; fn f<Value>(x: Value) {}", Some(&names)).is_err());
+    assert!(transform_selected("extern crate provider as serde_json; use serde_json::Value;", Some(&names)).is_err());
+    let report = "warning: non-trait import `Value` hides the owner path\n --> crates/example/src/lib.rs:1:1\n";
+    assert!(selection(report)?.get("crates/example/src/lib.rs").unwrap().contains("Value"));
+    let aliased = "warning: non-trait import `Value as Payload` hides the owner path\n --> crates/example/src/lib.rs:1:1\n";
+    assert!(selection(aliased)?.get("crates/example/src/lib.rs").unwrap().contains("Payload"));
+    assert!(selection("warning: non-trait import `bad::name`\n").is_err());
+    assert!(selection("warning: non-trait import `Value`\n --> /outside.rs:1:1\n").is_err());
+    assert!(selection("warning: non-trait import `Value`\n --> crates/../outside.rs:1:1\n").is_err());
+    let generated = format!("warning: non-trait import `ObjectBuilder`\n --> {GENERATED_TRACE_PREFIX}debug/build/trace{GENERATED_TRACE_SUFFIX}:1:1\n");
+    assert!(selection(&generated)?.is_empty());
+    let names = ["Value".to_owned()].into_iter().collect();
+    let source = "pub use crate::api::Item; use serde_json::Value; fn f(x: Value) -> Value { x }";
+    let (output, _, retained) = transform_each(source, &names)?;
+    assert!(retained.is_empty());
+    assert!(output.contains("pub use crate::api::Item;"));
+    assert!(output.contains("::serde_json::Value"));
+    assert_eq!(transform_each(&output, &names)?.1, 0);
+    let source = "#[cfg(unix)] use crate::api::Item; use serde_json::Value; fn f(x: Value) {}";
+    let (output, _, retained) = transform_each(source, &names)?;
+    assert!(retained.is_empty());
+    assert!(output.contains("#[cfg(unix)] use crate::api::Item;"));
+    for source in [
+        "pub use serde_json::Value; fn f(x: Value) {}",
+        "#[cfg(unix)] use serde_json::Value; fn f(x: Value) {}",
+        "pub use other as serde_json; use serde_json::Value; fn f(x: Value) {}",
+        "use serde_json::Value; pub use other as serde_json; fn f(x: Value) {}",
+        "use serde_json::Value; pub use Value::Member;",
+        "#[custom] use crate::api::Item; use serde_json::Value; fn f(x: Value) {}",
+        "#[cfg_attr(unix, custom)] use crate::api::Item; use serde_json::Value;",
+        "use serde_json::{/* retained */ Value}; fn f(x: Value) {}",
+        "use serde_json::Value; #[serde(with = \"Value\")] struct Item;",
+        "use serde_json::Value; #[serde(default = \"Value::new\")] struct Item;",
+        "use serde_json::Value; #[serde(bound = \"Value: Trait\")] struct Item;",
+    ] {
+        let (output, count, retained) = transform_each(source, &names)?;
+        assert_eq!(output, source);
+        assert_eq!(count, 0);
+        assert!(!retained.is_empty());
+    }
+    let names = ["Value".to_owned(), "Arc".to_owned()].into_iter().collect();
+    let source = "use serde_json::Value; use std::sync::Arc; #[derive(Value)] struct Item; fn f(x: Arc<Item>) {}";
+    let (output, count, retained) = transform_each(source, &names)?;
+    assert!(count > 0);
+    assert!(output.contains("use serde_json::Value;"));
+    assert!(output.contains("#[derive(Value)]"));
+    assert!(output.contains("::std::sync::Arc<Item>"));
+    assert!(!retained.is_empty());
+    let source = "use serde_json::Value; use std::sync::Arc; fn f(x: Arc<Value>) { custom!(Value); }";
+    let (output, _, retained) = transform_each(source, &names)?;
+    assert!(output.contains("custom!(Value)"));
+    assert!(output.contains("::std::sync::Arc<Value>"));
+    assert!(!retained.is_empty());
+    println!("Binding qualifier positive and negative controls passed");
+    Ok(())
+}
+
+fn selection(report: &str) -> Result<Selection, Failure> {
+    if report.len() > MAX_REPORT_BYTES { return Err("report exceeds byte bound".into()); }
+    let mut result = Selection::new();
+    let mut pending = None;
+    for line in report.lines() {
+        if let Some((_, message)) = line.split_once("warning: ") {
+            pending = None;
+            if let Some(rest) = message.strip_prefix("non-trait import `") {
+                let (name, _) = rest.split_once('`').ok_or("malformed import diagnostic")?;
+                let binding = match syn::parse_str::<syn::UseTree>(name)? {
+                    syn::UseTree::Name(value) => value.ident.to_string(),
+                    syn::UseTree::Rename(value) => value.rename.to_string(),
+                    _ => return Err("diagnostic must name one import binding".into()),
+                };
+                pending = Some(binding);
+            }
+        } else if let (Some(name), Some((_, location))) = (&pending, line.split_once("--> ")) {
+            let (path_line, column) = location.trim().rsplit_once(':').ok_or("missing column")?;
+            let (path, row) = path_line.rsplit_once(':').ok_or("missing row")?;
+            let _: usize = column.parse()?;
+            let _: usize = row.parse()?;
+            // Generated skeletons need a generator repair, not a workspace source edit.
+            if path.starts_with(GENERATED_TRACE_PREFIX) && path.ends_with(GENERATED_TRACE_SUFFIX) {
+                pending = None;
+                continue;
+            }
+            if !path.starts_with("crates/") || !path.ends_with(".rs") || std::path::Path::new(path).components().any(|part| !matches!(part, std::path::Component::Normal(_))) {
+                return Err(format!("diagnostic path leaves crate sources: {path}").into());
+            }
+            result.entry(path.to_owned()).or_default().insert(name.clone());
+            pending = None;
+        }
+    }
+    if pending.is_some() { return Err("import diagnostic has no location".into()); }
+    Ok(result)
+}
+
+fn main() -> Result<(), Failure> {
+    let mut args = std::env::args().skip(1);
+    let mode = args.next().ok_or("expected --check, --write, or --self-test")?;
+    if mode == "--self-test" { return self_test(); }
+    if mode != "--check" && mode != "--write" { return Err("unknown mode".into()); }
+    let report_path = args.next().ok_or("expected report path")?;
+    let selected = selection(&std::fs::read_to_string(report_path)?)?;
+    let files: Vec<_> = args.collect();
+    if files.is_empty() || files.len() > MAX_FILES { return Err("invalid file count".into()); }
+    for path in files {
+        let Some(names) = selected.get(&path) else { continue; };
+        let source = std::fs::read_to_string(&path)?;
+        let (output, count, retained) = transform_each(&source, names)?;
+        for reason in retained { eprintln!("REVIEW {path}: {reason}"); }
+        if count == 0 { continue; }
+        println!("{count} edits: {path}");
+        if mode == "--write" {
+            if std::fs::read_to_string(&path)? != source { return Err("source changed before write".into()); }
+            std::fs::write(path, output)?;
+        }
+    }
+    Ok(())
+}

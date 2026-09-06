@@ -1,9 +1,6 @@
 //! Pure OCI and directory intake planning with bounded provenance identities.
 
-use crate::guest_process::{
-    admit_manifest, AdmittedManifest, ProcessManifest, ProcessSpec, RestartPolicy,
-    SharedDirectorySpec, PROCESS_MANIFEST_SCHEMA,
-};
+use crate::guest_process::{RestartPolicy, SharedDirectorySpec};
 
 pub const OCI_TOPOLOGY_SCHEMA: &str = "chaoscontrol.oci-topology.v1";
 pub const OCI_BUNDLE_PLAN_SCHEMA: &str = "chaoscontrol.oci-bundle-plan.v1";
@@ -78,7 +75,7 @@ pub struct BundlePlan {
     pub schema: String,
     pub topology_id: String,
     pub bundle_identity: String,
-    pub process_manifest: AdmittedManifest,
+    pub process_manifest: crate::guest_process::AdmittedManifest,
     pub services: Vec<ServiceBundlePlan>,
 }
 
@@ -151,7 +148,7 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
         }
         let root_path = format!("/services/{}/root", service.role);
         let executable = format!("{root_path}/{}", service.entrypoint);
-        process_specs.push(ProcessSpec {
+        process_specs.push(crate::guest_process::ProcessSpec {
             role: service.role.clone(),
             executable,
             arguments: service.arguments.clone(),
@@ -170,8 +167,8 @@ pub fn lower_topology(topology: &OciTopology) -> Result<BundlePlan, IntakePlanEr
             root_path,
         });
     }
-    let manifest = admit_manifest(&ProcessManifest {
-        schema: PROCESS_MANIFEST_SCHEMA.to_string(),
+    let manifest = crate::guest_process::admit_manifest(&crate::guest_process::ProcessManifest {
+        schema: crate::guest_process::PROCESS_MANIFEST_SCHEMA.to_string(),
         guest: topology.topology_id.clone(),
         shared_directories: topology.shared_directories.clone(),
         processes: process_specs,

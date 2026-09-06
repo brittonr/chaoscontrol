@@ -4,10 +4,7 @@
 //! emit events without depending on the dashboard crate. The dashboard
 //! crate depends on `chaoscontrol-explore` and consumes these types.
 
-use crate::campaign::SeedSummary;
-use crate::checkpoint::ExplorationCheckpoint;
-use crate::coverage::CoverageStats;
-use crate::explorer::{AssertionDetail, AssertionStats, RoundHistory};
+use crate::explorer::RoundHistory;
 
 /// Events emitted by the explorer for live dashboard consumption.
 ///
@@ -44,7 +41,7 @@ pub enum DashboardEvent {
         frontier_size: usize,
         corpus_size: usize,
         /// Full assertion stats snapshot.
-        assertion_stats: AssertionStats,
+        assertion_stats: crate::explorer::AssertionStats,
         /// Wall-clock time for this round.
         #[serde(default)]
         wall_clock_seconds: f64,
@@ -83,7 +80,10 @@ pub enum DashboardEvent {
     CampaignStarted { seeds: Vec<u64>, seeds_total: usize },
 
     /// Emitted when an individual seed finishes within a campaign.
-    SeedComplete { seed: u64, summary: SeedSummary },
+    SeedComplete {
+        seed: u64,
+        summary: crate::campaign::SeedSummary,
+    },
 
     /// Emitted when the entire campaign finishes.
     CampaignFinished {
@@ -115,13 +115,13 @@ pub struct DashboardState {
     /// Corpus size.
     pub corpus_size: usize,
     /// Coverage statistics.
-    pub coverage_stats: CoverageStats,
+    pub coverage_stats: crate::coverage::CoverageStats,
     /// Network fabric statistics.
     pub network_stats: DashboardNetworkStats,
     /// Assertion summary.
-    pub assertion_stats: AssertionStats,
+    pub assertion_stats: crate::explorer::AssertionStats,
     /// Per-assertion detail.
-    pub assertion_details: Vec<AssertionDetail>,
+    pub assertion_details: Vec<crate::explorer::AssertionDetail>,
     /// Per-round history for charts.
     pub round_history: Vec<RoundHistory>,
     /// How the exploration ended (empty if still running).
@@ -139,7 +139,7 @@ pub struct DashboardState {
     pub seeds_completed: usize,
     /// Per-seed summaries for completed seeds.
     #[serde(default)]
-    pub seed_summaries: Vec<SeedSummary>,
+    pub seed_summaries: Vec<crate::campaign::SeedSummary>,
 }
 
 /// Exploration config summary for dashboard display.
@@ -221,13 +221,13 @@ impl DashboardState {
             total_edges: 0,
             bugs: Vec::new(),
             corpus_size: 0,
-            coverage_stats: CoverageStats {
+            coverage_stats: crate::coverage::CoverageStats {
                 total_edges: 0,
                 total_runs: 0,
                 edges_per_run_avg: 0.0,
             },
             network_stats: DashboardNetworkStats::default(),
-            assertion_stats: AssertionStats::default(),
+            assertion_stats: crate::explorer::AssertionStats::default(),
             assertion_details: Vec::new(),
             round_history: Vec::new(),
             finish_reason: String::new(),
@@ -239,7 +239,9 @@ impl DashboardState {
     }
 
     /// Construct from a checkpoint after exact report-backed bug validation.
-    pub fn from_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<Self, String> {
+    pub fn from_checkpoint(
+        checkpoint: &crate::checkpoint::ExplorationCheckpoint,
+    ) -> Result<Self, String> {
         let restored_bugs = crate::checkpoint::replay_bug_set(
             &checkpoint.bugs,
             checkpoint.assertion_report.as_ref(),
@@ -251,7 +253,7 @@ impl DashboardState {
                     .map_err(|error| format!("{error:?}"))?;
                 (projection.details, projection.stats)
             } else {
-                (Vec::new(), AssertionStats::default())
+                (Vec::new(), crate::explorer::AssertionStats::default())
             };
         let bugs: Vec<DashboardBug> = restored_bugs
             .iter()
@@ -281,7 +283,7 @@ impl DashboardState {
             total_edges: checkpoint.total_edges,
             bugs,
             corpus_size: 0, // not stored in checkpoint
-            coverage_stats: CoverageStats {
+            coverage_stats: crate::coverage::CoverageStats {
                 total_edges: checkpoint.total_edges,
                 total_runs: checkpoint.total_branches_run,
                 edges_per_run_avg: if checkpoint.total_branches_run > 0 {
@@ -314,7 +316,7 @@ impl DashboardState {
         cumulative_bugs: usize,
         frontier_size: usize,
         corpus_size: usize,
-        assertion_stats: &AssertionStats,
+        assertion_stats: &crate::explorer::AssertionStats,
     ) {
         self.rounds = round;
         self.total_edges = cumulative_edges;
@@ -360,7 +362,7 @@ mod tests {
             cumulative_bugs: 2,
             frontier_size: 10,
             corpus_size: 15,
-            assertion_stats: AssertionStats {
+            assertion_stats: crate::explorer::AssertionStats {
                 catalog_size: 30,
                 passed: 25,
                 failed: 2,
@@ -404,7 +406,7 @@ mod tests {
             0,
             3,
             3,
-            &AssertionStats {
+            &crate::explorer::AssertionStats {
                 catalog_size: 10,
                 passed: 8,
                 failed: 0,
@@ -440,7 +442,7 @@ mod tests {
         let identity = crate::test_support::assertion_identity(ASSERTION_ALIAS);
         let assertion_location = identity.descriptor.message.clone();
         let assertion_report = crate::test_support::assertion_report(ASSERTION_ALIAS, false);
-        let mut checkpoint = ExplorationCheckpoint {
+        let mut checkpoint = crate::checkpoint::ExplorationCheckpoint {
             config: crate::checkpoint::CheckpointConfig {
                 num_vms: 3,
                 kernel_path: "/path/to/kernel".to_string(),
@@ -555,7 +557,7 @@ mod tests {
                 cumulative_bugs: 0,
                 frontier_size: 3,
                 corpus_size: 3,
-                assertion_stats: AssertionStats::default(),
+                assertion_stats: crate::explorer::AssertionStats::default(),
                 wall_clock_seconds: 0.0,
                 from_seed: None,
             },

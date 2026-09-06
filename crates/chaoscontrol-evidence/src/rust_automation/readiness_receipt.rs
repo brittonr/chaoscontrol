@@ -3,7 +3,7 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.nix]
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 pub const GATE_SPECS: [(&str, &str, &str); 13] = [
     (
@@ -97,11 +97,14 @@ pub struct ReceiptInput {
     pub dogfood: Option<String>,
     pub dogfood_status: String,
     pub dogfood_output: Option<String>,
-    pub dogfood_summary: Option<Value>,
+    pub dogfood_summary: Option<::serde_json::Value>,
     pub gates: Vec<GateInput>,
 }
 
-pub fn build_receipt(input: &ReceiptInput, expectations: &Value) -> Result<Value, String> {
+pub fn build_receipt(
+    input: &ReceiptInput,
+    expectations: &::serde_json::Value,
+) -> Result<::serde_json::Value, String> {
     let expectation = load_expectation(input.dogfood.as_deref(), expectations)?;
     let expectation_status =
         expectation_status(expectation.as_ref(), input.dogfood_summary.as_ref())?;
@@ -132,13 +135,16 @@ pub fn build_receipt(input: &ReceiptInput, expectations: &Value) -> Result<Value
     }))
 }
 
-fn load_expectation(workload: Option<&str>, root: &Value) -> Result<Option<Value>, String> {
+fn load_expectation(
+    workload: Option<&str>,
+    root: &::serde_json::Value,
+) -> Result<Option<::serde_json::Value>, String> {
     let Some(workload) = workload else {
         return Ok(None);
     };
     let expectation = root
         .get("workloads")
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .and_then(|workloads| workloads.get(workload))
         .cloned()
         .ok_or_else(|| format!("missing dogfood expectation for {workload}"))?;
@@ -146,8 +152,8 @@ fn load_expectation(workload: Option<&str>, root: &Value) -> Result<Option<Value
 }
 
 fn expectation_status(
-    expectation: Option<&Value>,
-    summary: Option<&Value>,
+    expectation: Option<&::serde_json::Value>,
+    summary: Option<&::serde_json::Value>,
 ) -> Result<String, String> {
     let Some(expectation) = expectation else {
         return Ok(String::from("not-applicable"));
@@ -157,37 +163,45 @@ fn expectation_status(
     };
     let expected = expectation
         .get("expected")
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .ok_or_else(|| String::from("dogfood expectation lacks expected object"))?;
     let mut mismatches = Vec::new();
     if summary.get("accepted") != expected.get("accepted") {
         mismatches.push("accepted");
     }
-    let verdict = summary.get("verdict").and_then(Value::as_object);
+    let verdict = summary
+        .get("verdict")
+        .and_then(::serde_json::Value::as_object);
     if verdict.and_then(|value| value.get("replay_class")) != expected.get("replay_class") {
         mismatches.push("replay_class");
     }
     if let Some(minimum) = expected
         .get("min_replay_parent_depth")
-        .and_then(Value::as_i64)
+        .and_then(::serde_json::Value::as_i64)
     {
         let depth = verdict
             .and_then(|value| value.get("replay_parent_depth"))
-            .and_then(Value::as_i64);
+            .and_then(::serde_json::Value::as_i64);
         if depth.is_none_or(|depth| depth < minimum) {
             mismatches.push("replay_parent_depth");
         }
     }
-    if let Some(seeds) = expected.get("allowed_seeds").and_then(Value::as_array) {
-        if !seeds.contains(summary.get("seed").unwrap_or(&Value::Null)) {
+    if let Some(seeds) = expected
+        .get("allowed_seeds")
+        .and_then(::serde_json::Value::as_array)
+    {
+        if !seeds.contains(summary.get("seed").unwrap_or(&::serde_json::Value::Null)) {
             mismatches.push("seed");
         }
     }
-    if let Some(values) = expected.get("fail_after_values").and_then(Value::as_array) {
+    if let Some(values) = expected
+        .get("fail_after_values")
+        .and_then(::serde_json::Value::as_array)
+    {
         if !values.contains(
             summary
                 .get("snapshot_probe_fail_after")
-                .unwrap_or(&Value::Null),
+                .unwrap_or(&::serde_json::Value::Null),
         ) {
             mismatches.push("fail_after");
         }

@@ -1,0 +1,392 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+REVIEW crates/chaoscontrol-evidence/src/dogfood_guards.rs: REQUIRED_REPLAY_CLASS: implicit format capture needs review
+50 edits: crates/chaoscontrol-evidence/src/dogfood_guards.rs
+REVIEW crates/chaoscontrol-evidence/src/evidence_contracts.rs: REPLAY_CLASSES: bare macro identifier needs review
+166 edits: crates/chaoscontrol-evidence/src/evidence_contracts.rs
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: BTreeSet: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: Component: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: Dir: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: EvidenceError: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: EvidenceResult: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: File: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: LimitValues: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: Path: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: PathBuf: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: RelativePath: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: SymlinkPolicy: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: TreeLimits: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: TreePlan: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: ambient_authority: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: execute_tree_copy: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kernel_bundle_initrd.rs: prepare_tree: macro definition needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kvm_release/mod.rs: BTreeMap: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kvm_release/mod.rs: BTreeSet: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kvm_release/mod.rs: Component: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/kvm_release/mod.rs: Path: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: BTreeMap: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: BTreeSet: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: File: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: Path: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: PathBuf: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: Sha256: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/lib.rs: fmt: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/oci_intake.rs: image_identity_from_layers: bare macro identifier needs review
+60 edits: crates/chaoscontrol-evidence/src/oci_intake.rs
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: Command: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: EvidenceError: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: EvidenceResult: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: Path: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: PathBuf: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: ProjectionSpec: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: SPECS: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: Stdio: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/profile_projection.rs: validate_receipt_against_spec: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: command_display: bare macro identifier needs review
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: json: bare macro identifier needs review
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: unix_seconds: bare macro identifier needs review
+568 edits: crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_receipt.rs: json: bare macro identifier needs review
+26 edits: crates/chaoscontrol-evidence/src/rust_automation/dogfood_receipt.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_summary.rs: json: bare macro identifier needs review
+56 edits: crates/chaoscontrol-evidence/src/rust_automation/dogfood_summary.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/readiness_receipt.rs: json: bare macro identifier needs review
+17 edits: crates/chaoscontrol-evidence/src/rust_automation/readiness_receipt.rs
+REVIEW crates/chaoscontrol-evidence/src/sdk_local_identity.rs: ResolvedLocalIdentity: conditional or exported selected import needs review
+26 edits: crates/chaoscontrol-evidence/src/sdk_local_identity.rs
+REVIEW crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs: EvidenceError: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs: EvidenceResult: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs: Path: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/snapshot_descriptor/mod.rs: snapshot_core: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: BTreeSet: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: Completion: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: Component: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: Disposition: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: ExecutionLimits: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: OutcomePolicy: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: Path: external child module needs scope review
+REVIEW crates/chaoscontrol-evidence/src/typed_operator_command.rs: Value: external child module needs scope review
+REVIEW crates/chaoscontrol-explore/src/assertion_summary.rs: derive_detail_verdict: conditional or exported selected import needs review
+REVIEW crates/chaoscontrol-explore/src/assertion_summary.rs: validate_assertion_details: conditional or exported selected import needs review
+31 edits: crates/chaoscontrol-explore/src/assertion_summary.rs
+REVIEW crates/chaoscontrol-explore/src/bug/identity.rs: Snafu: attribute references a selected binding
+34 edits: crates/chaoscontrol-explore/src/bug/identity.rs
+REVIEW crates/chaoscontrol-explore/src/campaign.rs: SerializableBug: bare macro identifier needs review
+55 edits: crates/chaoscontrol-explore/src/campaign.rs
+REVIEW crates/chaoscontrol-explore/src/checkpoint.rs: Snafu: attribute references a selected binding
+110 edits: crates/chaoscontrol-explore/src/checkpoint.rs
+REVIEW crates/chaoscontrol-explore/src/dashboard_types.rs: RoundHistory: bare macro identifier needs review
+21 edits: crates/chaoscontrol-explore/src/dashboard_types.rs
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: Arc: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: BTreeMap: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: BTreeSet: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: BranchWork: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: BugReport: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: COVERAGE_BITMAP_ADDR: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: ChaCha8Rng: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CheckpointConfig: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CheckpointError: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: Corpus: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CorpusEntry: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CoverageBitmap: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CoverageCollector: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: CoverageStats: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: ExplorationCheckpoint: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: FaultSchedule: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: Frontier: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: FrontierEntry: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: Instant: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: MutationConfig: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: OracleReport: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: ScheduleMutator: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: ScheduleVariant: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SchedulingStrategy: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SerializableBug: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SimulationConfig: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SimulationController: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SimulationSnapshot: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: Snafu: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: SyncSender: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: VmConfig: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: WorkerPool: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: debug: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: frontier_metadata: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: info: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: input_tree: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: marker_observations: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: marker_score: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: save_checkpoint: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: update_hit_counts: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/explorer.rs: warn: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/marker_branching.rs: BRANCH_MARKER_EVENT: bare macro identifier needs review
+REVIEW crates/chaoscontrol-explore/src/marker_branching.rs: marker_identity: bare macro identifier needs review
+18 edits: crates/chaoscontrol-explore/src/marker_branching.rs
+REVIEW crates/chaoscontrol-explore/src/protocol/mod.rs: ASSERTION_REGION_END: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/mod.rs: CODE_REGION_END: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/mod.rs: Collection: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/mod.rs: CoverageBitmap: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: ReplayParentSnapshotRef: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: SimulationController: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: SnapshotStoreError: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: VmError: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-explore/src/protocol/session.rs: validate_ref_shape: unknown glob import needs scope review
+44 edits: crates/chaoscontrol-explore/src/replay_verdict.rs
+REVIEW crates/chaoscontrol-explore/src/report.rs: AssertionDetail: bare macro identifier needs review
+22 edits: crates/chaoscontrol-explore/src/report.rs
+REVIEW crates/chaoscontrol-explore/src/snapshot_store.rs: Snafu: attribute references a selected binding
+27 edits: crates/chaoscontrol-explore/src/snapshot_store.rs
+REVIEW crates/chaoscontrol-fault/src/engine.rs: AssertionKind: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: BTreeMap: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: BoundAssertionEvent: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: CatalogBuilder: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: CatalogConflict: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: ChaCha20Rng: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: CollectedObservation: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: Fault: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultAttempt: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultAttemptId: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultAttemptSource: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultObservation: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultOutcomeLedger: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultRunId: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultSchedule: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultScheduleId: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultStageKind: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: FaultTransitionError: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: GpRegister: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: MAX_FAULT_ATTEMPTS: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: MAX_FAULT_OUTCOME_EVENTS: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: PROTOCOL_OBSERVATION_EVENT: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: PropertyOracle: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: SchedulerPosition: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: Snafu: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: VecDeque: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: decode_catalog_begin: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: decode_catalog_complete: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: decode_descriptor_frame: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: decode_event_frame: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: fault_run_id: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: preflight_fault_observation_events_with_limit: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: transition_fault_outcome: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/engine.rs: validate_fault_outcome_ledger: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: CMD_PROTOCOL_OBSERVATION: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: PAYLOAD_MAX: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: STATUS_ERROR: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: STATUS_OK: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: decode_payload: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/observation/collection.rs: encode_payload: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: AcceptedCatalog: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: AdmittedAssertion: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: AssertionFingerprint: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BRANCH_MARKER_EVENT: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BRANCH_MARKER_LIMIT_EVENT: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BTreeMap: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BTreeSet: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BoundAssertionEvent: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: BranchMarker: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: CatalogConflict: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: CatalogValidationStatus: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackAdmissionError: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackAssertionScope: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackError: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackErrorKind: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackRecordType: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: FallbackSinkEvidence: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: MAX_ASSERTION_CATALOG_ENTRIES: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: MAX_MARKERS_PER_RUN: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: catalog_with_fallback: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: validate_accepted_catalog: external child module needs scope review
+REVIEW crates/chaoscontrol-fault/src/oracle.rs: validate_fallback_sink_evidence: external child module needs scope review
+32 edits: crates/chaoscontrol-fault/src/oracle_validation.rs
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: BTreeMap: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: BTreeSet: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: Fault: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: FaultCategory: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: FaultVariant: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: GpRegister: macro definition needs scope review
+REVIEW crates/chaoscontrol-fault/src/outcomes.rs: fmt: macro definition needs scope review
+REVIEW crates/chaoscontrol-protocol/src/oci_intake.rs: RestartPolicy: bare macro identifier needs review
+REVIEW crates/chaoscontrol-protocol/src/oci_intake.rs: SharedDirectorySpec: bare macro identifier needs review
+10 edits: crates/chaoscontrol-protocol/src/oci_intake.rs
+REVIEW crates/chaoscontrol-protocol/src/protocol_observation/oracle/marker.rs: BranchMarker: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/assert.rs: transport: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/details.rs: json: bare macro identifier needs review
+11 edits: crates/chaoscontrol-sdk/src/details.rs
+REVIEW crates/chaoscontrol-sdk/src/lifecycle.rs: transport: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/marker.rs: BRANCH_MARKER_EVENT: conditional or exported selected import needs review
+REVIEW crates/chaoscontrol-sdk/src/marker.rs: BranchMarker: conditional or exported selected import needs review
+REVIEW crates/chaoscontrol-sdk/src/marker.rs: BranchMarkerError: conditional or exported selected import needs review
+REVIEW crates/chaoscontrol-sdk/src/protocol_observation.rs: CMD_PROTOCOL_OBSERVATION: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/protocol_observation.rs: PAYLOAD_MAX: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/protocol_observation.rs: STATUS_OK: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/protocol_observation.rs: encode_payload: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/random.rs: transport: unknown glob import needs scope review
+REVIEW crates/chaoscontrol-sdk/src/supervisor.rs: ProcessSpec: bare macro identifier needs review
+35 edits: crates/chaoscontrol-sdk/src/supervisor.rs
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: Deserialize: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: FaultApplicationError: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: FaultObservation: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: Serialize: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: all_setup_complete: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: internal_application_error: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: validate_process_snapshot_effect: bare macro identifier needs review
+599 edits: crates/chaoscontrol-vmm/src/controller.rs
+REVIEW crates/chaoscontrol-vmm/src/cpu.rs: Snafu: attribute references a selected binding
+29 edits: crates/chaoscontrol-vmm/src/cpu.rs
+REVIEW crates/chaoscontrol-vmm/src/devices/block.rs: Snafu: attribute references a selected binding
+76 edits: crates/chaoscontrol-vmm/src/devices/block.rs
+REVIEW crates/chaoscontrol-vmm/src/memory.rs: GuestAddress: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/memory.rs: Snafu: attribute references a selected binding
+16 edits: crates/chaoscontrol-vmm/src/memory.rs
+REVIEW crates/chaoscontrol-vmm/src/snapshot.rs: GuestAddress: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/snapshot.rs: MAX_SCHEDULE_VCPUS: bare macro identifier needs review
+87 edits: crates/chaoscontrol-vmm/src/snapshot.rs
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: BOOT_GDT_OFFSET: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: BOOT_IDT_OFFSET: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: BOOT_STACK_POINTER: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: BootParams: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: CMDLINE_START: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: COVERAGE_BITMAP_ADDR: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: COVERAGE_BITMAP_SIZE: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: COVERAGE_PORT: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Cap: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: CapacityUsageObservation: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: CaptureParams: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: CpuConfig: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DEFAULT_SCHEDULE_JOURNAL_LIMIT: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DEFAULT_SMP_INSTRUCTION_QUANTUM: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DeterministicBlock: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DeterministicEntropy: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DeterministicNet: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DeterministicPit: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DlogRecord: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DlogTag: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: DlogWriter: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Elf: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: EngineConfig: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: EventFd: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ExactStepState: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ExecutionProgressObservation: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: FaultEngine: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: File: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GDT_ENTRY_COUNT: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GpRegister: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestAddress: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestClockMode: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestDeterminismInput: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestDeterminismProfile: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestMemoryManager: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: GuestMemoryMmap: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: HIMEM_START: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: HYPERCALL_PAGE_ADDR: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: HYPERCALL_PAGE_SIZE: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: HypercallPage: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: KVM_GUESTDBG_ENABLE: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: KVM_GUESTDBG_SINGLESTEP: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: KVM_MEM_LOG_DIRTY_PAGES: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: KVM_MP_STATE_RUNNABLE: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: KVM_PIT_SPEAKER_DUMMY: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Kvm: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: LinuxBootConfigurator: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: MAX_SCHEDULE_VCPUS: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: MmioWriteEffect: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Msrs: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Once: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: PML4_START: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: PathBuf: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ProgressCapabilities: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ProgressMode: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RNG_SETUP_DATA_START: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RUNTIME_CAPACITY_OBSERVATIONS_SCHEMA: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RuntimeCapacityClaims: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RuntimeCapacityLimits: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RuntimeCapacityObservations: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RuntimeCapacityPlan: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: RuntimeCapacityStartupResult: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SDK_PORT: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleAction: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleError: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleEvent: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleReservation: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleTrace: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScheduleTransitionRecord: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SchedulerConfig: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SchedulerPosition: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SchedulingStrategy: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ScratchClassLimit: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SendTimerId: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: Snafu: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: SnapshotMemory: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VMCALL_NR: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VcpuExit: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VcpuFd: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VcpuScheduler: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioBackendSnapshot: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioBlock: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioDeviceIdentity: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioDeviceSnapshot: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioEntropy: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioMmioDevice: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtioNet: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VirtualTsc: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: VmFd: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: ZERO_PAGE_START: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: acpi: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: boot_params: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: build_e820_map: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: build_guest_determinism_profile: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: canonical_runnable_changes: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: capture_serial_bounded: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: code64_segment: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: cpu: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: data_segment: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: derive_boot_entropy_seed: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: encode_linux_rng_seed_setup_data: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: hlt_snapshot_is_valid: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: info: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: io: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_clock_data: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_enable_cap: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_fpu: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_guest_debug: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_msr_entry: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_pit_config: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_regs: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: kvm_userspace_memory_region: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: memory: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: plan_execution_observation: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: plan_poison: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: plan_runtime_capacity: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: plan_teardown: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: plan_vcpu_construction: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: sanitize_serial_for_terminal: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: serial_snapshot_fits: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: tss_segment: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: validate_guest_determinism_profile: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: validate_progress_capabilities: conflicting import self
+REVIEW crates/chaoscontrol-vmm/src/vm.rs: validate_snapshot_count: conflicting import self

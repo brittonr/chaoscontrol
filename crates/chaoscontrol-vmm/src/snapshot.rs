@@ -1,24 +1,11 @@
 //! VM snapshot and restore — capture complete VM state and recreate it.
 
-use crate::devices::block::BlockSnapshot;
-use crate::devices::entropy::EntropySnapshot;
-use crate::devices::net::NetSnapshot;
-use crate::devices::pit::PitSnapshot;
-use crate::devices::virtio_mmio::VirtioMmioSnapshot;
 use crate::scheduler::core::MAX_SCHEDULE_VCPUS;
-use crate::scheduler::SchedulerSnapshot;
-use chaoscontrol_fault::engine::EngineSnapshot;
-use kvm_bindings::{
-    kvm_clock_data, kvm_debugregs, kvm_fpu, kvm_irqchip, kvm_lapic_state, kvm_mp_state,
-    kvm_msr_entry, kvm_pit_state2, kvm_regs, kvm_sregs, kvm_vcpu_events, kvm_xcrs, kvm_xsave, Msrs,
-    KVM_IRQCHIP_IOAPIC, KVM_IRQCHIP_PIC_MASTER, KVM_IRQCHIP_PIC_SLAVE,
-};
-use kvm_ioctls::{VcpuFd, VmFd};
-use log::info;
+
 use serde::{de::Deserialize, ser::Serialize};
 use snafu::ResultExt;
 
-use vm_memory::{Address, Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
+use vm_memory::{Address, Bytes, GuestAddress, GuestMemory};
 
 /// Page size for dirty tracking granularity (4 KiB).
 pub const PAGE_SIZE: usize = 4096;
@@ -174,7 +161,7 @@ impl SnapshotMemory {
     pub fn from_dirty(
         base: &std::sync::Arc<Vec<u8>>,
         dirty_bitmap: &[u64],
-        guest_memory: &GuestMemoryMmap,
+        guest_memory: &::vm_memory::GuestMemoryMmap,
     ) -> Self {
         let mem_size = base.len();
         let total_pages = mem_size / PAGE_SIZE;
@@ -225,7 +212,10 @@ impl SnapshotMemory {
     /// the dirty pages. The caller is responsible for ensuring the base
     /// content is already present in guest memory (via a prior full
     /// restore or by reverting the previous branch's dirty pages).
-    pub fn write_to_guest(&self, guest_memory: &GuestMemoryMmap) -> Result<(), SnapshotError> {
+    pub fn write_to_guest(
+        &self,
+        guest_memory: &::vm_memory::GuestMemoryMmap,
+    ) -> Result<(), SnapshotError> {
         match self {
             Self::Full(data) => {
                 guest_memory
@@ -252,7 +242,7 @@ impl SnapshotMemory {
     pub fn revert_pages_from_base(
         base: &[u8],
         page_indices: impl Iterator<Item = usize>,
-        guest_memory: &GuestMemoryMmap,
+        guest_memory: &::vm_memory::GuestMemoryMmap,
     ) -> Result<(), SnapshotError> {
         for page_idx in page_indices {
             let offset = page_idx * PAGE_SIZE;
@@ -410,9 +400,9 @@ pub fn validate_snapshot_metadata(
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VirtioBackendSnapshot {
-    Block(Box<BlockSnapshot>),
-    Net(Box<NetSnapshot>),
-    Entropy(Box<EntropySnapshot>),
+    Block(Box<crate::devices::block::BlockSnapshot>),
+    Net(Box<crate::devices::net::NetSnapshot>),
+    Entropy(Box<crate::devices::entropy::EntropySnapshot>),
 }
 
 impl VirtioBackendSnapshot {
@@ -428,7 +418,7 @@ impl VirtioBackendSnapshot {
 /// Snapshot of a single virtio device's transport and backend state.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct VirtioDeviceSnapshot {
-    pub transport: VirtioMmioSnapshot,
+    pub transport: crate::devices::virtio_mmio::VirtioMmioSnapshot,
     pub backend: VirtioBackendSnapshot,
 }
 
@@ -448,19 +438,19 @@ impl VirtioDeviceSnapshot {
 pub struct CaptureParams {
     pub topology: SnapshotTopology,
     pub serial_state: vm_superio::SerialState,
-    pub entropy: EntropySnapshot,
+    pub entropy: crate::devices::entropy::EntropySnapshot,
     pub virtual_tsc: u64,
     pub exit_count: u64,
     pub io_exit_count: u64,
     pub exits_since_last_sdk: u64,
     pub panic_detected: bool,
     pub panic_match_state: u64,
-    pub pit_snapshot: PitSnapshot,
+    pub pit_snapshot: crate::devices::pit::PitSnapshot,
     pub last_kvm_pit_mode: u8,
-    pub fault_engine_snapshot: EngineSnapshot,
+    pub fault_engine_snapshot: ::chaoscontrol_fault::engine::EngineSnapshot,
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
-    pub scheduler_snapshot: SchedulerSnapshot,
+    pub scheduler_snapshot: crate::scheduler::SchedulerSnapshot,
     pub hlt_latched_vcpus: Vec<bool>,
 }
 
@@ -473,20 +463,20 @@ pub struct MsrSnapshot {
 /// Per-vCPU architecture state for snapshot/restore.
 #[derive(Clone, Debug)]
 pub struct VcpuSnapshot {
-    pub regs: kvm_regs,
-    pub sregs: kvm_sregs,
-    pub fpu: kvm_fpu,
-    pub debug_regs: kvm_debugregs,
-    pub lapic: kvm_lapic_state,
-    pub xcrs: kvm_xcrs,
+    pub regs: ::kvm_bindings::kvm_regs,
+    pub sregs: ::kvm_bindings::kvm_sregs,
+    pub fpu: ::kvm_bindings::kvm_fpu,
+    pub debug_regs: ::kvm_bindings::kvm_debugregs,
+    pub lapic: ::kvm_bindings::kvm_lapic_state,
+    pub xcrs: ::kvm_bindings::kvm_xcrs,
     /// Raw fixed-size KVM XSAVE image. Owned bytes make cloning explicit.
     pub xsave: Vec<u8>,
-    pub events: kvm_vcpu_events,
+    pub events: ::kvm_bindings::kvm_vcpu_events,
     pub msrs: Vec<MsrSnapshot>,
     /// MP state (RUNNABLE, HALTED, UNINITIALIZED, etc.).
     /// Critical for SMP: without this, KVM doesn't know whether an AP
     /// should be running or waiting for SIPI after restore.
-    pub mp_state: kvm_mp_state,
+    pub mp_state: ::kvm_bindings::kvm_mp_state,
 }
 
 fn pod_to_bytes<T>(value: &T) -> Vec<u8> {
@@ -564,7 +554,7 @@ impl TryFrom<VcpuSnapshotSerde> for VcpuSnapshot {
             lapic: pod_from_bytes(&value.lapic, "lapic")?,
             xcrs: pod_from_bytes(&value.xcrs, "xcrs")?,
             xsave: {
-                let _: kvm_xsave = pod_from_bytes(&value.xsave, "xsave")?;
+                let _: ::kvm_bindings::kvm_xsave = pod_from_bytes(&value.xsave, "xsave")?;
                 value.xsave
             },
             events: pod_from_bytes(&value.events, "events")?,
@@ -696,7 +686,7 @@ struct VmSnapshotSerde {
     clock: Vec<u8>,
     memory: SnapshotMemory,
     serial_state: SerialStateSerde,
-    entropy: EntropySnapshot,
+    entropy: crate::devices::entropy::EntropySnapshot,
     virtual_tsc: u64,
     exit_count: u64,
     io_exit_count: u64,
@@ -705,12 +695,12 @@ struct VmSnapshotSerde {
     panic_detected: bool,
     #[serde(default)]
     panic_match_state: u64,
-    pit_snapshot: PitSnapshot,
+    pit_snapshot: crate::devices::pit::PitSnapshot,
     last_kvm_pit_mode: u8,
-    fault_engine_snapshot: EngineSnapshot,
+    fault_engine_snapshot: ::chaoscontrol_fault::engine::EngineSnapshot,
     virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     coverage_active: bool,
-    scheduler_snapshot: SchedulerSnapshot,
+    scheduler_snapshot: crate::scheduler::SchedulerSnapshot,
     #[serde(default, deserialize_with = "deserialize_bounded_hlt_latches")]
     hlt_latched_vcpus: Vec<bool>,
 }
@@ -799,18 +789,22 @@ impl<'de> Deserialize<'de> for VmSnapshot {
 
 impl VcpuSnapshot {
     /// Capture all architecture state from a single vCPU.
-    pub fn capture(vcpu: &VcpuFd, msr_indices: &[u32]) -> Result<Self, SnapshotError> {
+    pub fn capture(
+        vcpu: &::kvm_ioctls::VcpuFd,
+        msr_indices: &[u32],
+    ) -> Result<Self, SnapshotError> {
         if msr_indices.is_empty() || msr_indices.windows(2).any(|pair| pair[0] >= pair[1]) {
             return MsrInventorySnafu.fail();
         }
         let requested = msr_indices
             .iter()
-            .map(|index| kvm_msr_entry {
+            .map(|index| ::kvm_bindings::kvm_msr_entry {
                 index: *index,
                 ..Default::default()
             })
             .collect::<Vec<_>>();
-        let mut msrs = Msrs::from_entries(&requested).map_err(|_| MsrBufferSnafu.build())?;
+        let mut msrs =
+            ::kvm_bindings::Msrs::from_entries(&requested).map_err(|_| MsrBufferSnafu.build())?;
         let read = vcpu.get_msrs(&mut msrs).context(GetMsrsSnafu)?;
         if read != msr_indices.len() {
             return MsrCountSnafu {
@@ -843,7 +837,7 @@ impl VcpuSnapshot {
     }
 
     pub fn validate(&self) -> Result<(), SnapshotError> {
-        let _: kvm_xsave =
+        let _: ::kvm_bindings::kvm_xsave =
             pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
         if self.msrs.is_empty()
             || self
@@ -871,18 +865,19 @@ impl VcpuSnapshot {
     }
 
     /// Restore all architecture state to a single vCPU.
-    pub fn restore(&self, vcpu: &VcpuFd) -> Result<(), SnapshotError> {
+    pub fn restore(&self, vcpu: &::kvm_ioctls::VcpuFd) -> Result<(), SnapshotError> {
         self.validate()?;
         let entries = self
             .msrs
             .iter()
-            .map(|entry| kvm_msr_entry {
+            .map(|entry| ::kvm_bindings::kvm_msr_entry {
                 index: entry.index,
                 data: entry.data,
                 ..Default::default()
             })
             .collect::<Vec<_>>();
-        let msrs = Msrs::from_entries(&entries).map_err(|_| MsrBufferSnafu.build())?;
+        let msrs =
+            ::kvm_bindings::Msrs::from_entries(&entries).map_err(|_| MsrBufferSnafu.build())?;
         // MP state MUST be set before registers — KVM refuses register
         // writes on vCPUs in UNINITIALIZED state on some host kernels.
         vcpu.set_mp_state(self.mp_state).context(SetMpStateSnafu)?;
@@ -890,7 +885,7 @@ impl VcpuSnapshot {
         vcpu.set_regs(&self.regs).context(SetRegsSnafu)?;
         vcpu.set_xcrs(&self.xcrs).context(SetXcrsSnafu)?;
         vcpu.set_fpu(&self.fpu).context(SetFpuSnafu)?;
-        let xsave: kvm_xsave =
+        let xsave: ::kvm_bindings::kvm_xsave =
             pod_from_bytes(&self.xsave, "xsave").map_err(|_| XsaveImageSnafu.build())?;
         vcpu.set_xsave(&xsave).context(SetXsaveSnafu)?;
         vcpu.set_debug_regs(&self.debug_regs)
@@ -921,18 +916,18 @@ pub struct VmSnapshot {
     pub vcpu_snapshots: Vec<VcpuSnapshot>,
 
     // In-kernel device state
-    pub pic_master: kvm_irqchip,
-    pub pic_slave: kvm_irqchip,
-    pub ioapic: kvm_irqchip,
-    pub pit: kvm_pit_state2,
-    pub clock: kvm_clock_data,
+    pub pic_master: ::kvm_bindings::kvm_irqchip,
+    pub pic_slave: ::kvm_bindings::kvm_irqchip,
+    pub ioapic: ::kvm_bindings::kvm_irqchip,
+    pub pit: ::kvm_bindings::kvm_pit_state2,
+    pub clock: ::kvm_bindings::kvm_clock_data,
 
     // Guest memory (full copy or sparse overlay)
     pub memory: SnapshotMemory,
 
     // Deterministic device state
     pub serial_state: vm_superio::SerialState,
-    pub entropy: EntropySnapshot,
+    pub entropy: crate::devices::entropy::EntropySnapshot,
 
     // VMM-side determinism counters
     pub virtual_tsc: u64,
@@ -943,18 +938,18 @@ pub struct VmSnapshot {
     pub panic_match_state: u64,
 
     // DeterministicPit state
-    pub pit_snapshot: PitSnapshot,
+    pub pit_snapshot: crate::devices::pit::PitSnapshot,
     pub last_kvm_pit_mode: u8,
 
     // Fault engine state
-    pub fault_engine_snapshot: EngineSnapshot,
+    pub fault_engine_snapshot: ::chaoscontrol_fault::engine::EngineSnapshot,
 
     // Virtio device state
     pub virtio_snapshots: Vec<VirtioDeviceSnapshot>,
     pub coverage_active: bool,
 
     /// Complete vCPU scheduler and exact-progress state.
-    pub scheduler_snapshot: SchedulerSnapshot,
+    pub scheduler_snapshot: crate::scheduler::SchedulerSnapshot,
     /// Userspace HLT latches required because KVM leaves MP state runnable.
     pub hlt_latched_vcpus: Vec<bool>,
 }
@@ -989,9 +984,9 @@ impl VmSnapshot {
 
     /// Capture the complete state of a running VM.
     pub fn capture(
-        vcpus: &[VcpuFd],
-        vm: &VmFd,
-        guest_memory: &GuestMemoryMmap,
+        vcpus: &[::kvm_ioctls::VcpuFd],
+        vm: &::kvm_ioctls::VmFd,
+        guest_memory: &::vm_memory::GuestMemoryMmap,
         params: CaptureParams,
     ) -> Result<Self, SnapshotError> {
         let vcpu_count = u32::try_from(vcpus.len()).map_err(|_| SnapshotError::Topology {
@@ -1010,20 +1005,20 @@ impl VmSnapshot {
         }
 
         // Capture in-kernel IRQ chip state (3 chips: PIC master, PIC slave, IOAPIC)
-        let mut pic_master = kvm_irqchip {
-            chip_id: KVM_IRQCHIP_PIC_MASTER,
+        let mut pic_master = ::kvm_bindings::kvm_irqchip {
+            chip_id: ::kvm_bindings::KVM_IRQCHIP_PIC_MASTER,
             ..Default::default()
         };
         vm.get_irqchip(&mut pic_master).context(GetIrqchipSnafu)?;
 
-        let mut pic_slave = kvm_irqchip {
-            chip_id: KVM_IRQCHIP_PIC_SLAVE,
+        let mut pic_slave = ::kvm_bindings::kvm_irqchip {
+            chip_id: ::kvm_bindings::KVM_IRQCHIP_PIC_SLAVE,
             ..Default::default()
         };
         vm.get_irqchip(&mut pic_slave).context(GetIrqchipSnafu)?;
 
-        let mut ioapic = kvm_irqchip {
-            chip_id: KVM_IRQCHIP_IOAPIC,
+        let mut ioapic = ::kvm_bindings::kvm_irqchip {
+            chip_id: ::kvm_bindings::KVM_IRQCHIP_IOAPIC,
             ..Default::default()
         };
         vm.get_irqchip(&mut ioapic).context(GetIrqchipSnafu)?;
@@ -1040,7 +1035,7 @@ impl VmSnapshot {
             .map_err(|_| ReadMemorySnafu.build())?;
         let memory = SnapshotMemory::Full(mem_data);
 
-        info!(
+        ::log::info!(
             "Snapshot captured: {} vCPUs, {} MB memory, BSP RIP=0x{:x}",
             vcpu_snapshots.len(),
             memory_size / 1024 / 1024,
@@ -1099,9 +1094,9 @@ impl VmSnapshot {
     /// Restore VM state from this snapshot.
     pub fn restore(
         &self,
-        vcpus: &[VcpuFd],
-        vm: &VmFd,
-        guest_memory: &GuestMemoryMmap,
+        vcpus: &[::kvm_ioctls::VcpuFd],
+        vm: &::kvm_ioctls::VmFd,
+        guest_memory: &::vm_memory::GuestMemoryMmap,
     ) -> Result<(), SnapshotError> {
         if vcpus.len() != self.vcpu_snapshots.len() {
             return VcpuCountMismatchSnafu {
@@ -1117,7 +1112,7 @@ impl VmSnapshot {
         // Restore KVM devices and vCPU registers
         self.restore_devices_only(vcpus, vm)?;
 
-        info!(
+        ::log::info!(
             "Snapshot restored: {} vCPUs, BSP RIP=0x{:x}",
             self.vcpu_snapshots.len(),
             self.vcpu_snapshots[0].regs.rip,
@@ -1129,7 +1124,11 @@ impl VmSnapshot {
     /// Restore in-kernel device state and vCPU registers without
     /// touching guest memory. Used by incremental restore where
     /// memory is handled separately.
-    pub fn restore_devices_only(&self, vcpus: &[VcpuFd], vm: &VmFd) -> Result<(), SnapshotError> {
+    pub fn restore_devices_only(
+        &self,
+        vcpus: &[::kvm_ioctls::VcpuFd],
+        vm: &::kvm_ioctls::VmFd,
+    ) -> Result<(), SnapshotError> {
         if vcpus.len() != self.vcpu_snapshots.len() {
             return VcpuCountMismatchSnafu {
                 snapshot: self.vcpu_snapshots.len(),
@@ -1386,7 +1385,7 @@ mod tests {
         // Create a GuestMemoryMmap with known content
         let mem_size = PAGE_SIZE * 4;
         let regions = vec![(GuestAddress(0), mem_size)];
-        let guest_mem = GuestMemoryMmap::from_ranges(&regions).unwrap();
+        let guest_mem = ::vm_memory::GuestMemoryMmap::from_ranges(&regions).unwrap();
 
         // Write recognizable patterns to each page
         for page in 0..4 {
@@ -1499,7 +1498,7 @@ mod tests {
             debug_regs: Default::default(),
             lapic: Default::default(),
             xcrs: Default::default(),
-            xsave: pod_to_bytes(&kvm_xsave::default()),
+            xsave: pod_to_bytes(&::kvm_bindings::kvm_xsave::default()),
             events: Default::default(),
             msrs: TEST_MSR_INDICES
                 .iter()

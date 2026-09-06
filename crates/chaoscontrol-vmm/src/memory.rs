@@ -49,10 +49,8 @@
 //! let host_addr = mem.host_address();
 //! ```
 
-use kvm_bindings::kvm_segment;
-use log::info;
 use snafu::Snafu;
-use vm_memory::{Bytes, GuestAddress, GuestMemory, GuestMemoryMmap};
+use vm_memory::{Bytes, GuestAddress, GuestMemory};
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Memory layout constants
@@ -282,7 +280,7 @@ pub enum MemoryError {
 
 /// Manages guest physical memory for a virtual machine.
 ///
-/// `GuestMemoryManager` owns the [`GuestMemoryMmap`] allocation and
+/// `GuestMemoryManager` owns the [`GuestMemoryMmap`](vm_memory::GuestMemoryMmap) allocation and
 /// provides methods for:
 ///
 /// - Writing the x86_64 boot-time data structures (page tables, GDT,
@@ -323,7 +321,7 @@ pub enum MemoryError {
 /// ```
 pub struct GuestMemoryManager {
     /// The underlying mmap-backed guest memory.
-    memory: GuestMemoryMmap,
+    memory: ::vm_memory::GuestMemoryMmap,
     /// Total size of the guest memory in bytes.
     size: usize,
 }
@@ -341,10 +339,10 @@ impl GuestMemoryManager {
     /// fails (e.g. insufficient host memory or address space).
     pub fn new(size: usize) -> Result<Self, MemoryError> {
         let regions = vec![(GuestAddress(0), size)];
-        let memory =
-            GuestMemoryMmap::from_ranges(&regions).map_err(|_| CreateSnafu { size }.build())?;
+        let memory = ::vm_memory::GuestMemoryMmap::from_ranges(&regions)
+            .map_err(|_| CreateSnafu { size }.build())?;
 
-        info!(
+        ::log::info!(
             "Guest memory created: {} MB ({} bytes)",
             size / (1024 * 1024),
             size,
@@ -402,10 +400,12 @@ impl GuestMemoryManager {
                 .map_err(|_| WriteSnafu { address: addr }.build())?;
         }
 
-        info!(
+        ::log::info!(
             "Page tables written: PML4={:#x}, PDPTE={:#x}, PDE={:#x} \
              (512 × 2 MB = 1 GB identity map)",
-            PML4_START, PDPTE_START, PDE_START,
+            PML4_START,
+            PDPTE_START,
+            PDE_START,
         );
 
         Ok(())
@@ -458,9 +458,11 @@ impl GuestMemoryManager {
                 .build()
             })?;
 
-        info!(
+        ::log::info!(
             "GDT written at {:#x} ({} entries), IDT at {:#x}",
-            BOOT_GDT_OFFSET, GDT_ENTRY_COUNT, BOOT_IDT_OFFSET,
+            BOOT_GDT_OFFSET,
+            GDT_ENTRY_COUNT,
+            BOOT_IDT_OFFSET,
         );
 
         Ok(())
@@ -502,9 +504,10 @@ impl GuestMemoryManager {
                 .map_err(|_| WriteSnafu { address: nul_addr }.build())?;
         }
 
-        info!(
+        ::log::info!(
             "Command line written at {:#x} ({} bytes, NUL-terminated)",
-            CMDLINE_START, total_len,
+            CMDLINE_START,
+            total_len,
         );
 
         Ok(())
@@ -553,18 +556,18 @@ impl GuestMemoryManager {
             .write_slice(data, GuestAddress(0))
             .map_err(|_| WriteSnafu { address: 0u64 }.build())?;
 
-        info!("Guest memory restored: {} bytes", self.size);
+        ::log::info!("Guest memory restored: {} bytes", self.size);
 
         Ok(())
     }
 
-    /// Get a reference to the underlying [`GuestMemoryMmap`].
+    /// Get a reference to the underlying [`GuestMemoryMmap`](vm_memory::GuestMemoryMmap).
     ///
     /// Use this when passing memory to `linux-loader`, the snapshot
     /// module, or other components that work directly with the
     /// `vm-memory` types.
     #[inline]
-    pub fn inner(&self) -> &GuestMemoryMmap {
+    pub fn inner(&self) -> &::vm_memory::GuestMemoryMmap {
         &self.memory
     }
 
@@ -629,7 +632,7 @@ pub fn gdt_entry(flags: u16, base: u32, limit: u32) -> u64 {
 /// Convert a raw GDT descriptor entry into a KVM segment register.
 ///
 /// Decodes all fields from the 8-byte GDT descriptor and produces a
-/// [`kvm_segment`] suitable for loading into `sregs.cs`, `sregs.ds`,
+/// [`kvm_segment`](kvm_bindings::kvm_segment) suitable for loading into `sregs.cs`, `sregs.ds`,
 /// `sregs.tr`, etc.
 ///
 /// `table_index` is the GDT entry number (0–3), which is multiplied by
@@ -647,8 +650,8 @@ pub fn gdt_entry(flags: u16, base: u32, limit: u32) -> u64 {
 /// assert_eq!(cs.selector, 0x08);
 /// assert_eq!(cs.l, 1);  // 64-bit mode
 /// ```
-pub fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> kvm_segment {
-    kvm_segment {
+pub fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> ::kvm_bindings::kvm_segment {
+    ::kvm_bindings::kvm_segment {
         base: get_base(entry),
         limit: get_limit(entry),
         selector: u16::from(table_index) * 8,
@@ -669,7 +672,7 @@ pub fn kvm_segment_from_gdt(entry: u64, table_index: u8) -> kvm_segment {
 ///
 /// Convenience wrapper around [`kvm_segment_from_gdt`] with the standard
 /// [`GDT_FLAGS_CODE64`] flags.  Use this for `sregs.cs`.
-pub fn code64_segment() -> kvm_segment {
+pub fn code64_segment() -> ::kvm_bindings::kvm_segment {
     kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_CODE64, 0, 0xfffff), GDT_INDEX_CODE)
 }
 
@@ -678,7 +681,7 @@ pub fn code64_segment() -> kvm_segment {
 /// Convenience wrapper around [`kvm_segment_from_gdt`] with the standard
 /// [`GDT_FLAGS_DATA`] flags.  Use this for `sregs.ds`, `sregs.es`,
 /// `sregs.fs`, `sregs.gs`, and `sregs.ss`.
-pub fn data_segment() -> kvm_segment {
+pub fn data_segment() -> ::kvm_bindings::kvm_segment {
     kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_DATA, 0, 0xfffff), GDT_INDEX_DATA)
 }
 
@@ -686,7 +689,7 @@ pub fn data_segment() -> kvm_segment {
 ///
 /// Convenience wrapper around [`kvm_segment_from_gdt`] with the standard
 /// [`GDT_FLAGS_TSS`] flags.  Use this for `sregs.tr`.
-pub fn tss_segment() -> kvm_segment {
+pub fn tss_segment() -> ::kvm_bindings::kvm_segment {
     kvm_segment_from_gdt(gdt_entry(GDT_FLAGS_TSS, 0, 0xfffff), GDT_INDEX_TSS)
 }
 

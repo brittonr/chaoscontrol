@@ -1,17 +1,8 @@
-use bounded_tree_cap::{execute as execute_tree_copy, prepare as prepare_tree};
-use bounded_tree_core::{EntryKind, LimitValues, SymlinkPolicy, TreeLimits, TreePlan};
-use cap_std::{ambient_authority, fs::Dir};
-use chaoscontrol_protocol::guest_process::{ProcessManifest, PROCESS_MANIFEST_SCHEMA};
-use chaoscontrol_protocol::oci_intake::{
-    image_identity_from_layers, lower_topology, validate_receipt, ImageFormat, IntakeReceipt,
-    IntakeReceiptError, OciTopology, ServiceBundlePlan, ServiceIntakeReceipt, OCI_CLAIM_SCOPE,
-    OCI_INTAKE_RECEIPT_SCHEMA,
-};
+use chaoscontrol_protocol::oci_intake::image_identity_from_layers;
 
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Component;
 
 const KIBIBYTE: u64 = 1024;
 const MEBIBYTE: u64 = KIBIBYTE * KIBIBYTE;
@@ -36,7 +27,7 @@ pub enum IntakeShellError {
     ArchiveLimit,
     UnsafePath,
     OutputExists,
-    Receipt(IntakeReceiptError),
+    Receipt(::chaoscontrol_protocol::oci_intake::IntakeReceiptError),
 }
 
 impl From<std::io::Error> for IntakeShellError {
@@ -46,14 +37,14 @@ impl From<std::io::Error> for IntakeShellError {
 }
 
 pub fn materialize_bundle(
-    topology: &OciTopology,
+    topology: &::chaoscontrol_protocol::oci_intake::OciTopology,
     output: &std::path::Path,
-) -> Result<IntakeReceipt, IntakeShellError> {
+) -> Result<::chaoscontrol_protocol::oci_intake::IntakeReceipt, IntakeShellError> {
     if output.exists() {
         return Err(IntakeShellError::OutputExists);
     }
-    let plan =
-        lower_topology(topology).map_err(|error| IntakeShellError::Plan(format!("{error:?}")))?;
+    let plan = ::chaoscontrol_protocol::oci_intake::lower_topology(topology)
+        .map_err(|error| IntakeShellError::Plan(format!("{error:?}")))?;
     let parent = output.parent().unwrap_or_else(|| std::path::Path::new("."));
     std::fs::create_dir_all(parent)?;
     let staging = tempfile::tempdir_in(parent)?;
@@ -64,7 +55,7 @@ pub fn materialize_bundle(
         std::fs::create_dir_all(&destination)?;
         materialize_service(service, &destination)?;
         let root_identity = observe_tree_identity(&destination)?;
-        services.push(ServiceIntakeReceipt {
+        services.push(::chaoscontrol_protocol::oci_intake::ServiceIntakeReceipt {
             role: service.role.clone(),
             image_identity: service.image_identity.clone(),
             layer_identities: service
@@ -75,8 +66,8 @@ pub fn materialize_bundle(
             root_identity,
         });
     }
-    let process_manifest = ProcessManifest {
-        schema: PROCESS_MANIFEST_SCHEMA.to_string(),
+    let process_manifest = ::chaoscontrol_protocol::guest_process::ProcessManifest {
+        schema: ::chaoscontrol_protocol::guest_process::PROCESS_MANIFEST_SCHEMA.to_string(),
         guest: plan.process_manifest.guest.clone(),
         shared_directories: plan.process_manifest.shared_directories.clone(),
         processes: plan
@@ -88,14 +79,15 @@ pub fn materialize_bundle(
     };
     write_json(stage_root.join("process-manifest.json"), &process_manifest)?;
     write_json(stage_root.join("bundle-plan.json"), &plan)?;
-    let receipt = IntakeReceipt {
-        schema: OCI_INTAKE_RECEIPT_SCHEMA.to_string(),
+    let receipt = ::chaoscontrol_protocol::oci_intake::IntakeReceipt {
+        schema: ::chaoscontrol_protocol::oci_intake::OCI_INTAKE_RECEIPT_SCHEMA.to_string(),
         bundle_identity: plan.bundle_identity.clone(),
         process_manifest_identity: plan.process_manifest.manifest_identity.clone(),
         services,
-        claim_scope: OCI_CLAIM_SCOPE.to_string(),
+        claim_scope: ::chaoscontrol_protocol::oci_intake::OCI_CLAIM_SCOPE.to_string(),
     };
-    validate_receipt(&plan, &receipt).map_err(IntakeShellError::Receipt)?;
+    ::chaoscontrol_protocol::oci_intake::validate_receipt(&plan, &receipt)
+        .map_err(IntakeShellError::Receipt)?;
     write_json(stage_root.join("receipt.json"), &receipt)?;
     sync_tree_root(stage_root)?;
     let stage_path = staging.keep();
@@ -105,11 +97,11 @@ pub fn materialize_bundle(
 }
 
 fn materialize_service(
-    service: &ServiceBundlePlan,
+    service: &::chaoscontrol_protocol::oci_intake::ServiceBundlePlan,
     destination: &std::path::Path,
 ) -> Result<(), IntakeShellError> {
     match service.format {
-        ImageFormat::Directory => {
+        ::chaoscontrol_protocol::oci_intake::ImageFormat::Directory => {
             let source = std::path::Path::new(&service.source_path);
             let actual_identity = observe_tree_identity(source)?;
             if actual_identity != service.image_identity {
@@ -119,7 +111,7 @@ fn materialize_service(
             }
             copy_bounded_tree(source, destination)?;
         }
-        ImageFormat::TarArchive => {
+        ::chaoscontrol_protocol::oci_intake::ImageFormat::TarArchive => {
             let source = std::path::Path::new(&service.source_path);
             if file_identity(source)? != service.image_identity {
                 return Err(IntakeShellError::SourceIdentityMismatch {
@@ -128,7 +120,7 @@ fn materialize_service(
             }
             extract_tar(source, destination)?;
         }
-        ImageFormat::OciLayers => {
+        ::chaoscontrol_protocol::oci_intake::ImageFormat::OciLayers => {
             if image_identity_from_layers(&service.layers) != service.image_identity {
                 return Err(IntakeShellError::SourceIdentityMismatch {
                     path: std::path::PathBuf::from(&service.source_path),
@@ -147,8 +139,8 @@ fn materialize_service(
     Ok(())
 }
 
-fn tree_limits() -> Result<TreeLimits, IntakeShellError> {
-    TreeLimits::new(LimitValues {
+fn tree_limits() -> Result<::bounded_tree_core::TreeLimits, IntakeShellError> {
+    ::bounded_tree_core::TreeLimits::new(::bounded_tree_core::LimitValues {
         entries: MAX_TREE_ENTRIES,
         depth: MAX_TREE_DEPTH,
         path_bytes: MAX_TREE_PATH_BYTES,
@@ -160,9 +152,13 @@ fn tree_limits() -> Result<TreeLimits, IntakeShellError> {
 }
 
 fn prepare(source: &std::path::Path) -> Result<bounded_tree_cap::PreparedTree, IntakeShellError> {
-    let source_dir = Dir::open_ambient_dir(source, ambient_authority())?;
-    prepare_tree(&source_dir, tree_limits()?, SymlinkPolicy::PreserveInternal)
-        .map_err(|error| IntakeShellError::Plan(format!("tree admission failed: {error:?}")))
+    let source_dir = ::cap_std::fs::Dir::open_ambient_dir(source, ::cap_std::ambient_authority())?;
+    ::bounded_tree_cap::prepare(
+        &source_dir,
+        tree_limits()?,
+        ::bounded_tree_core::SymlinkPolicy::PreserveInternal,
+    )
+    .map_err(|error| IntakeShellError::Plan(format!("tree admission failed: {error:?}")))
 }
 
 fn copy_bounded_tree(
@@ -170,8 +166,9 @@ fn copy_bounded_tree(
     destination: &std::path::Path,
 ) -> Result<(), IntakeShellError> {
     let prepared = prepare(source)?;
-    let destination = Dir::open_ambient_dir(destination, ambient_authority())?;
-    execute_tree_copy(&prepared, &destination)
+    let destination =
+        ::cap_std::fs::Dir::open_ambient_dir(destination, ::cap_std::ambient_authority())?;
+    ::bounded_tree_cap::execute(&prepared, &destination)
         .map_err(|error| IntakeShellError::Plan(format!("tree copy failed: {error:?}")))?;
     Ok(())
 }
@@ -181,7 +178,7 @@ pub fn observe_tree_identity(source: &std::path::Path) -> Result<String, IntakeS
     Ok(tree_plan_identity(prepared.plan()))
 }
 
-fn tree_plan_identity(plan: &TreePlan) -> String {
+fn tree_plan_identity(plan: &::bounded_tree_core::TreePlan) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(TREE_HASH_DOMAIN);
     for member in plan.member_facts() {
@@ -189,10 +186,10 @@ fn tree_plan_identity(plan: &TreePlan) -> String {
             hash_part(&mut hasher, component);
         }
         let kind = match member.kind() {
-            EntryKind::Directory => 0_u8,
-            EntryKind::File => 1_u8,
-            EntryKind::Symlink => 2_u8,
-            EntryKind::Unsupported => 3_u8,
+            ::bounded_tree_core::EntryKind::Directory => 0_u8,
+            ::bounded_tree_core::EntryKind::File => 1_u8,
+            ::bounded_tree_core::EntryKind::Symlink => 2_u8,
+            ::bounded_tree_core::EntryKind::Unsupported => 3_u8,
         };
         hasher.update(&[kind]);
         hasher.update(&member.mode().bits().to_le_bytes());
@@ -298,9 +295,11 @@ fn safe_archive_path(path: &std::path::Path) -> Result<std::path::PathBuf, Intak
     let mut result = std::path::PathBuf::new();
     for component in path.components() {
         match component {
-            Component::Normal(value) => result.push(value),
-            Component::CurDir => {}
-            Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+            ::std::path::Component::Normal(value) => result.push(value),
+            ::std::path::Component::CurDir => {}
+            ::std::path::Component::Prefix(_)
+            | ::std::path::Component::RootDir
+            | ::std::path::Component::ParentDir => {
                 return Err(IntakeShellError::UnsafePath);
             }
         }
@@ -440,7 +439,7 @@ mod tests {
             path: "layer-0.tar".to_string(),
             identity: file_identity(&layer).unwrap(),
         };
-        let topology = OciTopology {
+        let topology = ::chaoscontrol_protocol::oci_intake::OciTopology {
             schema: OCI_TOPOLOGY_SCHEMA.to_string(),
             topology_id: "multi-image".to_string(),
             shared_directories: Vec::new(),
@@ -493,7 +492,7 @@ mod tests {
             path: "layer.tar".to_string(),
             identity: format!("b3:{}", "0".repeat(64)),
         };
-        let topology = OciTopology {
+        let topology = ::chaoscontrol_protocol::oci_intake::OciTopology {
             schema: OCI_TOPOLOGY_SCHEMA.to_string(),
             topology_id: "negative".to_string(),
             shared_directories: Vec::new(),

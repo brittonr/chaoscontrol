@@ -1,0 +1,90 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+REVIEW crates/chaoscontrol-evidence/src/dogfood_guards.rs: REQUIRED_REPLAY_CLASS: implicit format capture needs review
+50 edits: crates/chaoscontrol-evidence/src/dogfood_guards.rs
+REVIEW crates/chaoscontrol-evidence/src/evidence_contracts.rs: REPLAY_CLASSES: bare macro identifier needs review
+166 edits: crates/chaoscontrol-evidence/src/evidence_contracts.rs
+REVIEW crates/chaoscontrol-evidence/src/oci_intake.rs: image_identity_from_layers: bare macro identifier needs review
+60 edits: crates/chaoscontrol-evidence/src/oci_intake.rs
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: command_display: bare macro identifier needs review
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: json: bare macro identifier needs review
+REVIEW crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs: unix_seconds: bare macro identifier needs review
+568 edits: crates/chaoscontrol-evidence/src/replay_readiness_surfaces.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_receipt.rs: json: bare macro identifier needs review
+26 edits: crates/chaoscontrol-evidence/src/rust_automation/dogfood_receipt.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/dogfood_summary.rs: json: bare macro identifier needs review
+56 edits: crates/chaoscontrol-evidence/src/rust_automation/dogfood_summary.rs
+REVIEW crates/chaoscontrol-evidence/src/rust_automation/readiness_receipt.rs: json: bare macro identifier needs review
+17 edits: crates/chaoscontrol-evidence/src/rust_automation/readiness_receipt.rs
+REVIEW crates/chaoscontrol-evidence/src/sdk_local_identity.rs: ResolvedLocalIdentity: conditional or exported selected import needs review
+26 edits: crates/chaoscontrol-evidence/src/sdk_local_identity.rs
+REVIEW crates/chaoscontrol-explore/src/assertion_summary.rs: derive_detail_verdict: conditional or exported selected import needs review
+REVIEW crates/chaoscontrol-explore/src/assertion_summary.rs: validate_assertion_details: conditional or exported selected import needs review
+31 edits: crates/chaoscontrol-explore/src/assertion_summary.rs
+REVIEW crates/chaoscontrol-explore/src/bug/identity.rs: Snafu: attribute references a selected binding
+34 edits: crates/chaoscontrol-explore/src/bug/identity.rs
+REVIEW crates/chaoscontrol-explore/src/campaign.rs: SerializableBug: bare macro identifier needs review
+55 edits: crates/chaoscontrol-explore/src/campaign.rs
+REVIEW crates/chaoscontrol-explore/src/checkpoint.rs: Snafu: attribute references a selected binding
+110 edits: crates/chaoscontrol-explore/src/checkpoint.rs
+REVIEW crates/chaoscontrol-explore/src/dashboard_types.rs: RoundHistory: bare macro identifier needs review
+21 edits: crates/chaoscontrol-explore/src/dashboard_types.rs
+REVIEW crates/chaoscontrol-explore/src/marker_branching.rs: BRANCH_MARKER_EVENT: bare macro identifier needs review
+REVIEW crates/chaoscontrol-explore/src/marker_branching.rs: marker_identity: bare macro identifier needs review
+18 edits: crates/chaoscontrol-explore/src/marker_branching.rs
+44 edits: crates/chaoscontrol-explore/src/replay_verdict.rs
+REVIEW crates/chaoscontrol-explore/src/report.rs: AssertionDetail: bare macro identifier needs review
+22 edits: crates/chaoscontrol-explore/src/report.rs
+REVIEW crates/chaoscontrol-explore/src/snapshot_store.rs: Snafu: attribute references a selected binding
+27 edits: crates/chaoscontrol-explore/src/snapshot_store.rs
+32 edits: crates/chaoscontrol-fault/src/oracle_validation.rs
+REVIEW crates/chaoscontrol-protocol/src/oci_intake.rs: RestartPolicy: bare macro identifier needs review
+REVIEW crates/chaoscontrol-protocol/src/oci_intake.rs: SharedDirectorySpec: bare macro identifier needs review
+10 edits: crates/chaoscontrol-protocol/src/oci_intake.rs
+REVIEW crates/chaoscontrol-sdk/src/details.rs: json: bare macro identifier needs review
+11 edits: crates/chaoscontrol-sdk/src/details.rs
+REVIEW crates/chaoscontrol-sdk/src/supervisor.rs: ProcessSpec: bare macro identifier needs review
+35 edits: crates/chaoscontrol-sdk/src/supervisor.rs
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: Deserialize: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: FaultApplicationError: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: FaultObservation: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: Serialize: attribute references a selected binding
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: all_setup_complete: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: internal_application_error: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/controller.rs: validate_process_snapshot_effect: bare macro identifier needs review
+599 edits: crates/chaoscontrol-vmm/src/controller.rs
+REVIEW crates/chaoscontrol-vmm/src/cpu.rs: Snafu: attribute references a selected binding
+29 edits: crates/chaoscontrol-vmm/src/cpu.rs
+REVIEW crates/chaoscontrol-vmm/src/devices/block.rs: Snafu: attribute references a selected binding
+76 edits: crates/chaoscontrol-vmm/src/devices/block.rs
+REVIEW crates/chaoscontrol-vmm/src/memory.rs: GuestAddress: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/memory.rs: Snafu: attribute references a selected binding
+16 edits: crates/chaoscontrol-vmm/src/memory.rs
+REVIEW crates/chaoscontrol-vmm/src/snapshot.rs: GuestAddress: bare macro identifier needs review
+REVIEW crates/chaoscontrol-vmm/src/snapshot.rs: MAX_SCHEDULE_VCPUS: bare macro identifier needs review
+87 edits: crates/chaoscontrol-vmm/src/snapshot.rs

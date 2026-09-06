@@ -19,7 +19,7 @@
 //!
 //! Raw `json!({})` usage is still supported — these helpers are additive.
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 /// Standard key constants for assertion detail fields.
 ///
@@ -66,7 +66,7 @@ pub mod keys {
 /// assert_eq!(d["term"], 7);
 /// assert_eq!(d["role"], "leader");
 /// ```
-pub fn node(id: usize, term: u64, role: &str) -> Value {
+pub fn node(id: usize, term: u64, role: &str) -> ::serde_json::Value {
     json!({
         keys::NODE_ID: id,
         keys::TERM: term,
@@ -86,7 +86,7 @@ pub fn node(id: usize, term: u64, role: &str) -> Value {
 /// assert_eq!(d["term"], 5);
 /// assert_eq!(d["log_length"], 10);
 /// ```
-pub fn log(index: usize, term: u64, length: usize) -> Value {
+pub fn log(index: usize, term: u64, length: usize) -> ::serde_json::Value {
     json!({
         keys::LOG_INDEX: index,
         keys::LOG_LENGTH: length,
@@ -105,7 +105,7 @@ pub fn log(index: usize, term: u64, length: usize) -> Value {
 /// assert_eq!(d["to"], 1);
 /// assert_eq!(d["delivered"], true);
 /// ```
-pub fn network(from: usize, to: usize, delivered: bool) -> Value {
+pub fn network(from: usize, to: usize, delivered: bool) -> ::serde_json::Value {
     json!({
         keys::FROM: from,
         keys::TO: to,
@@ -123,7 +123,7 @@ pub fn network(from: usize, to: usize, delivered: bool) -> Value {
 /// assert_eq!(d["fault_type"], "partition");
 /// assert_eq!(d["target"], 2);
 /// ```
-pub fn fault(fault_type: &str, target: usize) -> Value {
+pub fn fault(fault_type: &str, target: usize) -> ::serde_json::Value {
     json!({
         keys::FAULT_TYPE: fault_type,
         keys::TARGET: target,
@@ -145,14 +145,14 @@ pub fn fault(fault_type: &str, target: usize) -> Value {
 /// assert_eq!(combined["node_id"], 0);
 /// assert_eq!(combined["log_index"], 3);
 /// ```
-pub fn merge(a: &Value, b: &Value) -> Value {
+pub fn merge(a: &::serde_json::Value, b: &::serde_json::Value) -> ::serde_json::Value {
     match (a, b) {
-        (Value::Object(ma), Value::Object(mb)) => {
+        (::serde_json::Value::Object(ma), ::serde_json::Value::Object(mb)) => {
             let mut merged = ma.clone();
             for (k, v) in mb {
                 merged.insert(k.clone(), v.clone());
             }
-            Value::Object(merged)
+            ::serde_json::Value::Object(merged)
         }
         _ => a.clone(),
     }

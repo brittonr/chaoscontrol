@@ -4,21 +4,20 @@
 //! Rust-derived runtime artifacts; Nickel/checkers validate refs, digests, and
 //! bounded paths rather than owning VM internals.
 
-use chaoscontrol_vmm::controller::SimulationSnapshot;
 use serde::ser::Serialize;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use snafu::Snafu;
-use std::fs::{self, OpenOptions};
+use std::fs::{self};
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
 
 pub use chaoscontrol_replay_evidence_core::dto::ReplayParentSnapshotRef;
-use chaoscontrol_replay_evidence_core::validate as core_validate;
 
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION;
-pub const SNAPSHOT_CODEC: &str = core_validate::CURRENT_SNAPSHOT_CODEC;
-pub const FILE_STORE_KIND: &str = core_validate::FILE_STORE_KIND;
+pub const SNAPSHOT_SCHEMA_VERSION: u32 =
+    ::chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION;
+pub const SNAPSHOT_CODEC: &str =
+    ::chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC;
+pub const FILE_STORE_KIND: &str = ::chaoscontrol_replay_evidence_core::validate::FILE_STORE_KIND;
 pub const SNAPSHOT_DIR: &str = "snapshots";
 const BYTES_PER_KIB: u64 = 1024;
 const KIB_PER_MIB: u64 = 1024;
@@ -36,7 +35,7 @@ pub struct SnapshotArtifactEnvelope {
     pub replay_parent_depth: u32,
     pub tick: u64,
     pub vm_count: usize,
-    pub snapshot: SimulationSnapshot,
+    pub snapshot: ::chaoscontrol_vmm::controller::SimulationSnapshot,
 }
 
 #[derive(Debug, Snafu)]
@@ -93,8 +92,11 @@ fn decode_cbor<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, Snapsh
         .map_err(|source| SnapshotStoreError::CborDecode { source })
 }
 
-fn read_snapshot_bytes(path: &Path, display_path: &str) -> Result<Vec<u8>, SnapshotStoreError> {
-    let mut file = OpenOptions::new()
+fn read_snapshot_bytes(
+    path: &::std::path::Path,
+    display_path: &str,
+) -> Result<Vec<u8>, SnapshotStoreError> {
+    let mut file = ::std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
@@ -169,7 +171,7 @@ fn decompress_snapshot(bytes: &[u8], maximum_bytes: u64) -> Result<Vec<u8>, Snap
 pub trait SnapshotStore {
     fn put_snapshot(
         &self,
-        snapshot: &SimulationSnapshot,
+        snapshot: &::chaoscontrol_vmm::controller::SimulationSnapshot,
         replay_parent_depth: u32,
     ) -> Result<ReplayParentSnapshotRef, SnapshotStoreError>;
 
@@ -181,7 +183,7 @@ pub trait SnapshotStore {
     fn get_snapshot(
         &self,
         reference: &ReplayParentSnapshotRef,
-    ) -> Result<SimulationSnapshot, SnapshotStoreError> {
+    ) -> Result<::chaoscontrol_vmm::controller::SimulationSnapshot, SnapshotStoreError> {
         Ok(self.get_snapshot_artifact(reference)?.snapshot)
     }
 
@@ -195,26 +197,26 @@ pub trait SnapshotStore {
 
 #[derive(Debug, Clone)]
 pub struct FileSnapshotStore {
-    root: PathBuf,
+    root: ::std::path::PathBuf,
 }
 
 impl FileSnapshotStore {
-    pub fn new(run_output_dir: impl AsRef<Path>) -> Self {
+    pub fn new(run_output_dir: impl AsRef<::std::path::Path>) -> Self {
         Self {
             root: run_output_dir.as_ref().to_path_buf(),
         }
     }
 
-    fn snapshots_dir(&self) -> PathBuf {
+    fn snapshots_dir(&self) -> ::std::path::PathBuf {
         self.root.join(SNAPSHOT_DIR)
     }
 
     fn resolve_ref(
         &self,
         reference: &ReplayParentSnapshotRef,
-    ) -> Result<PathBuf, SnapshotStoreError> {
+    ) -> Result<::std::path::PathBuf, SnapshotStoreError> {
         validate_ref_shape(reference)?;
-        let rel = Path::new(&reference.path);
+        let rel = ::std::path::Path::new(&reference.path);
         if rel.is_absolute()
             || rel
                 .components()
@@ -232,7 +234,7 @@ impl FileSnapshotStore {
 impl SnapshotStore for FileSnapshotStore {
     fn put_snapshot(
         &self,
-        snapshot: &SimulationSnapshot,
+        snapshot: &::chaoscontrol_vmm::controller::SimulationSnapshot,
         replay_parent_depth: u32,
     ) -> Result<ReplayParentSnapshotRef, SnapshotStoreError> {
         fs::create_dir_all(self.snapshots_dir())
@@ -342,17 +344,19 @@ impl SnapshotStore for FileSnapshotStore {
 pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), SnapshotStoreError> {
     // Admissibility decisions live in the shared core; this shell maps them
     // onto the store error variants for stable diagnostics.
-    if reference.store != core_validate::FILE_STORE_KIND {
+    if reference.store != ::chaoscontrol_replay_evidence_core::validate::FILE_STORE_KIND {
         return Err(SnapshotStoreError::UnsupportedStore {
             store: reference.store.clone(),
         });
     }
-    if reference.codec != core_validate::CURRENT_SNAPSHOT_CODEC {
+    if reference.codec != ::chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_CODEC {
         return Err(SnapshotStoreError::UnsupportedCodec {
             codec: reference.codec.clone(),
         });
     }
-    if reference.schema_version != core_validate::CURRENT_SNAPSHOT_SCHEMA_VERSION {
+    if reference.schema_version
+        != ::chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION
+    {
         return Err(SnapshotStoreError::UnsupportedSchema {
             version: reference.schema_version,
         });
@@ -361,7 +365,7 @@ pub fn validate_ref_shape(reference: &ReplayParentSnapshotRef) -> Result<(), Sna
 }
 
 pub fn digest_bytes(bytes: &[u8]) -> String {
-    let mut h = Sha256::new();
+    let mut h = ::sha2::Sha256::new();
     h.update(bytes);
     format!("sha256:{:x}", h.finalize())
 }
@@ -377,11 +381,11 @@ pub mod host_snapshot_store_redb {
 mod tests {
     use super::*;
 
-    fn dummy_snapshot(tick: u64) -> SimulationSnapshot {
+    fn dummy_snapshot(tick: u64) -> ::chaoscontrol_vmm::controller::SimulationSnapshot {
         let network_state = chaoscontrol_vmm::controller::NetworkFabric::new(2, 42);
         let engine = chaoscontrol_fault::engine::FaultEngine::new(Default::default());
 
-        SimulationSnapshot {
+        ::chaoscontrol_vmm::controller::SimulationSnapshot {
             tick,
             vm_snapshots: Vec::new(),
             network_state,
@@ -396,7 +400,10 @@ mod tests {
         }
     }
 
-    fn write_artifact(dir: &Path, artifact: &SnapshotArtifactEnvelope) -> ReplayParentSnapshotRef {
+    fn write_artifact(
+        dir: &::std::path::Path,
+        artifact: &SnapshotArtifactEnvelope,
+    ) -> ReplayParentSnapshotRef {
         let bytes = zstd::stream::encode_all(
             std::io::Cursor::new(encode_cbor(artifact).unwrap()),
             SNAPSHOT_COMPRESSION_LEVEL,

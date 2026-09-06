@@ -1,8 +1,6 @@
 //! Format exploration reports for human consumption.
 
-use crate::campaign::CampaignReport;
-use crate::corpus::BugReport;
-use crate::explorer::{AssertionDetail, ExplorationReport};
+use crate::explorer::AssertionDetail;
 
 #[derive(Default)]
 struct AssertionExerciseGroup {
@@ -62,7 +60,7 @@ fn append_assertion_exercise_summary(output: &mut String, details: &[AssertionDe
 }
 
 /// Format an exploration report for human consumption.
-pub fn format_report(report: &ExplorationReport) -> String {
+pub fn format_report(report: &crate::explorer::ExplorationReport) -> String {
     let mut output = String::new();
 
     output.push_str("═══════════════════════════════════════════════════════════════════════\n");
@@ -476,7 +474,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
 }
 
 /// Format a bug report with reproduction steps.
-pub fn format_bug(bug: &BugReport) -> String {
+pub fn format_bug(bug: &crate::corpus::BugReport) -> String {
     let mut output = String::new();
 
     output.push_str(&format!("   Assertion ID: {}\n", bug.assertion_id));
@@ -529,7 +527,7 @@ pub fn format_bug(bug: &BugReport) -> String {
 }
 
 /// Format a campaign report (multi-seed) for human consumption.
-pub fn format_campaign_report(report: &CampaignReport) -> String {
+pub fn format_campaign_report(report: &crate::campaign::CampaignReport) -> String {
     let mut output = String::new();
 
     output.push_str("═══════════════════════════════════════════════════════════════════════\n");
@@ -752,8 +750,8 @@ mod tests {
     use crate::coverage::CoverageStats;
     use chaoscontrol_fault::schedule::FaultSchedule;
 
-    fn make_bug(id: u64, assertion_id: u64, location: &str) -> BugReport {
-        BugReport {
+    fn make_bug(id: u64, assertion_id: u64, location: &str) -> crate::corpus::BugReport {
+        crate::corpus::BugReport {
             bug_id: id,
             assertion_id,
             assertion_identity: crate::test_support::assertion_identity(assertion_id),
@@ -775,7 +773,7 @@ mod tests {
     fn test_format_report_with_assertion_stats() {
         use crate::explorer::AssertionStats;
 
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 10,
             total_branches: 80,
             total_edges: 256,
@@ -816,7 +814,7 @@ mod tests {
 
     #[test]
     fn test_format_report_no_bugs() {
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 10,
             total_branches: 80,
             total_edges: 256,
@@ -858,7 +856,7 @@ mod tests {
             make_bug(1, 200, "main.rs:123"),
         ];
 
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 5,
             total_branches: 40,
             total_edges: 128,
@@ -912,7 +910,7 @@ mod tests {
         schedule.add(ScheduledFault::new(1000, Fault::NetworkHeal));
         schedule.add(ScheduledFault::new(2000, Fault::ProcessKill { target: 0 }));
 
-        let bug = BugReport {
+        let bug = crate::corpus::BugReport {
             bug_id: 1,
             assertion_id: 50,
             assertion_identity: crate::test_support::assertion_identity(50),
@@ -988,7 +986,7 @@ mod tests {
             },
         ];
 
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 3,
             total_branches: 24,
             total_edges: 80,
@@ -1062,7 +1060,7 @@ mod tests {
             })
             .collect();
 
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 25,
             total_branches: 200,
             total_edges: 50,
@@ -1100,7 +1098,7 @@ mod tests {
 
     #[test]
     fn test_format_report_empty_round_history() {
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 0,
             total_branches: 0,
             total_edges: 0,
@@ -1191,7 +1189,7 @@ mod tests {
             },
         ];
 
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 5,
             total_branches: 40,
             total_edges: 100,
@@ -1274,7 +1272,7 @@ mod tests {
 
     #[test]
     fn test_format_report_no_assertion_details() {
-        let report = ExplorationReport {
+        let report = crate::explorer::ExplorationReport {
             rounds: 1,
             total_branches: 8,
             total_edges: 10,
@@ -1318,7 +1316,7 @@ mod tests {
             schedule.add(ScheduledFault::new(i * 1000, Fault::NetworkHeal));
         }
 
-        let bug = BugReport {
+        let bug = crate::corpus::BugReport {
             bug_id: 1,
             assertion_id: 50,
             assertion_identity: crate::test_support::assertion_identity(50),
@@ -1343,11 +1341,11 @@ mod tests {
 
     #[test]
     fn test_format_campaign_report_contains_sections() {
-        use crate::campaign::{CampaignBug, CampaignReport, SeedSummary};
+        use crate::campaign::{CampaignBug, SeedSummary};
         use crate::checkpoint::{SerializableBug, SerializableSchedule};
         use crate::explorer::{AssertionDetail, AssertionStats};
 
-        let report = CampaignReport {
+        let report = crate::campaign::CampaignReport {
             seeds_run: vec![42, 43, 44],
             seeds_with_bugs: vec![42],
             total_rounds: 30,
@@ -1468,9 +1466,7 @@ mod tests {
 
     #[test]
     fn test_format_campaign_report_no_bugs() {
-        use crate::campaign::CampaignReport;
-
-        let report = CampaignReport {
+        let report = crate::campaign::CampaignReport {
             seeds_run: vec![42],
             seeds_with_bugs: Vec::new(),
             total_rounds: 10,

@@ -1,10 +1,6 @@
 //! Pure marker projection, prioritization, coverage, and evidence binding.
 
-use chaoscontrol_fault::oracle::OracleReport;
-use chaoscontrol_protocol::branch_marker::{
-    marker_identity, BranchMarker, BRANCH_MARKER_ASSERTION_CATEGORY, BRANCH_MARKER_EVENT,
-    BRANCH_MARKER_LIMIT_EVENT,
-};
+use chaoscontrol_protocol::branch_marker::{marker_identity, BRANCH_MARKER_EVENT};
 
 pub const MARKER_NOVELTY_BONUS: f64 = 32.0;
 pub const MARKER_RARITY_NUMERATOR: f64 = 16.0;
@@ -13,7 +9,7 @@ pub const MARKER_REPLAY_SCHEMA: &str = "chaoscontrol.marker-replay-binding.v1";
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkerObservation {
     pub run_id: u32,
-    pub marker: BranchMarker,
+    pub marker: ::chaoscontrol_protocol::branch_marker::BranchMarker,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -54,13 +50,15 @@ pub enum MarkerBindingError {
     UnsupportedReplayVerdict,
 }
 
-pub fn observations(report: &OracleReport) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
+pub fn observations(
+    report: &::chaoscontrol_fault::oracle::OracleReport,
+) -> Result<Vec<MarkerObservation>, MarkerBindingError> {
     report
         .events
         .iter()
         .filter(|event| event.name == BRANCH_MARKER_EVENT)
         .map(|event| {
-            BranchMarker::from_value(&event.details)
+            ::chaoscontrol_protocol::branch_marker::BranchMarker::from_value(&event.details)
                 .map(|marker| MarkerObservation {
                     run_id: event.run_id,
                     marker,
@@ -95,11 +93,13 @@ pub fn marker_score(base_score: f64, prior_hits: u32) -> f64 {
 }
 
 pub fn oracle_coverage_report(
-    report: &OracleReport,
+    report: &::chaoscontrol_fault::oracle::OracleReport,
 ) -> Result<MarkerCoverageReport, MarkerBindingError> {
     let declared = report.structured_assertions.values().filter_map(|record| {
         let admitted = record.identity.as_ref()?;
-        if admitted.descriptor.category != BRANCH_MARKER_ASSERTION_CATEGORY {
+        if admitted.descriptor.category
+            != ::chaoscontrol_protocol::branch_marker::BRANCH_MARKER_ASSERTION_CATEGORY
+        {
             return None;
         }
         let chaoscontrol_protocol::identity::AssertionLogicalKey::Stable { key } =
@@ -114,7 +114,7 @@ pub fn oracle_coverage_report(
 
 pub fn coverage_report(
     declared: impl IntoIterator<Item = String>,
-    report: &OracleReport,
+    report: &::chaoscontrol_fault::oracle::OracleReport,
 ) -> Result<MarkerCoverageReport, MarkerBindingError> {
     let declared = declared
         .into_iter()
@@ -127,7 +127,9 @@ pub fn coverage_report(
     let limit_events = report
         .events
         .iter()
-        .filter(|event| event.name == BRANCH_MARKER_LIMIT_EVENT)
+        .filter(|event| {
+            event.name == ::chaoscontrol_protocol::branch_marker::BRANCH_MARKER_LIMIT_EVENT
+        })
         .count();
     Ok(MarkerCoverageReport {
         declared: declared.into_iter().collect(),
@@ -191,7 +193,7 @@ pub fn update_hit_counts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chaoscontrol_fault::oracle::{OracleEvent, OracleReport};
+    use chaoscontrol_fault::oracle::OracleEvent;
 
     const OBSERVED_TICK: u64 = 41;
     const TEST_ALIAS: u64 = 17;
@@ -200,8 +202,8 @@ mod tests {
     const MARKER_TERM: u64 = 3;
     const TEST_DIGEST_HEX_BYTES: usize = 64;
 
-    fn marker() -> BranchMarker {
-        BranchMarker::new(
+    fn marker() -> ::chaoscontrol_protocol::branch_marker::BranchMarker {
+        ::chaoscontrol_protocol::branch_marker::BranchMarker::new(
             "raft",
             "leader-elected",
             "guest-0",
@@ -212,15 +214,15 @@ mod tests {
         .unwrap()
     }
 
-    fn report_with_marker() -> OracleReport {
+    fn report_with_marker() -> ::chaoscontrol_fault::oracle::OracleReport {
         let marker = marker();
-        OracleReport {
+        ::chaoscontrol_fault::oracle::OracleReport {
             events: vec![OracleEvent {
                 run_id: 1,
                 name: BRANCH_MARKER_EVENT.to_string(),
                 details: serde_json::to_value(marker).unwrap(),
             }],
-            ..OracleReport::empty()
+            ..::chaoscontrol_fault::oracle::OracleReport::empty()
         }
     }
 
@@ -252,7 +254,8 @@ mod tests {
             key: "unreached".to_string(),
         };
         descriptor.kind = AssertionKind::Reachable;
-        descriptor.category = BRANCH_MARKER_ASSERTION_CATEGORY.to_string();
+        descriptor.category =
+            ::chaoscontrol_protocol::branch_marker::BRANCH_MARKER_ASSERTION_CATEGORY.to_string();
         let token = token_for_descriptors(std::slice::from_ref(&descriptor)).unwrap();
         let mut builder = CatalogBuilder::begin(1).unwrap();
         builder.insert(descriptor).unwrap();

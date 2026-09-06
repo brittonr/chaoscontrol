@@ -16,11 +16,6 @@
 //! For a 512 MB disk image where only 1 MB has been modified, a snapshot costs
 //! ~256 dirty-page clones (~1 MB) instead of a full 512 MB copy.
 
-use chaoscontrol_fault::outcomes::{
-    validate_pending_fault_effect, validate_pending_fault_observations, FaultAttemptId,
-    FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultOutcomeLedger,
-    FaultPlanEffect, FaultTransitionError,
-};
 use snafu::Snafu;
 
 /// Dirty + volatile page overlays extracted for restart preservation.
@@ -118,15 +113,17 @@ pub struct BlockSnapshot {
     dirty: std::collections::BTreeMap<usize, Vec<u8>>,
     volatile: std::collections::BTreeMap<usize, Vec<u8>>,
     faults: std::collections::VecDeque<BlockFault>,
-    fault_attempt_ids: std::collections::VecDeque<Option<FaultAttemptId>>,
+    fault_attempt_ids:
+        std::collections::VecDeque<Option<::chaoscontrol_fault::outcomes::FaultAttemptId>>,
     stats: BlockStats,
     slow_delay_ns: u64,
-    slow_attempt_id: Option<FaultAttemptId>,
+    slow_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     fsync_lie: bool,
-    fsync_lie_attempt_id: Option<FaultAttemptId>,
+    fsync_lie_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     full: bool,
-    full_attempt_id: Option<FaultAttemptId>,
-    fault_observations: std::collections::VecDeque<FaultObservation>,
+    full_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
+    fault_observations:
+        std::collections::VecDeque<::chaoscontrol_fault::outcomes::FaultObservation>,
     operation_sequence: u64,
     observation_overflowed: u64,
 }
@@ -189,26 +186,31 @@ impl BlockSnapshot {
     /// Validate pending block mechanisms against an authoritative ledger.
     pub fn validate_pending_faults(
         &self,
-        ledger: &FaultOutcomeLedger,
+        ledger: &::chaoscontrol_fault::outcomes::FaultOutcomeLedger,
         target: u32,
-    ) -> Result<(), FaultTransitionError> {
+    ) -> Result<(), ::chaoscontrol_fault::outcomes::FaultTransitionError> {
         if self.faults.len() != self.fault_attempt_ids.len()
             || self.fault_observations.len() > MAX_PENDING_BLOCK_OBSERVATIONS
             || self.observation_overflowed != 0
         {
-            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
+            return Err(
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
+            );
         }
         for (fault, attempt_id) in self.faults.iter().zip(&self.fault_attempt_ids) {
-            let attempt_id =
-                attempt_id.ok_or(FaultTransitionError::SnapshotPendingStateMismatch)?;
+            let attempt_id = attempt_id.ok_or(
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
+            )?;
             let effect = block_fault_effect(target, fault)?;
-            validate_pending_fault_effect(ledger, attempt_id, &effect)?;
+            ::chaoscontrol_fault::outcomes::validate_pending_fault_effect(
+                ledger, attempt_id, &effect,
+            )?;
         }
         validate_active_block_effect(
             ledger,
             self.slow_delay_ns != 0,
             self.slow_attempt_id,
-            FaultPlanEffect::BlockSlow {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockSlow {
                 target,
                 delay_ns: self.slow_delay_ns,
             },
@@ -217,23 +219,25 @@ impl BlockSnapshot {
             ledger,
             self.fsync_lie,
             self.fsync_lie_attempt_id,
-            FaultPlanEffect::BlockFsyncLie { target },
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFsyncLie { target },
         )?;
         validate_active_block_effect(
             ledger,
             self.full,
             self.full_attempt_id,
-            FaultPlanEffect::BlockFull { target },
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFull { target },
         )?;
         if self
             .fault_observations
             .iter()
             .any(|observation| observation.operation_sequence >= self.operation_sequence)
         {
-            return Err(FaultTransitionError::SnapshotPendingStateMismatch);
+            return Err(
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
+            );
         }
         let observations = self.fault_observations.iter().cloned().collect::<Vec<_>>();
-        validate_pending_fault_observations(ledger, &observations)
+        ::chaoscontrol_fault::outcomes::validate_pending_fault_observations(ledger, &observations)
     }
 }
 
@@ -269,51 +273,58 @@ fn validate_snapshot_overlay(
 fn block_fault_effect(
     target: u32,
     fault: &BlockFault,
-) -> Result<FaultPlanEffect, FaultTransitionError> {
+) -> Result<
+    ::chaoscontrol_fault::outcomes::FaultPlanEffect,
+    ::chaoscontrol_fault::outcomes::FaultTransitionError,
+> {
     let effect = match fault {
-        BlockFault::ReadError { offset } => FaultPlanEffect::BlockReadError {
+        BlockFault::ReadError { offset } => ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockReadError {
             target,
             offset: *offset,
         },
-        BlockFault::WriteError { offset } => FaultPlanEffect::BlockWriteError {
+        BlockFault::WriteError { offset } => ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockWriteError {
             target,
             offset: *offset,
         },
         BlockFault::TornWrite {
             offset,
             bytes_written,
-        } => FaultPlanEffect::BlockTornWrite {
+        } => ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockTornWrite {
             target,
             offset: *offset,
             bytes_written: u64::try_from(*bytes_written)
-                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+                .map_err(|_| ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch)?,
         },
-        BlockFault::Corruption { offset, len } => FaultPlanEffect::BlockCorruption {
+        BlockFault::Corruption { offset, len } => ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockCorruption {
             target,
             offset: *offset,
             len: u64::try_from(*len)
-                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+                .map_err(|_| ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch)?,
         },
-        BlockFault::PartialRead { offset, max_bytes } => FaultPlanEffect::BlockPartialRead {
+        BlockFault::PartialRead { offset, max_bytes } => ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockPartialRead {
             target,
             offset: *offset,
             max_bytes: u64::try_from(*max_bytes)
-                .map_err(|_| FaultTransitionError::SnapshotPendingStateMismatch)?,
+                .map_err(|_| ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch)?,
         },
     };
     Ok(effect)
 }
 
 fn validate_active_block_effect(
-    ledger: &FaultOutcomeLedger,
+    ledger: &::chaoscontrol_fault::outcomes::FaultOutcomeLedger,
     active: bool,
-    attempt_id: Option<FaultAttemptId>,
-    effect: FaultPlanEffect,
-) -> Result<(), FaultTransitionError> {
+    attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
+    effect: ::chaoscontrol_fault::outcomes::FaultPlanEffect,
+) -> Result<(), ::chaoscontrol_fault::outcomes::FaultTransitionError> {
     match (active, attempt_id) {
-        (true, Some(attempt_id)) => validate_pending_fault_effect(ledger, attempt_id, &effect),
+        (true, Some(attempt_id)) => ::chaoscontrol_fault::outcomes::validate_pending_fault_effect(
+            ledger, attempt_id, &effect,
+        ),
         (false, None) => Ok(()),
-        _ => Err(FaultTransitionError::SnapshotPendingStateMismatch),
+        _ => {
+            Err(::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch)
+        }
     }
 }
 
@@ -343,23 +354,25 @@ pub struct DeterministicBlock {
     /// Pending fault injection queue.
     faults: std::collections::VecDeque<BlockFault>,
     /// Attempt identities parallel to the pending fault queue.
-    fault_attempt_ids: std::collections::VecDeque<Option<FaultAttemptId>>,
+    fault_attempt_ids:
+        std::collections::VecDeque<Option<::chaoscontrol_fault::outcomes::FaultAttemptId>>,
     /// I/O statistics.
     stats: BlockStats,
     /// Per-operation I/O delay in nanoseconds (0 = no delay).
     slow_delay_ns: u64,
     /// Attempt that armed the slow-operation mechanism.
-    slow_attempt_id: Option<FaultAttemptId>,
+    slow_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     /// When true, writes go to the volatile buffer instead of durable storage.
     fsync_lie: bool,
     /// Attempt that armed fsync-lie behavior.
-    fsync_lie_attempt_id: Option<FaultAttemptId>,
+    fsync_lie_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     /// When true, all writes fail with an injected write error.
     full: bool,
     /// Attempt that armed disk-full behavior.
-    full_attempt_id: Option<FaultAttemptId>,
+    full_attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
     /// Bounded observations waiting for the controller ledger.
-    fault_observations: std::collections::VecDeque<FaultObservation>,
+    fault_observations:
+        std::collections::VecDeque<::chaoscontrol_fault::outcomes::FaultObservation>,
     /// Sequence for deterministic block-operation identities.
     operation_sequence: u64,
     /// Observations rejected because the bounded queue was full.
@@ -461,7 +474,7 @@ impl DeterministicBlock {
                 self.record_observation(
                     attempt_id,
                     operation_sequence,
-                    FaultObservationEffect::BlockReadFailed,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockReadFailed,
                 );
                 return InjectedReadSnafu { offset }.fail();
             }
@@ -487,7 +500,7 @@ impl DeterministicBlock {
                 self.record_observation(
                     attempt_id,
                     operation_sequence,
-                    FaultObservationEffect::BlockReadShortened,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockReadShortened,
                 );
                 self.record_slow_observation(operation_sequence);
                 return Ok(self.slow_delay_ns);
@@ -514,7 +527,7 @@ impl DeterministicBlock {
             self.record_observation(
                 self.full_attempt_id,
                 operation_sequence,
-                FaultObservationEffect::BlockWriteRejectedFull,
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteRejectedFull,
             );
             return InjectedWriteSnafu { offset }.fail();
         }
@@ -537,7 +550,7 @@ impl DeterministicBlock {
                     self.record_observation(
                         attempt_id,
                         operation_sequence,
-                        FaultObservationEffect::BlockWriteFailed,
+                        ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteFailed,
                     );
                     return InjectedWriteSnafu { offset }.fail();
                 }
@@ -553,7 +566,7 @@ impl DeterministicBlock {
                     self.record_observation(
                         attempt_id,
                         operation_sequence,
-                        FaultObservationEffect::BlockWriteTorn,
+                        ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteTorn,
                     );
                     self.record_fsync_lie_observation(operation_sequence, bytes_written > 0);
                     return InjectedTornWriteSnafu {
@@ -581,7 +594,7 @@ impl DeterministicBlock {
                     self.record_observation(
                         attempt_id,
                         operation_sequence,
-                        FaultObservationEffect::BlockBytesCorrupted,
+                        ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockBytesCorrupted,
                     );
                     self.record_fsync_lie_observation(operation_sequence, true);
                     self.record_slow_observation(operation_sequence);
@@ -608,7 +621,11 @@ impl DeterministicBlock {
     }
 
     /// Enqueue a fault bound to one selected attempt.
-    pub fn inject_fault_with_attempt(&mut self, fault: BlockFault, attempt_id: FaultAttemptId) {
+    pub fn inject_fault_with_attempt(
+        &mut self,
+        fault: BlockFault,
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) {
         self.faults.push_back(fault);
         self.fault_attempt_ids.push_back(Some(attempt_id));
     }
@@ -620,7 +637,11 @@ impl DeterministicBlock {
     }
 
     /// Set persistent disk-full behavior for one selected attempt.
-    pub fn set_full_with_attempt(&mut self, is_full: bool, attempt_id: FaultAttemptId) {
+    pub fn set_full_with_attempt(
+        &mut self,
+        is_full: bool,
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) {
         self.full = is_full;
         self.full_attempt_id = is_full.then_some(attempt_id);
     }
@@ -637,7 +658,11 @@ impl DeterministicBlock {
     }
 
     /// Set the per-I/O delay for one selected attempt.
-    pub fn set_slow_delay_with_attempt(&mut self, delay_ns: u64, attempt_id: FaultAttemptId) {
+    pub fn set_slow_delay_with_attempt(
+        &mut self,
+        delay_ns: u64,
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) {
         self.slow_delay_ns = delay_ns;
         self.slow_attempt_id = (delay_ns > 0).then_some(attempt_id);
     }
@@ -654,7 +679,10 @@ impl DeterministicBlock {
     }
 
     /// Enable fsync-lie mode for one selected attempt.
-    pub fn enable_fsync_lie_with_attempt(&mut self, attempt_id: FaultAttemptId) {
+    pub fn enable_fsync_lie_with_attempt(
+        &mut self,
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) {
         self.fsync_lie = true;
         self.fsync_lie_attempt_id = Some(attempt_id);
     }
@@ -702,7 +730,9 @@ impl DeterministicBlock {
     }
 
     /// Drain bounded block observations and the overflow count.
-    pub fn drain_fault_observations(&mut self) -> (Vec<FaultObservation>, u64) {
+    pub fn drain_fault_observations(
+        &mut self,
+    ) -> (Vec<::chaoscontrol_fault::outcomes::FaultObservation>, u64) {
         let observations = self.fault_observations.drain(..).collect();
         let overflowed = self.observation_overflowed;
         self.observation_overflowed = 0;
@@ -712,7 +742,7 @@ impl DeterministicBlock {
     /// Restore a failed ledger batch to the front of the pending queue.
     pub fn requeue_fault_observations(
         &mut self,
-        observations: Vec<FaultObservation>,
+        observations: Vec<::chaoscontrol_fault::outcomes::FaultObservation>,
         overflowed: u64,
     ) {
         let restored_len = self
@@ -896,26 +926,30 @@ impl DeterministicBlock {
             + usize::from(self.slow_attempt_id.is_some())
     }
 
-    fn fault_attempt(&self, index: usize) -> Option<FaultAttemptId> {
+    fn fault_attempt(
+        &self,
+        index: usize,
+    ) -> Option<::chaoscontrol_fault::outcomes::FaultAttemptId> {
         self.fault_attempt_ids.get(index).copied().flatten()
     }
 
     fn record_observation(
         &mut self,
-        attempt_id: Option<FaultAttemptId>,
+        attempt_id: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
         operation_sequence: u64,
-        effect: FaultObservationEffect,
+        effect: ::chaoscontrol_fault::outcomes::FaultObservationEffect,
     ) {
         let Some(attempt_id) = attempt_id else {
             return;
         };
         assert!(self.fault_observations.len() < MAX_PENDING_BLOCK_OBSERVATIONS);
-        self.fault_observations.push_back(FaultObservation::new(
-            attempt_id,
-            FaultObservationSubsystem::Block,
-            operation_sequence,
-            effect,
-        ));
+        self.fault_observations
+            .push_back(::chaoscontrol_fault::outcomes::FaultObservation::new(
+                attempt_id,
+                ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Block,
+                operation_sequence,
+                effect,
+            ));
     }
 
     fn record_slow_observation(&mut self, operation_sequence: u64) {
@@ -923,7 +957,7 @@ impl DeterministicBlock {
             self.record_observation(
                 self.slow_attempt_id,
                 operation_sequence,
-                FaultObservationEffect::BlockOperationDelayed,
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockOperationDelayed,
             );
         }
     }
@@ -933,12 +967,15 @@ impl DeterministicBlock {
             self.record_observation(
                 self.fsync_lie_attempt_id,
                 operation_sequence,
-                FaultObservationEffect::BlockWriteMadeVolatile,
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteMadeVolatile,
             );
         }
     }
 
-    fn remove_fault_attempt(&mut self, index: usize) -> Option<FaultAttemptId> {
+    fn remove_fault_attempt(
+        &mut self,
+        index: usize,
+    ) -> Option<::chaoscontrol_fault::outcomes::FaultAttemptId> {
         self.fault_attempt_ids.remove(index).flatten()
     }
 
@@ -1715,7 +1752,7 @@ mod tests {
         const BLOCK_BYTES: usize = 4_096;
         const TORN_BYTES: usize = 4;
         const LONG_WRITE_BYTES: usize = 8;
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut disk = DeterministicBlock::new(BLOCK_BYTES);
         disk.inject_fault_with_attempt(
             BlockFault::TornWrite {
@@ -1739,7 +1776,7 @@ mod tests {
         assert_eq!(observations.len(), 1);
         assert_eq!(
             observations[0].effect,
-            FaultObservationEffect::BlockWriteTorn
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteTorn
         );
     }
 
@@ -1748,7 +1785,7 @@ mod tests {
         const BLOCK_BYTES: usize = 4_096;
         const SHORT_READ_BYTES: usize = 4;
         const LONG_READ_BYTES: usize = 8;
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut disk = DeterministicBlock::new(BLOCK_BYTES);
         disk.write(0, &[0xAA; LONG_READ_BYTES]).unwrap();
         disk.inject_fault_with_attempt(
@@ -1776,7 +1813,7 @@ mod tests {
         assert_eq!(observations.len(), 1);
         assert_eq!(
             observations[0].effect,
-            FaultObservationEffect::BlockReadShortened
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockReadShortened
         );
     }
 
@@ -1784,7 +1821,7 @@ mod tests {
     fn corruption_stays_armed_for_empty_write_and_changes_nonempty_bytes() {
         const BLOCK_BYTES: usize = 4_096;
         const WRITE_BYTES: usize = 4;
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut disk = DeterministicBlock::new(BLOCK_BYTES);
         disk.inject_fault_with_attempt(
             BlockFault::Corruption {
@@ -1808,7 +1845,7 @@ mod tests {
         assert_eq!(observations.len(), 1);
         assert_eq!(
             observations[0].effect,
-            FaultObservationEffect::BlockBytesCorrupted
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockBytesCorrupted
         );
     }
 
@@ -1816,7 +1853,7 @@ mod tests {
     fn armed_block_fault_is_observed_only_when_io_consumes_it() {
         // r[verify chaoscontrol.fault_outcomes.validation.observation]
         const BLOCK_BYTES: usize = 4_096;
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut block = DeterministicBlock::new(BLOCK_BYTES);
         block.inject_fault_with_attempt(BlockFault::ReadError { offset: 0 }, attempt_id);
 
@@ -1831,14 +1868,17 @@ mod tests {
         assert_eq!(overflowed, 0);
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].attempt_id, attempt_id);
-        assert_eq!(after[0].effect, FaultObservationEffect::BlockReadFailed);
+        assert_eq!(
+            after[0].effect,
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockReadFailed
+        );
     }
 
     #[test]
     fn unmatched_block_fault_does_not_create_observation() {
         const BLOCK_BYTES: usize = 4_096;
         const OTHER_OFFSET: u64 = 512;
-        let attempt_id = FaultAttemptId([8; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([8; 32]);
         let mut block = DeterministicBlock::new(BLOCK_BYTES);
         block.inject_fault_with_attempt(
             BlockFault::ReadError {
@@ -1857,7 +1897,7 @@ mod tests {
     #[test]
     fn disk_full_and_snapshot_replay_preserve_attempt_observation() {
         const BLOCK_BYTES: usize = 4_096;
-        let attempt_id = FaultAttemptId([9; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([9; 32]);
         let mut block = DeterministicBlock::new(BLOCK_BYTES);
         block.set_full_with_attempt(true, attempt_id);
         let snapshot = block.snapshot();
@@ -1882,7 +1922,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(
             first[0].effect,
-            FaultObservationEffect::BlockWriteRejectedFull
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteRejectedFull
         );
     }
 }

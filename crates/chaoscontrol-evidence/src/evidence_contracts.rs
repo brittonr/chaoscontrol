@@ -1,12 +1,4 @@
-use std::fs;
-use std::path::Component;
-
-use serde_json::Value;
-use sha2::{Digest, Sha256};
-
-use crate::{
-    EvidenceError, EvidenceResult, SUPPORTED_SNAPSHOT_CODECS, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS,
-};
+use sha2::Digest;
 
 pub const EVIDENCE_CONTRACTS_SUCCESS: &str =
     "evidence contracts ok: Nickel profiles, snapshot descriptors, projection freshness, receipts, positive fixtures, negative fixtures";
@@ -19,7 +11,7 @@ const STATUSES: [&str; 5] = [
     "raw-log-only",
 ];
 // Replay classes and snapshot statuses are owned by the shared core.
-use chaoscontrol_replay_evidence_core::validate::{REPLAY_CLASSES, SNAPSHOT_STATUSES};
+use chaoscontrol_replay_evidence_core::validate::REPLAY_CLASSES;
 const MAX_EVIDENCE_JSON_BYTES: u64 = 16 * 1024 * 1024;
 const LEGACY_REPLAY_VERDICT_SCHEMA_VERSION: u64 =
     chaoscontrol_replay_evidence_core::LEGACY_REPLAY_VERDICT_SCHEMA_VERSION as u64;
@@ -33,7 +25,9 @@ const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 =
 const BYTES_PER_MIB: u64 = 1024 * 1024;
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
 
-pub fn check_evidence_contracts(root: impl AsRef<std::path::Path>) -> EvidenceResult<&'static str> {
+pub fn check_evidence_contracts(
+    root: impl AsRef<std::path::Path>,
+) -> crate::EvidenceResult<&'static str> {
     let root = root.as_ref();
     run_nickel_examples(root)?;
     crate::profile_projection::check_profile_projections(root, false)?;
@@ -43,7 +37,9 @@ pub fn check_evidence_contracts(root: impl AsRef<std::path::Path>) -> EvidenceRe
     Ok(EVIDENCE_CONTRACTS_SUCCESS)
 }
 
-pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
+pub fn check_evidence_contract_fixtures(
+    root: impl AsRef<std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let root = root.as_ref();
     let contracts = root.join("contracts/evidence");
     let dogfood = root.join("dogfood-results/raft-20260506-095025");
@@ -60,7 +56,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> Ev
     let simulator_profile = serde_json::from_value::<crate::simulator_profile::SimulatorProfile>(
         load_json(&valid.join("simulator-profile.valid.json"))?,
     )
-    .map_err(|error| EvidenceError::new(format!("invalid simulator profile fixture: {error}")))?;
+    .map_err(|error| {
+        crate::EvidenceError::new(format!("invalid simulator profile fixture: {error}"))
+    })?;
     simulator_profile.try_into_config()?;
     validate_receipt(&load_json(&valid.join("receipt.known-gap.valid.json"))?)?;
     let legacy_bug = load_json(&valid.join("bug-report.valid.json"))?;
@@ -73,19 +71,20 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> Ev
     validate_bug_report(&identity_bug)?;
     validate_bug_report_for_replay(&identity_bug)?;
     let mut substituted_bug = identity_bug.clone();
-    substituted_bug["assertion_id"] = Value::from(SUBSTITUTED_ASSERTION_ALIAS);
+    substituted_bug["assertion_id"] = ::serde_json::Value::from(SUBSTITUTED_ASSERTION_ALIAS);
     ensure(
         validate_bug_report_for_replay(&substituted_bug).is_err(),
         "substituted bug alias unexpectedly qualified for replay",
     )?;
     let mut forged_bug = identity_bug.clone();
-    forged_bug["assertion_identity"]["descriptor"]["message"] = Value::from("forged descriptor");
+    forged_bug["assertion_identity"]["descriptor"]["message"] =
+        ::serde_json::Value::from("forged descriptor");
     ensure(
         validate_bug_report_for_replay(&forged_bug).is_err(),
         "forged bug descriptor unexpectedly qualified for replay",
     )?;
     let mut extended_bug = identity_bug;
-    extended_bug["unreviewed_authority"] = Value::from(true);
+    extended_bug["unreviewed_authority"] = ::serde_json::Value::from(true);
     ensure(
         validate_bug_report_for_replay(&extended_bug).is_err(),
         "unknown bug field unexpectedly qualified for replay",
@@ -93,13 +92,13 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> Ev
     validate_snapshot_ref(&load_json(&valid.join("snapshot-ref.valid.json"))?)?;
     let replay_verdict = load_json(&valid.join("replay-verdict.snapshot-backed.valid.json"))?;
     validate_replay_verdict_with_options(&replay_verdict, true, false, root).map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "replay-verdict.snapshot-backed.valid.json: {}",
             error.message()
         ))
     })?;
     let mut extended_verdict = replay_verdict;
-    extended_verdict["unreviewed_authority"] = Value::from(true);
+    extended_verdict["unreviewed_authority"] = ::serde_json::Value::from(true);
     ensure(
         validate_replay_verdict_with_options(&extended_verdict, true, false, root).is_err(),
         "unknown replay verdict field unexpectedly qualified for replay",
@@ -193,8 +192,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> Ev
         "replay-verdict.schema-v1-accepted.invalid.json",
     ] {
         let path = invalid.join(fixture);
-        validate_replay_verdict(&load_json(&path)?)
-            .map_err(|error| EvidenceError::new(format!("{fixture}: {}", error.message())))?;
+        validate_replay_verdict(&load_json(&path)?).map_err(|error| {
+            crate::EvidenceError::new(format!("{fixture}: {}", error.message()))
+        })?;
         expect_invalid(&path, |value| {
             validate_replay_verdict_with_options(value, true, false, root)
         })?;
@@ -203,10 +203,10 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<std::path::Path>) -> Ev
     Ok(())
 }
 
-pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> EvidenceResult<()> {
+pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> crate::EvidenceResult<()> {
     let root = root.as_ref();
     let command = nickel_command().ok_or_else(|| {
-        EvidenceError::new("neither nickel nor nix is available for Nickel export checks")
+        crate::EvidenceError::new("neither nickel nor nix is available for Nickel export checks")
     })?;
     for rel in [
         "examples/raft-run-config.ncl",
@@ -233,7 +233,7 @@ pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> EvidenceResult<
             .stdout(std::process::Stdio::null())
             .status()
             .map_err(|err| {
-                EvidenceError::new(format!("failed to run Nickel export for {rel}: {err}"))
+                crate::EvidenceError::new(format!("failed to run Nickel export for {rel}: {err}"))
             })?;
         ensure(
             status.success(),
@@ -257,26 +257,34 @@ pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> EvidenceResult<
             .arg(root.join("contracts/evidence").join(source))
             .current_dir(root)
             .output()
-            .map_err(|err| EvidenceError::new(format!("failed to export {source}: {err}")))?;
+            .map_err(|err| {
+                crate::EvidenceError::new(format!("failed to export {source}: {err}"))
+            })?;
         ensure(
             output.status.success(),
             format!("Nickel export failed for {source}: {}", output.status),
         )?;
-        let exported: Value = serde_json::from_slice(&output.stdout).map_err(|err| {
-            EvidenceError::new(format!("Nickel export for {source} is not JSON: {err}"))
-        })?;
-        let committed_text =
-            fs::read_to_string(root.join("contracts/evidence").join(projection))
-                .map_err(|err| EvidenceError::new(format!("failed to read {projection}: {err}")))?;
-        let committed: Value = serde_json::from_str(&committed_text)
-            .map_err(|err| EvidenceError::new(format!("invalid committed {projection}: {err}")))?;
+        let exported: ::serde_json::Value =
+            serde_json::from_slice(&output.stdout).map_err(|err| {
+                crate::EvidenceError::new(format!("Nickel export for {source} is not JSON: {err}"))
+            })?;
+        let committed_text = ::std::fs::read_to_string(
+            root.join("contracts/evidence").join(projection),
+        )
+        .map_err(|err| crate::EvidenceError::new(format!("failed to read {projection}: {err}")))?;
+        let committed: ::serde_json::Value =
+            serde_json::from_str(&committed_text).map_err(|err| {
+                crate::EvidenceError::new(format!("invalid committed {projection}: {err}"))
+            })?;
         ensure(
             exported == committed,
             format!("stale Nickel projection: {projection}"),
         )?;
         if source == "examples/typed-operator-command.ncl" {
             crate::typed_operator_command::parse_plan(&exported).map_err(|error| {
-                EvidenceError::new(format!("typed operator DTO projection is invalid: {error}"))
+                crate::EvidenceError::new(format!(
+                    "typed operator DTO projection is invalid: {error}"
+                ))
             })?;
         }
     }
@@ -345,7 +353,7 @@ pub fn run_nickel_examples(root: impl AsRef<std::path::Path>) -> EvidenceResult<
             .stderr(std::process::Stdio::null())
             .status()
             .map_err(|err| {
-                EvidenceError::new(format!(
+                crate::EvidenceError::new(format!(
                     "failed to run negative Nickel export for {rel}: {err}"
                 ))
             })?;
@@ -369,7 +377,7 @@ fn command_exists(name: &str) -> bool {
     std::env::split_paths(&paths).any(|dir| dir.join(name).is_file())
 }
 
-pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
+pub fn validate_run_config(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     ensure(value.is_object(), "run-config: expected object")?;
     for key in [
         "schema_version",
@@ -398,7 +406,7 @@ pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
     Ok(())
 }
 
-pub fn validate_artifact_hash(value: &Value) -> EvidenceResult<()> {
+pub fn validate_artifact_hash(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
         value,
         &["path", "sha256"],
@@ -412,22 +420,22 @@ pub fn validate_artifact_hash(value: &Value) -> EvidenceResult<()> {
     )
 }
 
-pub fn validate_snapshot_ref(value: &Value) -> EvidenceResult<()> {
+pub fn validate_snapshot_ref(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     validate_snapshot_ref_with_root(value, std::path::Path::new("."), false)
 }
 
 pub fn validate_snapshot_ref_with_root(
-    value: &Value,
+    value: &::serde_json::Value,
     root: &std::path::Path,
     check_files: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
         value,
         &["store", "digest", "codec", "schema_version", "path"],
         "snapshot-ref",
     )?;
     ensure(
-        value.get("store").and_then(Value::as_str) == Some("file-content-addressed"),
+        value.get("store").and_then(::serde_json::Value::as_str) == Some("file-content-addressed"),
         "snapshot-ref.store: expected file-content-addressed",
     )?;
     let digest = require_str(value.get("digest"), "snapshot-ref.digest")?;
@@ -438,15 +446,15 @@ pub fn validate_snapshot_ref_with_root(
     ensure(
         value
             .get("codec")
-            .and_then(Value::as_str)
-            .is_some_and(|codec| SUPPORTED_SNAPSHOT_CODECS.contains(&codec)),
+            .and_then(::serde_json::Value::as_str)
+            .is_some_and(|codec| crate::SUPPORTED_SNAPSHOT_CODECS.contains(&codec)),
         "snapshot-ref.codec: unsupported",
     )?;
     ensure(
         value
             .get("schema_version")
-            .and_then(Value::as_u64)
-            .is_some_and(|version| SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.contains(&version)),
+            .and_then(::serde_json::Value::as_u64)
+            .is_some_and(|version| crate::SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS.contains(&version)),
         "snapshot-ref.schema_version: unsupported",
     )?;
     let path_value = require_str(value.get("path"), "snapshot-ref.path")?;
@@ -471,7 +479,7 @@ pub fn validate_snapshot_ref_with_root(
         )?;
         ensure(
             full.metadata()
-                .map_err(|err| EvidenceError::new(format!("I/O error: {err}")))?
+                .map_err(|err| crate::EvidenceError::new(format!("I/O error: {err}")))?
                 .len()
                 > 0,
             format!("snapshot artifact empty: {path_value}"),
@@ -480,7 +488,7 @@ pub fn validate_snapshot_ref_with_root(
     Ok(())
 }
 
-pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
+pub fn validate_bug_report(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
         value,
         &[
@@ -510,14 +518,14 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
     }
     if value
         .get("replay_parent_depth")
-        .and_then(Value::as_f64)
+        .and_then(::serde_json::Value::as_f64)
         .unwrap_or(0.0)
         > 0.0
     {
         ensure(
             !value
                 .get("replay_parent_snapshot_ref")
-                .is_none_or(Value::is_null),
+                .is_none_or(::serde_json::Value::is_null),
             "bug-report.replay_parent_snapshot_ref: required when replay_parent_depth > 0",
         )?;
     }
@@ -533,7 +541,7 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
     )?;
     let schedule = value
         .get("schedule")
-        .ok_or_else(|| EvidenceError::new("bug-report.schedule: expected object"))?;
+        .ok_or_else(|| crate::EvidenceError::new("bug-report.schedule: expected object"))?;
     crate::assertion_evidence_carrier::require_only_fields(
         schedule,
         &["faults"],
@@ -541,15 +549,17 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
     )?;
     let faults = schedule
         .get("faults")
-        .ok_or_else(|| EvidenceError::new("bug-report.schedule.faults: expected list"))?;
+        .ok_or_else(|| crate::EvidenceError::new("bug-report.schedule.faults: expected list"))?;
     ensure(
         faults.is_array(),
         "bug-report.schedule.faults: expected list",
     )?;
     let assertion_id = value
         .get("assertion_id")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| EvidenceError::new("bug-report.assertion_id: expected unsigned integer"))?;
+        .and_then(::serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("bug-report.assertion_id: expected unsigned integer")
+        })?;
     crate::assertion_evidence_carrier::optional_identity(
         value,
         "assertion_identity",
@@ -560,12 +570,14 @@ pub fn validate_bug_report(value: &Value) -> EvidenceResult<()> {
     Ok(())
 }
 
-pub fn validate_bug_report_for_replay(value: &Value) -> EvidenceResult<()> {
+pub fn validate_bug_report_for_replay(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     validate_bug_report(value)?;
     let assertion_id = value
         .get("assertion_id")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| EvidenceError::new("bug-report.assertion_id: expected unsigned integer"))?;
+        .and_then(::serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("bug-report.assertion_id: expected unsigned integer")
+        })?;
     crate::assertion_evidence_carrier::optional_identity(
         value,
         "assertion_identity",
@@ -576,8 +588,8 @@ pub fn validate_bug_report_for_replay(value: &Value) -> EvidenceResult<()> {
     let faults = value
         .get("schedule")
         .and_then(|schedule| schedule.get("faults"))
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("bug-report.schedule.faults: expected list"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| crate::EvidenceError::new("bug-report.schedule.faults: expected list"))?;
     ensure(
         !faults.is_empty(),
         "bug-report.schedule.faults: expected at least one fault for replay",
@@ -585,16 +597,21 @@ pub fn validate_bug_report_for_replay(value: &Value) -> EvidenceResult<()> {
     Ok(())
 }
 
-pub fn validate_assertion_summary(value: &Value) -> EvidenceResult<()> {
+pub fn validate_assertion_summary(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     crate::assertion_summary_identity::validate(value, false).map(|_| ())
 }
 
-pub fn validate_assertion_summary_for_promotion(value: &Value) -> EvidenceResult<()> {
+pub fn validate_assertion_summary_for_promotion(
+    value: &::serde_json::Value,
+) -> crate::EvidenceResult<()> {
     crate::assertion_summary_identity::validate(value, true).map(|_| ())
 }
 
-pub fn validate_checkpoint_reference(value: Option<&Value>) -> EvidenceResult<()> {
-    let value = value.ok_or_else(|| EvidenceError::new("checkpoint-reference: expected object"))?;
+pub fn validate_checkpoint_reference(
+    value: Option<&::serde_json::Value>,
+) -> crate::EvidenceResult<()> {
+    let value =
+        value.ok_or_else(|| crate::EvidenceError::new("checkpoint-reference: expected object"))?;
     ensure(value.is_object(), "checkpoint-reference: expected object")?;
     for key in ["path", "digest", "kernel_path", "initrd_path"] {
         require_str(value.get(key), &format!("checkpoint-reference.{key}"))?;
@@ -603,30 +620,36 @@ pub fn validate_checkpoint_reference(value: Option<&Value>) -> EvidenceResult<()
     Ok(())
 }
 
-pub fn validate_replay_verdict(value: &Value) -> EvidenceResult<()> {
+pub fn validate_replay_verdict(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     validate_replay_verdict_with_options(value, false, false, std::path::Path::new("."))?;
     // Public evidence boundary: committed verdicts must publish confined
     // relative paths. Local replay tooling (absolute paths) uses
     // validate_replay_verdict_with_options directly.
-    if value.get("schema_version").and_then(Value::as_u64)
+    if value
+        .get("schema_version")
+        .and_then(::serde_json::Value::as_u64)
         == Some(crate::REPLAY_VERDICT_SCHEMA_VERSION)
     {
         let core_verdict: chaoscontrol_replay_evidence_core::dto::ReplayVerdict =
             serde_json::from_value(value.clone()).map_err(|error| {
-                EvidenceError::new(format!("replay-verdict: shared core DTO mismatch: {error}"))
+                crate::EvidenceError::new(format!(
+                    "replay-verdict: shared core DTO mismatch: {error}"
+                ))
             })?;
         chaoscontrol_replay_evidence_core::validate::validate_public_verdict_paths(&core_verdict)
-            .map_err(|error| EvidenceError::new(format!("replay-verdict: {}", error.message())))?;
+            .map_err(|error| {
+            crate::EvidenceError::new(format!("replay-verdict: {}", error.message()))
+        })?;
     }
     Ok(())
 }
 
 pub fn validate_replay_verdict_with_options(
-    value: &Value,
+    value: &::serde_json::Value,
     accepted_snapshot_proof: bool,
     check_files: bool,
     root: &std::path::Path,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     crate::assertion_evidence_carrier::require_only_fields(
         value,
         &[
@@ -648,8 +671,10 @@ pub fn validate_replay_verdict_with_options(
     )?;
     let schema_version = value
         .get("schema_version")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| EvidenceError::new("replay-verdict.schema_version: expected integer"))?;
+        .and_then(::serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("replay-verdict.schema_version: expected integer")
+        })?;
     ensure(
         matches!(
             schema_version,
@@ -668,11 +693,11 @@ pub fn validate_replay_verdict_with_options(
     )?;
     let reproduced = value
         .get("reproduced")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| EvidenceError::new("replay-verdict.reproduced: expected bool"))?;
+        .and_then(::serde_json::Value::as_bool)
+        .ok_or_else(|| crate::EvidenceError::new("replay-verdict.reproduced: expected bool"))?;
     let command = value
         .get("command")
-        .ok_or_else(|| EvidenceError::new("replay-verdict.command: expected object"))?;
+        .ok_or_else(|| crate::EvidenceError::new("replay-verdict.command: expected object"))?;
     crate::assertion_evidence_carrier::require_only_fields(
         command,
         &["command", "exit_status"],
@@ -681,14 +706,14 @@ pub fn validate_replay_verdict_with_options(
     require_str(command.get("command"), "replay-verdict.command.command")?;
     let exit_status = command
         .get("exit_status")
-        .and_then(Value::as_i64)
+        .and_then(::serde_json::Value::as_i64)
         .ok_or_else(|| {
-            EvidenceError::new("replay-verdict.command.exit_status: expected integer")
+            crate::EvidenceError::new("replay-verdict.command.exit_status: expected integer")
         })?;
     require_str(value.get("diagnostic"), "replay-verdict.diagnostic")?;
     let snapshot = value
         .get("snapshot")
-        .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot: expected object"))?;
+        .ok_or_else(|| crate::EvidenceError::new("replay-verdict.snapshot: expected object"))?;
     crate::assertion_evidence_carrier::require_only_fields(
         snapshot,
         &[
@@ -702,26 +727,33 @@ pub fn validate_replay_verdict_with_options(
     )?;
     let snapshot_status = snapshot
         .get("status")
-        .and_then(Value::as_str)
-        .filter(|status| SNAPSHOT_STATUSES.contains(status))
-        .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot.status: invalid"))?;
+        .and_then(::serde_json::Value::as_str)
+        .filter(|status| {
+            ::chaoscontrol_replay_evidence_core::validate::SNAPSHOT_STATUSES.contains(status)
+        })
+        .ok_or_else(|| crate::EvidenceError::new("replay-verdict.snapshot.status: invalid"))?;
     let snapshot_present = snapshot
         .get("present")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| EvidenceError::new("replay-verdict.snapshot.present: expected bool"))?;
+        .and_then(::serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("replay-verdict.snapshot.present: expected bool")
+        })?;
     let digest_verified = snapshot
         .get("digest_verified")
-        .and_then(Value::as_bool)
+        .and_then(::serde_json::Value::as_bool)
         .ok_or_else(|| {
-            EvidenceError::new("replay-verdict.snapshot.digest_verified: expected bool")
+            crate::EvidenceError::new("replay-verdict.snapshot.digest_verified: expected bool")
         })?;
     let snapshot_reference = snapshot.get("reference").filter(|value| !value.is_null());
     if let Some(reference) = snapshot_reference {
         validate_snapshot_ref(reference)?;
         if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
             ensure(
-                reference.get("codec").and_then(Value::as_str) == Some(ACCEPTED_SNAPSHOT_CODEC)
-                    && reference.get("schema_version").and_then(Value::as_u64)
+                reference.get("codec").and_then(::serde_json::Value::as_str)
+                    == Some(ACCEPTED_SNAPSHOT_CODEC)
+                    && reference
+                        .get("schema_version")
+                        .and_then(::serde_json::Value::as_u64)
                         == Some(ACCEPTED_SNAPSHOT_SCHEMA_VERSION),
                 "v2 replay verdict requires the current CBOR v2 snapshot codec",
             )?;
@@ -740,14 +772,16 @@ pub fn validate_replay_verdict_with_options(
     )?;
     let hashes = value
         .get("artifact_hashes")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("replay-verdict.artifact_hashes: expected list"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("replay-verdict.artifact_hashes: expected list")
+        })?;
     let mut artifact_paths = std::collections::BTreeSet::new();
     for item in hashes {
         validate_artifact_hash(item)?;
-        let artifact_path = item["path"]
-            .as_str()
-            .ok_or_else(|| EvidenceError::new("replay-verdict artifact path must be a string"))?;
+        let artifact_path = item["path"].as_str().ok_or_else(|| {
+            crate::EvidenceError::new("replay-verdict artifact path must be a string")
+        })?;
         ensure(
             artifact_paths.insert(artifact_path),
             format!("replay-verdict duplicate artifact path: {artifact_path}"),
@@ -766,7 +800,7 @@ pub fn validate_replay_verdict_with_options(
                 let (digest, _) = crate::snapshot_artifact_sha256(root, &path)?;
                 format!("sha256:{digest}")
             } else {
-                return Err(EvidenceError::new(format!(
+                return Err(crate::EvidenceError::new(format!(
                     "replay-verdict artifact missing: {path_str}"
                 )));
             };
@@ -778,9 +812,11 @@ pub fn validate_replay_verdict_with_options(
     }
     let bug_core_field_count = ["bug_path", "bug_id", "assertion_id", "replay_parent_depth"]
         .iter()
-        .filter(|field| !value.get(**field).is_none_or(Value::is_null))
+        .filter(|field| !value.get(**field).is_none_or(::serde_json::Value::is_null))
         .count();
-    let has_identity = !value.get("assertion_identity").is_none_or(Value::is_null);
+    let has_identity = !value
+        .get("assertion_identity")
+        .is_none_or(::serde_json::Value::is_null);
     let has_bug_binding = bug_core_field_count == REPLAY_BUG_CORE_FIELD_COUNT
         && (schema_version == LEGACY_REPLAY_VERDICT_SCHEMA_VERSION || has_identity);
     let binding_shape_valid = has_bug_binding || (bug_core_field_count == 0 && !has_identity);
@@ -794,9 +830,9 @@ pub fn validate_replay_verdict_with_options(
         require_num(value.get("assertion_id"), "replay-verdict.assertion_id")?;
         let depth = value
             .get("replay_parent_depth")
-            .and_then(Value::as_u64)
+            .and_then(::serde_json::Value::as_u64)
             .ok_or_else(|| {
-                EvidenceError::new("replay-verdict.replay_parent_depth: expected integer")
+                crate::EvidenceError::new("replay-verdict.replay_parent_depth: expected integer")
             })?;
         if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
             validate_replay_assertion_identity(value)?;
@@ -831,11 +867,17 @@ pub fn validate_replay_verdict_with_options(
             ),
         )?;
         ensure(
-            value.get("reproduced").and_then(Value::as_bool) == Some(true),
+            value
+                .get("reproduced")
+                .and_then(::serde_json::Value::as_bool)
+                == Some(true),
             "accepted replay proof requires reproduced=true",
         )?;
         ensure(
-            command.get("exit_status").and_then(Value::as_i64) == Some(0),
+            command
+                .get("exit_status")
+                .and_then(::serde_json::Value::as_i64)
+                == Some(0),
             "accepted replay proof requires command.exit_status=0",
         )?;
         require_num(
@@ -849,21 +891,26 @@ pub fn validate_replay_verdict_with_options(
         ensure(
             value
                 .get("replay_parent_depth")
-                .and_then(Value::as_f64)
+                .and_then(::serde_json::Value::as_f64)
                 .unwrap_or(0.0)
                 > 0.0,
             "accepted replay proof requires replay_parent_depth > 0",
         )?;
         ensure(
-            snapshot.get("status").and_then(Value::as_str) == Some("valid"),
+            snapshot.get("status").and_then(::serde_json::Value::as_str) == Some("valid"),
             "accepted replay proof requires valid snapshot",
         )?;
         ensure(
-            snapshot.get("digest_verified").and_then(Value::as_bool) == Some(true),
+            snapshot
+                .get("digest_verified")
+                .and_then(::serde_json::Value::as_bool)
+                == Some(true),
             "accepted replay proof requires snapshot digest verification",
         )?;
         ensure(
-            !snapshot.get("reference").is_none_or(Value::is_null),
+            !snapshot
+                .get("reference")
+                .is_none_or(::serde_json::Value::is_null),
             "accepted replay proof requires snapshot reference",
         )?;
         ensure(
@@ -874,7 +921,7 @@ pub fn validate_replay_verdict_with_options(
         )?;
         let bug_path = require_str(value.get("bug_path"), "accepted replay proof bug_path")?;
         let reference = snapshot_reference.ok_or_else(|| {
-            EvidenceError::new("accepted replay proof requires snapshot reference")
+            crate::EvidenceError::new("accepted replay proof requires snapshot reference")
         })?;
         let reference_path = require_str(
             reference.get("path"),
@@ -885,8 +932,11 @@ pub fn validate_replay_verdict_with_options(
             "accepted replay proof snapshot reference digest",
         )?;
         ensure(
-            reference.get("codec").and_then(Value::as_str) == Some(ACCEPTED_SNAPSHOT_CODEC)
-                && reference.get("schema_version").and_then(Value::as_u64)
+            reference.get("codec").and_then(::serde_json::Value::as_str)
+                == Some(ACCEPTED_SNAPSHOT_CODEC)
+                && reference
+                    .get("schema_version")
+                    .and_then(::serde_json::Value::as_u64)
                     == Some(ACCEPTED_SNAPSHOT_SCHEMA_VERSION),
             "accepted replay proof requires the current CBOR v2 snapshot codec",
         )?;
@@ -905,11 +955,14 @@ pub fn validate_replay_verdict_with_options(
         let snapshot_hash = hashes
             .iter()
             .find(|hash| {
-                hash.get("path").and_then(Value::as_str) == Some(snapshot_artifact_path.as_str())
+                hash.get("path").and_then(::serde_json::Value::as_str)
+                    == Some(snapshot_artifact_path.as_str())
             })
             .and_then(|hash| hash.get("sha256"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| EvidenceError::new("accepted replay proof snapshot hash is missing"))?;
+            .and_then(::serde_json::Value::as_str)
+            .ok_or_else(|| {
+                crate::EvidenceError::new("accepted replay proof snapshot hash is missing")
+            })?;
         ensure(
             snapshot_hash == reference_digest,
             "accepted replay proof snapshot hash differs from its reference",
@@ -920,14 +973,18 @@ pub fn validate_replay_verdict_with_options(
     if schema_version == crate::REPLAY_VERDICT_SCHEMA_VERSION {
         let core_verdict: chaoscontrol_replay_evidence_core::dto::ReplayVerdict =
             serde_json::from_value(value.clone()).map_err(|error| {
-                EvidenceError::new(format!("replay-verdict: shared core DTO mismatch: {error}"))
+                crate::EvidenceError::new(format!(
+                    "replay-verdict: shared core DTO mismatch: {error}"
+                ))
             })?;
         chaoscontrol_replay_evidence_core::validate::validate_verdict_consistency(&core_verdict)
-            .map_err(|error| EvidenceError::new(format!("replay-verdict: {}", error.message())))?;
+            .map_err(|error| {
+                crate::EvidenceError::new(format!("replay-verdict: {}", error.message()))
+            })?;
         if accepted_snapshot_proof {
             chaoscontrol_replay_evidence_core::validate::validate_accepted_proof(&core_verdict)
                 .map_err(|error| {
-                    EvidenceError::new(format!("replay-verdict: {}", error.message()))
+                    crate::EvidenceError::new(format!("replay-verdict: {}", error.message()))
                 })?;
         }
     }
@@ -942,10 +999,10 @@ struct ReplaySemanticFacts<'a> {
     has_bug_binding: bool,
     replay_parent_depth: Option<u64>,
     snapshot_status: &'a str,
-    artifact_hashes: &'a [Value],
+    artifact_hashes: &'a [::serde_json::Value],
 }
 
-fn validate_replay_semantics(facts: ReplaySemanticFacts<'_>) -> EvidenceResult<()> {
+fn validate_replay_semantics(facts: ReplaySemanticFacts<'_>) -> crate::EvidenceResult<()> {
     let ReplaySemanticFacts {
         replay_class,
         reproduced,
@@ -1031,14 +1088,16 @@ fn validate_replay_semantics(facts: ReplaySemanticFacts<'_>) -> EvidenceResult<(
     ensure(valid, "replay-verdict class fields conflict")
 }
 
-fn validate_replay_assertion_identity(value: &Value) -> EvidenceResult<()> {
+fn validate_replay_assertion_identity(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     let assertion_id = value
         .get("assertion_id")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| EvidenceError::new("replay-verdict.assertion_id: expected integer"))?;
-    let identity_value = value
-        .get("assertion_identity")
-        .ok_or_else(|| EvidenceError::new("replay-verdict.assertion_identity: required for v2"))?;
+        .and_then(::serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("replay-verdict.assertion_id: expected integer")
+        })?;
+    let identity_value = value.get("assertion_identity").ok_or_else(|| {
+        crate::EvidenceError::new("replay-verdict.assertion_identity: required for v2")
+    })?;
     ensure(
         !identity_value.is_null(),
         "replay-verdict.assertion_identity: null is invalid",
@@ -1047,28 +1106,28 @@ fn validate_replay_assertion_identity(value: &Value) -> EvidenceResult<()> {
         chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
     >(identity_value.clone())
     .map_err(|error| {
-        EvidenceError::new(format!(
+        crate::EvidenceError::new(format!(
             "replay-verdict.assertion_identity: invalid carrier: {error}"
         ))
     })?;
     identity
         .validate_compatibility_alias(assertion_id)
         .map_err(|error| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "replay-verdict.assertion_identity: invalid identity: {error:?}"
             ))
         })
 }
 
-pub fn validate_receipt(value: &Value) -> EvidenceResult<()> {
+pub fn validate_receipt(value: &::serde_json::Value) -> crate::EvidenceResult<()> {
     validate_receipt_with_root(value, std::path::Path::new("."), false)
 }
 
 pub fn validate_receipt_with_root(
-    value: &Value,
+    value: &::serde_json::Value,
     root: &std::path::Path,
     check_files: bool,
-) -> EvidenceResult<()> {
+) -> crate::EvidenceResult<()> {
     ensure(value.is_object(), "receipt: expected object")?;
     for key in [
         "schema_version",
@@ -1084,8 +1143,10 @@ pub fn validate_receipt_with_root(
     require_status(value.get("acceptance_status"), "receipt.acceptance_status")?;
     let artifacts = value
         .get("artifact_hashes")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("receipt.artifact_hashes: expected non-empty list"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| {
+            crate::EvidenceError::new("receipt.artifact_hashes: expected non-empty list")
+        })?;
     ensure(
         !artifacts.is_empty(),
         "receipt.artifact_hashes: expected non-empty list",
@@ -1110,7 +1171,7 @@ pub fn validate_receipt_with_root(
     }
     let coverage = value
         .get("assertion_coverage")
-        .ok_or_else(|| EvidenceError::new("receipt.assertion_coverage: expected object"))?;
+        .ok_or_else(|| crate::EvidenceError::new("receipt.assertion_coverage: expected object"))?;
     ensure(
         coverage.is_object(),
         "receipt.assertion_coverage: expected object",
@@ -1131,8 +1192,8 @@ pub fn validate_receipt_with_root(
     )?;
     let bugs = value
         .get("bug_reports")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("receipt.bug_reports: expected list"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| crate::EvidenceError::new("receipt.bug_reports: expected list"))?;
     for (idx, bug) in bugs.iter().enumerate() {
         require_str(bug.get("path"), &format!("receipt.bug_reports[{idx}].path"))?;
         require_num(
@@ -1146,15 +1207,15 @@ pub fn validate_receipt_with_root(
         )?;
         let depth = bug
             .get("replay_parent_depth")
-            .and_then(Value::as_f64)
+            .and_then(::serde_json::Value::as_f64)
             .unwrap_or(0.0);
         let context = bug
             .get("replay_context")
-            .and_then(Value::as_str)
+            .and_then(::serde_json::Value::as_str)
             .unwrap_or("");
         if depth > 0.0 || context.starts_with("parent-snapshot-required") {
             ensure(
-                !bug.get("replay_parent_snapshot_ref").is_none_or(Value::is_null),
+                !bug.get("replay_parent_snapshot_ref").is_none_or(::serde_json::Value::is_null),
                 format!("receipt.bug_reports[{idx}].replay_parent_snapshot_ref: required for parent snapshot replay"),
             )?;
         }
@@ -1183,7 +1244,7 @@ pub fn validate_receipt_with_root(
             &format!("receipt.bug_reports[{idx}].replay_status"),
         )?;
         let replay = bug.get("replay_attempt").ok_or_else(|| {
-            EvidenceError::new(format!(
+            crate::EvidenceError::new(format!(
                 "receipt.bug_reports[{idx}].replay_attempt: expected object"
             ))
         })?;
@@ -1207,21 +1268,25 @@ pub fn validate_receipt_with_root(
     validate_checkpoint_reference(value.get("checkpoint_reference"))?;
     let raw_logs = value
         .get("raw_logs")
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new("receipt.raw_logs: expected list"))?;
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| crate::EvidenceError::new("receipt.raw_logs: expected list"))?;
     for log in raw_logs {
         ensure(
-            log.get("policy").and_then(Value::as_str) == Some("debug-only-excluded-from-git"),
+            log.get("policy").and_then(::serde_json::Value::as_str)
+                == Some("debug-only-excluded-from-git"),
             "raw log policy must keep logs debug-only/excluded",
         )?;
     }
     Ok(())
 }
 
-pub fn validate_markdown_receipt(data: &Value, dogfood: &std::path::Path) -> EvidenceResult<()> {
+pub fn validate_markdown_receipt(
+    data: &::serde_json::Value,
+    dogfood: &std::path::Path,
+) -> crate::EvidenceResult<()> {
     let md_path = dogfood.join("receipt.md");
     let md = std::fs::read_to_string(&md_path).map_err(|err| {
-        EvidenceError::new(format!("{}: invalid receipt.md: {err}", md_path.display()))
+        crate::EvidenceError::new(format!("{}: invalid receipt.md: {err}", md_path.display()))
     })?;
     let run_id = require_str(data.get("run_id"), "receipt.run_id")?;
     ensure(
@@ -1245,67 +1310,73 @@ pub fn validate_markdown_receipt(data: &Value, dogfood: &std::path::Path) -> Evi
     Ok(())
 }
 
-fn load_json(path: &std::path::Path) -> EvidenceResult<Value> {
+fn load_json(path: &std::path::Path) -> crate::EvidenceResult<::serde_json::Value> {
     let text = crate::bounded_file::read_bounded_regular_file(path, MAX_EVIDENCE_JSON_BYTES)?;
     crate::json_preflight::preflight_json(&text, crate::json_preflight::QUALITY_REPORT_LIMITS)?;
-    serde_json::from_str(&text)
-        .map_err(|err| EvidenceError::new(format!("{}: invalid JSON: {err}", path.display())))
+    serde_json::from_str(&text).map_err(|err| {
+        crate::EvidenceError::new(format!("{}: invalid JSON: {err}", path.display()))
+    })
 }
 
 fn expect_invalid(
     path: &std::path::Path,
-    validator: impl FnOnce(&Value) -> EvidenceResult<()>,
-) -> EvidenceResult<()> {
+    validator: impl FnOnce(&::serde_json::Value) -> crate::EvidenceResult<()>,
+) -> crate::EvidenceResult<()> {
     let value = load_json(path)?;
     if validator(&value).is_err() {
         Ok(())
     } else {
-        Err(EvidenceError::new(format!(
+        Err(crate::EvidenceError::new(format!(
             "negative fixture unexpectedly passed: {}",
             path.display()
         )))
     }
 }
 
-fn require_str<'a>(value: Option<&'a Value>, label: &str) -> EvidenceResult<&'a str> {
+fn require_str<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    label: &str,
+) -> crate::EvidenceResult<&'a str> {
     let Some(value) = value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
     else {
-        return Err(EvidenceError::new(format!(
+        return Err(crate::EvidenceError::new(format!(
             "{label}: expected non-empty string"
         )));
     };
     Ok(value)
 }
 
-fn require_num(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
+fn require_num(value: Option<&::serde_json::Value>, label: &str) -> crate::EvidenceResult<()> {
     ensure(
-        value.is_some_and(Value::is_number),
+        value.is_some_and(::serde_json::Value::is_number),
         format!("{label}: expected number"),
     )
 }
 
-fn require_pos_int(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
+fn require_pos_int(value: Option<&::serde_json::Value>, label: &str) -> crate::EvidenceResult<()> {
     ensure(
-        value.and_then(Value::as_u64).is_some_and(|value| value > 0),
+        value
+            .and_then(::serde_json::Value::as_u64)
+            .is_some_and(|value| value > 0),
         format!("{label}: expected positive integer"),
     )
 }
 
-fn require_status(value: Option<&Value>, label: &str) -> EvidenceResult<()> {
-    let status = value.and_then(Value::as_str).unwrap_or("");
+fn require_status(value: Option<&::serde_json::Value>, label: &str) -> crate::EvidenceResult<()> {
+    let status = value.and_then(::serde_json::Value::as_str).unwrap_or("");
     ensure(
         STATUSES.contains(&status),
         format!("{label}: expected one of {:?}", sorted(STATUSES)),
     )
 }
 
-fn ensure(condition: bool, message: impl Into<String>) -> EvidenceResult<()> {
+fn ensure(condition: bool, message: impl Into<String>) -> crate::EvidenceResult<()> {
     if condition {
         Ok(())
     } else {
-        Err(EvidenceError::new(message))
+        Err(crate::EvidenceError::new(message))
     }
 }
 
@@ -1317,13 +1388,13 @@ fn is_safe_snapshot_path(path: &std::path::Path) -> bool {
     !path.is_absolute()
         && path
             .components()
-            .all(|component| !matches!(component, Component::ParentDir))
-        && path.components().next() == Some(Component::Normal("snapshots".as_ref()))
+            .all(|component| !matches!(component, ::std::path::Component::ParentDir))
+        && path.components().next() == Some(::std::path::Component::Normal("snapshots".as_ref()))
 }
 
-fn sha256_file(path: &std::path::Path, maximum_bytes: u64) -> EvidenceResult<String> {
+fn sha256_file(path: &std::path::Path, maximum_bytes: u64) -> crate::EvidenceResult<String> {
     let bytes = crate::bounded_file::read_bounded_regular_bytes(path, maximum_bytes)?;
-    let digest = Sha256::digest(&bytes);
+    let digest = ::sha2::Sha256::digest(&bytes);
     Ok(format!("sha256:{digest:x}"))
 }
 

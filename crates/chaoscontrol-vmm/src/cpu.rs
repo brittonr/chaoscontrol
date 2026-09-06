@@ -39,9 +39,6 @@
 //! vtsc.tick();
 //! ```
 
-use kvm_bindings::{kvm_cpuid_entry2, CpuId, KVM_MAX_CPUID_ENTRIES};
-use kvm_ioctls::{Kvm, VcpuFd};
-use log::info;
 use snafu::{ResultExt, Snafu};
 
 // ─── CPUID leaf constants ────────────────────────────────────────────
@@ -313,11 +310,14 @@ impl Default for CpuConfig {
 /// | 0x80000001 | RDTSCP |
 /// | 0x80000007 | Invariant-TSC advertisement |
 ///
-/// The returned [`CpuId`] should be applied to a vCPU with
-/// [`VcpuFd::set_cpuid2`] before the first `vcpu.run()`.
-pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
+/// Apply the returned [`CpuId`](kvm_bindings::CpuId) to a vCPU with
+/// [`VcpuFd::set_cpuid2`](kvm_ioctls::VcpuFd::set_cpuid2) before the first `vcpu.run()`.
+pub fn filter_cpuid(
+    kvm: &::kvm_ioctls::Kvm,
+    config: &CpuConfig,
+) -> Result<::kvm_bindings::CpuId, CpuError> {
     let mut cpuid = kvm
-        .get_supported_cpuid(KVM_MAX_CPUID_ENTRIES)
+        .get_supported_cpuid(::kvm_bindings::KVM_MAX_CPUID_ENTRIES)
         .context(GetCpuidSnafu)?;
 
     let mut modified = 0u32;
@@ -341,8 +341,8 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
     // non-deterministic PIT-based calibration.
     if !has_leaf_15 {
         let (denominator, numerator) = tsc_crystal_ratio(config.tsc_khz);
-        let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
-        entries.push(kvm_cpuid_entry2 {
+        let mut entries: Vec<::kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+        entries.push(::kvm_bindings::kvm_cpuid_entry2 {
             function: CPUID_LEAF_TSC_INFO,
             index: 0,
             flags: 0,
@@ -352,20 +352,26 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
             edx: 0,
             padding: [0; 3],
         });
-        cpuid = CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
+        cpuid = ::kvm_bindings::CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
             source: kvm_ioctls::Error::new(libc::ENOMEM),
         })?;
         modified += 1;
-        info!(
+        ::log::info!(
             "Injected CPUID leaf 0x15: crystal={}Hz, ratio={}/{}",
-            CRYSTAL_CLOCK_HZ, numerator, denominator,
+            CRYSTAL_CLOCK_HZ,
+            numerator,
+            denominator,
         );
     }
 
-    info!(
+    ::log::info!(
         "CPUID filtered: {} leaves modified \
          (tsc_khz={}, avx2={}, avx512={}, hide_hv={})",
-        modified, config.tsc_khz, config.allow_avx2, config.allow_avx512, config.hide_hypervisor,
+        modified,
+        config.tsc_khz,
+        config.allow_avx2,
+        config.allow_avx512,
+        config.hide_hypervisor,
     );
 
     Ok(cpuid)
@@ -386,8 +392,12 @@ pub fn filter_cpuid(kvm: &Kvm, config: &CpuConfig) -> Result<CpuId, CpuError> {
 /// | 0x1  | EBX\[23:16\] | Max addressable logical processor IDs |
 /// | 0xB (all sub-leaves) | EDX | x2APIC ID |
 /// | 0x1F (all sub-leaves) | EDX | x2APIC ID |
-pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Result<CpuId, CpuError> {
-    let mut entries: Vec<kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+pub fn patch_cpuid_apic_id(
+    cpuid: &::kvm_bindings::CpuId,
+    apic_id: u32,
+    num_vcpus: u32,
+) -> Result<::kvm_bindings::CpuId, CpuError> {
+    let mut entries: Vec<::kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
     for entry in entries.iter_mut() {
         match entry.function {
             CPUID_LEAF_FEATURES => {
@@ -406,7 +416,7 @@ pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Resul
             _ => {}
         }
     }
-    CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
+    ::kvm_bindings::CpuId::from_entries(&entries).map_err(|_| CpuError::GetCpuid {
         source: kvm_ioctls::Error::new(libc::ENOMEM),
     })
 }
@@ -419,11 +429,11 @@ pub fn patch_cpuid_apic_id(cpuid: &CpuId, apic_id: u32, num_vcpus: u32) -> Resul
 /// offset / multiplier mechanism.
 ///
 /// This should be called once per vCPU, before the first `vcpu.run()`.
-pub fn setup_tsc(vcpu: &VcpuFd, tsc_khz: u32) -> Result<(), CpuError> {
+pub fn setup_tsc(vcpu: &::kvm_ioctls::VcpuFd, tsc_khz: u32) -> Result<(), CpuError> {
     vcpu.set_tsc_khz(tsc_khz)
         .context(SetTscKhzSnafu { freq_khz: tsc_khz })?;
 
-    info!(
+    ::log::info!(
         "TSC pinned to {} kHz ({:.1} GHz)",
         tsc_khz,
         tsc_khz as f64 / 1_000_000.0,
@@ -652,7 +662,7 @@ pub struct VirtualTscSnapshot {
 /// Apply determinism filters to a single CPUID entry in place.
 ///
 /// Returns `true` if any register in the entry was modified.
-fn filter_entry(entry: &mut kvm_cpuid_entry2, config: &CpuConfig) -> bool {
+fn filter_entry(entry: &mut ::kvm_bindings::kvm_cpuid_entry2, config: &CpuConfig) -> bool {
     match entry.function {
         // ── Leaf 0x0: Vendor ID + max leaf ──────────────────────
         // When fixed_family is set to an Intel family (6), override the
@@ -892,8 +902,8 @@ mod tests {
         ebx: u32,
         ecx: u32,
         edx: u32,
-    ) -> kvm_cpuid_entry2 {
-        kvm_cpuid_entry2 {
+    ) -> ::kvm_bindings::kvm_cpuid_entry2 {
+        ::kvm_bindings::kvm_cpuid_entry2 {
             function,
             index,
             flags: 0,
@@ -1390,7 +1400,7 @@ mod tests {
     fn patch_apic_id_leaf1_initial_apic_id() {
         // Build a minimal CpuId with leaf 0x1 (EBX cleared to 0).
         let entries = vec![make_entry(0x1, 0, 0, 0x00FF_FFFF, 0, 0)];
-        let cpuid = CpuId::from_entries(&entries).unwrap();
+        let cpuid = ::kvm_bindings::CpuId::from_entries(&entries).unwrap();
 
         let patched = patch_cpuid_apic_id(&cpuid, 3, 4).unwrap();
         let e = &patched.as_slice()[0];
@@ -1410,7 +1420,7 @@ mod tests {
             make_entry(0xB, 0, 1, 1, 0x0100, 0),
             make_entry(0xB, 1, 4, 8, 0x0201, 0),
         ];
-        let cpuid = CpuId::from_entries(&entries).unwrap();
+        let cpuid = ::kvm_bindings::CpuId::from_entries(&entries).unwrap();
 
         let patched = patch_cpuid_apic_id(&cpuid, 5, 8).unwrap();
         let sl = patched.as_slice();
@@ -1424,7 +1434,7 @@ mod tests {
     #[test]
     fn patch_apic_id_leaf0x1f_edx() {
         let entries = vec![make_entry(0x1F, 0, 0, 0, 0, 0)];
-        let cpuid = CpuId::from_entries(&entries).unwrap();
+        let cpuid = ::kvm_bindings::CpuId::from_entries(&entries).unwrap();
 
         let patched = patch_cpuid_apic_id(&cpuid, 7, 8).unwrap();
         assert_eq!(patched.as_slice()[0].edx, 7);
@@ -1436,7 +1446,7 @@ mod tests {
             make_entry(0x1, 0, 0, 0, 0, 0),
             make_entry(0xB, 0, 0, 0, 0, 99),
         ];
-        let cpuid = CpuId::from_entries(&entries).unwrap();
+        let cpuid = ::kvm_bindings::CpuId::from_entries(&entries).unwrap();
 
         let patched = patch_cpuid_apic_id(&cpuid, 0, 2).unwrap();
         let sl = patched.as_slice();
@@ -1450,7 +1460,7 @@ mod tests {
             make_entry(0x7, 0, 0xAAAA, 0xBBBB, 0xCCCC, 0xDDDD),
             make_entry(0xB, 0, 1, 2, 3, 0),
         ];
-        let cpuid = CpuId::from_entries(&entries).unwrap();
+        let cpuid = ::kvm_bindings::CpuId::from_entries(&entries).unwrap();
 
         let patched = patch_cpuid_apic_id(&cpuid, 2, 4).unwrap();
         let sl = patched.as_slice();

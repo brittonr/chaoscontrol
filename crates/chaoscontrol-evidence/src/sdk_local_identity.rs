@@ -1,8 +1,3 @@
-use crate::{EvidenceError, EvidenceResult};
-use chaoscontrol_protocol::admission::{AcceptedCatalog, CatalogBuilder, CatalogValidationStatus};
-use serde_json::Value;
-use std::collections::BTreeMap;
-
 pub(crate) use crate::sdk_local_event::ResolvedLocalIdentity;
 
 pub const MAX_SDK_JSONL_BYTES: u64 = 16 * 1024 * 1024;
@@ -11,20 +6,22 @@ pub const MAX_SDK_JSONL_EVENTS: usize = 65_536;
 
 #[derive(Debug, Clone)]
 pub(crate) struct LocalIdentityValidation {
-    pub events: BTreeMap<usize, ResolvedLocalIdentity>,
-    pub catalog: BTreeMap<String, ResolvedLocalIdentity>,
-    pub catalog_status: CatalogValidationStatus,
+    pub events: ::std::collections::BTreeMap<usize, ResolvedLocalIdentity>,
+    pub catalog: ::std::collections::BTreeMap<String, ResolvedLocalIdentity>,
+    pub catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
     pub legacy_ambiguous: bool,
 }
 
 pub(crate) fn validate_local_identity_stream(
     content: &str,
-) -> EvidenceResult<LocalIdentityValidation> {
+) -> crate::EvidenceResult<LocalIdentityValidation> {
     if content.len() as u64 > MAX_SDK_JSONL_BYTES {
-        return Err(EvidenceError::new("SDK JSONL exceeds the input byte limit"));
+        return Err(crate::EvidenceError::new(
+            "SDK JSONL exceeds the input byte limit",
+        ));
     }
-    let mut builder: Option<CatalogBuilder> = None;
-    let mut accepted: Option<AcceptedCatalog> = None;
+    let mut builder: Option<::chaoscontrol_protocol::admission::CatalogBuilder> = None;
+    let mut accepted: Option<::chaoscontrol_protocol::admission::AcceptedCatalog> = None;
     let mut event_state = crate::sdk_local_event::LocalEventState::default();
     let mut event_count = 0_usize;
     for (line_index, raw_line) in content.lines().enumerate() {
@@ -37,16 +34,16 @@ pub(crate) fn validate_local_identity_stream(
         }
         crate::json_preflight::preflight_json(line, crate::json_preflight::JSONL_LINE_LIMITS)
             .map_err(|error| {
-                EvidenceError::new(format!("line {}: {}", line_index + 1, error.message()))
+                crate::EvidenceError::new(format!("line {}: {}", line_index + 1, error.message()))
             })?;
         event_count = event_count
             .checked_add(1)
-            .ok_or_else(|| EvidenceError::new("SDK JSONL event count overflow"))?;
+            .ok_or_else(|| crate::EvidenceError::new("SDK JSONL event count overflow"))?;
         if event_count > MAX_SDK_JSONL_EVENTS {
             return line_error(line_index, "event count exceeds the limit");
         }
-        let value: Value = serde_json::from_str(line).map_err(|error| {
-            EvidenceError::new(format!("invalid JSONL at line {}: {error}", line_index + 1))
+        let value: ::serde_json::Value = serde_json::from_str(line).map_err(|error| {
+            crate::EvidenceError::new(format!("invalid JSONL at line {}: {error}", line_index + 1))
         })?;
         let Some(object) = value.as_object() else {
             return line_error(line_index, "record must be an object");
@@ -69,7 +66,7 @@ pub(crate) fn validate_local_identity_stream(
         }
     }
     if builder.is_some() {
-        return Err(EvidenceError::new(
+        return Err(crate::EvidenceError::new(
             "assertion catalog is missing completion",
         ));
     }
@@ -77,12 +74,12 @@ pub(crate) fn validate_local_identity_stream(
     let catalog_status = accepted.as_ref().map_or_else(
         || {
             if legacy_ambiguous {
-                CatalogValidationStatus::LegacyAmbiguous
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
             } else {
-                CatalogValidationStatus::Pending
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
             }
         },
-        |_| CatalogValidationStatus::Accepted,
+        |_| ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted,
     );
     let catalog = accepted
         .as_ref()
@@ -96,7 +93,9 @@ pub(crate) fn validate_local_identity_stream(
     })
 }
 
-fn catalog_identities(catalog: &AcceptedCatalog) -> BTreeMap<String, ResolvedLocalIdentity> {
+fn catalog_identities(
+    catalog: &::chaoscontrol_protocol::admission::AcceptedCatalog,
+) -> ::std::collections::BTreeMap<String, ResolvedLocalIdentity> {
     catalog
         .assertions
         .values()
@@ -112,8 +111,8 @@ fn catalog_identities(catalog: &AcceptedCatalog) -> BTreeMap<String, ResolvedLoc
         .collect()
 }
 
-fn line_error<T>(line_index: usize, message: &str) -> EvidenceResult<T> {
-    Err(EvidenceError::new(format!(
+fn line_error<T>(line_index: usize, message: &str) -> crate::EvidenceResult<T> {
+    Err(crate::EvidenceError::new(format!(
         "line {}: {message}",
         line_index + 1
     )))

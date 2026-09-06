@@ -1,56 +1,52 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use serde_json::json;
+use sha2::Digest;
 
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-
-use crate::replay_readiness_core;
-use crate::replay_readiness_loader::load_json;
 use crate::replay_readiness_orchestration::unix_seconds;
-use crate::replay_readiness_publication::write_bytes;
+
 pub use crate::replay_readiness_render::{
     render_readme_status_block, README_END_MARKER, README_START_MARKER,
 };
-use crate::typed_operator_command::{command_display, parse_plan, CommandPlan};
-use crate::{ensure, EvidenceError, EvidenceResult};
+use crate::typed_operator_command::command_display;
 
-pub fn summarize_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    summarize_receipt(&load_json(path.as_ref())?)
+pub fn summarize_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    summarize_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
-pub fn summarize_receipt(receipt: &Value) -> EvidenceResult<String> {
-    replay_readiness_core::summarize_receipt(receipt)
+pub fn summarize_receipt(receipt: &::serde_json::Value) -> crate::EvidenceResult<String> {
+    crate::replay_readiness_core::summarize_receipt(receipt)
 }
 
 pub fn write_dashboard_path(
-    receipt_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<()> {
-    let receipt = load_json(receipt_path.as_ref())?;
+    receipt_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
+    let receipt = crate::replay_readiness_loader::load_json(receipt_path.as_ref())?;
     let summary = summarize_receipt(&receipt)?;
     let html = render_dashboard(&receipt, &summary)?;
-    write_bytes(output_path.as_ref(), html.as_bytes())
+    crate::replay_readiness_publication::write_bytes(output_path.as_ref(), html.as_bytes())
 }
 
 pub fn write_fleet_triage_index_path(
-    receipt_paths: &[impl AsRef<Path>],
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<()> {
+    receipt_paths: &[impl AsRef<::std::path::Path>],
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let html = render_fleet_triage_index_path(receipt_paths)?;
-    write_bytes(output_path.as_ref(), html.as_bytes())
+    crate::replay_readiness_publication::write_bytes(output_path.as_ref(), html.as_bytes())
 }
 
 pub fn render_fleet_triage_index_path(
-    receipt_paths: &[impl AsRef<Path>],
-) -> EvidenceResult<String> {
-    ensure(
+    receipt_paths: &[impl AsRef<::std::path::Path>],
+) -> crate::EvidenceResult<String> {
+    crate::ensure(
         !receipt_paths.is_empty(),
         "fleet triage index requires at least one replay-readiness receipt",
     )?;
     let mut entries = Vec::with_capacity(receipt_paths.len());
     for path in receipt_paths {
         let path = path.as_ref();
-        let receipt = load_json(path)?;
+        let receipt = crate::replay_readiness_loader::load_json(path)?;
         entries.push((
             path.display().to_string(),
             receipt,
@@ -60,8 +56,10 @@ pub fn render_fleet_triage_index_path(
     render_fleet_triage_index(&entries)
 }
 
-pub fn render_fleet_triage_index(entries: &[(String, Value, String)]) -> EvidenceResult<String> {
-    ensure(
+pub fn render_fleet_triage_index(
+    entries: &[(String, ::serde_json::Value, String)],
+) -> crate::EvidenceResult<String> {
+    crate::ensure(
         !entries.is_empty(),
         "fleet triage index requires at least one entry",
     )?;
@@ -120,7 +118,9 @@ code {{ background: rgba(127,127,127,.14); border-radius: .35rem; padding: .1rem
     ))
 }
 
-pub fn write_decision_receipt_path(output_path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_decision_receipt_path(
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let output_path = output_path.as_ref();
     let receipt = sample_decision_receipt();
     validate_decision_receipt(&receipt)?;
@@ -131,11 +131,15 @@ pub fn write_decision_receipt_path(output_path: impl AsRef<Path>) -> EvidenceRes
     Ok(())
 }
 
-pub fn validate_decision_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    validate_decision_receipt(&load_json(path.as_ref())?)
+pub fn validate_decision_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_decision_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
-pub fn write_scheduler_receipt_path(output_path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_scheduler_receipt_path(
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let output_path = output_path.as_ref();
     let receipt = sample_scheduler_receipt();
     validate_scheduler_receipt(&receipt)?;
@@ -146,42 +150,47 @@ pub fn write_scheduler_receipt_path(output_path: impl AsRef<Path>) -> EvidenceRe
     Ok(())
 }
 
-pub fn validate_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    validate_scheduler_receipt(&load_json(path.as_ref())?)
+pub fn validate_scheduler_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_scheduler_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
-pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_decision_receipt(receipt: &::serde_json::Value) -> crate::EvidenceResult<String> {
     let schema_version = int_field(receipt.get("schema_version"), "decision.schema_version")?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("decision.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "decision.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-decision-receipt",
         format!("decision.command: expected replay-readiness-decision-receipt, got {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "decision.status")?;
-    ensure(
+    crate::ensure(
         status == "recorded",
         format!("decision.status: unsupported value {status:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "decision.scope")?;
-    ensure(
+    crate::ensure(
         scope.contains("local")
             && scope.contains("bounded")
             && scope.contains("not a shared decision store"),
         "decision.scope: must declare bounded local scope and not a shared decision store",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "decision.raw_log_scraping: raw-log scraping is not allowed",
     )?;
 
     let source = object_field(receipt.get("source"), "decision.source")?;
     str_field(source.get("fleet_index"), "decision.source.fleet_index")?;
     let receipt_paths = array_field(source.get("receipt_paths"), "decision.source.receipt_paths")?;
-    ensure(
+    crate::ensure(
         !receipt_paths.is_empty(),
         "decision.source.receipt_paths: expected non-empty list",
     )?;
@@ -190,19 +199,19 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
     }
 
     let decisions = array_field(receipt.get("decisions"), "decision.decisions")?;
-    ensure(
+    crate::ensure(
         !decisions.is_empty(),
         "decision.decisions: expected non-empty list",
     )?;
-    let mut ids = BTreeSet::new();
-    let mut actions = BTreeSet::new();
+    let mut ids = ::std::collections::BTreeSet::new();
+    let mut actions = ::std::collections::BTreeSet::new();
     for (idx, decision) in decisions.iter().enumerate() {
         let decision = object_field(Some(decision), &format!("decision.decisions[{idx}]"))?;
         let id = token_field(
             decision.get("decision_id"),
             &format!("decision.decisions[{idx}].decision_id"),
         )?;
-        ensure(
+        crate::ensure(
             ids.insert(id.to_string()),
             format!("decision.decisions[{idx}].decision_id: duplicate {id}"),
         )?;
@@ -218,7 +227,7 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
             decision.get("action"),
             &format!("decision.decisions[{idx}].action"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(
                 action,
                 "accept-for-local-review" | "reproduce" | "minimize" | "defer" | "reject"
@@ -234,7 +243,7 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
             decision.get("recorded_at"),
             &format!("decision.decisions[{idx}].recorded_at"),
         )?;
-        if let Some(Value::String(_)) = decision.get("replay_class") {
+        if let Some(::serde_json::Value::String(_)) = decision.get("replay_class") {
             token_field(
                 decision.get("replay_class"),
                 &format!("decision.decisions[{idx}].replay_class"),
@@ -259,7 +268,7 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("not a shared decision store")
             && anti_claim_text.contains("not a hosted service")
             && anti_claim_text.contains("no raw-log scraping"),
@@ -274,38 +283,41 @@ pub fn validate_decision_receipt(receipt: &Value) -> EvidenceResult<String> {
     ))
 }
 
-pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_scheduler_receipt(receipt: &::serde_json::Value) -> crate::EvidenceResult<String> {
     let schema_version = int_field(receipt.get("schema_version"), "scheduler.schema_version")?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("scheduler.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "scheduler.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-scheduler-receipt",
         format!("scheduler.command: expected replay-readiness-scheduler-receipt, got {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "scheduler.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "planned" | "recorded" | "partial"),
         format!("scheduler.status: unsupported value {status:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "scheduler.scope")?;
-    ensure(
+    crate::ensure(
         scope.contains("bounded")
             && scope.contains("local")
             && scope.contains("not a hosted service")
             && scope.contains("not a fleet-scale scheduler"),
         "scheduler.scope: must declare bounded local scope and not a hosted/fleet scheduler",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "scheduler.raw_log_scraping: raw-log scraping is not allowed",
     )?;
 
     let schedule = object_field(receipt.get("schedule"), "scheduler.schedule")?;
     let mode = token_field(schedule.get("mode"), "scheduler.schedule.mode")?;
-    ensure(
+    crate::ensure(
         matches!(mode, "manual-batch" | "cron-preview"),
         format!("scheduler.schedule.mode: unsupported value {mode:?}"),
     )?;
@@ -314,33 +326,33 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
         schedule.get("concurrency"),
         "scheduler.schedule.concurrency",
     )?;
-    ensure(
+    crate::ensure(
         max_runs > 0,
         "scheduler.schedule.max_runs: expected positive integer",
     )?;
-    ensure(
+    crate::ensure(
         concurrency > 0 && concurrency <= max_runs,
         "scheduler.schedule.concurrency: expected positive integer no larger than max_runs",
     )?;
 
     let run_plan = array_field(receipt.get("run_plan"), "scheduler.run_plan")?;
-    ensure(
+    crate::ensure(
         !run_plan.is_empty(),
         "scheduler.run_plan: expected non-empty list",
     )?;
-    ensure(
+    crate::ensure(
         run_plan.len() as i64 <= max_runs,
         "scheduler.run_plan: cannot exceed schedule.max_runs",
     )?;
-    let mut run_ids = BTreeSet::new();
-    let mut workloads = BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut workloads = ::std::collections::BTreeSet::new();
     for (idx, run) in run_plan.iter().enumerate() {
         let run = object_field(Some(run), &format!("scheduler.run_plan[{idx}]"))?;
         let run_id = token_field(
             run.get("run_id"),
             &format!("scheduler.run_plan[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("scheduler.run_plan[{idx}].run_id: duplicate {run_id}"),
         )?;
@@ -361,7 +373,7 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
             run.get("decision_policy"),
             &format!("scheduler.run_plan[{idx}].decision_policy"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(decision_policy, "record-local-decision" | "skip-decision"),
             format!(
                 "scheduler.run_plan[{idx}].decision_policy: unsupported value {decision_policy:?}"
@@ -376,7 +388,7 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("not a hosted service")
             && anti_claim_text.contains("not a fleet-scale scheduler")
             && anti_claim_text.contains("not a shared queue")
@@ -392,12 +404,12 @@ pub fn validate_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
 }
 
 pub fn execute_scheduler_receipt_path(
-    plan_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    plan_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let plan_path = plan_path.as_ref();
     let output_path = output_path.as_ref();
-    let plan = load_json(plan_path)?;
+    let plan = crate::replay_readiness_loader::load_json(plan_path)?;
     validate_scheduler_receipt(&plan)?;
     let execution = execute_scheduler_receipt(&plan, plan_path)?;
     let summary = validate_scheduler_execution_receipt(&execution)?;
@@ -408,17 +420,22 @@ pub fn execute_scheduler_receipt_path(
     Ok(summary)
 }
 
-pub fn validate_scheduler_execution_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    validate_scheduler_execution_receipt(&load_json(path.as_ref())?)
+pub fn validate_scheduler_execution_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_scheduler_execution_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
-pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResult<Value> {
+pub fn execute_scheduler_receipt(
+    plan: &::serde_json::Value,
+    plan_path: &::std::path::Path,
+) -> crate::EvidenceResult<::serde_json::Value> {
     let schedule = object_field(plan.get("schedule"), "scheduler.schedule")?;
     let concurrency = int_field(
         schedule.get("concurrency"),
         "scheduler.schedule.concurrency",
     )?;
-    ensure(
+    crate::ensure(
         concurrency == 1,
         "scheduler execution currently supports bounded local sequential concurrency=1 only",
     )?;
@@ -500,27 +517,29 @@ pub fn execute_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResu
     }))
 }
 
-pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_scheduler_execution_receipt(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let schema_version = int_field(
         receipt.get("schema_version"),
         "scheduler_execution.schema_version",
     )?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("scheduler_execution.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "scheduler_execution.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-scheduler-execution",
         format!("scheduler_execution.command: expected replay-readiness-scheduler-execution, got {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "scheduler_execution.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "passed" | "failed" | "partial"),
         format!("scheduler_execution.status: unsupported value {status:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "scheduler_execution.scope")?;
-    ensure(
+    crate::ensure(
         scope.contains("bounded")
             && scope.contains("local")
             && scope.contains("not a hosted service")
@@ -528,8 +547,11 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
             && scope.contains("not a shared queue"),
         "scheduler_execution.scope: must declare bounded local scope and not hosted/fleet/shared-queue scheduler",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "scheduler_execution.raw_log_scraping: raw-log scraping is not allowed",
     )?;
     let schedule = object_field(receipt.get("schedule"), "scheduler_execution.schedule")?;
@@ -537,17 +559,17 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
         schedule.get("concurrency"),
         "scheduler_execution.schedule.concurrency",
     )?;
-    ensure(
+    crate::ensure(
         concurrency == 1,
         "scheduler_execution.schedule.concurrency: expected bounded sequential concurrency=1",
     )?;
     let runs = array_field(receipt.get("runs"), "scheduler_execution.runs")?;
-    ensure(
+    crate::ensure(
         !runs.is_empty(),
         "scheduler_execution.runs: expected non-empty list",
     )?;
-    let mut run_ids = BTreeSet::new();
-    let mut workloads = BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut workloads = ::std::collections::BTreeSet::new();
     let mut passed = 0usize;
     for (idx, run) in runs.iter().enumerate() {
         let run = object_field(Some(run), &format!("scheduler_execution.runs[{idx}]"))?;
@@ -555,7 +577,7 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
             run.get("run_id"),
             &format!("scheduler_execution.runs[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("scheduler_execution.runs[{idx}].run_id: duplicate {run_id}"),
         )?;
@@ -576,7 +598,7 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
             run.get("status"),
             &format!("scheduler_execution.runs[{idx}].status"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(run_status, "passed" | "failed"),
             format!("scheduler_execution.runs[{idx}].status: unsupported value {run_status:?}"),
         )?;
@@ -585,7 +607,7 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
             &format!("scheduler_execution.runs[{idx}].exit_code"),
         )?;
         if run_status == "passed" {
-            ensure(
+            crate::ensure(
                 exit_code == 0,
                 format!("scheduler_execution.runs[{idx}].exit_code: passed run must exit 0"),
             )?;
@@ -595,7 +617,7 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
             )?;
             passed += 1;
         } else {
-            ensure(
+            crate::ensure(
                 exit_code != 0,
                 format!("scheduler_execution.runs[{idx}].exit_code: failed run must be nonzero"),
             )?;
@@ -611,7 +633,7 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("not a hosted service")
             && anti_claim_text.contains("not a fleet-scale scheduler")
             && anti_claim_text.contains("not a shared queue")
@@ -626,7 +648,9 @@ pub fn validate_scheduler_execution_receipt(receipt: &Value) -> EvidenceResult<S
     ))
 }
 
-pub fn write_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_fleet_scheduler_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -638,17 +662,22 @@ pub fn write_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceRes
     Ok(())
 }
 
-pub fn validate_fleet_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    validate_fleet_scheduler_receipt(&load_json(path.as_ref())?)
+pub fn validate_fleet_scheduler_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_fleet_scheduler_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
 pub fn execute_fleet_scheduler_receipt_path(
-    plan_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    plan_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let plan_path = plan_path.as_ref();
     let output_path = output_path.as_ref();
-    let receipt = execute_fleet_scheduler_receipt(&load_json(plan_path)?, plan_path)?;
+    let receipt = execute_fleet_scheduler_receipt(
+        &crate::replay_readiness_loader::load_json(plan_path)?,
+        plan_path,
+    )?;
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -656,31 +685,34 @@ pub fn execute_fleet_scheduler_receipt_path(
     validate_fleet_scheduler_receipt(&receipt)
 }
 
-pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> EvidenceResult<Value> {
+pub fn execute_fleet_scheduler_receipt(
+    plan: &::serde_json::Value,
+    plan_path: &::std::path::Path,
+) -> crate::EvidenceResult<::serde_json::Value> {
     let queue = object_field(plan.get("queue"), "fleet_scheduler_plan.queue")?;
     let queue_id = token_field(queue.get("queue_id"), "fleet_scheduler_plan.queue.queue_id")?;
     let state_path = plan
         .get("state_path")
         .or_else(|| queue.get("state_path"))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("state.json"));
     let previous_state = if state_path.exists() {
-        Some(load_json(&state_path)?)
+        Some(crate::replay_readiness_loader::load_json(&state_path)?)
     } else {
         None
     };
     let completed_before_start = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .map(|runs| runs.len())
         .unwrap_or(0);
     let lease_timeout_seconds = int_field(
         queue.get("lease_timeout_seconds"),
         "fleet_scheduler_plan.queue.lease_timeout_seconds",
     )?;
-    ensure(
+    crate::ensure(
         lease_timeout_seconds > 0,
         "fleet_scheduler_plan.queue.lease_timeout_seconds: expected positive integer",
     )?;
@@ -688,12 +720,12 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
         queue.get("max_concurrency"),
         "fleet_scheduler_plan.queue.max_concurrency",
     )?;
-    ensure(
+    crate::ensure(
         max_concurrency > 0,
         "fleet_scheduler_plan.queue.max_concurrency: expected positive integer",
     )?;
     let workers = array_field(plan.get("workers"), "fleet_scheduler_plan.workers")?;
-    ensure(
+    crate::ensure(
         !workers.is_empty(),
         "fleet_scheduler_plan.workers: expected non-empty list",
     )?;
@@ -708,13 +740,13 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
             &format!("fleet_scheduler_plan.workers[{idx}].worker_id"),
         )?);
     }
-    ensure(
+    crate::ensure(
         max_concurrency as usize <= worker_ids.len(),
         "fleet_scheduler_plan.queue.max_concurrency: cannot exceed worker count",
     )?;
 
     let entries = array_field(queue.get("entries"), "fleet_scheduler_plan.queue.entries")?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "fleet_scheduler_plan.queue.entries: expected non-empty list",
     )?;
@@ -725,7 +757,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
     let mut completed_runs = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .cloned()
         .unwrap_or_default();
     let mut failures = 0usize;
@@ -785,7 +817,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
             "state": entry_state
         }));
         if succeeded {
-            completed_runs.push(Value::String(run_id.to_string()));
+            completed_runs.push(::serde_json::Value::String(run_id.to_string()));
         }
         let state_snapshot = json!({
             "schema_version": 1,
@@ -825,9 +857,13 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
     };
     let decisions = plan
         .get("operator_decisions")
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .cloned()
-        .unwrap_or_else(|| vec![Value::String("target/decision-receipt.json".to_string())]);
+        .unwrap_or_else(|| {
+            vec![::serde_json::Value::String(
+                "target/decision-receipt.json".to_string(),
+            )]
+        });
 
     Ok(json!({
         "schema_version": 1,
@@ -862,7 +898,7 @@ pub fn execute_fleet_scheduler_receipt(plan: &Value, plan_path: &Path) -> Eviden
     }))
 }
 
-pub fn sample_fleet_scheduler_plan() -> Value {
+pub fn sample_fleet_scheduler_plan() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "queue": {
@@ -882,7 +918,7 @@ pub fn sample_fleet_scheduler_plan() -> Value {
     })
 }
 
-pub fn sample_fleet_scheduler_receipt() -> Value {
+pub fn sample_fleet_scheduler_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-fleet-scheduler-receipt",
@@ -942,27 +978,29 @@ pub fn sample_fleet_scheduler_receipt() -> Value {
     })
 }
 
-pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_fleet_scheduler_receipt(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let schema_version = int_field(
         receipt.get("schema_version"),
         "fleet_scheduler.schema_version",
     )?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("fleet_scheduler.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "fleet_scheduler.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-fleet-scheduler-receipt",
         format!("fleet_scheduler.command: expected replay-readiness-fleet-scheduler-receipt, got {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "fleet_scheduler.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "recorded" | "partial" | "failed"),
         format!("fleet_scheduler.status: unsupported value {status:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "fleet_scheduler.scope")?;
-    ensure(
+    crate::ensure(
         scope.contains("bounded")
             && scope.contains("hosted/fleet")
             && scope.contains("durable queue")
@@ -970,14 +1008,17 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             && scope.contains("not product-parity"),
         "fleet_scheduler.scope: must declare bounded hosted/fleet durable queue and no product-parity claim",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "fleet_scheduler.raw_log_scraping: raw-log scraping is not allowed",
     )?;
 
     let queue = object_field(receipt.get("queue"), "fleet_scheduler.queue")?;
     let queue_kind = token_field(queue.get("kind"), "fleet_scheduler.queue.kind")?;
-    ensure(
+    crate::ensure(
         matches!(queue_kind, "durable-file-backed" | "durable-service-backed"),
         format!("fleet_scheduler.queue.kind: unsupported value {queue_kind:?}"),
     )?;
@@ -986,7 +1027,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         queue.get("lease_timeout_seconds"),
         "fleet_scheduler.queue.lease_timeout_seconds",
     )?;
-    ensure(
+    crate::ensure(
         lease_timeout_seconds > 0,
         "fleet_scheduler.queue.lease_timeout_seconds: expected positive integer",
     )?;
@@ -994,18 +1035,18 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         queue.get("max_concurrency"),
         "fleet_scheduler.queue.max_concurrency",
     )?;
-    ensure(
+    crate::ensure(
         max_concurrency > 0,
         "fleet_scheduler.queue.max_concurrency: expected positive integer",
     )?;
     str_field(queue.get("state_path"), "fleet_scheduler.queue.state_path")?;
     let entries = array_field(queue.get("entries"), "fleet_scheduler.queue.entries")?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "fleet_scheduler.queue.entries: expected non-empty list",
     )?;
-    let mut entry_ids = BTreeSet::new();
-    let mut entry_run_ids = BTreeSet::new();
+    let mut entry_ids = ::std::collections::BTreeSet::new();
+    let mut entry_run_ids = ::std::collections::BTreeSet::new();
     for (idx, entry) in entries.iter().enumerate() {
         let entry = object_field(
             Some(entry),
@@ -1015,7 +1056,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             entry.get("queue_entry_id"),
             &format!("fleet_scheduler.queue.entries[{idx}].queue_entry_id"),
         )?;
-        ensure(
+        crate::ensure(
             entry_ids.insert(entry_id.to_string()),
             format!("fleet_scheduler.queue.entries[{idx}].queue_entry_id: duplicate {entry_id}"),
         )?;
@@ -1032,7 +1073,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             entry.get("state"),
             &format!("fleet_scheduler.queue.entries[{idx}].state"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(state, "queued" | "leased" | "completed" | "failed"),
             format!("fleet_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"),
         )?;
@@ -1050,31 +1091,31 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         restart_recovery.get("completed_before_start"),
         "fleet_scheduler.restart_recovery.completed_before_start",
     )?;
-    ensure(
+    crate::ensure(
         completed_before_start >= 0,
         "fleet_scheduler.restart_recovery.completed_before_start: expected non-negative integer",
     )?;
-    ensure(
+    crate::ensure(
         matches!(
             restart_recovery.get("persisted_after_each_run"),
-            Some(Value::Bool(true))
+            Some(::serde_json::Value::Bool(true))
         ),
         "fleet_scheduler.restart_recovery.persisted_after_each_run: expected true",
     )?;
 
     let workers = array_field(receipt.get("workers"), "fleet_scheduler.workers")?;
-    ensure(
+    crate::ensure(
         !workers.is_empty(),
         "fleet_scheduler.workers: expected non-empty list",
     )?;
-    let mut worker_ids = BTreeSet::new();
+    let mut worker_ids = ::std::collections::BTreeSet::new();
     for (idx, worker) in workers.iter().enumerate() {
         let worker = object_field(Some(worker), &format!("fleet_scheduler.workers[{idx}]"))?;
         let worker_id = token_field(
             worker.get("worker_id"),
             &format!("fleet_scheduler.workers[{idx}].worker_id"),
         )?;
-        ensure(
+        crate::ensure(
             worker_ids.insert(worker_id.to_string()),
             format!("fleet_scheduler.workers[{idx}].worker_id: duplicate {worker_id}"),
         )?;
@@ -1090,19 +1131,19 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             worker.get("status"),
             &format!("fleet_scheduler.workers[{idx}].status"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(worker_status, "idle" | "running" | "offline"),
             format!("fleet_scheduler.workers[{idx}].status: unsupported value {worker_status:?}"),
         )?;
     }
 
     let runs = array_field(receipt.get("runs"), "fleet_scheduler.runs")?;
-    ensure(
+    crate::ensure(
         !runs.is_empty(),
         "fleet_scheduler.runs: expected non-empty list",
     )?;
-    let mut run_ids = BTreeSet::new();
-    let mut workloads = BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut workloads = ::std::collections::BTreeSet::new();
     let mut passed = 0usize;
     for (idx, run) in runs.iter().enumerate() {
         let run = object_field(Some(run), &format!("fleet_scheduler.runs[{idx}]"))?;
@@ -1110,11 +1151,11 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             run.get("run_id"),
             &format!("fleet_scheduler.runs[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("fleet_scheduler.runs[{idx}].run_id: duplicate {run_id}"),
         )?;
-        ensure(
+        crate::ensure(
             entry_run_ids.contains(run_id),
             format!("fleet_scheduler.runs[{idx}].run_id: {run_id} missing from queue entries"),
         )?;
@@ -1122,12 +1163,12 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             run.get("queue_entry_id"),
             &format!("fleet_scheduler.runs[{idx}].queue_entry_id"),
         )?;
-        ensure(entry_ids.contains(queue_entry_id), format!("fleet_scheduler.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        crate::ensure(entry_ids.contains(queue_entry_id), format!("fleet_scheduler.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
         let worker_id = token_field(
             run.get("worker_id"),
             &format!("fleet_scheduler.runs[{idx}].worker_id"),
         )?;
-        ensure(
+        crate::ensure(
             worker_ids.contains(worker_id),
             format!("fleet_scheduler.runs[{idx}].worker_id: {worker_id} missing from workers"),
         )?;
@@ -1144,7 +1185,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             run.get("status"),
             &format!("fleet_scheduler.runs[{idx}].status"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(run_status, "passed" | "failed"),
             format!("fleet_scheduler.runs[{idx}].status: unsupported value {run_status:?}"),
         )?;
@@ -1153,7 +1194,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
             &format!("fleet_scheduler.runs[{idx}].exit_code"),
         )?;
         if run_status == "passed" {
-            ensure(
+            crate::ensure(
                 exit_code == 0,
                 format!("fleet_scheduler.runs[{idx}].exit_code: passed run must exit 0"),
             )?;
@@ -1161,10 +1202,10 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
                 run.get("receipt_summary"),
                 &format!("fleet_scheduler.runs[{idx}].receipt_summary"),
             )?;
-            ensure(summary.contains("replay-readiness status="), format!("fleet_scheduler.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
+            crate::ensure(summary.contains("replay-readiness status="), format!("fleet_scheduler.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
             passed += 1;
         } else {
-            ensure(
+            crate::ensure(
                 exit_code != 0,
                 format!("fleet_scheduler.runs[{idx}].exit_code: failed run must be nonzero"),
             )?;
@@ -1175,7 +1216,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
         receipt.get("operator_decisions"),
         "fleet_scheduler.operator_decisions",
     )?;
-    ensure(
+    crate::ensure(
         !decisions.is_empty(),
         "fleet_scheduler.operator_decisions: expected at least one linked decision receipt",
     )?;
@@ -1196,7 +1237,7 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
 ",
         )
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("bounded hosted/fleet")
             && anti_claim_text.contains("not product parity")
             && anti_claim_text.contains("not a full antithesis replacement")
@@ -1212,7 +1253,9 @@ pub fn validate_fleet_scheduler_receipt(receipt: &Value) -> EvidenceResult<Strin
     ))
 }
 
-pub fn write_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_hosted_shared_state_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -1224,17 +1267,22 @@ pub fn write_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> Evidenc
     Ok(())
 }
 
-pub fn validate_hosted_shared_state_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<String> {
-    validate_hosted_shared_state_receipt(&load_json(path.as_ref())?)
+pub fn validate_hosted_shared_state_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_hosted_shared_state_receipt(&crate::replay_readiness_loader::load_json(path.as_ref())?)
 }
 
 pub fn execute_hosted_shared_state_receipt_path(
-    plan_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    plan_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let plan_path = plan_path.as_ref();
     let output_path = output_path.as_ref();
-    let receipt = execute_hosted_shared_state_receipt(&load_json(plan_path)?, plan_path)?;
+    let receipt = execute_hosted_shared_state_receipt(
+        &crate::replay_readiness_loader::load_json(plan_path)?,
+        plan_path,
+    )?;
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -1243,15 +1291,15 @@ pub fn execute_hosted_shared_state_receipt_path(
 }
 
 pub fn execute_hosted_shared_state_receipt(
-    plan: &Value,
-    plan_path: &Path,
-) -> EvidenceResult<Value> {
+    plan: &::serde_json::Value,
+    plan_path: &::std::path::Path,
+) -> crate::EvidenceResult<::serde_json::Value> {
     let machines = array_field(plan.get("machines"), "hosted_shared_state_plan.machines")?;
-    ensure(
+    crate::ensure(
         machines.len() >= 2,
         "hosted_shared_state_plan.machines: expected at least two machines",
     )?;
-    let mut machine_writer = BTreeMap::new();
+    let mut machine_writer = ::std::collections::BTreeMap::new();
     let mut machine_values = Vec::with_capacity(machines.len());
     for (idx, machine) in machines.iter().enumerate() {
         let machine = object_field(
@@ -1266,7 +1314,7 @@ pub fn execute_hosted_shared_state_receipt(
             machine.get("writer_id"),
             &format!("hosted_shared_state_plan.machines[{idx}].writer_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_writer
                 .insert(machine_id.to_string(), writer_id.to_string())
                 .is_none(),
@@ -1279,11 +1327,11 @@ pub fn execute_hosted_shared_state_receipt(
         plan.get("hypervisor_workers"),
         "hosted_shared_state_plan.hypervisor_workers",
     )?;
-    ensure(
+    crate::ensure(
         workers.len() >= 2,
         "hosted_shared_state_plan.hypervisor_workers: expected at least two hypervisor workers",
     )?;
-    let mut worker_machine = BTreeMap::new();
+    let mut worker_machine = ::std::collections::BTreeMap::new();
     let mut worker_values = Vec::with_capacity(workers.len());
     for (idx, worker) in workers.iter().enumerate() {
         let worker = object_field(
@@ -1298,11 +1346,11 @@ pub fn execute_hosted_shared_state_receipt(
             worker.get("machine_id"),
             &format!("hosted_shared_state_plan.hypervisor_workers[{idx}].machine_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_writer.contains_key(machine_id),
             format!("hosted_shared_state_plan.hypervisor_workers[{idx}].machine_id: {machine_id} missing from machines"),
         )?;
-        ensure(
+        crate::ensure(
             worker_machine
                 .insert(worker_id.to_string(), machine_id.to_string())
                 .is_none(),
@@ -1320,14 +1368,14 @@ pub fn execute_hosted_shared_state_receipt(
     let state_path = plan
         .get("state_path")
         .or_else(|| queue.get("state_path"))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("queue-state.json"));
     let entries = array_field(
         queue.get("entries"),
         "hosted_shared_state_plan.queue.entries",
     )?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "hosted_shared_state_plan.queue.entries: expected non-empty list",
     )?;
@@ -1341,8 +1389,8 @@ pub fn execute_hosted_shared_state_receipt(
     )?;
     let decision_store_path = decision_store
         .get("path")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("decision-store.json"));
 
     let mut queue_entries = Vec::with_capacity(entries.len());
@@ -1418,9 +1466,9 @@ pub fn execute_hosted_shared_state_receipt(
             "machine_id": machine_id,
             "run_id": run_id,
             "queue_entry_id": queue_entry_id,
-            "action": entry.get("decision_action").and_then(Value::as_str).unwrap_or("triage"),
+            "action": entry.get("decision_action").and_then(::serde_json::Value::as_str).unwrap_or("triage"),
             "status": "recorded",
-            "receipt_path": entry.get("decision_receipt_path").and_then(Value::as_str).unwrap_or("target/hosted/decision.json")
+            "receipt_path": entry.get("decision_receipt_path").and_then(::serde_json::Value::as_str).unwrap_or("target/hosted/decision.json")
         }));
         let state_snapshot = json!({
             "schema_version": 1,
@@ -1491,7 +1539,7 @@ pub fn execute_hosted_shared_state_receipt(
     }))
 }
 
-pub fn sample_hosted_shared_state_plan() -> Value {
+pub fn sample_hosted_shared_state_plan() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "machines": [
@@ -1513,7 +1561,7 @@ pub fn sample_hosted_shared_state_plan() -> Value {
     })
 }
 
-pub fn sample_hosted_shared_state_receipt() -> Value {
+pub fn sample_hosted_shared_state_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-hosted-shared-state",
@@ -1569,27 +1617,29 @@ pub fn sample_hosted_shared_state_receipt() -> Value {
     })
 }
 
-pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_hosted_shared_state_receipt(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let schema_version = int_field(
         receipt.get("schema_version"),
         "hosted_shared_state.schema_version",
     )?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("hosted_shared_state.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "hosted_shared_state.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-hosted-shared-state",
         format!("hosted_shared_state.command: unexpected {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "hosted_shared_state.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "recorded" | "partial" | "failed"),
         format!("hosted_shared_state.status: unsupported value {status:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "hosted_shared_state.scope")?.to_lowercase();
-    ensure(
+    crate::ensure(
         scope.contains("bounded hosted/shared-state")
             && scope.contains("shared queue")
             && scope.contains("decision-store")
@@ -1598,18 +1648,21 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             && scope.contains("not antithesis parity"),
         "hosted_shared_state.scope: must declare bounded shared-state scope and non-claims",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "hosted_shared_state.raw_log_scraping: raw-log scraping is not allowed",
     )?;
 
     let machines = array_field(receipt.get("machines"), "hosted_shared_state.machines")?;
-    ensure(
+    crate::ensure(
         machines.len() >= 2,
         "hosted_shared_state.machines: expected at least two machine identities",
     )?;
-    let mut machine_ids = BTreeSet::new();
-    let mut writer_to_machine = BTreeMap::new();
+    let mut machine_ids = ::std::collections::BTreeSet::new();
+    let mut writer_to_machine = ::std::collections::BTreeMap::new();
     for (idx, machine) in machines.iter().enumerate() {
         let machine = object_field(
             Some(machine),
@@ -1619,7 +1672,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             machine.get("machine_id"),
             &format!("hosted_shared_state.machines[{idx}].machine_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_ids.insert(machine_id.to_string()),
             format!("hosted_shared_state.machines[{idx}].machine_id: duplicate {machine_id}"),
         )?;
@@ -1627,7 +1680,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             machine.get("writer_id"),
             &format!("hosted_shared_state.machines[{idx}].writer_id"),
         )?;
-        ensure(
+        crate::ensure(
             writer_to_machine
                 .insert(writer_id.to_string(), machine_id.to_string())
                 .is_none(),
@@ -1639,11 +1692,11 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
         receipt.get("hypervisor_workers"),
         "hosted_shared_state.hypervisor_workers",
     )?;
-    ensure(
+    crate::ensure(
         workers.len() >= 2,
         "hosted_shared_state.hypervisor_workers: expected at least two hypervisor workers",
     )?;
-    let mut worker_to_machine = BTreeMap::new();
+    let mut worker_to_machine = ::std::collections::BTreeMap::new();
     for (idx, worker) in workers.iter().enumerate() {
         let worker = object_field(
             Some(worker),
@@ -1657,25 +1710,25 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             worker.get("machine_id"),
             &format!("hosted_shared_state.hypervisor_workers[{idx}].machine_id"),
         )?;
-        ensure(machine_ids.contains(machine_id), format!("hosted_shared_state.hypervisor_workers[{idx}].machine_id: {machine_id} missing from machines"))?;
-        ensure(worker_to_machine.insert(worker_id.to_string(), machine_id.to_string()).is_none(), format!("hosted_shared_state.hypervisor_workers[{idx}].hypervisor_worker_id: duplicate {worker_id}"))?;
+        crate::ensure(machine_ids.contains(machine_id), format!("hosted_shared_state.hypervisor_workers[{idx}].machine_id: {machine_id} missing from machines"))?;
+        crate::ensure(worker_to_machine.insert(worker_id.to_string(), machine_id.to_string()).is_none(), format!("hosted_shared_state.hypervisor_workers[{idx}].hypervisor_worker_id: duplicate {worker_id}"))?;
     }
 
     let queue = object_field(receipt.get("queue"), "hosted_shared_state.queue")?;
     let queue_kind = token_field(queue.get("kind"), "hosted_shared_state.queue.kind")?;
-    ensure(
+    crate::ensure(
         queue_kind == "durable-shared",
         format!("hosted_shared_state.queue.kind: expected durable-shared, got {queue_kind:?}"),
     )?;
     token_field(queue.get("queue_id"), "hosted_shared_state.queue.queue_id")?;
     let entries = array_field(queue.get("entries"), "hosted_shared_state.queue.entries")?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "hosted_shared_state.queue.entries: expected non-empty list",
     )?;
-    let mut queue_entry_ids = BTreeSet::new();
-    let mut run_ids = BTreeSet::new();
-    let mut lease_owners = BTreeMap::new();
+    let mut queue_entry_ids = ::std::collections::BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut lease_owners = ::std::collections::BTreeMap::new();
     for (idx, entry) in entries.iter().enumerate() {
         let entry = object_field(
             Some(entry),
@@ -1685,12 +1738,12 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             entry.get("queue_entry_id"),
             &format!("hosted_shared_state.queue.entries[{idx}].queue_entry_id"),
         )?;
-        ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("hosted_shared_state.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
+        crate::ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("hosted_shared_state.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
         let run_id = token_field(
             entry.get("run_id"),
             &format!("hosted_shared_state.queue.entries[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("hosted_shared_state.queue.entries[{idx}].run_id: duplicate {run_id}"),
         )?;
@@ -1702,7 +1755,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             entry.get("state"),
             &format!("hosted_shared_state.queue.entries[{idx}].state"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(state, "queued" | "leased" | "completed" | "failed"),
             format!("hosted_shared_state.queue.entries[{idx}].state: unsupported value {state:?}"),
         )?;
@@ -1718,19 +1771,19 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             lease.get("lease_epoch"),
             &format!("hosted_shared_state.queue.entries[{idx}].lease.lease_epoch"),
         )?;
-        ensure(lease_epoch > 0, format!("hosted_shared_state.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
+        crate::ensure(lease_epoch > 0, format!("hosted_shared_state.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
         let owner_machine_id = token_field(
             lease.get("owner_machine_id"),
             &format!("hosted_shared_state.queue.entries[{idx}].lease.owner_machine_id"),
         )?;
-        ensure(machine_ids.contains(owner_machine_id), format!("hosted_shared_state.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
+        crate::ensure(machine_ids.contains(owner_machine_id), format!("hosted_shared_state.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
         let worker_id = token_field(
             lease.get("hypervisor_worker_id"),
             &format!("hosted_shared_state.queue.entries[{idx}].lease.hypervisor_worker_id"),
         )?;
-        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| EvidenceError::new(format!("hosted_shared_state.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from hypervisor_workers")))?;
-        ensure(worker_machine == owner_machine_id, format!("hosted_shared_state.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match hypervisor worker machine {worker_machine}"))?;
-        ensure(lease_owners.insert(lease_id.to_string(), (owner_machine_id.to_string(), lease_epoch)).is_none(), format!("hosted_shared_state.queue.entries[{idx}].lease.lease_id: duplicate lease ownership for {lease_id}"))?;
+        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| crate::EvidenceError::new(format!("hosted_shared_state.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from hypervisor_workers")))?;
+        crate::ensure(worker_machine == owner_machine_id, format!("hosted_shared_state.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match hypervisor worker machine {worker_machine}"))?;
+        crate::ensure(lease_owners.insert(lease_id.to_string(), (owner_machine_id.to_string(), lease_epoch)).is_none(), format!("hosted_shared_state.queue.entries[{idx}].lease.lease_id: duplicate lease ownership for {lease_id}"))?;
         str_field(
             entry.get("receipt_path"),
             &format!("hosted_shared_state.queue.entries[{idx}].receipt_path"),
@@ -1739,7 +1792,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             entry.get("receipt_summary"),
             &format!("hosted_shared_state.queue.entries[{idx}].receipt_summary"),
         )?;
-        ensure(summary.contains("replay-readiness status="), format!("hosted_shared_state.queue.entries[{idx}].receipt_summary: expected replay-readiness summary"))?;
+        crate::ensure(summary.contains("replay-readiness status="), format!("hosted_shared_state.queue.entries[{idx}].receipt_summary: expected replay-readiness summary"))?;
     }
 
     let decision_store = object_field(
@@ -1750,7 +1803,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
         decision_store.get("kind"),
         "hosted_shared_state.decision_store.kind",
     )?;
-    ensure(
+    crate::ensure(
         store_kind == "durable-shared",
         format!(
             "hosted_shared_state.decision_store.kind: expected durable-shared, got {store_kind:?}"
@@ -1764,12 +1817,12 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
         decision_store.get("records"),
         "hosted_shared_state.decision_store.records",
     )?;
-    ensure(
+    crate::ensure(
         !records.is_empty(),
         "hosted_shared_state.decision_store.records: expected non-empty list",
     )?;
-    let mut decision_revisions = BTreeSet::new();
-    let mut decision_writers = BTreeMap::new();
+    let mut decision_revisions = ::std::collections::BTreeSet::new();
+    let mut decision_writers = ::std::collections::BTreeMap::new();
     for (idx, record) in records.iter().enumerate() {
         let record = object_field(
             Some(record),
@@ -1783,9 +1836,9 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
             record.get("decision_revision"),
             &format!("hosted_shared_state.decision_store.records[{idx}].decision_revision"),
         )?;
-        ensure(revision > 0, format!("hosted_shared_state.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
+        crate::ensure(revision > 0, format!("hosted_shared_state.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
         let revision_key = format!("{decision_id}@{revision}");
-        ensure(decision_revisions.insert(revision_key), format!("hosted_shared_state.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
+        crate::ensure(decision_revisions.insert(revision_key), format!("hosted_shared_state.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
         if let Some(previous_revision) = record
             .get("previous_revision")
             .filter(|value| !value.is_null())
@@ -1794,43 +1847,43 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
                 Some(previous_revision),
                 &format!("hosted_shared_state.decision_store.records[{idx}].previous_revision"),
             )?;
-            ensure(previous_revision < revision, format!("hosted_shared_state.decision_store.records[{idx}].previous_revision: stale decision write"))?;
+            crate::ensure(previous_revision < revision, format!("hosted_shared_state.decision_store.records[{idx}].previous_revision: stale decision write"))?;
         }
         let writer_id = token_field(
             record.get("writer_id"),
             &format!("hosted_shared_state.decision_store.records[{idx}].writer_id"),
         )?;
-        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| EvidenceError::new(format!("hosted_shared_state.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
+        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| crate::EvidenceError::new(format!("hosted_shared_state.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
         let machine_id = token_field(
             record.get("machine_id"),
             &format!("hosted_shared_state.decision_store.records[{idx}].machine_id"),
         )?;
-        ensure(writer_machine == machine_id, format!("hosted_shared_state.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
+        crate::ensure(writer_machine == machine_id, format!("hosted_shared_state.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
         if let Some(previous_writer) =
             decision_writers.insert(decision_id.to_string(), writer_id.to_string())
         {
-            ensure(previous_writer == writer_id, format!("hosted_shared_state.decision_store.records[{idx}]: split-brain decision writer for {decision_id}"))?;
+            crate::ensure(previous_writer == writer_id, format!("hosted_shared_state.decision_store.records[{idx}]: split-brain decision writer for {decision_id}"))?;
         }
         let run_id = token_field(
             record.get("run_id"),
             &format!("hosted_shared_state.decision_store.records[{idx}].run_id"),
         )?;
-        ensure(run_ids.contains(run_id), format!("hosted_shared_state.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
+        crate::ensure(run_ids.contains(run_id), format!("hosted_shared_state.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
         let queue_entry_id = token_field(
             record.get("queue_entry_id"),
             &format!("hosted_shared_state.decision_store.records[{idx}].queue_entry_id"),
         )?;
-        ensure(queue_entry_ids.contains(queue_entry_id), format!("hosted_shared_state.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        crate::ensure(queue_entry_ids.contains(queue_entry_id), format!("hosted_shared_state.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
         let action = token_field(
             record.get("action"),
             &format!("hosted_shared_state.decision_store.records[{idx}].action"),
         )?;
-        ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("hosted_shared_state.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
+        crate::ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("hosted_shared_state.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
         let decision_status = token_field(
             record.get("status"),
             &format!("hosted_shared_state.decision_store.records[{idx}].status"),
         )?;
-        ensure(matches!(decision_status, "recorded" | "superseded"), format!("hosted_shared_state.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
+        crate::ensure(matches!(decision_status, "recorded" | "superseded"), format!("hosted_shared_state.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
         str_field(
             record.get("receipt_path"),
             &format!("hosted_shared_state.decision_store.records[{idx}].receipt_path"),
@@ -1847,7 +1900,7 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("bounded hosted/shared-state")
             && anti_claim_text.contains("not saas")
             && anti_claim_text.contains("not product parity")
@@ -1858,7 +1911,9 @@ pub fn validate_hosted_shared_state_receipt(receipt: &Value) -> EvidenceResult<S
     Ok(format!("replay-readiness-hosted-shared-state status={status} machines={} hypervisors={} queue_entries={} decisions={} scope=bounded-hosted-shared-state", machines.len(), workers.len(), entries.len(), records.len()))
 }
 
-pub fn write_networked_hosted_scheduler_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_networked_hosted_scheduler_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -1871,18 +1926,23 @@ pub fn write_networked_hosted_scheduler_receipt_path(path: impl AsRef<Path>) -> 
 }
 
 pub fn validate_networked_hosted_scheduler_receipt_path(
-    path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
-    validate_networked_hosted_scheduler_receipt(&load_json(path.as_ref())?)
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_networked_hosted_scheduler_receipt(&crate::replay_readiness_loader::load_json(
+        path.as_ref(),
+    )?)
 }
 
 pub fn execute_networked_hosted_scheduler_receipt_path(
-    plan_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    plan_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let plan_path = plan_path.as_ref();
     let output_path = output_path.as_ref();
-    let receipt = execute_networked_hosted_scheduler_receipt(&load_json(plan_path)?, plan_path)?;
+    let receipt = execute_networked_hosted_scheduler_receipt(
+        &crate::replay_readiness_loader::load_json(plan_path)?,
+        plan_path,
+    )?;
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -1891,9 +1951,9 @@ pub fn execute_networked_hosted_scheduler_receipt_path(
 }
 
 pub fn execute_networked_hosted_scheduler_receipt(
-    plan: &Value,
-    plan_path: &Path,
-) -> EvidenceResult<Value> {
+    plan: &::serde_json::Value,
+    plan_path: &::std::path::Path,
+) -> crate::EvidenceResult<::serde_json::Value> {
     let harness_id = token_field(
         plan.get("harness_id"),
         "networked_hosted_scheduler_plan.harness_id",
@@ -1902,7 +1962,7 @@ pub fn execute_networked_hosted_scheduler_receipt(
         plan.get("transport"),
         "networked_hosted_scheduler_plan.transport",
     )?;
-    ensure(
+    crate::ensure(
         matches!(
             transport,
             "loopback-tcp" | "loopback-uds" | "multi-process-file"
@@ -1913,11 +1973,11 @@ pub fn execute_networked_hosted_scheduler_receipt(
         plan.get("machines"),
         "networked_hosted_scheduler_plan.machines",
     )?;
-    ensure(
+    crate::ensure(
         machines.len() >= 2,
         "networked_hosted_scheduler_plan.machines: expected at least two machines",
     )?;
-    let mut machine_writer = BTreeMap::new();
+    let mut machine_writer = ::std::collections::BTreeMap::new();
     let mut machine_values = Vec::with_capacity(machines.len());
     for (idx, machine) in machines.iter().enumerate() {
         let machine = object_field(
@@ -1932,7 +1992,7 @@ pub fn execute_networked_hosted_scheduler_receipt(
             machine.get("writer_id"),
             &format!("networked_hosted_scheduler_plan.machines[{idx}].writer_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_writer
                 .insert(machine_id.to_string(), writer_id.to_string())
                 .is_none(),
@@ -1945,14 +2005,14 @@ pub fn execute_networked_hosted_scheduler_receipt(
         plan.get("worker_sessions"),
         "networked_hosted_scheduler_plan.worker_sessions",
     )?;
-    ensure(
+    crate::ensure(
         sessions.len() >= 2,
         "networked_hosted_scheduler_plan.worker_sessions: expected at least two worker sessions",
     )?;
     let mut session_values = Vec::with_capacity(sessions.len());
     let mut session_ids = Vec::with_capacity(sessions.len());
-    let mut session_machine = BTreeMap::new();
-    let mut session_worker = BTreeMap::new();
+    let mut session_machine = ::std::collections::BTreeMap::new();
+    let mut session_worker = ::std::collections::BTreeMap::new();
     for (idx, session) in sessions.iter().enumerate() {
         let session = object_field(
             Some(session),
@@ -1970,19 +2030,19 @@ pub fn execute_networked_hosted_scheduler_receipt(
             session.get("machine_id"),
             &format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].machine_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_writer.contains_key(machine_id),
             format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].machine_id: {machine_id} missing from machines"),
         )?;
         let heartbeat_revision = session
             .get("heartbeat_revision")
-            .and_then(Value::as_i64)
+            .and_then(::serde_json::Value::as_i64)
             .unwrap_or(1);
-        ensure(
+        crate::ensure(
             heartbeat_revision > 0,
             format!("networked_hosted_scheduler_plan.worker_sessions[{idx}].heartbeat_revision: expected positive heartbeat revision"),
         )?;
-        ensure(
+        crate::ensure(
             session_machine
                 .insert(session_id.to_string(), machine_id.to_string())
                 .is_none(),
@@ -1994,9 +2054,9 @@ pub fn execute_networked_hosted_scheduler_receipt(
             "worker_session_id": session_id,
             "hypervisor_worker_id": worker_id,
             "machine_id": machine_id,
-            "started_by": session.get("started_by").and_then(Value::as_str).unwrap_or("independent-process"),
+            "started_by": session.get("started_by").and_then(::serde_json::Value::as_str).unwrap_or("independent-process"),
             "heartbeat_revision": heartbeat_revision,
-            "last_heartbeat": session.get("last_heartbeat").and_then(Value::as_str).unwrap_or("unix:0"),
+            "last_heartbeat": session.get("last_heartbeat").and_then(::serde_json::Value::as_str).unwrap_or("unix:0"),
             "state": "healthy"
         }));
     }
@@ -2013,14 +2073,14 @@ pub fn execute_networked_hosted_scheduler_receipt(
     let queue_state_path = queue
         .get("state_snapshot_path")
         .or_else(|| queue.get("state_path"))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("networked-queue-state.json"));
     let entries = array_field(
         queue.get("entries"),
         "networked_hosted_scheduler_plan.queue.entries",
     )?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "networked_hosted_scheduler_plan.queue.entries: expected non-empty list",
     )?;
@@ -2040,8 +2100,8 @@ pub fn execute_networked_hosted_scheduler_receipt(
     let decision_state_path = decision_store
         .get("state_snapshot_path")
         .or_else(|| decision_store.get("path"))
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("networked-decision-store.json"));
 
     let mut queue_entries = Vec::with_capacity(entries.len());
@@ -2132,7 +2192,7 @@ pub fn execute_networked_hosted_scheduler_receipt(
         decision_records.push(json!({
             "decision_id": format!("decision-{queue_entry_id}"),
             "decision_revision": queue_revision,
-            "previous_revision": if idx == 0 { Value::Null } else { json!(idx as i64) },
+            "previous_revision": if idx == 0 { ::serde_json::Value::Null } else { json!(idx as i64) },
             "writer_id": writer_id,
             "machine_id": machine_id,
             "worker_session_id": session_id,
@@ -2140,9 +2200,9 @@ pub fn execute_networked_hosted_scheduler_receipt(
             "queue_entry_id": queue_entry_id,
             "source_receipt_paths": [receipt_path],
             "summary": format!("decision recorded for replay-readiness run {run_id}"),
-            "action": entry.get("decision_action").and_then(Value::as_str).unwrap_or("triage"),
+            "action": entry.get("decision_action").and_then(::serde_json::Value::as_str).unwrap_or("triage"),
             "status": "recorded",
-            "receipt_path": entry.get("decision_receipt_path").and_then(Value::as_str).unwrap_or("target/networked-hosted/decision.json")
+            "receipt_path": entry.get("decision_receipt_path").and_then(::serde_json::Value::as_str).unwrap_or("target/networked-hosted/decision.json")
         }));
     }
 
@@ -2161,8 +2221,8 @@ pub fn execute_networked_hosted_scheduler_receipt(
         &decision_state_path,
         serde_json::to_vec_pretty(&decision_snapshot)?,
     )?;
-    let queue_snapshot = load_json(&queue_state_path)?;
-    let decision_snapshot = load_json(&decision_state_path)?;
+    let queue_snapshot = crate::replay_readiness_loader::load_json(&queue_state_path)?;
+    let decision_snapshot = crate::replay_readiness_loader::load_json(&decision_state_path)?;
     let queue_digest = digest_json_value(&queue_snapshot)?;
     let decision_digest = digest_json_value(&decision_snapshot)?;
     let status = if failures == 0 {
@@ -2211,14 +2271,14 @@ pub fn execute_networked_hosted_scheduler_receipt(
     }))
 }
 
-fn digest_json_value(value: &Value) -> EvidenceResult<String> {
+fn digest_json_value(value: &::serde_json::Value) -> crate::EvidenceResult<String> {
     let bytes = serde_json::to_vec(value)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = ::sha2::Sha256::new();
     hasher.update(bytes);
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
-pub fn sample_networked_hosted_scheduler_plan() -> Value {
+pub fn sample_networked_hosted_scheduler_plan() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "harness_id": "networked-hosted-harness-0001",
@@ -2245,7 +2305,7 @@ pub fn sample_networked_hosted_scheduler_plan() -> Value {
     })
 }
 
-pub fn sample_networked_hosted_scheduler_receipt() -> Value {
+pub fn sample_networked_hosted_scheduler_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-networked-hosted-scheduler",
@@ -2295,22 +2355,24 @@ pub fn sample_networked_hosted_scheduler_receipt() -> Value {
     })
 }
 
-pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_networked_hosted_scheduler_receipt(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let schema_version = int_field(
         receipt.get("schema_version"),
         "networked_hosted_scheduler.schema_version",
     )?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("networked_hosted_scheduler.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "networked_hosted_scheduler.command")?;
-    ensure(
+    crate::ensure(
         command == "replay-readiness-networked-hosted-scheduler",
         format!("networked_hosted_scheduler.command: unexpected {command:?}"),
     )?;
     let status = str_field(receipt.get("status"), "networked_hosted_scheduler.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "recorded" | "partial" | "failed"),
         format!("networked_hosted_scheduler.status: unsupported value {status:?}"),
     )?;
@@ -2322,7 +2384,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         receipt.get("transport"),
         "networked_hosted_scheduler.transport",
     )?;
-    ensure(
+    crate::ensure(
         matches!(
             transport,
             "loopback-tcp" | "loopback-uds" | "multi-process-file"
@@ -2330,7 +2392,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         format!("networked_hosted_scheduler.transport: unsupported value {transport:?}"),
     )?;
     let scope = str_field(receipt.get("scope"), "networked_hosted_scheduler.scope")?.to_lowercase();
-    ensure(
+    crate::ensure(
         scope.contains("bounded networked hosted/shared-state")
             && scope.contains("independently started worker sessions")
             && scope.contains("shared queue")
@@ -2341,8 +2403,11 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             && scope.contains("not universal fleet scale"),
         "networked_hosted_scheduler.scope: must declare bounded networked scope and non-claims",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "networked_hosted_scheduler.raw_log_scraping: raw-log scraping is not allowed",
     )?;
 
@@ -2350,12 +2415,12 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         receipt.get("machines"),
         "networked_hosted_scheduler.machines",
     )?;
-    ensure(
+    crate::ensure(
         machines.len() >= 2,
         "networked_hosted_scheduler.machines: expected at least two machine identities",
     )?;
-    let mut machine_ids = BTreeSet::new();
-    let mut writer_to_machine = BTreeMap::new();
+    let mut machine_ids = ::std::collections::BTreeSet::new();
+    let mut writer_to_machine = ::std::collections::BTreeMap::new();
     for (idx, machine) in machines.iter().enumerate() {
         let machine = object_field(
             Some(machine),
@@ -2365,7 +2430,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             machine.get("machine_id"),
             &format!("networked_hosted_scheduler.machines[{idx}].machine_id"),
         )?;
-        ensure(
+        crate::ensure(
             machine_ids.insert(machine_id.to_string()),
             format!(
                 "networked_hosted_scheduler.machines[{idx}].machine_id: duplicate {machine_id}"
@@ -2375,7 +2440,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             machine.get("writer_id"),
             &format!("networked_hosted_scheduler.machines[{idx}].writer_id"),
         )?;
-        ensure(
+        crate::ensure(
             writer_to_machine
                 .insert(writer_id.to_string(), machine_id.to_string())
                 .is_none(),
@@ -2387,13 +2452,13 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         receipt.get("worker_sessions"),
         "networked_hosted_scheduler.worker_sessions",
     )?;
-    ensure(
+    crate::ensure(
         worker_sessions.len() >= 2,
         "networked_hosted_scheduler.worker_sessions: expected at least two worker sessions",
     )?;
-    let mut session_to_worker = BTreeMap::new();
-    let mut session_to_machine = BTreeMap::new();
-    let mut worker_to_machine = BTreeMap::new();
+    let mut session_to_worker = ::std::collections::BTreeMap::new();
+    let mut session_to_machine = ::std::collections::BTreeMap::new();
+    let mut worker_to_machine = ::std::collections::BTreeMap::new();
     for (idx, session) in worker_sessions.iter().enumerate() {
         let session = object_field(
             Some(session),
@@ -2411,7 +2476,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             session.get("machine_id"),
             &format!("networked_hosted_scheduler.worker_sessions[{idx}].machine_id"),
         )?;
-        ensure(machine_ids.contains(machine_id), format!("networked_hosted_scheduler.worker_sessions[{idx}].machine_id: {machine_id} missing from machines"))?;
+        crate::ensure(machine_ids.contains(machine_id), format!("networked_hosted_scheduler.worker_sessions[{idx}].machine_id: {machine_id} missing from machines"))?;
         token_field(
             session.get("started_by"),
             &format!("networked_hosted_scheduler.worker_sessions[{idx}].started_by"),
@@ -2420,7 +2485,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             session.get("heartbeat_revision"),
             &format!("networked_hosted_scheduler.worker_sessions[{idx}].heartbeat_revision"),
         )?;
-        ensure(heartbeat_revision > 0, format!("networked_hosted_scheduler.worker_sessions[{idx}].heartbeat_revision: expected positive heartbeat revision"))?;
+        crate::ensure(heartbeat_revision > 0, format!("networked_hosted_scheduler.worker_sessions[{idx}].heartbeat_revision: expected positive heartbeat revision"))?;
         str_field(
             session.get("last_heartbeat"),
             &format!("networked_hosted_scheduler.worker_sessions[{idx}].last_heartbeat"),
@@ -2429,19 +2494,19 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             session.get("state"),
             &format!("networked_hosted_scheduler.worker_sessions[{idx}].state"),
         )?;
-        ensure(matches!(state, "healthy" | "draining" | "stopped"), format!("networked_hosted_scheduler.worker_sessions[{idx}].state: unsupported value {state:?}"))?;
-        ensure(session_to_worker.insert(session_id.to_string(), worker_id.to_string()).is_none(), format!("networked_hosted_scheduler.worker_sessions[{idx}].worker_session_id: duplicate {session_id}"))?;
+        crate::ensure(matches!(state, "healthy" | "draining" | "stopped"), format!("networked_hosted_scheduler.worker_sessions[{idx}].state: unsupported value {state:?}"))?;
+        crate::ensure(session_to_worker.insert(session_id.to_string(), worker_id.to_string()).is_none(), format!("networked_hosted_scheduler.worker_sessions[{idx}].worker_session_id: duplicate {session_id}"))?;
         session_to_machine.insert(session_id.to_string(), machine_id.to_string());
         if let Some(previous_machine) =
             worker_to_machine.insert(worker_id.to_string(), machine_id.to_string())
         {
-            ensure(previous_machine == machine_id, format!("networked_hosted_scheduler.worker_sessions[{idx}].hypervisor_worker_id: split worker machine for {worker_id}"))?;
+            crate::ensure(previous_machine == machine_id, format!("networked_hosted_scheduler.worker_sessions[{idx}].hypervisor_worker_id: split worker machine for {worker_id}"))?;
         }
     }
 
     let queue = object_field(receipt.get("queue"), "networked_hosted_scheduler.queue")?;
     let queue_kind = token_field(queue.get("kind"), "networked_hosted_scheduler.queue.kind")?;
-    ensure(
+    crate::ensure(
         queue_kind == "networked-shared",
         format!(
             "networked_hosted_scheduler.queue.kind: expected networked-shared, got {queue_kind:?}"
@@ -2459,7 +2524,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         queue.get("state_revision"),
         "networked_hosted_scheduler.queue.state_revision",
     )?;
-    ensure(
+    crate::ensure(
         queue_state_revision > 0,
         "networked_hosted_scheduler.queue.state_revision: expected positive revision",
     )?;
@@ -2475,13 +2540,13 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         queue.get("entries"),
         "networked_hosted_scheduler.queue.entries",
     )?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "networked_hosted_scheduler.queue.entries: expected non-empty list",
     )?;
-    let mut queue_entry_ids = BTreeSet::new();
-    let mut run_ids = BTreeSet::new();
-    let mut lease_ids = BTreeSet::new();
+    let mut queue_entry_ids = ::std::collections::BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut lease_ids = ::std::collections::BTreeSet::new();
     let mut last_queue_revision = 0i64;
     for (idx, entry) in entries.iter().enumerate() {
         let entry = object_field(
@@ -2492,12 +2557,12 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             entry.get("queue_entry_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].queue_entry_id"),
         )?;
-        ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
+        crate::ensure(queue_entry_ids.insert(queue_entry_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].queue_entry_id: duplicate {queue_entry_id}"))?;
         let run_id = token_field(
             entry.get("run_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("networked_hosted_scheduler.queue.entries[{idx}].run_id: duplicate {run_id}"),
         )?;
@@ -2513,7 +2578,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             entry.get("state"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].state"),
         )?;
-        ensure(matches!(state, "queued" | "leased" | "completed" | "failed"), format!("networked_hosted_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"))?;
+        crate::ensure(matches!(state, "queued" | "leased" | "completed" | "failed"), format!("networked_hosted_scheduler.queue.entries[{idx}].state: unsupported value {state:?}"))?;
         let exit_code = int_field(
             entry.get("exit_code"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].exit_code"),
@@ -2526,40 +2591,40 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             lease.get("lease_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_id"),
         )?;
-        ensure(lease_ids.insert(lease_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_id: duplicate active lease {lease_id}"))?;
+        crate::ensure(lease_ids.insert(lease_id.to_string()), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_id: duplicate active lease {lease_id}"))?;
         let lease_epoch = int_field(
             lease.get("lease_epoch"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_epoch"),
         )?;
-        ensure(lease_epoch > 0, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
+        crate::ensure(lease_epoch > 0, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.lease_epoch: expected positive epoch"))?;
         let queue_revision = int_field(
             lease.get("queue_revision"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision"),
         )?;
-        ensure(queue_revision > last_queue_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: stale queue-state revision"))?;
-        ensure(queue_revision <= queue_state_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: exceeds queue state revision"))?;
+        crate::ensure(queue_revision > last_queue_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: stale queue-state revision"))?;
+        crate::ensure(queue_revision <= queue_state_revision, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.queue_revision: exceeds queue state revision"))?;
         last_queue_revision = queue_revision;
         let owner_machine_id = token_field(
             lease.get("owner_machine_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.owner_machine_id"),
         )?;
-        ensure(machine_ids.contains(owner_machine_id), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
+        crate::ensure(machine_ids.contains(owner_machine_id), format!("networked_hosted_scheduler.queue.entries[{idx}].lease.owner_machine_id: {owner_machine_id} missing from machines"))?;
         let worker_id = token_field(
             lease.get("hypervisor_worker_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.hypervisor_worker_id"),
         )?;
-        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from worker sessions")))?;
-        ensure(worker_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match worker machine {worker_machine}"))?;
+        let worker_machine = worker_to_machine.get(worker_id).ok_or_else(|| crate::EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.hypervisor_worker_id: {worker_id} missing from worker sessions")))?;
+        crate::ensure(worker_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease: owner machine {owner_machine_id} does not match worker machine {worker_machine}"))?;
         let session_id = token_field(
             lease.get("worker_session_id"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id"),
         )?;
-        let session_worker = session_to_worker.get(session_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: {session_id} missing worker-session heartbeat")))?;
-        ensure(session_worker == worker_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} does not own worker {worker_id}"))?;
+        let session_worker = session_to_worker.get(session_id).ok_or_else(|| crate::EvidenceError::new(format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: {session_id} missing worker-session heartbeat")))?;
+        crate::ensure(session_worker == worker_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} does not own worker {worker_id}"))?;
         let session_machine = session_to_machine
             .get(session_id)
             .expect("session machine recorded with session worker");
-        ensure(session_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} machine {session_machine} does not match lease owner {owner_machine_id}"))?;
+        crate::ensure(session_machine == owner_machine_id, format!("networked_hosted_scheduler.queue.entries[{idx}].lease.worker_session_id: session {session_id} machine {session_machine} does not match lease owner {owner_machine_id}"))?;
         str_field(
             entry.get("receipt_path"),
             &format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_path"),
@@ -2569,7 +2634,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             &format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_summary"),
         )?;
         if state == "completed" && exit_code == 0 {
-            ensure(summary.contains("replay-readiness status="), format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_summary: missing passed-run replay-readiness summary"))?;
+            crate::ensure(summary.contains("replay-readiness status="), format!("networked_hosted_scheduler.queue.entries[{idx}].receipt_summary: missing passed-run replay-readiness summary"))?;
         }
     }
 
@@ -2581,7 +2646,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         decision_store.get("kind"),
         "networked_hosted_scheduler.decision_store.kind",
     )?;
-    ensure(store_kind == "networked-shared", format!("networked_hosted_scheduler.decision_store.kind: expected networked-shared, got {store_kind:?}"))?;
+    crate::ensure(store_kind == "networked-shared", format!("networked_hosted_scheduler.decision_store.kind: expected networked-shared, got {store_kind:?}"))?;
     token_field(
         decision_store.get("store_id"),
         "networked_hosted_scheduler.decision_store.store_id",
@@ -2594,7 +2659,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         decision_store.get("state_revision"),
         "networked_hosted_scheduler.decision_store.state_revision",
     )?;
-    ensure(
+    crate::ensure(
         store_revision > 0,
         "networked_hosted_scheduler.decision_store.state_revision: expected positive revision",
     )?;
@@ -2610,11 +2675,11 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         decision_store.get("records"),
         "networked_hosted_scheduler.decision_store.records",
     )?;
-    ensure(
+    crate::ensure(
         !records.is_empty(),
         "networked_hosted_scheduler.decision_store.records: expected non-empty list",
     )?;
-    let mut decision_revisions = BTreeSet::new();
+    let mut decision_revisions = ::std::collections::BTreeSet::new();
     let mut last_decision_revision = 0i64;
     for (idx, record) in records.iter().enumerate() {
         let record = object_field(
@@ -2629,11 +2694,11 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             record.get("decision_revision"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision"),
         )?;
-        ensure(revision > 0, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
-        ensure(revision > last_decision_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: stale decision-store revision"))?;
-        ensure(revision <= store_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: exceeds decision-store revision"))?;
+        crate::ensure(revision > 0, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: expected positive revision"))?;
+        crate::ensure(revision > last_decision_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: stale decision-store revision"))?;
+        crate::ensure(revision <= store_revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].decision_revision: exceeds decision-store revision"))?;
         last_decision_revision = revision;
-        ensure(decision_revisions.insert(format!("{decision_id}@{revision}")), format!("networked_hosted_scheduler.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
+        crate::ensure(decision_revisions.insert(format!("{decision_id}@{revision}")), format!("networked_hosted_scheduler.decision_store.records[{idx}]: split-brain duplicate decision revision for {decision_id}@{revision}"))?;
         if let Some(previous_revision) = record
             .get("previous_revision")
             .filter(|value| !value.is_null())
@@ -2644,41 +2709,41 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
                     "networked_hosted_scheduler.decision_store.records[{idx}].previous_revision"
                 ),
             )?;
-            ensure(previous_revision < revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].previous_revision: stale decision write"))?;
+            crate::ensure(previous_revision < revision, format!("networked_hosted_scheduler.decision_store.records[{idx}].previous_revision: stale decision write"))?;
         }
         let writer_id = token_field(
             record.get("writer_id"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id"),
         )?;
-        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
+        let writer_machine = writer_to_machine.get(writer_id).ok_or_else(|| crate::EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: {writer_id} missing from machines")))?;
         let machine_id = token_field(
             record.get("machine_id"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].machine_id"),
         )?;
-        ensure(writer_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
+        crate::ensure(writer_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].writer_id: writer {writer_id} is not owned by machine {machine_id}"))?;
         let session_id = token_field(
             record.get("worker_session_id"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id"),
         )?;
-        let session_machine = session_to_machine.get(session_id).ok_or_else(|| EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: {session_id} missing worker-session heartbeat")))?;
-        ensure(session_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: session {session_id} is not owned by machine {machine_id}"))?;
+        let session_machine = session_to_machine.get(session_id).ok_or_else(|| crate::EvidenceError::new(format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: {session_id} missing worker-session heartbeat")))?;
+        crate::ensure(session_machine == machine_id, format!("networked_hosted_scheduler.decision_store.records[{idx}].worker_session_id: session {session_id} is not owned by machine {machine_id}"))?;
         let run_id = token_field(
             record.get("run_id"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].run_id"),
         )?;
-        ensure(run_ids.contains(run_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
+        crate::ensure(run_ids.contains(run_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].run_id: {run_id} missing from queue runs"))?;
         let queue_entry_id = token_field(
             record.get("queue_entry_id"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].queue_entry_id"),
         )?;
-        ensure(queue_entry_ids.contains(queue_entry_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        crate::ensure(queue_entry_ids.contains(queue_entry_id), format!("networked_hosted_scheduler.decision_store.records[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
         let source_receipts = array_field(
             record.get("source_receipt_paths"),
             &format!(
                 "networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths"
             ),
         )?;
-        ensure(!source_receipts.is_empty(), format!("networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths: expected linked source receipt"))?;
+        crate::ensure(!source_receipts.is_empty(), format!("networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths: expected linked source receipt"))?;
         for (source_idx, source) in source_receipts.iter().enumerate() {
             str_field(Some(source), &format!("networked_hosted_scheduler.decision_store.records[{idx}].source_receipt_paths[{source_idx}]"))?;
         }
@@ -2686,17 +2751,17 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
             record.get("summary"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].summary"),
         )?;
-        ensure(summary.contains("decision") && summary.contains("replay-readiness"), format!("networked_hosted_scheduler.decision_store.records[{idx}].summary: expected stable replay-readiness decision summary"))?;
+        crate::ensure(summary.contains("decision") && summary.contains("replay-readiness"), format!("networked_hosted_scheduler.decision_store.records[{idx}].summary: expected stable replay-readiness decision summary"))?;
         let action = token_field(
             record.get("action"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].action"),
         )?;
-        ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("networked_hosted_scheduler.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
+        crate::ensure(matches!(action, "triage" | "reproduce" | "minimize" | "accept" | "reject"), format!("networked_hosted_scheduler.decision_store.records[{idx}].action: unsupported value {action:?}"))?;
         let decision_status = token_field(
             record.get("status"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].status"),
         )?;
-        ensure(matches!(decision_status, "recorded" | "superseded" | "conflict"), format!("networked_hosted_scheduler.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
+        crate::ensure(matches!(decision_status, "recorded" | "superseded" | "conflict"), format!("networked_hosted_scheduler.decision_store.records[{idx}].status: unsupported value {decision_status:?}"))?;
         str_field(
             record.get("receipt_path"),
             &format!("networked_hosted_scheduler.decision_store.records[{idx}].receipt_path"),
@@ -2713,7 +2778,7 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("bounded networked hosted/shared-state")
             && anti_claim_text.contains("not saas")
             && anti_claim_text.contains("not product parity")
@@ -2725,18 +2790,23 @@ pub fn validate_networked_hosted_scheduler_receipt(receipt: &Value) -> EvidenceR
     Ok(format!("replay-readiness-networked-hosted-scheduler status={status} machines={} worker_sessions={} queue_entries={} decisions={} scope=bounded-networked-hosted-shared-state", machines.len(), worker_sessions.len(), entries.len(), records.len()))
 }
 
-fn validate_digest_field(value: Option<&Value>, field: &str) -> EvidenceResult<()> {
+fn validate_digest_field(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<()> {
     let digest = str_field(value, field)?;
     let hex = digest
         .strip_prefix("sha256:")
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected sha256 digest")))?;
-    ensure(
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected sha256 digest")))?;
+    crate::ensure(
         hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()),
         format!("{field}: expected 64 hex characters"),
     )
 }
 
-pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn write_multi_hypervisor_campaign_receipt_path(
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let path = path.as_ref();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -2749,18 +2819,23 @@ pub fn write_multi_hypervisor_campaign_receipt_path(path: impl AsRef<Path>) -> E
 }
 
 pub fn validate_multi_hypervisor_campaign_receipt_path(
-    path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
-    validate_multi_hypervisor_campaign_receipt(&load_json(path.as_ref())?)
+    path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    validate_multi_hypervisor_campaign_receipt(&crate::replay_readiness_loader::load_json(
+        path.as_ref(),
+    )?)
 }
 
 pub fn execute_multi_hypervisor_campaign_receipt_path(
-    plan_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    plan_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let plan_path = plan_path.as_ref();
     let output_path = output_path.as_ref();
-    let receipt = execute_multi_hypervisor_campaign_receipt(&load_json(plan_path)?, plan_path)?;
+    let receipt = execute_multi_hypervisor_campaign_receipt(
+        &crate::replay_readiness_loader::load_json(plan_path)?,
+        plan_path,
+    )?;
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -2769,55 +2844,55 @@ pub fn execute_multi_hypervisor_campaign_receipt_path(
 }
 
 pub fn execute_multi_hypervisor_campaign_receipt(
-    plan: &Value,
-    plan_path: &Path,
-) -> EvidenceResult<Value> {
+    plan: &::serde_json::Value,
+    plan_path: &::std::path::Path,
+) -> crate::EvidenceResult<::serde_json::Value> {
     let campaign_id = token_field(plan.get("campaign_id"), "multi_hypervisor_plan.campaign_id")?;
     let max_hypervisors = int_field(
         plan.get("max_hypervisors"),
         "multi_hypervisor_plan.max_hypervisors",
     )?;
-    ensure(
+    crate::ensure(
         max_hypervisors > 1,
         "multi_hypervisor_plan.max_hypervisors: expected at least 2",
     )?;
     let state_path = plan
         .get("state_path")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("state.json"));
     let artifact_index_path = plan
         .get("artifact_index_path")
-        .and_then(Value::as_str)
-        .map(PathBuf::from)
+        .and_then(::serde_json::Value::as_str)
+        .map(::std::path::PathBuf::from)
         .unwrap_or_else(|| plan_path.with_extension("artifacts.json"));
     let follow_up_policy = plan
         .get("follow_up_policy")
         .cloned()
         .unwrap_or_else(|| json!({"enabled": false, "reproduce": false, "minimize": false}));
     let previous_state = if state_path.exists() {
-        Some(load_json(&state_path)?)
+        Some(crate::replay_readiness_loader::load_json(&state_path)?)
     } else {
         None
     };
     let completed_before_start = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .map(|runs| runs.len())
         .unwrap_or(0);
 
     let hypervisors = array_field(plan.get("hypervisors"), "multi_hypervisor_plan.hypervisors")?;
-    ensure(
+    crate::ensure(
         hypervisors.len() >= 2,
         "multi_hypervisor_plan.hypervisors: expected at least two local hypervisor workers",
     )?;
-    ensure(
+    crate::ensure(
         max_hypervisors as usize <= hypervisors.len(),
         "multi_hypervisor_plan.max_hypervisors: cannot exceed hypervisor worker count",
     )?;
     let mut hypervisor_ids = Vec::with_capacity(hypervisors.len());
-    let mut hypervisor_artifact_roots = BTreeMap::new();
+    let mut hypervisor_artifact_roots = ::std::collections::BTreeMap::new();
     for (idx, hypervisor) in hypervisors.iter().enumerate() {
         let hypervisor = object_field(
             Some(hypervisor),
@@ -2832,11 +2907,11 @@ pub fn execute_multi_hypervisor_campaign_receipt(
             hypervisor.get("resource_budget"),
             &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget"),
         )?;
-        ensure(
+        crate::ensure(
             int_field(budget.get("vcpus"), &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.vcpus"))? > 0,
             format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.vcpus: expected positive budget"),
         )?;
-        ensure(
+        crate::ensure(
             int_field(budget.get("memory_mib"), &format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.memory_mib"))? > 0,
             format!("multi_hypervisor_plan.hypervisors[{idx}].resource_budget.memory_mib: expected positive budget"),
         )?;
@@ -2849,14 +2924,14 @@ pub fn execute_multi_hypervisor_campaign_receipt(
 
     let queue = object_field(plan.get("queue"), "multi_hypervisor_plan.queue")?;
     let entries = array_field(queue.get("entries"), "multi_hypervisor_plan.queue.entries")?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "multi_hypervisor_plan.queue.entries: expected non-empty list",
     )?;
     let mut completed_runs = previous_state
         .as_ref()
         .and_then(|state| state.get("completed_runs"))
-        .and_then(Value::as_array)
+        .and_then(::serde_json::Value::as_array)
         .cloned()
         .unwrap_or_default();
     let mut receipt_entries = Vec::with_capacity(entries.len());
@@ -2893,10 +2968,10 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         let hypervisor_worker_id = hypervisor_ids[idx % (max_hypervisors as usize)];
         let artifact_root = hypervisor_artifact_roots
             .get(hypervisor_worker_id)
-            .ok_or_else(|| EvidenceError::new(format!("multi_hypervisor_plan.hypervisors: missing artifact root for {hypervisor_worker_id}")))?;
+            .ok_or_else(|| crate::EvidenceError::new(format!("multi_hypervisor_plan.hypervisors: missing artifact root for {hypervisor_worker_id}")))?;
         let bug_artifacts = entry
             .get("expected_bug_artifacts")
-            .and_then(Value::as_array)
+            .and_then(::serde_json::Value::as_array)
             .cloned()
             .unwrap_or_default();
         let lease_id = format!("lease-{campaign_id}-{queue_entry_id}");
@@ -2913,7 +2988,7 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         };
         receipt_entries.push(json!({"queue_entry_id": queue_entry_id, "run_id": run_id, "workload": workload, "state": if succeeded {"completed"} else {"failed"}, "lease_id": lease_id, "hypervisor_worker_id": hypervisor_worker_id}));
         if succeeded {
-            completed_runs.push(Value::String(run_id.to_string()));
+            completed_runs.push(::serde_json::Value::String(run_id.to_string()));
         }
         let state_snapshot = json!({
             "schema_version": 1,
@@ -2929,15 +3004,27 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         }
         std::fs::write(&state_path, serde_json::to_vec_pretty(&state_snapshot)?)?;
         let mut run_followups = Vec::new();
-        if follow_up_policy.get("enabled").and_then(Value::as_bool) == Some(true) {
+        if follow_up_policy
+            .get("enabled")
+            .and_then(::serde_json::Value::as_bool)
+            == Some(true)
+        {
             for (bug_idx, bug) in bug_artifacts.iter().enumerate() {
                 let bug_path = str_field(Some(bug), &format!("multi_hypervisor_plan.queue.entries[{idx}].expected_bug_artifacts[{bug_idx}]"))?;
-                if follow_up_policy.get("reproduce").and_then(Value::as_bool) == Some(true) {
+                if follow_up_policy
+                    .get("reproduce")
+                    .and_then(::serde_json::Value::as_bool)
+                    == Some(true)
+                {
                     let job = json!({"job_id": format!("followup-{run_id}-reproduce-{bug_idx}"), "kind": "reproduce", "source_run_id": run_id, "source_queue_entry_id": queue_entry_id, "hypervisor_worker_id": hypervisor_worker_id, "bug_artifact_path": bug_path, "snapshot_ref": format!("snapshot:{run_id}:{bug_idx}"), "status": "queued"});
                     run_followups.push(job.clone());
                     follow_up_jobs.push(job);
                 }
-                if follow_up_policy.get("minimize").and_then(Value::as_bool) == Some(true) {
+                if follow_up_policy
+                    .get("minimize")
+                    .and_then(::serde_json::Value::as_bool)
+                    == Some(true)
+                {
                     let job = json!({"job_id": format!("followup-{run_id}-minimize-{bug_idx}"), "kind": "minimize", "source_run_id": run_id, "source_queue_entry_id": queue_entry_id, "hypervisor_worker_id": hypervisor_worker_id, "bug_artifact_path": bug_path, "snapshot_ref": format!("snapshot:{run_id}:{bug_idx}"), "status": "queued"});
                     run_followups.push(job.clone());
                     follow_up_jobs.push(job);
@@ -3012,7 +3099,7 @@ pub fn execute_multi_hypervisor_campaign_receipt(
         "runs": runs,
         "artifact_index": {"schema_version": 1, "index_path": artifact_index_path.display().to_string(), "entries": artifact_entries},
         "follow_up_jobs": follow_up_jobs,
-        "operator_decisions": plan.get("operator_decisions").and_then(Value::as_array).cloned().unwrap_or_else(|| vec![Value::String("target/decision-receipt.json".to_string())]),
+        "operator_decisions": plan.get("operator_decisions").and_then(::serde_json::Value::as_array).cloned().unwrap_or_else(|| vec![::serde_json::Value::String("target/decision-receipt.json".to_string())]),
         "anti_claims": [
             "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
             "This is not a shared remote queue or cross-machine scheduler.",
@@ -3023,7 +3110,7 @@ pub fn execute_multi_hypervisor_campaign_receipt(
     }))
 }
 
-pub fn sample_multi_hypervisor_campaign_plan() -> Value {
+pub fn sample_multi_hypervisor_campaign_plan() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "campaign_id": "local-campaign-0001",
@@ -3043,7 +3130,7 @@ pub fn sample_multi_hypervisor_campaign_plan() -> Value {
     })
 }
 
-pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
+pub fn sample_multi_hypervisor_campaign_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-local-multi-hypervisor-campaign",
@@ -3090,25 +3177,27 @@ pub fn sample_multi_hypervisor_campaign_receipt() -> Value {
     })
 }
 
-pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceResult<String> {
+pub fn validate_multi_hypervisor_campaign_receipt(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let schema_version = int_field(
         receipt.get("schema_version"),
         "multi_hypervisor.schema_version",
     )?;
-    ensure(
+    crate::ensure(
         schema_version == 1,
         format!("multi_hypervisor.schema_version: expected 1, got {schema_version}"),
     )?;
     let command = str_field(receipt.get("command"), "multi_hypervisor.command")?;
-    ensure(command == "replay-readiness-local-multi-hypervisor-campaign", format!("multi_hypervisor.command: expected replay-readiness-local-multi-hypervisor-campaign, got {command:?}"))?;
+    crate::ensure(command == "replay-readiness-local-multi-hypervisor-campaign", format!("multi_hypervisor.command: expected replay-readiness-local-multi-hypervisor-campaign, got {command:?}"))?;
     let status = str_field(receipt.get("status"), "multi_hypervisor.status")?;
-    ensure(
+    crate::ensure(
         matches!(status, "recorded" | "partial" | "failed"),
         format!("multi_hypervisor.status: unsupported value {status:?}"),
     )?;
     let campaign_id = token_field(receipt.get("campaign_id"), "multi_hypervisor.campaign_id")?;
     let scope = str_field(receipt.get("scope"), "multi_hypervisor.scope")?.to_lowercase();
-    ensure(
+    crate::ensure(
         scope.contains("bounded local multi-hypervisor")
             && scope.contains("not a hosted service")
             && scope.contains("not a shared remote queue")
@@ -3117,8 +3206,11 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             && scope.contains("not a full antithesis-style product replacement"),
         "multi_hypervisor.scope: must preserve bounded local anti-claims",
     )?;
-    ensure(
-        !matches!(receipt.get("raw_log_scraping"), Some(Value::Bool(true))),
+    crate::ensure(
+        !matches!(
+            receipt.get("raw_log_scraping"),
+            Some(::serde_json::Value::Bool(true))
+        ),
         "multi_hypervisor.raw_log_scraping: raw-log scraping is not allowed",
     )?;
     let fault_coverage = validate_fault_coverage_summary(receipt.get("fault_coverage"))?;
@@ -3128,10 +3220,10 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         queue_state.get("state_path"),
         "multi_hypervisor.queue_state.state_path",
     )?;
-    ensure(
+    crate::ensure(
         matches!(
             queue_state.get("persisted_after_each_run"),
-            Some(Value::Bool(true))
+            Some(::serde_json::Value::Bool(true))
         ),
         "multi_hypervisor.queue_state.persisted_after_each_run: expected true",
     )?;
@@ -3144,14 +3236,14 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         receipt.get("control_plane"),
         "multi_hypervisor.control_plane",
     )?;
-    ensure(
+    crate::ensure(
         str_field(
             control_plane.get("kind"),
             "multi_hypervisor.control_plane.kind",
         )? == "single-machine-local",
         "multi_hypervisor.control_plane.kind: expected single-machine-local",
     )?;
-    ensure(
+    crate::ensure(
         int_field(
             control_plane.get("max_hypervisors"),
             "multi_hypervisor.control_plane.max_hypervisors",
@@ -3168,12 +3260,12 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
     )?;
 
     let hypervisors = array_field(receipt.get("hypervisors"), "multi_hypervisor.hypervisors")?;
-    ensure(
+    crate::ensure(
         hypervisors.len() >= 2,
         "multi_hypervisor.hypervisors: expected at least two local hypervisor workers",
     )?;
-    let mut hypervisor_ids = BTreeSet::new();
-    let mut hypervisor_artifact_roots = BTreeMap::new();
+    let mut hypervisor_ids = ::std::collections::BTreeSet::new();
+    let mut hypervisor_artifact_roots = ::std::collections::BTreeMap::new();
     for (idx, hypervisor) in hypervisors.iter().enumerate() {
         let hypervisor = object_field(
             Some(hypervisor),
@@ -3183,7 +3275,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             hypervisor.get("hypervisor_worker_id"),
             &format!("multi_hypervisor.hypervisors[{idx}].hypervisor_worker_id"),
         )?;
-        ensure(
+        crate::ensure(
             hypervisor_ids.insert(id.to_string()),
             format!("multi_hypervisor.hypervisors[{idx}].hypervisor_worker_id: duplicate {id}"),
         )?;
@@ -3195,11 +3287,11 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             hypervisor.get("resource_budget"),
             &format!("multi_hypervisor.hypervisors[{idx}].resource_budget"),
         )?;
-        ensure(
+        crate::ensure(
             int_field(budget.get("vcpus"), &format!("multi_hypervisor.hypervisors[{idx}].resource_budget.vcpus"))? > 0,
             format!("multi_hypervisor.hypervisors[{idx}].resource_budget.vcpus: expected positive budget"),
         )?;
-        ensure(
+        crate::ensure(
             int_field(budget.get("memory_mib"), &format!("multi_hypervisor.hypervisors[{idx}].resource_budget.memory_mib"))? > 0,
             format!("multi_hypervisor.hypervisors[{idx}].resource_budget.memory_mib: expected positive budget"),
         )?;
@@ -3212,13 +3304,13 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
 
     let queue = object_field(receipt.get("queue"), "multi_hypervisor.queue")?;
     let entries = array_field(queue.get("entries"), "multi_hypervisor.queue.entries")?;
-    ensure(
+    crate::ensure(
         !entries.is_empty(),
         "multi_hypervisor.queue.entries: expected non-empty list",
     )?;
-    let mut entry_ids = BTreeSet::new();
-    let mut entry_run_ids = BTreeSet::new();
-    let mut lease_ids = BTreeSet::new();
+    let mut entry_ids = ::std::collections::BTreeSet::new();
+    let mut entry_run_ids = ::std::collections::BTreeSet::new();
+    let mut lease_ids = ::std::collections::BTreeSet::new();
     for (idx, entry) in entries.iter().enumerate() {
         let entry = object_field(
             Some(entry),
@@ -3228,7 +3320,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             entry.get("queue_entry_id"),
             &format!("multi_hypervisor.queue.entries[{idx}].queue_entry_id"),
         )?;
-        ensure(
+        crate::ensure(
             entry_ids.insert(entry_id.to_string()),
             format!("multi_hypervisor.queue.entries[{idx}].queue_entry_id: duplicate {entry_id}"),
         )?;
@@ -3236,7 +3328,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             entry.get("run_id"),
             &format!("multi_hypervisor.queue.entries[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             entry_run_ids.insert(run_id.to_string()),
             format!("multi_hypervisor.queue.entries[{idx}].run_id: duplicate {run_id}"),
         )?;
@@ -3244,7 +3336,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             entry.get("lease_id"),
             &format!("multi_hypervisor.queue.entries[{idx}].lease_id"),
         )?;
-        ensure(
+        crate::ensure(
             lease_ids.insert(lease_id.to_string()),
             format!("multi_hypervisor.queue.entries[{idx}].lease_id: duplicate {lease_id}"),
         )?;
@@ -3252,24 +3344,24 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             entry.get("hypervisor_worker_id"),
             &format!("multi_hypervisor.queue.entries[{idx}].hypervisor_worker_id"),
         )?;
-        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.queue.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        crate::ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.queue.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
         let state = token_field(
             entry.get("state"),
             &format!("multi_hypervisor.queue.entries[{idx}].state"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(state, "queued" | "leased" | "completed" | "failed"),
             format!("multi_hypervisor.queue.entries[{idx}].state: unsupported value {state:?}"),
         )?;
     }
 
     let runs = array_field(receipt.get("runs"), "multi_hypervisor.runs")?;
-    ensure(
+    crate::ensure(
         !runs.is_empty(),
         "multi_hypervisor.runs: expected non-empty list",
     )?;
-    let mut run_ids = BTreeSet::new();
-    let mut workloads = BTreeSet::new();
+    let mut run_ids = ::std::collections::BTreeSet::new();
+    let mut workloads = ::std::collections::BTreeSet::new();
     let mut passed = 0usize;
     for (idx, run) in runs.iter().enumerate() {
         let run = object_field(Some(run), &format!("multi_hypervisor.runs[{idx}]"))?;
@@ -3277,7 +3369,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("campaign_id"),
             &format!("multi_hypervisor.runs[{idx}].campaign_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_campaign_id == campaign_id,
             format!("multi_hypervisor.runs[{idx}].campaign_id: expected {campaign_id}"),
         )?;
@@ -3285,11 +3377,11 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("run_id"),
             &format!("multi_hypervisor.runs[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.insert(run_id.to_string()),
             format!("multi_hypervisor.runs[{idx}].run_id: duplicate {run_id}"),
         )?;
-        ensure(
+        crate::ensure(
             entry_run_ids.contains(run_id),
             format!("multi_hypervisor.runs[{idx}].run_id: {run_id} missing from queue entries"),
         )?;
@@ -3297,17 +3389,17 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("queue_entry_id"),
             &format!("multi_hypervisor.runs[{idx}].queue_entry_id"),
         )?;
-        ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        crate::ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.runs[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
         let hypervisor_worker_id = token_field(
             run.get("hypervisor_worker_id"),
             &format!("multi_hypervisor.runs[{idx}].hypervisor_worker_id"),
         )?;
-        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.runs[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        crate::ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.runs[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
         let lease_id = token_field(
             run.get("lease_id"),
             &format!("multi_hypervisor.runs[{idx}].lease_id"),
         )?;
-        ensure(
+        crate::ensure(
             lease_ids.contains(lease_id),
             format!("multi_hypervisor.runs[{idx}].lease_id: {lease_id} missing from queue entries"),
         )?;
@@ -3320,7 +3412,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("artifact_root"),
             &format!("multi_hypervisor.runs[{idx}].artifact_root"),
         )?;
-        ensure(
+        crate::ensure(
             hypervisor_artifact_roots.get(hypervisor_worker_id).is_some_and(|root| root == artifact_root),
             format!("multi_hypervisor.runs[{idx}].artifact_root: must match assigned hypervisor artifact root"),
         )?;
@@ -3332,7 +3424,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             run.get("status"),
             &format!("multi_hypervisor.runs[{idx}].status"),
         )?;
-        ensure(
+        crate::ensure(
             matches!(run_status, "passed" | "failed"),
             format!("multi_hypervisor.runs[{idx}].status: unsupported value {run_status:?}"),
         )?;
@@ -3354,7 +3446,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             )?;
         }
         if run_status == "passed" {
-            ensure(
+            crate::ensure(
                 exit_code == 0,
                 format!("multi_hypervisor.runs[{idx}].exit_code: passed run must exit 0"),
             )?;
@@ -3362,10 +3454,10 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
                 run.get("receipt_summary"),
                 &format!("multi_hypervisor.runs[{idx}].receipt_summary"),
             )?;
-            ensure(summary.contains("replay-readiness status="), format!("multi_hypervisor.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
+            crate::ensure(summary.contains("replay-readiness status="), format!("multi_hypervisor.runs[{idx}].receipt_summary: expected replay-readiness summary"))?;
             passed += 1;
         } else {
-            ensure(
+            crate::ensure(
                 exit_code != 0,
                 format!("multi_hypervisor.runs[{idx}].exit_code: failed run must be nonzero"),
             )?;
@@ -3376,7 +3468,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         receipt.get("artifact_index"),
         "multi_hypervisor.artifact_index",
     )?;
-    ensure(
+    crate::ensure(
         int_field(
             artifact_index.get("schema_version"),
             "multi_hypervisor.artifact_index.schema_version",
@@ -3391,11 +3483,11 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         artifact_index.get("entries"),
         "multi_hypervisor.artifact_index.entries",
     )?;
-    ensure(
+    crate::ensure(
         artifact_entries.len() == runs.len(),
         "multi_hypervisor.artifact_index.entries: expected one artifact entry per run",
     )?;
-    let mut artifact_ids = BTreeSet::new();
+    let mut artifact_ids = ::std::collections::BTreeSet::new();
     for (idx, artifact) in artifact_entries.iter().enumerate() {
         let artifact = object_field(
             Some(artifact),
@@ -3405,12 +3497,12 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             artifact.get("artifact_id"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_id"),
         )?;
-        ensure(artifact_ids.insert(artifact_id.to_string()), format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_id: duplicate {artifact_id}"))?;
+        crate::ensure(artifact_ids.insert(artifact_id.to_string()), format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_id: duplicate {artifact_id}"))?;
         let run_id = token_field(
             artifact.get("run_id"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].run_id"),
         )?;
-        ensure(
+        crate::ensure(
             run_ids.contains(run_id),
             format!(
                 "multi_hypervisor.artifact_index.entries[{idx}].run_id: {run_id} missing from runs"
@@ -3420,12 +3512,12 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             artifact.get("queue_entry_id"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].queue_entry_id"),
         )?;
-        ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.artifact_index.entries[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
+        crate::ensure(entry_ids.contains(queue_entry_id), format!("multi_hypervisor.artifact_index.entries[{idx}].queue_entry_id: {queue_entry_id} missing from queue entries"))?;
         let hypervisor_worker_id = token_field(
             artifact.get("hypervisor_worker_id"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].hypervisor_worker_id"),
         )?;
-        ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.artifact_index.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
+        crate::ensure(hypervisor_ids.contains(hypervisor_worker_id), format!("multi_hypervisor.artifact_index.entries[{idx}].hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"))?;
         str_field(
             artifact.get("artifact_root"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].artifact_root"),
@@ -3450,7 +3542,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
             retention.get("gc_status"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].retention.gc_status"),
         )?;
-        ensure(matches!(gc_status, "retained" | "eligible" | "collected"), format!("multi_hypervisor.artifact_index.entries[{idx}].retention.gc_status: unsupported value {gc_status:?}"))?;
+        crate::ensure(matches!(gc_status, "retained" | "eligible" | "collected"), format!("multi_hypervisor.artifact_index.entries[{idx}].retention.gc_status: unsupported value {gc_status:?}"))?;
         array_field(
             artifact.get("bug_artifacts"),
             &format!("multi_hypervisor.artifact_index.entries[{idx}].bug_artifacts"),
@@ -3481,7 +3573,7 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
         .collect::<Vec<_>>()
         .join("\n")
         .to_lowercase();
-    ensure(
+    crate::ensure(
         anti_claim_text.contains("bounded local multi-hypervisor")
             && anti_claim_text.contains("not a hosted service")
             && anti_claim_text.contains("not a shared remote queue")
@@ -3492,9 +3584,11 @@ pub fn validate_multi_hypervisor_campaign_receipt(receipt: &Value) -> EvidenceRe
     Ok(format!("replay-readiness-local-multi-hypervisor-campaign status={status} campaign={campaign_id} hypervisors={} runs={} passed={} restart_persisted=true workloads={} fault_classes={} scope=bounded-local-multi-hypervisor", hypervisors.len(), runs.len(), passed, workloads.into_iter().collect::<Vec<_>>().join(","), fault_coverage.join(",")))
 }
 
-fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<String>> {
+fn validate_fault_coverage_summary(
+    value: Option<&::serde_json::Value>,
+) -> crate::EvidenceResult<Vec<String>> {
     let summary = object_field(value, "multi_hypervisor.fault_coverage")?;
-    ensure(
+    crate::ensure(
         int_field(
             summary.get("schema_version"),
             "multi_hypervisor.fault_coverage.schema_version",
@@ -3506,7 +3600,7 @@ fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<
         "multi_hypervisor.fault_coverage.scope",
     )?
     .to_ascii_lowercase();
-    ensure(
+    crate::ensure(
         scope.contains("listed") && scope.contains("not exhaustive"),
         "multi_hypervisor.fault_coverage.scope: must preserve listed-only anti-claim",
     )?;
@@ -3514,11 +3608,11 @@ fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<
         summary.get("by_workload"),
         "multi_hypervisor.fault_coverage.by_workload",
     )?;
-    ensure(
+    crate::ensure(
         !by_workload.is_empty(),
         "multi_hypervisor.fault_coverage.by_workload: expected non-empty list",
     )?;
-    let mut classes = BTreeSet::new();
+    let mut classes = ::std::collections::BTreeSet::new();
     for (idx, row) in by_workload.iter().enumerate() {
         let row = object_field(
             Some(row),
@@ -3532,10 +3626,10 @@ fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<
             row.get("configured_fault_classes"),
             &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes"),
         )?;
-        ensure(!configured.is_empty(), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes: expected non-empty list"))?;
+        crate::ensure(!configured.is_empty(), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes: expected non-empty list"))?;
         for (class_idx, class) in configured.iter().enumerate() {
             let class = token_field(Some(class), &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes[{class_idx}]"))?;
-            ensure(matches!(class, "network" | "block" | "timer" | "process" | "scheduler"), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes[{class_idx}]: unsupported class {class:?}"))?;
+            crate::ensure(matches!(class, "network" | "block" | "timer" | "process" | "scheduler"), format!("multi_hypervisor.fault_coverage.by_workload[{idx}].configured_fault_classes[{class_idx}]: unsupported class {class:?}"))?;
             classes.insert(class.to_string());
         }
         let attempts = int_field(
@@ -3546,7 +3640,7 @@ fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<
             row.get("observed_injections"),
             &format!("multi_hypervisor.fault_coverage.by_workload[{idx}].observed_injections"),
         )?;
-        ensure(attempts >= 0 && observed >= 0 && observed <= attempts, format!("multi_hypervisor.fault_coverage.by_workload[{idx}]: observed_injections must be <= injection_attempts"))?;
+        crate::ensure(attempts >= 0 && observed >= 0 && observed <= attempts, format!("multi_hypervisor.fault_coverage.by_workload[{idx}]: observed_injections must be <= injection_attempts"))?;
         array_field(
             row.get("not_observed_fault_classes"),
             &format!(
@@ -3567,7 +3661,9 @@ fn validate_fault_coverage_summary(value: Option<&Value>) -> EvidenceResult<Vec<
     Ok(classes.into_iter().collect())
 }
 
-pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceResult<String> {
+pub fn render_multi_hypervisor_campaign_dashboard(
+    receipt: &::serde_json::Value,
+) -> crate::EvidenceResult<String> {
     let summary = validate_multi_hypervisor_campaign_receipt(receipt)?;
     let campaign_id = str_field(receipt.get("campaign_id"), "multi_hypervisor.campaign_id")?;
     let status = str_field(receipt.get("status"), "multi_hypervisor.status")?;
@@ -3684,10 +3780,10 @@ pub fn render_multi_hypervisor_campaign_dashboard(receipt: &Value) -> EvidenceRe
 }
 
 pub fn write_multi_hypervisor_campaign_dashboard_path(
-    receipt_path: impl AsRef<Path>,
-    output_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
-    let receipt = load_json(receipt_path.as_ref())?;
+    receipt_path: impl AsRef<::std::path::Path>,
+    output_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
+    let receipt = crate::replay_readiness_loader::load_json(receipt_path.as_ref())?;
     let dashboard = render_multi_hypervisor_campaign_dashboard(&receipt)?;
     let output_path = output_path.as_ref();
     if let Some(parent) = output_path.parent() {
@@ -3698,21 +3794,21 @@ pub fn write_multi_hypervisor_campaign_dashboard_path(
 }
 
 fn validate_multi_hypervisor_follow_up_job(
-    job: &Value,
+    job: &::serde_json::Value,
     field: &str,
-    run_ids: &BTreeSet<String>,
-    entry_ids: &BTreeSet<String>,
-    hypervisor_ids: &BTreeSet<String>,
-) -> EvidenceResult<()> {
+    run_ids: &::std::collections::BTreeSet<String>,
+    entry_ids: &::std::collections::BTreeSet<String>,
+    hypervisor_ids: &::std::collections::BTreeSet<String>,
+) -> crate::EvidenceResult<()> {
     let job = object_field(Some(job), field)?;
     token_field(job.get("job_id"), &format!("{field}.job_id"))?;
     let kind = token_field(job.get("kind"), &format!("{field}.kind"))?;
-    ensure(
+    crate::ensure(
         matches!(kind, "reproduce" | "minimize"),
         format!("{field}.kind: unsupported value {kind:?}"),
     )?;
     let run_id = token_field(job.get("source_run_id"), &format!("{field}.source_run_id"))?;
-    ensure(
+    crate::ensure(
         run_ids.contains(run_id),
         format!("{field}.source_run_id: {run_id} missing from runs"),
     )?;
@@ -3720,7 +3816,7 @@ fn validate_multi_hypervisor_follow_up_job(
         job.get("source_queue_entry_id"),
         &format!("{field}.source_queue_entry_id"),
     )?;
-    ensure(
+    crate::ensure(
         entry_ids.contains(queue_entry_id),
         format!("{field}.source_queue_entry_id: {queue_entry_id} missing from queue entries"),
     )?;
@@ -3728,7 +3824,7 @@ fn validate_multi_hypervisor_follow_up_job(
         job.get("hypervisor_worker_id"),
         &format!("{field}.hypervisor_worker_id"),
     )?;
-    ensure(
+    crate::ensure(
         hypervisor_ids.contains(hypervisor_worker_id),
         format!("{field}.hypervisor_worker_id: {hypervisor_worker_id} missing from hypervisors"),
     )?;
@@ -3738,7 +3834,7 @@ fn validate_multi_hypervisor_follow_up_job(
     )?;
     str_field(job.get("snapshot_ref"), &format!("{field}.snapshot_ref"))?;
     let status = token_field(job.get("status"), &format!("{field}.status"))?;
-    ensure(
+    crate::ensure(
         matches!(
             status,
             "queued" | "running" | "passed" | "failed" | "skipped"
@@ -3748,10 +3844,13 @@ fn validate_multi_hypervisor_follow_up_job(
     Ok(())
 }
 
-pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<String> {
+pub fn render_dashboard(
+    receipt: &::serde_json::Value,
+    summary_line: &str,
+) -> crate::EvidenceResult<String> {
     let status = str_field(receipt.get("status"), "receipt.status")?;
     let gates = array_field(receipt.get("static_gates"), "receipt.static_gates")?;
-    ensure(
+    crate::ensure(
         !gates.is_empty(),
         "receipt.static_gates: expected non-empty list",
     )?;
@@ -3759,7 +3858,7 @@ pub fn render_dashboard(receipt: &Value, summary_line: &str) -> EvidenceResult<S
     let scope = str_field(receipt.get("scope"), "receipt.scope")?;
     let passed = gates
         .iter()
-        .filter(|g| g.get("status").and_then(Value::as_str) == Some("pass"))
+        .filter(|g| g.get("status").and_then(::serde_json::Value::as_str) == Some("pass"))
         .count();
     let dogfood_summary = dogfood.get("summary").filter(|v| v.is_object());
     let verdict = dogfood_summary
@@ -3847,7 +3946,7 @@ pre {{ overflow-x: auto; padding: 1rem; }}
         token_class(&json_display(
             dogfood
                 .get("expectation_status")
-                .unwrap_or(&Value::String("not-applicable".into()))
+                .unwrap_or(&::serde_json::Value::String("not-applicable".into()))
         )),
         esc_value(dogfood.get("expectation_status")),
         esc_value(dogfood.get("evidence_curation")),
@@ -3866,9 +3965,9 @@ pre {{ overflow-x: auto; padding: 1rem; }}
 }
 
 pub fn update_readme_status_path(
-    receipt_path: impl AsRef<Path>,
-    readme_path: impl AsRef<Path>,
-) -> EvidenceResult<String> {
+    receipt_path: impl AsRef<::std::path::Path>,
+    readme_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<String> {
     let summary = summarize_receipt_path(receipt_path)?;
     let replacement = render_readme_status_block(&summary);
     let readme_path = readme_path.as_ref();
@@ -3880,14 +3979,17 @@ pub fn update_readme_status_path(
     Ok(summary)
 }
 
-pub fn replace_readme_marker_block(readme_text: &str, replacement: &str) -> EvidenceResult<String> {
-    let start = readme_text
-        .find(README_START_MARKER)
-        .ok_or_else(|| EvidenceError::new("README status markers missing or out of order"))?;
-    let end = readme_text
-        .find(README_END_MARKER)
-        .ok_or_else(|| EvidenceError::new("README status markers missing or out of order"))?;
-    ensure(
+pub fn replace_readme_marker_block(
+    readme_text: &str,
+    replacement: &str,
+) -> crate::EvidenceResult<String> {
+    let start = readme_text.find(README_START_MARKER).ok_or_else(|| {
+        crate::EvidenceError::new("README status markers missing or out of order")
+    })?;
+    let end = readme_text.find(README_END_MARKER).ok_or_else(|| {
+        crate::EvidenceError::new("README status markers missing or out of order")
+    })?;
+    crate::ensure(
         end >= start,
         "README status markers missing or out of order",
     )?;
@@ -3901,9 +4003,9 @@ pub fn replace_readme_marker_block(readme_text: &str, replacement: &str) -> Evid
 }
 
 pub fn check_readiness_surface_drift(
-    root: impl AsRef<Path>,
-    flake_path: impl AsRef<Path>,
-) -> EvidenceResult<Vec<String>> {
+    root: impl AsRef<::std::path::Path>,
+    flake_path: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<Vec<String>> {
     let root = root.as_ref();
     let flake_text = std::fs::read_to_string(flake_path.as_ref())?;
     let gate_names = validate_gate_metadata(&flake_text)?;
@@ -3914,7 +4016,9 @@ pub fn check_readiness_surface_drift(
     ])
 }
 
-pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceResult<()> {
+pub fn run_readiness_surface_drift_selftest(
+    root: impl AsRef<::std::path::Path>,
+) -> crate::EvidenceResult<()> {
     let root = root.as_ref();
     let flake_text = std::fs::read_to_string(root.join("flake.nix"))?;
     validate_gate_metadata(&flake_text)?;
@@ -3926,13 +4030,13 @@ pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceR
     match validate_gate_metadata(&missing_execution) {
         Err(err) if err.message().contains("without executed run_gate") => {}
         Err(err) => {
-            return Err(EvidenceError::new(format!(
+            return Err(crate::EvidenceError::new(format!(
                 "unexpected missing-execution error: {}",
                 err.message()
             )))
         }
         Ok(_) => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "missing executed gate fixture unexpectedly passed",
             ))
         }
@@ -3943,24 +4047,24 @@ pub fn run_readiness_surface_drift_selftest(root: impl AsRef<Path>) -> EvidenceR
     );
     match validate_gate_metadata(&extra_execution) {
         Err(err) if err.message().contains("missing from receipt metadata") => Ok(()),
-        Err(err) => Err(EvidenceError::new(format!(
+        Err(err) => Err(crate::EvidenceError::new(format!(
             "unexpected extra-execution error: {}",
             err.message()
         ))),
-        Ok(_) => Err(EvidenceError::new(
+        Ok(_) => Err(crate::EvidenceError::new(
             "extra executed gate fixture unexpectedly passed",
         )),
     }
 }
 
-pub fn validate_gate_metadata(flake_text: &str) -> EvidenceResult<Vec<String>> {
+pub fn validate_gate_metadata(flake_text: &str) -> crate::EvidenceResult<Vec<String>> {
     let executed = executed_static_gate_names(flake_text)?;
     let receipt = validate_unique_nonempty(
         crate::rust_automation::readiness_receipt::gate_names(),
         "receipt static gate metadata entries",
     )?;
-    let executed_set = executed.iter().collect::<BTreeSet<_>>();
-    let receipt_set = receipt.iter().collect::<BTreeSet<_>>();
+    let executed_set = executed.iter().collect::<::std::collections::BTreeSet<_>>();
+    let receipt_set = receipt.iter().collect::<::std::collections::BTreeSet<_>>();
     let missing = executed
         .iter()
         .filter(|name| !receipt_set.contains(name))
@@ -3971,14 +4075,14 @@ pub fn validate_gate_metadata(flake_text: &str) -> EvidenceResult<Vec<String>> {
         .filter(|name| !executed_set.contains(name))
         .cloned()
         .collect::<Vec<_>>();
-    ensure(
+    crate::ensure(
         missing.is_empty(),
         format!(
             "executed static gates missing from receipt metadata: {}",
             missing.join(", ")
         ),
     )?;
-    ensure(
+    crate::ensure(
         extra.is_empty(),
         format!(
             "receipt static gates without executed run_gate: {}",
@@ -3988,16 +4092,16 @@ pub fn validate_gate_metadata(flake_text: &str) -> EvidenceResult<Vec<String>> {
     Ok(executed)
 }
 
-pub fn sample_replay_readiness_receipt(dogfood: bool, status: &str) -> Value {
+pub fn sample_replay_readiness_receipt(dogfood: bool, status: &str) -> ::serde_json::Value {
     let dogfood_obj = if dogfood {
         json!({"selected_workload":"rust-workload","status":"pass","output":"/tmp/proof&artifact","summary":{"accepted":true,"seed":42,"snapshot_probe_fail_after":25,"verdict":{"replay_class":"snapshot_backed_reproduced","replay_parent_depth":2}},"expectation":{"expected":{"accepted":true}},"expectation_status":"matched","evidence_curation":"explicit-follow-up"})
     } else {
         json!({"selected_workload":null,"status":"skipped","output":null,"summary":null,"expectation":null,"expectation_status":"not-applicable","evidence_curation":"explicit-follow-up"})
     };
-    json!({"schema_version":1,"command":"replay-readiness","status":status,"exit_code": if status == "passed" {0} else {1},"failed_phase": if status == "passed" {Value::Null} else {Value::String("evidence-contracts".into())},"started_at":"2026-05-08T00:00:00Z","finished_at":"2026-05-08T00:00:01Z","static_gates":[{"name":"contract-registry","command":"check-contract-registry .","status":"pass"},{"name":"evidence-contracts","command":"check-evidence-contracts --root .","status": if status == "passed" {"pass"} else {"fail"}}],"dogfood":dogfood_obj,"scope":"bounded committed replay/evidence readiness; not universal determinism or hosted-product parity"})
+    json!({"schema_version":1,"command":"replay-readiness","status":status,"exit_code": if status == "passed" {0} else {1},"failed_phase": if status == "passed" {::serde_json::Value::Null} else {::serde_json::Value::String("evidence-contracts".into())},"started_at":"2026-05-08T00:00:00Z","finished_at":"2026-05-08T00:00:01Z","static_gates":[{"name":"contract-registry","command":"check-contract-registry .","status":"pass"},{"name":"evidence-contracts","command":"check-evidence-contracts --root .","status": if status == "passed" {"pass"} else {"fail"}}],"dogfood":dogfood_obj,"scope":"bounded committed replay/evidence readiness; not universal determinism or hosted-product parity"})
 }
 
-pub fn sample_decision_receipt() -> Value {
+pub fn sample_decision_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-decision-receipt",
@@ -4032,7 +4136,7 @@ pub fn sample_decision_receipt() -> Value {
     })
 }
 
-fn sample_typed_command(program: &str, args: &[&str]) -> Value {
+fn sample_typed_command(program: &str, args: &[&str]) -> ::serde_json::Value {
     const SAMPLE_EXECUTABLE_MAX_BYTES: u64 = 16_777_216;
     const SAMPLE_TIMEOUT_MS: u64 = 30_000;
     const SAMPLE_INPUT_MAX_BYTES: u64 = 1_024;
@@ -4068,7 +4172,7 @@ fn sample_typed_command(program: &str, args: &[&str]) -> Value {
     })
 }
 
-pub fn sample_scheduler_receipt() -> Value {
+pub fn sample_scheduler_receipt() -> ::serde_json::Value {
     json!({
         "schema_version": 1,
         "command": "replay-readiness-scheduler-receipt",
@@ -4106,23 +4210,23 @@ pub fn sample_scheduler_receipt() -> Value {
     })
 }
 
-fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
+fn validate_renderer_equivalence(_root: &::std::path::Path) -> crate::EvidenceResult<String> {
     let receipt = sample_replay_readiness_receipt(true, "passed");
     let summary = summarize_receipt(&receipt)?;
-    ensure(
+    crate::ensure(
         summary.starts_with("replay-readiness status="),
         "summary line has unexpected prefix",
     )?;
-    ensure(
+    crate::ensure(
         summary.contains("scope=bounded"),
         "summary line lost bounded scope token",
     )?;
     let dashboard = render_dashboard(&receipt, &summary)?;
-    ensure(
+    crate::ensure(
         dashboard.contains(&summary),
         "dashboard does not contain summary line",
     )?;
-    ensure(
+    crate::ensure(
         dashboard.contains("snapshot_backed_reproduced"),
         "dashboard lost dogfood replay class",
     )?;
@@ -4131,18 +4235,18 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
         receipt.clone(),
         summary.clone(),
     )])?;
-    ensure(
+    crate::ensure(
         fleet_index.contains("ChaosControl fleet triage index")
             && fleet_index.contains("snapshot_backed_reproduced"),
         "fleet triage index lost receipt summary or replay class",
     )?;
-    ensure(
+    crate::ensure(
         bounded(&fleet_index) && fleet_index.contains("not a hosted service"),
         "fleet triage index lost hosted-service anti-overclaim language",
     )?;
     let decision = sample_decision_receipt();
     let decision_summary = validate_decision_receipt(&decision)?;
-    ensure(
+    crate::ensure(
         decision_summary.contains("scope=bounded-local-not-shared"),
         "decision receipt summary lost bounded local scope",
     )?;
@@ -4151,14 +4255,14 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     match validate_decision_receipt(&overclaimed_decision) {
         Err(_) => {}
         Ok(_) => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "overclaiming decision receipt unexpectedly passed",
             ))
         }
     }
     let scheduler = sample_scheduler_receipt();
     let scheduler_summary = validate_scheduler_receipt(&scheduler)?;
-    ensure(
+    crate::ensure(
         scheduler_summary.contains("scope=bounded-local-not-hosted")
             && scheduler_summary.contains("runs=2"),
         "scheduler receipt summary lost bounded local scope or run count",
@@ -4168,7 +4272,7 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     match validate_scheduler_receipt(&overclaimed_scheduler) {
         Err(_) => {}
         Ok(_) => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "overclaiming scheduler receipt unexpectedly passed",
             ))
         }
@@ -4201,7 +4305,7 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
             "This scheduler execution receipt captures command status and receipt summaries without raw-log scraping."
         ]
     });
-    ensure(
+    crate::ensure(
         validate_scheduler_execution_receipt(&execution)?
             .contains("scope=bounded-local-sequential-not-hosted"),
         "scheduler execution summary lost bounded local scope",
@@ -4211,14 +4315,14 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     match validate_scheduler_execution_receipt(&overclaimed_execution) {
         Err(_) => {}
         Ok(_) => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "raw-log scheduler execution unexpectedly passed",
             ))
         }
     }
     let fleet_scheduler = sample_fleet_scheduler_receipt();
     let fleet_scheduler_summary = validate_fleet_scheduler_receipt(&fleet_scheduler)?;
-    ensure(
+    crate::ensure(
         fleet_scheduler_summary.contains("scope=bounded-hosted-fleet"),
         "fleet scheduler summary lost bounded hosted/fleet scope",
     )?;
@@ -4227,39 +4331,43 @@ fn validate_renderer_equivalence(_root: &Path) -> EvidenceResult<String> {
     match validate_fleet_scheduler_receipt(&overclaimed_fleet_scheduler) {
         Err(_) => {}
         Ok(_) => {
-            return Err(EvidenceError::new(
+            return Err(crate::EvidenceError::new(
                 "raw-log fleet scheduler receipt unexpectedly passed",
             ))
         }
     }
     match render_fleet_triage_index(&[]) {
         Err(_) => {}
-        Ok(_) => return Err(EvidenceError::new("empty fleet index unexpectedly passed")),
+        Ok(_) => {
+            return Err(crate::EvidenceError::new(
+                "empty fleet index unexpectedly passed",
+            ))
+        }
     }
-    ensure(
+    crate::ensure(
         bounded(&dashboard),
         "dashboard lost bounded anti-overclaim language",
     )?;
     let readme =
         format!("# Demo\n\n{README_START_MARKER}\nold status\n{README_END_MARKER}\n\nafter\n");
     let rendered = replace_readme_marker_block(&readme, &render_readme_status_block(&summary))?;
-    ensure(
+    crate::ensure(
         rendered.contains(&summary),
         "README snippet does not contain summary line",
     )?;
-    ensure(
+    crate::ensure(
         bounded(&rendered),
         "README snippet lost bounded anti-overclaim language",
     )?;
     match replace_readme_marker_block("# Demo\n", &render_readme_status_block(&summary)) {
         Err(_) => Ok(summary),
-        Ok(_) => Err(EvidenceError::new(
+        Ok(_) => Err(crate::EvidenceError::new(
             "README updater accepted missing status markers",
         )),
     }
 }
 
-fn executed_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
+fn executed_static_gate_names(flake_text: &str) -> crate::EvidenceResult<Vec<String>> {
     let block = between(
         flake_text,
         "echo \"== replay readiness: static checks ==\"",
@@ -4277,28 +4385,32 @@ fn executed_static_gate_names(flake_text: &str) -> EvidenceResult<Vec<String>> {
     validate_unique_nonempty(names, "replay-readiness run_gate entries")
 }
 
-fn validate_unique_nonempty(names: Vec<String>, label: &str) -> EvidenceResult<Vec<String>> {
-    ensure(!names.is_empty(), format!("no {label} found"))?;
-    let set = names.iter().collect::<BTreeSet<_>>();
-    ensure(
+fn validate_unique_nonempty(names: Vec<String>, label: &str) -> crate::EvidenceResult<Vec<String>> {
+    crate::ensure(!names.is_empty(), format!("no {label} found"))?;
+    let set = names.iter().collect::<::std::collections::BTreeSet<_>>();
+    crate::ensure(
         set.len() == names.len(),
         format!("duplicate {label}: {names:?}"),
     )?;
     Ok(names)
 }
 
-fn between<'a>(text: &'a str, start_marker: &str, end_marker: &str) -> EvidenceResult<&'a str> {
-    let start = text
-        .find(start_marker)
-        .ok_or_else(|| EvidenceError::new(format!("missing start marker: {start_marker}")))?;
+fn between<'a>(
+    text: &'a str,
+    start_marker: &str,
+    end_marker: &str,
+) -> crate::EvidenceResult<&'a str> {
+    let start = text.find(start_marker).ok_or_else(|| {
+        crate::EvidenceError::new(format!("missing start marker: {start_marker}"))
+    })?;
     let end = text[start..]
         .find(end_marker)
-        .ok_or_else(|| EvidenceError::new(format!("missing end marker: {end_marker}")))?
+        .ok_or_else(|| crate::EvidenceError::new(format!("missing end marker: {end_marker}")))?
         + start;
     Ok(&text[start..end])
 }
 
-fn render_gate_rows(gates: &[Value]) -> EvidenceResult<String> {
+fn render_gate_rows(gates: &[::serde_json::Value]) -> crate::EvidenceResult<String> {
     let mut rows = Vec::new();
     for gate in gates {
         let name = str_field(gate.get("name"), "gate.name")?;
@@ -4309,36 +4421,46 @@ fn render_gate_rows(gates: &[Value]) -> EvidenceResult<String> {
     Ok(rows.join("\n"))
 }
 
-fn typed_command_field(value: Option<&Value>, field: &str) -> EvidenceResult<CommandPlan> {
-    let value =
-        value.ok_or_else(|| EvidenceError::new(format!("{field}: missing typed command")))?;
-    parse_plan(value).map_err(|error| EvidenceError::new(format!("{field}: {error}")))
+fn typed_command_field(
+    value: Option<&::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<crate::typed_operator_command::CommandPlan> {
+    let value = value
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: missing typed command")))?;
+    crate::typed_operator_command::parse_plan(value)
+        .map_err(|error| crate::EvidenceError::new(format!("{field}: {error}")))
 }
 
 fn execute_typed_command_field(
-    value: Option<&Value>,
+    value: Option<&::serde_json::Value>,
     field: &str,
-) -> EvidenceResult<(
-    CommandPlan,
+) -> crate::EvidenceResult<(
+    crate::typed_operator_command::CommandPlan,
     crate::typed_operator_command::CommandObservation,
 )> {
     let command = typed_command_field(value, field)?;
-    let observation = crate::execute_typed_operator_command(&command, Path::new("."))?;
+    let observation = crate::execute_typed_operator_command(&command, ::std::path::Path::new("."))?;
     Ok((command, observation))
 }
 
-fn str_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {
-    match value.and_then(Value::as_str) {
+fn str_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a str> {
+    match value.and_then(::serde_json::Value::as_str) {
         Some(text) if !text.is_empty() => Ok(text),
-        _ => Err(EvidenceError::new(format!(
+        _ => Err(crate::EvidenceError::new(format!(
             "{field}: expected non-empty string"
         ))),
     }
 }
 
-fn token_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a str> {
+fn token_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a str> {
     let text = str_field(value, field)?;
-    ensure(
+    crate::ensure(
         !text.chars().any(char::is_whitespace),
         format!("{field}: expected whitespace-free string"),
     )?;
@@ -4346,37 +4468,40 @@ fn token_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a 
 }
 
 fn object_field<'a>(
-    value: Option<&'a Value>,
+    value: Option<&'a ::serde_json::Value>,
     field: &str,
-) -> EvidenceResult<&'a serde_json::Map<String, Value>> {
+) -> crate::EvidenceResult<&'a serde_json::Map<String, ::serde_json::Value>> {
     value
-        .and_then(Value::as_object)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected object")))
+        .and_then(::serde_json::Value::as_object)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected object")))
 }
 
-fn array_field<'a>(value: Option<&'a Value>, field: &str) -> EvidenceResult<&'a Vec<Value>> {
+fn array_field<'a>(
+    value: Option<&'a ::serde_json::Value>,
+    field: &str,
+) -> crate::EvidenceResult<&'a Vec<::serde_json::Value>> {
     value
-        .and_then(Value::as_array)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected non-empty list")))
+        .and_then(::serde_json::Value::as_array)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected non-empty list")))
 }
 
-fn int_field(value: Option<&Value>, field: &str) -> EvidenceResult<i64> {
+fn int_field(value: Option<&::serde_json::Value>, field: &str) -> crate::EvidenceResult<i64> {
     value
-        .and_then(Value::as_i64)
-        .ok_or_else(|| EvidenceError::new(format!("{field}: expected integer")))
+        .and_then(::serde_json::Value::as_i64)
+        .ok_or_else(|| crate::EvidenceError::new(format!("{field}: expected integer")))
 }
 
-fn json_display(value: &Value) -> String {
+fn json_display(value: &::serde_json::Value) -> String {
     match value {
-        Value::Null => "none".to_string(),
-        Value::Bool(true) => "true".to_string(),
-        Value::Bool(false) => "false".to_string(),
-        Value::String(text) => text.clone(),
+        ::serde_json::Value::Null => "none".to_string(),
+        ::serde_json::Value::Bool(true) => "true".to_string(),
+        ::serde_json::Value::Bool(false) => "false".to_string(),
+        ::serde_json::Value::String(text) => text.clone(),
         other => other.to_string(),
     }
 }
 
-fn esc_value(value: Option<&Value>) -> String {
+fn esc_value(value: Option<&::serde_json::Value>) -> String {
     esc(&value
         .map(json_display)
         .unwrap_or_else(|| "none".to_string()))

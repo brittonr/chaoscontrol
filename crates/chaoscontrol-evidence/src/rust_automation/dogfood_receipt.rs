@@ -3,7 +3,7 @@
 // r[impl chaoscontrol.rust_automation.evidence]
 // r[impl chaoscontrol.rust_automation.parity]
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactFact {
@@ -20,21 +20,28 @@ pub struct MaterializeInput {
     pub replay_message: String,
     pub replay_exit_status: i64,
     pub replay_command: Option<String>,
-    pub checkpoint: Value,
-    pub assertions: Value,
-    pub bugs: Vec<Value>,
+    pub checkpoint: ::serde_json::Value,
+    pub assertions: ::serde_json::Value,
+    pub bugs: Vec<::serde_json::Value>,
     pub bug_paths: Vec<String>,
     pub artifacts: Vec<ArtifactFact>,
     pub run_config_digest: String,
     pub checkpoint_digest: String,
 }
 
-pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, String> {
+pub fn build_run_config(
+    output_name: &str,
+    checkpoint: &::serde_json::Value,
+) -> Result<::serde_json::Value, String> {
     let config = checkpoint
         .get("config")
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .ok_or_else(|| String::from("checkpoint.config must be an object"))?;
-    let mode = if config.get("schedule_diversity").and_then(Value::as_bool) == Some(false) {
+    let mode = if config
+        .get("schedule_diversity")
+        .and_then(::serde_json::Value::as_bool)
+        == Some(false)
+    {
         "hybrid"
     } else {
         "fault-schedule"
@@ -58,7 +65,7 @@ pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, 
     }))
 }
 
-pub fn encode_run_config_compat(config: &Value) -> Result<Vec<u8>, String> {
+pub fn encode_run_config_compat(config: &::serde_json::Value) -> Result<Vec<u8>, String> {
     const FIELDS: [&str; 14] = [
         "schema_version",
         "profile",
@@ -102,14 +109,14 @@ pub fn encode_run_config_compat(config: &Value) -> Result<Vec<u8>, String> {
     Ok(format!("{}\n", lines.join("\n")).into_bytes())
 }
 
-pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
+pub fn build_receipt(input: &MaterializeInput) -> Result<::serde_json::Value, String> {
     if input.bugs.len() != input.bug_paths.len() {
         return Err(String::from("bug values and paths differ in length"));
     }
     let config = input
         .checkpoint
         .get("config")
-        .and_then(Value::as_object)
+        .and_then(::serde_json::Value::as_object)
         .ok_or_else(|| String::from("checkpoint.config must be an object"))?;
     let assertions = input
         .assertions
@@ -117,10 +124,10 @@ pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
         .ok_or_else(|| String::from("assertions must be a list"))?;
     let coverage = json!({
         "registered": assertions.len(),
-        "exercised": assertions.iter().filter(|item| item.get("verdict").and_then(Value::as_str) != Some("unexercised")).count(),
-        "passed": assertions.iter().filter(|item| item.get("verdict").and_then(Value::as_str) == Some("passed")).count(),
-        "failed": assertions.iter().filter(|item| item.get("verdict").and_then(Value::as_str) == Some("failed")).count(),
-        "unexercised": assertions.iter().filter(|item| item.get("verdict").and_then(Value::as_str) == Some("unexercised")).count(),
+        "exercised": assertions.iter().filter(|item| item.get("verdict").and_then(::serde_json::Value::as_str) != Some("unexercised")).count(),
+        "passed": assertions.iter().filter(|item| item.get("verdict").and_then(::serde_json::Value::as_str) == Some("passed")).count(),
+        "failed": assertions.iter().filter(|item| item.get("verdict").and_then(::serde_json::Value::as_str) == Some("failed")).count(),
+        "unexercised": assertions.iter().filter(|item| item.get("verdict").and_then(::serde_json::Value::as_str) == Some("unexercised")).count(),
         "summary_path": format!("{}/assertions.json", input.output_path),
     });
     let ticks = required_i64(config, "ticks_per_branch")?;
@@ -131,7 +138,7 @@ pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
     for (bug, bug_path) in input.bugs.iter().zip(&input.bug_paths) {
         let depth = bug
             .get("replay_parent_depth")
-            .and_then(Value::as_i64)
+            .and_then(::serde_json::Value::as_i64)
             .unwrap_or(0);
         let mut context = if depth > 0 {
             String::from("parent-snapshot-required")
@@ -153,8 +160,8 @@ pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
         });
         let mut report = json!({
             "path": bug_path,
-            "assertion_id": bug.get("assertion_id").cloned().unwrap_or(Value::Null),
-            "tick": bug.get("tick").cloned().unwrap_or(Value::Null),
+            "assertion_id": bug.get("assertion_id").cloned().unwrap_or(::serde_json::Value::Null),
+            "tick": bug.get("tick").cloned().unwrap_or(::serde_json::Value::Null),
             "replay_parent_depth": depth,
             "replay_context": context,
             "replay_status": input.replay_status,
@@ -201,31 +208,37 @@ pub fn build_receipt(input: &MaterializeInput) -> Result<Value, String> {
     }))
 }
 
-fn required(object: &serde_json::Map<String, Value>, field: &str) -> Result<Value, String> {
+fn required(
+    object: &serde_json::Map<String, ::serde_json::Value>,
+    field: &str,
+) -> Result<::serde_json::Value, String> {
     object
         .get(field)
         .cloned()
         .ok_or_else(|| format!("checkpoint.config.{field} is required"))
 }
 
-fn required_i64(object: &serde_json::Map<String, Value>, field: &str) -> Result<i64, String> {
+fn required_i64(
+    object: &serde_json::Map<String, ::serde_json::Value>,
+    field: &str,
+) -> Result<i64, String> {
     object
         .get(field)
-        .and_then(Value::as_i64)
+        .and_then(::serde_json::Value::as_i64)
         .ok_or_else(|| format!("checkpoint.config.{field} must be an integer"))
 }
 
-fn optional_text(value: Option<&Value>, fallback: &str) -> String {
+fn optional_text(value: Option<&::serde_json::Value>, fallback: &str) -> String {
     value
-        .and_then(Value::as_str)
+        .and_then(::serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .unwrap_or(fallback)
         .to_string()
 }
 
-fn display(value: Option<&Value>) -> String {
+fn display(value: Option<&::serde_json::Value>) -> String {
     match value {
-        Some(Value::String(value)) => value.clone(),
+        Some(::serde_json::Value::String(value)) => value.clone(),
         Some(value) => value.to_string(),
         None => String::from("null"),
     }

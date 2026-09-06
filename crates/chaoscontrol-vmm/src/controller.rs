@@ -1,34 +1,17 @@
 //! Multi-VM simulation controller for deterministic distributed system testing.
 //!
-//! [`SimulationController`] orchestrates multiple [`DeterministicVm`] instances
+//! [`SimulationController`] orchestrates multiple [`DeterministicVm`](crate::vm::DeterministicVm) instances
 //! in a single deterministic simulation, handling fault injection, network
 //! routing, and deterministic scheduling.
 
 pub use crate::controller_core::VmStatus;
 use crate::controller_core::{
-    all_setup_complete, checked_usize, checked_usize_u64, core_vm_status,
-    device_disappeared_application_error, fault_vm_status, internal_application_error,
-    next_operation, non_runnable_application_error, plan_completion,
-    target_state_application_error, u32_targets_to_usize, validate_process_snapshot_effect,
-    CompletionFacts, FaultApplicationError,
+    all_setup_complete, internal_application_error, validate_process_snapshot_effect,
+    FaultApplicationError,
 };
-use crate::scheduler::core::ScheduleTrace;
-use crate::scheduler::ScheduleVariant;
-use crate::sim_adapter::KvmVcpuExecutor;
-use crate::snapshot::VmSnapshot;
-use crate::vm::{DeterministicVm, SnapshotSnafu, VmConfig, VmError};
-use chaoscontrol_fault::faults::Fault;
-use chaoscontrol_fault::oracle::OracleReport;
-use chaoscontrol_fault::outcomes::{
-    checked_ns_to_tsc_delta, plan_fault_application, preflight_fault_application_events_with_limit,
-    preflight_fault_observation_events_with_limit, validate_pending_fault_observations,
-    FaultApplicationPolicy, FaultAttempt, FaultAttemptId, FaultAuthoritativeStage, FaultMechanism,
-    FaultObservation, FaultObservationEffect, FaultObservationSubsystem, FaultPlan,
-    FaultPlanEffect, FaultPlanningFacts, FaultStageEvent, FaultStageKind, FaultTransitionError,
-    VmFaultFacts, MAX_FAULT_OUTCOME_EVENTS,
-};
-use chaoscontrol_fault::report_merge::{merge_oracle_reports, rejected_merge_report};
-use chaoscontrol_sim_core::fault::{EngineConfig, FaultEngine, FaultSchedule};
+
+use chaoscontrol_fault::outcomes::FaultObservation;
+
 #[cfg(test)]
 use chaoscontrol_sim_core::network::{
     bandwidth_serialization_ticks, MAX_PENDING_FAULT_OBSERVATIONS,
@@ -36,20 +19,15 @@ use chaoscontrol_sim_core::network::{
 pub use chaoscontrol_sim_core::network::{
     DiskFaultFlags, NetworkFabric, NetworkMessage, NetworkSendError, NetworkStats, PacketInFlight,
 };
-use chaoscontrol_sim_core::{
-    complete_round, plan_round, simulation_config_identity, CommandExecutor, CoreVmStatus,
-    ExitObservation, RoundInput, RoundObservation, SimulationCoreSnapshot,
-    CORE_SNAPSHOT_SCHEMA_VERSION,
-};
-use log::{debug, info, warn};
+use chaoscontrol_sim_core::CommandExecutor;
+
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 const MAX_PENDING_PROCESS_OBSERVATIONS: usize = 4_096;
 const GUEST_ARTIFACT_IDENTITY_DOMAIN: &[u8] = b"chaoscontrol.sim-core.guest-artifact.v1";
 
-fn guest_artifact_identity(path: &str) -> Result<[u8; 32], VmError> {
-    let bytes = std::fs::read(path).map_err(|error| VmError::DiskImage {
+fn guest_artifact_identity(path: &str) -> Result<[u8; 32], crate::vm::VmError> {
+    let bytes = std::fs::read(path).map_err(|error| crate::vm::VmError::DiskImage {
         message: format!("read guest artifact {path}: {error}"),
     })?;
     let mut hasher = blake3::Hasher::new();
@@ -60,16 +38,15 @@ fn guest_artifact_identity(path: &str) -> Result<[u8; 32], VmError> {
 
 fn ledger_has_observed_effect(
     ledger: &chaoscontrol_fault::outcomes::FaultOutcomeLedger,
-    expected: &FaultPlanEffect,
+    expected: &::chaoscontrol_fault::outcomes::FaultPlanEffect,
 ) -> bool {
     ledger.events.iter().any(|event| {
         matches!(
             &event.kind,
-            FaultStageKind::Applied { effect } if effect == expected
-        ) && ledger
-            .attempts
-            .get(&event.attempt_id)
-            .is_some_and(|state| state.stage == FaultAuthoritativeStage::Observed)
+            ::chaoscontrol_fault::outcomes::FaultStageKind::Applied { effect } if effect == expected
+        ) && ledger.attempts.get(&event.attempt_id).is_some_and(|state| {
+            state.stage == ::chaoscontrol_fault::outcomes::FaultAuthoritativeStage::Observed
+        })
     })
 }
 
@@ -79,10 +56,10 @@ fn route_network_packet(
     to: usize,
     packet: Vec<u8>,
     current_tick: u64,
-) -> Result<bool, VmError> {
+) -> Result<bool, crate::vm::VmError> {
     network
         .try_send_packet(from, to, packet, current_tick)
-        .map_err(|reason| VmError::NetworkPacketNonRunnable { from, to, reason })
+        .map_err(|reason| crate::vm::VmError::NetworkPacketNonRunnable { from, to, reason })
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -95,7 +72,7 @@ pub struct SimulationConfig {
     /// Number of VMs in the simulation.
     pub num_vms: usize,
     /// Per-VM config (same for all VMs).
-    pub vm_config: VmConfig,
+    pub vm_config: crate::vm::VmConfig,
     /// Kernel path.
     pub kernel_path: String,
     /// Optional initrd path.
@@ -105,7 +82,7 @@ pub struct SimulationConfig {
     /// Exits per VM per scheduling round.
     pub quantum: u64,
     /// Fault schedule to execute.
-    pub schedule: FaultSchedule,
+    pub schedule: ::chaoscontrol_sim_core::fault::FaultSchedule,
     /// Optional disk image path for virtio-blk devices.
     ///
     /// When set, each VM's block device is initialized from this file.
@@ -138,12 +115,12 @@ impl Default for SimulationConfig {
     fn default() -> Self {
         Self {
             num_vms: 2,
-            vm_config: VmConfig::default(),
+            vm_config: crate::vm::VmConfig::default(),
             kernel_path: String::new(),
             initrd_path: None,
             seed: 42,
             quantum: 100,
-            schedule: FaultSchedule::default(),
+            schedule: ::chaoscontrol_sim_core::fault::FaultSchedule::default(),
             disk_image_path: None,
             bootstrap_budget: None,
             base_core: None,
@@ -159,11 +136,11 @@ impl Default for SimulationConfig {
 /// State of a single VM within the simulation.
 pub struct VmSlot {
     /// The VM instance.
-    pub vm: DeterministicVm,
+    pub vm: crate::vm::DeterministicVm,
     /// Current status.
     pub status: VmStatus,
     /// Per-VM network mailbox (incoming messages).
-    pub inbox: VecDeque<NetworkMessage>,
+    pub inbox: ::std::collections::VecDeque<NetworkMessage>,
     /// Per-VM disk fault flags.
     pub disk_faults: DiskFaultFlags,
     /// TSC skew offset for clock fault injection (nanoseconds).
@@ -173,7 +150,7 @@ pub struct VmSlot {
     /// Tick at which the admitted baseline memory ceiling is restored.
     pub memory_limit_release_at_tick: Option<u64>,
     /// Initial snapshot taken after kernel load, used for restarts.
-    pub initial_snapshot: Option<VmSnapshot>,
+    pub initial_snapshot: Option<crate::snapshot::VmSnapshot>,
     /// Per-vCPU stall: vCPU index → tick at which stall expires.
     pub vcpu_stall_until: std::collections::BTreeMap<usize, u64>,
     /// Frozen TSC: `(frozen_tsc_value, expires_at_tick)`. Takes priority over jitter.
@@ -181,14 +158,16 @@ pub struct VmSlot {
     /// Per-exit TSC jitter bound (±bound). 0 = disabled.
     pub clock_jitter_bound: u64,
     /// Attempt that armed the current process-status effect.
-    pub process_fault_attempt: Option<FaultAttemptId>,
+    pub process_fault_attempt: Option<::chaoscontrol_fault::outcomes::FaultAttemptId>,
 }
 
 //  Simulation Controller
 // ═══════════════════════════════════════════════════════════════════════
 
-fn fault_transition_vm_error(error: FaultTransitionError) -> VmError {
-    VmError::Snapshot {
+fn fault_transition_vm_error(
+    error: ::chaoscontrol_fault::outcomes::FaultTransitionError,
+) -> crate::vm::VmError {
+    crate::vm::VmError::Snapshot {
         message: format!("fault outcome transition failed: {error}"),
     }
 }
@@ -209,7 +188,7 @@ pub struct SimulationController {
     /// VM slots.
     vms: Vec<VmSlot>,
     /// Shared fault engine.
-    fault_engine: FaultEngine,
+    fault_engine: ::chaoscontrol_sim_core::fault::FaultEngine,
     /// Virtual network fabric.
     network: NetworkFabric,
     /// Global simulation tick counter.
@@ -228,27 +207,27 @@ pub struct SimulationController {
     /// pages.
     vm_memory_bases: Vec<Option<std::sync::Arc<Vec<u8>>>>,
     /// Explicit policy for fault rejection behavior and parameter bounds.
-    fault_application_policy: FaultApplicationPolicy,
+    fault_application_policy: ::chaoscontrol_fault::outcomes::FaultApplicationPolicy,
     /// Deterministic sequence for operation identities emitted by the shell.
     fault_operation_sequence: u64,
     /// Process observations retained until their ledger batch commits.
-    pending_process_observations: VecDeque<(usize, FaultObservation)>,
+    pending_process_observations: ::std::collections::VecDeque<(usize, FaultObservation)>,
     /// Permanent latch after a round fails once mutation has started.
     round_poison: Option<ControllerRoundPoison>,
 }
 
 impl SimulationController {
-    fn controller_round_poison_error(&self) -> Option<VmError> {
+    fn controller_round_poison_error(&self) -> Option<crate::vm::VmError> {
         self.round_poison
             .as_ref()
-            .map(|poison| VmError::ControllerRoundPoisoned {
+            .map(|poison| crate::vm::VmError::ControllerRoundPoisoned {
                 round: poison.round,
                 tick: poison.tick,
                 detail: poison.detail.clone(),
             })
     }
 
-    fn ensure_controller_healthy(&self) -> Result<(), VmError> {
+    fn ensure_controller_healthy(&self) -> Result<(), crate::vm::VmError> {
         if let Some(error) = self.controller_round_poison_error() {
             return Err(error);
         }
@@ -261,7 +240,7 @@ impl SimulationController {
         }
     }
 
-    fn latch_round_failure_at(&mut self, round: u64, tick: u64, error: &VmError) {
+    fn latch_round_failure_at(&mut self, round: u64, tick: u64, error: &crate::vm::VmError) {
         if self.round_poison.is_none() {
             self.round_poison = Some(ControllerRoundPoison {
                 round,
@@ -276,13 +255,14 @@ impl SimulationController {
         round: u64,
         starting_tick: u64,
         mutation_started: bool,
-        result: Result<T, VmError>,
-    ) -> Result<T, VmError> {
-        let plan = plan_completion(CompletionFacts {
-            mutation_started,
-            operation_failed: result.is_err(),
-            poison_already_latched: self.round_poison.is_some(),
-        });
+        result: Result<T, crate::vm::VmError>,
+    ) -> Result<T, crate::vm::VmError> {
+        let plan =
+            crate::controller_core::plan_completion(crate::controller_core::CompletionFacts {
+                mutation_started,
+                operation_failed: result.is_err(),
+                poison_already_latched: self.round_poison.is_some(),
+            });
         if plan.latch_first_failure {
             if let Err(error) = &result {
                 self.latch_round_failure_at(round, starting_tick, error);
@@ -294,7 +274,7 @@ impl SimulationController {
         result
     }
 
-    fn ensure_round_can_start(&mut self) -> Result<(), VmError> {
+    fn ensure_round_can_start(&mut self) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         let poisoned_vm = self.vms.iter().enumerate().find_map(|(vm_index, slot)| {
             slot.vm
@@ -302,11 +282,11 @@ impl SimulationController {
                 .map(|poison| (vm_index, poison.clone()))
         });
         if let Some((vm_index, poison)) = poisoned_vm {
-            let error = VmError::ScheduleExecutionPoisoned {
+            let error = crate::vm::VmError::ScheduleExecutionPoisoned {
                 stage: poison.stage,
                 detail: format!("VM {vm_index}: {}", poison.detail),
             };
-            let round = next_operation(self.tick);
+            let round = crate::controller_core::next_operation(self.tick);
             self.latch_round_failure_at(round, self.tick, &error);
             return self.ensure_controller_healthy();
         }
@@ -319,21 +299,23 @@ impl SimulationController {
     }
 
     /// Create a new simulation with N VMs.
-    pub fn new(config: SimulationConfig) -> Result<Self, VmError> {
-        info!(
+    pub fn new(config: SimulationConfig) -> Result<Self, crate::vm::VmError> {
+        ::log::info!(
             "Creating simulation: {} VMs, seed={}, quantum={}",
-            config.num_vms, config.seed, config.quantum
+            config.num_vms,
+            config.seed,
+            config.quantum
         );
 
         if config.num_vms == 0 {
-            return SnapshotSnafu {
+            return crate::vm::SnapshotSnafu {
                 message: "num_vms must be > 0",
             }
             .fail();
         }
 
         if config.kernel_path.is_empty() {
-            return SnapshotSnafu {
+            return crate::vm::SnapshotSnafu {
                 message: "kernel_path is required",
             }
             .fail();
@@ -345,20 +327,20 @@ impl SimulationController {
         }
 
         // Create fault engine with shared seed and num_vms
-        let engine_config = EngineConfig {
+        let engine_config = ::chaoscontrol_sim_core::fault::EngineConfig {
             seed: config.seed,
             num_vms: config.num_vms,
             schedule: Some(config.schedule.clone()),
             random_faults: false,
-            ..EngineConfig::default()
+            ..::chaoscontrol_sim_core::fault::EngineConfig::default()
         };
-        let mut fault_engine = FaultEngine::new(engine_config);
+        let mut fault_engine = ::chaoscontrol_sim_core::fault::FaultEngine::new(engine_config);
         fault_engine.begin_run();
 
         // Create VMs
         let mut vms = Vec::with_capacity(config.num_vms);
         for i in 0..config.num_vms {
-            info!("Creating VM{}", i);
+            ::log::info!("Creating VM{}", i);
 
             // Derive per-VM seed from master seed and VM index
             let mut vm_config = config.vm_config.clone();
@@ -371,13 +353,13 @@ impl SimulationController {
 
             // Wire up per-VM determinism log path.
             if let Some(ref dir) = config.dlog_dir {
-                std::fs::create_dir_all(dir).map_err(|e| VmError::DiskImage {
+                std::fs::create_dir_all(dir).map_err(|e| crate::vm::VmError::DiskImage {
                     message: format!("create dlog dir {}: {e}", dir.display()),
                 })?;
                 vm_config.dlog_path = Some(dir.join(format!("vm_{i}.dlog")));
             }
 
-            let mut vm = DeterministicVm::new(vm_config)?;
+            let mut vm = crate::vm::DeterministicVm::new(vm_config)?;
             vm.load_kernel(&config.kernel_path, config.initrd_path.as_deref())?;
 
             // Take initial snapshot for restart capability
@@ -386,7 +368,7 @@ impl SimulationController {
             vms.push(VmSlot {
                 vm,
                 status: VmStatus::Running,
-                inbox: VecDeque::new(),
+                inbox: ::std::collections::VecDeque::new(),
                 disk_faults: DiskFaultFlags::default(),
                 tsc_skew: 0,
                 memory_limit_bytes: None,
@@ -411,28 +393,31 @@ impl SimulationController {
             config,
             guest_artifact_ids,
             vm_memory_bases: vec![None; num_vms],
-            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_application_policy:
+                ::chaoscontrol_fault::outcomes::FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
-            pending_process_observations: VecDeque::new(),
+            pending_process_observations: ::std::collections::VecDeque::new(),
             round_poison: None,
         })
     }
 
     /// Run the simulation for up to `num_ticks` scheduling rounds.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, VmError> {
+    pub fn run(&mut self, num_ticks: u64) -> Result<SimulationResult, crate::vm::VmError> {
         self.ensure_round_can_start()?;
         let stop_at = self.tick + num_ticks;
-        info!(
+        ::log::info!(
             "Running simulation for {} ticks (tick {}→{})",
-            num_ticks, self.tick, stop_at
+            num_ticks,
+            self.tick,
+            stop_at
         );
 
         while self.tick < stop_at {
             let result = self.step_round()?;
 
             if result.vms_running == 0 {
-                info!("All VMs halted at tick {}", self.tick);
+                ::log::info!("All VMs halted at tick {}", self.tick);
                 break;
             }
 
@@ -444,7 +429,7 @@ impl SimulationController {
                 .iter()
                 .any(|slot| slot.vm.fault_engine().has_assertion_failure());
             if any_failure {
-                warn!("Assertion failure detected at tick {}", self.tick);
+                ::log::warn!("Assertion failure detected at tick {}", self.tick);
                 break;
             }
         }
@@ -472,12 +457,14 @@ impl SimulationController {
     pub fn run_until_setup_complete(
         &mut self,
         max_ticks: u64,
-    ) -> Result<SimulationResult, VmError> {
+    ) -> Result<SimulationResult, crate::vm::VmError> {
         self.ensure_round_can_start()?;
         let stop_at = self.tick + max_ticks;
-        info!(
+        ::log::info!(
             "Bootstrap: running until setup_complete (max {} ticks, tick {}→{})",
-            max_ticks, self.tick, stop_at
+            max_ticks,
+            self.tick,
+            stop_at
         );
 
         while self.tick < stop_at {
@@ -493,7 +480,7 @@ impl SimulationController {
             );
 
             if all_setup_complete {
-                info!(
+                ::log::info!(
                     "Bootstrap complete: all VMs reached setup_complete at tick {}",
                     self.tick
                 );
@@ -504,7 +491,7 @@ impl SimulationController {
             }
 
             if result.vms_running == 0 {
-                info!("All VMs halted during bootstrap at tick {}", self.tick);
+                ::log::info!("All VMs halted during bootstrap at tick {}", self.tick);
                 break;
             }
         }
@@ -515,7 +502,7 @@ impl SimulationController {
                 .map(|slot| slot.vm.fault_engine().is_setup_complete()),
         );
         if !all_setup {
-            warn!(
+            ::log::warn!(
                 "Bootstrap reached max_ticks ({}) before all VMs completed setup",
                 max_ticks
             );
@@ -536,25 +523,27 @@ impl SimulationController {
 
     /// Execute one scheduling round: step each Running VM by `quantum` exits,
     /// advance the global clock, dispatch faults, deliver network messages.
-    pub fn step_round(&mut self) -> Result<RoundResult, VmError> {
-        self.step_round_with_observation_event_limit(MAX_FAULT_OUTCOME_EVENTS)
+    pub fn step_round(&mut self) -> Result<RoundResult, crate::vm::VmError> {
+        self.step_round_with_observation_event_limit(
+            ::chaoscontrol_fault::outcomes::MAX_FAULT_OUTCOME_EVENTS,
+        )
     }
 
     fn step_round_with_observation_event_limit(
         &mut self,
         observation_event_limit: usize,
-    ) -> Result<RoundResult, VmError> {
+    ) -> Result<RoundResult, crate::vm::VmError> {
         self.ensure_round_can_start()?;
         let starting_tick = self.tick;
-        let vm_statuses: Vec<CoreVmStatus> = self
+        let vm_statuses: Vec<::chaoscontrol_sim_core::CoreVmStatus> = self
             .vms
             .iter()
-            .map(|slot| core_vm_status(slot.status))
+            .map(|slot| crate::controller_core::core_vm_status(slot.status))
             .collect();
-        let kernel_input = RoundInput {
+        let kernel_input = ::chaoscontrol_sim_core::RoundInput {
             current_tick: self.tick,
             seed: self.config.seed,
-            config_id: simulation_config_identity(
+            config_id: ::chaoscontrol_sim_core::simulation_config_identity(
                 vm_statuses.len(),
                 self.config.seed,
                 self.quantum,
@@ -563,8 +552,10 @@ impl SimulationController {
             vm_statuses,
             exit_budget: self.quantum,
         };
-        let kernel_plan = plan_round(&kernel_input).map_err(|error| VmError::Snapshot {
-            message: format!("simulation kernel rejected round: {error}"),
+        let kernel_plan = ::chaoscontrol_sim_core::plan_round(&kernel_input).map_err(|error| {
+            crate::vm::VmError::Snapshot {
+                message: format!("simulation kernel rejected round: {error}"),
+            }
         })?;
         let next_tick = kernel_plan.next_tick;
         let current_time_ns = kernel_plan.virtual_time_ns;
@@ -575,7 +566,7 @@ impl SimulationController {
             .any(|slot| slot.vm.block_fault_observation_reservation() != 0);
         let had_pending_network_observations = self.network.central_observation_reservation() != 0;
         let mut round_mutation_started = false;
-        let round_result = (|| -> Result<RoundResult, VmError> {
+        let round_result = (|| -> Result<RoundResult, crate::vm::VmError> {
             self.commit_pending_process_observations(observation_event_limit)?;
             round_mutation_started |= had_pending_process_observations;
             self.commit_pending_block_observations(observation_event_limit)?;
@@ -591,14 +582,14 @@ impl SimulationController {
                             .fault_outcomes()
                             .attempts
                             .get(&attempt_id)
-                            .is_some_and(|state| state.stage == FaultAuthoritativeStage::Applied)
+                            .is_some_and(|state| state.stage == ::chaoscontrol_fault::outcomes::FaultAuthoritativeStage::Applied)
                     })
                 })
                 .count();
             let block_reservation = self.vms.iter_mut().try_fold(0_usize, |total, slot| {
                 total
                     .checked_add(slot.vm.block_fault_observation_reservation())
-                    .ok_or_else(|| VmError::Snapshot {
+                    .ok_or_else(|| crate::vm::VmError::Snapshot {
                         message: "block observation reservation overflow".to_string(),
                     })
             })?;
@@ -606,10 +597,10 @@ impl SimulationController {
             let central_reservation = process_reservation
                 .checked_add(block_reservation)
                 .and_then(|total| total.checked_add(network_reservation))
-                .ok_or_else(|| VmError::Snapshot {
+                .ok_or_else(|| crate::vm::VmError::Snapshot {
                     message: "central observation reservation overflow".to_string(),
                 })?;
-            preflight_fault_observation_events_with_limit(
+            ::chaoscontrol_fault::outcomes::preflight_fault_observation_events_with_limit(
                 self.fault_engine.fault_outcomes(),
                 central_reservation,
                 observation_event_limit,
@@ -619,21 +610,21 @@ impl SimulationController {
                 .pending_process_observations
                 .len()
                 .checked_add(process_reservation)
-                .ok_or_else(|| VmError::Snapshot {
+                .ok_or_else(|| crate::vm::VmError::Snapshot {
                     message: "process observation queue length overflow".to_string(),
                 })?;
             if process_queue_final > MAX_PENDING_PROCESS_OBSERVATIONS {
-                return Err(VmError::Snapshot {
+                return Err(crate::vm::VmError::Snapshot {
                     message: "process observation queue capacity exhausted".to_string(),
                 });
             }
             let reserved_sequences =
-                u64::try_from(process_reservation).map_err(|_| VmError::Snapshot {
+                u64::try_from(process_reservation).map_err(|_| crate::vm::VmError::Snapshot {
                     message: "process observation reservation exceeds sequence bounds".to_string(),
                 })?;
             self.fault_operation_sequence
                 .checked_add(reserved_sequences)
-                .ok_or_else(|| VmError::Snapshot {
+                .ok_or_else(|| crate::vm::VmError::Snapshot {
                     message: "fault operation sequence exhausted".to_string(),
                 })?;
             let outcome_event_start = self.fault_engine.fault_outcomes().events.len();
@@ -659,18 +650,19 @@ impl SimulationController {
                             let command = kernel_plan
                                 .commands
                                 .get(kernel_observations.len())
-                                .ok_or_else(|| VmError::Snapshot {
+                                .ok_or_else(|| crate::vm::VmError::Snapshot {
                                     message: format!(
                                         "simulation kernel omitted stalled VM command for VM {i}"
                                     ),
                                 })?;
-                            kernel_observations.push(RoundObservation {
-                                observation: ExitObservation::VcpuCompleted {
-                                    sequence: command.sequence(),
-                                    vm_index: i,
-                                    exits: 0,
-                                    halted: false,
-                                },
+                            kernel_observations.push(::chaoscontrol_sim_core::RoundObservation {
+                                observation:
+                                    ::chaoscontrol_sim_core::ExitObservation::VcpuCompleted {
+                                        sequence: command.sequence(),
+                                        vm_index: i,
+                                        exits: 0,
+                                        halted: false,
+                                    },
                             });
                             vms_running += 1;
                             continue;
@@ -678,24 +670,29 @@ impl SimulationController {
                         let command = kernel_plan
                             .commands
                             .get(kernel_observations.len())
-                            .ok_or_else(|| VmError::Snapshot {
+                            .ok_or_else(|| crate::vm::VmError::Snapshot {
                                 message: format!(
                                     "simulation kernel omitted running VM command for VM {i}"
                                 ),
                             })?;
                         let observation = {
-                            let mut executor = KvmVcpuExecutor::new(i, &mut self.vms[i].vm);
+                            let mut executor =
+                                crate::sim_adapter::KvmVcpuExecutor::new(i, &mut self.vms[i].vm);
                             executor.execute(command)?
                         };
-                        let ExitObservation::VcpuCompleted { exits, halted, .. } = observation
+                        let ::chaoscontrol_sim_core::ExitObservation::VcpuCompleted {
+                            exits,
+                            halted,
+                            ..
+                        } = observation
                         else {
-                            return Err(VmError::Snapshot {
+                            return Err(crate::vm::VmError::Snapshot {
                                 message: "KVM vCPU adapter returned an invalid observation"
                                     .to_string(),
                             });
                         };
-                        kernel_observations.push(RoundObservation {
-                            observation: ExitObservation::VcpuCompleted {
+                        kernel_observations.push(::chaoscontrol_sim_core::RoundObservation {
+                            observation: ::chaoscontrol_sim_core::ExitObservation::VcpuCompleted {
                                 sequence: command.sequence(),
                                 vm_index: i,
                                 exits,
@@ -708,7 +705,7 @@ impl SimulationController {
                         } else {
                             vms_running += 1;
                         }
-                        debug!("VM{} executed {} exits", i, exits);
+                        ::log::debug!("VM{} executed {} exits", i, exits);
                     }
                     VmStatus::Paused | VmStatus::Crashed => {
                         vms_halted += 1;
@@ -717,7 +714,7 @@ impl SimulationController {
                                 self.queue_process_observation(
                                     i,
                                     attempt_id,
-                                    FaultObservationEffect::ProcessSkipped,
+                                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::ProcessSkipped,
                                 )?;
                             }
                         }
@@ -729,8 +726,8 @@ impl SimulationController {
                                 .map(|attempt_id| {
                                     self.make_shell_observation(
                                         attempt_id,
-                                        FaultObservationSubsystem::Process,
-                                        FaultObservationEffect::ProcessRestarted,
+                                        ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Process,
+                                        ::chaoscontrol_fault::outcomes::FaultObservationEffect::ProcessRestarted,
                                     )
                                     .map(|observation| (i, observation))
                                 })
@@ -747,7 +744,7 @@ impl SimulationController {
                     }
                     VmStatus::Resuming { resume_at_tick } => {
                         if self.tick >= resume_at_tick {
-                            info!("VM{} resuming from pause at tick {}", i, self.tick);
+                            ::log::info!("VM{} resuming from pause at tick {}", i, self.tick);
                             self.vms[i].status = VmStatus::Running;
                             self.vms[i].process_fault_attempt = None;
                             // Run the resumed VM for this round's quantum
@@ -758,7 +755,7 @@ impl SimulationController {
                             } else {
                                 vms_running += 1;
                             }
-                            debug!("VM{} resumed, executed {} exits", i, exits);
+                            ::log::debug!("VM{} resumed, executed {} exits", i, exits);
                         } else {
                             vms_halted += 1;
                             if let Some(attempt_id) = self.vms[i].process_fault_attempt {
@@ -766,7 +763,7 @@ impl SimulationController {
                                     self.queue_process_observation(
                                         i,
                                         attempt_id,
-                                        FaultObservationEffect::ProcessSkipped,
+                                        ::chaoscontrol_fault::outcomes::FaultObservationEffect::ProcessSkipped,
                                     )?;
                                 }
                             }
@@ -789,7 +786,7 @@ impl SimulationController {
             let attempts = self
                 .fault_engine
                 .poll_fault_attempts(current_time_ns)
-                .map_err(|error| VmError::Snapshot {
+                .map_err(|error| crate::vm::VmError::Snapshot {
                     message: format!("fault selection failed: {error}"),
                 })?;
             let faults_fired = attempts
@@ -804,10 +801,13 @@ impl SimulationController {
             let messages_delivered = self.deliver_messages();
             let fault_outcomes =
                 self.fault_engine.fault_outcomes().events[outcome_event_start..].to_vec();
-            complete_round(&kernel_input, kernel_plan, &kernel_observations).map_err(|error| {
-                VmError::Snapshot {
-                    message: format!("simulation kernel rejected shell observations: {error}"),
-                }
+            ::chaoscontrol_sim_core::complete_round(
+                &kernel_input,
+                kernel_plan,
+                &kernel_observations,
+            )
+            .map_err(|error| crate::vm::VmError::Snapshot {
+                message: format!("simulation kernel rejected shell observations: {error}"),
             })?;
 
             let mut schedule_traces = Vec::new();
@@ -836,7 +836,7 @@ impl SimulationController {
         )
     }
 
-    fn release_expired_fault_windows(&mut self) -> Result<(), VmError> {
+    fn release_expired_fault_windows(&mut self) -> Result<(), crate::vm::VmError> {
         for slot in &mut self.vms {
             let expired_vcpus = slot
                 .vcpu_stall_until
@@ -857,11 +857,12 @@ impl SimulationController {
                 .memory_limit_release_at_tick
                 .is_some_and(|expires| self.tick >= expires)
             {
-                let baseline_bytes =
-                    u64::try_from(slot.vm.memory().size()).map_err(|_| VmError::Snapshot {
+                let baseline_bytes = u64::try_from(slot.vm.memory().size()).map_err(|_| {
+                    crate::vm::VmError::Snapshot {
                         message: "guest memory size exceeds resource-observation bounds"
                             .to_string(),
-                    })?;
+                    }
+                })?;
                 slot.vm.set_memory_ceiling_bytes(baseline_bytes)?;
                 slot.memory_limit_bytes = None;
                 slot.memory_limit_release_at_tick = None;
@@ -870,27 +871,37 @@ impl SimulationController {
         Ok(())
     }
 
-    fn handle_fault_attempt(&mut self, attempt: &FaultAttempt) -> Result<(), VmError> {
-        self.handle_fault_attempt_with_event_limit(attempt, MAX_FAULT_OUTCOME_EVENTS)
+    fn handle_fault_attempt(
+        &mut self,
+        attempt: &::chaoscontrol_fault::outcomes::FaultAttempt,
+    ) -> Result<(), crate::vm::VmError> {
+        self.handle_fault_attempt_with_event_limit(
+            attempt,
+            ::chaoscontrol_fault::outcomes::MAX_FAULT_OUTCOME_EVENTS,
+        )
     }
 
     fn handle_fault_attempt_with_event_limit(
         &mut self,
-        attempt: &FaultAttempt,
+        attempt: &::chaoscontrol_fault::outcomes::FaultAttempt,
         event_limit: usize,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         let facts = self.collect_fault_planning_facts()?;
-        let plan = match plan_fault_application(attempt, &facts, &self.fault_application_policy) {
+        let plan = match ::chaoscontrol_fault::outcomes::plan_fault_application(
+            attempt,
+            &facts,
+            &self.fault_application_policy,
+        ) {
             Ok(plan) => plan,
             Err(reason) => {
                 self.record_fault_stage(
                     attempt.id,
-                    FaultStageKind::Rejected {
+                    ::chaoscontrol_fault::outcomes::FaultStageKind::Rejected {
                         reason: reason.clone(),
                     },
                 )?;
                 if self.fault_application_policy.rejection_is_fatal {
-                    return Err(VmError::Snapshot {
+                    return Err(crate::vm::VmError::Snapshot {
                         message: format!("fault rejected by fatal campaign policy: {reason:?}"),
                     });
                 }
@@ -898,24 +909,27 @@ impl SimulationController {
             }
         };
 
-        preflight_fault_application_events_with_limit(
+        ::chaoscontrol_fault::outcomes::preflight_fault_application_events_with_limit(
             self.fault_engine.fault_outcomes(),
             plan.max_immediate_observations(),
             event_limit,
         )
         .map_err(fault_transition_vm_error)?;
         let immediate_observations =
-            u64::try_from(plan.max_immediate_observations()).map_err(|_| VmError::Snapshot {
-                message: "immediate observation reservation exceeds sequence bounds".to_string(),
+            u64::try_from(plan.max_immediate_observations()).map_err(|_| {
+                crate::vm::VmError::Snapshot {
+                    message: "immediate observation reservation exceeds sequence bounds"
+                        .to_string(),
+                }
             })?;
         self.fault_operation_sequence
             .checked_add(immediate_observations)
-            .ok_or_else(|| VmError::Snapshot {
+            .ok_or_else(|| crate::vm::VmError::Snapshot {
                 message: "fault operation sequence exhausted".to_string(),
             })?;
         self.record_fault_stage(
             attempt.id,
-            FaultStageKind::Applicable {
+            ::chaoscontrol_fault::outcomes::FaultStageKind::Applicable {
                 effect: plan.effect.clone(),
             },
         )?;
@@ -926,7 +940,7 @@ impl SimulationController {
             }
             Err(failure) => self.record_fault_stage(
                 attempt.id,
-                FaultStageKind::ApplicationFailed {
+                ::chaoscontrol_fault::outcomes::FaultStageKind::ApplicationFailed {
                     reason: failure.reason,
                     disposition: failure.disposition,
                 },
@@ -934,18 +948,20 @@ impl SimulationController {
         }
     }
 
-    fn collect_fault_planning_facts(&mut self) -> Result<FaultPlanningFacts, VmError> {
+    fn collect_fault_planning_facts(
+        &mut self,
+    ) -> Result<::chaoscontrol_fault::outcomes::FaultPlanningFacts, crate::vm::VmError> {
         let mut vms = Vec::with_capacity(self.vms.len());
         for slot in &mut self.vms {
             let vcpu_count =
-                u32::try_from(slot.vm.vcpu_count()).map_err(|_| VmError::Snapshot {
+                u32::try_from(slot.vm.vcpu_count()).map_err(|_| crate::vm::VmError::Snapshot {
                     message: "vCPU count exceeds fault-planning bounds".to_string(),
                 })?;
-            vms.push(VmFaultFacts {
-                status: fault_vm_status(slot.status),
+            vms.push(::chaoscontrol_fault::outcomes::VmFaultFacts {
+                status: crate::controller_core::fault_vm_status(slot.status),
                 vcpu_count,
                 memory_size_bytes: u64::try_from(slot.vm.memory().size()).map_err(|_| {
-                    VmError::Snapshot {
+                    crate::vm::VmError::Snapshot {
                         message: "guest memory size exceeds fault-planning bounds".to_string(),
                     }
                 })?,
@@ -961,7 +977,7 @@ impl SimulationController {
                 tsc_khz: slot.vm.virtual_tsc_ref().tsc_khz(),
             });
         }
-        Ok(FaultPlanningFacts {
+        Ok(::chaoscontrol_fault::outcomes::FaultPlanningFacts {
             current_tick: self.tick,
             network_supported: true,
             vms,
@@ -970,12 +986,12 @@ impl SimulationController {
 
     fn record_applied_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
         observations: Vec<FaultObservation>,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         self.record_fault_stage(
             plan.attempt_id,
-            FaultStageKind::Applied {
+            ::chaoscontrol_fault::outcomes::FaultStageKind::Applied {
                 effect: plan.effect.clone(),
             },
         )?;
@@ -984,9 +1000,9 @@ impl SimulationController {
 
     fn record_fault_stage(
         &mut self,
-        attempt_id: FaultAttemptId,
-        kind: FaultStageKind,
-    ) -> Result<(), VmError> {
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+        kind: ::chaoscontrol_fault::outcomes::FaultStageKind,
+    ) -> Result<(), crate::vm::VmError> {
         self.fault_engine
             .record_fault_stage(attempt_id, kind)
             .map_err(fault_transition_vm_error)
@@ -996,7 +1012,7 @@ impl SimulationController {
     fn record_fault_observations(
         &mut self,
         observations: &[FaultObservation],
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         self.fault_engine
             .record_fault_observations(observations)
             .map_err(fault_transition_vm_error)
@@ -1006,13 +1022,16 @@ impl SimulationController {
         &mut self,
         observations: &[FaultObservation],
         event_limit: usize,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         self.fault_engine
             .record_fault_observations_with_limit(observations, event_limit)
             .map_err(fault_transition_vm_error)
     }
 
-    fn commit_pending_block_observations(&mut self, event_limit: usize) -> Result<(), VmError> {
+    fn commit_pending_block_observations(
+        &mut self,
+        event_limit: usize,
+    ) -> Result<(), crate::vm::VmError> {
         for vm_index in 0..self.vms.len() {
             let (observations, overflowed) = self.vms[vm_index].vm.drain_block_fault_observations();
             if let Err(error) =
@@ -1025,7 +1044,7 @@ impl SimulationController {
                 return Err(error);
             }
             if overflowed != 0 {
-                return Err(VmError::Snapshot {
+                return Err(crate::vm::VmError::Snapshot {
                     message: format!(
                         "block fault observation queue overflowed by {overflowed} records"
                     ),
@@ -1035,7 +1054,10 @@ impl SimulationController {
         Ok(())
     }
 
-    fn commit_pending_network_observations(&mut self, event_limit: usize) -> Result<(), VmError> {
+    fn commit_pending_network_observations(
+        &mut self,
+        event_limit: usize,
+    ) -> Result<(), crate::vm::VmError> {
         let (observations, overflowed) = self.network.drain_fault_observations();
         if let Err(error) =
             self.record_fault_observations_with_event_limit(&observations, event_limit)
@@ -1045,7 +1067,7 @@ impl SimulationController {
             return Err(error);
         }
         if overflowed != 0 {
-            return Err(VmError::Snapshot {
+            return Err(crate::vm::VmError::Snapshot {
                 message: format!(
                     "network fault observation queue overflowed by {overflowed} records"
                 ),
@@ -1054,29 +1076,40 @@ impl SimulationController {
         Ok(())
     }
 
-    fn process_observation_is_pending(&self, attempt_id: FaultAttemptId) -> bool {
+    fn process_observation_is_pending(
+        &self,
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+    ) -> bool {
         self.fault_engine
             .fault_outcomes()
             .attempts
             .get(&attempt_id)
-            .is_some_and(|state| state.stage == FaultAuthoritativeStage::Applied)
+            .is_some_and(|state| {
+                state.stage == ::chaoscontrol_fault::outcomes::FaultAuthoritativeStage::Applied
+            })
     }
 
     fn queue_process_observation(
         &mut self,
         vm_index: usize,
-        attempt_id: FaultAttemptId,
-        effect: FaultObservationEffect,
-    ) -> Result<(), VmError> {
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+        effect: ::chaoscontrol_fault::outcomes::FaultObservationEffect,
+    ) -> Result<(), crate::vm::VmError> {
         assert!(self.pending_process_observations.len() < MAX_PENDING_PROCESS_OBSERVATIONS);
-        let observation =
-            self.make_shell_observation(attempt_id, FaultObservationSubsystem::Process, effect)?;
+        let observation = self.make_shell_observation(
+            attempt_id,
+            ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Process,
+            effect,
+        )?;
         self.pending_process_observations
             .push_back((vm_index, observation));
         Ok(())
     }
 
-    fn commit_pending_process_observations(&mut self, event_limit: usize) -> Result<(), VmError> {
+    fn commit_pending_process_observations(
+        &mut self,
+        event_limit: usize,
+    ) -> Result<(), crate::vm::VmError> {
         if self.pending_process_observations.is_empty() {
             return Ok(());
         }
@@ -1099,15 +1132,15 @@ impl SimulationController {
 
     fn make_shell_observation(
         &mut self,
-        attempt_id: FaultAttemptId,
-        subsystem: FaultObservationSubsystem,
-        effect: FaultObservationEffect,
-    ) -> Result<FaultObservation, VmError> {
+        attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId,
+        subsystem: ::chaoscontrol_fault::outcomes::FaultObservationSubsystem,
+        effect: ::chaoscontrol_fault::outcomes::FaultObservationEffect,
+    ) -> Result<FaultObservation, crate::vm::VmError> {
         let operation_sequence = self.fault_operation_sequence;
         self.fault_operation_sequence =
             operation_sequence
                 .checked_add(1)
-                .ok_or_else(|| VmError::Snapshot {
+                .ok_or_else(|| crate::vm::VmError::Snapshot {
                     message: "fault operation sequence overflowed".to_string(),
                 })?;
         Ok(FaultObservation::new(
@@ -1122,121 +1155,158 @@ impl SimulationController {
     // r[impl chaoscontrol.fault_outcomes.application]
     fn apply_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         match plan.mechanism() {
-            FaultMechanism::NetworkPartition
-            | FaultMechanism::NetworkLatency
-            | FaultMechanism::PacketLoss
-            | FaultMechanism::PacketCorruption
-            | FaultMechanism::PacketReorder
-            | FaultMechanism::NetworkJitter
-            | FaultMechanism::NetworkBandwidth
-            | FaultMechanism::PacketDuplicate
-            | FaultMechanism::NetworkHeal => self.apply_network_fault_plan(plan),
-            FaultMechanism::BlockReadError
-            | FaultMechanism::BlockWriteError
-            | FaultMechanism::BlockTornWrite
-            | FaultMechanism::BlockCorruption
-            | FaultMechanism::BlockFull
-            | FaultMechanism::BlockSlow
-            | FaultMechanism::BlockFsyncLie
-            | FaultMechanism::BlockFsyncFlush
-            | FaultMechanism::BlockPartialRead => self.apply_block_fault_plan(plan),
-            FaultMechanism::ProcessKill
-            | FaultMechanism::ProcessPause
-            | FaultMechanism::ProcessRestart => self.apply_process_fault_plan(plan),
-            FaultMechanism::VirtualClockSkew
-            | FaultMechanism::VirtualClockJump
-            | FaultMechanism::VirtualClockFreeze
-            | FaultMechanism::VirtualClockJitter => self.apply_clock_fault_plan(plan),
-            FaultMechanism::IrqInjection | FaultMechanism::NmiInjection => {
+            ::chaoscontrol_fault::outcomes::FaultMechanism::NetworkPartition
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::NetworkLatency
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::PacketLoss
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::PacketCorruption
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::PacketReorder
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::NetworkJitter
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::NetworkBandwidth
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::PacketDuplicate
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::NetworkHeal => {
+                self.apply_network_fault_plan(plan)
+            }
+            ::chaoscontrol_fault::outcomes::FaultMechanism::BlockReadError
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockWriteError
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockTornWrite
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockCorruption
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockFull
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockSlow
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockFsyncLie
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockFsyncFlush
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::BlockPartialRead => {
+                self.apply_block_fault_plan(plan)
+            }
+            ::chaoscontrol_fault::outcomes::FaultMechanism::ProcessKill
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::ProcessPause
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::ProcessRestart => {
+                self.apply_process_fault_plan(plan)
+            }
+            ::chaoscontrol_fault::outcomes::FaultMechanism::VirtualClockSkew
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::VirtualClockJump
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::VirtualClockFreeze
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::VirtualClockJitter => {
+                self.apply_clock_fault_plan(plan)
+            }
+            ::chaoscontrol_fault::outcomes::FaultMechanism::IrqInjection
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::NmiInjection => {
                 self.apply_interrupt_fault_plan(plan)
             }
-            FaultMechanism::CpuRegisterBitflip | FaultMechanism::CpuStall => {
+            ::chaoscontrol_fault::outcomes::FaultMechanism::CpuRegisterBitflip
+            | ::chaoscontrol_fault::outcomes::FaultMechanism::CpuStall => {
                 self.apply_cpu_fault_plan(plan)
             }
-            FaultMechanism::MemoryPressure => self.apply_resource_fault_plan(plan),
+            ::chaoscontrol_fault::outcomes::FaultMechanism::MemoryPressure => {
+                self.apply_resource_fault_plan(plan)
+            }
         }
     }
 
     fn apply_network_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         let applied = match &plan.effect {
-            FaultPlanEffect::NetworkPartition { side_a, side_b } => self.network.arm_partition(
-                u32_targets_to_usize(side_a)?,
-                u32_targets_to_usize(side_b)?,
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkPartition {
+                side_a,
+                side_b,
+            } => self.network.arm_partition(
+                crate::controller_core::u32_targets_to_usize(side_a)?,
+                crate::controller_core::u32_targets_to_usize(side_b)?,
                 plan.attempt_id,
             ),
-            FaultPlanEffect::NetworkLatency {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkLatency {
                 target,
                 latency_ticks,
-            } => self
-                .network
-                .arm_latency(checked_usize(*target)?, *latency_ticks, plan.attempt_id),
-            FaultPlanEffect::PacketLoss { target, rate_ppm } => {
-                self.network
-                    .arm_loss(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
+            } => self.network.arm_latency(
+                crate::controller_core::checked_usize(*target)?,
+                *latency_ticks,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketLoss { target, rate_ppm } => {
+                self.network.arm_loss(
+                    crate::controller_core::checked_usize(*target)?,
+                    *rate_ppm,
+                    plan.attempt_id,
+                )
             }
-            FaultPlanEffect::PacketCorruption { target, rate_ppm } => {
-                self.network
-                    .arm_corruption(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
-            }
-            FaultPlanEffect::PacketReorder {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketCorruption {
+                target,
+                rate_ppm,
+            } => self.network.arm_corruption(
+                crate::controller_core::checked_usize(*target)?,
+                *rate_ppm,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketReorder {
                 target,
                 window_ticks,
-            } => self
-                .network
-                .arm_reorder(checked_usize(*target)?, *window_ticks, plan.attempt_id),
-            FaultPlanEffect::NetworkJitter {
+            } => self.network.arm_reorder(
+                crate::controller_core::checked_usize(*target)?,
+                *window_ticks,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkJitter {
                 target,
                 jitter_ticks,
-            } => self
-                .network
-                .arm_jitter(checked_usize(*target)?, *jitter_ticks, plan.attempt_id),
-            FaultPlanEffect::NetworkBandwidth {
+            } => self.network.arm_jitter(
+                crate::controller_core::checked_usize(*target)?,
+                *jitter_ticks,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkBandwidth {
                 target,
                 bytes_per_sec,
-            } => {
-                self.network
-                    .arm_bandwidth(checked_usize(*target)?, *bytes_per_sec, plan.attempt_id)
+            } => self.network.arm_bandwidth(
+                crate::controller_core::checked_usize(*target)?,
+                *bytes_per_sec,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketDuplicate {
+                target,
+                rate_ppm,
+            } => self.network.arm_duplicate(
+                crate::controller_core::checked_usize(*target)?,
+                *rate_ppm,
+                plan.attempt_id,
+            ),
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkHeal => {
+                self.network.clear_partitions()
             }
-            FaultPlanEffect::PacketDuplicate { target, rate_ppm } => {
-                self.network
-                    .arm_duplicate(checked_usize(*target)?, *rate_ppm, plan.attempt_id)
-            }
-            FaultPlanEffect::NetworkHeal => self.network.clear_partitions(),
             _ => return Err(internal_application_error()),
         };
         if !applied {
-            return Err(target_state_application_error());
+            return Err(crate::controller_core::target_state_application_error());
         }
         Ok(Vec::new())
     }
 
     fn apply_block_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         use crate::devices::block::BlockFault;
         let applied = match &plan.effect {
-            FaultPlanEffect::BlockReadError { target, offset } => self
-                .vm_slot_mut_checked(*target)?
-                .vm
-                .inject_disk_fault_with_attempt(
-                    BlockFault::ReadError { offset: *offset },
-                    plan.attempt_id,
-                ),
-            FaultPlanEffect::BlockWriteError { target, offset } => self
-                .vm_slot_mut_checked(*target)?
-                .vm
-                .inject_disk_fault_with_attempt(
-                    BlockFault::WriteError { offset: *offset },
-                    plan.attempt_id,
-                ),
-            FaultPlanEffect::BlockTornWrite {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockReadError { target, offset } => {
+                self.vm_slot_mut_checked(*target)?
+                    .vm
+                    .inject_disk_fault_with_attempt(
+                        BlockFault::ReadError { offset: *offset },
+                        plan.attempt_id,
+                    )
+            }
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockWriteError { target, offset } => {
+                self.vm_slot_mut_checked(*target)?
+                    .vm
+                    .inject_disk_fault_with_attempt(
+                        BlockFault::WriteError { offset: *offset },
+                        plan.attempt_id,
+                    )
+            }
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockTornWrite {
                 target,
                 offset,
                 bytes_written,
@@ -1246,11 +1316,11 @@ impl SimulationController {
                 .inject_disk_fault_with_attempt(
                     BlockFault::TornWrite {
                         offset: *offset,
-                        bytes_written: checked_usize_u64(*bytes_written)?,
+                        bytes_written: crate::controller_core::checked_usize_u64(*bytes_written)?,
                     },
                     plan.attempt_id,
                 ),
-            FaultPlanEffect::BlockCorruption {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockCorruption {
                 target,
                 offset,
                 len,
@@ -1260,26 +1330,26 @@ impl SimulationController {
                 .inject_disk_fault_with_attempt(
                     BlockFault::Corruption {
                         offset: *offset,
-                        len: checked_usize_u64(*len)?,
+                        len: crate::controller_core::checked_usize_u64(*len)?,
                     },
                     plan.attempt_id,
                 ),
-            FaultPlanEffect::BlockFull { target } => self
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFull { target } => self
                 .vm_slot_mut_checked(*target)?
                 .vm
                 .set_disk_full_with_attempt(true, plan.attempt_id),
-            FaultPlanEffect::BlockSlow { target, delay_ns } => self
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockSlow { target, delay_ns } => self
                 .vm_slot_mut_checked(*target)?
                 .vm
                 .set_disk_slow_delay_with_attempt(*delay_ns, plan.attempt_id),
-            FaultPlanEffect::BlockFsyncLie { target } => self
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFsyncLie { target } => self
                 .vm_slot_mut_checked(*target)?
                 .vm
                 .enable_disk_fsync_lie_with_attempt(plan.attempt_id),
-            FaultPlanEffect::BlockFsyncFlush { target } => {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFsyncFlush { target } => {
                 self.vm_slot_mut_checked(*target)?.vm.flush_disk_volatile()
             }
-            FaultPlanEffect::BlockPartialRead {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockPartialRead {
                 target,
                 offset,
                 max_bytes,
@@ -1289,30 +1359,30 @@ impl SimulationController {
                 .inject_disk_fault_with_attempt(
                     BlockFault::PartialRead {
                         offset: *offset,
-                        max_bytes: checked_usize_u64(*max_bytes)?,
+                        max_bytes: crate::controller_core::checked_usize_u64(*max_bytes)?,
                     },
                     plan.attempt_id,
                 ),
             _ => return Err(internal_application_error()),
         };
         if !applied {
-            return Err(device_disappeared_application_error());
+            return Err(crate::controller_core::device_disappeared_application_error());
         }
         Ok(Vec::new())
     }
 
     fn apply_process_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         match &plan.effect {
-            FaultPlanEffect::ProcessKill { target } => {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessKill { target } => {
                 let slot = self.vm_slot_mut_checked(*target)?;
                 slot.status = VmStatus::Crashed;
                 slot.process_fault_attempt = Some(plan.attempt_id);
                 slot.vm.discard_disk_volatile();
             }
-            FaultPlanEffect::ProcessPause {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessPause {
                 target,
                 resume_at_tick,
             } => {
@@ -1322,7 +1392,7 @@ impl SimulationController {
                 };
                 slot.process_fault_attempt = Some(plan.attempt_id);
             }
-            FaultPlanEffect::ProcessRestart {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessRestart {
                 target,
                 restart_at_tick,
             } => {
@@ -1339,10 +1409,10 @@ impl SimulationController {
 
     fn apply_clock_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         let (target, observation_effect) = match &plan.effect {
-            FaultPlanEffect::VirtualClockSkew {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockSkew {
                 target,
                 basis_tsc,
                 tsc_khz,
@@ -1350,7 +1420,7 @@ impl SimulationController {
                 tsc_delta,
                 target_tsc,
             }
-            | FaultPlanEffect::VirtualClockJump {
+            | ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockJump {
                 target,
                 basis_tsc,
                 tsc_khz,
@@ -1365,7 +1435,9 @@ impl SimulationController {
                 };
                 if *offset_ns == 0
                     || *tsc_delta == 0
-                    || checked_ns_to_tsc_delta(*offset_ns, *tsc_khz).ok() != Some(*tsc_delta)
+                    || ::chaoscontrol_fault::outcomes::checked_ns_to_tsc_delta(*offset_ns, *tsc_khz)
+                        .ok()
+                        != Some(*tsc_delta)
                     || expected_target != Some(*target_tsc)
                 {
                     return Err(internal_application_error());
@@ -1374,34 +1446,43 @@ impl SimulationController {
                 if slot.vm.virtual_tsc() != *basis_tsc
                     || slot.vm.virtual_tsc_ref().tsc_khz() != *tsc_khz
                 {
-                    return Err(target_state_application_error());
+                    return Err(crate::controller_core::target_state_application_error());
                 }
                 slot.vm.virtual_tsc_mut().set(*target_tsc);
-                (*target, FaultObservationEffect::VirtualClockChanged)
+                (
+                    *target,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::VirtualClockChanged,
+                )
             }
-            FaultPlanEffect::VirtualClockFreeze {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockFreeze {
                 target,
                 frozen_tsc,
                 release_at_tick,
             } => {
                 if *release_at_tick <= self.tick {
-                    return Err(target_state_application_error());
+                    return Err(crate::controller_core::target_state_application_error());
                 }
                 let slot = self.vm_slot_mut_checked(*target)?;
                 if slot.vm.virtual_tsc() != *frozen_tsc {
-                    return Err(target_state_application_error());
+                    return Err(crate::controller_core::target_state_application_error());
                 }
                 slot.vm.virtual_tsc_mut().set_frozen(true);
                 slot.clock_freeze = Some((*frozen_tsc, *release_at_tick));
-                (*target, FaultObservationEffect::VirtualClockFrozen)
+                (
+                    *target,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::VirtualClockFrozen,
+                )
             }
-            FaultPlanEffect::VirtualClockJitter { target, bound_tsc } => {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockJitter {
+                target,
+                bound_tsc,
+            } => {
                 let slot = self.vm_slot_mut_checked(*target)?;
                 slot.vm.virtual_tsc_mut().set_jitter_bound(*bound_tsc);
                 slot.clock_jitter_bound = *bound_tsc;
                 (
                     *target,
-                    FaultObservationEffect::VirtualClockJitterConfigured,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::VirtualClockJitterConfigured,
                 )
             }
             _ => return Err(internal_application_error()),
@@ -1409,20 +1490,20 @@ impl SimulationController {
         let observation = self
             .make_shell_observation(
                 plan.attempt_id,
-                FaultObservationSubsystem::VirtualClock,
+                ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::VirtualClock,
                 observation_effect,
             )
             .map_err(|_| internal_application_error())?;
-        debug!("VM{} virtual clock effect applied", target);
+        ::log::debug!("VM{} virtual clock effect applied", target);
         Ok(vec![observation])
     }
 
     fn apply_interrupt_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         let (subsystem, effect) = match &plan.effect {
-            FaultPlanEffect::IrqInjection { target, irq } => {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::IrqInjection { target, irq } => {
                 if self
                     .vm_slot_mut_checked(*target)?
                     .vm
@@ -1430,26 +1511,26 @@ impl SimulationController {
                     .is_err()
                 {
                     self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
-                    return Err(non_runnable_application_error());
+                    return Err(crate::controller_core::non_runnable_application_error());
                 }
                 (
-                    FaultObservationSubsystem::Interrupt,
-                    FaultObservationEffect::InterruptInjected,
+                    ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Interrupt,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::InterruptInjected,
                 )
             }
-            FaultPlanEffect::NmiInjection { target, vcpu } => {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::NmiInjection { target, vcpu } => {
                 if self
                     .vm_slot_mut_checked(*target)?
                     .vm
-                    .inject_nmi(checked_usize(*vcpu)?)
+                    .inject_nmi(crate::controller_core::checked_usize(*vcpu)?)
                     .is_err()
                 {
                     self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
-                    return Err(non_runnable_application_error());
+                    return Err(crate::controller_core::non_runnable_application_error());
                 }
                 (
-                    FaultObservationSubsystem::Interrupt,
-                    FaultObservationEffect::NmiInjected,
+                    ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Interrupt,
+                    ::chaoscontrol_fault::outcomes::FaultObservationEffect::NmiInjected,
                 )
             }
             _ => return Err(internal_application_error()),
@@ -1462,10 +1543,10 @@ impl SimulationController {
 
     fn apply_cpu_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
         let effect = match &plan.effect {
-            FaultPlanEffect::CpuRegisterBitflip {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::CpuRegisterBitflip {
                 target,
                 vcpu,
                 register,
@@ -1474,43 +1555,51 @@ impl SimulationController {
                 if self
                     .vm_slot_mut_checked(*target)?
                     .vm
-                    .bitflip_register(checked_usize(*vcpu)?, *register, *bit)
+                    .bitflip_register(
+                        crate::controller_core::checked_usize(*vcpu)?,
+                        *register,
+                        *bit,
+                    )
                     .is_err()
                 {
                     self.vm_slot_mut_checked(*target)?.status = VmStatus::Crashed;
-                    return Err(non_runnable_application_error());
+                    return Err(crate::controller_core::non_runnable_application_error());
                 }
-                FaultObservationEffect::CpuRegisterChanged
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::CpuRegisterChanged
             }
-            FaultPlanEffect::CpuStall {
+            ::chaoscontrol_fault::outcomes::FaultPlanEffect::CpuStall {
                 target,
                 vcpu,
                 release_at_tick,
             } => {
                 if *release_at_tick <= self.tick {
-                    return Err(target_state_application_error());
+                    return Err(crate::controller_core::target_state_application_error());
                 }
                 let slot = self.vm_slot_mut_checked(*target)?;
-                let vcpu = checked_usize(*vcpu)?;
+                let vcpu = crate::controller_core::checked_usize(*vcpu)?;
                 slot.vm
                     .set_vcpu_stalled(vcpu, true)
-                    .map_err(|_| non_runnable_application_error())?;
+                    .map_err(|_| crate::controller_core::non_runnable_application_error())?;
                 slot.vcpu_stall_until.insert(vcpu, *release_at_tick);
-                FaultObservationEffect::CpuStallActivated
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::CpuStallActivated
             }
             _ => return Err(internal_application_error()),
         };
         let observation = self
-            .make_shell_observation(plan.attempt_id, FaultObservationSubsystem::Cpu, effect)
+            .make_shell_observation(
+                plan.attempt_id,
+                ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Cpu,
+                effect,
+            )
             .map_err(|_| internal_application_error())?;
         Ok(vec![observation])
     }
 
     fn apply_resource_fault_plan(
         &mut self,
-        plan: &FaultPlan,
+        plan: &::chaoscontrol_fault::outcomes::FaultPlan,
     ) -> Result<Vec<FaultObservation>, FaultApplicationError> {
-        let FaultPlanEffect::MemoryPressure {
+        let ::chaoscontrol_fault::outcomes::FaultPlanEffect::MemoryPressure {
             target,
             limit_bytes,
             baseline_bytes,
@@ -1520,53 +1609,55 @@ impl SimulationController {
             return Err(internal_application_error());
         };
         if *release_at_tick <= self.tick || *limit_bytes == 0 || *limit_bytes >= *baseline_bytes {
-            return Err(target_state_application_error());
+            return Err(crate::controller_core::target_state_application_error());
         }
         let slot = self.vm_slot_mut_checked(*target)?;
         let observed_baseline =
             u64::try_from(slot.vm.memory().size()).map_err(|_| internal_application_error())?;
         if observed_baseline != *baseline_bytes {
-            return Err(target_state_application_error());
+            return Err(crate::controller_core::target_state_application_error());
         }
         slot.vm
             .set_memory_ceiling_bytes(*limit_bytes)
-            .map_err(|_| target_state_application_error())?;
+            .map_err(|_| crate::controller_core::target_state_application_error())?;
         slot.memory_limit_bytes = Some(*limit_bytes);
         slot.memory_limit_release_at_tick = Some(*release_at_tick);
         let observation = self
             .make_shell_observation(
                 plan.attempt_id,
-                FaultObservationSubsystem::Scheduler,
-                FaultObservationEffect::MemoryCeilingChanged,
+                ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Scheduler,
+                ::chaoscontrol_fault::outcomes::FaultObservationEffect::MemoryCeilingChanged,
             )
             .map_err(|_| internal_application_error())?;
         Ok(vec![observation])
     }
 
     fn vm_slot_mut_checked(&mut self, target: u32) -> Result<&mut VmSlot, FaultApplicationError> {
-        let target = checked_usize(target)?;
+        let target = crate::controller_core::checked_usize(target)?;
         self.vms
             .get_mut(target)
-            .ok_or_else(target_state_application_error)
+            .ok_or_else(crate::controller_core::target_state_application_error)
     }
 
     #[cfg(test)]
-    fn apply_fault(&mut self, fault: &Fault) -> Result<(), VmError> {
+    fn apply_fault(
+        &mut self,
+        fault: &::chaoscontrol_fault::faults::Fault,
+    ) -> Result<(), crate::vm::VmError> {
         let schedule = chaoscontrol_fault::schedule::FaultScheduleBuilder::new()
             .at_ns(0, fault.clone())
             .build();
         self.fault_engine
             .begin_counterfactual_run(schedule)
-            .map_err(|error| VmError::Snapshot {
+            .map_err(|error| crate::vm::VmError::Snapshot {
                 message: format!("fault branch run failed: {error}"),
             })?;
         self.fault_engine.force_setup_complete();
-        let attempts =
-            self.fault_engine
-                .poll_fault_attempts(0)
-                .map_err(|error| VmError::Snapshot {
-                    message: format!("fault selection failed: {error}"),
-                })?;
+        let attempts = self.fault_engine.poll_fault_attempts(0).map_err(|error| {
+            crate::vm::VmError::Snapshot {
+                message: format!("fault selection failed: {error}"),
+            }
+        })?;
         for attempt in attempts {
             self.handle_fault_attempt(&attempt)?;
         }
@@ -1574,50 +1665,57 @@ impl SimulationController {
     }
 
     #[cfg(any())]
-    fn legacy_apply_fault_removed(&mut self, fault: &Fault) -> Result<(), VmError> {
-        info!("Applying fault at tick {}: {}", self.tick, fault);
+    fn legacy_apply_fault_removed(
+        &mut self,
+        fault: &::chaoscontrol_fault::faults::Fault,
+    ) -> Result<(), crate::vm::VmError> {
+        ::log::info!("Applying fault at tick {}: {}", self.tick, fault);
 
         match fault {
             // ── Network faults ──
-            Fault::NetworkPartition { side_a, side_b } => {
+            ::chaoscontrol_fault::faults::Fault::NetworkPartition { side_a, side_b } => {
                 self.network.add_partition(side_a.clone(), side_b.clone());
             }
-            Fault::NetworkLatency { target, latency_ns } => {
+            ::chaoscontrol_fault::faults::Fault::NetworkLatency { target, latency_ns } => {
                 self.network.set_latency(*target, *latency_ns);
             }
-            Fault::NetworkHeal => {
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal => {
                 self.network.clear_partitions();
             }
-            Fault::PacketLoss { target, rate_ppm } => {
-                info!("PacketLoss: VM{} set to {} ppm", target, rate_ppm);
+            ::chaoscontrol_fault::faults::Fault::PacketLoss { target, rate_ppm } => {
+                ::log::info!("PacketLoss: VM{} set to {} ppm", target, rate_ppm);
                 self.network.set_loss_rate(*target, *rate_ppm);
             }
-            Fault::PacketCorruption { target, rate_ppm } => {
-                info!("PacketCorruption: VM{} set to {} ppm", target, rate_ppm);
+            ::chaoscontrol_fault::faults::Fault::PacketCorruption { target, rate_ppm } => {
+                ::log::info!("PacketCorruption: VM{} set to {} ppm", target, rate_ppm);
                 self.network.set_corruption_rate(*target, *rate_ppm);
             }
-            Fault::PacketReorder { target, window_ns } => {
+            ::chaoscontrol_fault::faults::Fault::PacketReorder { target, window_ns } => {
                 // Convert nanoseconds to ticks (1 tick = 1_000_000 ns)
                 let window_ticks = window_ns / 1_000_000;
-                info!(
+                ::log::info!(
                     "PacketReorder: VM{} window {} ns ({} ticks)",
-                    target, window_ns, window_ticks
+                    target,
+                    window_ns,
+                    window_ticks
                 );
                 self.network.set_reorder_window(*target, window_ticks);
             }
-            Fault::NetworkJitter { target, jitter_ns } => {
+            ::chaoscontrol_fault::faults::Fault::NetworkJitter { target, jitter_ns } => {
                 let jitter_ticks = jitter_ns / 1_000_000;
-                info!(
+                ::log::info!(
                     "NetworkJitter: VM{} jitter {} ns ({} ticks)",
-                    target, jitter_ns, jitter_ticks
+                    target,
+                    jitter_ns,
+                    jitter_ticks
                 );
                 self.network.set_jitter(*target, jitter_ticks);
             }
-            Fault::NetworkBandwidth {
+            ::chaoscontrol_fault::faults::Fault::NetworkBandwidth {
                 target,
                 bytes_per_sec,
             } => {
-                info!(
+                ::log::info!(
                     "NetworkBandwidth: VM{} limited to {} B/s ({} KB/s)",
                     target,
                     bytes_per_sec,
@@ -1625,25 +1723,25 @@ impl SimulationController {
                 );
                 self.network.set_bandwidth(*target, *bytes_per_sec);
             }
-            Fault::PacketDuplicate { target, rate_ppm } => {
-                info!("PacketDuplicate: VM{} set to {} ppm", target, rate_ppm);
+            ::chaoscontrol_fault::faults::Fault::PacketDuplicate { target, rate_ppm } => {
+                ::log::info!("PacketDuplicate: VM{} set to {} ppm", target, rate_ppm);
                 self.network.set_duplicate_rate(*target, *rate_ppm);
             }
 
             // ── Disk faults ──
-            Fault::DiskReadError { target, offset } => {
+            ::chaoscontrol_fault::faults::Fault::DiskReadError { target, offset } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    warn!("DiskReadError at VM{}, offset {:#x}", target, offset);
+                    ::log::warn!("DiskReadError at VM{}, offset {:#x}", target, offset);
                     slot.disk_faults.error_rate = 1.0; // 100% error for now
                 }
             }
-            Fault::DiskWriteError { target, offset } => {
+            ::chaoscontrol_fault::faults::Fault::DiskWriteError { target, offset } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    warn!("DiskWriteError at VM{}, offset {:#x}", target, offset);
+                    ::log::warn!("DiskWriteError at VM{}, offset {:#x}", target, offset);
                     slot.disk_faults.error_rate = 1.0;
                 }
             }
-            Fault::DiskTornWrite {
+            ::chaoscontrol_fault::faults::Fault::DiskTornWrite {
                 target,
                 offset,
                 bytes_written,
@@ -1655,19 +1753,21 @@ impl SimulationController {
                         bytes_written: *bytes_written,
                     };
                     if slot.vm.inject_disk_fault(fault) {
-                        info!(
+                        ::log::info!(
                             "DiskTornWrite injected at VM{}, offset {:#x}, {} bytes",
-                            target, offset, bytes_written
+                            target,
+                            offset,
+                            bytes_written
                         );
                     } else {
-                        warn!(
+                        ::log::warn!(
                             "DiskTornWrite fault failed: VM{} has no block device",
                             target
                         );
                     }
                 }
             }
-            Fault::DiskCorruption {
+            ::chaoscontrol_fault::faults::Fault::DiskCorruption {
                 target,
                 offset,
                 len,
@@ -1679,35 +1779,37 @@ impl SimulationController {
                         len: *len,
                     };
                     if slot.vm.inject_disk_fault(fault) {
-                        info!(
+                        ::log::info!(
                             "DiskCorruption injected at VM{}, offset {:#x}, {} bytes",
-                            target, offset, len
+                            target,
+                            offset,
+                            len
                         );
                     } else {
-                        warn!(
+                        ::log::warn!(
                             "DiskCorruption fault failed: VM{} has no block device",
                             target
                         );
                     }
                 }
             }
-            Fault::DiskFull { target } => {
+            ::chaoscontrol_fault::faults::Fault::DiskFull { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("DiskFull injected at VM{}", target);
+                    ::log::info!("DiskFull injected at VM{}", target);
                     slot.disk_faults.full = true;
                 }
             }
 
             // ── Process faults ──
-            Fault::ProcessKill { target } => {
+            ::chaoscontrol_fault::faults::Fault::ProcessKill { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("ProcessKill: VM{} crashed", target);
+                    ::log::info!("ProcessKill: VM{} crashed", target);
                     slot.status = VmStatus::Crashed;
                     // Discard volatile writes if fsync-lie was active.
                     slot.vm.discard_disk_volatile();
                 }
             }
-            Fault::ProcessPause {
+            ::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target,
                 duration_ns,
             } => {
@@ -1715,9 +1817,12 @@ impl SimulationController {
                     // Convert duration_ns to ticks (1 tick = 1_000_000 ns), minimum 1 tick
                     let pause_ticks = (*duration_ns / 1_000_000).max(1);
                     let resume_at = self.tick + pause_ticks;
-                    info!(
+                    ::log::info!(
                         "ProcessPause: VM{} paused for {} ns ({} ticks), resume at tick {}",
-                        target, duration_ns, pause_ticks, resume_at
+                        target,
+                        duration_ns,
+                        pause_ticks,
+                        resume_at
                     );
                     slot.status = VmStatus::Paused;
                 }
@@ -1725,14 +1830,14 @@ impl SimulationController {
                 let pause_ticks = (*duration_ns / 1_000_000).max(1);
                 self.schedule_resume(*target, self.tick + pause_ticks)?;
             }
-            Fault::ProcessRestart { target } => {
+            ::chaoscontrol_fault::faults::Fault::ProcessRestart { target } => {
                 self.schedule_restart(*target, self.tick + 10)?; // Restart after 10 ticks
             }
 
             // ── Clock faults ──
-            Fault::ClockSkew { target, offset_ns } => {
+            ::chaoscontrol_fault::faults::Fault::ClockSkew { target, offset_ns } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("ClockSkew: VM{} offset by {} ns", target, offset_ns);
+                    ::log::info!("ClockSkew: VM{} offset by {} ns", target, offset_ns);
                     slot.tsc_skew += offset_ns;
                     // Apply skew to VM's virtual TSC
                     let current_tsc = slot.vm.virtual_tsc();
@@ -1740,9 +1845,9 @@ impl SimulationController {
                     slot.vm.virtual_tsc_mut().advance_to(skewed_tsc);
                 }
             }
-            Fault::ClockJump { target, delta_ns } => {
+            ::chaoscontrol_fault::faults::Fault::ClockJump { target, delta_ns } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("ClockJump: VM{} jumped by {} ns", target, delta_ns);
+                    ::log::info!("ClockJump: VM{} jumped by {} ns", target, delta_ns);
                     let current_tsc = slot.vm.virtual_tsc();
                     let jumped_tsc = (current_tsc as i64 + *delta_ns).max(0) as u64;
                     slot.vm.virtual_tsc_mut().advance_to(jumped_tsc);
@@ -1750,12 +1855,12 @@ impl SimulationController {
             }
 
             // ── Resource faults ──
-            Fault::MemoryPressure {
+            ::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target,
                 limit_bytes,
             } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!(
+                    ::log::info!(
                         "MemoryPressure: VM{} limited to {} bytes ({} MB)",
                         target,
                         limit_bytes,
@@ -1766,43 +1871,43 @@ impl SimulationController {
             }
 
             // ── Interrupt injection faults ──
-            Fault::InjectInterrupt { target, irq } => {
+            ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target, irq } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("InjectInterrupt: VM{} IRQ {}", target, irq);
+                    ::log::info!("InjectInterrupt: VM{} IRQ {}", target, irq);
                     slot.vm.inject_interrupt(*irq)?;
                 } else {
-                    warn!("InjectInterrupt fault skipped: VM{} not found", target);
+                    ::log::warn!("InjectInterrupt fault skipped: VM{} not found", target);
                 }
             }
-            Fault::InjectNmi { target, vcpu } => {
+            ::chaoscontrol_fault::faults::Fault::InjectNmi { target, vcpu } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("InjectNmi: VM{} vCPU {}", target, vcpu);
+                    ::log::info!("InjectNmi: VM{} vCPU {}", target, vcpu);
                     slot.vm.inject_nmi(*vcpu)?;
                 } else {
-                    warn!("InjectNmi fault skipped: VM{} not found", target);
+                    ::log::warn!("InjectNmi fault skipped: VM{} not found", target);
                 }
             }
 
             // ── Advanced disk faults ──
-            Fault::DiskSlow { target, delay_ns } => {
+            ::chaoscontrol_fault::faults::Fault::DiskSlow { target, delay_ns } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("DiskSlow: VM{} delay {} ns", target, delay_ns);
+                    ::log::info!("DiskSlow: VM{} delay {} ns", target, delay_ns);
                     slot.vm.set_disk_slow_delay(*delay_ns);
                 }
             }
-            Fault::DiskFsyncLie { target } => {
+            ::chaoscontrol_fault::faults::Fault::DiskFsyncLie { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("DiskFsyncLie: VM{} enabled", target);
+                    ::log::info!("DiskFsyncLie: VM{} enabled", target);
                     slot.vm.enable_disk_fsync_lie();
                 }
             }
-            Fault::DiskFsyncFlush { target } => {
+            ::chaoscontrol_fault::faults::Fault::DiskFsyncFlush { target } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("DiskFsyncFlush: VM{} flushing volatile", target);
+                    ::log::info!("DiskFsyncFlush: VM{} flushing volatile", target);
                     slot.vm.flush_disk_volatile();
                 }
             }
-            Fault::DiskPartialRead {
+            ::chaoscontrol_fault::faults::Fault::DiskPartialRead {
                 target,
                 offset,
                 max_bytes,
@@ -1814,64 +1919,73 @@ impl SimulationController {
                         max_bytes: *max_bytes,
                     };
                     if slot.vm.inject_disk_fault(fault) {
-                        info!(
+                        ::log::info!(
                             "DiskPartialRead: VM{} offset {:#x} max {} bytes",
-                            target, offset, max_bytes
+                            target,
+                            offset,
+                            max_bytes
                         );
                     }
                 }
             }
 
             // ── CPU faults ──
-            Fault::CpuBitflip {
+            ::chaoscontrol_fault::faults::Fault::CpuBitflip {
                 target,
                 vcpu,
                 register,
                 bit,
             } => {
                 if *bit >= 64 {
-                    info!("CpuBitflip: bit {} >= 64, ignoring", bit);
+                    ::log::info!("CpuBitflip: bit {} >= 64, ignoring", bit);
                 } else if let Some(slot) = self.vms.get_mut(*target) {
-                    info!(
+                    ::log::info!(
                         "CpuBitflip: VM{} vcpu {} {}[{}]",
-                        target, vcpu, register, bit
+                        target,
+                        vcpu,
+                        register,
+                        bit
                     );
                     slot.vm.bitflip_register(*vcpu, *register, *bit)?;
                 }
             }
-            Fault::CpuStall {
+            ::chaoscontrol_fault::faults::Fault::CpuStall {
                 target,
                 vcpu,
                 duration_ticks,
             } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
                     let expires = self.tick + *duration_ticks;
-                    info!(
+                    ::log::info!(
                         "CpuStall: VM{} vcpu {} stalled until tick {}",
-                        target, vcpu, expires
+                        target,
+                        vcpu,
+                        expires
                     );
                     slot.vcpu_stall_until.insert(*vcpu, expires);
                 }
             }
 
             // ── Advanced clock faults ──
-            Fault::ClockFreeze {
+            ::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target,
                 duration_ticks,
             } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
                     let frozen_tsc = slot.vm.virtual_tsc();
                     let expires = self.tick + *duration_ticks;
-                    info!(
+                    ::log::info!(
                         "ClockFreeze: VM{} frozen at TSC {} until tick {}",
-                        target, frozen_tsc, expires
+                        target,
+                        frozen_tsc,
+                        expires
                     );
                     slot.clock_freeze = Some((frozen_tsc, expires));
                 }
             }
-            Fault::ClockJitter { target, bound_tsc } => {
+            ::chaoscontrol_fault::faults::Fault::ClockJitter { target, bound_tsc } => {
                 if let Some(slot) = self.vms.get_mut(*target) {
-                    info!("ClockJitter: VM{} ±{} TSC", target, bound_tsc);
+                    ::log::info!("ClockJitter: VM{} ±{} TSC", target, bound_tsc);
                     slot.clock_jitter_bound = *bound_tsc;
                 }
             }
@@ -1882,11 +1996,16 @@ impl SimulationController {
 
     /// Schedule a VM restart at a future tick.
     #[cfg(any())]
-    fn schedule_restart(&mut self, target: usize, restart_at_tick: u64) -> Result<(), VmError> {
+    fn schedule_restart(
+        &mut self,
+        target: usize,
+        restart_at_tick: u64,
+    ) -> Result<(), crate::vm::VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
-            info!(
+            ::log::info!(
                 "VM{} scheduled to restart at tick {}",
-                target, restart_at_tick
+                target,
+                restart_at_tick
             );
             slot.status = VmStatus::Restarting { restart_at_tick };
         }
@@ -1895,12 +2014,17 @@ impl SimulationController {
 
     /// Schedule a paused VM to resume at a future tick.
     #[cfg(any())]
-    fn schedule_resume(&mut self, target: usize, resume_at_tick: u64) -> Result<(), VmError> {
+    fn schedule_resume(
+        &mut self,
+        target: usize,
+        resume_at_tick: u64,
+    ) -> Result<(), crate::vm::VmError> {
         if let Some(slot) = self.vms.get_mut(target) {
             if slot.status == VmStatus::Paused {
-                info!(
+                ::log::info!(
                     "VM{} scheduled to resume at tick {}",
-                    target, resume_at_tick
+                    target,
+                    resume_at_tick
                 );
                 slot.status = VmStatus::Resuming { resume_at_tick };
             }
@@ -1909,9 +2033,9 @@ impl SimulationController {
     }
 
     /// Restart a VM from its initial snapshot.
-    fn restart_vm(&mut self, target: usize) -> Result<(), VmError> {
+    fn restart_vm(&mut self, target: usize) -> Result<(), crate::vm::VmError> {
         let slot = self.vms.get_mut(target).ok_or_else(|| {
-            SnapshotSnafu {
+            crate::vm::SnapshotSnafu {
                 message: format!("VM{} not found", target),
             }
             .build()
@@ -1922,7 +2046,7 @@ impl SimulationController {
         let block_snapshot = slot.vm.snapshot_block_dirty();
 
         if let Some(snapshot) = &slot.initial_snapshot {
-            info!(
+            ::log::info!(
                 "Restarting VM{} from initial snapshot (preserving disk)",
                 target
             );
@@ -1948,20 +2072,21 @@ impl SimulationController {
                 let (exits, idle) = slot.vm.run_bounded(1000)?;
                 ran += exits;
                 if slot.vm.fault_engine().is_setup_complete() {
-                    info!("VM{} restarted successfully ({} exits)", target, ran);
+                    ::log::info!("VM{} restarted successfully ({} exits)", target, ran);
                     break;
                 }
                 if ran >= budget || idle {
-                    warn!(
+                    ::log::warn!(
                         "VM{} restart exceeded budget ({} exits), marking crashed",
-                        target, ran
+                        target,
+                        ran
                     );
                     slot.status = VmStatus::Crashed;
                     return Ok(());
                 }
             }
         } else {
-            warn!("VM{} has no initial snapshot, cannot restart", target);
+            ::log::warn!("VM{} has no initial snapshot, cannot restart", target);
         }
 
         Ok(())
@@ -1994,7 +2119,7 @@ impl SimulationController {
     /// 2. For each packet: broadcast to all other VMs (hub model)
     /// 3. Route through NetworkFabric for fault injection
     /// 4. Deliver arrived packets to destination VM RX queues
-    fn bridge_network_packets(&mut self) -> Result<(), VmError> {
+    fn bridge_network_packets(&mut self) -> Result<(), crate::vm::VmError> {
         // Phase 1: Drain TX queues and enqueue into NetworkFabric.
         for from_id in 0..self.vms.len() {
             let packets = self.vms[from_id].vm.drain_net_tx();
@@ -2026,7 +2151,7 @@ impl SimulationController {
 
     /// Snapshot all VMs and simulation state.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn snapshot_all(&mut self) -> Result<SimulationSnapshot, VmError> {
+    pub fn snapshot_all(&mut self) -> Result<SimulationSnapshot, crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
 
@@ -2055,7 +2180,7 @@ impl SimulationController {
                                 baseline_bytes,
                                 release_at_tick,
                             })
-                            .map_err(|_| VmError::Snapshot {
+                            .map_err(|_| crate::vm::VmError::Snapshot {
                                 message: "guest memory size exceeds snapshot bounds".to_string(),
                             })
                     })
@@ -2089,7 +2214,9 @@ impl SimulationController {
     /// stored base. Call [`Self::set_memory_bases`] before using this.
     /// Returns the snapshot and total dirty pages across all VMs.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn snapshot_all_incremental(&mut self) -> Result<(SimulationSnapshot, usize), VmError> {
+    pub fn snapshot_all_incremental(
+        &mut self,
+    ) -> Result<(SimulationSnapshot, usize), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         let mut vm_snapshots = Vec::with_capacity(self.vms.len());
         let mut total_dirty = 0usize;
@@ -2126,7 +2253,7 @@ impl SimulationController {
                                 baseline_bytes,
                                 release_at_tick,
                             })
-                            .map_err(|_| VmError::Snapshot {
+                            .map_err(|_| crate::vm::VmError::Snapshot {
                                 message: "guest memory size exceeds snapshot bounds".to_string(),
                             })
                     })
@@ -2171,7 +2298,7 @@ impl SimulationController {
     /// Must be called from the worker thread that will run this controller.
     /// Creates thread-targeted `SIGALRM` timers for single-vCPU watchdogs.
     /// It also rebinds optional PMU overflow delivery to this worker thread.
-    pub fn init_thread_timers(&mut self) -> Result<(), VmError> {
+    pub fn init_thread_timers(&mut self) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         for slot in &mut self.vms {
             slot.vm.init_thread_timer()?;
@@ -2191,11 +2318,11 @@ impl SimulationController {
 
     /// Restore all VMs from a snapshot.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
-    pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+    pub fn restore_all(&mut self, snapshot: &SimulationSnapshot) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         snapshot
             .validate_assertion_identity(self.vms.len())
-            .map_err(|message| SnapshotSnafu { message }.build())?;
+            .map_err(|message| crate::vm::SnapshotSnafu { message }.build())?;
         self.fault_engine
             .validate_orchestration_snapshot(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
@@ -2215,7 +2342,10 @@ impl SimulationController {
         result
     }
 
-    fn restore_all_validated(&mut self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+    fn restore_all_validated(
+        &mut self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), crate::vm::VmError> {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
@@ -2230,7 +2360,7 @@ impl SimulationController {
             self.restore_slot_fault_surface(i, snapshot)?;
         }
 
-        info!(
+        ::log::info!(
             "Restored simulation state from snapshot at tick {}",
             self.tick
         );
@@ -2241,7 +2371,7 @@ impl SimulationController {
         &mut self,
         index: usize,
         snapshot: &SimulationSnapshot,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         if let Some(stalls) = snapshot.vcpu_stall_until.get(index) {
             self.vms[index].vcpu_stall_until = stalls.clone();
         } else {
@@ -2279,16 +2409,19 @@ impl SimulationController {
         Ok(())
     }
 
-    fn validate_pending_snapshot(&self, snapshot: &SimulationSnapshot) -> Result<(), VmError> {
+    fn validate_pending_snapshot(
+        &self,
+        snapshot: &SimulationSnapshot,
+    ) -> Result<(), crate::vm::VmError> {
         let vm_count = snapshot.vm_snapshots.len();
-        SimulationCoreSnapshot {
-            schema_version: CORE_SNAPSHOT_SCHEMA_VERSION,
+        ::chaoscontrol_sim_core::SimulationCoreSnapshot {
+            schema_version: ::chaoscontrol_sim_core::CORE_SNAPSHOT_SCHEMA_VERSION,
             tick: snapshot.tick,
             vm_count,
             network: snapshot.network_state.clone(),
         }
         .validate()
-        .map_err(|error| VmError::Snapshot {
+        .map_err(|error| crate::vm::VmError::Snapshot {
             message: format!("simulation core snapshot rejected: {error}"),
         })?;
         let vector_lengths = [
@@ -2302,7 +2435,7 @@ impl SimulationController {
         if vector_lengths.into_iter().any(|length| length != vm_count) || !memory_state_length_valid
         {
             return Err(fault_transition_vm_error(
-                FaultTransitionError::SnapshotPendingStateMismatch,
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
             ));
         }
         let ledger = snapshot.fault_engine_snapshot.outcomes();
@@ -2312,12 +2445,13 @@ impl SimulationController {
                 .iter()
                 .any(|(vm_index, observation)| {
                     *vm_index >= vm_count
-                        || observation.subsystem != FaultObservationSubsystem::Process
+                        || observation.subsystem
+                            != ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Process
                         || observation.operation_sequence >= snapshot.fault_operation_sequence
                 })
         {
             return Err(fault_transition_vm_error(
-                FaultTransitionError::SnapshotPendingStateMismatch,
+                ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
             ));
         }
         let pending_process_observations = snapshot
@@ -2325,8 +2459,11 @@ impl SimulationController {
             .iter()
             .map(|(_, observation)| observation.clone())
             .collect::<Vec<_>>();
-        validate_pending_fault_observations(ledger, &pending_process_observations)
-            .map_err(fault_transition_vm_error)?;
+        ::chaoscontrol_fault::outcomes::validate_pending_fault_observations(
+            ledger,
+            &pending_process_observations,
+        )
+        .map_err(fault_transition_vm_error)?;
         snapshot
             .network_state
             .validate_pending_faults(ledger, vm_count)
@@ -2338,7 +2475,7 @@ impl SimulationController {
             .enumerate()
         {
             let target = u32::try_from(index).map_err(|_| {
-                fault_transition_vm_error(FaultTransitionError::SnapshotPendingStateMismatch)
+                fault_transition_vm_error(::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch)
             })?;
             let has_pending_observation =
                 snapshot
@@ -2356,11 +2493,11 @@ impl SimulationController {
             )
             .map_err(fault_transition_vm_error)?;
             for (vcpu, release_at_tick) in &snapshot.vcpu_stall_until[index] {
-                let expected = FaultPlanEffect::CpuStall {
+                let expected = ::chaoscontrol_fault::outcomes::FaultPlanEffect::CpuStall {
                     target,
                     vcpu: u32::try_from(*vcpu).map_err(|_| {
                         fault_transition_vm_error(
-                            FaultTransitionError::SnapshotPendingStateMismatch,
+                            ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                         )
                     })?,
                     release_at_tick: *release_at_tick,
@@ -2370,38 +2507,40 @@ impl SimulationController {
                     || !ledger_has_observed_effect(ledger, &expected)
                 {
                     return Err(fault_transition_vm_error(
-                        FaultTransitionError::SnapshotPendingStateMismatch,
+                        ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
                 }
             }
             if let Some((frozen_tsc, release_at_tick)) = snapshot.clock_freeze[index] {
-                let expected = FaultPlanEffect::VirtualClockFreeze {
-                    target,
-                    frozen_tsc,
-                    release_at_tick,
-                };
+                let expected =
+                    ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockFreeze {
+                        target,
+                        frozen_tsc,
+                        release_at_tick,
+                    };
                 if release_at_tick <= snapshot.tick
                     || !ledger_has_observed_effect(ledger, &expected)
                 {
                     return Err(fault_transition_vm_error(
-                        FaultTransitionError::SnapshotPendingStateMismatch,
+                        ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
                 }
             }
             let jitter_bound = snapshot.clock_jitter_bound[index];
             if jitter_bound != 0 {
-                let expected = FaultPlanEffect::VirtualClockJitter {
-                    target,
-                    bound_tsc: jitter_bound,
-                };
+                let expected =
+                    ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockJitter {
+                        target,
+                        bound_tsc: jitter_bound,
+                    };
                 if !ledger_has_observed_effect(ledger, &expected) {
                     return Err(fault_transition_vm_error(
-                        FaultTransitionError::SnapshotPendingStateMismatch,
+                        ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
                 }
             }
             if let Some(memory_state) = snapshot.memory_pressure.get(index).copied().flatten() {
-                let expected = FaultPlanEffect::MemoryPressure {
+                let expected = ::chaoscontrol_fault::outcomes::FaultPlanEffect::MemoryPressure {
                     target,
                     limit_bytes: memory_state.limit_bytes,
                     baseline_bytes: memory_state.baseline_bytes,
@@ -2413,7 +2552,7 @@ impl SimulationController {
                     || !ledger_has_observed_effect(ledger, &expected)
                 {
                     return Err(fault_transition_vm_error(
-                        FaultTransitionError::SnapshotPendingStateMismatch,
+                        ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
                 }
             }
@@ -2429,15 +2568,19 @@ impl SimulationController {
         }
         let mut shell_sequences = std::collections::BTreeSet::new();
         for event in &ledger.events {
-            if let FaultStageKind::Observed { observation } = &event.kind {
-                let shell_observation = observation.subsystem != FaultObservationSubsystem::Block
-                    && observation.subsystem != FaultObservationSubsystem::Network;
+            if let ::chaoscontrol_fault::outcomes::FaultStageKind::Observed { observation } =
+                &event.kind
+            {
+                let shell_observation = observation.subsystem
+                    != ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Block
+                    && observation.subsystem
+                        != ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Network;
                 if shell_observation
                     && (observation.operation_sequence >= snapshot.fault_operation_sequence
                         || !shell_sequences.insert(observation.operation_sequence))
                 {
                     return Err(fault_transition_vm_error(
-                        FaultTransitionError::SnapshotPendingStateMismatch,
+                        ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                     ));
                 }
             }
@@ -2447,7 +2590,7 @@ impl SimulationController {
                 || !shell_sequences.insert(observation.operation_sequence)
             {
                 return Err(fault_transition_vm_error(
-                    FaultTransitionError::SnapshotPendingStateMismatch,
+                    ::chaoscontrol_fault::outcomes::FaultTransitionError::SnapshotPendingStateMismatch,
                 ));
             }
         }
@@ -2463,11 +2606,11 @@ impl SimulationController {
     pub fn restore_all_incremental(
         &mut self,
         snapshot: &SimulationSnapshot,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         snapshot
             .validate_assertion_identity(self.vms.len())
-            .map_err(|message| SnapshotSnafu { message }.build())?;
+            .map_err(|message| crate::vm::SnapshotSnafu { message }.build())?;
         self.fault_engine
             .validate_orchestration_snapshot(&snapshot.fault_engine_snapshot)
             .map_err(fault_transition_vm_error)?;
@@ -2490,7 +2633,7 @@ impl SimulationController {
     fn restore_all_incremental_validated(
         &mut self,
         snapshot: &SimulationSnapshot,
-    ) -> Result<(), VmError> {
+    ) -> Result<(), crate::vm::VmError> {
         self.tick = snapshot.tick;
         self.network = snapshot.network_state.clone();
         self.fault_engine
@@ -2509,12 +2652,12 @@ impl SimulationController {
             self.restore_slot_fault_surface(i, snapshot)?;
         }
 
-        debug!("Incremental restore from snapshot at tick {}", self.tick);
+        ::log::debug!("Incremental restore from snapshot at tick {}", self.tick);
         Ok(())
     }
 
     /// Get the oracle report (merged from all VMs).
-    pub fn report(&self) -> OracleReport {
+    pub fn report(&self) -> ::chaoscontrol_fault::oracle::OracleReport {
         self.assert_controller_healthy();
         self.merged_oracle_report()
     }
@@ -2524,14 +2667,14 @@ impl SimulationController {
     /// Each VM has its own FaultEngine + PropertyOracle that tracks
     /// assertions from that VM's guest.  We merge them so the
     /// exploration sees a unified view of all assertion violations.
-    fn merged_oracle_report(&self) -> OracleReport {
+    fn merged_oracle_report(&self) -> ::chaoscontrol_fault::oracle::OracleReport {
         let mut reports = Vec::with_capacity(self.vms.len().max(1));
         if self.vms.is_empty() {
             reports.push((0, self.fault_engine.oracle().report()));
         } else {
             for (index, slot) in self.vms.iter().enumerate() {
                 let Ok(vm_instance) = u32::try_from(index) else {
-                    return rejected_merge_report(
+                    return ::chaoscontrol_fault::report_merge::rejected_merge_report(
                         chaoscontrol_fault::report_merge::ReportMergeConflict::CardinalityOverflow,
                     );
                 };
@@ -2544,9 +2687,9 @@ impl SimulationController {
                 ));
             }
         }
-        match merge_oracle_reports(&reports) {
+        match ::chaoscontrol_fault::report_merge::merge_oracle_reports(&reports) {
             Ok(report) => report,
-            Err(conflict) => rejected_merge_report(conflict),
+            Err(conflict) => ::chaoscontrol_fault::report_merge::rejected_merge_report(conflict),
         }
     }
 
@@ -2610,12 +2753,12 @@ impl SimulationController {
     }
 
     /// Get a reference to a VM by index.
-    pub fn vm(&self, index: usize) -> &DeterministicVm {
+    pub fn vm(&self, index: usize) -> &crate::vm::DeterministicVm {
         &self.vms[index].vm
     }
 
     /// Get a mutable reference to a VM by index.
-    pub fn vm_mut(&mut self, index: usize) -> &mut DeterministicVm {
+    pub fn vm_mut(&mut self, index: usize) -> &mut crate::vm::DeterministicVm {
         self.assert_controller_healthy();
         &mut self.vms[index].vm
     }
@@ -2637,17 +2780,24 @@ impl SimulationController {
     }
 
     /// Replace the fault schedule (used by the explorer between branches).
-    pub fn set_schedule(&mut self, schedule: FaultSchedule) -> Result<(), VmError> {
+    pub fn set_schedule(
+        &mut self,
+        schedule: ::chaoscontrol_sim_core::fault::FaultSchedule,
+    ) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         self.fault_engine
             .set_schedule(schedule)
-            .map_err(|error| VmError::Snapshot {
+            .map_err(|error| crate::vm::VmError::Snapshot {
                 message: format!("fault schedule replacement failed: {error}"),
             })
     }
 
     /// Start one exact clean fault run for deterministic replay.
-    pub fn start_fault_run_at(&mut self, schedule: FaultSchedule, run_sequence: u64) {
+    pub fn start_fault_run_at(
+        &mut self,
+        schedule: ::chaoscontrol_sim_core::fault::FaultSchedule,
+        run_sequence: u64,
+    ) {
         self.assert_controller_healthy();
         self.fault_engine
             .rebind_fresh_run_at(schedule, run_sequence);
@@ -2656,18 +2806,21 @@ impl SimulationController {
     /// Start one clean bounded counterfactual fault run.
     pub fn begin_counterfactual_fault_run(
         &mut self,
-        schedule: FaultSchedule,
-    ) -> Result<(), VmError> {
+        schedule: ::chaoscontrol_sim_core::fault::FaultSchedule,
+    ) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         self.fault_engine
             .begin_counterfactual_run(schedule)
-            .map_err(|error| VmError::Snapshot {
+            .map_err(|error| crate::vm::VmError::Snapshot {
                 message: format!("counterfactual fault run failed: {error}"),
             })
     }
 
     /// Set the explicit campaign policy for rejected fault attempts.
-    pub fn set_fault_application_policy(&mut self, policy: FaultApplicationPolicy) {
+    pub fn set_fault_application_policy(
+        &mut self,
+        policy: ::chaoscontrol_fault::outcomes::FaultApplicationPolicy,
+    ) {
         self.assert_controller_healthy();
         self.fault_application_policy = policy;
     }
@@ -2677,16 +2830,19 @@ impl SimulationController {
         self.fault_engine.fault_outcomes()
     }
 
-    /// Apply a [`ScheduleVariant`] to all VMs' vCPU schedulers.
+    /// Apply a [`ScheduleVariant`](crate::scheduler::ScheduleVariant) to all VMs' vCPU schedulers.
     ///
     /// Each VM gets a domain-separated seed: `variant.scheduler_seed + vm_id`.
     /// Strategy and quantum overrides apply uniformly to all VMs.
     /// Call this after `restore_all()` and before `run()` to vary the
     /// interleaving for a specific branch.
-    pub fn apply_schedule_variant(&mut self, variant: &ScheduleVariant) -> Result<(), VmError> {
+    pub fn apply_schedule_variant(
+        &mut self,
+        variant: &crate::scheduler::ScheduleVariant,
+    ) -> Result<(), crate::vm::VmError> {
         self.ensure_controller_healthy()?;
         for (i, slot) in self.vms.iter_mut().enumerate() {
-            let per_vm = ScheduleVariant {
+            let per_vm = crate::scheduler::ScheduleVariant {
                 scheduler_seed: variant.scheduler_seed.wrapping_add(i as u64),
                 strategy_override: variant.strategy_override,
                 quantum_override: variant.quantum_override,
@@ -2779,7 +2935,7 @@ pub struct VmScheduleTrace {
     /// Stable VM index in the simulation controller.
     pub vm_index: usize,
     /// Independently verifiable bounded trace.
-    pub trace: ScheduleTrace,
+    pub trace: crate::scheduler::core::ScheduleTrace,
 }
 
 /// Result of a single scheduling round.
@@ -2792,9 +2948,9 @@ pub struct RoundResult {
     /// Number of VMs halted/paused/crashed.
     pub vms_halted: usize,
     /// Legacy compatibility alias mapped exactly to selected faults.
-    pub faults_fired: Vec<Fault>,
+    pub faults_fired: Vec<::chaoscontrol_fault::faults::Fault>,
     /// Ordered stage events produced during this round.
-    pub fault_outcomes: Vec<FaultStageEvent>,
+    pub fault_outcomes: Vec<::chaoscontrol_fault::outcomes::FaultStageEvent>,
     /// Number of network messages delivered this round.
     pub messages_delivered: usize,
     /// Canonical deterministic SMP traces emitted during this round.
@@ -2807,7 +2963,7 @@ pub struct SimulationResult {
     /// Total simulation ticks executed.
     pub total_ticks: u64,
     /// Property oracle report.
-    pub oracle_report: OracleReport,
+    pub oracle_report: ::chaoscontrol_fault::oracle::OracleReport,
     /// Per-VM exit counts.
     pub vm_exit_counts: Vec<u64>,
     /// Cumulative network fabric statistics.
@@ -2832,7 +2988,7 @@ pub struct SimulationSnapshot {
     /// Global tick counter.
     pub tick: u64,
     /// Per-VM snapshots and status.
-    pub vm_snapshots: Vec<(VmSnapshot, VmStatus)>,
+    pub vm_snapshots: Vec<(crate::snapshot::VmSnapshot, VmStatus)>,
     /// Network fabric state.
     pub network_state: NetworkFabric,
     /// Fault engine state.
@@ -2847,11 +3003,11 @@ pub struct SimulationSnapshot {
     #[serde(default)]
     pub memory_pressure: Vec<Option<MemoryPressureSnapshotState>>,
     /// Per-VM pending process-effect attempt identity.
-    pub process_fault_attempt: Vec<Option<FaultAttemptId>>,
+    pub process_fault_attempt: Vec<Option<::chaoscontrol_fault::outcomes::FaultAttemptId>>,
     /// Next deterministic operation sequence for shell observations.
     pub fault_operation_sequence: u64,
     /// Process observations waiting for ledger commit.
-    pub pending_process_observations: VecDeque<(usize, FaultObservation)>,
+    pub pending_process_observations: ::std::collections::VecDeque<(usize, FaultObservation)>,
 }
 
 impl SimulationSnapshot {
@@ -2935,11 +3091,12 @@ mod tests {
             kernel_path: dummy_kernel_path(),
             ..Default::default()
         };
-        let vm = DeterministicVm::new(VmConfig::default()).expect("create adapter test VM");
+        let vm = crate::vm::DeterministicVm::new(crate::vm::VmConfig::default())
+            .expect("create adapter test VM");
         let slot = VmSlot {
             vm,
             status: VmStatus::Running,
-            inbox: VecDeque::new(),
+            inbox: ::std::collections::VecDeque::new(),
             disk_faults: DiskFaultFlags::default(),
             tsc_skew: 0,
             memory_limit_bytes: None,
@@ -2952,16 +3109,19 @@ mod tests {
         };
         let mut controller = SimulationController {
             vms: vec![slot],
-            fault_engine: FaultEngine::new(EngineConfig::default()),
+            fault_engine: ::chaoscontrol_sim_core::fault::FaultEngine::new(
+                ::chaoscontrol_sim_core::fault::EngineConfig::default(),
+            ),
             network: NetworkFabric::new(NETWORK_NODE_COUNT, config.seed),
             tick: 0,
             quantum: config.quantum,
             config,
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: vec![None],
-            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_application_policy:
+                ::chaoscontrol_fault::outcomes::FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
-            pending_process_observations: VecDeque::new(),
+            pending_process_observations: ::std::collections::VecDeque::new(),
             round_poison: None,
         };
         controller.fault_engine.begin_run();
@@ -2978,16 +3138,17 @@ mod tests {
         };
         let mut vms = Vec::with_capacity(VM_COUNT);
         for vm_id in 0..VM_COUNT {
-            let vm_config = VmConfig {
+            let vm_config = crate::vm::VmConfig {
                 num_vcpus: VCPU_COUNT,
                 vm_id,
                 ..Default::default()
             };
-            let vm = DeterministicVm::new(vm_config).expect("create deterministic SMP test VM");
+            let vm = crate::vm::DeterministicVm::new(vm_config)
+                .expect("create deterministic SMP test VM");
             vms.push(VmSlot {
                 vm,
                 status: VmStatus::Running,
-                inbox: VecDeque::new(),
+                inbox: ::std::collections::VecDeque::new(),
                 disk_faults: DiskFaultFlags::default(),
                 tsc_skew: 0,
                 memory_limit_bytes: None,
@@ -3001,16 +3162,19 @@ mod tests {
         }
         SimulationController {
             vms,
-            fault_engine: FaultEngine::new(EngineConfig::default()),
+            fault_engine: ::chaoscontrol_sim_core::fault::FaultEngine::new(
+                ::chaoscontrol_sim_core::fault::EngineConfig::default(),
+            ),
             network: NetworkFabric::new(VM_COUNT, config.seed),
             tick: 0,
             quantum: config.quantum,
             config,
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: vec![None; VM_COUNT],
-            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_application_policy:
+                ::chaoscontrol_fault::outcomes::FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
-            pending_process_observations: VecDeque::new(),
+            pending_process_observations: ::std::collections::VecDeque::new(),
             round_poison: None,
         }
     }
@@ -3028,7 +3192,10 @@ mod tests {
         panic!("adapter test VM must contain a block device");
     }
 
-    fn attempt_id_for(controller: &SimulationController, variant: FaultVariant) -> FaultAttemptId {
+    fn attempt_id_for(
+        controller: &SimulationController,
+        variant: FaultVariant,
+    ) -> ::chaoscontrol_fault::outcomes::FaultAttemptId {
         controller
             .fault_outcomes()
             .attempts
@@ -3051,7 +3218,7 @@ mod tests {
             serde_json::to_vec(&controller.network).expect("serialize initial network state");
         let vm0_sequence_before = controller.vms[0].vm.controller_test_schedule_sequence();
 
-        let failed_round = (|| -> Result<RoundResult, VmError> {
+        let failed_round = (|| -> Result<RoundResult, crate::vm::VmError> {
             controller.vms[0].vm.inject_controller_test_progress()?;
             let vm1_poison = controller.vms[1].vm.inject_controller_test_poison()?;
             Err(vm1_poison)
@@ -3065,7 +3232,7 @@ mod tests {
 
         assert!(matches!(
             first_error,
-            Err(VmError::ScheduleExecutionPoisoned { .. })
+            Err(crate::vm::VmError::ScheduleExecutionPoisoned { .. })
         ));
         assert!(controller.round_poison().is_some());
         let vm0_sequence_after_failure = controller.vms[0].vm.controller_test_schedule_sequence();
@@ -3081,7 +3248,7 @@ mod tests {
 
         assert!(matches!(
             controller.step_round(),
-            Err(VmError::ControllerRoundPoisoned { .. })
+            Err(crate::vm::VmError::ControllerRoundPoisoned { .. })
         ));
         assert_eq!(
             controller.vms[0].vm.controller_test_schedule_sequence(),
@@ -3096,19 +3263,19 @@ mod tests {
         );
         assert!(matches!(
             controller.snapshot_all(),
-            Err(VmError::ControllerRoundPoisoned { .. })
+            Err(crate::vm::VmError::ControllerRoundPoisoned { .. })
         ));
         assert!(matches!(
             controller.restore_all(&snapshot),
-            Err(VmError::ControllerRoundPoisoned { .. })
+            Err(crate::vm::VmError::ControllerRoundPoisoned { .. })
         ));
         assert!(matches!(
             controller.set_schedule(FaultScheduleBuilder::new().build()),
-            Err(VmError::ControllerRoundPoisoned { .. })
+            Err(crate::vm::VmError::ControllerRoundPoisoned { .. })
         ));
         assert!(matches!(
             controller.run(0),
-            Err(VmError::ControllerRoundPoisoned { .. })
+            Err(crate::vm::VmError::ControllerRoundPoisoned { .. })
         ));
     }
 
@@ -3133,16 +3300,19 @@ mod tests {
         };
         let mut controller = SimulationController {
             vms: Vec::new(),
-            fault_engine: FaultEngine::new(EngineConfig::default()),
+            fault_engine: ::chaoscontrol_sim_core::fault::FaultEngine::new(
+                ::chaoscontrol_sim_core::fault::EngineConfig::default(),
+            ),
             network: NetworkFabric::new(0, ORIGINAL_SEED),
             tick: ORIGINAL_TICK,
             quantum: config.quantum,
             config,
             guest_artifact_ids: Vec::new(),
             vm_memory_bases: Vec::new(),
-            fault_application_policy: FaultApplicationPolicy::default(),
+            fault_application_policy:
+                ::chaoscontrol_fault::outcomes::FaultApplicationPolicy::default(),
             fault_operation_sequence: 0,
-            pending_process_observations: VecDeque::new(),
+            pending_process_observations: ::std::collections::VecDeque::new(),
             round_poison: None,
         };
         let mut engine_value =
@@ -3161,7 +3331,7 @@ mod tests {
             memory_pressure: Vec::new(),
             process_fault_attempt: Vec::new(),
             fault_operation_sequence: 0,
-            pending_process_observations: VecDeque::new(),
+            pending_process_observations: ::std::collections::VecDeque::new(),
         };
         let network_before =
             serde_json::to_value(&controller.network).expect("network before restore");
@@ -3416,7 +3586,10 @@ mod tests {
     #[ignore]
     fn test_fault_injection_process_kill() {
         let schedule = FaultScheduleBuilder::new()
-            .at_ns(1_000_000, Fault::ProcessKill { target: 0 })
+            .at_ns(
+                1_000_000,
+                ::chaoscontrol_fault::faults::Fault::ProcessKill { target: 0 },
+            )
             .build();
 
         let config = SimulationConfig {
@@ -3444,7 +3617,7 @@ mod tests {
         let schedule = FaultScheduleBuilder::new()
             .at_ns(
                 1_000_000,
-                Fault::NetworkPartition {
+                ::chaoscontrol_fault::faults::Fault::NetworkPartition {
                     side_a: vec![0],
                     side_b: vec![1],
                 },
@@ -3530,7 +3703,6 @@ mod tests {
     #[ignore]
     fn test_disk_torn_write_fault_dispatch() {
         use crate::devices::virtio_block::VirtioBlock;
-        use chaoscontrol_fault::faults::Fault;
 
         let config = SimulationConfig {
             num_vms: 1,
@@ -3541,7 +3713,7 @@ mod tests {
         let mut controller = SimulationController::new(config).unwrap();
 
         // Inject a DiskTornWrite fault
-        let fault = Fault::DiskTornWrite {
+        let fault = ::chaoscontrol_fault::faults::Fault::DiskTornWrite {
             target: 0,
             offset: 4096,
             bytes_written: 256,
@@ -3571,7 +3743,6 @@ mod tests {
     #[ignore]
     fn test_disk_corruption_fault_dispatch() {
         use crate::devices::virtio_block::VirtioBlock;
-        use chaoscontrol_fault::faults::Fault;
 
         let config = SimulationConfig {
             num_vms: 1,
@@ -3582,7 +3753,7 @@ mod tests {
         let mut controller = SimulationController::new(config).unwrap();
 
         // Inject a DiskCorruption fault
-        let fault = Fault::DiskCorruption {
+        let fault = ::chaoscontrol_fault::faults::Fault::DiskCorruption {
             target: 0,
             offset: 8192,
             len: 512,
@@ -4206,14 +4377,14 @@ mod tests {
 
     #[test]
     fn test_inject_interrupt_fault_targets() {
-        let f = Fault::InjectInterrupt { target: 1, irq: 5 };
+        let f = ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target: 1, irq: 5 };
         assert_eq!(f.target(), Some(1));
         assert_eq!(f.category(), FaultCategory::Interrupt);
     }
 
     #[test]
     fn test_inject_nmi_fault_targets() {
-        let f = Fault::InjectNmi { target: 2, vcpu: 0 };
+        let f = ::chaoscontrol_fault::faults::Fault::InjectNmi { target: 2, vcpu: 0 };
         assert_eq!(f.target(), Some(2));
         assert_eq!(f.category(), FaultCategory::Interrupt);
     }
@@ -4221,9 +4392,18 @@ mod tests {
     #[test]
     fn test_interrupt_faults_in_schedule() {
         let mut schedule = FaultScheduleBuilder::new()
-            .at_ns(1_000_000, Fault::InjectInterrupt { target: 0, irq: 0 })
-            .at_ns(2_000_000, Fault::InjectNmi { target: 0, vcpu: 0 })
-            .at_ns(3_000_000, Fault::InjectInterrupt { target: 1, irq: 6 })
+            .at_ns(
+                1_000_000,
+                ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target: 0, irq: 0 },
+            )
+            .at_ns(
+                2_000_000,
+                ::chaoscontrol_fault::faults::Fault::InjectNmi { target: 0, vcpu: 0 },
+            )
+            .at_ns(
+                3_000_000,
+                ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target: 1, irq: 6 },
+            )
             .build();
 
         assert_eq!(schedule.remaining(), 3);
@@ -4233,7 +4413,7 @@ mod tests {
         assert_eq!(faults.len(), 1);
         assert!(matches!(
             faults[0].fault,
-            Fault::InjectInterrupt { target: 0, irq: 0 }
+            ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target: 0, irq: 0 }
         ));
 
         // Drain at 3ms — should get NMI and second InjectInterrupt
@@ -4241,11 +4421,11 @@ mod tests {
         assert_eq!(faults.len(), 2);
         assert!(matches!(
             faults[0].fault,
-            Fault::InjectNmi { target: 0, vcpu: 0 }
+            ::chaoscontrol_fault::faults::Fault::InjectNmi { target: 0, vcpu: 0 }
         ));
         assert!(matches!(
             faults[1].fault,
-            Fault::InjectInterrupt { target: 1, irq: 6 }
+            ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target: 1, irq: 6 }
         ));
 
         assert_eq!(schedule.remaining(), 0);
@@ -4403,8 +4583,8 @@ mod tests {
 
     #[test]
     fn test_vm_drain_net_tx() {
-        let config = VmConfig::default();
-        let mut vm = DeterministicVm::new(config).unwrap();
+        let config = crate::vm::VmConfig::default();
+        let mut vm = crate::vm::DeterministicVm::new(config).unwrap();
 
         // Initially, TX queue is empty
         let packets = vm.drain_net_tx();
@@ -4418,8 +4598,8 @@ mod tests {
 
     #[test]
     fn test_vm_inject_net_rx() {
-        let config = VmConfig::default();
-        let mut vm = DeterministicVm::new(config).unwrap();
+        let config = crate::vm::VmConfig::default();
+        let mut vm = crate::vm::DeterministicVm::new(config).unwrap();
 
         // Should not panic when injecting a packet
         vm.inject_net_rx(vec![0xFF; 64]);
@@ -4431,11 +4611,11 @@ mod tests {
 
     #[test]
     fn test_vm_net_mac() {
-        let config = VmConfig {
+        let config = crate::vm::VmConfig {
             vm_id: 42,
             ..Default::default()
         };
-        let vm = DeterministicVm::new(config).unwrap();
+        let vm = crate::vm::DeterministicVm::new(config).unwrap();
 
         let mac = vm.net_mac().unwrap();
         assert_eq!(mac, [0x52, 0x54, 0x00, 0x12, 0x34, 42]);
@@ -4466,7 +4646,7 @@ mod tests {
     #[test]
     fn insufficient_terminal_evidence_capacity_prevents_effect_mutation() {
         let mut controller = adapter_test_controller();
-        let fault = Fault::NetworkLatency {
+        let fault = ::chaoscontrol_fault::faults::Fault::NetworkLatency {
             target: 0,
             latency_ns: chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK,
         };
@@ -4483,7 +4663,7 @@ mod tests {
 
         let result = controller.handle_fault_attempt_with_event_limit(&attempt, event_limit);
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         assert_eq!(controller.network.latency, before.latency);
         assert_eq!(
             controller.network.latency_attempt_ids,
@@ -4497,7 +4677,7 @@ mod tests {
     fn block_overflow_commits_retained_prefix_before_preserving_process_attribution() {
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::DiskWriteError {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::DiskWriteError {
                 target: 0,
                 offset: 0,
             })
@@ -4507,25 +4687,27 @@ mod tests {
             .is_err());
         adapter_test_block(&mut controller).set_observation_overflow_for_test(1);
         controller
-            .apply_fault(&Fault::ProcessKill { target: 0 })
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessKill { target: 0 })
             .unwrap();
         let process_attempt = attempt_id_for(&controller, FaultVariant::ProcessKill);
 
         let result = controller.step_round();
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         let observed_effects = controller
             .fault_outcomes()
             .events
             .iter()
             .filter_map(|event| match &event.kind {
-                FaultStageKind::Observed { observation } => Some(observation.effect),
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Observed { observation } => {
+                    Some(observation.effect)
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
             observed_effects,
-            vec![FaultObservationEffect::BlockWriteFailed]
+            vec![::chaoscontrol_fault::outcomes::FaultObservationEffect::BlockWriteFailed]
         );
         assert_eq!(
             controller.vms[0].process_fault_attempt,
@@ -4538,7 +4720,7 @@ mod tests {
         const FULL_RATE_PPM: u32 = 1_000_000;
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::PacketLoss {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::PacketLoss {
                 target: 0,
                 rate_ppm: FULL_RATE_PPM,
             })
@@ -4550,7 +4732,7 @@ mod tests {
 
         let result = controller.step_round_with_observation_event_limit(event_limit);
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         assert_eq!(controller.fault_outcomes(), &ledger_before);
         assert_eq!(controller.network.fault_observations, pending_before);
         assert_eq!(controller.network.fault_observation_overflowed, 0);
@@ -4566,7 +4748,7 @@ mod tests {
         const FULL_RATE_PPM: u32 = 1_000_000;
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::PacketLoss {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::PacketLoss {
                 target: 0,
                 rate_ppm: FULL_RATE_PPM,
             })
@@ -4574,24 +4756,26 @@ mod tests {
         assert!(!controller.network.send(0, 1, vec![0xAA], 0));
         controller.network.fault_observation_overflowed = 1;
         controller
-            .apply_fault(&Fault::ProcessKill { target: 0 })
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessKill { target: 0 })
             .unwrap();
 
         let result = controller.step_round();
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         let observed_effects = controller
             .fault_outcomes()
             .events
             .iter()
             .filter_map(|event| match &event.kind {
-                FaultStageKind::Observed { observation } => Some(observation.effect),
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Observed { observation } => {
+                    Some(observation.effect)
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
             observed_effects,
-            vec![FaultObservationEffect::PacketDroppedByLoss]
+            vec![::chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDroppedByLoss]
         );
         assert!(controller.vms[0].process_fault_attempt.is_some());
     }
@@ -4600,7 +4784,7 @@ mod tests {
     fn central_capacity_failure_precedes_block_network_and_process_effects() {
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::DiskFull { target: 0 })
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::DiskFull { target: 0 })
             .unwrap();
         let event_limit = controller.fault_outcomes().events.len();
         let (block_bytes_before, block_stats_before, block_sequence_before) = {
@@ -4620,7 +4804,7 @@ mod tests {
 
         let result = controller.step_round_with_observation_event_limit(event_limit);
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         let block = adapter_test_block(&mut controller);
         assert_eq!(block.materialize(), block_bytes_before);
         assert_eq!(block.stats(), &block_stats_before);
@@ -4646,7 +4830,7 @@ mod tests {
             PAUSE_TICKS * chaoscontrol_fault::outcomes::NANOSECONDS_PER_SIMULATION_TICK;
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::ProcessPause {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target: 0,
                 duration_ns: PAUSE_DURATION_NS,
             })
@@ -4656,7 +4840,7 @@ mod tests {
 
         let result = controller.step_round();
 
-        assert!(matches!(result, Err(VmError::Snapshot { .. })));
+        assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         assert_eq!(controller.fault_outcomes().counters.observed, 0);
         assert_eq!(
             controller.vms[0].process_fault_attempt,
@@ -4673,26 +4857,26 @@ mod tests {
         let before_registers = controller.vms[0].vm.read_vcpu_registers(0).unwrap();
         controller.fault_operation_sequence = u64::MAX;
         let faults = [
-            Fault::ClockSkew {
+            ::chaoscontrol_fault::faults::Fault::ClockSkew {
                 target: 0,
                 offset_ns: CLOCK_OFFSET_NS,
             },
-            Fault::CpuBitflip {
+            ::chaoscontrol_fault::faults::Fault::CpuBitflip {
                 target: 0,
                 vcpu: 0,
                 register: GpRegister::Rax,
                 bit: 0,
             },
-            Fault::InjectInterrupt {
+            ::chaoscontrol_fault::faults::Fault::InjectInterrupt {
                 target: 0,
                 irq: TEST_IRQ,
             },
-            Fault::InjectNmi { target: 0, vcpu: 0 },
+            ::chaoscontrol_fault::faults::Fault::InjectNmi { target: 0, vcpu: 0 },
         ];
 
         for fault in faults {
             let result = controller.apply_fault(&fault);
-            assert!(matches!(result, Err(VmError::Snapshot { .. })));
+            assert!(matches!(result, Err(crate::vm::VmError::Snapshot { .. })));
         }
 
         let after = controller.vms[0].vm.snapshot().unwrap();
@@ -4732,78 +4916,81 @@ mod tests {
         let cases = vec![
             (
                 FaultVariant::NetworkPartition,
-                FaultPlanEffect::NetworkPartition {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkPartition {
                     side_a: vec![0],
                     side_b: vec![1],
                 },
             ),
             (
                 FaultVariant::NetworkLatency,
-                FaultPlanEffect::NetworkLatency {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkLatency {
                     target: 0,
                     latency_ticks: 1,
                 },
             ),
             (
                 FaultVariant::PacketLoss,
-                FaultPlanEffect::PacketLoss {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketLoss {
                     target: 0,
                     rate_ppm: FULL_RATE_PPM,
                 },
             ),
             (
                 FaultVariant::PacketCorruption,
-                FaultPlanEffect::PacketCorruption {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketCorruption {
                     target: 0,
                     rate_ppm: FULL_RATE_PPM,
                 },
             ),
             (
                 FaultVariant::PacketReorder,
-                FaultPlanEffect::PacketReorder {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketReorder {
                     target: 0,
                     window_ticks: 1,
                 },
             ),
             (
                 FaultVariant::NetworkJitter,
-                FaultPlanEffect::NetworkJitter {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkJitter {
                     target: 0,
                     jitter_ticks: 1,
                 },
             ),
             (
                 FaultVariant::NetworkBandwidth,
-                FaultPlanEffect::NetworkBandwidth {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkBandwidth {
                     target: 0,
                     bytes_per_sec: 1,
                 },
             ),
             (
                 FaultVariant::PacketDuplicate,
-                FaultPlanEffect::PacketDuplicate {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::PacketDuplicate {
                     target: 0,
                     rate_ppm: FULL_RATE_PPM,
                 },
             ),
-            (FaultVariant::NetworkHeal, FaultPlanEffect::NetworkHeal),
+            (
+                FaultVariant::NetworkHeal,
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkHeal,
+            ),
             (
                 FaultVariant::DiskReadError,
-                FaultPlanEffect::BlockReadError {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockReadError {
                     target: 0,
                     offset: 0,
                 },
             ),
             (
                 FaultVariant::DiskWriteError,
-                FaultPlanEffect::BlockWriteError {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockWriteError {
                     target: 0,
                     offset: 0,
                 },
             ),
             (
                 FaultVariant::DiskTornWrite,
-                FaultPlanEffect::BlockTornWrite {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockTornWrite {
                     target: 0,
                     offset: 0,
                     bytes_written: 1,
@@ -4811,7 +4998,7 @@ mod tests {
             ),
             (
                 FaultVariant::DiskCorruption,
-                FaultPlanEffect::BlockCorruption {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockCorruption {
                     target: 0,
                     offset: 0,
                     len: 1,
@@ -4819,26 +5006,26 @@ mod tests {
             ),
             (
                 FaultVariant::DiskFull,
-                FaultPlanEffect::BlockFull { target: 0 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFull { target: 0 },
             ),
             (
                 FaultVariant::DiskSlow,
-                FaultPlanEffect::BlockSlow {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockSlow {
                     target: 0,
                     delay_ns: 1,
                 },
             ),
             (
                 FaultVariant::DiskFsyncLie,
-                FaultPlanEffect::BlockFsyncLie { target: 0 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFsyncLie { target: 0 },
             ),
             (
                 FaultVariant::DiskFsyncFlush,
-                FaultPlanEffect::BlockFsyncFlush { target: 0 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockFsyncFlush { target: 0 },
             ),
             (
                 FaultVariant::DiskPartialRead,
-                FaultPlanEffect::BlockPartialRead {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::BlockPartialRead {
                     target: 0,
                     offset: 0,
                     max_bytes: 1,
@@ -4846,25 +5033,25 @@ mod tests {
             ),
             (
                 FaultVariant::ProcessKill,
-                FaultPlanEffect::ProcessKill { target: 0 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessKill { target: 0 },
             ),
             (
                 FaultVariant::ProcessPause,
-                FaultPlanEffect::ProcessPause {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessPause {
                     target: 0,
                     resume_at_tick: 1,
                 },
             ),
             (
                 FaultVariant::ProcessRestart,
-                FaultPlanEffect::ProcessRestart {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::ProcessRestart {
                     target: 0,
                     restart_at_tick: 1,
                 },
             ),
             (
                 FaultVariant::ClockSkew,
-                FaultPlanEffect::VirtualClockSkew {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockSkew {
                     target: 0,
                     basis_tsc: 0,
                     tsc_khz: 3_000_000,
@@ -4875,7 +5062,7 @@ mod tests {
             ),
             (
                 FaultVariant::ClockJump,
-                FaultPlanEffect::VirtualClockJump {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockJump {
                     target: 0,
                     basis_tsc: 3,
                     tsc_khz: 3_000_000,
@@ -4886,7 +5073,7 @@ mod tests {
             ),
             (
                 FaultVariant::MemoryPressure,
-                FaultPlanEffect::MemoryPressure {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::MemoryPressure {
                     target: 0,
                     limit_bytes: 1,
                     baseline_bytes: TEST_MEMORY_BASELINE_BYTES,
@@ -4895,7 +5082,7 @@ mod tests {
             ),
             (
                 FaultVariant::ClockFreeze,
-                FaultPlanEffect::VirtualClockFreeze {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockFreeze {
                     target: 0,
                     frozen_tsc: 9,
                     release_at_tick: 1,
@@ -4903,14 +5090,14 @@ mod tests {
             ),
             (
                 FaultVariant::ClockJitter,
-                FaultPlanEffect::VirtualClockJitter {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockJitter {
                     target: 0,
                     bound_tsc: 1,
                 },
             ),
             (
                 FaultVariant::CpuStall,
-                FaultPlanEffect::CpuStall {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::CpuStall {
                     target: 0,
                     vcpu: 0,
                     release_at_tick: 1,
@@ -4918,15 +5105,18 @@ mod tests {
             ),
             (
                 FaultVariant::InjectInterrupt,
-                FaultPlanEffect::IrqInjection { target: 0, irq: 1 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::IrqInjection { target: 0, irq: 1 },
             ),
             (
                 FaultVariant::InjectNmi,
-                FaultPlanEffect::NmiInjection { target: 0, vcpu: 0 },
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::NmiInjection {
+                    target: 0,
+                    vcpu: 0,
+                },
             ),
             (
                 FaultVariant::CpuBitflip,
-                FaultPlanEffect::CpuRegisterBitflip {
+                ::chaoscontrol_fault::outcomes::FaultPlanEffect::CpuRegisterBitflip {
                     target: 0,
                     vcpu: 0,
                     register: GpRegister::Rax,
@@ -4946,8 +5136,8 @@ mod tests {
         }
         for (index, (variant, effect)) in cases.into_iter().enumerate() {
             let attempt_byte = u8::try_from(index).expect("variant count fits in identity byte");
-            let plan = FaultPlan {
-                attempt_id: FaultAttemptId([attempt_byte; 32]),
+            let plan = ::chaoscontrol_fault::outcomes::FaultPlan {
+                attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId([attempt_byte; 32]),
                 effect,
             };
             let result = controller.apply_fault_plan(&plan);
@@ -4960,9 +5150,9 @@ mod tests {
         // r[verify chaoscontrol.fault_outcomes.validation.negative]
         let mut controller = adapter_test_controller();
         let before = controller.network.clone();
-        let plan = FaultPlan {
-            attempt_id: FaultAttemptId([0; 32]),
-            effect: FaultPlanEffect::NetworkLatency {
+        let plan = ::chaoscontrol_fault::outcomes::FaultPlan {
+            attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]),
+            effect: ::chaoscontrol_fault::outcomes::FaultPlanEffect::NetworkLatency {
                 target: u32::MAX,
                 latency_ticks: 1,
             },
@@ -4990,7 +5180,7 @@ mod tests {
         let before_tsc = controller.vms[0].vm.virtual_tsc();
 
         controller
-            .apply_fault(&Fault::ClockSkew {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockSkew {
                 target: 0,
                 offset_ns: 0,
             })
@@ -5006,9 +5196,9 @@ mod tests {
     fn zero_clock_delta_is_rejected_without_an_observed_change() {
         let mut controller = adapter_test_controller();
         let current_tsc = controller.vms[0].vm.virtual_tsc();
-        let plan = FaultPlan {
-            attempt_id: FaultAttemptId([0; 32]),
-            effect: FaultPlanEffect::VirtualClockSkew {
+        let plan = ::chaoscontrol_fault::outcomes::FaultPlan {
+            attempt_id: ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]),
+            effect: ::chaoscontrol_fault::outcomes::FaultPlanEffect::VirtualClockSkew {
                 target: 0,
                 basis_tsc: current_tsc,
                 tsc_khz: controller.vms[0].vm.virtual_tsc_ref().tsc_khz(),
@@ -5033,7 +5223,7 @@ mod tests {
         let mut controller = adapter_test_controller();
 
         controller
-            .apply_fault(&Fault::ProcessPause {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target: 0,
                 duration_ns: PAUSE_DURATION_NS,
             })
@@ -5046,9 +5236,10 @@ mod tests {
         assert!(round.fault_outcomes.iter().any(|event| {
             matches!(
                 event.kind,
-                FaultStageKind::Observed {
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Observed {
                     observation: FaultObservation {
-                        effect: FaultObservationEffect::ProcessSkipped,
+                        effect:
+                            ::chaoscontrol_fault::outcomes::FaultObservationEffect::ProcessSkipped,
                         ..
                     }
                 }
@@ -5065,18 +5256,19 @@ mod tests {
         let frozen_tsc = controller.vms[0].vm.virtual_tsc();
 
         controller
-            .apply_fault(&Fault::ClockFreeze {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target: 0,
                 duration_ticks: FREEZE_TICKS,
             })
             .unwrap();
 
         assert_eq!(controller.fault_outcomes().counters.selected, 1);
-        assert!(controller
-            .fault_outcomes()
-            .events
-            .iter()
-            .any(|event| { matches!(event.kind, FaultStageKind::Applicable { .. }) }));
+        assert!(controller.fault_outcomes().events.iter().any(|event| {
+            matches!(
+                event.kind,
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Applicable { .. }
+            )
+        }));
         assert_eq!(controller.fault_outcomes().counters.applied, 1);
         assert_eq!(controller.fault_outcomes().counters.observed, 1);
         assert!(controller.vms[0].vm.virtual_tsc_ref().is_frozen());
@@ -5099,7 +5291,7 @@ mod tests {
         controller.vms[0].vm.virtual_tsc_mut().set(TEST_TSC);
 
         controller
-            .apply_fault(&Fault::ClockJitter {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockJitter {
                 target: 0,
                 bound_tsc: JITTER_BOUND_TSC,
             })
@@ -5116,7 +5308,7 @@ mod tests {
         );
 
         controller
-            .apply_fault(&Fault::ClockJitter {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockJitter {
                 target: 0,
                 bound_tsc: 0,
             })
@@ -5131,7 +5323,7 @@ mod tests {
         let mut controller = deterministic_smp_test_controller();
 
         controller
-            .apply_fault(&Fault::CpuStall {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::CpuStall {
                 target: 0,
                 vcpu: 0,
                 duration_ticks: STALL_TICKS,
@@ -5158,7 +5350,7 @@ mod tests {
         let limit = baseline / PRESSURE_DIVISOR;
 
         controller
-            .apply_fault(&Fault::MemoryPressure {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target: 0,
                 limit_bytes: limit,
                 duration_ticks: PRESSURE_TICKS,
@@ -5184,7 +5376,7 @@ mod tests {
         let baseline = controller.vms[0].vm.memory_ceiling_bytes();
         let limit = baseline / PRESSURE_DIVISOR;
         controller
-            .apply_fault(&Fault::MemoryPressure {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target: 0,
                 limit_bytes: limit,
                 duration_ticks: PRESSURE_TICKS,
@@ -5210,16 +5402,16 @@ mod tests {
     fn invalid_fault_windows_are_rejected_without_observation() {
         // r[verify chaoscontrol.fault_surface.validation]
         let invalid_faults = [
-            Fault::ClockFreeze {
+            ::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target: 0,
                 duration_ticks: 0,
             },
-            Fault::CpuStall {
+            ::chaoscontrol_fault::faults::Fault::CpuStall {
                 target: 0,
                 vcpu: 0,
                 duration_ticks: 0,
             },
-            Fault::MemoryPressure {
+            ::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target: 0,
                 limit_bytes: 0,
                 duration_ticks: 1,
@@ -5241,7 +5433,7 @@ mod tests {
         controller.network = NetworkFabric::new(1, controller.config.seed);
         let _ = adapter_test_block(&mut controller);
         controller
-            .apply_fault(&Fault::DiskSlow {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::DiskSlow {
                 target: 0,
                 delay_ns: DISK_DELAY_NS,
             })
@@ -5254,13 +5446,13 @@ mod tests {
                 .get(&attempt_id)
                 .unwrap()
                 .stage,
-            FaultAuthoritativeStage::Applied
+            ::chaoscontrol_fault::outcomes::FaultAuthoritativeStage::Applied
         );
         let snapshot = controller.snapshot_all().unwrap();
 
         controller.restore_all(&snapshot).unwrap();
         controller
-            .begin_counterfactual_fault_run(FaultSchedule::new())
+            .begin_counterfactual_fault_run(::chaoscontrol_sim_core::fault::FaultSchedule::new())
             .unwrap();
         assert!(controller.fault_engine.is_setup_complete());
         let mut read_buffer = [0_u8; 1];
@@ -5268,7 +5460,9 @@ mod tests {
             .read(0, &mut read_buffer)
             .unwrap();
         controller
-            .commit_pending_block_observations(MAX_FAULT_OUTCOME_EVENTS)
+            .commit_pending_block_observations(
+                ::chaoscontrol_fault::outcomes::MAX_FAULT_OUTCOME_EVENTS,
+            )
             .unwrap();
 
         assert_eq!(
@@ -5278,7 +5472,7 @@ mod tests {
                 .get(&attempt_id)
                 .unwrap()
                 .stage,
-            FaultAuthoritativeStage::Observed
+            ::chaoscontrol_fault::outcomes::FaultAuthoritativeStage::Observed
         );
     }
 
@@ -5288,13 +5482,13 @@ mod tests {
         const SECOND_CLOCK_DELTA_NS: i64 = 2_000_000;
         let mut controller = adapter_test_controller();
         controller
-            .apply_fault(&Fault::ClockSkew {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockSkew {
                 target: 0,
                 offset_ns: FIRST_CLOCK_OFFSET_NS,
             })
             .unwrap();
         controller
-            .apply_fault(&Fault::ClockJump {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ClockJump {
                 target: 0,
                 delta_ns: SECOND_CLOCK_DELTA_NS,
             })
@@ -5305,7 +5499,9 @@ mod tests {
             .events
             .iter()
             .find_map(|event| match &event.kind {
-                FaultStageKind::Observed { observation } => Some(observation.operation_sequence),
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Observed { observation } => {
+                    Some(observation.operation_sequence)
+                }
                 _ => None,
             })
             .unwrap();
@@ -5313,10 +5509,10 @@ mod tests {
         let mut rebuilt = FaultOutcomeLedger::default();
         for event in &original.events {
             let kind = match &event.kind {
-                FaultStageKind::Observed { observation } => {
+                ::chaoscontrol_fault::outcomes::FaultStageKind::Observed { observation } => {
                     observed_count += 1;
                     if observed_count == 2 {
-                        FaultStageKind::Observed {
+                        ::chaoscontrol_fault::outcomes::FaultStageKind::Observed {
                             observation: FaultObservation::new(
                                 observation.attempt_id,
                                 observation.subsystem,
@@ -5330,7 +5526,7 @@ mod tests {
                 }
                 _ => event.kind.clone(),
             };
-            let attempt = if kind == FaultStageKind::Selected {
+            let attempt = if kind == ::chaoscontrol_fault::outcomes::FaultStageKind::Selected {
                 Some(&original.attempts.get(&event.attempt_id).unwrap().attempt)
             } else {
                 None
@@ -5343,7 +5539,7 @@ mod tests {
 
         assert!(matches!(
             controller.restore_all(&snapshot),
-            Err(VmError::Snapshot { .. })
+            Err(crate::vm::VmError::Snapshot { .. })
         ));
     }
 
@@ -5355,7 +5551,7 @@ mod tests {
         let mut controller = adapter_test_controller();
         controller.network = NetworkFabric::new(1, controller.config.seed);
         controller
-            .apply_fault(&Fault::ProcessPause {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target: 0,
                 duration_ns: PAUSE_DURATION_NS,
             })
@@ -5388,7 +5584,7 @@ mod tests {
         let mut controller = adapter_test_controller();
         controller.network = NetworkFabric::new(1, controller.config.seed);
         controller
-            .apply_fault(&Fault::ProcessPause {
+            .apply_fault(&::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target: 0,
                 duration_ns: PAUSE_DURATION_NS,
             })
@@ -5421,7 +5617,7 @@ mod tests {
     #[test]
     fn armed_network_fault_is_unobserved_until_packet_path_consumes_it() {
         // r[verify chaoscontrol.fault_outcomes.validation.observation]
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(fabric.arm_loss(0, 1_000_000, attempt_id));
 
@@ -5434,12 +5630,15 @@ mod tests {
         assert_eq!(overflowed, 0);
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].attempt_id, attempt_id);
-        assert_eq!(after[0].effect, FaultObservationEffect::PacketDroppedByLoss);
+        assert_eq!(
+            after[0].effect,
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDroppedByLoss
+        );
     }
 
     #[test]
     fn unrelated_network_operation_does_not_observe_armed_fault() {
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut fabric = NetworkFabric::new(3, 42);
         assert!(fabric.arm_loss(0, 1_000_000, attempt_id));
 
@@ -5451,7 +5650,7 @@ mod tests {
 
     #[test]
     fn extreme_bandwidth_timing_fails_before_packet_or_evidence_mutation() {
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(fabric.arm_bandwidth(0, 1, attempt_id));
         let stats_before = fabric.stats.clone();
@@ -5468,14 +5667,14 @@ mod tests {
 
     #[test]
     fn network_capacity_failure_preserves_packet_and_evidence_state() {
-        let attempt_id = FaultAttemptId([7; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([7; 32]);
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(fabric.arm_loss(0, 1_000_000, attempt_id));
         let observation = FaultObservation::new(
             attempt_id,
-            FaultObservationSubsystem::Network,
+            ::chaoscontrol_fault::outcomes::FaultObservationSubsystem::Network,
             0,
-            FaultObservationEffect::PacketDroppedByLoss,
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDroppedByLoss,
         );
         fabric.fault_observations =
             std::iter::repeat_n(observation, MAX_PENDING_FAULT_OBSERVATIONS).collect();
@@ -5485,7 +5684,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(VmError::NetworkPacketNonRunnable {
+            Err(crate::vm::VmError::NetworkPacketNonRunnable {
                 from: 0,
                 to: 1,
                 reason: NetworkSendError::ObservationCapacity,
@@ -5503,7 +5702,7 @@ mod tests {
     fn network_heal_preserves_attribution_for_preserved_latency() {
         // r[verify chaoscontrol.fault_outcomes.snapshot_state]
         const LATENCY_TICKS: u64 = 7;
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(fabric.arm_latency(0, LATENCY_TICKS, attempt_id));
 
@@ -5518,7 +5717,7 @@ mod tests {
         assert_eq!(observations[0].attempt_id, attempt_id);
         assert_eq!(
             observations[0].effect,
-            FaultObservationEffect::PacketDelayedByLatency
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::PacketDelayedByLatency
         );
         assert!(observations[0].has_valid_identity());
     }
@@ -5526,7 +5725,7 @@ mod tests {
     #[test]
     fn network_snapshot_replay_preserves_observation_identity_and_order() {
         // r[verify chaoscontrol.fault_outcomes.validation.replay]
-        let attempt_id = FaultAttemptId([0; 32]);
+        let attempt_id = ::chaoscontrol_fault::outcomes::FaultAttemptId([0; 32]);
         let mut fabric = NetworkFabric::new(2, 42);
         assert!(fabric.arm_corruption(0, 1_000_000, attempt_id));
         let snapshot = fabric.clone();
@@ -5541,6 +5740,9 @@ mod tests {
         assert_eq!(first_overflowed, 0);
         assert_eq!(second_overflowed, 0);
         assert_eq!(first, second);
-        assert_eq!(first[0].effect, FaultObservationEffect::PacketCorrupted);
+        assert_eq!(
+            first[0].effect,
+            ::chaoscontrol_fault::outcomes::FaultObservationEffect::PacketCorrupted
+        );
     }
 }

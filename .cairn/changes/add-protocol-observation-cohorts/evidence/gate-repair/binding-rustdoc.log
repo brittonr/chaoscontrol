@@ -1,0 +1,98 @@
+running auto-GC to free 41553494016 bytes
+waiting for the big garbage collector lock...
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+    Checking chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+ Documenting chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Checking chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+    Checking chaoscontrol-replay-evidence-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-replay-evidence-core)
+ Documenting chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+    Checking chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+ Documenting chaoscontrol-fault v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-fault)
+    Checking chaoscontrol-sim-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sim-core)
+ Documenting chaoscontrol-sim-core v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sim-core)
+    Checking chaoscontrol-vmm v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-vmm)
+ Documenting chaoscontrol-vmm v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-vmm)
+error: unresolved link to `DeterministicVm`
+ --> crates/chaoscontrol-vmm/src/controller.rs:3:54
+  |
+3 | //! [`SimulationController`] orchestrates multiple [`DeterministicVm`] instances
+  |                                                      ^^^^^^^^^^^^^^^ no item named `DeterministicVm` in scope
+  |
+  = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+  = note: `-D rustdoc::broken-intra-doc-links` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(rustdoc::broken_intra_doc_links)]`
+
+error: unresolved link to `ScheduleVariant`
+    --> crates/chaoscontrol-vmm/src/controller.rs:2833:19
+     |
+2833 |     /// Apply a [`ScheduleVariant`] to all VMs' vCPU schedulers.
+     |                   ^^^^^^^^^^^^^^^ no item named `ScheduleVariant` in scope
+     |
+     = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: unresolved link to `CpuId`
+   --> crates/chaoscontrol-vmm/src/cpu.rs:313:20
+    |
+313 | /// The returned [`CpuId`] should be applied to a vCPU with
+    |                    ^^^^^ no item named `CpuId` in scope
+    |
+    = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: unresolved link to `VcpuFd::set_cpuid2`
+   --> crates/chaoscontrol-vmm/src/cpu.rs:314:7
+    |
+314 | /// [`VcpuFd::set_cpuid2`] before the first `vcpu.run()`.
+    |       ^^^^^^^^^^^^^^^^^^ no item named `VcpuFd` in scope
+
+error: unresolved link to `GuestMemoryMmap`
+   --> crates/chaoscontrol-vmm/src/memory.rs:283:37
+    |
+283 | /// `GuestMemoryManager` owns the [`GuestMemoryMmap`] allocation and
+    |                                     ^^^^^^^^^^^^^^^ no item named `GuestMemoryMmap` in scope
+    |
+    = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: unresolved link to `GuestMemoryMmap`
+   --> crates/chaoscontrol-vmm/src/memory.rs:564:45
+    |
+564 |     /// Get a reference to the underlying [`GuestMemoryMmap`].
+    |                                             ^^^^^^^^^^^^^^^ no item named `GuestMemoryMmap` in scope
+    |
+    = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: unresolved link to `kvm_segment`
+   --> crates/chaoscontrol-vmm/src/memory.rs:635:7
+    |
+635 | /// [`kvm_segment`] suitable for loading into `sregs.cs`, `sregs.ds`,
+    |       ^^^^^^^^^^^ no item named `kvm_segment` in scope
+    |
+    = help: to escape `[` and `]` characters, add '\' before them like `\[` or `\]`
+
+error: could not document `chaoscontrol-vmm`
+warning: build failed, waiting for other jobs to finish...

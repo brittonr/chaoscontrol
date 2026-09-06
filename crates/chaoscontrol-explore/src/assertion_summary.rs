@@ -1,7 +1,3 @@
-use crate::assertion_summary_validation::validate_fatal_details;
-use crate::campaign::CampaignReport;
-use crate::explorer::{AssertionDetail, ExplorationReport};
-use chaoscontrol_protocol::admission::CatalogValidationStatus;
 use serde::{de::Deserialize, Deserializer};
 
 pub(crate) use crate::assertion_summary_validation::{
@@ -14,18 +10,18 @@ pub const ASSERTION_SUMMARY_SCHEMA: &str = "chaoscontrol.assertion-summary.v2";
 #[serde(deny_unknown_fields)]
 pub struct AssertionSummaryV2 {
     schema: String,
-    catalog_status: CatalogValidationStatus,
+    catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
     collision_safe_evidence: bool,
-    assertions: Vec<AssertionDetail>,
+    assertions: Vec<crate::explorer::AssertionDetail>,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawAssertionSummaryV2 {
     schema: String,
-    catalog_status: CatalogValidationStatus,
+    catalog_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
     collision_safe_evidence: bool,
-    assertions: Vec<AssertionDetail>,
+    assertions: Vec<crate::explorer::AssertionDetail>,
 }
 
 impl AssertionSummaryV2 {
@@ -33,7 +29,7 @@ impl AssertionSummaryV2 {
         &self.schema
     }
 
-    pub fn catalog_status(&self) -> CatalogValidationStatus {
+    pub fn catalog_status(&self) -> ::chaoscontrol_protocol::admission::CatalogValidationStatus {
         self.catalog_status
     }
 
@@ -41,7 +37,7 @@ impl AssertionSummaryV2 {
         self.collision_safe_evidence
     }
 
-    pub fn assertions(&self) -> &[AssertionDetail] {
+    pub fn assertions(&self) -> &[crate::explorer::AssertionDetail] {
         &self.assertions
     }
 
@@ -55,7 +51,7 @@ impl AssertionSummaryV2 {
         Ok(())
     }
 
-    pub fn from_exploration(report: &ExplorationReport) -> Result<Self, String> {
+    pub fn from_exploration(report: &crate::explorer::ExplorationReport) -> Result<Self, String> {
         Self::new(
             report.assertion_catalog_status,
             report.collision_safe_assertion_evidence,
@@ -64,7 +60,7 @@ impl AssertionSummaryV2 {
         )
     }
 
-    pub fn from_campaign(report: &CampaignReport) -> Result<Self, String> {
+    pub fn from_campaign(report: &crate::campaign::CampaignReport) -> Result<Self, String> {
         Self::new(
             report.assertion_catalog_status,
             report.collision_safe_assertion_evidence,
@@ -73,11 +69,12 @@ impl AssertionSummaryV2 {
         )
     }
 
-    pub fn fatal(assertions: &[AssertionDetail]) -> Result<Self, String> {
-        validate_fatal_details(assertions)?;
+    pub fn fatal(assertions: &[crate::explorer::AssertionDetail]) -> Result<Self, String> {
+        crate::assertion_summary_validation::validate_fatal_details(assertions)?;
         Ok(Self {
             schema: ASSERTION_SUMMARY_SCHEMA.to_string(),
-            catalog_status: CatalogValidationStatus::FatalConflict,
+            catalog_status:
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
             collision_safe_evidence: false,
             assertions: assertions.to_vec(),
         })
@@ -85,9 +82,9 @@ impl AssertionSummaryV2 {
 
     fn from_claims(
         schema: String,
-        source_status: CatalogValidationStatus,
+        source_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
         source_collision_safe: bool,
-        assertions: Vec<AssertionDetail>,
+        assertions: Vec<crate::explorer::AssertionDetail>,
     ) -> Result<Self, String> {
         if schema != ASSERTION_SUMMARY_SCHEMA {
             return Err("unsupported assertion summary schema".to_string());
@@ -102,33 +99,50 @@ impl AssertionSummaryV2 {
     }
 
     fn new(
-        source_status: CatalogValidationStatus,
+        source_status: ::chaoscontrol_protocol::admission::CatalogValidationStatus,
         source_collision_safe: bool,
         conflicts: &[String],
-        assertions: &[AssertionDetail],
+        assertions: &[crate::explorer::AssertionDetail],
     ) -> Result<Self, String> {
         if assertions.is_empty() {
             return Err("empty assertion summaries are not emitted".to_string());
         }
-        if source_status == CatalogValidationStatus::FatalConflict || !conflicts.is_empty() {
+        if source_status
+            == ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict
+            || !conflicts.is_empty()
+        {
             return Self::fatal(assertions);
         }
         let recomputed_status = validate_assertion_details(assertions)?;
         let (catalog_status, collision_safe_evidence) = match recomputed_status {
-            CatalogValidationStatus::Accepted
-                if source_status == CatalogValidationStatus::Accepted && source_collision_safe =>
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+                if source_status
+                    == ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+                    && source_collision_safe =>
             {
-                (CatalogValidationStatus::Accepted, true)
+                (
+                    ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted,
+                    true,
+                )
             }
-            CatalogValidationStatus::Accepted => (CatalogValidationStatus::FatalConflict, false),
-            CatalogValidationStatus::LegacyAmbiguous
-                if source_status != CatalogValidationStatus::Accepted && !source_collision_safe =>
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted => (
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
+                false,
+            ),
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
+                if source_status
+                    != ::chaoscontrol_protocol::admission::CatalogValidationStatus::Accepted
+                    && !source_collision_safe =>
             {
-                (CatalogValidationStatus::LegacyAmbiguous, false)
+                (
+                    ::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,
+                    false,
+                )
             }
-            CatalogValidationStatus::LegacyAmbiguous => {
-                (CatalogValidationStatus::FatalConflict, false)
-            }
+            ::chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous => (
+                ::chaoscontrol_protocol::admission::CatalogValidationStatus::FatalConflict,
+                false,
+            ),
             _ => return Err("unsupported assertion summary classification".to_string()),
         };
         Ok(Self {

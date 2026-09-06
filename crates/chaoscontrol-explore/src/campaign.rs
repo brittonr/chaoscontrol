@@ -5,13 +5,7 @@
 //! report. Each seed runs in its own OS thread with its own KVM VMs —
 //! no shared mutable state between seeds.
 
-use crate::checkpoint::{BugSetIdentityError, SerializableBug};
-use crate::corpus::BugReport;
-use crate::explorer::{
-    AssertionDetail, AssertionStats, ExplorationReport, Explorer, ExplorerConfig,
-};
-use crate::report::format_campaign_report;
-use log::info;
+use crate::checkpoint::SerializableBug;
 
 use std::io::Write;
 
@@ -28,7 +22,7 @@ pub struct CampaignConfig {
     /// Seeds to explore. Each gets its own Explorer instance.
     pub seeds: Vec<u64>,
     /// Base config — cloned per seed with seed/output_dir overridden.
-    pub base_explorer_config: ExplorerConfig,
+    pub base_explorer_config: crate::explorer::ExplorerConfig,
     /// Top-level output directory. Per-seed output goes to `{output_dir}/seed_{N}/`.
     pub output_dir: String,
 }
@@ -79,9 +73,9 @@ pub struct CampaignReport {
     /// Per-seed summaries.
     pub per_seed: Vec<SeedSummary>,
     /// Merged assertion details with checked counts and kind-derived verdicts.
-    pub assertion_details: Vec<AssertionDetail>,
+    pub assertion_details: Vec<crate::explorer::AssertionDetail>,
     /// Merged assertion stats.
-    pub assertion_stats: AssertionStats,
+    pub assertion_stats: crate::explorer::AssertionStats,
     /// Fatal identity conflicts found during report aggregation.
     #[serde(default)]
     pub assertion_identity_conflicts: Vec<String>,
@@ -107,14 +101,14 @@ fn pending_catalog_status() -> chaoscontrol_protocol::admission::CatalogValidati
 
 pub fn campaign_bugs_for_minimization(
     report: &CampaignReport,
-) -> Result<Vec<BugReport>, BugSetIdentityError> {
+) -> Result<Vec<crate::corpus::BugReport>, crate::checkpoint::BugSetIdentityError> {
     validate_campaign_bug_carriers(&report.bugs)?;
     let Some(first_bug) = report.bugs.first() else {
         return Ok(Vec::new());
     };
     let summary =
         crate::assertion_summary::AssertionSummaryV2::from_campaign(report).map_err(|_| {
-            BugSetIdentityError {
+            crate::checkpoint::BugSetIdentityError {
                 bug_id: first_bug.bug.bug_id,
                 source: crate::bug::identity::BugIdentityError::ReportMismatch,
             }
@@ -123,7 +117,7 @@ pub fn campaign_bugs_for_minimization(
         let identity = campaign_bug
             .bug
             .require_replay_identity()
-            .map_err(|source| BugSetIdentityError {
+            .map_err(|source| crate::checkpoint::BugSetIdentityError {
                 bug_id: campaign_bug.bug.bug_id,
                 source,
             })?;
@@ -133,7 +127,7 @@ pub fn campaign_bugs_for_minimization(
             .filter(|detail| crate::bug::identity::detail_matches_identity(detail, identity))
             .count();
         if exact_matches != 1 {
-            return Err(BugSetIdentityError {
+            return Err(crate::checkpoint::BugSetIdentityError {
                 bug_id: campaign_bug.bug.bug_id,
                 source: crate::bug::identity::BugIdentityError::ReportMismatch,
             });
@@ -144,9 +138,11 @@ pub fn campaign_bugs_for_minimization(
         .iter()
         .map(|campaign_bug| {
             let mut bug =
-                BugReport::try_from(&campaign_bug.bug).map_err(|source| BugSetIdentityError {
-                    bug_id: campaign_bug.bug.bug_id,
-                    source,
+                crate::corpus::BugReport::try_from(&campaign_bug.bug).map_err(|source| {
+                    crate::checkpoint::BugSetIdentityError {
+                        bug_id: campaign_bug.bug.bug_id,
+                        source,
+                    }
                 })?;
             bug.dedup_key = campaign_bug.dedup_key;
             Ok(bug)
@@ -154,11 +150,15 @@ pub fn campaign_bugs_for_minimization(
         .collect()
 }
 
-fn validate_campaign_bug_carriers(bugs: &[CampaignBug]) -> Result<(), BugSetIdentityError> {
+fn validate_campaign_bug_carriers(
+    bugs: &[CampaignBug],
+) -> Result<(), crate::checkpoint::BugSetIdentityError> {
     for campaign_bug in bugs {
-        BugReport::try_from(&campaign_bug.bug).map_err(|source| BugSetIdentityError {
-            bug_id: campaign_bug.bug.bug_id,
-            source,
+        crate::corpus::BugReport::try_from(&campaign_bug.bug).map_err(|source| {
+            crate::checkpoint::BugSetIdentityError {
+                bug_id: campaign_bug.bug.bug_id,
+                source,
+            }
         })?;
     }
     Ok(())
@@ -191,7 +191,7 @@ pub struct SerializableCampaignConfig {
 }
 
 impl SerializableCampaignConfig {
-    pub fn from_explorer_config(cfg: &ExplorerConfig) -> Self {
+    pub fn from_explorer_config(cfg: &crate::explorer::ExplorerConfig) -> Self {
         Self {
             kernel_path: cfg.kernel_path.clone(),
             initrd_path: cfg.initrd_path.clone(),
@@ -308,7 +308,7 @@ pub fn save_campaign_progress(
     temporary.as_file().sync_all()?;
     temporary.persist(&path).map_err(|error| error.error)?;
     std::fs::File::open(output_dir)?.sync_all()?;
-    info!("Saved campaign progress: {}", path.display());
+    ::log::info!("Saved campaign progress: {}", path.display());
     Ok(())
 }
 
@@ -334,7 +334,7 @@ pub struct CampaignRunner {
 enum SeedResult {
     Ok {
         seed: u64,
-        report: Box<ExplorationReport>,
+        report: Box<crate::explorer::ExplorationReport>,
         wall_clock_seconds: f64,
     },
     Failed {
@@ -382,14 +382,14 @@ impl CampaignRunner {
             .ok_or_else(|| crate::explorer::ExploreError::Config {
                 message: "campaign memory estimate overflow".to_string(),
             })?;
-        info!(
+        ::log::info!(
             "Campaign: {} seeds × {} VMs × {} MB = ~{:.1} GB estimated memory",
             num_seeds,
             num_vms,
             vm_memory_mb,
             estimated_mb as f64 / MIB_PER_GIB,
         );
-        info!(
+        ::log::info!(
             "Launching {} seed{} in parallel...",
             num_seeds,
             if num_seeds == 1 { "" } else { "s" }
@@ -421,7 +421,7 @@ impl CampaignRunner {
                     s.spawn(move || -> SeedResult {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let thread_start = std::time::Instant::now();
-                            let mut explorer = Explorer::new(explorer_config);
+                            let mut explorer = crate::explorer::Explorer::new(explorer_config);
                             let report = explorer.run()?;
                             let elapsed = thread_start.elapsed().as_secs_f64();
                             Ok::<_, crate::explorer::ExploreError>((report, elapsed))
@@ -471,7 +471,8 @@ impl CampaignRunner {
             failed: std::collections::BTreeMap::new(),
         };
 
-        let mut reports: Vec<(u64, ExplorationReport, f64)> = Vec::with_capacity(num_seeds);
+        let mut reports: Vec<(u64, crate::explorer::ExplorationReport, f64)> =
+            Vec::with_capacity(num_seeds);
         let mut failed_seeds: Vec<(u64, String)> = Vec::new();
 
         for sr in seed_results {
@@ -551,17 +552,17 @@ impl CampaignRunner {
                 if let Err(e) = std::fs::write(&json_path, &json) {
                     log::warn!("Failed to write {}: {}", json_path, e);
                 } else {
-                    info!("Saved {}", json_path);
+                    ::log::info!("Saved {}", json_path);
                 }
             }
             Err(e) => log::warn!("Failed to serialize campaign report: {}", e),
         }
 
-        let txt = format_campaign_report(&campaign_report);
+        let txt = crate::report::format_campaign_report(&campaign_report);
         if let Err(e) = std::fs::write(&txt_path, &txt) {
             log::warn!("Failed to write {}: {}", txt_path, e);
         } else {
-            info!("Saved {}", txt_path);
+            ::log::info!("Saved {}", txt_path);
         }
 
         Ok(campaign_report)
@@ -596,7 +597,7 @@ pub fn generate_seeds(
 
 /// Merge per-seed `ExplorationReport`s into a `CampaignReport`.
 pub fn aggregate_reports(
-    seed_reports: Vec<(u64, ExplorationReport, f64)>,
+    seed_reports: Vec<(u64, crate::explorer::ExplorationReport, f64)>,
     wall_clock_seconds: f64,
 ) -> CampaignReport {
     let mut seeds_run = Vec::new();
@@ -610,7 +611,7 @@ pub fn aggregate_reports(
         std::collections::BTreeMap::new();
 
     // Assertion merge: structured fingerprint or explicit legacy quarantine key.
-    let mut assertion_map: std::collections::BTreeMap<String, AssertionDetail> =
+    let mut assertion_map: std::collections::BTreeMap<String, crate::explorer::AssertionDetail> =
         std::collections::BTreeMap::new();
     let mut assertion_identity_conflicts = Vec::new();
     let mut rejected_assertion_keys = std::collections::BTreeSet::new();
@@ -719,7 +720,8 @@ pub fn aggregate_reports(
     let mut passed = 0usize;
     let mut failed = 0usize;
     let mut unexercised = 0usize;
-    let mut assertion_details: Vec<AssertionDetail> = assertion_map.into_values().collect();
+    let mut assertion_details: Vec<crate::explorer::AssertionDetail> =
+        assertion_map.into_values().collect();
 
     // Sort: failed first, then unexercised, then passed.
     assertion_details.sort_by(|a, b| {
@@ -736,7 +738,7 @@ pub fn aggregate_reports(
         }
     }
 
-    let assertion_stats = AssertionStats {
+    let assertion_stats = crate::explorer::AssertionStats {
         catalog_size: assertion_details.len(),
         passed,
         failed,
@@ -791,7 +793,7 @@ pub fn aggregate_reports(
     }
 }
 
-fn assertion_detail_key(detail: &AssertionDetail) -> String {
+fn assertion_detail_key(detail: &crate::explorer::AssertionDetail) -> String {
     detail.identity.as_ref().map_or_else(
         || format!("legacy-ambiguous:{:08x}", detail.id),
         |identity| identity.fingerprint.to_hex(),
@@ -799,8 +801,8 @@ fn assertion_detail_key(detail: &AssertionDetail) -> String {
 }
 
 fn merge_assertion_detail(
-    existing: &mut AssertionDetail,
-    candidate: &AssertionDetail,
+    existing: &mut crate::explorer::AssertionDetail,
+    candidate: &crate::explorer::AssertionDetail,
 ) -> Result<(), &'static str> {
     let existing_verdict = crate::assertion_summary::derive_detail_verdict(existing)
         .map_err(|_| "invalid existing assertion counters")?;
@@ -885,7 +887,7 @@ pub fn format_memory_estimate(
 mod tests {
     use super::*;
     use crate::checkpoint::SerializableSchedule;
-    use crate::corpus::BugReport;
+
     use crate::coverage::CoverageStats;
     use crate::explorer::AssertionIdentityDetail;
     use chaoscontrol_fault::schedule::FaultSchedule;
@@ -925,8 +927,13 @@ mod tests {
 
     // ── 6.2: bug dedup across seeds ─────────────────────────────────
 
-    fn make_bug(id: u64, assertion_id: u64, location: &str, dedup_key: u64) -> BugReport {
-        BugReport {
+    fn make_bug(
+        id: u64,
+        assertion_id: u64,
+        location: &str,
+        dedup_key: u64,
+    ) -> crate::corpus::BugReport {
+        crate::corpus::BugReport {
             bug_id: id,
             assertion_id,
             assertion_identity: crate::test_support::assertion_identity(assertion_id),
@@ -944,7 +951,10 @@ mod tests {
         }
     }
 
-    fn make_report(bugs: Vec<BugReport>, details: Vec<AssertionDetail>) -> ExplorationReport {
+    fn make_report(
+        bugs: Vec<crate::corpus::BugReport>,
+        details: Vec<crate::explorer::AssertionDetail>,
+    ) -> crate::explorer::ExplorationReport {
         let collision_safe =
             !details.is_empty() && details.iter().all(|detail| detail.identity.is_some());
         let status = if collision_safe {
@@ -952,7 +962,7 @@ mod tests {
         } else {
             chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous
         };
-        ExplorationReport {
+        crate::explorer::ExplorationReport {
             rounds: 10,
             total_branches: 80,
             total_edges: 100,
@@ -1008,9 +1018,12 @@ mod tests {
         assert_eq!(campaign.bugs.len(), 2);
     }
 
-    fn bug_for_detail(bug_id: u64, detail: &AssertionDetail) -> BugReport {
+    fn bug_for_detail(
+        bug_id: u64,
+        detail: &crate::explorer::AssertionDetail,
+    ) -> crate::corpus::BugReport {
         let detail_identity = detail.identity.as_ref().expect("strict detail identity");
-        BugReport {
+        crate::corpus::BugReport {
             bug_id,
             assertion_id: u64::from(detail.id),
             assertion_identity: chaoscontrol_protocol::admission::AssertionEvidenceIdentity {
@@ -1108,8 +1121,14 @@ mod tests {
 
     // ── 6.3: assertion merging ──────────────────────────────────────
 
-    fn make_detail(id: u32, verdict: &str, hits: u64, t: u64, f: u64) -> AssertionDetail {
-        AssertionDetail {
+    fn make_detail(
+        id: u32,
+        verdict: &str,
+        hits: u64,
+        t: u64,
+        f: u64,
+    ) -> crate::explorer::AssertionDetail {
+        crate::explorer::AssertionDetail {
             id,
             identity: None,
             message: format!("assertion_{}", id),
@@ -1130,7 +1149,7 @@ mod tests {
         hits: u64,
         true_count: u64,
         false_count: u64,
-    ) -> AssertionDetail {
+    ) -> crate::explorer::AssertionDetail {
         const SOURCE_LINE: u32 = 10;
         const SOURCE_COLUMN: u32 = 4;
         let descriptor = AssertionDescriptor {
@@ -1151,7 +1170,7 @@ mod tests {
         let fingerprint = descriptor.fingerprint().expect("fingerprint");
         let canonical = descriptor.canonical_bytes().expect("canonical descriptor");
         let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
-        AssertionDetail {
+        crate::explorer::AssertionDetail {
             id: TEST_COMPATIBILITY_ID,
             identity: Some(AssertionIdentityDetail {
                 descriptor,
@@ -1483,7 +1502,7 @@ mod tests {
                 },
             ],
             assertion_details: Vec::new(),
-            assertion_stats: AssertionStats::default(),
+            assertion_stats: crate::explorer::AssertionStats::default(),
             assertion_identity_conflicts: Vec::new(),
             assertion_catalog_status:
                 chaoscontrol_protocol::admission::CatalogValidationStatus::LegacyAmbiguous,

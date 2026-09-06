@@ -1,0 +1,91 @@
+--- .pi/binding-expected/crates/chaoscontrol-evidence/src/dogfood_guards.rs	2026-09-05 21:57:28.992344617 -0400
++++ crates/chaoscontrol-evidence/src/dogfood_guards.rs	2026-09-05 21:48:19.635789356 -0400
+@@ -1,6 +1,4 @@
+-
+-
+-use crate :: { REQUIRED_REPLAY_CLASS } ;
++use crate::REQUIRED_REPLAY_CLASS;
+ 
+ pub const DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES: u64 = 50 * 1024 * 1024;
+ const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
+@@ -63,7 +61,9 @@
+     let manifest = crate::AcceptedWorkloadProofs::from_path(manifest_path)?;
+ 
+     let Some(config) = config.as_object() else {
+-        return Err(crate::EvidenceError::new("config: expected workload object"));
++        return Err(crate::EvidenceError::new(
++            "config: expected workload object",
++        ));
+     };
+     let expectations = expectations_root
+         .get("workloads")
+@@ -108,13 +108,19 @@
+     );
+ 
+     for workload in config_workloads.intersection(&expectation_workloads) {
+-        let Some(cfg) = config.get(workload).and_then(::serde_json::Value::as_object) else {
++        let Some(cfg) = config
++            .get(workload)
++            .and_then(::serde_json::Value::as_object)
++        else {
+             errors.push(format!(
+                 "{workload}: config and expectation must be objects"
+             ));
+             continue;
+         };
+-        let Some(exp) = expectations.get(workload).and_then(::serde_json::Value::as_object) else {
++        let Some(exp) = expectations
++            .get(workload)
++            .and_then(::serde_json::Value::as_object)
++        else {
+             errors.push(format!(
+                 "{workload}: config and expectation must be objects"
+             ));
+@@ -197,7 +203,11 @@
+                 "{workload}: expectation expected.accepted must be true"
+             ));
+         }
+-        if expected.get("replay_class").and_then(::serde_json::Value::as_str) != Some(REQUIRED_REPLAY_CLASS) {
++        if expected
++            .get("replay_class")
++            .and_then(::serde_json::Value::as_str)
++            != Some(REQUIRED_REPLAY_CLASS)
++        {
+             errors.push(format!(
+                 "{workload}: expectation replay_class {} != {REQUIRED_REPLAY_CLASS}",
+                 display_value(expected.get("replay_class"))
+@@ -265,7 +275,9 @@
+                 proof.assertion_id
+             ));
+         }
+-        if !exp.is_empty() && exp.get("assertion_id") != Some(&::serde_json::Value::from(proof.assertion_id)) {
++        if !exp.is_empty()
++            && exp.get("assertion_id") != Some(&::serde_json::Value::from(proof.assertion_id))
++        {
+             errors.push(format!(
+                 "{}: expectation assertion_id {} != admitted manifest {}",
+                 proof.workload,
+@@ -292,7 +304,9 @@
+         if summary.get("accepted") != Some(&::serde_json::Value::Bool(true)) {
+             errors.push(format!("{}: summary is not accepted=true", proof.workload));
+         }
+-        let verdict = summary.get("verdict").and_then(::serde_json::Value::as_object);
++        let verdict = summary
++            .get("verdict")
++            .and_then(::serde_json::Value::as_object);
+         let replay_class = verdict
+             .and_then(|value| value.get("replay_class"))
+             .and_then(::serde_json::Value::as_str);
+@@ -404,7 +418,11 @@
+         })
+ }
+ 
+-fn int_list(value: Option<&::serde_json::Value>, field: &str, errors: &mut Vec<String>) -> Vec<i64> {
++fn int_list(
++    value: Option<&::serde_json::Value>,
++    field: &str,
++    errors: &mut Vec<String>,
++) -> Vec<i64> {
+     let Some(::serde_json::Value::Array(values)) = value else {
+         errors.push(format!("{field}: expected non-empty integer list"));
+         return Vec::new();

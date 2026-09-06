@@ -11,12 +11,10 @@
 //! the frontier, but carry forward the global coverage so we don't
 //! re-explore known territory.
 
-use crate::corpus::BugReport;
-use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
-use chaoscontrol_fault::faults::{Fault, GpRegister};
-use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
+use crate::snapshot_store::SnapshotStore;
+
 use snafu::Snafu;
-use std::fs;
+
 use std::io::Write;
 
 const MAX_CHECKPOINT_BUGS: usize = 4_096;
@@ -214,7 +212,7 @@ pub enum SerializableFault {
     CpuBitflip {
         target: usize,
         vcpu: usize,
-        register: GpRegister,
+        register: ::chaoscontrol_fault::faults::GpRegister,
         bit: u8,
     },
     CpuStall {
@@ -232,54 +230,72 @@ pub enum SerializableFault {
     },
 }
 
-impl From<&Fault> for SerializableFault {
-    fn from(fault: &Fault) -> Self {
+impl From<&::chaoscontrol_fault::faults::Fault> for SerializableFault {
+    fn from(fault: &::chaoscontrol_fault::faults::Fault) -> Self {
         match fault {
-            Fault::NetworkPartition { side_a, side_b } => SerializableFault::NetworkPartition {
-                side_a: side_a.clone(),
-                side_b: side_b.clone(),
-            },
-            Fault::NetworkLatency { target, latency_ns } => SerializableFault::NetworkLatency {
-                target: *target,
-                latency_ns: *latency_ns,
-            },
-            Fault::PacketLoss { target, rate_ppm } => SerializableFault::PacketLoss {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            Fault::PacketCorruption { target, rate_ppm } => SerializableFault::PacketCorruption {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            Fault::PacketReorder { target, window_ns } => SerializableFault::PacketReorder {
-                target: *target,
-                window_ns: *window_ns,
-            },
-            Fault::NetworkJitter { target, jitter_ns } => SerializableFault::NetworkJitter {
-                target: *target,
-                jitter_ns: *jitter_ns,
-            },
-            Fault::NetworkBandwidth {
+            ::chaoscontrol_fault::faults::Fault::NetworkPartition { side_a, side_b } => {
+                SerializableFault::NetworkPartition {
+                    side_a: side_a.clone(),
+                    side_b: side_b.clone(),
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::NetworkLatency { target, latency_ns } => {
+                SerializableFault::NetworkLatency {
+                    target: *target,
+                    latency_ns: *latency_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::PacketLoss { target, rate_ppm } => {
+                SerializableFault::PacketLoss {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::PacketCorruption { target, rate_ppm } => {
+                SerializableFault::PacketCorruption {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::PacketReorder { target, window_ns } => {
+                SerializableFault::PacketReorder {
+                    target: *target,
+                    window_ns: *window_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::NetworkJitter { target, jitter_ns } => {
+                SerializableFault::NetworkJitter {
+                    target: *target,
+                    jitter_ns: *jitter_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::NetworkBandwidth {
                 target,
                 bytes_per_sec,
             } => SerializableFault::NetworkBandwidth {
                 target: *target,
                 bytes_per_sec: *bytes_per_sec,
             },
-            Fault::PacketDuplicate { target, rate_ppm } => SerializableFault::PacketDuplicate {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            Fault::NetworkHeal => SerializableFault::NetworkHeal,
-            Fault::DiskReadError { target, offset } => SerializableFault::DiskReadError {
-                target: *target,
-                offset: *offset,
-            },
-            Fault::DiskWriteError { target, offset } => SerializableFault::DiskWriteError {
-                target: *target,
-                offset: *offset,
-            },
-            Fault::DiskTornWrite {
+            ::chaoscontrol_fault::faults::Fault::PacketDuplicate { target, rate_ppm } => {
+                SerializableFault::PacketDuplicate {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal => SerializableFault::NetworkHeal,
+            ::chaoscontrol_fault::faults::Fault::DiskReadError { target, offset } => {
+                SerializableFault::DiskReadError {
+                    target: *target,
+                    offset: *offset,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::DiskWriteError { target, offset } => {
+                SerializableFault::DiskWriteError {
+                    target: *target,
+                    offset: *offset,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::DiskTornWrite {
                 target,
                 offset,
                 bytes_written,
@@ -288,7 +304,7 @@ impl From<&Fault> for SerializableFault {
                 offset: *offset,
                 bytes_written: *bytes_written,
             },
-            Fault::DiskCorruption {
+            ::chaoscontrol_fault::faults::Fault::DiskCorruption {
                 target,
                 offset,
                 len,
@@ -297,27 +313,35 @@ impl From<&Fault> for SerializableFault {
                 offset: *offset,
                 len: *len,
             },
-            Fault::DiskFull { target } => SerializableFault::DiskFull { target: *target },
-            Fault::ProcessKill { target } => SerializableFault::ProcessKill { target: *target },
-            Fault::ProcessRestart { target } => {
+            ::chaoscontrol_fault::faults::Fault::DiskFull { target } => {
+                SerializableFault::DiskFull { target: *target }
+            }
+            ::chaoscontrol_fault::faults::Fault::ProcessKill { target } => {
+                SerializableFault::ProcessKill { target: *target }
+            }
+            ::chaoscontrol_fault::faults::Fault::ProcessRestart { target } => {
                 SerializableFault::ProcessRestart { target: *target }
             }
-            Fault::ProcessPause {
+            ::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target,
                 duration_ns,
             } => SerializableFault::ProcessPause {
                 target: *target,
                 duration_ns: *duration_ns,
             },
-            Fault::ClockSkew { target, offset_ns } => SerializableFault::ClockSkew {
-                target: *target,
-                offset_ns: *offset_ns,
-            },
-            Fault::ClockJump { target, delta_ns } => SerializableFault::ClockJump {
-                target: *target,
-                delta_ns: *delta_ns,
-            },
-            Fault::MemoryPressure {
+            ::chaoscontrol_fault::faults::Fault::ClockSkew { target, offset_ns } => {
+                SerializableFault::ClockSkew {
+                    target: *target,
+                    offset_ns: *offset_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::ClockJump { target, delta_ns } => {
+                SerializableFault::ClockJump {
+                    target: *target,
+                    delta_ns: *delta_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target,
                 limit_bytes,
                 duration_ticks,
@@ -326,23 +350,31 @@ impl From<&Fault> for SerializableFault {
                 limit_bytes: *limit_bytes,
                 duration_ticks: *duration_ticks,
             },
-            Fault::InjectInterrupt { target, irq } => SerializableFault::InjectInterrupt {
-                target: *target,
-                irq: *irq,
-            },
-            Fault::InjectNmi { target, vcpu } => SerializableFault::InjectNmi {
-                target: *target,
-                vcpu: *vcpu,
-            },
-            Fault::DiskSlow { target, delay_ns } => SerializableFault::DiskSlow {
-                target: *target,
-                delay_ns: *delay_ns,
-            },
-            Fault::DiskFsyncLie { target } => SerializableFault::DiskFsyncLie { target: *target },
-            Fault::DiskFsyncFlush { target } => {
+            ::chaoscontrol_fault::faults::Fault::InjectInterrupt { target, irq } => {
+                SerializableFault::InjectInterrupt {
+                    target: *target,
+                    irq: *irq,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::InjectNmi { target, vcpu } => {
+                SerializableFault::InjectNmi {
+                    target: *target,
+                    vcpu: *vcpu,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::DiskSlow { target, delay_ns } => {
+                SerializableFault::DiskSlow {
+                    target: *target,
+                    delay_ns: *delay_ns,
+                }
+            }
+            ::chaoscontrol_fault::faults::Fault::DiskFsyncLie { target } => {
+                SerializableFault::DiskFsyncLie { target: *target }
+            }
+            ::chaoscontrol_fault::faults::Fault::DiskFsyncFlush { target } => {
                 SerializableFault::DiskFsyncFlush { target: *target }
             }
-            Fault::DiskPartialRead {
+            ::chaoscontrol_fault::faults::Fault::DiskPartialRead {
                 target,
                 offset,
                 max_bytes,
@@ -351,7 +383,7 @@ impl From<&Fault> for SerializableFault {
                 offset: *offset,
                 max_bytes: *max_bytes,
             },
-            Fault::CpuBitflip {
+            ::chaoscontrol_fault::faults::Fault::CpuBitflip {
                 target,
                 vcpu,
                 register,
@@ -362,7 +394,7 @@ impl From<&Fault> for SerializableFault {
                 register: *register,
                 bit: *bit,
             },
-            Fault::CpuStall {
+            ::chaoscontrol_fault::faults::Fault::CpuStall {
                 target,
                 vcpu,
                 duration_ticks,
@@ -371,73 +403,93 @@ impl From<&Fault> for SerializableFault {
                 vcpu: *vcpu,
                 duration_ticks: *duration_ticks,
             },
-            Fault::ClockFreeze {
+            ::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target,
                 duration_ticks,
             } => SerializableFault::ClockFreeze {
                 target: *target,
                 duration_ticks: *duration_ticks,
             },
-            Fault::ClockJitter { target, bound_tsc } => SerializableFault::ClockJitter {
-                target: *target,
-                bound_tsc: *bound_tsc,
-            },
+            ::chaoscontrol_fault::faults::Fault::ClockJitter { target, bound_tsc } => {
+                SerializableFault::ClockJitter {
+                    target: *target,
+                    bound_tsc: *bound_tsc,
+                }
+            }
         }
     }
 }
 
-impl From<&SerializableFault> for Fault {
+impl From<&SerializableFault> for ::chaoscontrol_fault::faults::Fault {
     fn from(fault: &SerializableFault) -> Self {
         match fault {
-            SerializableFault::NetworkPartition { side_a, side_b } => Fault::NetworkPartition {
-                side_a: side_a.clone(),
-                side_b: side_b.clone(),
-            },
-            SerializableFault::NetworkLatency { target, latency_ns } => Fault::NetworkLatency {
-                target: *target,
-                latency_ns: *latency_ns,
-            },
-            SerializableFault::PacketLoss { target, rate_ppm } => Fault::PacketLoss {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            SerializableFault::PacketCorruption { target, rate_ppm } => Fault::PacketCorruption {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            SerializableFault::PacketReorder { target, window_ns } => Fault::PacketReorder {
-                target: *target,
-                window_ns: *window_ns,
-            },
-            SerializableFault::NetworkJitter { target, jitter_ns } => Fault::NetworkJitter {
-                target: *target,
-                jitter_ns: *jitter_ns,
-            },
+            SerializableFault::NetworkPartition { side_a, side_b } => {
+                ::chaoscontrol_fault::faults::Fault::NetworkPartition {
+                    side_a: side_a.clone(),
+                    side_b: side_b.clone(),
+                }
+            }
+            SerializableFault::NetworkLatency { target, latency_ns } => {
+                ::chaoscontrol_fault::faults::Fault::NetworkLatency {
+                    target: *target,
+                    latency_ns: *latency_ns,
+                }
+            }
+            SerializableFault::PacketLoss { target, rate_ppm } => {
+                ::chaoscontrol_fault::faults::Fault::PacketLoss {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            SerializableFault::PacketCorruption { target, rate_ppm } => {
+                ::chaoscontrol_fault::faults::Fault::PacketCorruption {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            SerializableFault::PacketReorder { target, window_ns } => {
+                ::chaoscontrol_fault::faults::Fault::PacketReorder {
+                    target: *target,
+                    window_ns: *window_ns,
+                }
+            }
+            SerializableFault::NetworkJitter { target, jitter_ns } => {
+                ::chaoscontrol_fault::faults::Fault::NetworkJitter {
+                    target: *target,
+                    jitter_ns: *jitter_ns,
+                }
+            }
             SerializableFault::NetworkBandwidth {
                 target,
                 bytes_per_sec,
-            } => Fault::NetworkBandwidth {
+            } => ::chaoscontrol_fault::faults::Fault::NetworkBandwidth {
                 target: *target,
                 bytes_per_sec: *bytes_per_sec,
             },
-            SerializableFault::PacketDuplicate { target, rate_ppm } => Fault::PacketDuplicate {
-                target: *target,
-                rate_ppm: *rate_ppm,
-            },
-            SerializableFault::NetworkHeal => Fault::NetworkHeal,
-            SerializableFault::DiskReadError { target, offset } => Fault::DiskReadError {
-                target: *target,
-                offset: *offset,
-            },
-            SerializableFault::DiskWriteError { target, offset } => Fault::DiskWriteError {
-                target: *target,
-                offset: *offset,
-            },
+            SerializableFault::PacketDuplicate { target, rate_ppm } => {
+                ::chaoscontrol_fault::faults::Fault::PacketDuplicate {
+                    target: *target,
+                    rate_ppm: *rate_ppm,
+                }
+            }
+            SerializableFault::NetworkHeal => ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+            SerializableFault::DiskReadError { target, offset } => {
+                ::chaoscontrol_fault::faults::Fault::DiskReadError {
+                    target: *target,
+                    offset: *offset,
+                }
+            }
+            SerializableFault::DiskWriteError { target, offset } => {
+                ::chaoscontrol_fault::faults::Fault::DiskWriteError {
+                    target: *target,
+                    offset: *offset,
+                }
+            }
             SerializableFault::DiskTornWrite {
                 target,
                 offset,
                 bytes_written,
-            } => Fault::DiskTornWrite {
+            } => ::chaoscontrol_fault::faults::Fault::DiskTornWrite {
                 target: *target,
                 offset: *offset,
                 bytes_written: *bytes_written,
@@ -446,61 +498,77 @@ impl From<&SerializableFault> for Fault {
                 target,
                 offset,
                 len,
-            } => Fault::DiskCorruption {
+            } => ::chaoscontrol_fault::faults::Fault::DiskCorruption {
                 target: *target,
                 offset: *offset,
                 len: *len,
             },
-            SerializableFault::DiskFull { target } => Fault::DiskFull { target: *target },
-            SerializableFault::ProcessKill { target } => Fault::ProcessKill { target: *target },
+            SerializableFault::DiskFull { target } => {
+                ::chaoscontrol_fault::faults::Fault::DiskFull { target: *target }
+            }
+            SerializableFault::ProcessKill { target } => {
+                ::chaoscontrol_fault::faults::Fault::ProcessKill { target: *target }
+            }
             SerializableFault::ProcessRestart { target } => {
-                Fault::ProcessRestart { target: *target }
+                ::chaoscontrol_fault::faults::Fault::ProcessRestart { target: *target }
             }
             SerializableFault::ProcessPause {
                 target,
                 duration_ns,
-            } => Fault::ProcessPause {
+            } => ::chaoscontrol_fault::faults::Fault::ProcessPause {
                 target: *target,
                 duration_ns: *duration_ns,
             },
-            SerializableFault::ClockSkew { target, offset_ns } => Fault::ClockSkew {
-                target: *target,
-                offset_ns: *offset_ns,
-            },
-            SerializableFault::ClockJump { target, delta_ns } => Fault::ClockJump {
-                target: *target,
-                delta_ns: *delta_ns,
-            },
+            SerializableFault::ClockSkew { target, offset_ns } => {
+                ::chaoscontrol_fault::faults::Fault::ClockSkew {
+                    target: *target,
+                    offset_ns: *offset_ns,
+                }
+            }
+            SerializableFault::ClockJump { target, delta_ns } => {
+                ::chaoscontrol_fault::faults::Fault::ClockJump {
+                    target: *target,
+                    delta_ns: *delta_ns,
+                }
+            }
             SerializableFault::MemoryPressure {
                 target,
                 limit_bytes,
                 duration_ticks,
-            } => Fault::MemoryPressure {
+            } => ::chaoscontrol_fault::faults::Fault::MemoryPressure {
                 target: *target,
                 limit_bytes: *limit_bytes,
                 duration_ticks: *duration_ticks,
             },
-            SerializableFault::InjectInterrupt { target, irq } => Fault::InjectInterrupt {
-                target: *target,
-                irq: *irq,
-            },
-            SerializableFault::InjectNmi { target, vcpu } => Fault::InjectNmi {
-                target: *target,
-                vcpu: *vcpu,
-            },
-            SerializableFault::DiskSlow { target, delay_ns } => Fault::DiskSlow {
-                target: *target,
-                delay_ns: *delay_ns,
-            },
-            SerializableFault::DiskFsyncLie { target } => Fault::DiskFsyncLie { target: *target },
+            SerializableFault::InjectInterrupt { target, irq } => {
+                ::chaoscontrol_fault::faults::Fault::InjectInterrupt {
+                    target: *target,
+                    irq: *irq,
+                }
+            }
+            SerializableFault::InjectNmi { target, vcpu } => {
+                ::chaoscontrol_fault::faults::Fault::InjectNmi {
+                    target: *target,
+                    vcpu: *vcpu,
+                }
+            }
+            SerializableFault::DiskSlow { target, delay_ns } => {
+                ::chaoscontrol_fault::faults::Fault::DiskSlow {
+                    target: *target,
+                    delay_ns: *delay_ns,
+                }
+            }
+            SerializableFault::DiskFsyncLie { target } => {
+                ::chaoscontrol_fault::faults::Fault::DiskFsyncLie { target: *target }
+            }
             SerializableFault::DiskFsyncFlush { target } => {
-                Fault::DiskFsyncFlush { target: *target }
+                ::chaoscontrol_fault::faults::Fault::DiskFsyncFlush { target: *target }
             }
             SerializableFault::DiskPartialRead {
                 target,
                 offset,
                 max_bytes,
-            } => Fault::DiskPartialRead {
+            } => ::chaoscontrol_fault::faults::Fault::DiskPartialRead {
                 target: *target,
                 offset: *offset,
                 max_bytes: *max_bytes,
@@ -510,7 +578,7 @@ impl From<&SerializableFault> for Fault {
                 vcpu,
                 register,
                 bit,
-            } => Fault::CpuBitflip {
+            } => ::chaoscontrol_fault::faults::Fault::CpuBitflip {
                 target: *target,
                 vcpu: *vcpu,
                 register: *register,
@@ -520,7 +588,7 @@ impl From<&SerializableFault> for Fault {
                 target,
                 vcpu,
                 duration_ticks,
-            } => Fault::CpuStall {
+            } => ::chaoscontrol_fault::faults::Fault::CpuStall {
                 target: *target,
                 vcpu: *vcpu,
                 duration_ticks: *duration_ticks,
@@ -528,14 +596,16 @@ impl From<&SerializableFault> for Fault {
             SerializableFault::ClockFreeze {
                 target,
                 duration_ticks,
-            } => Fault::ClockFreeze {
+            } => ::chaoscontrol_fault::faults::Fault::ClockFreeze {
                 target: *target,
                 duration_ticks: *duration_ticks,
             },
-            SerializableFault::ClockJitter { target, bound_tsc } => Fault::ClockJitter {
-                target: *target,
-                bound_tsc: *bound_tsc,
-            },
+            SerializableFault::ClockJitter { target, bound_tsc } => {
+                ::chaoscontrol_fault::faults::Fault::ClockJitter {
+                    target: *target,
+                    bound_tsc: *bound_tsc,
+                }
+            }
         }
     }
 }
@@ -556,8 +626,8 @@ pub struct SerializableSchedule {
     pub faults: Vec<SerializableScheduledFault>,
 }
 
-impl From<&FaultSchedule> for SerializableSchedule {
-    fn from(schedule: &FaultSchedule) -> Self {
+impl From<&::chaoscontrol_fault::schedule::FaultSchedule> for SerializableSchedule {
+    fn from(schedule: &::chaoscontrol_fault::schedule::FaultSchedule) -> Self {
         let faults = schedule
             .faults()
             .iter()
@@ -572,11 +642,12 @@ impl From<&FaultSchedule> for SerializableSchedule {
     }
 }
 
-impl From<&SerializableSchedule> for FaultSchedule {
+impl From<&SerializableSchedule> for ::chaoscontrol_fault::schedule::FaultSchedule {
     fn from(sched: &SerializableSchedule) -> Self {
-        let mut schedule = FaultSchedule::new();
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
         for sf in &sched.faults {
-            let mut fault = ScheduledFault::new(sf.time_ns, (&sf.fault).into());
+            let mut fault =
+                ::chaoscontrol_fault::schedule::ScheduledFault::new(sf.time_ns, (&sf.fault).into());
             if let Some(ref label) = sf.label {
                 fault = fault.with_label(label.clone());
             }
@@ -615,7 +686,7 @@ pub struct SerializableBug {
     pub replay_parent_depth: u32,
     /// Durable replay parent snapshot artifact reference for parent-context replay.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replay_parent_snapshot_ref: Option<ReplayParentSnapshotRef>,
+    pub replay_parent_snapshot_ref: Option<crate::snapshot_store::ReplayParentSnapshotRef>,
     /// Dedup key: hash of (assertion fingerprint, sorted fault type names).
     #[serde(default)]
     pub dedup_key: Option<u64>,
@@ -673,7 +744,7 @@ pub fn validate_bug_set(
         source: crate::bug::identity::BugIdentityError::ReportMismatch,
     })?;
     for bug in bugs {
-        BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
+        crate::corpus::BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
             bug_id: bug.bug_id,
             source,
         })?;
@@ -693,11 +764,11 @@ pub fn validate_bug_set(
 pub fn replay_bug_set(
     bugs: &[SerializableBug],
     assertion_report: Option<&chaoscontrol_fault::oracle::OracleReport>,
-) -> Result<Vec<BugReport>, BugSetIdentityError> {
+) -> Result<Vec<crate::corpus::BugReport>, BugSetIdentityError> {
     validate_bug_set(bugs, assertion_report)?;
     bugs.iter()
         .map(|bug| {
-            BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
+            crate::corpus::BugReport::try_from(bug).map_err(|source| BugSetIdentityError {
                 bug_id: bug.bug_id,
                 source,
             })
@@ -705,8 +776,8 @@ pub fn replay_bug_set(
         .collect()
 }
 
-impl From<&BugReport> for SerializableBug {
-    fn from(bug: &BugReport) -> Self {
+impl From<&crate::corpus::BugReport> for SerializableBug {
+    fn from(bug: &crate::corpus::BugReport) -> Self {
         SerializableBug {
             bug_id: bug.bug_id,
             assertion_id: bug.assertion_id,
@@ -725,7 +796,7 @@ impl From<&BugReport> for SerializableBug {
     }
 }
 
-impl TryFrom<&SerializableBug> for BugReport {
+impl TryFrom<&SerializableBug> for crate::corpus::BugReport {
     type Error = crate::bug::identity::BugIdentityError;
 
     fn try_from(bug: &SerializableBug) -> Result<Self, Self::Error> {
@@ -804,7 +875,7 @@ pub fn save_checkpoint<P: AsRef<std::path::Path>>(
     temporary.write_all(&bytes)?;
     temporary.as_file().sync_all()?;
     temporary.persist(path).map_err(|error| error.error)?;
-    fs::File::open(parent)?.sync_all()?;
+    ::std::fs::File::open(parent)?.sync_all()?;
     Ok(())
 }
 
@@ -829,11 +900,13 @@ pub fn load_serializable_bug_artifact<P: AsRef<std::path::Path>>(
 ) -> Result<(SerializableBug, Vec<u8>), CheckpointError> {
     let json = crate::bounded_json::read_checkpoint(path.as_ref())?;
     let bug: SerializableBug = serde_json::from_str(&json)?;
-    BugReport::try_from(&bug).map_err(|source| CheckpointError::InvalidBugIdentity {
-        source: BugSetIdentityError {
-            bug_id: bug.bug_id,
-            source,
-        },
+    crate::corpus::BugReport::try_from(&bug).map_err(|source| {
+        CheckpointError::InvalidBugIdentity {
+            source: BugSetIdentityError {
+                bug_id: bug.bug_id,
+                source,
+            },
+        }
     })?;
     Ok((bug, json.into_bytes()))
 }
@@ -974,9 +1047,9 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<std::path::Path>, Q: AsRef<st
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
     let output_dir = output_dir.as_ref();
-    fs::create_dir_all(output_dir)?;
-    let source_snapshot_store = FileSnapshotStore::new(source_dir);
-    let output_snapshot_store = FileSnapshotStore::new(output_dir);
+    ::std::fs::create_dir_all(output_dir)?;
+    let source_snapshot_store = crate::snapshot_store::FileSnapshotStore::new(source_dir);
+    let output_snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
 
     let mut bugs_matched = 0;
     let mut bugs_written = 0;
@@ -1018,7 +1091,7 @@ pub fn export_checkpoint_bugs_with_filter<P: AsRef<std::path::Path>, Q: AsRef<st
             return Err(CheckpointBugExportError::AlreadyExists { path });
         }
         let json = serde_json::to_string_pretty(bug)?;
-        fs::write(path, json)?;
+        ::std::fs::write(path, json)?;
         bugs_written += 1;
     }
 
@@ -1054,7 +1127,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("bug.json");
         let bug = minimal_bug(1);
-        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+        ::std::fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
             .expect("write bug fixture");
 
         let loaded = load_serializable_bug(&path).expect("complete bug loads");
@@ -1076,7 +1149,7 @@ mod tests {
             label: None,
         };
         bug.schedule.faults = vec![fault; MAX_SERIALIZABLE_FAULTS + 1];
-        fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
+        ::std::fs::write(&path, serde_json::to_vec(&bug).expect("serialize bug"))
             .expect("write bug fixture");
 
         assert!(matches!(
@@ -1105,25 +1178,31 @@ mod tests {
 
     #[test]
     fn test_serialize_fault() {
-        let fault = Fault::NetworkPartition {
+        let fault = ::chaoscontrol_fault::faults::Fault::NetworkPartition {
             side_a: vec![0, 1],
             side_b: vec![2, 3],
         };
         let serializable: SerializableFault = (&fault).into();
-        let roundtrip: Fault = (&serializable).into();
+        let roundtrip: ::chaoscontrol_fault::faults::Fault = (&serializable).into();
         assert_eq!(fault, roundtrip);
     }
 
     #[test]
     fn test_serialize_schedule() {
-        let mut schedule = FaultSchedule::new();
-        schedule.add(ScheduledFault::new(1000, Fault::NetworkHeal));
-        schedule.add(ScheduledFault::new(2000, Fault::ProcessKill { target: 0 }));
+        let mut schedule = ::chaoscontrol_fault::schedule::FaultSchedule::new();
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            1000,
+            ::chaoscontrol_fault::faults::Fault::NetworkHeal,
+        ));
+        schedule.add(::chaoscontrol_fault::schedule::ScheduledFault::new(
+            2000,
+            ::chaoscontrol_fault::faults::Fault::ProcessKill { target: 0 },
+        ));
 
         let serializable: SerializableSchedule = (&schedule).into();
         assert_eq!(serializable.faults.len(), 2);
 
-        let roundtrip: FaultSchedule = (&serializable).into();
+        let roundtrip: ::chaoscontrol_fault::schedule::FaultSchedule = (&serializable).into();
         assert_eq!(roundtrip.total(), 2);
     }
 
@@ -1175,8 +1254,6 @@ mod tests {
 
     #[test]
     fn test_save_load_checkpoint() {
-        use std::fs;
-
         let tempdir = std::env::temp_dir();
         let path = tempdir.join("test_checkpoint.json");
 
@@ -1223,7 +1300,7 @@ mod tests {
         assert_eq!(checkpoint.global_coverage, loaded.global_coverage);
 
         // Cleanup
-        let _ = fs::remove_file(&path);
+        let _ = ::std::fs::remove_file(&path);
     }
 
     #[test]
@@ -1523,7 +1600,7 @@ mod tests {
 
     fn write_untrusted_checkpoint(path: &std::path::Path, checkpoint: &ExplorationCheckpoint) {
         let bytes = serde_json::to_vec_pretty(checkpoint).expect("checkpoint fixture JSON");
-        fs::write(path, bytes).expect("write untrusted checkpoint fixture");
+        ::std::fs::write(path, bytes).expect("write untrusted checkpoint fixture");
     }
 
     fn minimal_bug(bug_id: u64) -> SerializableBug {
@@ -1556,12 +1633,15 @@ mod tests {
         let path = directory.path().join("checkpoint.json");
         let valid = minimal_checkpoint_with_bugs(Vec::new());
         save_checkpoint(&path, &valid).expect("valid checkpoint writes");
-        let before = fs::read(&path).expect("valid checkpoint bytes");
+        let before = ::std::fs::read(&path).expect("valid checkpoint bytes");
         let mut invalid = minimal_checkpoint_with_bugs(vec![minimal_bug(1)]);
         invalid.assertion_report = None;
 
         assert!(save_checkpoint(&path, &invalid).is_err());
-        assert_eq!(fs::read(&path).expect("retained checkpoint bytes"), before);
+        assert_eq!(
+            ::std::fs::read(&path).expect("retained checkpoint bytes"),
+            before
+        );
     }
 
     #[cfg(unix)]
@@ -1572,13 +1652,16 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("checkpoint.json");
         let target = directory.path().join("target.json");
-        fs::write(&target, b"retain target").expect("target fixture");
+        ::std::fs::write(&target, b"retain target").expect("target fixture");
         symlink(&target, &path).expect("checkpoint symlink");
 
         save_checkpoint(&path, &minimal_checkpoint_with_bugs(Vec::new()))
             .expect("valid checkpoint replaces symlink");
-        assert_eq!(fs::read(&target).expect("target bytes"), b"retain target");
-        assert!(!fs::symlink_metadata(&path)
+        assert_eq!(
+            ::std::fs::read(&target).expect("target bytes"),
+            b"retain target"
+        );
+        assert!(!::std::fs::symlink_metadata(&path)
             .expect("checkpoint metadata")
             .file_type()
             .is_symlink());
@@ -1634,9 +1717,11 @@ mod tests {
         assert_eq!(summary.bugs_written, 2);
         assert_eq!(summary.snapshot_refs_validated, 0);
         let bug0: SerializableBug =
-            serde_json::from_str(&fs::read_to_string(out.join("bug_0.json")).unwrap()).unwrap();
+            serde_json::from_str(&::std::fs::read_to_string(out.join("bug_0.json")).unwrap())
+                .unwrap();
         let bug1: SerializableBug =
-            serde_json::from_str(&fs::read_to_string(out.join("bug_1.json")).unwrap()).unwrap();
+            serde_json::from_str(&::std::fs::read_to_string(out.join("bug_1.json")).unwrap())
+                .unwrap();
         assert_eq!(bug0.bug_id, 41);
         assert_eq!(bug1.bug_id, 99);
     }

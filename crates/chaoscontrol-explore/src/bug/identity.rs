@@ -1,8 +1,3 @@
-use crate::checkpoint::BugSetIdentityError;
-use crate::corpus::BugReport;
-use crate::explorer::AssertionDetail;
-use chaoscontrol_fault::oracle::{AssertionRecord, OracleReport};
-use chaoscontrol_protocol::admission::AssertionEvidenceIdentity;
 use snafu::Snafu;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Snafu)]
@@ -25,8 +20,8 @@ pub enum BugIdentityError {
 
 pub fn validate_carrier(
     assertion_id: u64,
-    identity: Option<&AssertionEvidenceIdentity>,
-) -> Result<&AssertionEvidenceIdentity, BugIdentityError> {
+    identity: Option<&::chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+) -> Result<&::chaoscontrol_protocol::admission::AssertionEvidenceIdentity, BugIdentityError> {
     let identity = identity.ok_or(BugIdentityError::Missing)?;
     identity
         .validate_for_catalog_admission()
@@ -42,7 +37,7 @@ pub fn validate_carrier(
 }
 
 pub fn validate_fallback_scope(
-    identity: &AssertionEvidenceIdentity,
+    identity: &::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
     scope: Option<&chaoscontrol_protocol::fallback::FallbackAssertionScope>,
 ) -> Result<(), BugIdentityError> {
     let is_fallback = identity.descriptor.category
@@ -58,17 +53,17 @@ pub fn validate_fallback_scope(
 
 pub fn resolve_restored_report<'a>(
     assertion_id: u64,
-    identity: Option<&AssertionEvidenceIdentity>,
-    report: &'a OracleReport,
-) -> Result<&'a AssertionRecord, BugIdentityError> {
+    identity: Option<&::chaoscontrol_protocol::admission::AssertionEvidenceIdentity>,
+    report: &'a ::chaoscontrol_fault::oracle::OracleReport,
+) -> Result<&'a ::chaoscontrol_fault::oracle::AssertionRecord, BugIdentityError> {
     let identity = validate_carrier(assertion_id, identity)?;
     chaoscontrol_fault::oracle_validation::resolve_assertion_evidence(report, identity)
         .map_err(|_| BugIdentityError::ReportMismatch)
 }
 
 pub(crate) fn detail_matches_identity(
-    detail: &AssertionDetail,
-    identity: &AssertionEvidenceIdentity,
+    detail: &crate::explorer::AssertionDetail,
+    identity: &::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
 ) -> bool {
     let Some(candidate) = detail.identity.as_ref() else {
         return false;
@@ -81,18 +76,18 @@ pub(crate) fn detail_matches_identity(
 }
 
 pub fn validate_reported_bug_identities(
-    bugs: &[BugReport],
-    assertions: &[AssertionDetail],
-) -> Result<(), BugSetIdentityError> {
+    bugs: &[crate::corpus::BugReport],
+    assertions: &[crate::explorer::AssertionDetail],
+) -> Result<(), crate::checkpoint::BugSetIdentityError> {
     for bug in bugs {
         let identity = validate_carrier(bug.assertion_id, Some(&bug.assertion_identity)).map_err(
-            |source| BugSetIdentityError {
+            |source| crate::checkpoint::BugSetIdentityError {
                 bug_id: bug.bug_id,
                 source,
             },
         )?;
         validate_fallback_scope(identity, bug.fallback_scope.as_ref()).map_err(|source| {
-            BugSetIdentityError {
+            crate::checkpoint::BugSetIdentityError {
                 bug_id: bug.bug_id,
                 source,
             }
@@ -102,7 +97,7 @@ pub fn validate_reported_bug_identities(
             .filter(|detail| detail_matches_identity(detail, identity))
             .count();
         if exact_matches != 1 {
-            return Err(BugSetIdentityError {
+            return Err(crate::checkpoint::BugSetIdentityError {
                 bug_id: bug.bug_id,
                 source: BugIdentityError::ReportMismatch,
             });
@@ -118,7 +113,7 @@ mod tests {
     };
     use chaoscontrol_fault::oracle::{PropertyOracle, Verdict};
     use chaoscontrol_protocol::admission::{
-        token_for_descriptors, AssertionEvidenceIdentity, BoundAssertionEvent, CatalogBuilder,
+        token_for_descriptors, BoundAssertionEvent, CatalogBuilder,
     };
     use chaoscontrol_protocol::fallback::{
         FallbackProcessIdentity, FallbackRecord, FallbackRecordType, FallbackSink,
@@ -152,8 +147,8 @@ mod tests {
 
     fn report_and_identities() -> (
         chaoscontrol_fault::oracle::OracleReport,
-        AssertionEvidenceIdentity,
-        AssertionEvidenceIdentity,
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
     ) {
         let first = descriptor("org.example.first", "first", "first assertion");
         let second = descriptor("org.example.second", "second", "second assertion");
@@ -176,9 +171,17 @@ mod tests {
             .find(|item| item.descriptor.message == "second assertion")
             .expect("second assertion")
             .clone();
-        let first_identity = AssertionEvidenceIdentity::from_admitted(&first_admitted, token)
+        let first_identity =
+            ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                &first_admitted,
+                token,
+            )
             .expect("first identity");
-        let second_identity = AssertionEvidenceIdentity::from_admitted(&second_admitted, token)
+        let second_identity =
+            ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                &second_admitted,
+                token,
+            )
             .expect("second identity");
         let mut oracle = PropertyOracle::new();
         oracle.activate_catalog(catalog).expect("catalog activates");
@@ -199,7 +202,7 @@ mod tests {
     }
 
     fn fallback_identity_and_scope() -> (
-        AssertionEvidenceIdentity,
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity,
         chaoscontrol_protocol::fallback::FallbackAssertionScope,
     ) {
         let record = FallbackRecord {
@@ -225,7 +228,11 @@ mod tests {
         builder.insert(descriptor).expect("descriptor");
         let catalog = builder.complete(token).expect("catalog");
         let admitted = catalog.assertions.values().next().expect("admitted");
-        let identity = AssertionEvidenceIdentity::from_admitted(admitted, token).expect("identity");
+        let identity =
+            ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
+                admitted, token,
+            )
+            .expect("identity");
         let mut sink = FallbackSink::new(FALLBACK_RECORD_LIMIT).expect("sink");
         sink.admit_line(&serde_json::to_string(&record).expect("line"))
             .expect("admitted line");
@@ -252,13 +259,13 @@ mod tests {
         );
     }
 
-    fn test_identity_for_scope() -> AssertionEvidenceIdentity {
+    fn test_identity_for_scope() -> ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity {
         let descriptor = descriptor("org.example.scope", "normal", "normal assertion");
         let token = token_for_descriptors(std::slice::from_ref(&descriptor)).expect("token");
         let mut builder = CatalogBuilder::begin(FALLBACK_RECORD_LIMIT).expect("builder");
         builder.insert(descriptor).expect("descriptor");
         let catalog = builder.complete(token).expect("catalog");
-        AssertionEvidenceIdentity::from_admitted(
+        ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity::from_admitted(
             catalog.assertions.values().next().expect("admitted"),
             token,
         )
@@ -329,7 +336,7 @@ mod tests {
             logical_key: AssertionLogicalKey::LegacyU32 { id: SHARED_ALIAS },
             ..descriptor("org.example.legacy", "unused", "legacy assertion")
         };
-        let identity = AssertionEvidenceIdentity {
+        let identity = ::chaoscontrol_protocol::admission::AssertionEvidenceIdentity {
             fingerprint: descriptor.fingerprint().expect("fingerprint"),
             canonical_descriptor: descriptor.canonical_bytes().expect("canonical"),
             descriptor,

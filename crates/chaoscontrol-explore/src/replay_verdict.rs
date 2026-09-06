@@ -10,15 +10,10 @@
 //! verdicts to observed bug/oracle state, hashing artifact bytes, generating
 //! run IDs from the clock, and writing verdict files.
 
-use crate::checkpoint::SerializableBug;
-use crate::snapshot_store::{ReplayParentSnapshotRef, SnapshotStoreError};
-use sha2::{Digest, Sha256};
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use sha2::Digest;
 
-use chaoscontrol_replay_evidence_core::classify::classify_replay;
+use std::io::Write;
+
 pub use chaoscontrol_replay_evidence_core::dto::{
     ArtifactHash, ReplayClass, ReplayCommandContext, ReplayScheduleVariant,
     ReplaySnapshotValidation, ReplayVerdict, SnapshotValidationStatus, NOT_REPRODUCED_EXIT_STATUS,
@@ -31,7 +26,7 @@ pub struct ReproduceVerdictInput<'a> {
     pub exit_status: i32,
     pub bug_path: String,
     pub bug_artifact_hash: ArtifactHash,
-    pub bug: &'a SerializableBug,
+    pub bug: &'a crate::checkpoint::SerializableBug,
     pub snapshot: ReplaySnapshotValidation,
     pub admitted_report: Option<&'a chaoscontrol_fault::oracle::OracleReport>,
     pub target_failed: bool,
@@ -112,9 +107,9 @@ pub fn verdict_from_reproduce(
     let mut artifact_hashes = vec![bug_artifact_hash];
     if snapshot.digest_verified {
         if let Some(reference) = snapshot.reference.as_ref() {
-            let bug_parent = Path::new(&bug_path)
+            let bug_parent = ::std::path::Path::new(&bug_path)
                 .parent()
-                .unwrap_or_else(|| Path::new("."));
+                .unwrap_or_else(|| ::std::path::Path::new("."));
             artifact_hashes.push(ArtifactHash {
                 path: bug_parent
                     .join(&reference.path)
@@ -155,24 +150,30 @@ pub fn verdict_from_reproduce(
 
 /// Map a snapshot store failure onto the public snapshot validation status.
 pub fn snapshot_validation_from_error(
-    reference: ReplayParentSnapshotRef,
-    error: &SnapshotStoreError,
+    reference: crate::snapshot_store::ReplayParentSnapshotRef,
+    error: &crate::snapshot_store::SnapshotStoreError,
 ) -> ReplaySnapshotValidation {
     let status = match error {
-        SnapshotStoreError::Missing { .. } => SnapshotValidationStatus::MissingArtifact,
-        SnapshotStoreError::DigestMismatch { .. } => SnapshotValidationStatus::InvalidDigest,
-        SnapshotStoreError::UnsupportedStore { .. }
-        | SnapshotStoreError::UnsupportedCodec { .. }
-        | SnapshotStoreError::UnsupportedSchema { .. }
-        | SnapshotStoreError::PathEscape { .. }
-        | SnapshotStoreError::NotRegular { .. }
-        | SnapshotStoreError::TooLarge { .. }
-        | SnapshotStoreError::DecompressedTooLarge { .. }
-        | SnapshotStoreError::MetadataMismatch { .. }
-        | SnapshotStoreError::Io { .. }
-        | SnapshotStoreError::Json { .. }
-        | SnapshotStoreError::CborEncode { .. }
-        | SnapshotStoreError::CborDecode { .. } => SnapshotValidationStatus::InvalidRef,
+        crate::snapshot_store::SnapshotStoreError::Missing { .. } => {
+            SnapshotValidationStatus::MissingArtifact
+        }
+        crate::snapshot_store::SnapshotStoreError::DigestMismatch { .. } => {
+            SnapshotValidationStatus::InvalidDigest
+        }
+        crate::snapshot_store::SnapshotStoreError::UnsupportedStore { .. }
+        | crate::snapshot_store::SnapshotStoreError::UnsupportedCodec { .. }
+        | crate::snapshot_store::SnapshotStoreError::UnsupportedSchema { .. }
+        | crate::snapshot_store::SnapshotStoreError::PathEscape { .. }
+        | crate::snapshot_store::SnapshotStoreError::NotRegular { .. }
+        | crate::snapshot_store::SnapshotStoreError::TooLarge { .. }
+        | crate::snapshot_store::SnapshotStoreError::DecompressedTooLarge { .. }
+        | crate::snapshot_store::SnapshotStoreError::MetadataMismatch { .. }
+        | crate::snapshot_store::SnapshotStoreError::Io { .. }
+        | crate::snapshot_store::SnapshotStoreError::Json { .. }
+        | crate::snapshot_store::SnapshotStoreError::CborEncode { .. }
+        | crate::snapshot_store::SnapshotStoreError::CborDecode { .. } => {
+            SnapshotValidationStatus::InvalidRef
+        }
     };
     ReplaySnapshotValidation {
         status,
@@ -184,11 +185,11 @@ pub fn snapshot_validation_from_error(
 }
 
 pub fn classify_reproduce(
-    bug: &SerializableBug,
+    bug: &crate::checkpoint::SerializableBug,
     snapshot: &ReplaySnapshotValidation,
     target_failed: bool,
 ) -> ReplayClass {
-    classify_replay(
+    ::chaoscontrol_replay_evidence_core::classify::classify_replay(
         bug.require_replay_identity().is_ok(),
         bug.replay_parent_depth,
         snapshot.status,
@@ -197,7 +198,7 @@ pub fn classify_reproduce(
 }
 
 pub fn write_verdict(
-    path: impl AsRef<Path>,
+    path: impl AsRef<::std::path::Path>,
     verdict: &ReplayVerdict,
 ) -> Result<(), std::io::Error> {
     let path = path.as_ref();
@@ -205,7 +206,7 @@ pub fn write_verdict(
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     bytes.push(b'\n');
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        ::std::fs::create_dir_all(parent)?;
     }
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -213,7 +214,7 @@ pub fn write_verdict(
         .open(path)?;
     if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
         drop(file);
-        if let Err(cleanup_error) = fs::remove_file(path) {
+        if let Err(cleanup_error) = ::std::fs::remove_file(path) {
             return Err(std::io::Error::new(
                 error.kind(),
                 format!("{error}; failed to remove partial verdict: {cleanup_error}"),
@@ -225,7 +226,7 @@ pub fn write_verdict(
 }
 
 pub fn hash_bytes(path: impl Into<String>, bytes: &[u8]) -> ArtifactHash {
-    let mut hasher = Sha256::new();
+    let mut hasher = ::sha2::Sha256::new();
     hasher.update(bytes);
     ArtifactHash {
         path: path.into(),
@@ -234,8 +235,8 @@ pub fn hash_bytes(path: impl Into<String>, bytes: &[u8]) -> ArtifactHash {
 }
 
 pub fn new_run_id() -> String {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    let millis = ::std::time::SystemTime::now()
+        .duration_since(::std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
     format!("replay-{millis}")
@@ -254,8 +255,8 @@ mod tests {
     const TEST_MAXIMUM_QUANTUM: u64 = 9;
     const TEST_QUANTUM_OVERRIDE: u64 = 5;
 
-    fn snapshot_ref() -> ReplayParentSnapshotRef {
-        ReplayParentSnapshotRef {
+    fn snapshot_ref() -> crate::snapshot_store::ReplayParentSnapshotRef {
+        crate::snapshot_store::ReplayParentSnapshotRef {
             store: "file-content-addressed".to_string(),
             digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                 .to_string(),
@@ -270,8 +271,8 @@ mod tests {
         hash_bytes("bug_2.json", b"bounded bug fixture")
     }
 
-    fn bug(depth: u32, has_ref: bool) -> SerializableBug {
-        SerializableBug {
+    fn bug(depth: u32, has_ref: bool) -> crate::checkpoint::SerializableBug {
+        crate::checkpoint::SerializableBug {
             bug_id: 7,
             assertion_id: 1806003755,
             assertion_identity: Some(crate::test_support::assertion_identity(1806003755)),
@@ -289,7 +290,7 @@ mod tests {
     }
 
     fn report_for_bug(
-        bug: &SerializableBug,
+        bug: &crate::checkpoint::SerializableBug,
         observation: bool,
     ) -> chaoscontrol_fault::oracle::OracleReport {
         let identity = bug.require_replay_identity().expect("test identity");
@@ -377,7 +378,7 @@ mod tests {
                 &bug,
                 &snapshot_validation_from_error(
                     reference.clone(),
-                    &SnapshotStoreError::Missing {
+                    &crate::snapshot_store::SnapshotStoreError::Missing {
                         path: reference.path.clone(),
                     },
                 ),
@@ -390,7 +391,7 @@ mod tests {
                 &bug,
                 &snapshot_validation_from_error(
                     reference.clone(),
-                    &SnapshotStoreError::DigestMismatch {
+                    &crate::snapshot_store::SnapshotStoreError::DigestMismatch {
                         path: reference.path.clone(),
                         expected: reference.digest.clone(),
                         actual: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
@@ -406,7 +407,7 @@ mod tests {
                 &bug,
                 &snapshot_validation_from_error(
                     reference,
-                    &SnapshotStoreError::UnsupportedCodec {
+                    &crate::snapshot_store::SnapshotStoreError::UnsupportedCodec {
                         codec: "other-codec".to_string(),
                     },
                 ),

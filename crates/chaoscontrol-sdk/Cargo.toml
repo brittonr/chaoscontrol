@@ -11,6 +11,21 @@ name = "chaoscontrol-guest-supervisor"
 path = "src/bin/chaoscontrol-guest-supervisor.rs"
 required-features = ["full"]
 
+[[example]]
+name = "rust_workload_harness"
+path = "examples/rust_workload_harness.rs"
+required-features = ["full"]
+
+[[test]]
+name = "multiprocess_shell"
+path = "tests/multiprocess_shell.rs"
+required-features = ["full"]
+
+[[test]]
+name = "stable_assertions"
+path = "tests/stable_assertions.rs"
+required-features = ["full"]
+
 [features]
 default = ["full"]
 full = ["dep:libc", "dep:rand", "dep:serde_json", "dep:linkme", "chaoscontrol-protocol/std"]

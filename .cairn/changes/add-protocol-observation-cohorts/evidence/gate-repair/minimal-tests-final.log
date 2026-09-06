@@ -1,0 +1,116 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running unittests src/lib.rs (target/debug/deps/chaoscontrol_protocol-a62405232b329c92)
+
+running 15 tests
+test tests::coverage_bitmap_in_e820_gap ... ok
+test tests::coverage_port_does_not_conflict ... ok
+test tests::condition_flag_preserves_other_bits ... ok
+test tests::coverage_bitmap_does_not_overlap_hypercall_page ... ok
+test tests::condition_flag_roundtrip ... ok
+test tests::encode_buffer_too_small ... ok
+test tests::encode_empty_message_and_empty_json ... ok
+test tests::encode_message_with_json_details ... ok
+test tests::encode_simple_message_with_empty_json ... ok
+test tests::hypercall_page_addr_in_e820_gap ... ok
+test tests::hypercall_page_is_one_page ... ok
+test tests::vmcall_nr_fits_in_bitmask ... ok
+test tests::sdk_port_does_not_conflict_with_serial_or_pit ... ok
+test tests::vmcall_nr_no_conflict_with_kvm_builtins ... ok
+test tests::zeroed_page_is_all_zeros ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/assertion_catalog_adversarial.rs (target/debug/deps/assertion_catalog_adversarial-74dfc6450174932a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/assertion_identity.rs (target/debug/deps/assertion_identity-7dd2c43ca7215552)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/protocol_observation.rs (target/debug/deps/protocol_observation-7515dfcfa9815d79)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/chaoscontrol_sdk-de9523edc904fb5f)
+
+running 42 tests
+test assert::tests::always_err_passes_on_err ... ok
+test assert::tests::always_err_fails_on_ok ... ok
+test assert::tests::always_ok_passes_on_ok ... ok
+test assert::tests::assert_raw_macro_with_details ... ok
+test assert::tests::assert_raw_macro_compiles ... ok
+test assert::tests::always_ok_fails_on_err ... ok
+test assert::tests::basic_macros_compile ... ok
+test assert::tests::assertion_kind_to_command ... ok
+test assert::tests::assertion_kind_to_catalog_kind ... ok
+test assert::tests::comparison_macros_compile ... ok
+test assert::tests::comparison_macros_evaluate_operands_once ... ok
+test assert::tests::comparison_macros_with_explicit_details ... ok
+test assert::tests::comparison_macros_trailing_comma ... ok
+test assert::tests::implies_both_true ... ok
+test assert::tests::implies_evaluates_operands_once ... ok
+test assert::tests::implies_precondition_false_conclusion_true ... ok
+test assert::tests::implies_precondition_false_vacuous ... ok
+test assert::tests::implies_trailing_comma ... ok
+test assert::tests::implies_with_explicit_details ... ok
+test assert::tests::location_id_deterministic ... ok
+test assert::tests::location_id_different_for_different_inputs ... ok
+test assert::tests::location_id_empty_string ... ok
+test assert::tests::macros_with_mode_details ... ok
+test assert::tests::location_id_single_char_difference ... ok
+test assert::tests::minimal_unit_details_preserve_true_and_false_condition_evaluation ... ok
+test assert::tests::option_macros_compile ... ok
+test assert::tests::option_macros_with_explicit_details ... ok
+test assert::tests::result_macros_evaluate_once ... ok
+test assert::tests::result_macros_trailing_comma ... ok
+test assert::tests::result_macros_with_explicit_details ... ok
+test assert::tests::sometimes_err_passes_on_err ... ok
+test assert::tests::sometimes_err_records_ok ... ok
+test assert::tests::sometimes_ok_passes_on_ok ... ok
+test assert::tests::sometimes_ok_records_err ... ok
+test coverage::tests::different_values_different_slots ... ok
+test coverage::tests::fnv1a_basic ... ok
+test coverage::tests::key_domain_separation ... ok
+test coverage::tests::record_state_without_init_no_crash ... ok
+test coverage::tests::two_pairs_produce_four_slots ... ok
+test coverage::tests::slots_within_code_region ... ok
+test resources::tests::disabled_sdk_does_not_invent_a_memory_ceiling ... ok
+test transport::tests::payload_max_fits_in_page ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

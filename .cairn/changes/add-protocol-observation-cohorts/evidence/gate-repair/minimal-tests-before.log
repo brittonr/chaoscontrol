@@ -1,0 +1,243 @@
+ChaosControl development environment
+Rust: rustc 1.98.0 (88d9e12ae 2026-08-18)
+Clang: clang version 21.1.8
+
+Commands:
+  cargo build              Build VMM + tools
+  cargo test               Run unit tests
+  cargo clippy             Lint
+
+Guests & Initrds (Nix):
+  nix build .#guest-raft   Build Raft guest binary
+  nix build .#initrd-raft  Build Raft initrd image
+  nix build .#guest-sdk    Build SDK guest binary
+  nix build .#guest-net    Build net guest binary
+
+Exploration:
+  nix run .#explore-raft   Run Raft exploration (builds everything)
+  nix run .#explore        Run explorer with manual args
+
+Kernels:
+  nix build .#net-vmlinux       Virtio-net kernel
+  nix build .#kcov-vmlinux      KCOV kernel
+  nix build .#kcov-net-vmlinux  Both
+
+CI:
+  nix flake check          All checks (build, test, clippy, fmt)
+  nix build .#raft-sim     Run simulation test (needs KVM, ~10 min)
+   Compiling chaoscontrol-protocol v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-protocol)
+   Compiling serde_core v1.0.228
+   Compiling chaoscontrol-sdk v0.1.0 (/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/crates/chaoscontrol-sdk)
+warning: constant `CODE_REGION_END` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:39:7
+   |
+39 | const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / 2;
+   |       ^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `fnv1a` is never used
+  --> crates/chaoscontrol-sdk/src/coverage.rs:42:4
+   |
+42 | fn fnv1a(data: &[u8]) -> u64 {
+   |    ^^^^^
+
+warning: `chaoscontrol-sdk` (lib) generated 2 warnings
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1677:13
+     |
+1677 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1748:13
+     |
+1748 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `std` in this scope
+    --> crates/chaoscontrol-sdk/src/assert.rs:1783:13
+     |
+1783 |         use std::sync::atomic::{AtomicUsize, Ordering};
+     |             ^^^ use of unresolved module or unlinked crate `std`
+     |
+     = help: if you wanted to use a crate named `std`, use `cargo add std` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1760:13
+     |
+1760 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1799:13
+     |
+1799 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `std` in this scope
+    --> crates/chaoscontrol-sdk/src/assert.rs:1830:13
+     |
+1830 |         use std::sync::atomic::{AtomicUsize, Ordering};
+     |             ^^^ use of unresolved module or unlinked crate `std`
+     |
+     = help: if you wanted to use a crate named `std`, use `cargo add std` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1824:13
+     |
+1824 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0433]: cannot find module or crate `std` in this scope
+    --> crates/chaoscontrol-sdk/src/assert.rs:1903:13
+     |
+1903 |         use std::sync::atomic::{AtomicUsize, Ordering};
+     |             ^^^ use of unresolved module or unlinked crate `std`
+     |
+     = help: if you wanted to use a crate named `std`, use `cargo add std` to add it to your `Cargo.toml`
+
+error[E0432]: unresolved import `serde_json`
+    --> crates/chaoscontrol-sdk/src/assert.rs:1894:13
+     |
+1894 |         use serde_json::json;
+     |             ^^^^^^^^^^ use of unresolved module or unlinked crate `serde_json`
+     |
+     = help: if you wanted to use a crate named `serde_json`, use `cargo add serde_json` to add it to your `Cargo.toml`
+
+error[E0425]: cannot find type `String` in this scope
+    --> crates/chaoscontrol-sdk/src/assert.rs:1852:40
+     |
+1852 |         cc_assert_always_ok!(Ok::<i32, String>(42), "op ok");
+     |                                        ^^^^^^ not found in this scope
+     |
+help: you might be missing a type parameter
+     |
+1851 |     fn always_ok_passes_on_ok<String>() {
+     |                              ++++++++
+
+error[E0425]: cannot find type `String` in this scope
+    --> crates/chaoscontrol-sdk/src/assert.rs:1859:41
+     |
+1859 |         cc_assert_always_ok!(Err::<i32, String>("timeout".into()), "op ok err");
+     |                                         ^^^^^^ not found in this scope
+     |
+help: you might be missing a type parameter
+     |
+1856 |     fn always_ok_fails_on_err<String>() {
+     |                              ++++++++
+
+error[E0432]: unresolved import `chaoscontrol_protocol::guest_process`
+  --> crates/chaoscontrol-sdk/tests/multiprocess_shell.rs:1:28
+   |
+ 1 | use chaoscontrol_protocol::guest_process::{
+   |                            ^^^^^^^^^^^^^ could not find `guest_process` in `chaoscontrol_protocol`
+   |
+note: found an item that was configured out
+  --> crates/chaoscontrol-protocol/src/lib.rs:33:9
+   |
+32 | #[cfg(feature = "std")]
+   |       --------------- the item is gated behind the `std` feature
+33 | pub mod guest_process;
+   |         ^^^^^^^^^^^^^
+
+error[E0432]: unresolved import `chaoscontrol_protocol::process`
+  --> crates/chaoscontrol-sdk/tests/multiprocess_shell.rs:5:28
+   |
+ 5 | use chaoscontrol_protocol::process::{ProcessFaultAction, ProcessFaultCommand};
+   |                            ^^^^^^^ could not find `process` in `chaoscontrol_protocol`
+   |
+note: found an item that was configured out
+  --> crates/chaoscontrol-protocol/src/lib.rs:41:9
+   |
+40 | #[cfg(feature = "std")]
+   |       --------------- the item is gated behind the `std` feature
+41 | pub mod process;
+   |         ^^^^^^^
+
+error[E0432]: unresolved import `chaoscontrol_sdk::supervisor`
+  --> crates/chaoscontrol-sdk/tests/multiprocess_shell.rs:6:23
+   |
+ 6 | use chaoscontrol_sdk::supervisor::{StdProcessRuntime, Supervisor};
+   |                       ^^^^^^^^^^ could not find `supervisor` in `chaoscontrol_sdk`
+   |
+note: found an item that was configured out
+  --> crates/chaoscontrol-sdk/src/lib.rs:93:9
+   |
+92 | #[cfg(feature = "full")]
+   |       ---------------- the item is gated behind the `full` feature
+93 | pub mod supervisor;
+   |         ^^^^^^^^^^
+
+error[E0433]: cannot find type `Vec` in this scope
+   --> crates/chaoscontrol-sdk/src/coverage.rs:333:28
+    |
+333 |             let mut buf1 = Vec::new();
+    |                            ^^^ use of undeclared type `Vec`
+
+error[E0433]: cannot find type `Vec` in this scope
+   --> crates/chaoscontrol-sdk/src/coverage.rs:340:28
+    |
+340 |             let mut buf2 = Vec::new();
+    |                            ^^^ use of undeclared type `Vec`
+
+error[E0433]: cannot find type `Vec` in this scope
+   --> crates/chaoscontrol-sdk/src/coverage.rs:366:25
+    |
+366 |         let mut slots = Vec::new();
+    |                         ^^^ use of undeclared type `Vec`
+
+error[E0433]: cannot find type `Vec` in this scope
+   --> crates/chaoscontrol-sdk/src/coverage.rs:368:28
+    |
+368 |             let mut buf1 = Vec::new();
+    |                            ^^^ use of undeclared type `Vec`
+
+error[E0433]: cannot find type `Vec` in this scope
+   --> crates/chaoscontrol-sdk/src/coverage.rs:374:28
+    |
+374 |             let mut buf2 = Vec::new();
+    |                            ^^^ use of undeclared type `Vec`
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `chaoscontrol-sdk` (test "multiprocess_shell") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: cannot find macro `json` in this scope
+  --> crates/chaoscontrol-sdk/examples/rust_workload_harness.rs:26:29
+   |
+26 |     workload.setup_complete(json!({
+   |                             ^^^^
+
+error[E0433]: cannot find type `WorkloadHarness` in this scope
+ --> crates/chaoscontrol-sdk/examples/rust_workload_harness.rs:9:20
+  |
+9 |     let workload = WorkloadHarness::new("sample-rust-service")
+  |                    ^^^^^^^^^^^^^^^ use of undeclared type `WorkloadHarness`
+
+error[E0433]: cannot find type `WorkloadEvidenceClass` in this scope
+  --> crates/chaoscontrol-sdk/examples/rust_workload_harness.rs:18:9
+   |
+18 |         WorkloadEvidenceClass::SimulatorLocal,
+   |         ^^^^^^^^^^^^^^^^^^^^^ use of undeclared type `WorkloadEvidenceClass`
+
+error[E0433]: cannot find type `WorkloadEvidenceClass` in this scope
+  --> crates/chaoscontrol-sdk/examples/rust_workload_harness.rs:23:9
+   |
+23 |         WorkloadEvidenceClass::VmSnapshotReplay,
+   |         ^^^^^^^^^^^^^^^^^^^^^ use of undeclared type `WorkloadEvidenceClass`
+
+For more information about this error, try `rustc --explain E0433`.
+Some errors have detailed explanations: E0425, E0432, E0433.
+For more information about an error, try `rustc --explain E0425`.
+error: could not compile `chaoscontrol-sdk` (lib test) due to 16 previous errors
+error: could not compile `chaoscontrol-sdk` (example "rust_workload_harness" test) due to 4 previous errors

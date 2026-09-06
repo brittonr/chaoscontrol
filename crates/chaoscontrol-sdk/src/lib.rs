@@ -52,6 +52,10 @@
 
 #![cfg_attr(not(feature = "full"), no_std)]
 
+// The host test harness needs allocation. The minimal library still uses no_std.
+#[cfg(all(test, not(feature = "full")))]
+extern crate std;
+
 pub mod assert;
 #[cfg(feature = "full")]
 mod assertion_catalog;

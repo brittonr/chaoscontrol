@@ -1637,6 +1637,37 @@ macro_rules! cc_assert_sometimes_err {
 mod tests {
     use super::*;
 
+    // The full API accepts JSON. The minimal API accepts unit details.
+    #[cfg(feature = "full")]
+    macro_rules! details_for_mode {
+        ($($value:tt)*) => { serde_json::json!($($value)*) };
+    }
+
+    #[cfg(not(feature = "full"))]
+    macro_rules! details_for_mode {
+        ($($value:tt)*) => {
+            ()
+        };
+    }
+
+    #[cfg(not(feature = "full"))]
+    #[test]
+    fn minimal_unit_details_preserve_true_and_false_condition_evaluation() {
+        for condition in [true, false] {
+            let evaluations = core::cell::Cell::new(0);
+            cc_assert_raw!(
+                AssertionKind::Always,
+                {
+                    evaluations.set(evaluations.get() + 1);
+                    condition
+                },
+                "minimal condition evaluation",
+                &(),
+            );
+            assert_eq!(evaluations.get(), 1);
+        }
+    }
+
     #[test]
     fn location_id_deterministic() {
         let a = location_id("foo.rs:42:valid leader");
@@ -1673,11 +1704,10 @@ mod tests {
     }
 
     #[test]
-    fn macros_with_json_details() {
-        use serde_json::json;
-        cc_assert_always!(true, "msg", &json!({"key": 42}));
-        cc_assert_sometimes!(true, "msg2", &json!({"x": "y"}));
-        cc_assert_reachable!("msg3", &json!({}));
+    fn macros_with_mode_details() {
+        cc_assert_always!(true, "msg", &details_for_mode!({"key": 42}));
+        cc_assert_sometimes!(true, "msg2", &details_for_mode!({"x": "y"}));
+        cc_assert_reachable!("msg3", &details_for_mode!({}));
     }
 
     #[test]
@@ -1745,31 +1775,34 @@ mod tests {
 
     #[test]
     fn assert_raw_macro_with_details() {
-        use serde_json::json;
         cc_assert_raw!(
             AssertionKind::Always,
             true,
             "raw details",
-            &json!({"k": "v"})
+            &details_for_mode!({"k": "v"})
         );
-        cc_assert_raw!(AssertionKind::Sometimes, false, "raw details 2", &json!({}),);
+        cc_assert_raw!(
+            AssertionKind::Sometimes,
+            false,
+            "raw details 2",
+            &details_for_mode!({}),
+        );
     }
 
     #[test]
     fn comparison_macros_with_explicit_details() {
-        use serde_json::json;
-        cc_assert_always_lt!(1, 2, "lt", &json!({"custom": true}));
-        cc_assert_always_le!(1, 2, "le", &json!({"custom": true}));
-        cc_assert_always_gt!(2, 1, "gt", &json!({"custom": true}));
-        cc_assert_always_ge!(2, 1, "ge", &json!({"custom": true}));
-        cc_assert_always_eq!(1, 1, "eq", &json!({"custom": true}));
-        cc_assert_always_ne!(1, 2, "ne", &json!({"custom": true}));
-        cc_assert_sometimes_lt!(1, 2, "slt", &json!({"custom": true}));
-        cc_assert_sometimes_le!(1, 2, "sle", &json!({"custom": true}));
-        cc_assert_sometimes_gt!(2, 1, "sgt", &json!({"custom": true}));
-        cc_assert_sometimes_ge!(2, 1, "sge", &json!({"custom": true}));
-        cc_assert_sometimes_eq!(1, 1, "seq", &json!({"custom": true}));
-        cc_assert_sometimes_ne!(1, 2, "sne", &json!({"custom": true}));
+        cc_assert_always_lt!(1, 2, "lt", &details_for_mode!({"custom": true}));
+        cc_assert_always_le!(1, 2, "le", &details_for_mode!({"custom": true}));
+        cc_assert_always_gt!(2, 1, "gt", &details_for_mode!({"custom": true}));
+        cc_assert_always_ge!(2, 1, "ge", &details_for_mode!({"custom": true}));
+        cc_assert_always_eq!(1, 1, "eq", &details_for_mode!({"custom": true}));
+        cc_assert_always_ne!(1, 2, "ne", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_lt!(1, 2, "slt", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_le!(1, 2, "sle", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_gt!(2, 1, "sgt", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_ge!(2, 1, "sge", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_eq!(1, 1, "seq", &details_for_mode!({"custom": true}));
+        cc_assert_sometimes_ne!(1, 2, "sne", &details_for_mode!({"custom": true}));
     }
 
     #[test]
@@ -1796,9 +1829,8 @@ mod tests {
 
     #[test]
     fn option_macros_with_explicit_details() {
-        use serde_json::json;
-        cc_assert_always_some!(Some(1), "some", &json!({"x": 1}));
-        cc_assert_sometimes_some!(Some(1), "some2", &json!({"x": 2}));
+        cc_assert_always_some!(Some(1), "some", &details_for_mode!({"x": 1}));
+        cc_assert_sometimes_some!(Some(1), "some2", &details_for_mode!({"x": 2}));
     }
 
     // ── Implies macro tests ────────────────────────────────────────
@@ -1821,8 +1853,7 @@ mod tests {
 
     #[test]
     fn implies_with_explicit_details() {
-        use serde_json::json;
-        cc_assert_implies!(true, true, "with details", &json!({"node": 3}));
+        cc_assert_implies!(true, true, "with details", &details_for_mode!({"node": 3}));
     }
 
     #[test]
@@ -1849,14 +1880,17 @@ mod tests {
 
     #[test]
     fn always_ok_passes_on_ok() {
-        cc_assert_always_ok!(Ok::<i32, String>(42), "op ok");
+        cc_assert_always_ok!(Ok::<i32, std::string::String>(42), "op ok");
     }
 
     #[test]
     fn always_ok_fails_on_err() {
         // This fires the assertion with condition=false, which is fine —
         // we're testing that it compiles and runs, not that VM catches it.
-        cc_assert_always_ok!(Err::<i32, String>("timeout".into()), "op ok err");
+        cc_assert_always_ok!(
+            Err::<i32, std::string::String>("timeout".into()),
+            "op ok err"
+        );
     }
 
     #[test]
@@ -1891,11 +1925,18 @@ mod tests {
 
     #[test]
     fn result_macros_with_explicit_details() {
-        use serde_json::json;
-        cc_assert_always_ok!(Ok::<i32, &str>(1), "ok det", &json!({"n": 1}));
-        cc_assert_sometimes_ok!(Ok::<i32, &str>(1), "sok det", &json!({"n": 2}));
-        cc_assert_always_err!(Err::<i32, &str>("e"), "err det", &json!({"n": 3}));
-        cc_assert_sometimes_err!(Err::<i32, &str>("e"), "serr det", &json!({"n": 4}));
+        cc_assert_always_ok!(Ok::<i32, &str>(1), "ok det", &details_for_mode!({"n": 1}));
+        cc_assert_sometimes_ok!(Ok::<i32, &str>(1), "sok det", &details_for_mode!({"n": 2}));
+        cc_assert_always_err!(
+            Err::<i32, &str>("e"),
+            "err det",
+            &details_for_mode!({"n": 3})
+        );
+        cc_assert_sometimes_err!(
+            Err::<i32, &str>("e"),
+            "serr det",
+            &details_for_mode!({"n": 4})
+        );
     }
 
     #[test]
@@ -1919,6 +1960,5 @@ mod tests {
         cc_assert_always_err!(Err::<i32, &str>("e"), "trailing",);
     }
 
-    // no_std stubs compile without the `full` feature.
-    // Verified by building with `default-features = false` in CI.
+    // The minimal test target exercises these assertions with unit details.
 }

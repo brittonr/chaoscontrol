@@ -1,5 +1,6 @@
 const EXPECTED_HYPERCALL_PAGE_BYTES: usize = 4096;
 const MESSAGE_BUFFER_BYTES: usize = 256;
+#[cfg(feature = "std")]
 const ROUNDTRIP_BUFFER_BYTES: usize = 1024;
 const UNDERSIZED_BUFFER_BYTES: usize = 4;
 const CONDITION_FLAG_MASK: u8 = 0x01;
@@ -10,6 +11,7 @@ const JSON_PAYLOAD_BYTES: usize = 17;
 const EMPTY_PAYLOAD_BYTES: usize = 6;
 const MESSAGE_START: usize = 2;
 const MESSAGE_END: usize = 7;
+#[cfg(feature = "std")]
 const TRUNCATED_MESSAGE_BYTES: [u8; 2] = [0x05, 0x00];
 const SERIAL_PORT_START: u16 = 0x3F8;
 const SERIAL_PORT_END: u16 = 0x3FF;

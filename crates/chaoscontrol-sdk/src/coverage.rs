@@ -35,10 +35,15 @@
 //  Full mode: real coverage collection
 // ═══════════════════════════════════════════════════════════════════════
 
+#[cfg(any(feature = "full", test))]
+const REGION_PARTS: usize = 2;
+
 /// Code-region end — lower half of bitmap. Matches explorer's `CODE_REGION_END`.
-const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / 2;
+#[cfg(any(feature = "full", test))]
+const CODE_REGION_END: usize = chaoscontrol_protocol::COVERAGE_BITMAP_SIZE / REGION_PARTS;
 
 /// FNV-1a 64-bit hash.
+#[cfg(any(feature = "full", test))]
 fn fnv1a(data: &[u8]) -> u64 {
     const BASIS: u64 = 14695981039346656037;
     const PRIME: u64 = 1099511628211;
@@ -330,14 +335,14 @@ mod tests {
     fn slots_within_code_region() {
         // All slots must be in [0, CODE_REGION_END)
         for (k, v) in &[("term", "3"), ("role", "leader"), ("index", "42")] {
-            let mut buf1 = Vec::new();
+            let mut buf1 = std::vec::Vec::new();
             buf1.extend_from_slice(k.as_bytes());
             buf1.push(b'=');
             buf1.extend_from_slice(v.as_bytes());
             let slot1 = fnv1a(&buf1) as usize % CODE_REGION_END;
             assert!(slot1 < CODE_REGION_END);
 
-            let mut buf2 = Vec::new();
+            let mut buf2 = std::vec::Vec::new();
             buf2.extend_from_slice(v.as_bytes());
             buf2.push(b':');
             buf2.extend_from_slice(k.as_bytes());
@@ -363,15 +368,15 @@ mod tests {
     fn two_pairs_produce_four_slots() {
         // Two pairs should touch 4 slot indices (2 per pair)
         let pairs = [("term", "3"), ("role", "leader")];
-        let mut slots = Vec::new();
+        let mut slots = std::vec::Vec::new();
         for (key, value) in &pairs {
-            let mut buf1 = Vec::new();
+            let mut buf1 = std::vec::Vec::new();
             buf1.extend_from_slice(key.as_bytes());
             buf1.push(b'=');
             buf1.extend_from_slice(value.as_bytes());
             slots.push(fnv1a(&buf1) as usize % CODE_REGION_END);
 
-            let mut buf2 = Vec::new();
+            let mut buf2 = std::vec::Vec::new();
             buf2.extend_from_slice(value.as_bytes());
             buf2.push(b':');
             buf2.extend_from_slice(key.as_bytes());

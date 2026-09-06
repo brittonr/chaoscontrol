@@ -39,7 +39,7 @@ Allowed terminal states are validated, blocked, exhausted, and user-decision-req
 | Serde inline scopes | Qualify admitted derives and remove compiler-proven unused imports | Derive ownership stays explicit without wire changes | `serde-scopes.md` | Tests and Clippy pass, report decreases to 1,766 | simpler | Ambiguous scopes remain outside the helper | Retain the rejected scopes for manual review | validated |
 | Exact integer framing | Assert the target-width invariant instead of substituting lengths | Representable canonical bytes stay exact | `framing.md` | Tests and Clippy pass, report decreases to 1,762 | simpler | Other integer policies need separate admission review | Retain boundary regressions | validated |
 | Producer bundle identity | Remeasure the declared SpaceWasm bundle | Only the admitted complete bundle can execute | `spacewasm.md` and observed manifest | Both observed manifest digests differ from the admitted digest | equivalent | Compatible producer evidence or a new-cohort review is absent | Resolve the producer cohort without changing the guard | blocked |
-| Remaining source rules | Correct each rule at its owner | The strict selected gate passes | Source, fixtures, and strict receipt | Latest pinned report has 1,762 warnings | equivalent | Source findings remain after the declared correction rounds | Regroup before another bounded source pass | active |
+| Remaining source rules | Correct each rule at its owner | The strict selected gate passes | Source, fixtures, and strict receipt | Latest pinned report has 1,455 warnings | equivalent | Source findings remain after the declared correction rounds | Regroup before another bounded source pass | blocked |
 
 ## Resumed correction budget
 
@@ -75,4 +75,15 @@ The private-layout route passes without a Rust patch or shared vendor-root confi
 The source passes remove another 52 findings. Their tests and strict Clippy pass.
 All pinned policy identifiers and enforcement settings remain unchanged.
 The remaining source work is incomplete. The separate SpaceWasm identity mismatch still blocks the broad rail.
+
+## Source pass after 61097cd
+
+`source-rounds.md` records the next three-batch budget and its terminal result.
+The owner passes remove 307 more findings without policy changes. The feature-aware harness repairs the separate no-default test scope.
+`source-checked-nix.log` still reports 1,455 warnings in the focused scope and zero findings in the strict isolated adapter scope.
+The latter cannot substitute for the former.
+
+The current full check reaches the SpaceWasm guard and rejects manifest `ded66a4959c9efeda62f2eb3d13a06de6df0ad01a1d53f222c199ab6e66d9eb7`.
+This matches the retained rooted observation but not the admitted identity. It does not establish the cause of the drift.
+The pass ends with checked partial progress and an exhausted source budget. Neither open lifecycle task has complete acceptance evidence.
 

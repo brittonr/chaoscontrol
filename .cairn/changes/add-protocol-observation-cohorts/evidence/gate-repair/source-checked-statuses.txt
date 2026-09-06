@@ -1,0 +1,21 @@
+source-checked-tests: 0
+source-checked-clippy: 0
+source-checked-rustdoc: 0
+source-checked-rustfmt: 0
+source-checked-nix: 0
+source-checked-replay-build: 0
+source-checked-replay: 0
+source-checked-product-scope: 0
+source-checked-registry: 0
+source-checked-cairn-validate: 0
+source-checked-cairn-proposal: 0
+source-checked-cairn-design: 0
+source-checked-cairn-tasks: 0
+minimal-tests-final: 0
+minimal-clippy-final: 0
+minimal-build-final: 0
+minimal-matrix: 0
+minimal-reject-example: 101 (expected rejection)
+minimal-reject-multiprocess_shell: 101 (expected rejection)
+minimal-reject-stable_assertions: 101 (expected rejection)
+source-checked-flake: 1 (SpaceWasm manifest admission blocked)

@@ -1,0 +1,9 @@
+/home/brittonr/.cache/cc-source-checked-20260906 -> /nix/store/dgqrmpccr0a9929dydclnqq9b2jh7kzf-octet-consumer-check
+/home/brittonr/.cache/cc-source-checked-20260906-1 -> /nix/store/kghgj1ss19xcipq0h27pg51bqnlwgnb7-chaoscontrol-protocol-observation-test-0.1.0
+/home/brittonr/.cache/cc-source-checked-20260906-2 -> /nix/store/f5wviam8c2r5yz51khv1if9krzwqdnz0-protocol-observation-contracts
+/home/brittonr/.cache/cc-source-checked-20260906-3 -> /nix/store/pivznl45bf9xps5b6mw02kxj8dsvc85i-vm-cohort-vendor-tests
+/home/brittonr/.cache/cc-source-checked-20260906-4 -> /nix/store/5kg6rakhpdzw327ba1cypsph7af9drgh-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0
+/home/brittonr/.cache/cc-source-checked-20260906-5 -> /nix/store/m4r60xwaasaaagv5kx9vgfkdv1n5i9sd-chaoscontrol-deny-0.1.0
+/home/brittonr/.cache/cc-source-checked-20260906-6 -> /nix/store/zmyf0li7cpkiq6azx1908a4vllrzryz7-chaoscontrol-source-filter-tests
+/home/brittonr/.cache/cc-source-checked-20260906-7 -> /nix/store/hmaa70hiib1jhlr8mmvljas47fwspmlk-octet-consumer-check
+/home/brittonr/.cache/cc-source-checked-20260906-8 -> /nix/store/kj38im3hrdvq1pj7nsyfwdlydywpk25l-chaoscontrol-license-boundary

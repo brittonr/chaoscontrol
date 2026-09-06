@@ -14,5 +14,16 @@ It does not edit generated BPF skeletons or unknown absolute paths.
 It does not remove those findings from Octet or change the lint scope.
 The logs retain proposals, applied edits, and positive and negative controls.
 
+The later binding batch retains `qualify-owner-bindings.rs.txt`.
+It processes reported bindings separately and preserves unrelated exports and conditional imports.
+Its controls reject namespace conflicts, selected conditional exports, opaque macro uses, comment overlap, and string-valued attribute references.
+The explicit Fenix revision is `03864c059200a8a96f2ee6bb050c69eae96f57ca`, inside the repository development shell.
+This toolchain runs the helper only. Product compiler and Cargo selection remain unchanged.
+
+`binding-exact-syntax-attempt.rs.txt` retains a failed comparison method.
+It rejects formatter changes to single-item import groups and punctuation. It is not acceptance evidence or the current helper.
+`binding-formatted-plan.log` instead records exact comparisons after reconstruction from Git source and the same formatter.
+Neither method proves Rust name resolution or semantic equivalence.
+
 `install-hook-negative.nix.txt` is a missing-metadata-command fixture.
 Its expected substitution failure guards against unnoticed changes to the pinned Crane hook.

@@ -10,7 +10,8 @@ String-valued attributes also block a referenced binding. Edits cannot overlap s
 
 Positive and negative controls cover these rules, partial acceptance, idempotence, malformed Rust, and rejected report paths.
 The helper remains a syntax tool. It does not resolve Rust names or establish independent review.
-The public paths, signatures, wire fields, constants, and runtime decisions retain their existing meaning under the selected compiler checks.
+The patch qualifies private references without edits to wire fields, constants, or runtime decisions.
+Compiler checks and behavior tests support this bounded result, not exhaustive API or semantic equivalence.
 
 ## Checks and correction
 

@@ -9,6 +9,9 @@ Two tasks remain open. Stored-parent replay now passes its explicit KVM tests.
 The checkpoint does not authorize lifecycle completion or integration into `main`.
 Follow-up details are in `evidence/verification-follow-up-2026-09-05/README.md`.
 The later Cargo and source repairs use `evidence/gate-repair/`.
+The current source pass adds `7ed930b`, `4959d75`, and `4343e37` after the published `61097cd` checkpoint.
+The retained `source-checked-*` logs describe the current product inputs.
+They do not establish strict acceptance or accepted-contract publication.
 
 The worktree starts at `31300fa1a2d29c7496e8316f065c156f80343143`.
 The branch is `drain/protocol-observation-cohorts-20260904`.
@@ -41,7 +44,12 @@ Both controls pass after the corrections.
 
 The no-default SDK build initially failed because the guest-supervisor binary lacked its `full` feature requirement.
 `evidence/attempts/sdk-no-default-before-bin-gate.log` retains that failure.
-The corrected build succeeds. Two inherited coverage-helper warnings remain in that configuration.
+The corrected checkpoint build succeeds with two inherited coverage-helper warnings.
+The later feature-aware test repair also removes those warnings from the minimal library build.
+Its all-target no-default tests pass 15 protocol and 42 SDK cases. Strict Clippy passes in the same scope.
+Full-only example, supervisor, catalog, and multiprocess targets retain explicit feature requirements.
+The three new target requirements reject explicit no-default requests. Their full-feature tests remain enabled.
+`evidence/gate-repair/minimal.md` records the fresh failures, two target corrections, and positive and negative outcomes.
 
 ## Checkpoint validation
 
@@ -92,9 +100,11 @@ The checkpoint Octet check rejected two implicit guest-probe defaults.
 Both probe paths now use one fully explicit constructor for the reviewed CPU, memory, boot, and scheduler configuration.
 The seed retains its full width. Four probe tests pass, including an exact comparison with the previous configuration.
 That follow-up Octet check reported zero errors and 2,458 warnings.
-Later source corrections reduced the same pinned report to 1,762 warnings and zero errors.
+Later source corrections reduced the same pinned report to 1,455 warnings and zero errors.
 The corrections cover explicit derives, qualified owner paths, and private protocol names with public compatibility exports.
 The continued passes cover admitted inline Serde scopes and exact integer framing without substituted lengths.
+The latest three-batch pass removes 307 findings and repairs the separate minimal test harness.
+The current aggregate reduction is 1,003 findings from the original 2,458-warning report.
 Seven-package tests and strict Clippy pass across all targets and all features after these corrections.
 Naming, owner-path, module-filename, and generated-source findings remain.
 The warning-only result is not strict acceptance evidence. The quality task remains open.
@@ -120,7 +130,8 @@ The official static mirror supplied their exact expected fixed-output objects wi
 The logs and GC roots retain these transport repairs.
 Later checks exposed and resolved isolated adapter lockfile drift and the same Cargo panic during artifact installation.
 Cargo regenerated only two local `serde_json` dependency edges in the isolated adapter lockfile.
-Its unchanged strict Octet gate now passes with zero findings and no lockfile mutation.
+Its unchanged strict Octet gate passes with zero findings and no lockfile mutation.
+The current `source-checked-nix.log` repeats this isolated result alongside the broader 1,455-warning report.
 Both Crane compositions now use patched metadata for artifact selection while retaining the normal Cargo build command.
 The Raft guest build and the missing-command negative control pass their expected outcomes.
 
@@ -132,8 +143,10 @@ Compiler parity, negative controls, nine real adapter cases, and dependency poli
 Both host and musl builds consume the same explicit vendor projection.
 The source-filter controls reject `.cairn/` and `.pi/` inputs without excluding similar directory names.
 
-The next broad retry rejects the SpaceWasm bundle manifest before runtime comparison.
-A fresh rooted bundle also differs from the admitted manifest and bundle identities, although its host runner digest matches.
+The current broad retry rejects the SpaceWasm bundle manifest before runtime comparison.
+`source-checked-flake.log` reports the same `ded66a4959c9efeda62f2eb3d13a06de6df0ad01a1d53f222c199ab6e66d9eb7` digest as the retained rooted manifest.
+The admitted digest remains `13058ea2d9913348a203cceff7b58d98b6446610ac80518dc3359b8d7ee57472`.
+The rooted bundle also differs from the admitted bundle identity, although its host runner digest matches.
 `evidence/gate-repair/spacewasm.md` records the exact digests and the missing evidence for a cause diagnosis.
 No producer worktree, provider pin, expected digest, or admission guard changed.
 A release-wide validation pass remains unavailable.
@@ -152,6 +165,18 @@ The retained attempts explain those failures. No home permission or Nix security
 The configured default build directory worked after the storage pressure cleared.
 Final retries use that default and retain logs in this change package.
 Neither the storage failures nor the changed-input attempt are validation passes.
+
+## Current validation
+
+The seven-package all-target, all-feature tests, strict Clippy, strict Rustdoc, and scoped formatting pass after the final target declaration.
+The original no-default build, compatible no-default tests, and strict no-default Clippy also pass.
+The focused Nix command passes protocol tests/contracts, vendor controls/adapter, dependency policy, source filtering, the license boundary, and strict isolated adapter checks.
+Four KVM replay cases pass in 68.28 seconds under a 120-second external timeout after their build phase.
+The replay claim remains limited to the declared pre-halt ELF profile.
+
+The source pass uses all three declared batches. Its final source report remains warning-only.
+The full flake check remains blocked by SpaceWasm manifest admission.
+No accepted-spec sync, archive, or main integration occurs. Both remaining tasks stay open.
 
 ## Non-claims
 

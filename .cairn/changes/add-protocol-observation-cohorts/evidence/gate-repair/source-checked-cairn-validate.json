@@ -1,0 +1,1207 @@
+{
+  "change_issues": [],
+  "changes": 14,
+  "cross_repo_dependencies": [],
+  "cross_repo_evidence_issues": [],
+  "findings": [],
+  "issues": [],
+  "layout": "cairn",
+  "policy": "cairn-default",
+  "profile_issues": [],
+  "resolution": {
+    "diagnostics": [],
+    "locator_consulted": false,
+    "registry_lookup": "local_locator_only",
+    "selected": {
+      "project_identity": null,
+      "root": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904",
+      "source": "explicit_root",
+      "store_id": null,
+      "store_identity": null
+    },
+    "valid": true
+  },
+  "spec_findings": [],
+  "spec_issues": [],
+  "spec_substance": [
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-adversarial-wasm-component-rail/specs/wasm-component-exploration/spec.md",
+      "requirement_blocks": 11,
+      "scenario_blocks": 19,
+      "substantive_requirement_blocks": 11
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-identity-aware-connectivity-campaign/specs/identity-aware-connectivity/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 18,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-protocol-observation-cohorts/specs/protocol-observation-cohorts/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 19,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/adopt-campaign-core/specs/campaign-core-adoption/spec.md",
+      "requirement_blocks": 19,
+      "scenario_blocks": 40,
+      "substantive_requirement_blocks": 19
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/benchmark-bug-corpus/specs/benchmark-bug-corpus/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 13,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-bounded-input-repository/specs/bounded-input-mechanisms/spec.md",
+      "requirement_blocks": 9,
+      "scenario_blocks": 11,
+      "substantive_requirement_blocks": 9
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-deterministic-simulation-core/specs/deterministic-simulation-core/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 14,
+      "substantive_requirement_blocks": 12
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/exercise-projected-role-protocol-faults/specs/role-protocol-fault-campaign/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 17,
+      "substantive_requirement_blocks": 12
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/export-kamacite-execution-evidence/specs/kamacite-execution-export/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 19,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/externalize-large-dogfood-artifacts/specs/dogfood-artifact-retention/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-assertion-semantics-core/specs/assertion-semantics-core/spec.md",
+      "requirement_blocks": 9,
+      "scenario_blocks": 11,
+      "substantive_requirement_blocks": 9
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-deterministic-block-model/specs/deterministic-block-model/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-failure-reducer-core/specs/failure-reducer-core/spec.md",
+      "requirement_blocks": 11,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 11
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/specs/fault-application-evidence/spec.md",
+      "requirement_blocks": 4,
+      "scenario_blocks": 7,
+      "substantive_requirement_blocks": 4
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/specs/smr-reliability-workload/spec.md",
+      "requirement_blocks": 5,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 5
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/architecture-module-boundaries/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 8,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/assertion-identity/spec.md",
+      "requirement_blocks": 11,
+      "scenario_blocks": 25,
+      "substantive_requirement_blocks": 11
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/bounded-tree-adoption/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/causality-analysis-engine/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 8,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/complete-fault-surface/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 11,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/deterministic-schedule-diversity/spec.md",
+      "requirement_blocks": 5,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 5
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/deterministic-simulation-kernel/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/deterministic-smp-scheduling/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 13,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/deterministic-snapshots/spec.md",
+      "requirement_blocks": 24,
+      "scenario_blocks": 36,
+      "substantive_requirement_blocks": 24
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/distributed-protocol-simulation/spec.md",
+      "requirement_blocks": 4,
+      "scenario_blocks": 7,
+      "substantive_requirement_blocks": 4
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/ebpf-trace-evidence/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 16,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/fallback-assertion-transport/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 8,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/fault-application-evidence/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 13,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/findability-survival-statistics/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/fresh-workload-proofs/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/guest-multiprocess-topology/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/guest-os-determinism-boundary/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/history-phenomena-checker/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/kernel-bundle-validation/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 15,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/kvm-release-evidence/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/nickel-toolchain/spec.md",
+      "requirement_blocks": 5,
+      "scenario_blocks": 6,
+      "substantive_requirement_blocks": 5
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/oci-container-intake/spec.md",
+      "requirement_blocks": 6,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 6
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/product-scope-and-doc-freshness/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/record-waltier-dst-reference/spec.md",
+      "requirement_blocks": 4,
+      "scenario_blocks": 4,
+      "substantive_requirement_blocks": 4
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/runtime-capacity/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 11,
+      "substantive_requirement_blocks": 7
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/rust-owned-product-automation/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/sdk-parity-and-guidance/spec.md",
+      "requirement_blocks": 4,
+      "scenario_blocks": 5,
+      "substantive_requirement_blocks": 4
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/semantic-history/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 22,
+      "substantive_requirement_blocks": 12
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/simulator-campaign-profiles/spec.md",
+      "requirement_blocks": 9,
+      "scenario_blocks": 9,
+      "substantive_requirement_blocks": 9
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/smr-reliability-workload/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 23,
+      "substantive_requirement_blocks": 12
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/spacewasm-mvp-differential/spec.md",
+      "requirement_blocks": 13,
+      "scenario_blocks": 23,
+      "substantive_requirement_blocks": 13
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/state-machine-property-coverage/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 12,
+      "substantive_requirement_blocks": 10
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/sut-declared-event-branching/spec.md",
+      "requirement_blocks": 5,
+      "scenario_blocks": 8,
+      "substantive_requirement_blocks": 5
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/typed-operator-commands/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 10,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/unified-agpl-license/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 8,
+      "substantive_requirement_blocks": 8
+    },
+    {
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/specs/virtio-guest-input-safety/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 14,
+      "substantive_requirement_blocks": 10
+    }
+  ],
+  "specs_validated": 51,
+  "substance": [
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-adversarial-wasm-component-rail/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 29,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-adversarial-wasm-component-rail/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-adversarial-wasm-component-rail/specs/wasm-component-exploration/spec.md",
+      "requirement_blocks": 11,
+      "scenario_blocks": 19,
+      "substantive_lines": 69,
+      "substantive_requirement_blocks": 11,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 11,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-adversarial-wasm-component-rail/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 11,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 11,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 11
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-identity-aware-connectivity-campaign/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 63,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-identity-aware-connectivity-campaign/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 27,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-identity-aware-connectivity-campaign/specs/identity-aware-connectivity/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 18,
+      "substantive_lines": 79,
+      "substantive_requirement_blocks": 10,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 20,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-identity-aware-connectivity-campaign/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 20,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 20,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 20
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-protocol-observation-cohorts/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 43,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-protocol-observation-cohorts/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 15,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-protocol-observation-cohorts/specs/protocol-observation-cohorts/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 19,
+      "substantive_lines": 66,
+      "substantive_requirement_blocks": 8,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 22,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/add-protocol-observation-cohorts/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 22,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 22,
+      "task_done": 20,
+      "task_in_progress": 0,
+      "task_todo": 2
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/adopt-campaign-core/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 59,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/adopt-campaign-core/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 18,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/adopt-campaign-core/specs/campaign-core-adoption/spec.md",
+      "requirement_blocks": 19,
+      "scenario_blocks": 40,
+      "substantive_lines": 143,
+      "substantive_requirement_blocks": 19,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 25,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/adopt-campaign-core/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 25,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 25,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 25
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/benchmark-bug-corpus/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 10,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/benchmark-bug-corpus/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 11,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/benchmark-bug-corpus/specs/benchmark-bug-corpus/spec.md",
+      "requirement_blocks": 7,
+      "scenario_blocks": 13,
+      "substantive_lines": 47,
+      "substantive_requirement_blocks": 7,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 9,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/benchmark-bug-corpus/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 9,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 9,
+      "task_done": 1,
+      "task_in_progress": 0,
+      "task_todo": 8
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-bounded-input-repository/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 21,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-bounded-input-repository/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-bounded-input-repository/specs/bounded-input-mechanisms/spec.md",
+      "requirement_blocks": 9,
+      "scenario_blocks": 11,
+      "substantive_lines": 54,
+      "substantive_requirement_blocks": 9,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 16,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-bounded-input-repository/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 16,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 16,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 16
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-deterministic-simulation-core/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 22,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-deterministic-simulation-core/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-deterministic-simulation-core/specs/deterministic-simulation-core/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 14,
+      "substantive_lines": 68,
+      "substantive_requirement_blocks": 12,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 21,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/establish-deterministic-simulation-core/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 21,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 21,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 21
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/exercise-projected-role-protocol-faults/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 95,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/exercise-projected-role-protocol-faults/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 28,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/exercise-projected-role-protocol-faults/specs/role-protocol-fault-campaign/spec.md",
+      "requirement_blocks": 12,
+      "scenario_blocks": 17,
+      "substantive_lines": 69,
+      "substantive_requirement_blocks": 12,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 25,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/exercise-projected-role-protocol-faults/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 25,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 25,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 25
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/export-kamacite-execution-evidence/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 39,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/export-kamacite-execution-evidence/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 19,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/export-kamacite-execution-evidence/specs/kamacite-execution-export/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 19,
+      "substantive_lines": 77,
+      "substantive_requirement_blocks": 10,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 12,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/export-kamacite-execution-evidence/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 22,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 12,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 12
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/externalize-large-dogfood-artifacts/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 9,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/externalize-large-dogfood-artifacts/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 13,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/externalize-large-dogfood-artifacts/specs/dogfood-artifact-retention/spec.md",
+      "requirement_blocks": 8,
+      "scenario_blocks": 10,
+      "substantive_lines": 39,
+      "substantive_requirement_blocks": 8,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 10,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/externalize-large-dogfood-artifacts/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 10,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 10,
+      "task_done": 1,
+      "task_in_progress": 0,
+      "task_todo": 9
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-assertion-semantics-core/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 20,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-assertion-semantics-core/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-assertion-semantics-core/specs/assertion-semantics-core/spec.md",
+      "requirement_blocks": 9,
+      "scenario_blocks": 11,
+      "substantive_lines": 53,
+      "substantive_requirement_blocks": 9,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 16,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-assertion-semantics-core/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 16,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 16,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 16
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-deterministic-block-model/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 20,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-deterministic-block-model/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-deterministic-block-model/specs/deterministic-block-model/spec.md",
+      "requirement_blocks": 10,
+      "scenario_blocks": 12,
+      "substantive_lines": 59,
+      "substantive_requirement_blocks": 10,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 17,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-deterministic-block-model/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 17,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 17,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 17
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-failure-reducer-core/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 20,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-failure-reducer-core/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-failure-reducer-core/specs/failure-reducer-core/spec.md",
+      "requirement_blocks": 11,
+      "scenario_blocks": 12,
+      "substantive_lines": 60,
+      "substantive_requirement_blocks": 11,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 17,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/extract-failure-reducer-core/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 17,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 17,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 17
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "design",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/design.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 19,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 18,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/specs/fault-application-evidence/spec.md",
+      "requirement_blocks": 4,
+      "scenario_blocks": 7,
+      "substantive_lines": 25,
+      "substantive_requirement_blocks": 4,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 0,
+      "kind": "delta_spec",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/specs/smr-reliability-workload/spec.md",
+      "requirement_blocks": 5,
+      "scenario_blocks": 10,
+      "substantive_lines": 35,
+      "substantive_requirement_blocks": 5,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    },
+    {
+      "checkbox_tasks": 16,
+      "kind": "tasks",
+      "malformed_dependency_markers": 0,
+      "path": "/home/brittonr/git/OnixResearch/.worktrees/chaoscontrol-protocol-observation-20260904/.cairn/changes/model-guest-storage-flush-failures/tasks.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 23,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 16,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 16
+    }
+  ],
+  "substance_findings": [],
+  "substance_issues": [],
+  "valid": true,
+  "workflow_profiles": [
+    {
+      "acceptance_ids": [],
+      "non_claims": [
+        "workflow state proves only the selected policy graph and observed structural artifact facts",
+        "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+        "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+        "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+      ],
+      "profile_identity_hash": "5aaf40c19e1d23d8368e12cfe3237651668c92e9651877fc5ae0a4fc27da2968",
+      "review_receipt_hashes": [],
+      "spec_effect": "delta",
+      "workflow_profile": "spec-driven",
+      "workflow_profile_compatibility_fallback": false,
+      "workflow_profile_source": "change_create",
+      "workflow_profile_version": 1
+    },
+    {
+      "acceptance_ids": [],
+      "non_claims": [
+        "workflow state proves only the selected policy graph and observed structural artifact facts",
+        "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+        "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+        "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts",
+        "assurance profile conformance does not prove risk-analysis truth, test sufficiency, code correctness, or release eligibility"
+      ],
+      "profile_identity_hash": "eb6ca80141599afbb62e1e07b185551bf2ffcef24efd36d71862080075476f22",
+      "review_receipt_hashes": [
+        "4cdf8e24ba9d772a22a3180f1123362c66b23c6f91c41e5feeb6fbe9bccc4975"
+      ],
+      "spec_effect": "delta",
+      "workflow_profile": "assurance",
+      "workflow_profile_compatibility_fallback": false,
+      "workflow_profile_source": "change_create",
+      "workflow_profile_version": 1
+    },
+    {
+      "acceptance_ids": [],
+      "non_claims": [
+        "workflow state proves only the selected policy graph and observed structural artifact facts",
+        "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+        "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+        "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+      ],
+      "profile_identity_hash": "299b56b5f060fa3f7c67f913e750a5826ffb4542ca73f4ba39e9de69783f01e8",
+      "review_receipt_hashes": [],
+      "spec_effect": "delta",
+      "workflow_profile": "spec-driven",
+      "workflow_profile_compatibility_fallback": false,
+      "workflow_profile_source": "change_create",
+      "workflow_profile_version": 1
+    },
+    {
+      "acceptance_ids": [],
+      "non_claims": [
+        "workflow state proves only the selected policy graph and observed structural artifact facts",
+        "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+        "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+        "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+      ],
+      "profile_identity_hash": "3a3736ce1ad76a80beae8085e71b904cfe0813cdda514a102bbb7815e899317f",
+      "review_receipt_hashes": [],
+      "spec_effect": "delta",
+      "workflow_profile": "spec-driven",
+      "workflow_profile_compatibility_fallback": false,
+      "workflow_profile_source": "change_create",
+      "workflow_profile_version": 1
+    }
+  ]
+}

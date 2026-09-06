@@ -1,0 +1,9 @@
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/binding-exact-syntax-attempt.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/install-hook-negative.nix.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-module-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-owner-bindings.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-reported-owners.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-serde.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/qualify-serde-scopes.rs.txt: OK
+.cairn/changes/add-protocol-observation-cohorts/evidence/gate-repair/helpers/rename-identifiers.rs.txt: OK

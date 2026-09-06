@@ -14,6 +14,22 @@ The supported path has no branch, tag, sibling path, or moving fallback.
 
 The Nix checks compare the Cargo manifest, Cargo lock, Nix input, source files, and contract projection.
 
+## Cargo vendor layout
+
+`nix/vm-cohort-vendor.nix` preserves the pinned conformance fixture during Cargo vendoring.
+Crane separates packages from their source workspace. The conformance crate still needs `../../../config/generated/profile.json`.
+
+The adapter creates a private workspace inside the VM Cohort vendor output.
+It retains the original Rust files and supplies the exact pinned profile at its original relative path.
+A package symlink preserves the Cargo vendor entry point. No shared vendor-root config or source patch is necessary.
+Both host and musl builds use the same vendor projection.
+
+The adapter rejects revision or package identity drift.
+It rejects a changed `standard.rs`, reserved paths, and existing outputs.
+Its tests also reject missing resources and package symlinks before output mutation.
+A compiler fixture exercises the layered symlinks. A separate Cargo check covers the real consumer adapter.
+These checks do not establish KVM behavior or release readiness.
+
 ## Mapping
 
 `chaoscontrol-vm-cohort-adapter` validates the complete ChaosControl snapshot before planning.
@@ -86,6 +102,8 @@ Run the focused portable checks:
 nix develop -c cargo test -p chaoscontrol-vm-cohort-adapter --all-targets
 nix develop -c cargo clippy -p chaoscontrol-vm-cohort-adapter --all-targets -- -D warnings
 nix build .#checks.x86_64-linux.vm-cohort-dependency --no-link -L
+nix build .#checks.x86_64-linux.vm-cohort-vendor-tests --no-link -L
+nix build .#checks.x86_64-linux.vm-cohort-vendor-adapter --no-link -L
 nix build .#checks.x86_64-linux.vm-cohort-adoption-contract --no-link -L
 nix build .#checks.x86_64-linux.vm-cohort-adapter-octet-deny-all --no-link -L
 ```

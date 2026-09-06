@@ -194,20 +194,27 @@
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
               isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
+              isOperatorState = builtins.any (root: relPath == root || pkgs.lib.hasPrefix "${root}/" relPath) [
+                ".cairn"
+                ".pi"
+              ];
             in
-            (craneLib.filterCargoSources path type)
-            || isEvidenceFixture
-            || isProtocolObservationFixture
-            || isArchitectureFixture
-            || isPropertyCoverageFixture
-            || isKvmReleaseMatrix
-            || isAssertionReadinessFixture
-            || isDogfoodCheckpointFixture
-            || isDogfoodAssertionHarnessFixture
-            || (builtins.match ".*\\.bpf\\.c$" path != null)
-            || (builtins.match ".*\\.h$" path != null)
-            || (builtins.match ".*\\.html$" path != null)
-            || (builtins.match ".*\\.js$" path != null);
+            !isOperatorState
+            && (
+              (craneLib.filterCargoSources path type)
+              || isEvidenceFixture
+              || isProtocolObservationFixture
+              || isArchitectureFixture
+              || isPropertyCoverageFixture
+              || isKvmReleaseMatrix
+              || isAssertionReadinessFixture
+              || isDogfoodCheckpointFixture
+              || isDogfoodAssertionHarnessFixture
+              || (builtins.match ".*\\.bpf\\.c$" path != null)
+              || (builtins.match ".*\\.h$" path != null)
+              || (builtins.match ".*\\.html$" path != null)
+              || (builtins.match ".*\\.js$" path != null)
+            );
 
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
@@ -237,9 +244,19 @@
                   --replace-fail '@VM_COHORT_SRC@' '${vm-cohort-src}'
               '';
 
+          vmCohortVendor = import ./nix/vm-cohort-vendor.nix {
+            inherit pkgs;
+            source = vm-cohort-src;
+            revision = vmCohortRevision;
+          };
+          cargoVendorDir = craneLib.vendorCargoDeps {
+            inherit src;
+            overrideVendorGitCheckout = vmCohortVendor.overrideCheckout;
+          };
+
           # Common build arguments shared across all crane invocations
           commonArgs = {
-            inherit src;
+            inherit src cargoVendorDir;
             strictDeps = true;
             pname = "chaoscontrol";
             version = "0.1.0";
@@ -362,7 +379,7 @@
           # --- Guest binary builds (musl static) ---
 
           muslCommonArgs = {
-            inherit src;
+            inherit src cargoVendorDir;
             strictDeps = true;
             pname = "chaoscontrol-guest";
             version = "0.1.0";
@@ -1637,6 +1654,30 @@
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
             vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;
+            source-filter = import ./nix/tests/source-filter.nix {
+              inherit pkgs;
+              filter = sourceFilter;
+              root = toString ./.;
+            };
+            vm-cohort-vendor-tests = import ./nix/tests/vm-cohort-vendor.nix {
+              inherit pkgs rustToolchain;
+              source = vm-cohort-src;
+              revision = vmCohortRevision;
+            };
+            vm-cohort-vendor-adapter = craneLib.cargoTest (
+              commonArgs
+              // {
+                pname = "chaoscontrol-vm-cohort-vendor-adapter";
+                cargoExtraArgs = "-p chaoscontrol-vm-cohort-adapter --all-targets --all-features";
+                cargoArtifacts = craneLib.buildDepsOnly (
+                  commonArgs
+                  // {
+                    pname = "chaoscontrol-vm-cohort-vendor-adapter-deps";
+                    cargoExtraArgs = "-p chaoscontrol-vm-cohort-adapter --all-features";
+                  }
+                );
+              }
+            );
             nickel-cohort-exact = nickelCohortCheck;
 
             # Clippy — deny warnings

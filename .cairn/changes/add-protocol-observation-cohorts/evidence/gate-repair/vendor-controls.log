@@ -1,0 +1,24 @@
+these 6 derivations will be built:
+  /nix/store/09mwgwpx4s9r3bbh973v5ihgw6cbncy9-vm-cohort-vendor-layout.drv
+  /nix/store/mwjlwc13hrqqw9s36hmc4kpf3clfkycl-vm-cohort-missing-profile.drv
+  /nix/store/n6xxd2n8k5cp00n7i19y76hgz1i416iv-vm-cohort-vendor-layout.drv
+  /nix/store/wncam3yv2h8v7lkxravlrsimyij5af16-vm-cohort-vendor-fixture.drv
+  /nix/store/psavfhhr8g49dvkb8qdiqn1y3sgvw30r-vm-cohort-vendor-workspace.drv
+  /nix/store/76xglgid9pfrwlpyp3amkww0frhm6kyr-vm-cohort-vendor-tests.drv
+building '/nix/store/09mwgwpx4s9r3bbh973v5ihgw6cbncy9-vm-cohort-vendor-layout.drv'...
+building '/nix/store/mwjlwc13hrqqw9s36hmc4kpf3clfkycl-vm-cohort-missing-profile.drv'...
+building '/nix/store/wncam3yv2h8v7lkxravlrsimyij5af16-vm-cohort-vendor-fixture.drv'...
+building '/nix/store/n6xxd2n8k5cp00n7i19y76hgz1i416iv-vm-cohort-vendor-layout.drv'...
+building '/nix/store/psavfhhr8g49dvkb8qdiqn1y3sgvw30r-vm-cohort-vendor-workspace.drv'...
+vm-cohort-vendor-workspace> VM Cohort vendor layout preserves source and profile bytes
+building '/nix/store/76xglgid9pfrwlpyp3amkww0frhm6kyr-vm-cohort-vendor-tests.drv'...
+vm-cohort-vendor-tests> error: couldn't read `/nix/store/vlf4w68ylhgyli7ndsh2g333znf27dq7-vm-cohort-vendor-fixture/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+vm-cohort-vendor-tests> 2 | const OBSERVED_PROFILE: &[u8] = include_bytes!("../../../config/generated/profile.json");
+vm-cohort-vendor-tests> error: couldn't read `/nix/store/vlf4w68ylhgyli7ndsh2g333znf27dq7-vm-cohort-vendor-fixture/vm-cohort-conformance-0.1.0/src/../../../config/generated/profile.json`: No such file or directory (os error 2)
+vm-cohort-vendor-tests> VM Cohort source bytes changed
+vm-cohort-vendor-tests> VM Cohort reserved workspace path exists
+vm-cohort-vendor-tests> VM Cohort reserved workspace path exists
+vm-cohort-vendor-tests> VM Cohort conformance package is missing
+vm-cohort-vendor-tests> VM Cohort conformance package is a symlink
+vm-cohort-vendor-tests> VM Cohort pinned profile is missing
+vm-cohort-vendor-tests> VM Cohort output already exists

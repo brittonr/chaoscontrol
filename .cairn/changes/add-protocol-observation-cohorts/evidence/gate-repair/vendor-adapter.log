@@ -1,0 +1,239 @@
+these 7 derivations will be built:
+  /nix/store/zs570ac94dnr1kgmv1af3gyzzq77zgmj-vm-cohort-vendor-workspace.drv
+  /nix/store/59af0la8q3v0p14ayzajsxvarz20f16x-linkLockedDeps.drv
+  /nix/store/x2da17fl13kff8096wi7c7nxhimgfhif-vendor-cargo-deps.drv
+  /nix/store/1n5dq3j544rr8642lxvja515rj98njwj-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0.drv
+  /nix/store/4kbzicyvqw7kq55bwbcyflys5gw23i0q-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0.drv
+  /nix/store/m12rvkv114a6nw3svmpm6zn0akg2p583-chaoscontrol-vm-cohort-dependency.drv
+  /nix/store/vq3ghqp6iaacgvgml9zcvbihdjd5k78y-chaoscontrol-deny-0.1.0.drv
+building '/nix/store/m12rvkv114a6nw3svmpm6zn0akg2p583-chaoscontrol-vm-cohort-dependency.drv'...
+building '/nix/store/zs570ac94dnr1kgmv1af3gyzzq77zgmj-vm-cohort-vendor-workspace.drv'...
+vm-cohort-vendor-workspace> VM Cohort vendor layout preserves source and profile bytes
+building '/nix/store/59af0la8q3v0p14ayzajsxvarz20f16x-linkLockedDeps.drv'...
+building '/nix/store/x2da17fl13kff8096wi7c7nxhimgfhif-vendor-cargo-deps.drv'...
+building '/nix/store/vq3ghqp6iaacgvgml9zcvbihdjd5k78y-chaoscontrol-deny-0.1.0.drv'...
+building '/nix/store/1n5dq3j544rr8642lxvja515rj98njwj-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0.drv'...
+chaoscontrol-deny> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> cargoArtifacts not set, will not reuse any cargo artifacts
+chaoscontrol-deny> Running phase: unpackPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: unpackPhase
+chaoscontrol-deny> unpacking source archive /nix/store/h3zwdypbfy3m6zcddrz34g7rir6g94kv-source
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> unpacking source archive /nix/store/vj85qcj0q0f2frlqncr2nabj02mqrkx6-source
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> source root is source
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: patchPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Executing configureCargoCommonVars
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: configurePhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> will append /build/source/.cargo-home/config.toml with contents of /nix/store/9h3ml9gawd779qx85d2mfi2sdvwc1922-vendor-cargo-deps/config.toml
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> default configurePhase, nothing to do
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: buildPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> +++ command cargo --version
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> +++ command cargo check --release -p chaoscontrol-vm-cohort-adapter --all-features --all-targets
+chaoscontrol-deny> source root is source
+chaoscontrol-deny> Running phase: patchPhase
+chaoscontrol-deny> Executing configureCargoCommonVars
+chaoscontrol-deny> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-deny> Running phase: configurePhase
+chaoscontrol-deny> will append /build/source/.cargo-home/config.toml with contents of /nix/store/9h3ml9gawd779qx85d2mfi2sdvwc1922-vendor-cargo-deps/config.toml
+chaoscontrol-deny> default configurePhase, nothing to do
+chaoscontrol-deny> Running phase: buildPhase
+chaoscontrol-deny> +++ command cargo --version
+chaoscontrol-deny> cargo 1.92.0 (344c4567c 2025-10-21)
+chaoscontrol-deny> +++ command cargo --offline deny --locked check bans licenses sources
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling proc-macro2 v1.0.106
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling unicode-ident v1.0.24
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling quote v1.0.44
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling libc v0.2.180
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde_core v1.0.228
+chaoscontrol-deny> bans ok, licenses ok, sources ok
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde v1.0.228
+chaoscontrol-deny> Running phase: installPhase
+chaoscontrol-deny> Running phase: fixupPhase
+chaoscontrol-deny> shrinking RPATHs of ELF executables and libraries in /nix/store/aag50nn27n8cdnqh1cmd3zz0m1ssr2l9-chaoscontrol-deny-0.1.0
+chaoscontrol-deny> checking for references to /build/ in /nix/store/aag50nn27n8cdnqh1cmd3zz0m1ssr2l9-chaoscontrol-deny-0.1.0...
+chaoscontrol-deny> patching script interpreter paths in /nix/store/aag50nn27n8cdnqh1cmd3zz0m1ssr2l9-chaoscontrol-deny-0.1.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking cfg-if v1.0.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking memchr v2.8.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling shlex v1.3.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling syn v2.0.116
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling find-msvc-tools v0.1.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zmij v1.0.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling cc v1.2.56
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde_json v1.0.149
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking arrayref v0.3.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking constant_time_eq v0.3.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zerocopy v0.8.39
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking arrayvec v0.7.8
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking itoa v1.0.17
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling blake3 v1.8.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking getrandom v0.2.17
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking byteorder v1.5.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking bitflags v2.11.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking bitflags v1.3.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vmm-sys-util v0.12.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking rand_core v0.6.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking aho-corasick v1.1.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling heck v0.5.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling thiserror v2.0.18
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking regex-syntax v0.8.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling kvm-ioctls v0.19.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde_derive v1.0.228
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zerocopy-derive v0.7.35
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking zerocopy v0.7.35
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking ppv-lite86 v0.2.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling rustix v1.1.3
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling thiserror-impl v2.0.18
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking regex-automata v0.4.14
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling snafu-derive v0.8.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking utf8parse v0.2.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking linux-raw-sys v0.11.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking snafu v0.8.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking rand_chacha v0.3.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking kvm-bindings v0.10.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking regex v1.12.3
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking rand v0.8.6
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking anstyle-parse v0.2.7
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking colorchoice v1.0.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling crc32fast v1.5.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking anstyle v1.0.13
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking anstyle-query v1.1.5
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking is_terminal_polyfill v1.70.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking log v0.4.29
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking memfd v0.6.5
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking anstream v0.6.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vm-memory v0.17.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vm-cohort-core v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking env_filter v1.0.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking memmap2 v0.9.10
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking jiff v0.2.20
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking linux-loader v0.13.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vm-superio v0.8.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Checking env_logger v0.11.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Finished `release` profile [optimized] target(s) in 7.34s
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> +++ command cargo build --release -p chaoscontrol-vm-cohort-adapter --all-features
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling libc v0.2.180
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling cfg-if v1.0.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde_core v1.0.228
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling memchr v2.8.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling arrayvec v0.7.8
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling arrayref v0.3.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling constant_time_eq v0.3.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling blake3 v1.8.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zmij v1.0.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling itoa v1.0.17
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zerocopy v0.8.39
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling getrandom v0.2.17
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling byteorder v1.5.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling bitflags v1.3.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling bitflags v2.11.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vmm-sys-util v0.12.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling zerocopy v0.7.35
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde v1.0.228
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling serde_json v1.0.149
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling rand_core v0.6.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling aho-corasick v1.1.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling regex-syntax v0.8.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling ppv-lite86 v0.2.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling regex-automata v0.4.14
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling rand_chacha v0.3.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling kvm-bindings v0.10.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling linux-raw-sys v0.11.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling utf8parse v0.2.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling anstyle-parse v0.2.7
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling rustix v1.1.3
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling regex v1.12.3
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling thiserror v2.0.18
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling kvm-ioctls v0.19.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling snafu v0.8.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling rand v0.8.6
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling anstyle v1.0.13
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling anstyle-query v1.1.5
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling log v0.4.29
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling colorchoice v1.0.4
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling is_terminal_polyfill v1.70.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling env_filter v1.0.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling anstream v0.6.21
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vm-memory v0.17.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling memfd v0.6.5
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vm-cohort-core v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling memmap2 v0.9.10
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling jiff v0.2.20
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling linux-loader v0.13.2
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vm-cohort-kvm v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling crc32fast v1.5.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vm-superio v0.8.1
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling vm-cohort-conformance v0.1.0 (rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149#ab123e36)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling env_logger v0.11.9
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Finished `release` profile [optimized] target(s) in 11.20s
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: checkPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> +++ command cargo test --release -p chaoscontrol-vm-cohort-adapter --all-features --no-run
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>     Finished `release` profile [optimized] target(s) in 0.13s
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps>   Executable unittests src/lib.rs (target/release/deps/chaoscontrol_vm_cohort_adapter-9603585e8221ef9b)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: installPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> no previous artifacts found, compressing and installing full archive of target to /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0/target.tar.zst
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> /*stdin*\            : 25.78%   (   232 MiB =>   59.8 MiB, /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0/target.tar.zst)
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> Running phase: fixupPhase
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> shrinking RPATHs of ELF executables and libraries in /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> checking for references to /build/ in /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0...
+chaoscontrol-vm-cohort-vendor-adapter-deps-deps> patching script interpreter paths in /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0
+building '/nix/store/4kbzicyvqw7kq55bwbcyflys5gw23i0q-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0.drv'...
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: unpackPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> unpacking source archive /nix/store/h3zwdypbfy3m6zcddrz34g7rir6g94kv-source
+chaoscontrol-vm-cohort-vendor-adapter-test> source root is source
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: patchPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> Executing configureCargoCommonVars
+chaoscontrol-vm-cohort-vendor-adapter-test> decompressing cargo artifacts from /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0/target.tar.zst to target
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: updateAutotoolsGnuConfigScriptsPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: configurePhase
+chaoscontrol-vm-cohort-vendor-adapter-test> will append /build/source/.cargo-home/config.toml with contents of /nix/store/9h3ml9gawd779qx85d2mfi2sdvwc1922-vendor-cargo-deps/config.toml
+chaoscontrol-vm-cohort-vendor-adapter-test> default configurePhase, nothing to do
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: buildPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> +++ command cargo --version
+chaoscontrol-vm-cohort-vendor-adapter-test> cargo 1.98.0 (797e8a9bc 2026-08-05)
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: checkPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> +++ command cargo test --release -p chaoscontrol-vm-cohort-adapter --all-targets --all-features
+chaoscontrol-vm-cohort-vendor-adapter-test>    Compiling chaoscontrol-protocol v0.1.0 (/build/source/crates/chaoscontrol-protocol)
+chaoscontrol-vm-cohort-vendor-adapter-test>    Compiling chaoscontrol-fault v0.1.0 (/build/source/crates/chaoscontrol-fault)
+chaoscontrol-vm-cohort-vendor-adapter-test>    Compiling chaoscontrol-sim-core v0.1.0 (/build/source/crates/chaoscontrol-sim-core)
+chaoscontrol-vm-cohort-vendor-adapter-test>    Compiling chaoscontrol-vmm v0.1.0 (/build/source/crates/chaoscontrol-vmm)
+chaoscontrol-vm-cohort-vendor-adapter-test>    Compiling chaoscontrol-vm-cohort-adapter v0.1.0 (/build/source/crates/chaoscontrol-vm-cohort-adapter)
+chaoscontrol-vm-cohort-vendor-adapter-test>     Finished `release` profile [optimized] target(s) in 12.78s
+chaoscontrol-vm-cohort-vendor-adapter-test>      Running unittests src/lib.rs (target/release/deps/chaoscontrol_vm_cohort_adapter-1b722addfb810a73)
+chaoscontrol-vm-cohort-vendor-adapter-test> 
+chaoscontrol-vm-cohort-vendor-adapter-test> running 12 tests
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::kvm::complete_snapshot_restores_before_shared_cohort_activation ... ignored, requires readable /dev/kvm
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::kvm::exact_vcpu_state_restores_through_vm_cohort_descriptors ... ignored, requires readable /dev/kvm
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::kvm::injected_partial_creation_fails_and_confirms_cleanup_without_activation ... ignored, requires readable /dev/kvm
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::mapping::incomplete_snapshot_and_profile_drift_fail_before_planning ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::mapping::exact_snapshot_maps_complete_bases_and_private_clone_surfaces ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::parity::legacy_and_shared_overlay_corpus_agrees_and_rejects_overclaim ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::mapping::partial_creation_and_unknown_effects_retain_cleanup_obligations ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::selection::complete_consumer_evidence_selects_shared_mechanics_without_authority_transfer ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::selection::persisted_selection_rejects_later_authority_escalation ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::selection::source_drift_unknown_cleanup_policy_leak_and_parity_overclaim_block_selection ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::mapping::shared_mutable_surface_tampering_is_detected ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> test tests::mapping::execution_rejects_snapshot_and_immutable_base_drift_before_activation ... ok
+chaoscontrol-vm-cohort-vendor-adapter-test> 
+chaoscontrol-vm-cohort-vendor-adapter-test> test result: ok. 9 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+chaoscontrol-vm-cohort-vendor-adapter-test> 
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: installPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> linking previous artifacts /nix/store/dwiklkvsnnp5z722gi5p7414y43anwfm-chaoscontrol-vm-cohort-vendor-adapter-deps-deps-0.1.0/target.tar.zst to /nix/store/7znjdd24bhv7ivyj30rgbpf58ar2gmnl-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0/target.tar.zst
+chaoscontrol-vm-cohort-vendor-adapter-test> /*stdin*\            : 30.94%   (  51.3 MiB =>   15.9 MiB, /nix/store/7znjdd24bhv7ivyj30rgbpf58ar2gmnl-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0/target.tar.zst)
+chaoscontrol-vm-cohort-vendor-adapter-test> Running phase: fixupPhase
+chaoscontrol-vm-cohort-vendor-adapter-test> shrinking RPATHs of ELF executables and libraries in /nix/store/7znjdd24bhv7ivyj30rgbpf58ar2gmnl-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0
+chaoscontrol-vm-cohort-vendor-adapter-test> checking for references to /build/ in /nix/store/7znjdd24bhv7ivyj30rgbpf58ar2gmnl-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0...
+chaoscontrol-vm-cohort-vendor-adapter-test> patching script interpreter paths in /nix/store/7znjdd24bhv7ivyj30rgbpf58ar2gmnl-chaoscontrol-vm-cohort-vendor-adapter-test-0.1.0

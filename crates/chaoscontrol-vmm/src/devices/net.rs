@@ -505,9 +505,12 @@ fn allocate_packet_slot(requested: usize) -> Result<Vec<u8>, NetQueueError> {
     Ok(bytes)
 }
 
+const _: () = assert!(usize::BITS <= u64::BITS);
+
 fn retained_bytes(queue: &std::collections::VecDeque<Vec<u8>>) -> u64 {
     queue.iter().fold(0u64, |total, packet| {
-        let length = u64::try_from(packet.len()).unwrap_or(u64::MAX);
+        let length =
+            u64::try_from(packet.len()).expect("supported pointer widths fit packet lengths");
         total.saturating_add(length)
     })
 }
@@ -520,6 +523,21 @@ mod tests {
     const OTHER_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x02];
     const TEST_PACKET_SLOTS: usize = 2;
     const TEST_PACKET_SLOT_BYTES: usize = 64;
+
+    #[test]
+    fn retained_accounting_counts_payloads_without_charging_empty_packets() {
+        const FIRST_PACKET_BYTES: usize = 2;
+        const SECOND_PACKET_BYTES: usize = 3;
+        const TOTAL_PACKET_BYTES: u64 = 5;
+        let mut queue = std::collections::VecDeque::new();
+        assert_eq!(retained_bytes(&queue), 0);
+        queue.push_back(Vec::new());
+        assert_eq!(retained_bytes(&queue), 0);
+        queue.push_back(vec![0; FIRST_PACKET_BYTES]);
+        queue.push_back(vec![0; SECOND_PACKET_BYTES]);
+        assert_eq!(retained_bytes(&queue), TOTAL_PACKET_BYTES);
+        assert_ne!(retained_bytes(&queue), u64::MAX);
+    }
 
     #[test]
     fn packet_slot_startup_allocation_failure_is_typed() {

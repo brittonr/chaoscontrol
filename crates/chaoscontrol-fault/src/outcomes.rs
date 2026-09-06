@@ -244,14 +244,18 @@ fn hash_optional_text(hasher: &mut blake3::Hasher, text: Option<&str>) {
     }
 }
 
+const _: () = assert!(usize::BITS <= u64::BITS);
+
 fn hash_bytes(hasher: &mut blake3::Hasher, bytes: &[u8]) {
-    let length = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    let length =
+        u64::try_from(bytes.len()).expect("supported pointer widths fit the canonical length");
     hasher.update(&length.to_le_bytes());
     hasher.update(bytes);
 }
 
 fn hash_usize(hasher: &mut blake3::Hasher, value: usize) {
-    let value_u64 = u64::try_from(value).unwrap_or(u64::MAX);
+    let value_u64 =
+        u64::try_from(value).expect("supported pointer widths fit the canonical integer");
     hasher.update(&value_u64.to_le_bytes());
 }
 
@@ -2731,6 +2735,39 @@ mod tests {
 
     fn process_kill_effect(target: u32) -> FaultPlanEffect {
         FaultPlanEffect::ProcessKill { target }
+    }
+
+    #[test]
+    fn canonical_fields_preserve_values_and_distinguish_boundaries() {
+        const FIELD: &[u8] = b"ab";
+        const FIELD_LENGTH: u64 = 2;
+        let mut expected = blake3::Hasher::new();
+        expected.update(&FIELD_LENGTH.to_le_bytes());
+        expected.update(FIELD);
+        let mut actual = blake3::Hasher::new();
+        hash_bytes(&mut actual, FIELD);
+        assert_eq!(actual.finalize(), expected.finalize());
+
+        let mut first = blake3::Hasher::new();
+        hash_bytes(&mut first, b"ab");
+        hash_bytes(&mut first, b"c");
+        let mut second = blake3::Hasher::new();
+        hash_bytes(&mut second, b"a");
+        hash_bytes(&mut second, b"bc");
+        assert_ne!(first.finalize(), second.finalize());
+
+        let mut zero = blake3::Hasher::new();
+        hash_usize(&mut zero, 0);
+        assert_eq!(zero.finalize(), blake3::hash(&0_u64.to_le_bytes()));
+        let mut maximum = blake3::Hasher::new();
+        hash_usize(&mut maximum, usize::MAX);
+        assert_ne!(zero.finalize(), maximum.finalize());
+        let mut omitted = blake3::Hasher::new();
+        let mut empty = omitted.clone();
+        hash_bytes(&mut empty, &[]);
+        assert_ne!(omitted.finalize(), empty.finalize());
+        hash_usize_slice(&mut omitted, &[usize::MAX]);
+        assert_ne!(omitted.finalize(), maximum.finalize());
     }
 
     #[test]

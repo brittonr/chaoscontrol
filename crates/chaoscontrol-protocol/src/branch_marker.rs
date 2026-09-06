@@ -106,8 +106,11 @@ pub fn marker_identity(namespace: &str, key: &str) -> String {
     format!("{MARKER_IDENTITY_PREFIX}{}", hasher.finalize().to_hex())
 }
 
+const _: () = assert!(usize::BITS <= u64::BITS);
+
 fn hash_field(hasher: &mut blake3::Hasher, bytes: &[u8]) {
-    let length = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    let length =
+        u64::try_from(bytes.len()).expect("supported pointer widths fit the canonical length");
     hasher.update(&length.to_le_bytes());
     hasher.update(bytes);
 }
@@ -157,6 +160,24 @@ fn valid_b3(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn field_framing_preserves_lengths_and_rejects_ambiguous_boundaries() {
+        const FIELD: &[u8] = b"ab";
+        const FIELD_LENGTH: u64 = 2;
+        let mut expected = blake3::Hasher::new();
+        expected.update(&FIELD_LENGTH.to_le_bytes());
+        expected.update(FIELD);
+        let mut actual = blake3::Hasher::new();
+        hash_field(&mut actual, FIELD);
+        assert_eq!(actual.finalize(), expected.finalize());
+
+        assert_ne!(marker_identity("ab", "c"), marker_identity("a", "bc"));
+        let empty = blake3::Hasher::new();
+        let mut framed_empty = empty.clone();
+        hash_field(&mut framed_empty, &[]);
+        assert_ne!(empty.finalize(), framed_empty.finalize());
+    }
 
     #[test]
     fn stable_identity_ignores_instance_details_and_refs() {

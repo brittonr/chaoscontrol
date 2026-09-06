@@ -3,15 +3,15 @@
 ## Outcome
 
 Cargo/Radicle compatibility now passes dependency policy and artifact installation.
-The source repairs remove 644 findings from the same pinned Octet scope.
-Octet still reports 1,814 warnings. This is not strict acceptance.
+The source repairs remove 696 findings from the same pinned Octet scope.
+Octet still reports 1,762 warnings. This is not strict acceptance.
 The change remains active with 20 of 22 tasks complete.
 No accepted-spec sync, archive, or main integration occurs.
 
-The final broad Nix check fails at a separate vendor-layout boundary.
-The vendored `vm-cohort-conformance` crate cannot find `../../../config/generated/profile.json` from `src/standard.rs:33`.
-The next packaging correction must retain the exact pinned profile and source revision.
-`flake-final.log` and `flake-final.exit` retain this failure.
+The VM Cohort vendor repair now passes compiler parity, rejection controls, nine adapter cases, and dependency policy.
+The next broad retry rejects the SpaceWasm bundle manifest before runtime comparison.
+`vendor.md` records the packaging repair. `spacewasm.md` records the remaining identity mismatch.
+No provider pin, expected digest, or admission guard changed.
 
 ## Repair commits
 
@@ -23,12 +23,20 @@ The next packaging correction must retain the exact pinned profile and source re
 | `171edce` | Standard-library owners across inline modules |
 | `a78b3a2` | Compiler-reported cross-crate owner paths and Rustdoc link repair |
 | `a3100ee` | Generated adapter lockfile and host/musl install metadata |
+| `9890746` | Exact VM Cohort workspace resources and source-filter controls |
+| `cfcf35b` | Serde derives across admitted inline scopes |
+| `8dbcbb1` | Exact integer lengths and framing controls |
 
 ## Evidence
 
 - `cargo.md` records the Cargo reproduction, 14 schema passes, metadata checks, policy checks, and rejecting near-match controls.
 - `names.md`, `modules.md`, and `reported.md` record the source rounds and their failed controls.
-- `build.md` records four exact crate mirrors, the isolated adapter lockfile, the Crane hook, and the remaining vendor-layout error.
+- `build.md` records four exact crate mirrors, the isolated adapter lockfile, the Crane hook, and the earlier vendor-layout error.
+- `vendor.md`, `serde-scopes.md`, and `framing.md` record the continued repairs, their baselines, and their negative controls.
+- `framing-tests.log` and `framing-clippy.log` pass across all targets and all features for the seven selected packages.
+- `framing-nix.log` passes the focused protocol, contract, vendor, dependency, and source-filter checks. Octet still reports 1,762 warnings.
+- `continuation-replay.log` passes the four bounded KVM replay cases on the current source.
+- `continuation-no-default.log` passes the library/binary feature check. `continuation-rustdoc.log` passes with warnings denied.
 - `reported-owner-tests.log` and `reported-owner-clippy.log` pass across all targets and all features for the seven selected packages.
 - `rustdoc-corrected.log` passes with warnings denied.
 - `replay-final.log` records four explicit, bounded KVM replay passes.
@@ -48,6 +56,9 @@ The next packaging correction must retain the exact pinned profile and source re
 `helper-inputs.b3` binds the retained helper artifacts. The corresponding freshness logs pass.
 The root `Cargo.lock`, `flake.lock`, and `dylint.toml` remain unchanged.
 Cargo generated the only isolated lockfile changes: two existing `serde_json` dependency edges.
+
+The continuation manifests bind the later source and build inputs separately from the earlier checkpoint.
+The earlier manifests and raw attempts remain historical evidence, not freshness claims for the current source.
 
 The helpers are not a Rust name resolver, independent review, or a substitute for compiler and behavior checks.
 The evidence does not establish protocol-semantic authority, universal replay, production readiness, or release eligibility.

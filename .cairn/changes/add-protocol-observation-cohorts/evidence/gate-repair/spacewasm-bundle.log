@@ -1,0 +1,156 @@
+these 28 derivations will be built:
+  /nix/store/1zmsw6qmxw4xg20my7h10y6gf2khzxyq-wasmprinter-0.220.1.drv
+  /nix/store/js3016004pwq7kxkvgwgbafi26a0lkag-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-generated-fixtures.drv
+  /nix/store/ib3maa2zj4d9ikmlx4x15xaiz9vxh55r-rust-minimal-1.91.1.drv
+  /nix/store/83kl614f3sb2xvcia542qrwb8j6l4p0g-wasm-encoder-0.220.1.drv
+  /nix/store/ffx0nvpjb2fjhplla3g86yr1r9x1yz5j-jiff-0.2.28.drv
+  /nix/store/innkm55mnw49g0s3knykx17hvja8w02r-wasmparser-0.220.1.drv
+  /nix/store/la6jmkim9al7jx7cxxbmkmna9d2j1jdp-leb128-0.2.7.drv
+  /nix/store/m62da46dh4h1ikr3ynb7ird03ppv4ddd-portable-atomic-util-0.2.7.drv
+  /nix/store/nfb2jvqrar4kcia1mm49v8f52qp1kjsl-wasm-smith-0.220.1.drv
+  /nix/store/pjwwi3yy4h3p3nanq25ywpdv5db06ipm-memchr-2.8.2.drv
+  /nix/store/r74lq13bzpyyxrd713ngifn5hr1y169q-regex-1.12.4.drv
+  /nix/store/vs8n8n619nihwbd6vbkd286326k3wsks-jiff-static-0.2.28.drv
+  /nix/store/x0g0bxgi1ilykg0nd3d1yrnbi47pr6p9-log-0.4.32.drv
+  /nix/store/zypz4v4qqh5vsikxnyzvzjhnwb98hfgp-cargo-vendor-dir.drv
+  /nix/store/lpf1s4c4v6v77588vjj2arxkmr13ckcg-spacewasm-offline-cargo-config.toml.drv
+  /nix/store/xv1a7k2m125vv3003ii3gf2ymwygly2x-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner.drv
+  /nix/store/77xymn526iq43h5ggnckzw6id3znjk5x-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-fixture-report.drv
+  /nix/store/b5pnd8m8xmnfgfgdxchr639gvgcl7yp9-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-spectest-address.drv
+  /nix/store/f7ghaq9l9f7jfvkipzq3mfqzpj716riv-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-wasm-library.drv
+  /nix/store/f80n7nw5nl5mw9lzagn3v2lgm67q1v8p-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-dependency-closure.drv
+  /nix/store/z344229lal6msbc9qk1rxzlplicqr3jq-cargo-vendor-dir.drv
+  /nix/store/ipyyk9zxh3kbvk9c1znx79jcdrrvvg38-mantle-spacewasm-reference-bundler-0.1.0.drv
+  /nix/store/j6r8vlls8h06h61gq52fgcg1b7593bib-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-host-library.drv
+  /nix/store/n9c40y8a14cabyv75rpssccf8a9k7sxr-spacewasm-reference-profile-export.drv
+  /nix/store/pqdh5xf8y0k76h7pjvaskxbq289crkwg-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-unit-tests.drv
+  /nix/store/y3py5q02d27fq2nywdidz9zj3vcfz3zm-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-evidence.drv
+  /nix/store/z3lnw28akaqpbi51x6bqji7yx60maf2k-spacewasm-materialization-request.json.drv
+  /nix/store/l6r3ig41jrdqfivsvnl88z0w7gq1kfj0-mantle-spacewasm-reference-bundle-e24cf09355a90497148eb5029fdb8e3400bd63e3.drv
+these 15 paths will be fetched (1.0 GiB download, 1.0 GiB unpacked):
+  /nix/store/kx4xmzcv0njjcvcp2q5i1ka0vxd1n6s5-cargo-1.91.1-x86_64-unknown-linux-gnu
+  /nix/store/704fvdf1ihvikmb7jqbwkj2792m8rzh7-crate-jiff-0.2.28.tar.gz
+  /nix/store/dl68apx6p614rvsd7fq0rwbcma5g09cs-crate-jiff-static-0.2.28.tar.gz
+  /nix/store/acbam4si6ryld7kz9781sqsb0bmzg54j-derive_arbitrary-1.4.2
+  /nix/store/2iy1jp3n0lf7q4vx633iyygs2spw9831-env_filter-1.0.1
+  /nix/store/qzy834qdd473gsywmx7ysbc1xi6rsv44-env_logger-0.11.10
+  /nix/store/5bwc8lhmiyz9i6d9d11nhx88drxpkgj1-flagset-0.4.7
+  /nix/store/kj9mfk6jh4iscgdjlbpmjbzxjdnw93r0-rust-minimal-1.91.1
+  /nix/store/90alqfxsdgcq3jmld4wnsp2687iwsx4a-rust-std-1.91.1-wasm32-unknown-unknown
+  /nix/store/bnyg1gycq05zcasq05z83qd0kz3lkxwn-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-corpora
+  /nix/store/2pbgy5agk2kxn0blsznz7gpc1il7cirh-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3.tar.gz
+  /nix/store/h0cc8a1hrcmcwb39arhdrbb8f8w5ng2p-spacewasm-rust-1.91.1-toolchain-artifacts
+  /nix/store/0bw8ynkhhbxv51kc4q872vyj1dqlm5zj-spacewasm-source-e24cf09355a90497148eb5029fdb8e3400bd63e3
+  /nix/store/myjc6ajfxj626x0fmdyxszaq957yf1rm-wabt-1.0.39
+  /nix/store/cmrahwlsdrxgf95ayk4x9yxkf0zb6fwb-wasm-tools-1.245.1
+copying path '/nix/store/bnyg1gycq05zcasq05z83qd0kz3lkxwn-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-corpora' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/0bw8ynkhhbxv51kc4q872vyj1dqlm5zj-spacewasm-source-e24cf09355a90497148eb5029fdb8e3400bd63e3' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/90alqfxsdgcq3jmld4wnsp2687iwsx4a-rust-std-1.91.1-wasm32-unknown-unknown' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/2pbgy5agk2kxn0blsznz7gpc1il7cirh-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3.tar.gz' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/kx4xmzcv0njjcvcp2q5i1ka0vxd1n6s5-cargo-1.91.1-x86_64-unknown-linux-gnu' from 'http://100.100.103.95:5000'...
+building '/nix/store/n9c40y8a14cabyv75rpssccf8a9k7sxr-spacewasm-reference-profile-export.drv'...
+copying path '/nix/store/cmrahwlsdrxgf95ayk4x9yxkf0zb6fwb-wasm-tools-1.245.1' from 'http://100.100.103.95:5000'...
+building '/nix/store/z344229lal6msbc9qk1rxzlplicqr3jq-cargo-vendor-dir.drv'...
+copying path '/nix/store/myjc6ajfxj626x0fmdyxszaq957yf1rm-wabt-1.0.39' from 'http://100.100.103.95:5000'...
+copying path '/nix/store/acbam4si6ryld7kz9781sqsb0bmzg54j-derive_arbitrary-1.4.2' from 'https://cache.nixos.org'...
+copying path '/nix/store/2iy1jp3n0lf7q4vx633iyygs2spw9831-env_filter-1.0.1' from 'https://cache.nixos.org'...
+copying path '/nix/store/qzy834qdd473gsywmx7ysbc1xi6rsv44-env_logger-0.11.10' from 'https://cache.nixos.org'...
+copying path '/nix/store/5bwc8lhmiyz9i6d9d11nhx88drxpkgj1-flagset-0.4.7' from 'https://cache.nixos.org'...
+building '/nix/store/la6jmkim9al7jx7cxxbmkmna9d2j1jdp-leb128-0.2.7.drv'...
+building '/nix/store/x0g0bxgi1ilykg0nd3d1yrnbi47pr6p9-log-0.4.32.drv'...
+building '/nix/store/pjwwi3yy4h3p3nanq25ywpdv5db06ipm-memchr-2.8.2.drv'...
+building '/nix/store/m62da46dh4h1ikr3ynb7ird03ppv4ddd-portable-atomic-util-0.2.7.drv'...
+building '/nix/store/r74lq13bzpyyxrd713ngifn5hr1y169q-regex-1.12.4.drv'...
+building '/nix/store/83kl614f3sb2xvcia542qrwb8j6l4p0g-wasm-encoder-0.220.1.drv'...
+building '/nix/store/1zmsw6qmxw4xg20my7h10y6gf2khzxyq-wasmprinter-0.220.1.drv'...
+building '/nix/store/ipyyk9zxh3kbvk9c1znx79jcdrrvvg38-mantle-spacewasm-reference-bundler-0.1.0.drv'...
+building '/nix/store/nfb2jvqrar4kcia1mm49v8f52qp1kjsl-wasm-smith-0.220.1.drv'...
+copying path '/nix/store/kj9mfk6jh4iscgdjlbpmjbzxjdnw93r0-rust-minimal-1.91.1' from 'http://100.100.103.95:5000'...
+building '/nix/store/js3016004pwq7kxkvgwgbafi26a0lkag-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-generated-fixtures.drv'...
+building '/nix/store/innkm55mnw49g0s3knykx17hvja8w02r-wasmparser-0.220.1.drv'...
+mantle-spacewasm-reference-bundler> Running phase: unpackPhase
+mantle-spacewasm-reference-bundler> unpacking source archive /nix/store/wk315yrpkiqf211qyp4ia5pypis4lbn9-mantle-spacewasm-bundler-source
+mantle-spacewasm-reference-bundler> source root is mantle-spacewasm-bundler-source
+mantle-spacewasm-reference-bundler> Executing cargoSetupPostUnpackHook
+copying path '/nix/store/704fvdf1ihvikmb7jqbwkj2792m8rzh7-crate-jiff-0.2.28.tar.gz' from 'https://nix-community.cachix.org'...
+copying path '/nix/store/dl68apx6p614rvsd7fq0rwbcma5g09cs-crate-jiff-static-0.2.28.tar.gz' from 'https://nix-community.cachix.org'...
+building '/nix/store/vs8n8n619nihwbd6vbkd286326k3wsks-jiff-static-0.2.28.drv'...
+building '/nix/store/ffx0nvpjb2fjhplla3g86yr1r9x1yz5j-jiff-0.2.28.drv'...
+mantle-spacewasm-reference-bundler> Finished cargoSetupPostUnpackHook
+mantle-spacewasm-reference-bundler> Running phase: patchPhase
+mantle-spacewasm-reference-bundler> Executing cargoSetupPostPatchHook
+mantle-spacewasm-reference-bundler> Validating consistency between /build/mantle-spacewasm-bundler-source/Cargo.lock and /build/cargo-vendor-dir/Cargo.lock
+mantle-spacewasm-reference-bundler> Finished cargoSetupPostPatchHook
+mantle-spacewasm-reference-bundler> Running phase: updateAutotoolsGnuConfigScriptsPhase
+mantle-spacewasm-reference-bundler> Running phase: configurePhase
+mantle-spacewasm-reference-bundler> Running phase: buildPhase
+mantle-spacewasm-reference-bundler> Executing cargoBuildHook
+mantle-spacewasm-reference-bundler> cargoBuildHook flags: -j 4 --target x86_64-unknown-linux-gnu --offline --profile release --package crunch-spacewasm --bin mantle-spacewasm-reference
+building '/nix/store/zypz4v4qqh5vsikxnyzvzjhnwb98hfgp-cargo-vendor-dir.drv'...
+building '/nix/store/f80n7nw5nl5mw9lzagn3v2lgm67q1v8p-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-dependency-closure.drv'...
+building '/nix/store/lpf1s4c4v6v77588vjj2arxkmr13ckcg-spacewasm-offline-cargo-config.toml.drv'...
+copying path '/nix/store/h0cc8a1hrcmcwb39arhdrbb8f8w5ng2p-spacewasm-rust-1.91.1-toolchain-artifacts' from 'http://100.100.103.95:5000'...
+mantle-spacewasm-reference-bundler>    Compiling proc-macro2 v1.0.106
+mantle-spacewasm-reference-bundler>    Compiling unicode-ident v1.0.24
+mantle-spacewasm-reference-bundler>    Compiling quote v1.0.46
+mantle-spacewasm-reference-bundler>    Compiling find-msvc-tools v0.1.9
+mantle-spacewasm-reference-bundler>    Compiling serde_core v1.0.228
+mantle-spacewasm-reference-bundler>    Compiling shlex v2.0.1
+mantle-spacewasm-reference-bundler>    Compiling cc v1.2.67
+mantle-spacewasm-reference-bundler>    Compiling zmij v1.0.23
+mantle-spacewasm-reference-bundler>    Compiling serde_json v1.0.150
+mantle-spacewasm-reference-bundler>    Compiling serde v1.0.228
+mantle-spacewasm-reference-bundler>    Compiling arrayvec v0.7.8
+mantle-spacewasm-reference-bundler>    Compiling syn v2.0.118
+mantle-spacewasm-reference-bundler>    Compiling arrayref v0.3.9
+mantle-spacewasm-reference-bundler>    Compiling blake3 v1.8.2
+mantle-spacewasm-reference-bundler>    Compiling cfg-if v1.0.4
+mantle-spacewasm-reference-bundler>    Compiling itoa v1.0.18
+mantle-spacewasm-reference-bundler>    Compiling constant_time_eq v0.3.1
+mantle-spacewasm-reference-bundler>    Compiling libc v0.2.186
+mantle-spacewasm-reference-bundler>    Compiling memchr v2.8.3
+mantle-spacewasm-reference-bundler>    Compiling serde_derive v1.0.228
+building '/nix/store/xv1a7k2m125vv3003ii3gf2ymwygly2x-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner.drv'...
+building '/nix/store/j6r8vlls8h06h61gq52fgcg1b7593bib-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-host-library.drv'...
+building '/nix/store/b5pnd8m8xmnfgfgdxchr639gvgcl7yp9-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-spectest-address.drv'...
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-host-library>    Compiling libm v0.2.16
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling proc-macro2 v1.0.106
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling unicode-ident v1.0.24
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling quote v1.0.45
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling serde_core v1.0.228
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling zmij v1.0.21
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling libm v0.2.16
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling serde_json v1.0.150
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling serde v1.0.228
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling memchr v2.8.2
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling itoa v1.0.18
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling syn v2.0.118
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling spacewasm v0.0.0 (/build/source)
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-host-library>    Compiling spacewasm v0.0.0 (/build/source)
+mantle-spacewasm-reference-bundler>    Compiling crunch-spacewasm-core v0.1.0 (/build/mantle-spacewasm-bundler-source/crates/crunch-spacewasm-core)
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>    Compiling serde_derive v1.0.228
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-host-library>     Finished `release` profile [optimized + debuginfo] target(s) in 3.06s
+mantle-spacewasm-reference-bundler>    Compiling crunch-spacewasm v0.1.0 (/build/mantle-spacewasm-bundler-source/crates/crunch-spacewasm)
+building '/nix/store/f7ghaq9l9f7jfvkipzq3mfqzpj716riv-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-wasm-library.drv'...
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-wasm-library>    Compiling libm v0.2.16
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-wasm-library>    Compiling spacewasm v0.0.0 (/build/source)
+building '/nix/store/pqdh5xf8y0k76h7pjvaskxbq289crkwg-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-unit-tests.drv'...
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-wasm-library>     Finished `release` profile [optimized + debuginfo] target(s) in 2.29s
+mantle-spacewasm-reference-bundler>     Finished `release` profile [optimized] target(s) in 13.53s
+mantle-spacewasm-reference-bundler> Executing cargoInstallPostBuildHook
+mantle-spacewasm-reference-bundler> Finished cargoInstallPostBuildHook
+mantle-spacewasm-reference-bundler> Finished cargoBuildHook
+mantle-spacewasm-reference-bundler> Running phase: installPhase
+mantle-spacewasm-reference-bundler> Executing cargoInstallHook
+mantle-spacewasm-reference-bundler> Finished cargoInstallHook
+mantle-spacewasm-reference-bundler> Running phase: fixupPhase
+mantle-spacewasm-reference-bundler> shrinking RPATHs of ELF executables and libraries in /nix/store/ix8dfcr8f30q6yycjbv7nr6y3s0zzbwf-mantle-spacewasm-reference-bundler-0.1.0
+mantle-spacewasm-reference-bundler> shrinking /nix/store/ix8dfcr8f30q6yycjbv7nr6y3s0zzbwf-mantle-spacewasm-reference-bundler-0.1.0/bin/mantle-spacewasm-reference
+mantle-spacewasm-reference-bundler> checking for references to /build/ in /nix/store/ix8dfcr8f30q6yycjbv7nr6y3s0zzbwf-mantle-spacewasm-reference-bundler-0.1.0...
+mantle-spacewasm-reference-bundler> patching script interpreter paths in /nix/store/ix8dfcr8f30q6yycjbv7nr6y3s0zzbwf-mantle-spacewasm-reference-bundler-0.1.0
+mantle-spacewasm-reference-bundler> stripping (with command strip and flags -S -p) in  /nix/store/ix8dfcr8f30q6yycjbv7nr6y3s0zzbwf-mantle-spacewasm-reference-bundler-0.1.0/bin
+spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-diagnostic-runner>     Finished `release` profile [optimized + debuginfo] target(s) in 12.19s
+building '/nix/store/77xymn526iq43h5ggnckzw6id3znjk5x-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-fixture-report.drv'...
+building '/nix/store/y3py5q02d27fq2nywdidz9zj3vcfz3zm-spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3-evidence.drv'...
+building '/nix/store/z3lnw28akaqpbi51x6bqji7yx60maf2k-spacewasm-materialization-request.json.drv'...
+building '/nix/store/l6r3ig41jrdqfivsvnl88z0w7gq1kfj0-mantle-spacewasm-reference-bundle-e24cf09355a90497148eb5029fdb8e3400bd63e3.drv'...

@@ -35,8 +35,11 @@ Allowed terminal states are validated, blocked, exhausted, and user-decision-req
 | Exact crate mirror | Retrieve identical bytes through the official static mirror | A transport repair retains the fixed-output identity | Two rooted Nix objects | `wasm-smith-mirror.log`, `wasmparser-mirror.log` | simpler | Full-flake completion remains unproven | Rerun the broad check on stable inputs | validated |
 | Isolated adapter lock | Let Cargo record the current local dependency edges | The strict adapter gate preserves its input lockfile | Generated isolated `Cargo.lock` | Two edges added, zero source findings, lock guard passes | simpler | No remaining blocker in this scope | Preserve the guard in broad checks | validated |
 | Artifact metadata | Route host and musl install metadata through the patched Cargo | Artifact selection retains workspace authority and the original build compiler | Shared Crane hook wrapper | Raft build and missing-command control pass | simpler | The broad check still needs a final run | Run the broad check on stable inputs | validated |
-| Vendor resource layout | Preserve the exact pinned workspace resource through Cargo vendoring | The broad dependency build can compile conformance | `vm-cohort-conformance/src/standard.rs:33` | `flake-final.log` rejects the missing workspace-relative profile | simpler | The flattened vendor tree lacks the required profile path | Inspect the pinned resource and design a bounded, collision-safe vendor projection | blocked |
-| Remaining source rules | Correct each rule at its owner | The strict selected gate passes | Source, fixtures, and strict receipt | Latest pinned report has 1,814 warnings | equivalent | Source findings remain after the declared correction rounds | Regroup before another bounded source pass | active |
+| Vendor resource layout | Retain a private workspace behind the package symlink | Conformance compiles without source or profile changes | `nix/vm-cohort-vendor.nix` | `vendor-final.log` passes controls, nine adapter cases, and policy | simpler | No remaining blocker in this scope | Retain the exact-resource controls | validated |
+| Serde inline scopes | Qualify admitted derives and remove compiler-proven unused imports | Derive ownership stays explicit without wire changes | `serde-scopes.md` | Tests and Clippy pass, report decreases to 1,766 | simpler | Ambiguous scopes remain outside the helper | Retain the rejected scopes for manual review | validated |
+| Exact integer framing | Assert the target-width invariant instead of substituting lengths | Representable canonical bytes stay exact | `framing.md` | Tests and Clippy pass, report decreases to 1,762 | simpler | Other integer policies need separate admission review | Retain boundary regressions | validated |
+| Producer bundle identity | Remeasure the declared SpaceWasm bundle | Only the admitted complete bundle can execute | `spacewasm.md` and observed manifest | Both observed manifest digests differ from the admitted digest | equivalent | Compatible producer evidence or a new-cohort review is absent | Resolve the producer cohort without changing the guard | blocked |
+| Remaining source rules | Correct each rule at its owner | The strict selected gate passes | Source, fixtures, and strict receipt | Latest pinned report has 1,762 warnings | equivalent | Source findings remain after the declared correction rounds | Regroup before another bounded source pass | active |
 
 ## Resumed correction budget
 
@@ -64,4 +67,12 @@ Neither repair changes the VM Cohort revision, compiler, root lockfiles, artifac
 The final broad retry now fails at a distinct vendor-resource boundary, not Cargo package-ID formatting.
 The preserved result is partial: Cargo compatibility is validated, source findings decreased, and the full change remains blocked.
 No accepted-spec sync, archive, or main integration occurs.
+
+## Continued pass
+
+The resumed request adds the bounded vendor pass in `vendor.md` and two source passes in `serde-scopes.md` and `framing.md`.
+The private-layout route passes without a Rust patch or shared vendor-root config.
+The source passes remove another 52 findings. Their tests and strict Clippy pass.
+All pinned policy identifiers and enforcement settings remain unchanged.
+The remaining source work is incomplete. The separate SpaceWasm identity mismatch still blocks the broad rail.
 

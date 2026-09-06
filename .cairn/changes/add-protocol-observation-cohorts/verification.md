@@ -92,8 +92,9 @@ The checkpoint Octet check rejected two implicit guest-probe defaults.
 Both probe paths now use one fully explicit constructor for the reviewed CPU, memory, boot, and scheduler configuration.
 The seed retains its full width. Four probe tests pass, including an exact comparison with the previous configuration.
 That follow-up Octet check reported zero errors and 2,458 warnings.
-Later source corrections reduced the same pinned report to 1,814 warnings and zero errors.
+Later source corrections reduced the same pinned report to 1,762 warnings and zero errors.
 The corrections cover explicit derives, qualified owner paths, and private protocol names with public compatibility exports.
+The continued passes cover admitted inline Serde scopes and exact integer framing without substituted lengths.
 Seven-package tests and strict Clippy pass across all targets and all features after these corrections.
 Naming, owner-path, module-filename, and generated-source findings remain.
 The warning-only result is not strict acceptance evidence. The quality task remains open.
@@ -123,11 +124,18 @@ Its unchanged strict Octet gate now passes with zero findings and no lockfile mu
 Both Crane compositions now use patched metadata for artifact selection while retaining the normal Cargo build command.
 The Raft guest build and the missing-command negative control pass their expected outcomes.
 
-The final broad check reaches a separate VM Cohort vendor-layout error.
-The vendored `vm-cohort-conformance` crate cannot resolve `../../../config/generated/profile.json` from `src/standard.rs:33`.
-The isolated path-based adapter gate passes, but the flattened Cargo vendor layout lacks that workspace-relative resource.
-`evidence/gate-repair/flake-final.log` retains the failure.
-The next packaging correction must preserve the exact profile bytes, dependency revision, and existing guards.
+The earlier broad check reached a separate VM Cohort vendor-layout error.
+The vendored `vm-cohort-conformance` crate did not resolve `../../../config/generated/profile.json` from `src/standard.rs:33`.
+`evidence/gate-repair/flake-final.log` retains that failure.
+The private vendor workspace now preserves the original Rust files and exact profile bytes behind a package symlink.
+Compiler parity, negative controls, nine real adapter cases, and dependency policy pass.
+Both host and musl builds consume the same explicit vendor projection.
+The source-filter controls reject `.cairn/` and `.pi/` inputs without excluding similar directory names.
+
+The next broad retry rejects the SpaceWasm bundle manifest before runtime comparison.
+A fresh rooted bundle also differs from the admitted manifest and bundle identities, although its host runner digest matches.
+`evidence/gate-repair/spacewasm.md` records the exact digests and the missing evidence for a cause diagnosis.
+No producer worktree, provider pin, expected digest, or admission guard changed.
 A release-wide validation pass remains unavailable.
 
 Task 559 passed the scoped Nix checks, KVM case, and formatting.

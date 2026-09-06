@@ -1,0 +1,577 @@
+{
+  "schema": "mantle-spacewasm-reference-bundle-v1",
+  "profile_id": "nasa-spacewasm-e24cf093-reference-v1",
+  "profile_identity_blake3": "cceb1bd03f90dd382d4c7ff6e79266650830a7c87e9fae07db2e48773469eb67",
+  "cohort_identity_blake3": "fb2c9e84459271828ad6840093c80af359508f47b06125f6741b14a31c9cc103",
+  "members": [
+    {
+      "path": "LICENSE",
+      "role": "license",
+      "digest_blake3": "3833fc3c91a379ff509b431db1f7fd40dea69a6614249f420ec62398957087b1",
+      "size_bytes": 11357
+    },
+    {
+      "path": "NOTICE",
+      "role": "notice",
+      "digest_blake3": "467dcab77614d974aec526ce9f817def421a4c41722bdc8e1f009618597b65e5",
+      "size_bytes": 3915
+    },
+    {
+      "path": "binaries/host/libspacewasm.rlib",
+      "role": "host-library",
+      "digest_blake3": "9a629705b8a8dcb90ecadfa341c2ea4d944bab244502c71f226d9c56358f12d0",
+      "size_bytes": 4577830
+    },
+    {
+      "path": "binaries/host/mantle-spacewasm-diagnostic-runner",
+      "role": "host-runner",
+      "digest_blake3": "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221",
+      "size_bytes": 4373192
+    },
+    {
+      "path": "binaries/wasm/libspacewasm.rlib",
+      "role": "wasm-library",
+      "digest_blake3": "6fd4c11040e0334fad54d9e44e9e93beb06f4431bb763c7ed2e025e5d2aabd94",
+      "size_bytes": 4582654
+    },
+    {
+      "path": "corpora/fuzz.json",
+      "role": "corpus-descriptor",
+      "digest_blake3": "3ce878f928a010430519836a67b5552af9836503c8be76aa89e695f087cdba16",
+      "size_bytes": 716
+    },
+    {
+      "path": "corpora/fuzz.tar",
+      "role": "corpus-artifact",
+      "digest_blake3": "2ccffdf847b1dbaaa23c10b8f9c418699385f549a50e0b1b574ab3c3462e1df3",
+      "size_bytes": 10240
+    },
+    {
+      "path": "corpora/spectest.json",
+      "role": "corpus-descriptor",
+      "digest_blake3": "655bfc040ff9ecc532f06357d3ab46c4f47085d491232d2e78864f290a8d4921",
+      "size_bytes": 988
+    },
+    {
+      "path": "corpora/spectest.tar",
+      "role": "corpus-artifact",
+      "digest_blake3": "c18ca1853609822ba64c648de142957590062b798ec4b76823214b47e998891f",
+      "size_bytes": 2703360
+    },
+    {
+      "path": "dependencies/manifest.json",
+      "role": "dependency-manifest",
+      "digest_blake3": "d9f51122ebe3fbac4b9e0f05795f64ce83cd41baad27e66cf9d42c52cb5b5d06",
+      "size_bytes": 408
+    },
+    {
+      "path": "dependencies/vendor.tar",
+      "role": "dependency-closure",
+      "digest_blake3": "db22691ec3be81a8dbfc065fdddac588c84ff933f8971e116df826a06c647da0",
+      "size_bytes": 43233280
+    },
+    {
+      "path": "fixtures/descriptors/allocation-failure.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "6965f6fd46e02652797fb308513cb144b4ef86167b5d0bb055b57a98bdcc311f",
+      "size_bytes": 611
+    },
+    {
+      "path": "fixtures/descriptors/mvp-negative.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "a43ae7fe69be33034e8ad57abd74b531f829677978a430818a696df5a49de88c",
+      "size_bytes": 595
+    },
+    {
+      "path": "fixtures/descriptors/mvp-positive.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "7fb30c8d45d52b11be96d1a7865a07664d9c61ccb9bc448d1fb7cb771eb9b24c",
+      "size_bytes": 564
+    },
+    {
+      "path": "fixtures/descriptors/out-of-fuel.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "02941213ebf026d1c30fb746a75c8e57b9a1eba0d4f588341cc6b123fb18e6d7",
+      "size_bytes": 563
+    },
+    {
+      "path": "fixtures/descriptors/streaming-negative.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "b63ec68ad04c6bd30e4c00b36a5f4e43969471e861a24149c3850db62209af52",
+      "size_bytes": 613
+    },
+    {
+      "path": "fixtures/descriptors/streaming-positive.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "5c33444b87896954490360e5f82db430e1eb07949ff09c6e453e030d527fd6d7",
+      "size_bytes": 625
+    },
+    {
+      "path": "fixtures/descriptors/trap.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "70d983f4f47b9f6f79c0a90f9292cf686bc3d5dee0f7453e8c08ecdd2760fecc",
+      "size_bytes": 564
+    },
+    {
+      "path": "fixtures/descriptors/unsupported-feature.json",
+      "role": "fixture-descriptor",
+      "digest_blake3": "fc0935f63f1fa062bb11a128f6595cb021cdc7c579c7b6aab65397b2ab351b79",
+      "size_bytes": 615
+    },
+    {
+      "path": "fixtures/wasm/allocation-failure.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "b2568cffcad3c442a90dd65ccb82d6b7e285bf71c2c9908ce539b6b515217bde",
+      "size_bytes": 33
+    },
+    {
+      "path": "fixtures/wasm/mvp-negative.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "a65dcf6433860fed3ae87310f5f01cf5d3abb75f5275112b7131f44e165ba6df",
+      "size_bytes": 33
+    },
+    {
+      "path": "fixtures/wasm/mvp-positive.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "b2568cffcad3c442a90dd65ccb82d6b7e285bf71c2c9908ce539b6b515217bde",
+      "size_bytes": 33
+    },
+    {
+      "path": "fixtures/wasm/out-of-fuel.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "3abd1aeeb22b89a284cc1a510d6f872a2a60f0bd61d43b640e1d0260d315eecb",
+      "size_bytes": 38
+    },
+    {
+      "path": "fixtures/wasm/streaming-negative.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "94a979b596cf073331cf2954de8c15fb504749758c464d0201ae799a451e02dc",
+      "size_bytes": 6
+    },
+    {
+      "path": "fixtures/wasm/streaming-positive.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "b2568cffcad3c442a90dd65ccb82d6b7e285bf71c2c9908ce539b6b515217bde",
+      "size_bytes": 33
+    },
+    {
+      "path": "fixtures/wasm/trap-unreachable.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "8dadfe79ddcae5a3c738f1ad24e812a2beb9a95c88702b4bad896fa1c8332c0a",
+      "size_bytes": 34
+    },
+    {
+      "path": "fixtures/wasm/unsupported-bulk-memory.wasm",
+      "role": "fixture-artifact",
+      "digest_blake3": "57a9e00325ec098e2ca8f7b7deb5b9659ccdcbce84d862ef60ea5f16e05e1624",
+      "size_bytes": 48
+    },
+    {
+      "path": "licenses/wasmedge-spectest-MIT.txt",
+      "role": "license",
+      "digest_blake3": "764c683a438c586c1759fc3931fa0b0c178feca6f8104ee709cd73712c12abdb",
+      "size_bytes": 1073
+    },
+    {
+      "path": "non-claims.json",
+      "role": "non-claims",
+      "digest_blake3": "8cf8d4a7e276e98f4401b6d86f3e7fd23db17920a7aa6ee45bff46d221544f31",
+      "size_bytes": 329
+    },
+    {
+      "path": "profile/octet-support-projection.json",
+      "role": "support-projection",
+      "digest_blake3": "7f3c40650c576bf9340d07df5371da28fad42ef4937d1d9ce9c2c8bc80a5b638",
+      "size_bytes": 1887
+    },
+    {
+      "path": "profile/profile.json",
+      "role": "profile-export",
+      "digest_blake3": "742ab4c8f4eb81f49de04f8eb74d5b7a87d43638215bd0a71d2ccd8e493d0348",
+      "size_bytes": 10734
+    },
+    {
+      "path": "profile/profile.ncl",
+      "role": "profile-source",
+      "digest_blake3": "4a38271cd040d2c71c620d79ff66ac36f375d3b9d42dca0f7f5752ac9f6e7ec8",
+      "size_bytes": 13524
+    },
+    {
+      "path": "reports/checks/fixture-replay.json",
+      "role": "check-receipt",
+      "digest_blake3": "f30920851afb3adedeaf1bc6af5e1647f8f9b1c199a1493977c4153ff3abad0b",
+      "size_bytes": 796
+    },
+    {
+      "path": "reports/checks/host-library-build.json",
+      "role": "check-receipt",
+      "digest_blake3": "09105a4aa047e618b79bf89ca5b732dda85cf0e24e44096e3528e570767e5cbe",
+      "size_bytes": 144
+    },
+    {
+      "path": "reports/checks/host-runner-build.json",
+      "role": "check-receipt",
+      "digest_blake3": "95561a0293ad3ee49f44019232c4e51fdb4a874f7dabde1ff8fc57033ef5a620",
+      "size_bytes": 172
+    },
+    {
+      "path": "reports/checks/upstream-spectest-address.json",
+      "role": "check-receipt",
+      "digest_blake3": "bb0f554ee99680c5706a011b9d7410b0ed26f86986f34d7b9e9404763badb7a2",
+      "size_bytes": 310
+    },
+    {
+      "path": "reports/checks/upstream-spectest-address.stderr.txt",
+      "role": "check-receipt",
+      "digest_blake3": "ecb1e405c70923384f8f10a50c8bc5804a5df8c0e4bfe764d82fd09593175670",
+      "size_bytes": 575
+    },
+    {
+      "path": "reports/checks/upstream-spectest-address.stdout.txt",
+      "role": "check-receipt",
+      "digest_blake3": "f0bfca1efbdfb2793734b082b6c0e3a276e8b07ed9bc23be65b480629e49c237",
+      "size_bytes": 133
+    },
+    {
+      "path": "reports/checks/upstream-unit-tests.json",
+      "role": "check-receipt",
+      "digest_blake3": "8a604070e67f38129f7d1bca62ad7f59bb5b403af3fc570c9af9a26edfed17ca",
+      "size_bytes": 273
+    },
+    {
+      "path": "reports/checks/upstream-unit-tests.stderr.txt",
+      "role": "check-receipt",
+      "digest_blake3": "24c7bf4451d094dabbe91d3a14c1b719233fef83627780b3c1f130a34eb37c1b",
+      "size_bytes": 563
+    },
+    {
+      "path": "reports/checks/upstream-unit-tests.stdout.txt",
+      "role": "check-receipt",
+      "digest_blake3": "3a80a1c8b8a31e107ad724cfa00adf367ddf0773c6f98da8345b7f97983e8717",
+      "size_bytes": 14361
+    },
+    {
+      "path": "reports/checks/wasm-library-build.json",
+      "role": "check-receipt",
+      "digest_blake3": "b017275106de469910e789317b57797c5a4387a9f86661f024973ba45e0912fd",
+      "size_bytes": 142
+    },
+    {
+      "path": "reports/materialization.json",
+      "role": "materialization-report",
+      "digest_blake3": "ed3465cdb3d4bb05114bff4e00c2dbb51ea02a51a0cbcc4ca2133ba33ce713cf",
+      "size_bytes": 6315
+    },
+    {
+      "path": "reports/replay-evidence.json",
+      "role": "replay-evidence",
+      "digest_blake3": "a67f8e29e8b27404c379ae1b2dc12ba80d2875d8b444b7fa4f87cd20d49d6674",
+      "size_bytes": 867
+    },
+    {
+      "path": "reports/results.json",
+      "role": "result-report",
+      "digest_blake3": "a22fcccf893487ccb567d3d1c8a7edf00842ebc598030336f031ce0a90c21a8a",
+      "size_bytes": 6054
+    },
+    {
+      "path": "source/Cargo.lock",
+      "role": "cargo-lock",
+      "digest_blake3": "4e6a07910125d4c921a62cec03d8bc9acb3bf341ebd1a11999df08d6c6c5c5f1",
+      "size_bytes": 11705
+    },
+    {
+      "path": "source/spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3.tar.gz",
+      "role": "source-archive",
+      "digest_blake3": "0db57636fb83a8c47f0c55601236cab648dd5edfdd2567cae0619aa74b8c4da3",
+      "size_bytes": 361890
+    },
+    {
+      "path": "toolchain/cargo",
+      "role": "cargo-binary",
+      "digest_blake3": "4181916be5f3311a788b6a3802467a342901b24f18e31840504c23400d40ebb5",
+      "size_bytes": 40996560
+    },
+    {
+      "path": "toolchain/rustc",
+      "role": "rustc-binary",
+      "digest_blake3": "630651b12912cad7d7d617810c15c46cd864afd94d2f5c2f3c88751b5a7fd977",
+      "size_bytes": 669136
+    },
+    {
+      "path": "toolchain/toolchain.tar",
+      "role": "toolchain-archive",
+      "digest_blake3": "49d2eb7c35d943f72dc7df1b3ee1d1086bef68d2318a1c52b366810ee32b346f",
+      "size_bytes": 697128960
+    },
+    {
+      "path": "toolchain/wasm-tools",
+      "role": "fixture-generator",
+      "digest_blake3": "322182646a578257d178cd818b2573f5c84e53e80aba49697358f848654007f8",
+      "size_bytes": 20882840
+    }
+  ],
+  "parent_edges": [
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "LICENSE",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "NOTICE",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "binaries/host/libspacewasm.rlib",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "binaries/host/mantle-spacewasm-diagnostic-runner",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "binaries/wasm/libspacewasm.rlib",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "corpora/fuzz.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "corpora/fuzz.tar",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "corpora/spectest.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "corpora/spectest.tar",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "dependencies/manifest.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "dependencies/vendor.tar",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/allocation-failure.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/mvp-negative.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/mvp-positive.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/out-of-fuel.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/streaming-negative.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/streaming-positive.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/trap.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/descriptors/unsupported-feature.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/allocation-failure.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/mvp-negative.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/mvp-positive.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/out-of-fuel.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/streaming-negative.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/streaming-positive.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/trap-unreachable.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "fixtures/wasm/unsupported-bulk-memory.wasm",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "licenses/wasmedge-spectest-MIT.txt",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "non-claims.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "profile/octet-support-projection.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "profile/profile.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/fixture-replay.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/host-library-build.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/host-runner-build.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-spectest-address.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-spectest-address.stderr.txt",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-spectest-address.stdout.txt",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-unit-tests.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-unit-tests.stderr.txt",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/upstream-unit-tests.stdout.txt",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/checks/wasm-library-build.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/materialization.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/replay-evidence.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "reports/results.json",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "source/Cargo.lock",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "source/spacewasm-e24cf09355a90497148eb5029fdb8e3400bd63e3.tar.gz",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "toolchain/cargo",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "toolchain/rustc",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "toolchain/toolchain.tar",
+      "relation": "profile-binds-member"
+    },
+    {
+      "parent_path": "profile/profile.ncl",
+      "child_path": "toolchain/wasm-tools",
+      "relation": "profile-binds-member"
+    }
+  ],
+  "non_claims": [
+    "not-consumer-runtime-admission",
+    "not-flight-qualification",
+    "not-memory-safety",
+    "not-production-readiness",
+    "not-release-eligibility",
+    "not-sandbox-effectiveness",
+    "not-spacewasm-correctness",
+    "not-webassembly-conformance"
+  ],
+  "bundle_identity_blake3": "6dbd889f9b098e1e6f134ced28ab9f3abbb2418bb27588707524d105da94f251"
+}

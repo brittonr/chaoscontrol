@@ -12,13 +12,13 @@ The approved design forbids KVM expansion until ChaosControl durably accepts the
 
 An in-memory graph cannot supply that evidence. A hidden journal directory also introduces filesystem effects that the current no-output configuration does not declare.
 
-## Decision needed
+## Approved decision
 
-For `output_dir=None`, choose an explicit storage policy before runtime cutover.
+The user approved the proposed policy with `continue` after the explicit storage question.
 
-The conservative proposal is to reject the run before KVM work unless the caller supplies a journal. Existing output directories can authorize a dedicated journal within their boundary. A future injected journal capability can preserve non-filesystem storage choices.
+The run must stop before KVM work unless the caller supplies journal authority. Existing output directories can authorize a dedicated journal within their boundary. A future injected journal capability can preserve non-filesystem storage choices.
 
-This proposal preserves method signatures but changes behavior for formerly accepted no-output runs. It needs an explicit decision because the task also requires public API and resource compatibility.
+This policy preserves method signatures but changes behavior for formerly accepted no-output runs. The user approved that behavior change. The initial implementation admits the existing `output_dir` field. It does not yet supply an injected journal API or prove durable publication.
 
 Other choices require separate authority: an operator-selected default journal root, or an explicitly named legacy mode. Neither is selected here. There is no silent fallback and no in-memory durability claim.
 
@@ -30,4 +30,4 @@ Other choices require separate authority: an operator-selected default journal r
 - Existing unrelated files remain unchanged.
 - Stale branch generations require a fresh projection and plan.
 
-Source acquisition is complete. This open decision concerns runtime storage authority, not the Cargo or forge repair.
+Source acquisition is complete. The storage decision is complete. Durable journal implementation and Campaign runtime adoption remain open.

@@ -27,6 +27,8 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod journal_authority;
+
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
 pub enum ExploreError {
@@ -95,7 +97,8 @@ pub struct ExplorerConfig {
     pub exploration_mode: ExplorationMode,
     /// Guest physical address of coverage bitmap (0 = blind mode).
     pub coverage_gpa: u64,
-    /// Optional output directory for checkpoints and reports.
+    /// Output directory for checkpoints, reports, and the Campaign journal.
+    /// `run` rejects absent or malformed root names before KVM work.
     pub output_dir: Option<String>,
     /// Optional disk image path for virtio-blk devices.
     ///
@@ -378,6 +381,11 @@ impl Explorer {
     ///
     /// Returns the final report with all bugs found, coverage stats, etc.
     pub fn run(&mut self) -> Result<ExplorationReport, ExploreError> {
+        journal_authority::admit_root(self.config.output_dir.as_deref()).map_err(|error| {
+            ExploreError::Config {
+                message: error.message().to_owned(),
+            }
+        })?;
         let run_start = Instant::now();
 
         info!(
@@ -2462,6 +2470,34 @@ pub struct ExplorationStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_journal_authority_stops_before_bootstrap_and_metrics() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let metrics_path = directory.path().join("metrics.jsonl");
+        for output_dir in [None, Some(String::new()), Some("bad\0root".to_owned())] {
+            let mut explorer = Explorer::new(ExplorerConfig {
+                output_dir,
+                metrics_file: Some(metrics_path.clone()),
+                emit_metrics: true,
+                ..ExplorerConfig::default()
+            });
+            let error = explorer
+                .run()
+                .expect_err("journal authority must precede KVM");
+            match error {
+                ExploreError::Config { message } => {
+                    assert!(message.contains("journal"), "unexpected error: {message}");
+                }
+                other => panic!("journal admission did not precede bootstrap: {other:?}"),
+            }
+            assert!(explorer.controller.is_none());
+            assert_eq!(explorer.rounds_completed, 0);
+            assert_eq!(explorer.total_branches_run, 0);
+            assert!(explorer.metrics_sink.is_none());
+            assert!(!metrics_path.exists());
+        }
+    }
 
     const TEST_ALIAS: u32 = 42;
     const TEST_VARIANT_SEED: u64 = 73;

@@ -143,7 +143,8 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 ## Current Blockers
 
 - Dependency publication and fresh consumer acquisition now pass. See `public-acquisition-2026-09-07.md`.
-- Runtime storage authority for `output_dir=None` remains unspecified. Mandatory durable publication conflicts with the current optional-output behavior. See `durable-storage-decision.md` before changing that behavior.
+- The user approved rejection before KVM work without journal authority. The initial guard requires a nonempty, NUL-free `output_dir`. See `durable-storage-decision.md`.
+- Durable journal publication and the actual Campaign adapter remain unimplemented. A valid root name does not prove either capability.
 
 ## Non-Claims
 

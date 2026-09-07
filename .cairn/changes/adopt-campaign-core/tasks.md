@@ -2,8 +2,8 @@
 
 - [x] [serial] r[chaoscontrol.campaign_policy.baseline] Record exact `frontier.rs`, `input_tree.rs`, and `explorer.rs` positive and negative baseline results. See `verification-2026-09-07.md`.
 - [x] [serial] r[chaoscontrol.campaign_policy.boundary] Record why `campaign.rs` multi-seed execution and aggregation remain outside Campaign adoption. See `verification-2026-09-07.md`.
-- [x] [serial] r[chaoscontrol.campaign_policy.source_pins] Record the current Campaign and Choregraph publication blockers and required evidence. Public exact-object acquisition passes, but fresh Cargo resolution remains blocked. See `verification-2026-09-07.md`.
-- [ ] [depends:chaoscontrol.campaign_policy.source_pins] r[chaoscontrol.campaign_policy.source_pins] Add exact Cargo and Nix revisions after both compatible dependencies publish.
+- [x] [serial] r[chaoscontrol.campaign_policy.source_pins] Record the current Campaign and Choregraph publication blockers and required evidence. The historical blockers and the scoped client repair are recorded in `transport-review.md` and `public-acquisition-2026-09-07.md`.
+- [x] [depends:chaoscontrol.campaign_policy.source_pins] r[chaoscontrol.campaign_policy.source_pins] Add exact Cargo and Nix revisions after both compatible dependencies publish. Fresh locked acquisition, 211 library tests, and focused strict Clippy pass from frozen code `3cc7324c`. See `public-acquisition-2026-09-07.md`.
 
 ## Phase 2: Pure product adapter
 

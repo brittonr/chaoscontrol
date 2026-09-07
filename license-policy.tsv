@@ -17,6 +17,7 @@ package	crates/chaoscontrol-replay/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-evidence/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-property-suite/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-guest/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-guest-determinism-probe/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-raft-guest/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-guest-net/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-net-guest/Cargo.toml	AGPL-3.0-or-later

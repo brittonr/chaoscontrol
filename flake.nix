@@ -171,6 +171,9 @@
               '';
 
           rustToolchain = pkgs.rust-bin.stable.latest.default;
+          cargoExactRevisions = import ./nix/cargo-exact-revisions.nix {
+            inherit pkgs rustToolchain;
+          };
           craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
           # Musl-targeting toolchain for statically-linked guest binaries
@@ -1427,6 +1430,7 @@
             ;
 
           packages = {
+            cargo-exact-revisions = cargoExactRevisions;
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
             oci-intake = ociIntake;
@@ -1594,6 +1598,22 @@
             vm-cohort-dependency = vmCohortDependencyCheck;
             vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;
             nickel-cohort-exact = nickelCohortCheck;
+            cargo-exact-revisions =
+              pkgs.runCommand "cargo-exact-revision-controls"
+                {
+                  nativeBuildInputs = [
+                    rustToolchain
+                    pkgs.git
+                    pkgs.coreutils
+                  ];
+                }
+                ''
+                  fixture_timeout_seconds=120
+                  rustc --edition=2024 ${./tools/check-cargo-exact-revisions.rs} -o fixture
+                  timeout "$fixture_timeout_seconds" ./fixture ${rustToolchain}/bin/cargo baseline
+                  timeout "$fixture_timeout_seconds" ./fixture ${cargoExactRevisions}/bin/cargo candidate
+                  touch "$out"
+                '';
 
             # Clippy — deny warnings
             clippy = craneLib.cargoClippy (
@@ -2244,6 +2264,7 @@
 
           devShell = pkgs.mkShell {
             buildInputs = [
+              cargoExactRevisions
               (pkgs.rust-bin.stable.latest.default.override {
                 extensions = [
                   "rust-src"

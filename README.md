@@ -17,6 +17,10 @@ This is just an experiment with Claude + Pi.dev. Use at your own risk
 > Generated facts do not prove correctness, release eligibility, hosted support, or universal determinism.
 <!-- product-scope-facts:end -->
 
+## Campaign source acquisition
+
+Use the Nix development shell for the pinned Campaign dependency. It supplies a scoped Cargo transport repair without changing the Rust compiler. See [the source contract and checks](docs/campaign-source-acquisition.md).
+
 ## Features
 
 ### Deterministic Execution

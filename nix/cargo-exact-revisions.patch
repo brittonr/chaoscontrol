@@ -1,0 +1,41 @@
+--- a/src/tools/cargo/src/cargo/util/context/schema.rs
++++ b/src/tools/cargo/src/cargo/util/context/schema.rs
+@@ -141,6 +141,8 @@
+     pub retry: Option<u32>,
+     pub offline: Option<bool>,
+     pub git_fetch_with_cli: Option<bool>,
++    /// Exact remote URLs whose operator admits direct object-ID fetches.
++    pub git_fetch_exact_revisions: Option<Vec<String>>,
+     pub ssh: Option<CargoSshConfig>,
+ }
+ 
+--- a/src/tools/cargo/src/cargo/sources/git/utils.rs
++++ b/src/tools/cargo/src/cargo/sources/git/utils.rs
+@@ -1023,6 +1023,12 @@
+     let mut fast_path_rev: bool = false;
+ 
++    let direct_oid_allowed = gctx
++        .net_config()?
++        .git_fetch_exact_revisions
++        .as_ref()
++        .is_some_and(|urls| urls.iter().any(|url| url == remote_url));
++
+     let oid_to_fetch = match github_fast_path(repo, remote_url, locked_reference, gctx) {
+         Ok(FastPathRev::UpToDate) => return Ok(()),
+         Ok(FastPathRev::NeedsFetch(rev)) => Some(rev),
+         Ok(FastPathRev::Indeterminate) => None,
+@@ -1030,7 +1036,13 @@
+             debug!("failed to check github {:?}", e);
+             None
+         }
+-    };
++    }
++    .or_else(|| match locked_reference {
++        // A complete object ID does not require an advertised default branch.
++        // Keep other remotes and symbolic revisions on the existing path.
++        GitReference::Rev(rev) if direct_oid_allowed => rev_to_oid(rev),
++        _ => None,
++    });
+ 
+     maybe_gc_repo(repo, gctx)?;
+ 

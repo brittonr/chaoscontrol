@@ -142,9 +142,8 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current Blockers
 
-- Choregraph branchable history has no published implementation revision.
-- Campaign has no Rust implementation or published source revision.
-- Exact adapter APIs can only be finalized after both contracts exist.
+- Dependency publication and fresh consumer acquisition now pass. See `public-acquisition-2026-09-07.md`.
+- Runtime storage authority for `output_dir=None` remains unspecified. Mandatory durable publication conflicts with the current optional-output behavior. See `durable-storage-decision.md` before changing that behavior.
 
 ## Non-Claims
 

@@ -16,6 +16,8 @@
 
 ## Phase 3: Selection and exploration shell
 
+- [ ] [serial] r[chaoscontrol.campaign_policy.publication_fence] Resolve durable journal authority for `output_dir=None` before changing accepted run behavior. See `durable-storage-decision.md`.
+
 - [ ] [depends:chaoscontrol.campaign_policy.ranks] [depends:chaoscontrol.campaign_policy.entropy] r[chaoscontrol.campaign_policy.frontier_parity] Map score decay, ranked choice, exploratory choice, and pruning to Campaign decisions.
 - [ ] [depends:chaoscontrol.campaign_policy.frontier_parity] r[chaoscontrol.campaign_policy.publication_fence] Publish the exact selection event and fenced control-branch move before expansion.
 - [ ] [depends:chaoscontrol.campaign_policy.publication_fence] r[chaoscontrol.campaign_policy.effects] Execute mutation, input-tree selection, workers, snapshots, and KVM branches only in ChaosControl.

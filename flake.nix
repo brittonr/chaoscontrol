@@ -11,6 +11,14 @@
     };
     octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
+    campaign-src = {
+      url = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b&allRefs=1";
+      flake = false;
+    };
+    choregraph-history-src = {
+      url = "git+https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b&allRefs=1";
+      flake = false;
+    };
     vm-cohort-src = {
       url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149";
       flake = false;
@@ -37,11 +45,18 @@
       octet,
       trellis,
       vm-cohort-src,
+      campaign-src,
+      choregraph-history-src,
       mantle,
       advisory-db,
     }:
     let
-      supportedSystems = [ "x86_64-linux" ]; # KVM is Linux-only
+      campaignRevision = "e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b";
+      choregraphHistoryRevision = "b3e08e19750f53bdbcae970cdf58a47a791ed20b";
+      supportedSystems =
+        assert campaign-src.rev == campaignRevision;
+        assert choregraph-history-src.rev == choregraphHistoryRevision;
+        [ "x86_64-linux" ]; # KVM is Linux-only
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
       # Shared per-system definitions — computed once, used by
@@ -401,7 +416,14 @@
               }
             );
 
-          guest-sdk = mkGuestPackage { pname = "chaoscontrol-guest"; };
+          guest-sdk = mkGuestPackage {
+            pname = "chaoscontrol-guest";
+            doNotPostBuildInstallCargoBinaries = true;
+            installPhaseCommand = ''
+              mkdir -p $out/bin
+              cp target/x86_64-unknown-linux-musl/release/chaoscontrol-guest $out/bin/
+            '';
+          };
           guest-determinism-probe = mkGuestPackage {
             pname = "chaoscontrol-guest-determinism-probe";
             doNotPostBuildInstallCargoBinaries = true;

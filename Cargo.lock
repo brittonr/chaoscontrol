@@ -287,6 +287,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "campaign-choregraph"
+version = "0.1.0"
+source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b#e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b"
+dependencies = [
+ "campaign-core",
+ "choregraph-history",
+]
+
+[[package]]
+name = "campaign-core"
+version = "0.1.0"
+source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b#e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b"
+dependencies = [
+ "blake3",
+]
+
+[[package]]
 name = "cap-fs-ext"
 version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -417,11 +434,14 @@ dependencies = [
  "async-stream",
  "axum",
  "blake3",
+ "campaign-choregraph",
+ "campaign-core",
  "chaoscontrol-evidence",
  "chaoscontrol-fault",
  "chaoscontrol-protocol",
  "chaoscontrol-replay-evidence-core",
  "chaoscontrol-vmm",
+ "choregraph-history",
  "ciborium",
  "clap",
  "env_logger",
@@ -695,6 +715,14 @@ dependencies = [
  "tempfile",
  "thiserror",
  "wait-timeout",
+]
+
+[[package]]
+name = "choregraph-history"
+version = "0.1.0"
+source = "git+https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b#b3e08e19750f53bdbcae970cdf58a47a791ed20b"
+dependencies = [
+ "blake3",
 ]
 
 [[package]]

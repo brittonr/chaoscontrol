@@ -19,6 +19,9 @@ dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep
 profiling = ["dep:tracing", "chaoscontrol-vmm/profiling"]
 
 [dependencies]
+campaign-core = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b" }
+campaign-choregraph = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b" }
+choregraph-history = { git = "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git", rev = "b3e08e19750f53bdbcae970cdf58a47a791ed20b" }
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
 chaoscontrol-protocol = { path = "../chaoscontrol-protocol", features = ["std"] }

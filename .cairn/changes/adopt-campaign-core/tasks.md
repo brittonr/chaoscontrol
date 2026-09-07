@@ -1,8 +1,8 @@
 ## Phase 1: Baselines and blockers
 
-- [ ] [serial] r[chaoscontrol.campaign_policy.baseline] Record exact `frontier.rs`, `input_tree.rs`, and `explorer.rs` positive and negative baseline results.
-- [ ] [serial] r[chaoscontrol.campaign_policy.boundary] Record why `campaign.rs` multi-seed execution and aggregation remain outside Campaign adoption.
-- [ ] [serial] r[chaoscontrol.campaign_policy.source_pins] Record the current Campaign and Choregraph publication blockers and required evidence.
+- [x] [serial] r[chaoscontrol.campaign_policy.baseline] Record exact `frontier.rs`, `input_tree.rs`, and `explorer.rs` positive and negative baseline results. See `verification-2026-09-07.md`.
+- [x] [serial] r[chaoscontrol.campaign_policy.boundary] Record why `campaign.rs` multi-seed execution and aggregation remain outside Campaign adoption. See `verification-2026-09-07.md`.
+- [x] [serial] r[chaoscontrol.campaign_policy.source_pins] Record the current Campaign and Choregraph publication blockers and required evidence. Public exact-object acquisition passes, but fresh Cargo resolution remains blocked. See `verification-2026-09-07.md`.
 - [ ] [depends:chaoscontrol.campaign_policy.source_pins] r[chaoscontrol.campaign_policy.source_pins] Add exact Cargo and Nix revisions after both compatible dependencies publish.
 
 ## Phase 2: Pure product adapter

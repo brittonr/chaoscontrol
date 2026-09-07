@@ -81,6 +81,7 @@ pub mod assertion_summary_writer;
 mod bounded_json;
 pub mod bug;
 pub mod campaign;
+pub mod campaign_adapter;
 pub mod checkpoint;
 pub mod corpus;
 pub mod coverage;

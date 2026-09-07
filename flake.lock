@@ -110,6 +110,44 @@
         "type": "github"
       }
     },
+    "campaign-src": {
+      "flake": false,
+      "locked": {
+        "allRefs": true,
+        "lastModified": 1788749779,
+        "narHash": "sha256-5ON45vbzoE0/dfFg8SJfdnCUZF+Ni9QvCVYI+QEEQS4=",
+        "ref": "refs/heads/main",
+        "rev": "e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b",
+        "revCount": 12,
+        "type": "git",
+        "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
+      },
+      "original": {
+        "allRefs": true,
+        "rev": "e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b",
+        "type": "git",
+        "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
+      }
+    },
+    "choregraph-history-src": {
+      "flake": false,
+      "locked": {
+        "allRefs": true,
+        "lastModified": 1787243576,
+        "narHash": "sha256-BO/AlwJBIuW+WXGRQgd2LymvGIYtK0fqd3YYMDtfGBw=",
+        "ref": "refs/heads/main",
+        "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
+        "revCount": 69,
+        "type": "git",
+        "url": "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
+      },
+      "original": {
+        "allRefs": true,
+        "rev": "b3e08e19750f53bdbcae970cdf58a47a791ed20b",
+        "type": "git",
+        "url": "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1771121070,
@@ -870,6 +908,8 @@
     "root": {
       "inputs": {
         "advisory-db": "advisory-db",
+        "campaign-src": "campaign-src",
+        "choregraph-history-src": "choregraph-history-src",
         "crane": "crane",
         "mantle": "mantle",
         "nickel-1-17-0": "nickel-1-17-0",

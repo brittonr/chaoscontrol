@@ -1436,6 +1436,7 @@
 
           packages = {
             cargo-exact-revisions = cargoExactRevisions;
+            vm-cohort-octet-workspace = vmCohortAdapterOctetWorkspace;
             default = chaoscontrol;
             chaoscontrol-vmm = chaoscontrol;
             oci-intake = ociIntake;

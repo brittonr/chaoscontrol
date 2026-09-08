@@ -28,6 +28,16 @@ After the protocol and fault repairs:
 
 Logs remain under `campaign/.pi/complete-20260906/`. The final local rail uses `cleanup-resume-explore-tests.log`, `cleanup-resume-clippy.log`, `cleanup-resume-format.log`, and `cleanup-resume-cairn.json`.
 
+## Focused workspace lockfile
+
+The full frozen check of `e89a258639ffbc07d11ca7ba70342d5ddf25b183` found a stale lockfile in the VM Cohort Octet workspace. The existing mutation guard correctly rejected it.
+
+Cargo metadata regenerated this separate lockfile from the exact Nix-assembled workspace. The only changes add existing `serde_json` edges for `chaoscontrol-protocol` and `chaoscontrol-sim-core`. No package version changed. The product lockfiles remained unchanged.
+
+The `vm-cohort-octet-workspace` package now exposes the existing assembly for repeatable regeneration. Its README documents the review and generation steps. The strict `vm-cohort-adapter-octet-deny-all` check passes with zero findings and its mutation guard intact. Nix formatting also passes.
+
+Logs: `cleanup-resume-full-nix.log`, `vm-cohort-octet-lock.diff`, and `vm-cohort-octet-lock-fixed.log`.
+
 ## Remaining blocker
 
 `fault-default-octet.log` records the next focused-gate failure: two implicit external `VmConfig::default()` calls in `chaoscontrol-evidence/src/guest_determinism.rs`. The check also reports broader existing warnings. These results are not full strict acceptance.

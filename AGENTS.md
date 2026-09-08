@@ -7,6 +7,18 @@
 - For configuration/evidence work, prefer Nickel contracts at review boundaries: human-authored run configs and receipts are Nickel-backed; runtime-emitted bug/checkpoint/assertion records remain Rust-owned and are validated by contracts or generated schemas.
 - Dogfood evidence should include a concise validated receipt that binds commands, git rev, built artifacts, config digest, artifact hashes, assertion coverage, bug files, replay attempts, and known gaps. Raw `run.log`/`reproduce.log` files are debug aids and should stay local/ignored unless deliberately summarized.
 
+## Generated agent guidance
+
+Generated OpenSpec skills and prompts are legacy compatibility guidance. They do not replace the native Cairn workflow or its required gates.
+Keep local workflow overrides here. Update shared templates through their owning generator.
+For an approved legacy apply task, use these repository rules:
+
+- Diagnose and correct recoverable errors within the approved scope before continuing.
+- If an unresolved requirement changes the outcome, resolve it before implementation.
+- If a lifecycle review or approval is required, complete it before the protected action.
+- If a concrete blocker prevents progress, report its evidence and the next required decision.
+- Preserve read-only exploration, ambiguous change selection, and required evidence or archive gates.
+
 ## Design references
 
 - Read `docs/references/antithesis-documentation.md` when work concerns deterministic simulation, fuzzing, assertions, faults, exploration, replay, reports, or debugging.

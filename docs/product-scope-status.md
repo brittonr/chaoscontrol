@@ -4,7 +4,7 @@ Generated from `contracts/product-scope/registry.ncl` and named repository facts
 
 ## Architecture facts
 
-The Cargo workspace has 21 explicit crates. The source is `Cargo.toml`.
+The Cargo workspace has 23 explicit crates. The source is `Cargo.toml`.
 
 | Capability | State | Status label | Owner | Evidence | Boundary |
 | --- | --- | --- | --- | --- | --- |
@@ -36,8 +36,18 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
-| `publish-portable-snapshot-descriptors` | `experimental` | `chaoscontrol-snapshot-descriptor` | Descriptor identity, closure, exact preflight, restore receipt, contract freshness, and consumer fixtures must pass. |
-| `replace-python-product-automation` | `experimental` | `chaoscontrol-evidence` | Positive and negative Python-to-Rust parity must pass before Python removal. |
+| `add-protocol-observation-cohorts` | `experimental` | `chaoscontrol-evidence` | Typed cohort admission, independent oracle fixtures, loss accounting, stable novelty, bounds, and replay checks must pass. |
+| `adopt-campaign-core` | `experimental` | `chaoscontrol-explore` | Published exact dependencies, durable selection publication, product-adapter conformance, legacy parity, and bounded Campaign-backed KVM evidence must pass. |
+| `benchmark-bug-corpus` | `experimental` | `chaoscontrol-explore` | Versioned positive and negative corpus entries must match independent expected verdicts, measured rarity bounds, and exact replay receipts. |
+| `establish-bounded-input-repository` | `experimental` | `chaoscontrol-evidence` | A published bounded-input contract and positive and negative parity for capability-relative reads, JSON limits, and bounded decompression must pass. |
+| `establish-deterministic-simulation-core` | `experimental` | `chaoscontrol-sim-core` | An Aspen comparison, published shared contract, versioned algorithms, and exact clock, entropy, scheduling, and replay parity must pass. |
+| `exercise-projected-role-protocol-faults` | `experimental` | `chaoscontrol-evidence` | Published Choregraph projections and a frozen Lattice runtime cohort must pass independent role, transfer, fault, recovery, and snapshot replay fixtures. |
+| `export-kamacite-execution-evidence` | `experimental` | `chaoscontrol-evidence` | An exact Kamacite profile, explicit effect mappings, positive and negative export fixtures, and bounded KVM producer evidence must pass. |
+| `externalize-large-dogfood-artifacts` | `deferred` | `chaoscontrol-evidence` | A reviewed storage adapter and complete dual-materialization migration must pass. |
+| `extract-assertion-semantics-core` | `experimental` | `chaoscontrol-fault` | The license prerequisite, published assertion-semantics contract, and exact canonical identity, catalog, oracle, and report parity must pass. |
+| `extract-deterministic-block-model` | `experimental` | `chaoscontrol-vmm` | Shared simulation publication, complete snapshots, explicit fault outcomes, and byte and transition parity for the deterministic-block adapter must pass. |
+| `extract-failure-reducer-core` | `experimental` | `chaoscontrol-explore` | A published failure-reducer contract must preserve bounded candidate generation, indeterminate outcomes, exact assertion targets, and replay predicate parity. |
+| `model-guest-storage-flush-failures` | `experimental` | `chaoscontrol-vmm` | Guest-visible flush outcomes, cache and reboot profiles, persistent guest disks, independent recovery oracles, and exact cohort receipts must pass. |
 
 ## Roadmap by scope state
 

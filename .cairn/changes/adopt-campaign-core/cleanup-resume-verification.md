@@ -40,6 +40,8 @@ Logs: `cleanup-resume-full-nix.log`, `vm-cohort-octet-lock.diff`, and `vm-cohort
 
 ## Remaining blocker
 
-`fault-default-octet.log` records the next focused-gate failure: two implicit external `VmConfig::default()` calls in `chaoscontrol-evidence/src/guest_determinism.rs`. The check also reports broader existing warnings. These results are not full strict acceptance.
+The full Nix check ran again from an archive of `77ccefa7fb00f267f3693c26b9c536b96d7b61dd`. Its terminal failure is `checks.x86_64-linux.tigerstyle-chaoscontrol-focused`: two implicit external `VmConfig::default()` calls at `chaoscontrol-evidence/src/guest_determinism.rs:35` and `:75`. See `cleanup-lock-final-full-nix.log`. This confirms the same failure from `fault-default-octet.log` after the separate lockfile repair.
+
+The check also reports broader existing warnings. These results are not full strict acceptance. The VM Cohort adapter's strict check passes separately.
 
 The durable journal, actual Campaign runtime adapter, Campaign-backed KVM proof, fleet integration, and Campaign lifecycle closure remain open. No live host configuration changed during this recovery.

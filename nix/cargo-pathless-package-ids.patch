@@ -1,0 +1,85 @@
+--- a/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
++++ b/src/tools/cargo/crates/cargo-util-schemas/src/core/package_id_spec.rs
+@@ -152,9 +152,7 @@
+         url.set_fragment(None);
+ 
+         let (name, version) = {
+-            let Some(path_name) = url.path_segments().and_then(|mut p| p.next_back()) else {
+-                return Err(ErrorKind::MissingUrlPath(url).into());
+-            };
++            let path_name = url.path_segments().and_then(|mut p| p.next_back());
+             match frag {
+                 Some(fragment) => match parse_spec(&fragment)? {
+                     Some((name, ver)) => (name, ver),
+@@ -167,11 +165,17 @@
+                             (String::from(fragment.as_str()), None)
+                         } else {
+                             let version = fragment.parse::<PartialVersion>()?;
++                            let path_name =
++                                path_name.ok_or_else(|| ErrorKind::MissingUrlPath(url.clone()))?;
+                             (String::from(path_name), Some(version))
+                         }
+                     }
+                 },
+-                None => (String::from(path_name), None),
++                None => {
++                    let path_name =
++                        path_name.ok_or_else(|| ErrorKind::MissingUrlPath(url.clone()))?;
++                    (String::from(path_name), None)
++                }
+             }
+         };
+         PackageName::new(&name)?;
+@@ -245,7 +249,7 @@
+                         write!(f, "?{}", pretty)?;
+                     }
+                 }
+-                if url.path_segments().unwrap().next_back().unwrap() != &*self.name {
++                if url.path_segments().and_then(|mut p| p.next_back()) != Some(self.name.as_str()) {
+                     printed_name = true;
+                     write!(f, "#{}", self.name)?;
+                 }
+@@ -366,6 +370,43 @@
+     }
+ 
+     #[test]
++    fn pathless_git_ids_round_trip_with_explicit_names() {
++        const REVISION: &str = "ab123e3673b6dd616b3df5d044026b5e85755149";
++        const VERSION: &str = "0.1.0";
++        let url = Url::parse("rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3").unwrap();
++        assert_eq!(url.path_segments().and_then(|mut p| p.next_back()), None);
++        let package = PackageIdSpec::new("vm-cohort-core".to_owned())
++            .with_url(url)
++            .with_version(VERSION.parse().unwrap())
++            .with_kind(SourceKind::Git(GitReference::Rev(REVISION.to_owned())));
++        let rendered = format!(
++            "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev={REVISION}#vm-cohort-core@{VERSION}"
++        );
++        assert_eq!(package.to_string(), rendered);
++        assert_eq!(PackageIdSpec::parse(&rendered).unwrap(), package);
++        assert_eq!(
++            serde_json::to_string(&package).unwrap(),
++            format!("\"{rendered}\"")
++        );
++        assert_eq!(
++            PackageIdSpec::parse("git+rad://fixture#named")
++                .unwrap()
++                .name(),
++            "named"
++        );
++    }
++
++    #[test]
++    fn pathless_urls_never_invent_a_package_name() {
++        for spec in ["git+rad://fixture", "git+rad://fixture#1.2.3"] {
++            err!(spec, ErrorKind::MissingUrlPath(_));
++        }
++        assert!(PackageIdSpec::parse("git+rad://fixture#bad/name@1.2.3").is_err());
++        assert!(PackageIdSpec::parse("git+rad://fixture#name@invalid").is_err());
++        err!("git+rad://fixture#", ErrorKind::EmptyFragment);
++    }
++
++    #[test]
+     fn good_parsing() {
+         ok(
+             "https://crates.io/foo",

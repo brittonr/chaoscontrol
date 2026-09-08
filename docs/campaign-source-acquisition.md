@@ -1,6 +1,6 @@
 # Campaign source acquisition
 
-The development shell uses a scoped Cargo 1.98.0 repair for Campaign acquisition. The Rust compiler stays unchanged. Nix package builds retain their existing vendored-input path.
+The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign acquisition. The same Cargo also supports explicit package names for pathless source URLs. Host and musl Crane builds use this Cargo. The Rust compilers and Nix vendored-input path stay unchanged.
 
 ## Transport contract
 
@@ -17,6 +17,14 @@ The consumer still pins `e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b`. It uses the 
 Stock Cargo fetches ordinary branches, tags, and HEAD for this non-GitHub revision. The ordinary forge view stores the checkpoint under a publisher namespace. The namespace view exposes the branch but lacks HEAD.
 
 An isolated Git fixture reproduces that missing HEAD. A synthetic namespace HEAD makes Git advertise HEAD, but Radicle requires qualified, signed namespace references. The repair therefore belongs in client transport selection, not live Radicle storage.
+
+## Pathless package IDs
+
+VM Cohort uses a pinned `rad://` source whose URL has no path component. Stock Cargo 1.98.0 panics during package-ID formatting for metadata and `pkgid`.
+
+`nix/cargo-pathless-package-ids.patch` emits an explicit package name when no final path segment matches that name. Parsing accepts a pathless URL only with an explicit valid name. A missing name or a version-only fragment remains an error. Existing path-based package IDs retain their format.
+
+This repair changes metadata handling, not source authority or acquisition. The VM Cohort URL, revision, and private visibility remain unchanged.
 
 ## Repeatable checks
 
@@ -36,7 +44,8 @@ Source repository: `rust-lang/cargo`, as shipped in the official Rust 1.98.0 sou
 
 - Archive: `https://static.rust-lang.org/dist/rustc-1.98.0-src.tar.gz`
 - Immutable Nix fetch identity: `sha256-siau83X/vp++K4X96Za1BxbVnVUmjiQNBSOWU0t16Sk=`
-- Patch: `nix/cargo-exact-revisions.patch`
+- Transport patch: `nix/cargo-exact-revisions.patch`
+- Metadata patch: `nix/cargo-pathless-package-ids.patch`
 - Package: `nix/cargo-exact-revisions.nix`
 - Behavioral fixture: `tools/check-cargo-exact-revisions.rs`
 

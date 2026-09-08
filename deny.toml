@@ -49,6 +49,15 @@ crate = "chaoscontrol-guest"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-guest-determinism-probe"
+allow = ["AGPL-3.0-or-later"]
+
+# Published Choregraph history retains its upstream AGPL license.
+[[licenses.exceptions]]
+crate = "choregraph-history"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "chaoscontrol-guest-net"
 allow = ["AGPL-3.0-or-later"]
 
@@ -156,4 +165,8 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
   "https://git.onix.computer/z2CpqLFpdP36fZXYUK5ZNWxMibpCo.git",
   "https://seed.radicle.garden/zqhtZvsteJhxCJE96dMAZSZ9y1PX.git",
+  "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
+  "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git",
+  "https://seed.radicle.garden/z2pbwQ4Zd52M4oC1W9bLT3nQem9ay.git",
+  "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
 ]

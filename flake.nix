@@ -174,13 +174,18 @@
           cargoExactRevisions = import ./nix/cargo-exact-revisions.nix {
             inherit pkgs rustToolchain;
           };
-          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+          # Metadata must preserve pathless Radicle package IDs in every host check.
+          craneLib = ((crane.mkLib pkgs).overrideToolchain rustToolchain).overrideScope (
+            _final: _prev: { cargo = cargoExactRevisions; }
+          );
 
           # Musl-targeting toolchain for statically-linked guest binaries
           muslRustToolchain = pkgs.rust-bin.stable.latest.default.override {
             targets = [ "x86_64-unknown-linux-musl" ];
           };
-          muslCraneLib = (crane.mkLib pkgs).overrideToolchain muslRustToolchain;
+          muslCraneLib = ((crane.mkLib pkgs).overrideToolchain muslRustToolchain).overrideScope (
+            _final: _prev: { cargo = cargoExactRevisions; }
+          );
           muslCC = pkgs.pkgsCross.musl64.stdenv.cc;
 
           # Filter source to include Rust-relevant files, BPF sources, and
@@ -1750,6 +1755,11 @@
               // {
                 cargoDenyExtraArgs = "--locked";
                 cargoDenyChecks = "bans licenses sources";
+                postBuild = ''
+                  policy_control_timeout_seconds=120
+                  rustc --edition=2024 ${./tools/check-campaign-dependency-policy.rs} -o policy-controls
+                  timeout "$policy_control_timeout_seconds" ./policy-controls
+                '';
               }
             );
 

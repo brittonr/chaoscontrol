@@ -145,6 +145,36 @@ fn record<'a>(report: &'a OracleReport, fingerprint: &AssertionFingerprint) -> &
 }
 
 #[test]
+fn missing_process_instances_do_not_invent_owners() {
+    let (oracle, _, fingerprint) = strict_oracle(AssertionKind::Always, "missing-processes");
+    let report = oracle.report();
+    let expected = record(&report, &fingerprint);
+    let mut value = serde_json::to_value(expected).unwrap();
+    assert!(value.get("process_instances").is_none());
+    let decoded: AssertionRecord = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(&decoded, expected);
+    value["process_instances"] = json!(["b3:process-owner"]);
+    let decoded: AssertionRecord = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        decoded.process_instances,
+        BTreeSet::from(["b3:process-owner".to_string()])
+    );
+}
+
+#[test]
+fn malformed_process_instances_never_become_empty_evidence() {
+    let (oracle, _, fingerprint) = strict_oracle(AssertionKind::Always, "malformed-processes");
+    let report = oracle.report();
+    for invalid in [serde_json::Value::Null, json!(false), json!({}), json!([1])] {
+        let mut value = serde_json::to_value(record(&report, &fingerprint)).unwrap();
+        value["process_instances"] = invalid;
+        let error = serde_json::from_value::<AssertionRecord>(value).unwrap_err();
+        assert!(error.is_data());
+        assert!(record(&report, &fingerprint).process_instances.is_empty());
+    }
+}
+
+#[test]
 fn process_scoped_assertion_events_retain_exact_owner() {
     let (mut oracle, event, fingerprint) = strict_oracle(AssertionKind::Always, "process-scope");
     oracle.begin_run();

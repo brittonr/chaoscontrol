@@ -1,5 +1,7 @@
 # Pathless package-ID repair
 
+The later VM Cohort packaging blocker is resolved by published repair `0953ab17d2f4e318567a57925dc8fe30669d5b68`. See [the package verification](vm-cohort-packaging-repair.md). The historical failure below remains evidence, not the current blocker. The latest focused gate failure is recorded in [fault default verification](fault-default-verification.md).
+
 ## Goal and boundary
 
 Remove the Cargo metadata panic without changing source URLs, revisions, or dependency-policy checks. Acceptance requires the real locked workspace metadata, exact VM Cohort package ID, upstream package-ID controls, and the existing transport fixture.

@@ -176,8 +176,12 @@ pub struct EngineSnapshot {
     /// align with overrides set by the explorer.
     choice_count: u64,
     /// Host-directed process commands not yet observed by the guest supervisor.
-    #[serde(default)]
+    #[serde(default = "empty_process_fault_queue")]
     process_fault_queue: VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand>,
+}
+
+fn empty_process_fault_queue() -> VecDeque<chaoscontrol_protocol::process::ProcessFaultCommand> {
+    VecDeque::new()
 }
 
 impl EngineSnapshot {
@@ -2131,6 +2135,35 @@ mod tests {
     }
 
     #[test]
+    fn legacy_snapshot_without_process_queue_has_no_commands() {
+        let engine = FaultEngine::new(EngineConfig::default());
+        let mut value = serde_json::to_value(engine.snapshot()).unwrap();
+        assert_eq!(
+            value.as_object_mut().unwrap().remove("process_fault_queue"),
+            Some(serde_json::json!([]))
+        );
+        let restored: EngineSnapshot = serde_json::from_value(value).unwrap();
+        assert!(restored.process_fault_queue.is_empty());
+    }
+
+    #[test]
+    fn malformed_process_queue_is_not_replaced_with_empty_commands() {
+        let engine = FaultEngine::new(EngineConfig::default());
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::json!(false),
+            serde_json::json!({}),
+            serde_json::json!([{}]),
+        ] {
+            let mut value = serde_json::to_value(engine.snapshot()).unwrap();
+            value["process_fault_queue"] = invalid;
+            let error = serde_json::from_value::<EngineSnapshot>(value).unwrap_err();
+            assert!(error.is_data());
+            assert!(engine.snapshot().process_fault_queue.is_empty());
+        }
+    }
+
+    #[test]
     fn process_fault_queue_is_bounded_and_snapshot_replay_stable() {
         use chaoscontrol_protocol::process::{ProcessFaultAction, ProcessFaultCommand};
 
@@ -2149,6 +2182,9 @@ mod tests {
             Err(ProcessFaultQueueError::InvalidCommand)
         );
         let snapshot = engine.snapshot();
+        let snapshot: EngineSnapshot =
+            serde_json::from_value(serde_json::to_value(&snapshot).unwrap()).unwrap();
+        assert_eq!(snapshot.process_fault_queue.front(), Some(&command));
         let mut response = HypercallPage::zeroed();
         assert!(engine.write_process_fault_response(&mut response).unwrap());
         let decoded: ProcessFaultCommand =

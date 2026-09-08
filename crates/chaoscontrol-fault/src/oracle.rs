@@ -109,7 +109,10 @@ pub struct AssertionRecord {
     )]
     pub vm_instances: BTreeSet<u32>,
     /// Guest process identities that emitted this assertion.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    #[serde(
+        default = "empty_process_instances",
+        skip_serializing_if = "BTreeSet::is_empty"
+    )]
     pub process_instances: BTreeSet<String>,
     /// Exact process-local fallback binding, when this record came from a fallback sink.
     #[serde(default = "no_fallback_scope", skip_serializing_if = "Option::is_none")]
@@ -279,6 +282,10 @@ fn no_compatibility_id() -> Option<u32> {
 }
 
 fn empty_catalog_tokens() -> BTreeSet<AssertionFingerprint> {
+    BTreeSet::new()
+}
+
+fn empty_process_instances() -> BTreeSet<String> {
     BTreeSet::new()
 }
 

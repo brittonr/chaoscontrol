@@ -1,5 +1,7 @@
 # Cleanup and resumed verification
 
+This is a historical checkpoint. The guest configuration failure below is resolved by `guest-probe-config-review.md`. The later scope declarations are covered by `scope-intent-verification.md`. The current full-check blocker and its repeated-build proof are recorded in `spacewasm-bundle-review.md`.
+
 ## Operator cleanup
 
 The user authorized cleanup after quotas blocked edits, logs, and Git commits. Inspection found no ZFS snapshot usage for either affected dataset.

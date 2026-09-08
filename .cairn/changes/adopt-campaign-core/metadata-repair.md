@@ -55,6 +55,19 @@ The positive policy run checks bans, licenses, and sources. A repository-owned R
 
 The final Nix dependency-policy check passes, including all six denial controls. The existing transport check also passes. The exploration library retains 214 passing tests and its one existing ignored placeholder. Strict Clippy and Rust formatting pass. Logs: `metadata-policy-controls-final.log`, `metadata-consumer-tests.log`, and `metadata-consumer-clippy.log`.
 
+## Frozen full Nix result
+
+The metadata repair is committed at `71ce5e0ed61393f43397ee40cd722336f1c79471`. The frozen archive passed the metadata and policy stages. The full Nix check then failed during dependency compilation:
+
+```text
+vm-cohort-conformance-0.1.0/src/standard.rs:33:34
+couldn't read src/../../../config/generated/profile.json: No such file or directory
+```
+
+The pinned VM Cohort package embeds a file outside its crate. The vendored crate does not contain that parent-workspace file. The consumer must not bypass the generated-profile contract or copy an ambient sibling file into the build. A reviewed, published package-boundary repair remains necessary. The VM Cohort pin stays unchanged.
+
+The full log is `metadata-full-nix.log`. This result supersedes the Cargo metadata panic as the immediate full-Nix blocker.
+
 ## Remaining boundary
 
 This repair does not implement the durable journal or Campaign selection inside Explorer. It does not change the previously approved journal-root guard. Full Nix acceptance and lifecycle closure remain open until all relevant checks pass.

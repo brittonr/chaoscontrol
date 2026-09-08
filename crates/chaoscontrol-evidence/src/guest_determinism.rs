@@ -32,9 +32,7 @@ pub fn run_guest_determinism_probe(
     initrd: &Path,
     run_seed: u64,
 ) -> Result<(GuestDeterminismProfile, GuestDeterminismProbe), GuestDeterminismShellError> {
-    let mut config = VmConfig::default();
-    config.cpu.seed = run_seed;
-    config.cpu.hide_tsc = true;
+    let config = VmConfig::single_vcpu(run_seed, true);
     let mut vm = DeterministicVm::new(config)
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))
@@ -72,9 +70,7 @@ pub fn run_guest_determinism_gate(
     initrd: &Path,
     run_seed: u64,
 ) -> Result<GuestDeterminismDriftReport, GuestDeterminismShellError> {
-    let mut config = VmConfig::default();
-    config.cpu.seed = run_seed;
-    config.cpu.hide_tsc = true;
+    let config = VmConfig::single_vcpu(run_seed, true);
     let mut vm = DeterministicVm::new(config)
         .map_err(|error| GuestDeterminismShellError::Vm(error.to_string()))?;
     vm.load_kernel(&kernel.to_string_lossy(), Some(&initrd.to_string_lossy()))

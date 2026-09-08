@@ -361,10 +361,25 @@ fn runtime_capacity_limits(config: &VmConfig) -> Result<RuntimeCapacityLimits, V
     })
 }
 
+const SINGLE_VCPU_MEMORY_BYTES: usize = 268_435_456;
+const SINGLE_VCPU_CPU_FAMILY: u8 = 6;
+const SINGLE_VCPU_CPU_MODEL: u8 = 85;
+const SINGLE_VCPU_CPU_STEPPING: u8 = 4;
+
 impl Default for VmConfig {
     fn default() -> Self {
+        Self::single_vcpu(0, false)
+    }
+}
+
+impl VmConfig {
+    /// Build the standard single-vCPU machine with an explicit seed and TSC visibility.
+    ///
+    /// Optional disks, affinity, extra boot arguments, and diagnostic outputs remain absent.
+    /// This constructor performs no I/O and does not establish guest determinism.
+    pub fn single_vcpu(seed: u64, hide_tsc: bool) -> Self {
         Self {
-            memory_size: 256 * 1024 * 1024,
+            memory_size: SINGLE_VCPU_MEMORY_BYTES,
             num_vcpus: 1,
             scheduling_strategy: SchedulingStrategy::RoundRobin,
             smp_progress_mode: ProgressMode::ExactSingleStep,
@@ -380,11 +395,16 @@ impl Default for VmConfig {
                 // (PIT + TSC loop) which is non-deterministic due to
                 // wall-clock PIT reads. Kernel falls back to CPUID 0x15.
                 // (Set dynamically for SMP in new() below.)
-                hide_tsc: false,
-                fixed_family: Some(6),
-                fixed_model: Some(85), // Skylake-SP
-                fixed_stepping: Some(4),
-                ..CpuConfig::default()
+                hide_tsc,
+                fixed_family: Some(SINGLE_VCPU_CPU_FAMILY),
+                fixed_model: Some(SINGLE_VCPU_CPU_MODEL),
+                fixed_stepping: Some(SINGLE_VCPU_CPU_STEPPING),
+                tsc_khz: crate::cpu::DEFAULT_TSC_KHZ,
+                allow_avx2: false,
+                allow_avx512: false,
+                fixed_frequency_mhz: None,
+                seed,
+                tsc_advance_per_tick: crate::cpu::DEFAULT_TSC_ADVANCE,
             },
             // Deterministic boot parameters:
             // clocksource=tsc tsc=reliable: use our pinned TSC as main clock
@@ -4795,6 +4815,10 @@ impl Drop for DeterministicVm {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "vm/configuration.rs"]
+mod configuration;
 
 #[cfg(test)]
 mod tests {

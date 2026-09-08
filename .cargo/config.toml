@@ -1,8 +1,11 @@
 # Use Git for the published Radicle and HTTPS dependency transports.
 [net]
 git-fetch-with-cli = true
-# The reviewed forge supports exact-object fetches. Other remotes stay unchanged.
-git-fetch-exact-revisions = ["https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"]
+# These reviewed sources support exact-object fetches. Other remotes stay unchanged.
+git-fetch-exact-revisions = [
+  "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git",
+  "rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3",
+]
 
 # Use the nix-provided musl cross-compiler for static guest binaries.
 # The wrapper is added to PATH by the devShell in flake.nix.

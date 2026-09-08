@@ -20,7 +20,7 @@
       flake = false;
     };
     vm-cohort-src = {
-      url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=ab123e3673b6dd616b3df5d044026b5e85755149";
+      url = "git+rad://z2QJLUqyAZnnHPiZQ1BFjLsX9ush3?rev=0953ab17d2f4e318567a57925dc8fe30669d5b68";
       flake = false;
     };
     mantle = {
@@ -73,7 +73,7 @@
             ];
           };
 
-          vmCohortRevision = "ab123e3673b6dd616b3df5d044026b5e85755149";
+          vmCohortRevision = "0953ab17d2f4e318567a57925dc8fe30669d5b68";
           vmCohortDependencyCheck =
             assert pkgs.lib.assertMsg (
               vm-cohort-src.rev == vmCohortRevision
@@ -1601,6 +1601,14 @@
 
             # Exact VM Cohort Cargo, lock, Nix, package, and boundary identity.
             vm-cohort-dependency = vmCohortDependencyCheck;
+            vm-cohort-packaged-build = craneLib.cargoTest (
+              commonArgs
+              // {
+                pname = "chaoscontrol-vm-cohort-packaged-build";
+                cargoArtifacts = null;
+                cargoExtraArgs = "-p chaoscontrol-vm-cohort-adapter --lib";
+              }
+            );
             vm-cohort-adoption-contract = vmCohortAdoptionContractCheck;
             nickel-cohort-exact = nickelCohortCheck;
             cargo-exact-revisions =

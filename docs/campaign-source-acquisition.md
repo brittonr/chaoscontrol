@@ -4,7 +4,9 @@ The development shell uses a scoped Cargo 1.98.0 transport repair for Campaign a
 
 ## Transport contract
 
-`.cargo/config.toml` lists the exact Campaign HTTPS URL under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
+`.cargo/config.toml` lists the exact Campaign HTTPS URL and private VM Cohort Radicle URL under `net.git-fetch-exact-revisions`. This list selects transport behavior. It is not repository authorization.
+
+The VM Cohort packaging repair uses a published signed branch without moving the default branch before consumer verification. Its root URL supports exact-object fetches. The declared transport capability avoids a cache preload or namespace-HEAD mutation.
 
 For a listed URL and a complete object ID, Cargo requests that object directly. It does not require an advertised default branch. A missing object or a server denial remains an error. There is no success fallback.
 

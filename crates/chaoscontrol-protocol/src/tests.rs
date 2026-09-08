@@ -1,6 +1,5 @@
 const EXPECTED_HYPERCALL_PAGE_BYTES: usize = 4096;
 const MESSAGE_BUFFER_BYTES: usize = 256;
-const ROUNDTRIP_BUFFER_BYTES: usize = 1024;
 const UNDERSIZED_BUFFER_BYTES: usize = 4;
 const CONDITION_FLAG_MASK: u8 = 0x01;
 const OTHER_FLAG_BITS: u8 = 0xFE;
@@ -10,7 +9,6 @@ const JSON_PAYLOAD_BYTES: usize = 17;
 const EMPTY_PAYLOAD_BYTES: usize = 6;
 const MESSAGE_START: usize = 2;
 const MESSAGE_END: usize = 7;
-const TRUNCATED_MESSAGE_BYTES: [u8; 2] = [0x05, 0x00];
 const SERIAL_PORT_START: u16 = 0x3F8;
 const SERIAL_PORT_END: u16 = 0x3FF;
 const PIT_CHANNEL_ZERO_PORT: u16 = 0x40;
@@ -97,6 +95,7 @@ fn encode_buffer_too_small() {
 #[cfg(feature = "std")]
 #[test]
 fn encode_decode_roundtrip() {
+    const ROUNDTRIP_BUFFER_BYTES: usize = 1024;
     let mut buffer = [0_u8; ROUNDTRIP_BUFFER_BYTES];
     let json = b"{\"host\":\"vm-1\",\"component\":\"raft\"}";
     let length = crate::encode_payload(&mut buffer, "leader elected", json).unwrap();
@@ -108,6 +107,7 @@ fn encode_decode_roundtrip() {
 #[cfg(feature = "std")]
 #[test]
 fn decode_truncated_message() {
+    const TRUNCATED_MESSAGE_BYTES: [u8; 2] = [0x05, 0x00];
     assert!(crate::decode_payload(&TRUNCATED_MESSAGE_BYTES).is_none());
 }
 

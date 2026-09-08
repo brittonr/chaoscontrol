@@ -33,10 +33,21 @@ pub struct BranchMarker {
     pub key: String,
     pub owner: String,
     pub details: serde_json::Value,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_marker_reference",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub state_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default = "absent_marker_reference",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub logical_position_ref: Option<String>,
+}
+
+// Missing references carry no snapshot or logical-position claim.
+fn absent_marker_reference() -> Option<String> {
+    None
 }
 
 impl BranchMarker {
@@ -182,6 +193,55 @@ mod tests {
         .unwrap();
         assert_eq!(first.identity, second.identity);
         assert_ne!(first.collapse_key(), second.collapse_key());
+    }
+
+    #[test]
+    fn missing_and_null_references_preserve_absence() {
+        let marker =
+            BranchMarker::new("ns", "key", "owner", serde_json::json!({}), None, None).unwrap();
+        let mut value = serde_json::to_value(&marker).unwrap();
+        assert!(value.get("state_ref").is_none());
+        assert!(value.get("logical_position_ref").is_none());
+        assert_eq!(BranchMarker::from_value(&value), Ok(marker.clone()));
+        value["state_ref"] = serde_json::Value::Null;
+        value["logical_position_ref"] = serde_json::Value::Null;
+        assert_eq!(BranchMarker::from_value(&value), Ok(marker));
+    }
+
+    #[test]
+    fn explicit_references_survive_round_trip() {
+        let marker = BranchMarker::new(
+            "ns",
+            "key",
+            "owner",
+            serde_json::json!({}),
+            Some(format!("b3:{}", "a".repeat(BLAKE3_HEX_BYTES))),
+            Some("term:1".to_string()),
+        )
+        .unwrap();
+        let value = serde_json::to_value(&marker).unwrap();
+        assert_eq!(BranchMarker::from_value(&value), Ok(marker));
+    }
+
+    #[test]
+    fn malformed_reference_types_never_become_absent() {
+        let marker =
+            BranchMarker::new("ns", "key", "owner", serde_json::json!({}), None, None).unwrap();
+        for field in ["state_ref", "logical_position_ref"] {
+            for invalid in [
+                serde_json::json!(false),
+                serde_json::json!(1),
+                serde_json::json!([]),
+                serde_json::json!({}),
+            ] {
+                let mut value = serde_json::to_value(&marker).unwrap();
+                value[field] = invalid;
+                assert_eq!(
+                    BranchMarker::from_value(&value),
+                    Err(BranchMarkerError::InvalidSchema)
+                );
+            }
+        }
     }
 
     #[test]

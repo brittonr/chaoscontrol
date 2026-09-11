@@ -11,7 +11,7 @@
     "maximum_shrink_attempts": 32,
     "wasmtime_fuel": 1024
   },
-  "bundle_identity_blake3": "260f66f8df52b89f5673cbf3f2702d49d3413d45d47ab2baca994185d29e5cb3",
+  "bundle_identity_blake3": "661243d354f85c4a5f6ddcc0d15ed530b0df22bda754a546c65bd354da376f60",
   "bundle_manifest_blake3": "2de0a78cb1655918e2c42880b21bf03f71aa36152382ef416ce56ab625180d5e",
   "chunk_schedules": [
     "complete",
@@ -35,7 +35,7 @@
   "generated_valid_cases": 4,
   "generator_id": "chaoscontrol-mvp-instruction-v1",
   "mantle_profile_id": "nasa-spacewasm-e24cf093-reference-v1",
-  "mantle_revision": "a141fcbaafe41f9a413a81275a33fe915bfca370",
+  "mantle_revision": "57fa0f5c2f8fb1edeed6d6113b57d32357612e34",
   "module_abi": {
     "maximum_host_functions": 0,
     "maximum_imports": 0,

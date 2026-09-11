@@ -74,6 +74,6 @@
   "schema": "chaoscontrol.spacewasm-mvp-differential-profile.v1",
   "seed": 1469598103934665603,
   "spacewasm_revision": "e24cf09355a90497148eb5029fdb8e3400bd63e3",
-  "spacewasm_runner_blake3": "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221",
+  "spacewasm_runner_blake3": "732da9b7276cb2c36dc0e5e308e8fd8e6bc88ddd665346c5afb1f351eda2a579",
   "wasmtime_version": "wasmtime 41.0.3"
 }

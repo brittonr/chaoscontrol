@@ -12,7 +12,7 @@
     "wasmtime_fuel": 1024
   },
   "bundle_identity_blake3": "260f66f8df52b89f5673cbf3f2702d49d3413d45d47ab2baca994185d29e5cb3",
-  "bundle_manifest_blake3": "661243d354f85c4a5f6ddcc0d15ed530b0df22bda754a546c65bd354da376f60",
+  "bundle_manifest_blake3": "2de0a78cb1655918e2c42880b21bf03f71aa36152382ef416ce56ab625180d5e",
   "chunk_schedules": [
     "complete",
     "one-byte"

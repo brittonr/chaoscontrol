@@ -147,6 +147,7 @@ fn a_binding_from_before_a_moment_admission_is_stale() {
     let selection = session.executed(EXPLOIT);
     let stale_after_selection = session.binding();
     assert_ne!(stale_binding, stale_after_selection);
+    let held = session.projection();
     session.admit_child(&selection, 0);
     let choices = ParentChoices::new();
     let observation = crate::campaign_adapter::result_observation(
@@ -166,7 +167,7 @@ fn a_binding_from_before_a_moment_admission_is_stale() {
             expected_binding: stale_after_selection,
             payloads: &session.payloads,
         },
-        previous: None,
+        previous: &held,
         control_event: event.clone(),
     });
     assert!(planned.is_err());

@@ -39,8 +39,12 @@ pub fn advance_projection(
 
 /// Validates a derived cache against authoritative history; the journal wins.
 ///
+/// With `request.previous` set, the history must fast-forward the held
+/// projection; without it, validation is a cold start.
+///
 /// # Errors
-/// Returns the Choregraph adapter error of a stale or incomplete cache.
+/// Returns the Choregraph adapter error of a stale, incomplete, or
+/// non-fast-forward cache.
 pub fn validate_cache(
     request: &CacheValidationRequest<'_>,
     cache: &CacheProjection,

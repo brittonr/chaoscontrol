@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use campaign_choregraph::{
     admit_control_root, plan_control_event_publication, BranchRef, ControlPayloadEnvelope,
     ControlProjectionRequest, ControlPublication, ControlPublicationRequest, HistoryGraph,
-    HistoryLimits, ParentChoices,
+    HistoryLimits, ParentChoices, ValidatedControlProjection,
 };
 use campaign_core::{
     CampaignControlEvent, DecisionPlan, FrontierState, Id, ProjectionBinding, ResultObservation,
@@ -32,7 +32,7 @@ use campaign_core::{
 
 use crate::campaign_adapter::{
     admit_child_moment, admit_config, admit_root_moment, campaign_admission, candidate_record,
-    decay_revision, generation_profile_id, guidance_record, projection_binding,
+    decay_revision, generation_profile_id, guidance_record, load_projection, projection_binding,
     retention_plan_request, root_control_branch, round_decision, selection_request,
     AdapterIdentity, AdmittedMoment, BootstrapFacts, BranchSlot, CampaignProfile, ChildMomentFacts,
     EntropyDraws, FrontierEntryFacts, GuidanceFacts, LegacyDraws, ResultFacts, RootMomentFacts,
@@ -192,8 +192,25 @@ impl Session {
             .collect()
     }
 
+    /// Cold-start projection of the current history (`validate_control_projection`).
+    pub fn projection(&self) -> ValidatedControlProjection {
+        let choices = ParentChoices::new();
+        load_projection(&ControlProjectionRequest {
+            graph: &self.graph,
+            branch: &self.branch,
+            parent_choices: &choices,
+            maximum_events: HISTORY_MAX_EVENTS,
+            expected_binding: self.binding(),
+            payloads: &self.payloads,
+        })
+        .unwrap()
+    }
+
+    /// Plans `event` through the cold-start projection of the current history: the
+    /// session holds no projection, so it validates one and publishes through it.
     pub fn plan_publication(&self, event: CampaignControlEvent) -> ControlPublication {
         let choices = ParentChoices::new();
+        let previous = self.projection();
         plan_control_event_publication(ControlPublicationRequest {
             current: ControlProjectionRequest {
                 graph: &self.graph,
@@ -203,7 +220,7 @@ impl Session {
                 expected_binding: self.binding(),
                 payloads: &self.payloads,
             },
-            previous: None,
+            previous: &previous,
             control_event: event,
         })
         .unwrap()

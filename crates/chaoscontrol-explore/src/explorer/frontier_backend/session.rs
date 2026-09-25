@@ -174,7 +174,7 @@ impl ControlSession {
                 expected_binding: self.binding()?,
                 payloads: &self.payloads,
             },
-            previous: Some(&self.projection),
+            previous: &self.projection,
             control_event: event,
         })?;
         self.state =

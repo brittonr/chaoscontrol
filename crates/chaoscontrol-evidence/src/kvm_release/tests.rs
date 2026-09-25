@@ -223,3 +223,61 @@ fn overclaim_and_wrong_terminal_class_fail_closed() {
         FINISHED_UNIX_SECONDS,
     );
 }
+
+const LEGACY_DIAGNOSTIC_RECEIPT_ARTIFACT: &str = "fresh/attempts/attempt-01/frontier-policy.json";
+
+// r[verify chaoscontrol.campaign_policy.rollback.valid]
+#[test]
+fn matrix_rows_cannot_select_the_legacy_diagnostic_policy() {
+    for args in [
+        vec!["run", "--frontier-policy", "legacy-diagnostic"],
+        vec!["run", "--frontier-policy=legacy-diagnostic"],
+    ] {
+        let mut matrix = sample_matrix();
+        matrix.rows[0].command.args = args.into_iter().map(str::to_string).collect();
+        let issues = validate_matrix(&matrix).expect_err("diagnostic row refused");
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue
+                    .starts_with(crate::frontier_policy_gate::LEGACY_DIAGNOSTIC_REFUSAL)),
+            "{issues:?}"
+        );
+    }
+    let mut matrix = sample_matrix();
+    matrix.rows[0].command.args = vec!["--frontier-policy".to_string(), "campaign".to_string()];
+    validate_matrix(&matrix).expect("Campaign rows are admitted");
+}
+
+// r[verify chaoscontrol.campaign_policy.rollback.valid]
+#[test]
+fn legacy_diagnostic_row_output_blocks_release() {
+    let matrix = sample_matrix();
+    let mut receipt = sample_receipt(&matrix);
+    let row = receipt.rows.last_mut().expect("fresh workload row");
+    row.artifacts.push(ArtifactIdentity {
+        path: LEGACY_DIAGNOSTIC_RECEIPT_ARTIFACT.to_string(),
+        bytes: 0,
+        blake3: EMPTY_BLAKE3.to_string(),
+    });
+    row.artifacts.sort();
+    row.artifact_set_identity = artifact_set_identity(&row.artifacts);
+    receipt.terminal_class = ReleaseClass::Blocked;
+    assert_blocked(
+        &receipt,
+        Blocker::LegacyDiagnosticOutput,
+        FINISHED_UNIX_SECONDS,
+    );
+
+    let mut receipt = sample_receipt(&matrix);
+    receipt.rows[0].executed_argv.extend([
+        "--frontier-policy".to_string(),
+        "legacy-diagnostic".to_string(),
+    ]);
+    receipt.terminal_class = ReleaseClass::Blocked;
+    assert_blocked(
+        &receipt,
+        Blocker::LegacyDiagnosticOutput,
+        FINISHED_UNIX_SECONDS,
+    );
+}

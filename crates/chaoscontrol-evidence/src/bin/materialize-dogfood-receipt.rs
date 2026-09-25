@@ -4,10 +4,11 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use chaoscontrol_evidence::validate_receipt_evidence_boundary;
+use chaoscontrol_evidence::frontier_policy_gate::{admit_output_directory, ReleaseGate};
 use chaoscontrol_evidence::rust_automation::dogfood_receipt::{
     build_receipt, build_run_config, encode_run_config_compat, ArtifactFact, MaterializeInput,
 };
+use chaoscontrol_evidence::validate_receipt_evidence_boundary;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -53,6 +54,11 @@ fn main() -> ExitCode {
 
 fn run(args: Vec<String>) -> Result<(), String> {
     let options = parse_args(&args)?;
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    // Legacy-diagnostic rollback outputs never become dogfood evidence; refuse
+    // before writing anything into the output directory.
+    admit_output_directory(ReleaseGate::DogfoodReceipt, &options.output)
+        .map_err(|error| error.to_string())?;
     let checkpoint_path = options.output.join("checkpoint.json");
     let assertions_path = options.output.join("assertions.json");
     let checkpoint = load_json(&checkpoint_path)?;

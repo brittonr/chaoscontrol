@@ -24,6 +24,23 @@ let RequiredBaseKinds = [
   "admitted-drift",
   "fresh-workload-replay",
 ] in
+# r[impl chaoscontrol.campaign_policy.rollback]
+# The legacy-diagnostic frontier policy is rollback-only and never release
+# evidence. Mirrors crates/chaoscontrol-evidence/src/frontier_policy_gate.rs.
+let FrontierPolicyFlag = "--frontier-policy" in
+let LegacyDiagnosticPolicy = "legacy-diagnostic" in
+let selects_legacy_diagnostic = fun args =>
+  std.array.elem "%{FrontierPolicyFlag}=%{LegacyDiagnosticPolicy}" args
+  || (
+    std.array.length args > 1
+    && std.array.any
+      (fun index =>
+        std.array.at index args == FrontierPolicyFlag
+        && std.array.at (index + 1) args == LegacyDiagnosticPolicy
+      )
+      (std.array.range 0 (std.array.length args - 1))
+  )
+in
 let Command = {
   program | P.non_empty_string,
   args | Array P.non_empty_string,
@@ -71,6 +88,7 @@ std.contract.custom (fun label value =>
         && std.array.length row.required_capabilities <= MaximumCapabilities
         && P.unique_by (fun capability => capability) row.required_capabilities
         && std.array.length row.retained_artifacts > 0
+        && !(selects_legacy_diagnostic row.command.args)
       ) checked.rows in
       let base_rows_present = std.array.all (fun required_kind =>
         std.array.any (fun row => row.kind == required_kind && row.required) checked.rows

@@ -9,6 +9,8 @@ use std::path::{Component, Path};
 
 use serde::{Deserialize, Serialize};
 
+use crate::frontier_policy_gate::{admit_artifact_path, admit_command_args, ReleaseGate};
+
 pub const MATRIX_SCHEMA_VERSION: u32 = 1;
 pub const RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const REQUIRED_WORKER_ARCH: &str = "x86_64";
@@ -98,6 +100,7 @@ pub enum Blocker {
     ArtifactSetMismatch,
     ClaimBoundaryMismatch,
     Overclaim,
+    LegacyDiagnosticOutput,
     TerminalClassMismatch,
 }
 
@@ -334,6 +337,14 @@ fn validate_matrix_row(
         issues,
         format!("matrix row retained artifact policy is empty: {}", row.id),
     );
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    if let Err(refusal) = admit_command_args(
+        ReleaseGate::KvmReleaseMatrix,
+        &format!("matrix row {} command", row.id),
+        &row.command.args,
+    ) {
+        issues.push(refusal.to_string());
+    }
 }
 
 fn validate_non_claims(non_claims: &[String], issues: &mut Vec<String>) {
@@ -602,6 +613,34 @@ fn classify_row(
         reasons,
     );
     validate_row_artifacts(matrix_row, receipt_row, blockers, reasons);
+    classify_legacy_diagnostic_output(matrix_row, receipt_row, blockers, reasons);
+}
+
+/// A row that ran, or retained output from, the legacy-diagnostic frontier
+/// policy cannot satisfy the release matrix.
+// r[impl chaoscontrol.campaign_policy.rollback]
+fn classify_legacy_diagnostic_output(
+    matrix_row: &MatrixRow,
+    receipt_row: &RowReceipt,
+    blockers: &mut Vec<Blocker>,
+    reasons: &mut Vec<String>,
+) {
+    let command = admit_command_args(
+        ReleaseGate::KvmReleaseMatrix,
+        &format!("row {} executed_argv", matrix_row.id),
+        &receipt_row.executed_argv,
+    );
+    let artifacts = receipt_row.artifacts.iter().try_for_each(|artifact| {
+        admit_artifact_path(
+            ReleaseGate::KvmReleaseMatrix,
+            &format!("row {} artifact {}", matrix_row.id, artifact.path),
+            &artifact.path,
+        )
+    });
+    for refusal in [command.err(), artifacts.err()].into_iter().flatten() {
+        blockers.push(Blocker::LegacyDiagnosticOutput);
+        reasons.push(refusal.to_string());
+    }
 }
 
 fn validate_row_artifacts(

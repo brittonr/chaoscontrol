@@ -29,13 +29,25 @@ let is_structural_path = fun path =>
   || std.array.elem FrontierTraceFile components
   || std.array.any (fun component => std.string.is_match JournalSegmentPattern component) components
 in
+# r[impl chaoscontrol.campaign_policy.rollback]
+# Legacy-diagnostic rollback outputs never satisfy dogfood evidence.
+# Mirrors crates/chaoscontrol-evidence/src/frontier_policy_gate.rs.
+let LegacyDiagnosticPolicyReceipt = "frontier-policy.json" in
+let is_legacy_diagnostic_path = fun path =>
+  let components = path_components path in
+  std.array.length components > 0
+  && std.array.last components == LegacyDiagnosticPolicyReceipt
+in
 let is_structural_schema = fun schema =>
   let normalized = std.string.lowercase (std.string.trim schema) in
   std.array.elem normalized StructuralSchemas
   || std.string.is_match StructuralSchemaNamespaces normalized
 in
 let ProductArtifactPath = std.contract.from_predicate (fun value =>
-  std.is_string value && std.string.length value > 0 && !(is_structural_path value)
+  std.is_string value
+  && std.string.length value > 0
+  && !(is_structural_path value)
+  && !(is_legacy_diagnostic_path value)
 ) in
 let ProductSchema = std.contract.from_predicate (fun value =>
   std.is_string value && std.string.length value > 0 && !(is_structural_schema value)

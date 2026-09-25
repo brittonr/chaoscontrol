@@ -9,6 +9,10 @@ use sha2::{Digest, Sha256};
 use crate::campaign_evidence_boundary::{
     admit_product_artifact, admit_product_schema, ProductEvidenceClass, STRUCTURAL_EVIDENCE_REFUSAL,
 };
+use crate::frontier_policy_gate::{
+    admit_artifact_path, admit_policy_value, ReleaseGate, CAMPAIGN_FRONTIER_POLICY,
+    FRONTIER_POLICIES, LEGACY_DIAGNOSTIC_REFUSAL,
+};
 use crate::{
     EvidenceError, EvidenceResult, SUPPORTED_SNAPSHOT_CODECS, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS,
 };
@@ -65,10 +69,9 @@ const RECEIPT_REFERENCE_LISTS: [(ProductEvidenceClass, &str); 2] = [
     (ProductEvidenceClass::Finding, "bug_reports"),
 ];
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
-/// Optional run-config key naming the frontier policy; absent means legacy.
-pub(crate) const RUN_CONFIG_FRONTIER_POLICY_KEY: &str = "frontier_policy";
-/// Frontier policy names owned by `chaoscontrol_explore::explorer::FrontierPolicy`.
-const RUN_CONFIG_FRONTIER_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
+/// Optional run-config key naming the frontier policy; absent means Campaign.
+pub(crate) const RUN_CONFIG_FRONTIER_POLICY_KEY: &str =
+    crate::frontier_policy_gate::FRONTIER_POLICY_KEY;
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
@@ -94,9 +97,7 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
 
     let valid = contracts.join("fixtures/valid");
     validate_run_config(&load_json(&valid.join("run-config.valid.json"))?)?;
-    validate_run_config(&load_json(
-        &valid.join("run-config.campaign-candidate.valid.json"),
-    )?)?;
+    validate_run_config(&load_json(&valid.join("run-config.campaign.valid.json"))?)?;
     let simulator_profile = serde_json::from_value::<crate::simulator_profile::SimulatorProfile>(
         load_json(&valid.join("simulator-profile.valid.json"))?,
     )
@@ -157,6 +158,19 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     expect_invalid(
         &invalid.join("run-config.unknown-frontier-policy.invalid.json"),
         validate_run_config,
+    )?;
+    expect_invalid(
+        &invalid.join("run-config.retired-legacy-policy.invalid.json"),
+        validate_run_config,
+    )?;
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    expect_legacy_diagnostic_refusal(
+        &invalid.join("run-config.legacy-diagnostic.invalid.json"),
+        validate_run_config,
+    )?;
+    expect_legacy_diagnostic_refusal(
+        &invalid.join("receipt.legacy-diagnostic-policy-receipt.invalid.json"),
+        validate_receipt,
     )?;
     expect_invalid(
         &invalid.join("receipt.missing-hash.invalid.json"),
@@ -307,8 +321,12 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             "fixtures/valid/operator-command.valid.json",
         ),
         (
-            "fixtures/valid/run-profile.campaign-candidate.valid.ncl",
-            "fixtures/valid/run-profile.campaign-candidate.valid.json",
+            "fixtures/valid/run-profile.campaign.valid.ncl",
+            "fixtures/valid/run-profile.campaign.valid.json",
+        ),
+        (
+            "fixtures/valid/run-profile.legacy-diagnostic.valid.ncl",
+            "fixtures/valid/run-profile.legacy-diagnostic.valid.json",
         ),
     ] {
         let output = Command::new(&command[0])
@@ -352,6 +370,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/run-profile.unsafe-reference.invalid.ncl",
         "fixtures/invalid/run-profile.implicit-blind-coverage.invalid.ncl",
         "fixtures/invalid/run-profile.unknown-frontier-policy.invalid.ncl",
+        "fixtures/invalid/run-profile.retired-legacy-policy.invalid.ncl",
         "fixtures/invalid/simulator-profile.unsupported-rng.invalid.ncl",
         "fixtures/invalid/simulator-profile.empty-artifacts.invalid.ncl",
         "fixtures/invalid/simulator-profile.malformed-digest.invalid.ncl",
@@ -400,6 +419,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/receipt.campaign-journal-promotion.invalid.ncl",
         "fixtures/invalid/receipt.frontier-trace-promotion.invalid.ncl",
         "fixtures/invalid/receipt.choregraph-schema-promotion.invalid.ncl",
+        "fixtures/invalid/receipt.legacy-diagnostic-policy-receipt.invalid.ncl",
     ] {
         let status = Command::new(&command[0])
             .args(&command[1..])
@@ -465,12 +485,21 @@ pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
     Ok(())
 }
 
-/// Checks a present run-config `frontier_policy` value; an absent key means legacy.
+/// Checks a present run-config `frontier_policy` value; an absent key means
+/// Campaign. A flat run config is a dogfood review input, so the
+/// legacy-diagnostic rollback policy is refused with a typed refusal.
 pub(crate) fn validate_run_config_frontier_policy(policy: &Value) -> EvidenceResult<()> {
+    admit_policy_value(
+        ReleaseGate::DogfoodReceipt,
+        "run-config.frontier_policy",
+        policy,
+    )?;
     let policy = require_str(Some(policy), "run-config.frontier_policy")?;
     ensure(
-        RUN_CONFIG_FRONTIER_POLICIES.contains(&policy),
-        format!("run-config.frontier_policy: unknown frontier policy {policy:?}"),
+        FRONTIER_POLICIES.contains(&policy),
+        format!(
+            "run-config.frontier_policy: unknown frontier policy {policy:?} (expected {CAMPAIGN_FRONTIER_POLICY:?})"
+        ),
     )
 }
 
@@ -1321,6 +1350,7 @@ pub fn validate_receipt_evidence_boundary(value: &Value) -> EvidenceResult<()> {
     for (class, pointer, label) in RECEIPT_REFERENCES {
         if let Some(path) = value.pointer(pointer).and_then(Value::as_str) {
             admit_product_artifact(class, label, path)?;
+            admit_artifact_path(ReleaseGate::DogfoodReceipt, label, path)?;
         }
     }
     for (class, key) in RECEIPT_REFERENCE_LISTS {
@@ -1331,8 +1361,10 @@ pub fn validate_receipt_evidence_boundary(value: &Value) -> EvidenceResult<()> {
             .flatten();
         for (idx, item) in items.enumerate() {
             if let Some(path) = item.get("path").and_then(Value::as_str) {
+                let label = format!("receipt.{key}[{idx}].path");
                 admit_product_artifact(class, key, path)
-                    .map_err(|refusal| refusal.at(format!("receipt.{key}[{idx}].path")))?;
+                    .map_err(|refusal| refusal.at(label.clone()))?;
+                admit_artifact_path(ReleaseGate::DogfoodReceipt, &label, path)?;
             }
         }
     }
@@ -1399,6 +1431,27 @@ fn expect_structural_refusal(
         Err(error) if error.message().contains(STRUCTURAL_EVIDENCE_REFUSAL) => Ok(()),
         Err(error) => Err(EvidenceError::new(format!(
             "negative fixture failed outside the Campaign evidence boundary: {}: {}",
+            path.display(),
+            error.message()
+        ))),
+        Ok(()) => Err(EvidenceError::new(format!(
+            "negative fixture unexpectedly passed: {}",
+            path.display()
+        ))),
+    }
+}
+
+/// A negative fixture must fail at the legacy-diagnostic release boundary,
+/// not on some unrelated shape error.
+fn expect_legacy_diagnostic_refusal(
+    path: &Path,
+    validator: impl FnOnce(&Value) -> EvidenceResult<()>,
+) -> EvidenceResult<()> {
+    let value = load_json(path)?;
+    match validator(&value) {
+        Err(error) if error.message().starts_with(LEGACY_DIAGNOSTIC_REFUSAL) => Ok(()),
+        Err(error) => Err(EvidenceError::new(format!(
+            "negative fixture failed outside the legacy-diagnostic boundary: {}: {}",
             path.display(),
             error.message()
         ))),

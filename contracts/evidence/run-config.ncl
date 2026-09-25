@@ -26,8 +26,10 @@ let Exploration = {
   quantum | P.positive_u64,
   bootstrap_budget | P.positive_u64,
   stale_round_limit | P.u64,
-  # Absent means "legacy"; reviewed legacy profiles keep their exact shape.
-  frontier_policy | P.closed_enum ["legacy", "campaign-candidate"] | optional,
+  # Absent means "campaign", the default Campaign-backed frontier policy.
+  # "legacy-diagnostic" is explicit diagnostic rollback only: its outputs are
+  # marked release_eligible = false and every release/dogfood gate refuses them.
+  frontier_policy | P.closed_enum ["campaign", "legacy-diagnostic"] | optional,
 } in
 let Coverage = {
   mode | P.closed_enum ["blind", "bitmap"],

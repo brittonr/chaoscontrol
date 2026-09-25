@@ -19,7 +19,7 @@
   "exploration": {
     "bootstrap_budget": 10000,
     "branch_factor": 2,
-    "frontier_policy": "campaign-candidate",
+    "frontier_policy": "campaign",
     "max_frontier": 10000,
     "max_rounds": 3,
     "mode": "hybrid",

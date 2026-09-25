@@ -27,6 +27,7 @@ pub mod dogfood_guards;
 pub mod evidence_contracts;
 pub mod findability_shell;
 pub mod fresh;
+pub mod frontier_policy_gate;
 pub mod guest_determinism;
 pub mod in_process_simulator;
 mod json_preflight;

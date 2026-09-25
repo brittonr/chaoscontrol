@@ -3,7 +3,15 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::{ensure, AcceptedWorkloadProofs, EvidenceError, EvidenceResult, REQUIRED_REPLAY_CLASS};
+use crate::campaign_evidence_boundary::ACCEPTED_PROOF_REFERENCE_FIELDS;
+use crate::frontier_policy_gate::{
+    admit_artifact_path, admit_output_directory, admit_policy_value, admit_release_eligibility,
+    ReleaseGate, FRONTIER_POLICY_KEY, RELEASE_ELIGIBLE_KEY,
+};
+use crate::{
+    ensure, AcceptedWorkloadProof, AcceptedWorkloadProofs, EvidenceError, EvidenceResult,
+    REQUIRED_REPLAY_CLASS,
+};
 
 pub const DEFAULT_MAX_DOGFOOD_ARTIFACT_BYTES: u64 = 50 * 1024 * 1024;
 const BLOCKED_ASSERTION_IDENTITY_STATUS: &str = "blocked-assertion-identity";
@@ -77,6 +85,26 @@ pub fn validate_accepted_dogfood_config(
     for proof in &manifest.proofs {
         if let Err(refusal) = proof.validate_evidence_boundary() {
             errors.push(format!("{}: {refusal}", proof.workload));
+        }
+    }
+
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    for (workload, cfg) in config {
+        if let Some(policy) = cfg.get(FRONTIER_POLICY_KEY) {
+            if let Err(refusal) = admit_policy_value(
+                ReleaseGate::AcceptedDogfoodConfig,
+                &format!("{workload}.{FRONTIER_POLICY_KEY}"),
+                policy,
+            ) {
+                errors.push(refusal.to_string());
+            }
+        }
+        if let Err(refusal) = admit_release_eligibility(
+            ReleaseGate::AcceptedDogfoodConfig,
+            &format!("{workload}.{RELEASE_ELIGIBLE_KEY}"),
+            cfg.get(RELEASE_ELIGIBLE_KEY),
+        ) {
+            errors.push(refusal.to_string());
         }
     }
 
@@ -224,6 +252,11 @@ pub fn validate_accepted_dogfood_config(
         .parent()
         .and_then(Path::parent)
         .unwrap_or(Path::new("."));
+    for proof in &manifest.proofs {
+        if let Err(error) = admit_proof_frontier_policy(repo_root, proof) {
+            errors.push(format!("{}: {error}", proof.workload));
+        }
+    }
     let config_by_workload: BTreeMap<_, _> = config.iter().collect();
     for proof in &manifest.proofs {
         let Some(cfg) = config_by_workload
@@ -344,6 +377,29 @@ pub fn validate_accepted_dogfood_config(
         "accepted-dogfood-config: {} workload configs match; {diagnostic_only_workloads} historical identity artifact(s) are diagnostic-only and non-promoting",
         manifest.proofs.len()
     ))
+}
+
+/// Refuse an accepted proof whose references or evidence directory carry a
+/// legacy-diagnostic frontier-policy mark.
+// r[impl chaoscontrol.campaign_policy.rollback]
+fn admit_proof_frontier_policy(
+    repo_root: &Path,
+    proof: &AcceptedWorkloadProof,
+) -> EvidenceResult<()> {
+    for (field, _) in ACCEPTED_PROOF_REFERENCE_FIELDS {
+        if let Some(reference) = proof.evidence_reference(field) {
+            admit_artifact_path(
+                ReleaseGate::AcceptedDogfoodConfig,
+                &format!("proof.{field}"),
+                reference,
+            )?;
+        }
+    }
+    let evidence_dir = repo_root.join(&proof.evidence_dir);
+    if evidence_dir.is_dir() {
+        admit_output_directory(ReleaseGate::AcceptedDogfoodConfig, &evidence_dir)?;
+    }
+    Ok(())
 }
 
 pub fn run_dogfood_guards_selftest() -> EvidenceResult<()> {

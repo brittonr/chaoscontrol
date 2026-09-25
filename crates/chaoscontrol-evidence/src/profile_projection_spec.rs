@@ -27,7 +27,7 @@ const RUN_SOURCE: ArtifactSpec = ArtifactSpec {
 };
 const RUN_CONTRACT: ArtifactSpec = ArtifactSpec {
     path: "contracts/evidence/run-config.ncl",
-    identity: "blake3:c582f18f1a3d559268de0d6db695da24db3bba37bd1b0526b827f84edacf48c2",
+    identity: "blake3:15324d64c5e0adeb34a49575ae29ca08308e46c5d1ef2cfd68b61c70fffe693e",
 };
 const RUN_IMPORTS: [ArtifactSpec; 1] = [PRIMITIVES];
 const CAMPAIGN_IMPORTS: [ArtifactSpec; 3] = [RUN_SOURCE, RUN_CONTRACT, PRIMITIVES];

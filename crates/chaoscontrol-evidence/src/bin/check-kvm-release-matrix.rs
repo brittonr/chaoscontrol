@@ -18,11 +18,13 @@ const FAILURE_EXIT_CODE: i32 = 1;
 const USAGE_EXIT_CODE: i32 = 2;
 const DEFAULT_MATRIX_SOURCE: &str = "contracts/kvm-release/matrix.ncl";
 const DEFAULT_MATRIX_PROJECTION: &str = "contracts/kvm-release/matrix.json";
-const INVALID_NICKEL_FIXTURE: &str =
-    "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl";
+const INVALID_NICKEL_FIXTURES: [&str; 2] = [
+    "contracts/kvm-release/fixtures/invalid/missing-timeout.invalid.ncl",
+    "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-row.invalid.ncl",
+];
 const VALID_RECEIPT_FIXTURE: &str =
     "contracts/kvm-release/fixtures/valid/complete-receipt.valid.json";
-const INVALID_RECEIPT_FIXTURES: [&str; 8] = [
+const INVALID_RECEIPT_FIXTURES: [&str; 9] = [
     "contracts/kvm-release/fixtures/invalid/missing-row.invalid.json",
     "contracts/kvm-release/fixtures/invalid/stale.invalid.json",
     "contracts/kvm-release/fixtures/invalid/skipped.invalid.json",
@@ -31,7 +33,10 @@ const INVALID_RECEIPT_FIXTURES: [&str; 8] = [
     "contracts/kvm-release/fixtures/invalid/tampered.invalid.json",
     "contracts/kvm-release/fixtures/invalid/dirty.invalid.json",
     "contracts/kvm-release/fixtures/invalid/overclaim.invalid.json",
+    "contracts/kvm-release/fixtures/invalid/legacy-diagnostic-output.invalid.json",
 ];
+/// Diagnostic receipt a legacy-diagnostic exploration leaves in its output.
+const LEGACY_DIAGNOSTIC_ARTIFACT: &str = "fresh/attempts/attempt-01/frontier-policy.json";
 const FIXTURE_REVISION: &str = "fixture-revision";
 const FIXTURE_RUNNER: &str = "fixture-runner";
 const FIXTURE_KERNEL: &str = "fixture-kernel";
@@ -240,7 +245,7 @@ fn run(config: Config) -> Result<(), String> {
         "KVM release matrix ok: profile={} rows={} positive=1 negative={}",
         matrix.profile_id,
         matrix.rows.len(),
-        INVALID_RECEIPT_FIXTURES.len() + 1
+        INVALID_RECEIPT_FIXTURES.len() + INVALID_NICKEL_FIXTURES.len()
     );
     Ok(())
 }
@@ -269,11 +274,13 @@ fn check_projection(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), String
             "stale matrix projection: {DEFAULT_MATRIX_PROJECTION}"
         ));
     }
-    let negative_status = nickel_status(root, Path::new(INVALID_NICKEL_FIXTURE))?;
-    if negative_status.success() {
-        return Err(format!(
-            "negative Nickel fixture unexpectedly passed: {INVALID_NICKEL_FIXTURE}"
-        ));
+    for fixture in INVALID_NICKEL_FIXTURES {
+        let negative_status = nickel_status(root, Path::new(fixture))?;
+        if negative_status.success() {
+            return Err(format!(
+                "negative Nickel fixture unexpectedly passed: {fixture}"
+            ));
+        }
     }
     Ok(())
 }
@@ -396,10 +403,28 @@ fn write_fixture_cases(root: &Path, matrix: &KvmReleaseMatrix) -> Result<(), Str
     set_blocked(&mut dirty, Blocker::DirtySource);
     write_json(root.join(INVALID_RECEIPT_FIXTURES[6]), &dirty)?;
 
-    let mut overclaim = valid;
+    let mut overclaim = valid.clone();
     overclaim.receipt.bounded_claim = "This proves universal determinism.".to_string();
     set_blocked(&mut overclaim, Blocker::Overclaim);
-    write_json(root.join(INVALID_RECEIPT_FIXTURES[7]), &overclaim)
+    write_json(root.join(INVALID_RECEIPT_FIXTURES[7]), &overclaim)?;
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    let mut diagnostic = valid;
+    let row = diagnostic
+        .receipt
+        .rows
+        .iter_mut()
+        .find(|row| row.kind == RowKind::FreshWorkloadReplay)
+        .ok_or_else(|| "matrix lacks the fresh workload replay row".to_string())?;
+    row.artifacts.push(ArtifactIdentity {
+        path: LEGACY_DIAGNOSTIC_ARTIFACT.to_string(),
+        bytes: 0,
+        blake3: EMPTY_BLAKE3.to_string(),
+    });
+    row.artifacts.sort();
+    row.artifact_set_identity = artifact_set_identity(&row.artifacts);
+    set_blocked(&mut diagnostic, Blocker::LegacyDiagnosticOutput);
+    write_json(root.join(INVALID_RECEIPT_FIXTURES[8]), &diagnostic)
 }
 
 fn fixture_case(matrix: &KvmReleaseMatrix) -> FixtureCase {

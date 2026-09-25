@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use crate::evidence_contracts::{
     validate_run_config_frontier_policy, RUN_CONFIG_FRONTIER_POLICY_KEY,
 };
+use crate::frontier_policy_gate::{admit_checkpoint, ReleaseGate};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactFact {
@@ -34,6 +35,9 @@ pub struct MaterializeInput {
 }
 
 pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, String> {
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    admit_checkpoint(ReleaseGate::DogfoodReceipt, "checkpoint", checkpoint)
+        .map_err(|refusal| refusal.to_string())?;
     let config = checkpoint
         .get("config")
         .and_then(Value::as_object)
@@ -60,8 +64,8 @@ pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, 
         "bootstrap_budget": required(config, "bootstrap_budget")?,
         "raw_log_policy": "debug-only-excluded-from-git",
     });
-    // Checkpoints omit the key for the legacy policy; any other recorded
-    // policy is carried so the run config never implies legacy for it.
+    // Checkpoints omit the key for the default Campaign policy; an explicitly
+    // recorded policy is carried and validated.
     if let Some(policy) = config.get(RUN_CONFIG_FRONTIER_POLICY_KEY) {
         validate_run_config_frontier_policy(policy)
             .map_err(|error| format!("checkpoint config {}", error.message()))?;
@@ -256,6 +260,7 @@ mod tests {
     use serde_json::json;
 
     use super::{build_receipt, build_run_config, encode_run_config_compat, MaterializeInput};
+    use crate::frontier_policy_gate::LEGACY_DIAGNOSTIC_REFUSAL;
 
     fn checkpoint() -> serde_json::Value {
         json!({"config": {
@@ -300,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_checkpoint_run_config_has_no_frontier_policy_key() {
+    fn campaign_checkpoint_without_policy_key_keeps_the_run_config_shape() {
         let config = build_run_config("run", &checkpoint()).expect("config");
         assert!(config.get("frontier_policy").is_none());
         let encoded =
@@ -309,11 +314,11 @@ mod tests {
     }
 
     #[test]
-    fn candidate_checkpoint_run_config_records_and_validates_its_policy() {
+    fn explicit_campaign_checkpoint_policy_is_recorded_and_validates() {
         let mut checkpoint = checkpoint();
-        checkpoint["config"]["frontier_policy"] = json!("campaign-candidate");
+        checkpoint["config"]["frontier_policy"] = json!("campaign");
         let config = build_run_config("run", &checkpoint).expect("config");
-        assert_eq!(config["frontier_policy"], "campaign-candidate");
+        assert_eq!(config["frontier_policy"], "campaign");
         let encoded = encode_run_config_compat(&config).expect("encoding");
         let reparsed: serde_json::Value = serde_json::from_slice(&encoded).expect("encoded JSON");
         assert_eq!(reparsed, config);
@@ -324,6 +329,8 @@ mod tests {
     fn unknown_or_malformed_checkpoint_frontier_policy_is_rejected() {
         for policy in [
             json!("exhaustive"),
+            json!("legacy"),
+            json!("campaign-candidate"),
             json!("campaign_candidate"),
             json!(""),
             json!(1),
@@ -334,6 +341,20 @@ mod tests {
                 build_run_config("run", &checkpoint).is_err(),
                 "policy {policy} must be rejected"
             );
+        }
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn legacy_diagnostic_checkpoints_are_refused_with_the_typed_refusal() {
+        let mut diagnostic = checkpoint();
+        diagnostic["config"]["frontier_policy"] = json!("legacy-diagnostic");
+        diagnostic["release_eligible"] = json!(false);
+        let mut resumed = checkpoint();
+        resumed["release_eligible"] = json!(false);
+        for checkpoint in [diagnostic, resumed] {
+            let error = build_run_config("run", &checkpoint).expect_err("diagnostic checkpoint");
+            assert!(error.starts_with(LEGACY_DIAGNOSTIC_REFUSAL), "{error}");
         }
     }
 

@@ -1831,6 +1831,19 @@
                     --replay-exit-status 0
                   test -s "$TMPDIR/materialize-dogfood/run-config.json"
                   test -s "$TMPDIR/materialize-dogfood/receipt.json"
+                  cp -R ${self}/dogfood-results/raft-20260506-131815 "$TMPDIR/materialize-legacy-diagnostic"
+                  chmod -R u+w "$TMPDIR/materialize-legacy-diagnostic"
+                  printf '{"schema":"chaoscontrol.frontier-policy-receipt.v1","frontier_policy":"legacy-diagnostic","release_eligible":false}\n' \
+                    > "$TMPDIR/materialize-legacy-diagnostic/frontier-policy.json"
+                  if materialize-dogfood-receipt \
+                    "$TMPDIR/materialize-legacy-diagnostic" \
+                    --git-revision fixture \
+                    --replay-status accepted \
+                    --replay-message no-bug \
+                    --replay-exit-status 0; then
+                    echo "legacy-diagnostic dogfood output unexpectedly materialized" >&2
+                    exit 1
+                  fi
                   CHAOSCONTROL_SCAFFOLD_TEMPLATE=${self}/docs/templates/rust-workload \
                     CHAOSCONTROL_SOURCE_ROOT=${self} \
                     scaffold-rust-workload "$TMPDIR/scaffold" parity-fixture

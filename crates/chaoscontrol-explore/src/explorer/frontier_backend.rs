@@ -20,6 +20,8 @@
 
 pub(crate) mod campaign;
 pub(crate) mod digests;
+#[cfg(test)]
+mod leakage_tests;
 pub(crate) mod legacy;
 pub mod parity;
 mod records;

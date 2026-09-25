@@ -3,10 +3,12 @@
 //! Exploration writes Campaign-owned structural artifacts next to product
 //! evidence under its output directory: the durable `campaign-journal/`
 //! (`LOCK`, `epoch-NNNN/seg-NNNNNNNN.cbor`) and the `frontier-trace.jsonl`
-//! decision trace. Campaign receipts carry `ReceiptClaims::no_claims()`.
-//! This pure classifier lets every product evidence admission point refuse
-//! those artifacts, and any Campaign/Choregraph receipt schema, as VM, fault,
-//! assertion, finding, replay, minimization, or release evidence.
+//! decision trace. Campaign receipts carry `ReceiptClaims::no_claims()`. The
+//! frontier parity receipt compares structural policy decisions replayed from
+//! those traces; it is structural too. This pure classifier lets every product
+//! evidence admission point refuse those artifacts, and any Campaign/Choregraph
+//! receipt schema, as VM, fault, assertion, finding, replay, minimization, or
+//! release evidence.
 //!
 //! The Nickel dogfood receipt contract (`contracts/evidence/dogfood-receipt.ncl`)
 //! mirrors these names; keep both in sync.
@@ -36,6 +38,9 @@ pub const CAMPAIGN_PROJECTION_SCHEMA: &str = "chaoscontrol.campaign-projection.v
 pub const CAMPAIGN_ADAPTER_SCHEMA: &str = "chaoscontrol.campaign-adapter.v1";
 /// Choregraph exploration moment schema label.
 pub const EXPLORATION_MOMENT_SCHEMA: &str = "chaoscontrol.exploration-moment.v1";
+/// Schema of the `check-frontier-parity` receipt: a structural comparison of
+/// policy decisions, never VM, fault, assertion, finding, replay, or release proof.
+pub const FRONTIER_PARITY_RECEIPT_SCHEMA: &str = "chaoscontrol.frontier-parity-receipt.v1";
 /// Namespace of Campaign-native receipt and profile schemas.
 pub const CAMPAIGN_SCHEMA_NAMESPACE: &str = "campaign.";
 /// Namespace of Choregraph-native receipt schemas.
@@ -46,12 +51,16 @@ pub const CHOREGRAPH_SCHEMA_NAMESPACE: &str = "choregraph.";
 pub const STRUCTURAL_EVIDENCE_REFUSAL: &str = "campaign-evidence-boundary";
 
 /// Exact ChaosControl-owned structural schemas and the artifact each names.
-const STRUCTURAL_SCHEMAS: [(&str, StructuralArtifactKind); 5] = [
+const STRUCTURAL_SCHEMAS: [(&str, StructuralArtifactKind); 6] = [
     (
         CAMPAIGN_JOURNAL_SEGMENT_SCHEMA,
         StructuralArtifactKind::CampaignJournalSegment,
     ),
     (FRONTIER_TRACE_SCHEMA, StructuralArtifactKind::FrontierTrace),
+    (
+        FRONTIER_PARITY_RECEIPT_SCHEMA,
+        StructuralArtifactKind::FrontierParityReceipt,
+    ),
     (
         CAMPAIGN_PROJECTION_SCHEMA,
         StructuralArtifactKind::CampaignReceipt,
@@ -126,6 +135,8 @@ pub enum StructuralArtifactKind {
     CampaignJournalLock,
     CampaignJournalSegment,
     FrontierTrace,
+    /// A `check-frontier-parity` receipt over recorded frontier traces.
+    FrontierParityReceipt,
     CampaignReceipt,
     ChoregraphReceipt,
 }
@@ -137,6 +148,7 @@ impl StructuralArtifactKind {
             Self::CampaignJournalLock => "campaign journal lock",
             Self::CampaignJournalSegment => "campaign journal segment",
             Self::FrontierTrace => "frontier trace",
+            Self::FrontierParityReceipt => "frontier parity receipt",
             Self::CampaignReceipt => "campaign receipt",
             Self::ChoregraphReceipt => "choregraph receipt",
         }
@@ -357,7 +369,7 @@ mod tests {
         "campaign-profile",
     ];
 
-    const STRUCTURAL_SCHEMA_CASES: [(&str, StructuralArtifactKind); 8] = [
+    const STRUCTURAL_SCHEMA_CASES: [(&str, StructuralArtifactKind); 10] = [
         (
             CAMPAIGN_JOURNAL_SEGMENT_SCHEMA,
             StructuralArtifactKind::CampaignJournalSegment,
@@ -386,6 +398,14 @@ mod tests {
         (
             "CHAOSCONTROL.FRONTIER-TRACE.V1",
             StructuralArtifactKind::FrontierTrace,
+        ),
+        (
+            FRONTIER_PARITY_RECEIPT_SCHEMA,
+            StructuralArtifactKind::FrontierParityReceipt,
+        ),
+        (
+            " ChaosControl.Frontier-Parity-Receipt.V1 ",
+            StructuralArtifactKind::FrontierParityReceipt,
         ),
     ];
 

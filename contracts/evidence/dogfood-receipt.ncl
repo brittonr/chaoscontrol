@@ -15,6 +15,7 @@ let JournalSegmentPattern = "^seg-[0-9]+\\.cbor$" in
 let StructuralSchemas = [
   "chaoscontrol.campaign-journal-segment.v1",
   "chaoscontrol.frontier-trace.v1",
+  "chaoscontrol.frontier-parity-receipt.v1",
   "chaoscontrol.campaign-projection.v1",
   "chaoscontrol.campaign-adapter.v1",
   "chaoscontrol.exploration-moment.v1",

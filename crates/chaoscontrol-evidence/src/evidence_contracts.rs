@@ -241,6 +241,8 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
         "receipt.campaign-journal-promotion.invalid.json",
         "receipt.frontier-trace-promotion.invalid.json",
         "receipt.choregraph-schema-promotion.invalid.json",
+        "receipt.frontier-parity-schema-promotion.invalid.json",
+        "receipt.frontier-parity-receipt-promotion.invalid.json",
     ] {
         expect_structural_refusal(&invalid.join(fixture), validate_receipt)?;
     }
@@ -419,6 +421,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/receipt.campaign-journal-promotion.invalid.ncl",
         "fixtures/invalid/receipt.frontier-trace-promotion.invalid.ncl",
         "fixtures/invalid/receipt.choregraph-schema-promotion.invalid.ncl",
+        "fixtures/invalid/receipt.frontier-parity-schema-promotion.invalid.ncl",
         "fixtures/invalid/receipt.legacy-diagnostic-policy-receipt.invalid.ncl",
     ] {
         let status = Command::new(&command[0])

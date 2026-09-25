@@ -28,9 +28,10 @@ const STRUCTURAL_ARTIFACTS: [&str; 4] = [
     JOURNAL_DIRECTORY,
     FRONTIER_TRACE,
 ];
-const STRUCTURAL_SCHEMAS: [&str; 4] = [
+const STRUCTURAL_SCHEMAS: [&str; 5] = [
     "chaoscontrol.campaign-journal-segment.v1",
     "chaoscontrol.frontier-trace.v1",
+    "chaoscontrol.frontier-parity-receipt.v1",
     "campaign.provenance.v1",
     "choregraph.nickel-source-receipt.v1",
 ];

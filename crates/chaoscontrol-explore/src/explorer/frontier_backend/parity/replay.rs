@@ -28,8 +28,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-/// Schema of a parity receipt.
-pub const PARITY_RECEIPT_SCHEMA: &str = "chaoscontrol.frontier-parity-receipt.v1";
+/// Schema of a parity receipt; product evidence admission refuses it as
+/// structural (`chaoscontrol_evidence::campaign_evidence_boundary`).
+pub const PARITY_RECEIPT_SCHEMA: &str =
+    chaoscontrol_evidence::campaign_evidence_boundary::FRONTIER_PARITY_RECEIPT_SCHEMA;
 /// Selection-budget units a recorded selection consumed (one round).
 const RECORDED_SELECTION_BUDGET_UNITS: u64 = 1;
 /// Low bits `rand` 0.8 discards from one `next_u64` when drawing an `f64`.

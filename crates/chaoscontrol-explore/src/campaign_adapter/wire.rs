@@ -1407,10 +1407,18 @@ fn to_cbor<T: Serialize>(value: &T) -> WireResult<Vec<u8>> {
     Ok(encoded)
 }
 
-fn from_cbor<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> WireResult<T> {
+/// Decodes one record and requires its canonical encoding.
+///
+/// Re-encoding must reproduce `bytes` exactly, so a record whose fixed-size
+/// digest is a longer byte string (a product value appended to a digest) or
+/// any other non-canonical form is refused instead of silently truncated.
+fn from_cbor<T: Serialize + for<'de> Deserialize<'de>>(bytes: &[u8]) -> WireResult<T> {
     let mut reader = bytes;
-    let value = ciborium::de::from_reader(&mut reader).map_err(|_| WireError::Decode)?;
+    let value: T = ciborium::de::from_reader(&mut reader).map_err(|_| WireError::Decode)?;
     if !reader.is_empty() {
+        return Err(WireError::Decode);
+    }
+    if to_cbor(&value).map_err(|_| WireError::Decode)? != bytes {
         return Err(WireError::Decode);
     }
     Ok(value)

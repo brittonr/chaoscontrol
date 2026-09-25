@@ -25,6 +25,7 @@ fn report() -> CampaignReport {
         failed_seeds: Vec::new(),
         scenario_config: None,
         frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        release_eligible: true,
         exhaustive_search_non_claim: chaoscontrol_explore::explorer::EXHAUSTIVE_SEARCH_NON_CLAIM
             .to_string(),
     }

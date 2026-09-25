@@ -21,12 +21,15 @@
 //! # Resume with different kernel or more rounds
 //! chaoscontrol-explore resume --corpus results/ --kernel vmlinux.new --rounds 500
 //!
-//! # Select the Campaign-backed candidate frontier policy (default: legacy)
-//! chaoscontrol-explore run --kernel vmlinux --frontier-policy campaign-candidate
+//! # Diagnostic rollback to the legacy frontier (default: campaign). Requires
+//! # --output; outputs are marked release-ineligible and gates refuse them.
+//! chaoscontrol-explore run --kernel vmlinux --output diag/ --frontier-policy legacy-diagnostic
 //! ```
 //!
 //! `resume` and `campaign-resume` keep the policy recorded in the checkpoint or
-//! `campaign_progress.json` unless `--frontier-policy` is given explicitly.
+//! `campaign_progress.json` (Campaign for files that predate the field) unless
+//! `--frontier-policy` is given explicitly. A legacy-diagnostic checkpoint or
+//! progress file resumes only with an explicit `--frontier-policy`.
 //!
 //! # Checkpointing
 //!
@@ -272,7 +275,9 @@ enum Commands {
         #[arg(long)]
         metrics_file: Option<String>,
 
-        /// Frontier policy: "legacy" (default) or "campaign-candidate".
+        /// Frontier policy: "campaign" (default) or the explicit diagnostic
+        /// rollback "legacy-diagnostic" (requires --output; its outputs are
+        /// never release eligible).
         #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
         frontier_policy: FrontierPolicy,
     },
@@ -551,7 +556,8 @@ enum Commands {
         #[arg(long, default_value = "0")]
         min_assertion_exercise: usize,
 
-        /// Frontier policy for every seed: "legacy" (default) or "campaign-candidate".
+        /// Frontier policy for every seed: "campaign" (default) or the explicit
+        /// diagnostic rollback "legacy-diagnostic" (never release eligible).
         #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
         frontier_policy: FrontierPolicy,
     },
@@ -569,9 +575,10 @@ enum Commands {
         #[arg(short, long)]
         rounds: Option<u64>,
 
-        /// Frontier policy for the remaining seeds: "legacy" or "campaign-candidate".
-        /// An explicit value wins; otherwise the policy recorded in
-        /// campaign_progress.json is used (legacy for pre-policy progress files).
+        /// Frontier policy for the remaining seeds: "campaign" or
+        /// "legacy-diagnostic". An explicit value wins; otherwise the policy
+        /// recorded in campaign_progress.json is used (Campaign for pre-policy
+        /// progress files). Legacy-diagnostic progress requires this flag.
         #[arg(long, value_parser = FrontierPolicy::from_str)]
         frontier_policy: Option<FrontierPolicy>,
     },
@@ -608,9 +615,10 @@ enum Commands {
         #[arg(long, default_value = "127.0.0.1")]
         dashboard_host: String,
 
-        /// Frontier policy for the resumed rounds: "legacy" or "campaign-candidate".
-        /// An explicit value wins; otherwise the checkpoint's recorded policy
-        /// is used (legacy for pre-policy checkpoints).
+        /// Frontier policy for the resumed rounds: "campaign" or
+        /// "legacy-diagnostic". An explicit value wins; otherwise the
+        /// checkpoint's recorded policy is used (Campaign for pre-policy
+        /// checkpoints). Legacy-diagnostic checkpoints require this flag.
         #[arg(long, value_parser = FrontierPolicy::from_str)]
         frontier_policy: Option<FrontierPolicy>,
     },
@@ -1007,6 +1015,13 @@ fn cmd_run(
     });
 
     // Validate inputs
+    if frontier_policy.is_legacy_diagnostic() && output.is_none() {
+        eprintln!(
+            "Error: {}",
+            chaoscontrol_explore::explorer::ExploreError::LegacyDiagnosticWithoutOutput
+        );
+        std::process::exit(1);
+    }
     if !Path::new(&kernel).exists() {
         eprintln!("Error: kernel file not found: {}", kernel);
         std::process::exit(1);
@@ -1705,14 +1720,38 @@ fn persist_campaign_outputs(
     Ok(())
 }
 
-/// Frontier policy for a resumed run: an explicit `--frontier-policy` wins,
-/// otherwise the policy recorded in the checkpoint or campaign progress
-/// (legacy for files written before the policy existed).
+/// A legacy-diagnostic checkpoint or progress file was resumed without an
+/// explicit `--frontier-policy`; legacy is never selected implicitly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ImplicitLegacyDiagnosticResume;
+
+impl std::fmt::Display for ImplicitLegacyDiagnosticResume {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "the run was recorded under the {legacy} frontier policy, which is never selected implicitly; pass --frontier-policy {legacy} to continue the diagnostic run, or --frontier-policy {campaign} to switch (outputs stay release-ineligible either way)",
+            legacy = FrontierPolicy::LegacyDiagnostic,
+            campaign = FrontierPolicy::Campaign,
+        )
+    }
+}
+
+impl std::error::Error for ImplicitLegacyDiagnosticResume {}
+
+/// Frontier policy for a resumed run: an explicit `--frontier-policy` wins;
+/// otherwise the recorded policy (Campaign for files written before the
+/// policy existed), except that a recorded legacy-diagnostic policy is
+/// refused without an explicit selection.
+// r[impl chaoscontrol.campaign_policy.rollback]
 fn resume_frontier_policy(
     explicit: Option<FrontierPolicy>,
     recorded: FrontierPolicy,
-) -> FrontierPolicy {
-    explicit.unwrap_or(recorded)
+) -> Result<FrontierPolicy, ImplicitLegacyDiagnosticResume> {
+    match (explicit, recorded) {
+        (Some(explicit), _) => Ok(explicit),
+        (None, FrontierPolicy::LegacyDiagnostic) => Err(ImplicitLegacyDiagnosticResume),
+        (None, FrontierPolicy::Campaign) => Ok(FrontierPolicy::Campaign),
+    }
 }
 
 fn cmd_campaign_resume(
@@ -1843,6 +1882,7 @@ fn cmd_campaign_resume(
                 scenario_config: cp.scenario.clone(),
                 scenario_summary: cp.scenario_summary.clone(),
                 frontier_policy: cp.config.frontier_policy,
+                release_eligible: cp.release_eligible,
                 stop: summary.stop,
             };
             reports.push((*seed, report, summary.wall_clock_seconds));
@@ -1864,7 +1904,13 @@ fn cmd_campaign_resume(
     }
 
     let frontier_policy =
-        resume_frontier_policy(frontier_policy_override, progress.config.frontier_policy);
+        match resume_frontier_policy(frontier_policy_override, progress.config.frontier_policy) {
+            Ok(policy) => policy,
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        };
     eprintln!(
         "Resuming campaign: {} of {} seeds remaining ({:?}), frontier policy {}",
         remaining.len(),
@@ -1981,7 +2027,13 @@ fn cmd_resume(
         }
     };
     checkpoint.config.frontier_policy =
-        resume_frontier_policy(frontier_policy_override, checkpoint.config.frontier_policy);
+        match resume_frontier_policy(frontier_policy_override, checkpoint.config.frontier_policy) {
+            Ok(policy) => policy,
+            Err(error) => {
+                eprintln!("Error: {error}");
+                std::process::exit(1);
+            }
+        };
 
     // Determine actual paths (overrides take precedence)
     let kernel_path = kernel_override
@@ -2893,8 +2945,20 @@ mod tests {
 
     const BIN: &str = "chaoscontrol-explore";
     const POLICY_FLAG: &str = "--frontier-policy";
-    const CANDIDATE: &str = "campaign-candidate";
+    const CAMPAIGN: &str = "campaign";
+    const LEGACY_DIAGNOSTIC: &str = "legacy-diagnostic";
     const UNKNOWN_POLICIES: [&str; 3] = ["bogus", "campaign_candidate", "Legacy"];
+    const RETIRED_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
+
+    /// Every subcommand that takes `--frontier-policy`, with `value` as the policy.
+    fn policy_commands(value: &str) -> [Vec<&str>; 4] {
+        [
+            vec!["run", "-k", "k", POLICY_FLAG, value],
+            vec!["campaign", "-k", "k", "-o", "out", POLICY_FLAG, value],
+            vec!["resume", "-c", "dir", POLICY_FLAG, value],
+            vec!["campaign-resume", "-c", "dir", POLICY_FLAG, value],
+        ]
+    }
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
         Cli::try_parse_from(std::iter::once(BIN).chain(args.iter().copied()))
@@ -2930,20 +2994,39 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.campaign_policy.cutover.valid]
+    // r[verify chaoscontrol.campaign_policy.rollback.invalid]
     #[test]
-    fn run_and_campaign_default_to_legacy_and_accept_campaign_candidate() {
-        assert_eq!(run_policy(&["run", "-k", "k"]), FrontierPolicy::Legacy);
-        assert_eq!(
-            run_policy(&["run", "-k", "k", POLICY_FLAG, CANDIDATE]),
-            FrontierPolicy::CampaignCandidate
-        );
+    fn run_and_campaign_default_to_campaign_without_a_flag() {
+        assert_eq!(run_policy(&["run", "-k", "k"]), FrontierPolicy::Campaign);
         assert_eq!(
             campaign_policy(&["campaign", "-k", "k", "-o", "out"]),
-            FrontierPolicy::Legacy
+            FrontierPolicy::Campaign
         );
         assert_eq!(
-            campaign_policy(&["campaign", "-k", "k", "-o", "out", POLICY_FLAG, CANDIDATE]),
-            FrontierPolicy::CampaignCandidate
+            run_policy(&["run", "-k", "k", POLICY_FLAG, CAMPAIGN]),
+            FrontierPolicy::Campaign
+        );
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn legacy_diagnostic_is_selected_only_by_its_explicit_value() {
+        assert_eq!(
+            run_policy(&["run", "-k", "k", POLICY_FLAG, LEGACY_DIAGNOSTIC]),
+            FrontierPolicy::LegacyDiagnostic
+        );
+        assert_eq!(
+            campaign_policy(&[
+                "campaign",
+                "-k",
+                "k",
+                "-o",
+                "out",
+                POLICY_FLAG,
+                LEGACY_DIAGNOSTIC
+            ]),
+            FrontierPolicy::LegacyDiagnostic
         );
     }
 
@@ -2951,25 +3034,20 @@ mod tests {
     fn resume_commands_record_only_an_explicit_policy() {
         assert_eq!(resume_policy(&["resume", "-c", "dir"]), None);
         assert_eq!(
-            resume_policy(&["resume", "-c", "dir", POLICY_FLAG, "legacy"]),
-            Some(FrontierPolicy::Legacy)
+            resume_policy(&["resume", "-c", "dir", POLICY_FLAG, LEGACY_DIAGNOSTIC]),
+            Some(FrontierPolicy::LegacyDiagnostic)
         );
         assert_eq!(resume_policy(&["campaign-resume", "-c", "dir"]), None);
         assert_eq!(
-            resume_policy(&["campaign-resume", "-c", "dir", POLICY_FLAG, CANDIDATE]),
-            Some(FrontierPolicy::CampaignCandidate)
+            resume_policy(&["campaign-resume", "-c", "dir", POLICY_FLAG, CAMPAIGN]),
+            Some(FrontierPolicy::Campaign)
         );
     }
 
     #[test]
     fn unknown_frontier_policies_are_rejected_by_every_subcommand() {
         for unknown in UNKNOWN_POLICIES {
-            for args in [
-                vec!["run", "-k", "k", POLICY_FLAG, unknown],
-                vec!["campaign", "-k", "k", "-o", "out", POLICY_FLAG, unknown],
-                vec!["resume", "-c", "dir", POLICY_FLAG, unknown],
-                vec!["campaign-resume", "-c", "dir", POLICY_FLAG, unknown],
-            ] {
+            for args in policy_commands(unknown) {
                 let error = match parse(&args) {
                     Ok(_) => panic!("{args:?} must be rejected"),
                     Err(error) => error,
@@ -2979,12 +3057,48 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.campaign_policy.rollback.invalid]
     #[test]
-    fn an_explicit_resume_policy_wins_over_the_recorded_policy() {
+    fn retired_policy_spellings_are_rejected_and_name_the_replacement() {
+        for (retired, replacement) in RETIRED_POLICIES.into_iter().zip([
+            format!("\"{LEGACY_DIAGNOSTIC}\""),
+            format!("\"{CAMPAIGN}\""),
+        ]) {
+            for args in policy_commands(retired) {
+                let error = match parse(&args) {
+                    Ok(_) => panic!("{args:?} must be rejected"),
+                    Err(error) => error,
+                };
+                assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+                assert!(
+                    error.to_string().contains(&replacement),
+                    "{args:?}: {error}"
+                );
+            }
+        }
+    }
+
+    // r[verify chaoscontrol.campaign_policy.cutover.valid]
+    // r[verify chaoscontrol.campaign_policy.rollback.invalid]
+    #[test]
+    fn resume_never_selects_legacy_diagnostic_implicitly() {
+        assert_eq!(
+            resume_frontier_policy(None, FrontierPolicy::Campaign),
+            Ok(FrontierPolicy::Campaign)
+        );
+        assert_eq!(
+            resume_frontier_policy(None, FrontierPolicy::LegacyDiagnostic),
+            Err(ImplicitLegacyDiagnosticResume)
+        );
+        assert!(ImplicitLegacyDiagnosticResume
+            .to_string()
+            .contains("--frontier-policy legacy-diagnostic"));
         for recorded in FrontierPolicy::ALL {
-            assert_eq!(resume_frontier_policy(None, recorded), recorded);
             for explicit in FrontierPolicy::ALL {
-                assert_eq!(resume_frontier_policy(Some(explicit), recorded), explicit);
+                assert_eq!(
+                    resume_frontier_policy(Some(explicit), recorded),
+                    Ok(explicit)
+                );
             }
         }
     }

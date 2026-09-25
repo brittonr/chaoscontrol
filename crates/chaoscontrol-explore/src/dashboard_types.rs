@@ -504,6 +504,7 @@ mod tests {
             scenario: None,
             scenario_summary: None,
             campaign_journal: None,
+            release_eligible: true,
         };
 
         let state = DashboardState::from_checkpoint(&checkpoint).expect("valid checkpoint");

@@ -74,9 +74,11 @@ pub struct ExplorationProfile {
     pub quantum: u64,
     pub bootstrap_budget: u64,
     pub stale_round_limit: u64,
-    /// Frontier policy. Absent means legacy, so reviewed legacy profiles keep
-    /// their exact shape; unknown policy names are rejected.
-    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    /// Frontier policy. Absent means the default Campaign policy; the legacy
+    /// frontier runs only when a profile names `legacy-diagnostic`
+    /// explicitly. Unknown and retired names (`legacy`, `campaign-candidate`)
+    /// are rejected.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
     pub frontier_policy: FrontierPolicy,
 }
 

@@ -303,8 +303,8 @@ pub(crate) fn open_backend(
     scratch: &Path,
 ) -> Result<Box<dyn FrontierBackend>, FrontierError> {
     match policy {
-        FrontierPolicy::Legacy => Ok(Box::new(LegacyFrontier::new(config.max_frontier))),
-        FrontierPolicy::CampaignCandidate => Ok(Box::new(CampaignFrontier::open_with_io(
+        FrontierPolicy::LegacyDiagnostic => Ok(Box::new(LegacyFrontier::new(config.max_frontier))),
+        FrontierPolicy::Campaign => Ok(Box::new(CampaignFrontier::open_with_io(
             config,
             scratch,
             None,

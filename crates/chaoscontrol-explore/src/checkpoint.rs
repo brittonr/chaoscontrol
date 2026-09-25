@@ -75,6 +75,11 @@ pub enum CheckpointError {
 
     #[snafu(display("campaign journal segment digest is malformed: {reason}"))]
     InvalidCampaignJournalDigest { reason: &'static str },
+
+    #[snafu(display(
+        "checkpoint records the legacy-diagnostic frontier policy but claims release_eligible = true; diagnostic rollback outputs are never release eligible"
+    ))]
+    DiagnosticClaimsReleaseEligibility,
 }
 
 /// Binds a checkpoint to the last committed settlement segment of the
@@ -179,9 +184,9 @@ pub struct CheckpointConfig {
     /// Helical scenario config (if the run used one).
     #[serde(default)]
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
-    /// Frontier policy of the run. Omitted for the legacy policy, so legacy
-    /// checkpoints keep their pre-policy shape and old checkpoints load as legacy.
-    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    /// Frontier policy of the run. Omitted for the default Campaign policy,
+    /// so checkpoints written before the field existed load as Campaign.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_campaign")]
     pub frontier_policy: FrontierPolicy,
 }
 
@@ -867,6 +872,23 @@ pub struct ExplorationCheckpoint {
     /// Omitted when absent so legacy checkpoints stay byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub campaign_journal: Option<CampaignJournalBinding>,
+    /// False once any round ran under the legacy-diagnostic frontier policy,
+    /// including Campaign rounds resumed from such a checkpoint. Serialized
+    /// only when false, so eligible checkpoints keep their shape.
+    #[serde(
+        default = "release_eligible_by_default",
+        skip_serializing_if = "is_release_eligible"
+    )]
+    pub release_eligible: bool,
+}
+
+const fn release_eligible_by_default() -> bool {
+    true
+}
+
+/// `skip_serializing_if` predicate (serde passes a reference).
+const fn is_release_eligible(release_eligible: &bool) -> bool {
+    *release_eligible
 }
 
 /// Save a checkpoint to a JSON file.
@@ -959,6 +981,10 @@ fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), Checkpo
     validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref())?;
     if let Some(binding) = checkpoint.campaign_journal.as_ref() {
         binding.digest_bytes()?;
+    }
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    if checkpoint.config.frontier_policy.is_legacy_diagnostic() && checkpoint.release_eligible {
+        return Err(CheckpointError::DiagnosticClaimsReleaseEligibility);
     }
     Ok(())
 }
@@ -1247,6 +1273,7 @@ mod tests {
             scenario: None,
             scenario_summary: None,
             campaign_journal: None,
+            release_eligible: true,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1300,6 +1327,7 @@ mod tests {
             scenario: None,
             scenario_summary: None,
             campaign_journal: None,
+            release_eligible: true,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -1385,6 +1413,7 @@ mod tests {
             scenario: None,
             scenario_summary: None,
             campaign_journal: None,
+            release_eligible: true,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1482,6 +1511,7 @@ mod tests {
             scenario: Some(sc_config),
             scenario_summary: Some(materialized.summary),
             campaign_journal: None,
+            release_eligible: true,
         };
 
         let json = serde_json::to_string_pretty(&checkpoint).unwrap();
@@ -1536,57 +1566,95 @@ mod tests {
 
     const FRONTIER_POLICY_KEY: &str = "frontier_policy";
 
-    fn checkpoint_config_json(checkpoint: &ExplorationCheckpoint) -> serde_json::Value {
-        let value = serde_json::to_value(checkpoint).expect("checkpoint JSON");
-        value["config"].clone()
-    }
+    const RELEASE_ELIGIBLE_KEY: &str = "release_eligible";
+    const RETIRED_POLICY_NAMES: [&str; 2] = ["legacy", "campaign-candidate"];
+    const PRE_POLICY_CHECKPOINT: &str =
+        include_str!("../../../dogfood-results/raft-20260506-095025/checkpoint.json");
 
     // r[verify chaoscontrol.campaign_policy.progress.valid]
     #[test]
-    fn legacy_checkpoint_omits_the_frontier_policy_key() {
+    fn campaign_checkpoint_omits_the_policy_and_eligibility_keys() {
         let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
-        assert_eq!(checkpoint.config.frontier_policy, FrontierPolicy::Legacy);
+        assert_eq!(checkpoint.config.frontier_policy, FrontierPolicy::Campaign);
 
-        let config = checkpoint_config_json(&checkpoint);
-        assert!(config.get(FRONTIER_POLICY_KEY).is_none());
+        let value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        assert!(value["config"].get(FRONTIER_POLICY_KEY).is_none());
+        assert!(value.get(RELEASE_ELIGIBLE_KEY).is_none());
     }
 
+    // r[verify chaoscontrol.campaign_policy.cutover.valid]
     #[test]
-    fn checkpoint_without_frontier_policy_loads_as_legacy() {
-        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
-        let json = serde_json::to_string(&checkpoint).expect("checkpoint JSON");
-        assert!(!json.contains(FRONTIER_POLICY_KEY));
-
-        let loaded: ExplorationCheckpoint = serde_json::from_str(&json).expect("legacy load");
-        assert_eq!(loaded.config.frontier_policy, FrontierPolicy::Legacy);
+    fn old_checkpoint_without_the_policy_field_loads_as_campaign() {
+        assert!(!PRE_POLICY_CHECKPOINT.contains(FRONTIER_POLICY_KEY));
+        assert!(!PRE_POLICY_CHECKPOINT.contains(RELEASE_ELIGIBLE_KEY));
+        let loaded: ExplorationCheckpoint =
+            serde_json::from_str(PRE_POLICY_CHECKPOINT).expect("pre-policy checkpoint load");
+        assert_eq!(loaded.config.frontier_policy, FrontierPolicy::Campaign);
+        assert!(loaded.release_eligible);
     }
 
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
     #[test]
-    fn campaign_candidate_checkpoint_round_trips_with_the_policy_key() {
+    fn legacy_diagnostic_checkpoint_round_trips_release_ineligible() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("checkpoint.json");
         let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
-        checkpoint.config.frontier_policy = FrontierPolicy::CampaignCandidate;
+        checkpoint.config.frontier_policy = FrontierPolicy::LegacyDiagnostic;
+        checkpoint.release_eligible = false;
 
-        let config = checkpoint_config_json(&checkpoint);
+        let value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
         assert_eq!(
-            config[FRONTIER_POLICY_KEY],
-            serde_json::json!(crate::explorer::CAMPAIGN_CANDIDATE_POLICY_NAME)
+            value["config"][FRONTIER_POLICY_KEY],
+            serde_json::json!(crate::explorer::LEGACY_DIAGNOSTIC_POLICY_NAME)
         );
+        assert_eq!(value[RELEASE_ELIGIBLE_KEY], serde_json::json!(false));
 
         save_checkpoint(&path, &checkpoint).expect("save");
         let loaded = load_checkpoint(&path).expect("load");
         assert_eq!(
             loaded.config.frontier_policy,
-            FrontierPolicy::CampaignCandidate
+            FrontierPolicy::LegacyDiagnostic
         );
+        assert!(!loaded.release_eligible);
     }
 
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
     #[test]
-    fn checkpoint_with_unknown_frontier_policy_is_rejected() {
+    fn legacy_diagnostic_checkpoint_claiming_release_eligibility_is_rejected() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.config.frontier_policy = FrontierPolicy::LegacyDiagnostic;
+        assert!(matches!(
+            save_checkpoint(&path, &checkpoint),
+            Err(CheckpointError::DiagnosticClaimsReleaseEligibility)
+        ));
+
+        // A hand-edited file that drops the mark is refused on load.
+        checkpoint.release_eligible = false;
+        save_checkpoint(&path, &checkpoint).expect("save");
+        let mut value: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read")).expect("JSON");
+        value
+            .as_object_mut()
+            .expect("checkpoint object")
+            .remove(RELEASE_ELIGIBLE_KEY);
+        std::fs::write(&path, serde_json::to_vec(&value).expect("JSON")).expect("write");
+        assert!(matches!(
+            load_checkpoint(&path),
+            Err(CheckpointError::DiagnosticClaimsReleaseEligibility)
+        ));
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.invalid]
+    #[test]
+    fn checkpoint_with_unknown_or_retired_frontier_policy_is_rejected() {
         let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
         let mut value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
-        for unknown in ["bogus", "Legacy", "campaign_candidate", ""] {
+        for unknown in ["bogus", "Legacy", "campaign_candidate", ""]
+            .into_iter()
+            .chain(RETIRED_POLICY_NAMES)
+        {
             value["config"][FRONTIER_POLICY_KEY] = serde_json::json!(unknown);
             assert!(
                 serde_json::from_value::<ExplorationCheckpoint>(value.clone()).is_err(),
@@ -1779,6 +1847,7 @@ mod tests {
             scenario: None,
             scenario_summary: None,
             campaign_journal: None,
+            release_eligible: true,
         }
     }
 

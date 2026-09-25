@@ -45,6 +45,8 @@ The runner records host architecture, kernel release, KVM API version, source st
 
 `release-eligible` means that all required rows passed for the exact recorded cohort. Every missing, stale, dirty, skipped, unsupported, timed-out, failed, or tampered row produces `blocked`.
 
+Legacy-diagnostic frontier-policy output never counts. The Rust and Nickel matrix checks reject a row whose command selects `--frontier-policy legacy-diagnostic`. A receipt row that ran such a command, or that retained a `frontier-policy.json` diagnostic receipt, produces `blocked` with the `legacy-diagnostic-output` blocker. Rows run exploration with the default Campaign policy.
+
 The portable workflow validates code and the matrix. It does not claim KVM behavior. The separate `kvm-release` job runs only on the `chaoscontrol-kvm` worker label.
 
 ## Outputs

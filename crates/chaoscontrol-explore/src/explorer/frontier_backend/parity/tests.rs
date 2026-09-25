@@ -246,7 +246,7 @@ fn drive_live(policy: FrontierPolicy, corpus: &Corpus, trace_dir: Option<&Path>)
             frontier_policy: policy,
             ..corpus.script.config.clone()
         };
-        let journal = (policy == FrontierPolicy::CampaignCandidate).then_some(TraceJournal {
+        let journal = (policy == FrontierPolicy::Campaign).then_some(TraceJournal {
             epoch: 0,
             recovered_epochs: 0,
             closed_selections: 0,
@@ -265,17 +265,17 @@ fn drive_live(policy: FrontierPolicy, corpus: &Corpus, trace_dir: Option<&Path>)
 }
 
 const LEGACY_LIVE: PolicySide = PolicySide {
-    policy: FrontierPolicy::Legacy,
+    policy: FrontierPolicy::LegacyDiagnostic,
     role: SideRole::Live,
 };
 const CAMPAIGN_LIVE: PolicySide = PolicySide {
-    policy: FrontierPolicy::CampaignCandidate,
+    policy: FrontierPolicy::Campaign,
     role: SideRole::Live,
 };
 
 fn run_corpus(corpus: &Corpus) -> CorpusRun {
-    let legacy = drive_live(FrontierPolicy::Legacy, corpus, None);
-    let campaign = drive_live(FrontierPolicy::CampaignCandidate, corpus, None);
+    let legacy = drive_live(FrontierPolicy::LegacyDiagnostic, corpus, None);
+    let campaign = drive_live(FrontierPolicy::Campaign, corpus, None);
     let report = compare_runs(corpus.name, LEGACY_LIVE, &legacy, CAMPAIGN_LIVE, &campaign);
     // The per-corpus report is emitted as JSON (visible with `--nocapture`).
     println!("{}", serde_json::to_string(&report).unwrap());
@@ -927,7 +927,7 @@ fn degenerate_configurations_are_rejected_and_block_cutover() {
     ];
     for (config, expected) in cases {
         let scratch = tempfile::tempdir().unwrap();
-        match open_backend(FrontierPolicy::CampaignCandidate, &config, scratch.path()) {
+        match open_backend(FrontierPolicy::Campaign, &config, scratch.path()) {
             Err(super::super::FrontierError::Adapter(AdapterError::DegenerateConfig(found))) => {
                 assert_eq!(found, expected);
             }
@@ -963,7 +963,7 @@ fn zero_rounds_admit_no_selection() {
     // The Campaign backend itself refuses to plan a selection and draws nothing.
     let scratch = tempfile::tempdir().unwrap();
     let mut backend = open_backend(
-        FrontierPolicy::CampaignCandidate,
+        FrontierPolicy::Campaign,
         &corpus.script.config,
         scratch.path(),
     )
@@ -1073,12 +1073,12 @@ fn work_and_field_equality_are_separate_facts() {
 fn trace_pair(corpus: &Corpus) -> (tempfile::TempDir, tempfile::TempDir) {
     let legacy = tempfile::tempdir().unwrap();
     let campaign = tempfile::tempdir().unwrap();
-    drive_live(FrontierPolicy::Legacy, corpus, Some(legacy.path()));
     drive_live(
-        FrontierPolicy::CampaignCandidate,
+        FrontierPolicy::LegacyDiagnostic,
         corpus,
-        Some(campaign.path()),
+        Some(legacy.path()),
     );
+    drive_live(FrontierPolicy::Campaign, corpus, Some(campaign.path()));
     (legacy, campaign)
 }
 
@@ -1119,11 +1119,11 @@ fn driven_trace_pairs_agree_when_replayed_through_the_other_policy() {
         }
         assert!(receipt.cutover_ready && receipt.decision_fields_equal);
         assert_eq!(receipt.runs.len(), 2);
+        assert_eq!(receipt.runs[0].replayed_through, FrontierPolicy::Campaign);
         assert_eq!(
-            receipt.runs[0].replayed_through,
-            FrontierPolicy::CampaignCandidate
+            receipt.runs[1].replayed_through,
+            FrontierPolicy::LegacyDiagnostic
         );
-        assert_eq!(receipt.runs[1].replayed_through, FrontierPolicy::Legacy);
         let bytes = std::fs::read(&legacy_path).unwrap();
         assert_eq!(
             receipt.inputs[0].blake3,

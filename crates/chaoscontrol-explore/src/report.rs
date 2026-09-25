@@ -6,6 +6,7 @@ use crate::explorer::{
     AssertionDetail, ExplorationReport, ExplorationStop, FrontierPolicy,
     EXHAUSTIVE_SEARCH_NON_CLAIM,
 };
+use chaoscontrol_evidence::frontier_policy_gate::REPORT_RELEASE_INELIGIBLE_LINE;
 use std::collections::BTreeMap;
 
 /// Per-seed table cell for a seed whose stop was not recorded.
@@ -68,14 +69,22 @@ fn append_assertion_exercise_summary(output: &mut String, details: &[AssertionDe
 }
 
 // r[impl chaoscontrol.campaign_policy.stop.invalid]
-/// Frontier policy, first stop, and the exhaustive-search non-claim. Every
-/// report states the non-claim whatever the stop class.
+// r[impl chaoscontrol.campaign_policy.rollback]
+/// Frontier policy, release eligibility, first stop, and the
+/// exhaustive-search non-claim. Every report states the non-claim whatever
+/// the stop class; release-ineligible (legacy-diagnostic) output carries the
+/// line the release and dogfood gates refuse.
 fn append_policy_summary(
     output: &mut String,
     frontier_policy: FrontierPolicy,
+    release_eligible: bool,
     stop: Option<ExplorationStop>,
 ) {
     output.push_str(&format!("Frontier policy:        {frontier_policy}\n"));
+    if !release_eligible {
+        output.push_str(REPORT_RELEASE_INELIGIBLE_LINE);
+        output.push('\n');
+    }
     if let Some(stop) = stop {
         output.push_str(&format!("Stop:                   {stop}\n"));
     }
@@ -106,7 +115,12 @@ pub fn format_report(report: &ExplorationReport) -> String {
             "Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage\n",
         );
     }
-    append_policy_summary(&mut output, report.frontier_policy, report.stop);
+    append_policy_summary(
+        &mut output,
+        report.frontier_policy,
+        report.release_eligible,
+        report.stop,
+    );
     if report.wall_clock_seconds > 0.0 {
         output.push_str(&format!(
             "Wall-clock time:        {}\n",
@@ -597,7 +611,12 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
         output.push('\n');
     }
     // Campaign-level stop is per seed; the per-seed table lists each one.
-    append_policy_summary(&mut output, report.frontier_policy, None);
+    append_policy_summary(
+        &mut output,
+        report.frontier_policy,
+        report.release_eligible,
+        None,
+    );
     output.push('\n');
 
     // Scenario metadata (if helical scenario was used)
@@ -844,6 +863,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -882,6 +902,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -926,6 +947,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1058,6 +1080,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1134,6 +1157,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1174,6 +1198,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1272,6 +1297,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1352,6 +1378,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
             stop: None,
         };
 
@@ -1436,7 +1463,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 25.3,
                     scenario_summary: None,
-                    frontier_policy: FrontierPolicy::Legacy,
+                    frontier_policy: FrontierPolicy::Campaign,
+                    release_eligible: true,
                     stop: None,
                 },
                 SeedSummary {
@@ -1447,7 +1475,8 @@ mod tests {
                     bugs_found: 0,
                     wall_clock_seconds: 22.1,
                     scenario_summary: None,
-                    frontier_policy: FrontierPolicy::Legacy,
+                    frontier_policy: FrontierPolicy::Campaign,
+                    release_eligible: true,
                     stop: None,
                 },
                 SeedSummary {
@@ -1458,7 +1487,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 24.0,
                     scenario_summary: None,
-                    frontier_policy: FrontierPolicy::Legacy,
+                    frontier_policy: FrontierPolicy::Campaign,
+                    release_eligible: true,
                     stop: None,
                 },
             ],
@@ -1503,7 +1533,8 @@ mod tests {
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
-            frontier_policy: FrontierPolicy::Legacy,
+            frontier_policy: FrontierPolicy::Campaign,
+            release_eligible: true,
             exhaustive_search_non_claim: EXHAUSTIVE_SEARCH_NON_CLAIM.to_string(),
         };
 
@@ -1549,7 +1580,8 @@ mod tests {
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
-            frontier_policy: FrontierPolicy::Legacy,
+            frontier_policy: FrontierPolicy::Campaign,
+            release_eligible: true,
             exhaustive_search_non_claim: EXHAUSTIVE_SEARCH_NON_CLAIM.to_string(),
         };
 
@@ -1598,6 +1630,7 @@ mod tests {
             scenario_config: None,
             scenario_summary: None,
             frontier_policy,
+            release_eligible: frontier_policy.release_eligible(),
             stop,
         }
     }
@@ -1619,31 +1652,62 @@ mod tests {
 
     #[test]
     fn report_without_a_stop_omits_the_stop_line_but_keeps_the_non_claim() {
-        let formatted = format_report(&policy_report(FrontierPolicy::Legacy, None));
-        assert!(formatted.contains("Frontier policy:        legacy\n"));
+        let formatted = format_report(&policy_report(FrontierPolicy::Campaign, None));
+        assert!(formatted.contains("Frontier policy:        campaign\n"));
+        assert!(!formatted.contains(REPORT_RELEASE_INELIGIBLE_LINE));
         assert!(!formatted.contains(STOP_LABEL));
         assert!(formatted.contains(EXHAUSTIVE_SEARCH_NON_CLAIM));
     }
 
     #[test]
     fn campaign_report_renders_policy_per_seed_stops_and_the_non_claim() {
-        let mut first = policy_report(FrontierPolicy::CampaignCandidate, None);
+        let mut first = policy_report(FrontierPolicy::Campaign, None);
         first.stop = Some(ExplorationStop::CoveragePlateau);
-        let second = policy_report(FrontierPolicy::CampaignCandidate, None);
+        let second = policy_report(FrontierPolicy::Campaign, None);
         let report =
             crate::campaign::aggregate_reports(vec![(42, first, 1.0), (43, second, 1.0)], 2.0);
 
         let formatted = format_campaign_report(&report);
-        assert!(formatted.contains("Frontier policy:        campaign-candidate\n"));
+        assert!(formatted.contains("Frontier policy:        campaign\n"));
+        assert!(!formatted.contains(REPORT_RELEASE_INELIGIBLE_LINE));
         assert!(formatted.contains(EXHAUSTIVE_SEARCH_NON_CLAIM));
         assert!(!formatted.contains(STOP_LABEL));
         let seed_rows: Vec<&str> = formatted
             .lines()
-            .filter(|line| line.contains("campaign-candidate") && line.contains('│'))
+            .filter(|line| line.contains(" campaign ") && line.contains('│'))
             .collect();
         assert_eq!(seed_rows.len(), 2);
         assert!(seed_rows[0].trim_start().starts_with("42"));
         assert!(seed_rows[0].ends_with("coverage_plateau"));
         assert!(seed_rows[1].ends_with(NO_STOP_RECORDED));
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn legacy_diagnostic_reports_carry_the_release_ineligible_line() {
+        let formatted = format_report(&policy_report(FrontierPolicy::LegacyDiagnostic, None));
+        assert!(formatted.contains("Frontier policy:        legacy-diagnostic\n"));
+        assert!(formatted.contains(&format!("{REPORT_RELEASE_INELIGIBLE_LINE}\n")));
+        chaoscontrol_evidence::frontier_policy_gate::admit_report_text(
+            chaoscontrol_evidence::frontier_policy_gate::ReleaseGate::DogfoodReceipt,
+            "report.txt",
+            &formatted,
+        )
+        .expect_err("the dogfood gate refuses the diagnostic report");
+
+        // A Campaign run resumed from a diagnostic checkpoint stays marked.
+        let mut resumed = policy_report(FrontierPolicy::Campaign, None);
+        resumed.release_eligible = false;
+        assert!(format_report(&resumed).contains(REPORT_RELEASE_INELIGIBLE_LINE));
+
+        let campaign = crate::campaign::aggregate_reports(
+            vec![(
+                42,
+                policy_report(FrontierPolicy::LegacyDiagnostic, None),
+                1.0,
+            )],
+            1.0,
+        );
+        assert!(format_campaign_report(&campaign).contains(REPORT_RELEASE_INELIGIBLE_LINE));
     }
 }

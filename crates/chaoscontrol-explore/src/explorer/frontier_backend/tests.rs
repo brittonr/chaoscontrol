@@ -209,7 +209,7 @@ impl PublicationIo for ScriptedIo {
 }
 
 fn open_campaign(dir: &Path, io: ScriptedIo) -> CampaignFrontier<ScriptedIo> {
-    let config = config(FrontierPolicy::CampaignCandidate, dir);
+    let config = config(FrontierPolicy::Campaign, dir);
     let mut frontier = CampaignFrontier::open_with_io(&config, dir, None, io).unwrap();
     frontier.admit_root(root(Some(dummy_snapshot()))).unwrap();
     frontier
@@ -451,7 +451,7 @@ fn an_outstanding_selection_is_a_wait_never_exhaustion() {
 #[test]
 fn degenerate_configurations_are_rejected_before_the_journal_opens() {
     let dir = tempfile::tempdir().unwrap();
-    let base = config(FrontierPolicy::CampaignCandidate, dir.path());
+    let base = config(FrontierPolicy::Campaign, dir.path());
     let cases = [
         (
             ExplorerConfig {
@@ -620,7 +620,7 @@ fn zero_rounds_complete_without_selection() {
     let dir = tempfile::tempdir().unwrap();
     let config = ExplorerConfig {
         max_rounds: 0,
-        ..config(FrontierPolicy::CampaignCandidate, dir.path())
+        ..config(FrontierPolicy::Campaign, dir.path())
     };
     let mut frontier =
         CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()).unwrap();
@@ -664,7 +664,7 @@ fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
         let plan = planned(&mut frontier, &mut rng, 1);
         let _lost = executable(frontier.authorize(plan).unwrap());
     }
-    let config = config(FrontierPolicy::CampaignCandidate, dir.path());
+    let config = config(FrontierPolicy::Campaign, dir.path());
     let reopened =
         CampaignFrontier::open_with_io(&config, dir.path(), Some(&binding), ScriptedIo::default())
             .unwrap();
@@ -699,7 +699,7 @@ fn a_genesis_prune_replays_on_recovery() {
     let dir = tempfile::tempdir().unwrap();
     let config = ExplorerConfig {
         max_frontier: 1,
-        ..config(FrontierPolicy::CampaignCandidate, dir.path())
+        ..config(FrontierPolicy::Campaign, dir.path())
     };
     {
         let mut frontier =
@@ -730,7 +730,7 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
             .unwrap();
     }
     let before = segment_count(dir.path(), 0);
-    let config = config(FrontierPolicy::CampaignCandidate, dir.path());
+    let config = config(FrontierPolicy::Campaign, dir.path());
     match CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()) {
         Err(FrontierError::Replay(error)) => {
             assert_eq!(error.failure, ReplayFailure::UnknownKind(99));
@@ -752,7 +752,7 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
 #[test]
 fn a_campaign_trace_round_trips_through_its_schema() {
     let dir = tempfile::tempdir().unwrap();
-    let config = config(FrontierPolicy::CampaignCandidate, dir.path());
+    let config = config(FrontierPolicy::Campaign, dir.path());
     let record = TraceRecord::header(&config, None);
     let line = serde_json::to_string(&record).unwrap();
     assert!(line.contains(trace::TRACE_SCHEMA));

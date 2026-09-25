@@ -109,6 +109,7 @@ fn campaign(
         failed_seeds: Vec::new(),
         scenario_config: None,
         frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        release_eligible: true,
         exhaustive_search_non_claim: chaoscontrol_explore::explorer::EXHAUSTIVE_SEARCH_NON_CLAIM
             .to_string(),
     }
@@ -167,6 +168,7 @@ fn legacy_u32_identity_is_rejected_by_exploration_and_campaign_summaries() {
         scenario_config: None,
         scenario_summary: None,
         frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        release_eligible: true,
         stop: None,
     };
     assert!(AssertionSummaryV2::from_exploration(&exploration).is_err());

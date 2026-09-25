@@ -274,7 +274,7 @@ pub fn admit_command_args(
     let separate_selection = args.windows(2).any(|pair| {
         pair[0] == FRONTIER_POLICY_FLAG && pair[1] == LEGACY_DIAGNOSTIC_FRONTIER_POLICY
     });
-    if separate_selection || args.iter().any(|arg| *arg == joined_selection) {
+    if separate_selection || args.contains(&joined_selection) {
         return Err(refusal(
             gate,
             LegacyDiagnosticMarker::CommandSelection,

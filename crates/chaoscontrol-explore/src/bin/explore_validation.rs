@@ -3,8 +3,10 @@
 //! Usage:
 //!   cargo run --release --bin explore_validation -- KERNEL INITRD [FRONTIER_POLICY]
 //!
-//! FRONTIER_POLICY is `legacy` (default) or `campaign-candidate`; every run
-//! must report the selected policy.
+//! FRONTIER_POLICY is `campaign` (default) or the explicit diagnostic rollback
+//! `legacy-diagnostic`; every run must report the selected policy and its
+//! release eligibility. Each run writes its outputs (journal or diagnostic
+//! receipt, trace, checkpoint) under a fresh temporary output directory.
 
 use chaoscontrol_explore::explorer::{
     ExplorationMode, ExplorationReport, Explorer, ExplorerConfig, FrontierPolicy,
@@ -73,6 +75,9 @@ fn main() {
 /// Task 7.2: Run the same seed with 1 worker and 2 workers.
 /// Coverage edges and bug counts must match.
 fn test_parallel_determinism(kernel: &str, initrd: &str, frontier_policy: FrontierPolicy) -> bool {
+    let Some(scratch) = scratch_output() else {
+        return false;
+    };
     let make_config = |workers: usize| {
         // Use a minimal VM config with short budget.
         // Default cmdline uses panic=0 (halt, don't reboot), so
@@ -96,6 +101,13 @@ fn test_parallel_determinism(kernel: &str, initrd: &str, frontier_policy: Fronti
             num_workers: workers,
             bootstrap_budget: 10_000,
             frontier_policy,
+            output_dir: Some(
+                scratch
+                    .path()
+                    .join(format!("workers-{workers}"))
+                    .display()
+                    .to_string(),
+            ),
             ..Default::default()
         }
     };
@@ -145,14 +157,28 @@ fn test_parallel_determinism(kernel: &str, initrd: &str, frontier_policy: Fronti
         && reports_policy(&report2, frontier_policy)
 }
 
-/// The report must name the configured frontier policy.
+/// Fresh temporary output directory for one validation test.
+fn scratch_output() -> Option<tempfile::TempDir> {
+    match tempfile::tempdir() {
+        Ok(directory) => Some(directory),
+        Err(error) => {
+            eprintln!("\n    cannot create a temporary output directory: {error}");
+            None
+        }
+    }
+}
+
+/// The report must name the configured frontier policy and its release
+/// eligibility (legacy-diagnostic output is never release eligible).
 fn reports_policy(report: &ExplorationReport, frontier_policy: FrontierPolicy) -> bool {
-    if report.frontier_policy == frontier_policy {
+    if report.frontier_policy == frontier_policy
+        && report.release_eligible == frontier_policy.release_eligible()
+    {
         return true;
     }
     eprintln!(
-        "\n    report policy {} does not match configured policy {}",
-        report.frontier_policy, frontier_policy
+        "\n    report policy {} (release eligible: {}) does not match configured policy {}",
+        report.frontier_policy, report.release_eligible, frontier_policy
     );
     false
 }
@@ -161,6 +187,9 @@ fn reports_policy(report: &ExplorationReport, frontier_policy: FrontierPolicy) -
 fn test_stress(kernel: &str, initrd: &str, frontier_policy: FrontierPolicy) -> bool {
     // Default cmdline uses panic=0 (halt, don't reboot).
     let vm_config = VmConfig::default();
+    let Some(scratch) = scratch_output() else {
+        return false;
+    };
 
     let config = ExplorerConfig {
         num_vms: 1,
@@ -178,6 +207,7 @@ fn test_stress(kernel: &str, initrd: &str, frontier_policy: FrontierPolicy) -> b
         num_workers: 2,
         bootstrap_budget: 10_000,
         frontier_policy,
+        output_dir: Some(scratch.path().display().to_string()),
         ..Default::default()
     };
 

@@ -294,11 +294,13 @@ cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
   --mode input-tree --output results/
 
-# Campaign-backed frontier policy (pre-cutover; the default stays `legacy`).
+# The Campaign-backed frontier policy is the default (`--frontier-policy campaign`).
 # Selections are durably journaled before any expansion effect.
+# Diagnostic rollback to the legacy frontier needs the explicit value and an
+# output directory; its outputs are never release eligible (see below).
 cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
-  --frontier-policy campaign-candidate --output results/
+  --frontier-policy legacy-diagnostic --output diagnostic-results/
 
 # Resume from checkpoint
 cargo run --release --bin chaoscontrol-explore -- resume \
@@ -323,10 +325,26 @@ Output directory contains:
 - `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `materialize-dogfood-receipt`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
+- `frontier-policy.json` — `legacy-diagnostic` only: `chaoscontrol.frontier-policy-receipt.v1` receipt with `release_eligible: false`, written before bootstrap
 - `frontier-trace.jsonl` — product frontier decision trace written by both policies (header with the stale-round limit, root proposals and retained set, one record per round with recorded draws, selection, the selection's planning work, branch facts with score bits, admitted/pruned entries and the retained set, stop); input for parity replay, not VM evidence
-- `campaign-journal/` — `campaign-candidate` only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence
+- `campaign-journal/` — `campaign` policy only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence
 
-The Campaign policy rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. With `--rounds 0` it plans no selection. Reports name the frontier policy and state that no stop claims exhaustive search.
+The Campaign policy is the default for the CLI, `ExplorerConfig`, run and campaign profiles, and checkpoints or campaign progress files written before the policy field existed. It rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. With `--rounds 0` it plans no selection. Reports name the frontier policy and state that no stop claims exhaustive search.
+
+#### Legacy-diagnostic rollback
+
+The legacy in-process frontier remains only as explicit diagnostic rollback, for example to compare a suspected Campaign regression against the old selection loop. It is never selected implicitly:
+
+- Select it with `--frontier-policy legacy-diagnostic` (or `frontier_policy = "legacy-diagnostic"` in a run profile). The retired spellings `legacy` and `campaign-candidate` are rejected with an error that names `legacy-diagnostic` or `campaign`.
+- A diagnostic run requires `--output`. Before bootstrap it prints a diagnostic banner and writes `frontier-policy.json` with `release_eligible: false`. Its `checkpoint.json` records `frontier_policy: "legacy-diagnostic"` and `release_eligible: false`, and `report.txt` carries `Release eligible:       no (legacy-diagnostic frontier policy; diagnostic rollback output)`.
+- `resume` and `campaign-resume` refuse a legacy-diagnostic checkpoint or progress file unless `--frontier-policy` is given. Resuming it with `--frontier-policy campaign` keeps `release_eligible: false`, because the checkpoint carries diagnostic rounds and findings. The receipt stays in the output directory.
+- `materialize-dogfood-receipt`, `check-accepted-dogfood-config`, and the KVM release matrix (`check-kvm-release-matrix`, `run-kvm-release-matrix`) refuse any output that carries one of these marks. A matrix row that selects `legacy-diagnostic` is also refused. Each refusal starts with `legacy-diagnostic-frontier-policy:`.
+
+Rollback procedure:
+
+1. Rerun the failing configuration into a fresh output directory with `--frontier-policy legacy-diagnostic`.
+2. Compare the two runs with `check-frontier-parity`, and keep the diagnostic outputs local.
+3. Fix the Campaign path, then produce release and dogfood evidence from a fresh default (`campaign`) run. Diagnostic outputs never become evidence.
 
 Frontier policy parity for two runs of the same seed and configuration:
 

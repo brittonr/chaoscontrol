@@ -65,15 +65,15 @@ pub enum TraceRole {
 impl TraceRole {
     const fn policy(self) -> FrontierPolicy {
         match self {
-            Self::Legacy => FrontierPolicy::Legacy,
-            Self::Campaign => FrontierPolicy::CampaignCandidate,
+            Self::Legacy => FrontierPolicy::LegacyDiagnostic,
+            Self::Campaign => FrontierPolicy::Campaign,
         }
     }
 
     const fn other_policy(self) -> FrontierPolicy {
         match self {
-            Self::Legacy => FrontierPolicy::CampaignCandidate,
-            Self::Campaign => FrontierPolicy::Legacy,
+            Self::Legacy => FrontierPolicy::Campaign,
+            Self::Campaign => FrontierPolicy::LegacyDiagnostic,
         }
     }
 

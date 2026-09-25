@@ -49,8 +49,10 @@ use frontier_backend::{
 pub use frontier_backend::{FrontierError, ReplayError, ReplayFailure};
 
 pub use frontier_policy::{
-    ExplorationStop, FrontierPolicy, UnknownFrontierPolicy, CAMPAIGN_CANDIDATE_POLICY_NAME,
-    EXHAUSTIVE_SEARCH_NON_CLAIM, LEGACY_POLICY_NAME,
+    ExplorationStop, FrontierPolicy, FrontierPolicyParseError, FrontierPolicyReceipt,
+    CAMPAIGN_POLICY_NAME, EXHAUSTIVE_SEARCH_NON_CLAIM, LEGACY_DIAGNOSTIC_BANNER,
+    LEGACY_DIAGNOSTIC_POLICY_NAME, RETIRED_CAMPAIGN_CANDIDATE_POLICY_NAME,
+    RETIRED_LEGACY_POLICY_NAME,
 };
 
 /// Errors from the exploration engine.
@@ -72,6 +74,14 @@ pub enum ExploreError {
 
     #[snafu(display("frontier trace write failed"))]
     Trace { source: std::io::Error },
+
+    #[snafu(display(
+        "the legacy-diagnostic frontier policy requires output_dir so its frontier-policy.json receipt, checkpoint, and report are marked release-ineligible"
+    ))]
+    LegacyDiagnosticWithoutOutput,
+
+    #[snafu(display("frontier-policy.json receipt write failed"))]
+    FrontierPolicyReceipt { source: std::io::Error },
 }
 
 /// How the explorer branches the execution tree.
@@ -242,6 +252,24 @@ fn branch_slot_index(index: usize) -> Result<u32, ExploreError> {
     })
 }
 
+/// Banner and release-ineligible `frontier-policy.json` receipt of an
+/// explicit legacy-diagnostic run, emitted before bootstrap so that even an
+/// aborted diagnostic run leaves its outputs marked.
+// r[impl chaoscontrol.campaign_policy.rollback]
+fn announce_legacy_diagnostic(
+    config: &ExplorerConfig,
+    output_dir: &std::path::Path,
+) -> Result<(), ExploreError> {
+    eprintln!("{LEGACY_DIAGNOSTIC_BANNER}");
+    warn!(
+        "frontier_policy={}: diagnostic rollback run; outputs are not release eligible",
+        config.frontier_policy
+    );
+    FrontierPolicyReceipt::for_config(config)
+        .write(output_dir)
+        .map_err(|source| ExploreError::FrontierPolicyReceipt { source })
+}
+
 /// Outcome of one round of the exploration loop.
 enum RoundRun {
     /// The round ran (or was closed without execution).
@@ -263,8 +291,10 @@ enum ExplorerFrontier {
 impl ExplorerFrontier {
     fn for_config(config: &ExplorerConfig) -> Self {
         match config.frontier_policy {
-            FrontierPolicy::Legacy => Self::Legacy(LegacyFrontier::new(config.max_frontier)),
-            FrontierPolicy::CampaignCandidate => Self::CampaignUnopened,
+            FrontierPolicy::LegacyDiagnostic => {
+                Self::Legacy(LegacyFrontier::new(config.max_frontier))
+            }
+            FrontierPolicy::Campaign => Self::CampaignUnopened,
         }
     }
 
@@ -375,6 +405,9 @@ pub struct Explorer {
     trace: Option<FrontierTrace>,
     /// Journal position the resumed checkpoint was bound to.
     resumed_journal: Option<CampaignJournalBinding>,
+    /// The resumed checkpoint carried rounds from a legacy-diagnostic run, so
+    /// no later output of this run is release eligible whatever its policy.
+    inherits_diagnostic_rounds: bool,
 }
 
 impl Explorer {
@@ -413,7 +446,17 @@ impl Explorer {
             stop: None,
             trace: None,
             resumed_journal: None,
+            inherits_diagnostic_rounds: false,
         }
+    }
+
+    /// Whether this run's outputs may satisfy release, dogfood, and
+    /// KVM-matrix gates: only Campaign runs that never carried
+    /// legacy-diagnostic rounds.
+    // r[impl chaoscontrol.campaign_policy.rollback]
+    #[must_use]
+    pub fn release_eligible(&self) -> bool {
+        self.config.frontier_policy.release_eligible() && !self.inherits_diagnostic_rounds
     }
 
     /// All bugs found: corpus bugs + standalone bugs from zero-coverage branches.
@@ -511,6 +554,10 @@ impl Explorer {
     ///
     /// Returns the final report with all bugs found, coverage stats, etc.
     pub fn run(&mut self) -> Result<ExplorationReport, ExploreError> {
+        // r[impl chaoscontrol.campaign_policy.rollback]
+        if self.config.frontier_policy.is_legacy_diagnostic() && self.config.output_dir.is_none() {
+            return Err(ExploreError::LegacyDiagnosticWithoutOutput);
+        }
         journal_authority::admit_root(self.config.output_dir.as_deref()).map_err(|error| {
             ExploreError::Config {
                 message: error.message().to_owned(),
@@ -769,8 +816,11 @@ impl Explorer {
     fn open_frontier(&mut self, output_dir: &std::path::Path) -> Result<(), ExploreError> {
         std::fs::create_dir_all(output_dir).map_err(|source| ExploreError::Trace { source })?;
         let journal = match self.config.frontier_policy {
-            FrontierPolicy::Legacy => None,
-            FrontierPolicy::CampaignCandidate => {
+            FrontierPolicy::LegacyDiagnostic => {
+                announce_legacy_diagnostic(&self.config, output_dir)?;
+                None
+            }
+            FrontierPolicy::Campaign => {
                 let frontier = CampaignFrontier::open(
                     &self.config,
                     output_dir,
@@ -844,7 +894,7 @@ impl Explorer {
         result: &BranchResult,
         schedule: &FaultSchedule,
     ) -> Result<Option<BranchDigests>, ExploreError> {
-        if self.config.frontier_policy.is_legacy() {
+        if self.config.frontier_policy.is_legacy_diagnostic() {
             return Ok(None);
         }
         Ok(Some(BranchDigests {
@@ -2263,6 +2313,7 @@ impl Explorer {
             scenario_config: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
             frontier_policy: self.config.frontier_policy,
+            release_eligible: self.release_eligible(),
             stop: self.stop,
         }
     }
@@ -2543,6 +2594,7 @@ impl Explorer {
             scenario: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
             campaign_journal: self.frontier.journal_binding(),
+            release_eligible: self.release_eligible(),
         })
     }
 
@@ -2634,6 +2686,7 @@ impl Explorer {
             stop: None,
             trace: None,
             resumed_journal: checkpoint.campaign_journal.clone(),
+            inherits_diagnostic_rounds: !checkpoint.release_eligible,
         })
     }
 }
@@ -2800,6 +2853,9 @@ pub struct ExplorationReport {
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     /// Frontier policy that selected every expansion.
     pub frontier_policy: FrontierPolicy,
+    /// False for legacy-diagnostic runs and runs resumed from their
+    /// checkpoints; `report.txt` then carries the release-ineligible line.
+    pub release_eligible: bool,
     /// First stop of the run. Bounded sampling: see [`EXHAUSTIVE_SEARCH_NON_CLAIM`].
     pub stop: Option<ExplorationStop>,
 }
@@ -2909,9 +2965,9 @@ mod tests {
         let directory = tempfile::tempdir().expect("test directory");
         let base = ExplorerConfig {
             output_dir: Some(directory.path().display().to_string()),
-            frontier_policy: FrontierPolicy::CampaignCandidate,
             ..ExplorerConfig::default()
         };
+        assert_eq!(base.frontier_policy, FrontierPolicy::Campaign);
         for config in [
             ExplorerConfig {
                 max_frontier: 0,
@@ -2939,50 +2995,152 @@ mod tests {
                 .join(journal::JOURNAL_DIRECTORY_NAME)
                 .exists());
         }
-        // The same configurations stay legacy behavior under the legacy policy.
+        // The same configurations keep legacy behavior under the explicit
+        // legacy-diagnostic rollback policy.
         let legacy = Explorer::new(ExplorerConfig {
             max_frontier: 0,
-            frontier_policy: FrontierPolicy::Legacy,
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
             ..base
         });
         assert!(matches!(legacy.frontier, ExplorerFrontier::Legacy(_)));
     }
 
-    // r[verify chaoscontrol.campaign_policy.progress.valid]
+    // r[verify chaoscontrol.campaign_policy.cutover.valid]
+    // r[verify chaoscontrol.campaign_policy.rollback.invalid]
     #[test]
-    fn legacy_checkpoint_and_report_keep_their_product_shape() {
-        let directory = tempfile::tempdir().expect("test directory");
-        let output = directory.path().display().to_string();
-        let legacy = Explorer::new(ExplorerConfig::default());
-        let checkpoint = legacy
-            .create_checkpoint(&output)
-            .expect("legacy checkpoint");
-        let json = serde_json::to_value(&checkpoint).expect("checkpoint json");
-        assert!(json["config"].get("frontier_policy").is_none());
-        assert!(json.get("campaign_journal").is_none());
-        let report = legacy.generate_report();
-        assert_eq!(report.frontier_policy, FrontierPolicy::Legacy);
-        assert_eq!(report.stop, None);
+    fn default_config_selects_the_campaign_backend() {
+        let explorer = Explorer::new(ExplorerConfig::default());
+        assert_eq!(explorer.config.frontier_policy, FrontierPolicy::Campaign);
+        assert!(matches!(
+            explorer.frontier,
+            ExplorerFrontier::CampaignUnopened
+        ));
+        assert!(explorer.release_eligible());
+    }
 
-        // The Campaign policy changes only the declared policy field; product
-        // progress, coverage, and bugs keep their shape.
-        let campaign = Explorer::new(ExplorerConfig {
-            frontier_policy: FrontierPolicy::CampaignCandidate,
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn legacy_diagnostic_without_output_dir_is_rejected_before_kvm() {
+        let mut explorer = Explorer::new(ExplorerConfig {
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
+            output_dir: None,
             ..ExplorerConfig::default()
         });
-        let campaign_json =
-            serde_json::to_value(campaign.create_checkpoint(&output).expect("checkpoint"))
+        assert!(matches!(
+            explorer.run(),
+            Err(ExploreError::LegacyDiagnosticWithoutOutput)
+        ));
+        assert!(explorer.controller.is_none(), "no KVM work started");
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn only_legacy_diagnostic_runs_write_the_release_ineligible_receipt() {
+        use chaoscontrol_evidence::frontier_policy_gate::FRONTIER_POLICY_RECEIPT_FILE;
+
+        let diagnostic_dir = tempfile::tempdir().expect("test directory");
+        let mut diagnostic = Explorer::new(ExplorerConfig {
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
+            output_dir: Some(diagnostic_dir.path().display().to_string()),
+            ..ExplorerConfig::default()
+        });
+        diagnostic
+            .open_frontier(diagnostic_dir.path())
+            .expect("diagnostic frontier opens");
+        let receipt: FrontierPolicyReceipt = serde_json::from_str(
+            &std::fs::read_to_string(diagnostic_dir.path().join(FRONTIER_POLICY_RECEIPT_FILE))
+                .expect("diagnostic receipt written before bootstrap"),
+        )
+        .expect("receipt parses");
+        assert_eq!(receipt.frontier_policy, FrontierPolicy::LegacyDiagnostic);
+        assert!(!receipt.release_eligible);
+        assert!(diagnostic.controller.is_none(), "no KVM work started");
+
+        let campaign_dir = tempfile::tempdir().expect("test directory");
+        let mut campaign = Explorer::new(ExplorerConfig {
+            output_dir: Some(campaign_dir.path().display().to_string()),
+            ..ExplorerConfig::default()
+        });
+        campaign
+            .open_frontier(campaign_dir.path())
+            .expect("Campaign frontier opens");
+        assert!(!campaign_dir
+            .path()
+            .join(FRONTIER_POLICY_RECEIPT_FILE)
+            .exists());
+    }
+
+    // r[verify chaoscontrol.campaign_policy.progress.valid]
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn campaign_checkpoint_keeps_its_shape_and_diagnostic_marks_are_additive() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let output = directory.path().display().to_string();
+        let campaign = Explorer::new(ExplorerConfig::default());
+        let checkpoint = campaign
+            .create_checkpoint(&output)
+            .expect("campaign checkpoint");
+        let json = serde_json::to_value(&checkpoint).expect("checkpoint json");
+        assert!(json["config"].get("frontier_policy").is_none());
+        assert!(json.get("release_eligible").is_none());
+        assert!(json.get("campaign_journal").is_none());
+        let report = campaign.generate_report();
+        assert_eq!(report.frontier_policy, FrontierPolicy::Campaign);
+        assert!(report.release_eligible);
+        assert_eq!(report.stop, None);
+
+        // The diagnostic policy adds only the policy and eligibility marks;
+        // product progress, coverage, and bugs keep their shape.
+        let diagnostic = Explorer::new(ExplorerConfig {
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
+            ..ExplorerConfig::default()
+        });
+        let diagnostic_json =
+            serde_json::to_value(diagnostic.create_checkpoint(&output).expect("checkpoint"))
                 .expect("checkpoint json");
         assert_eq!(
-            campaign_json["config"]["frontier_policy"],
-            "campaign-candidate"
+            diagnostic_json["config"]["frontier_policy"],
+            LEGACY_DIAGNOSTIC_POLICY_NAME
         );
-        let mut without_policy = campaign_json.clone();
-        without_policy["config"]
+        assert_eq!(diagnostic_json["release_eligible"], false);
+        assert!(!diagnostic.generate_report().release_eligible);
+        let mut unmarked = diagnostic_json.clone();
+        unmarked["config"]
             .as_object_mut()
             .expect("config object")
             .remove("frontier_policy");
-        assert_eq!(without_policy, json);
+        unmarked
+            .as_object_mut()
+            .expect("checkpoint object")
+            .remove("release_eligible");
+        assert_eq!(unmarked, json);
+    }
+
+    // r[verify chaoscontrol.campaign_policy.rollback.valid]
+    #[test]
+    fn campaign_resume_of_a_diagnostic_checkpoint_stays_release_ineligible() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let output = directory.path().display().to_string();
+        let diagnostic = Explorer::new(ExplorerConfig {
+            frontier_policy: FrontierPolicy::LegacyDiagnostic,
+            ..ExplorerConfig::default()
+        });
+        let mut checkpoint = diagnostic
+            .create_checkpoint(&output)
+            .expect("diagnostic checkpoint");
+        checkpoint.config.frontier_policy = FrontierPolicy::Campaign;
+        let resumed = Explorer::from_checkpoint(checkpoint, None, None, None).expect("resume");
+        assert_eq!(resumed.config.frontier_policy, FrontierPolicy::Campaign);
+        assert!(!resumed.release_eligible());
+        let carried = resumed.create_checkpoint(&output).expect("checkpoint");
+        assert!(!carried.release_eligible);
+        assert!(!resumed.generate_report().release_eligible);
+
+        let fresh = Explorer::new(ExplorerConfig::default())
+            .create_checkpoint(&output)
+            .expect("campaign checkpoint");
+        let resumed = Explorer::from_checkpoint(fresh, None, None, None).expect("resume");
+        assert!(resumed.release_eligible());
     }
 
     const TEST_ALIAS: u32 = 42;

@@ -27,8 +27,14 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod frontier_policy;
 pub mod journal;
 mod journal_authority;
+
+pub use frontier_policy::{
+    ExplorationStop, FrontierPolicy, UnknownFrontierPolicy, CAMPAIGN_CANDIDATE_POLICY_NAME,
+    EXHAUSTIVE_SEARCH_NON_CLAIM, LEGACY_POLICY_NAME,
+};
 
 /// Errors from the exploration engine.
 #[derive(Debug, Snafu)]
@@ -162,6 +168,8 @@ pub struct ExplorerConfig {
     pub emit_metrics: bool,
     /// Optional JSONL metrics output path. Stdout is used when omitted.
     pub metrics_file: Option<std::path::PathBuf>,
+    /// Frontier policy that selects each round's expansion.
+    pub frontier_policy: FrontierPolicy,
 }
 
 impl Default for ExplorerConfig {
@@ -197,6 +205,7 @@ impl Default for ExplorerConfig {
             scenario: None,
             emit_metrics: false,
             metrics_file: None,
+            frontier_policy: FrontierPolicy::default(),
         }
     }
 }
@@ -258,6 +267,8 @@ pub struct Explorer {
     /// Materialized phase summary (stored at bootstrap time).
     scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
     metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
+    /// First stop of the run, once one was reached.
+    stop: Option<ExplorationStop>,
 }
 
 impl Explorer {
@@ -293,6 +304,7 @@ impl Explorer {
             marker_hits: BTreeMap::new(),
             scenario_summary: None,
             metrics_sink: None,
+            stop: None,
         }
     }
 
@@ -316,6 +328,15 @@ impl Explorer {
         if let Some(ref sink) = self.event_sink {
             let _ = sink.try_send(event);
         }
+    }
+
+    /// Record the run's first stop and emit a Finished event.
+    ///
+    /// The legacy loop can emit `completed` after an in-loop stop on the last
+    /// round; the report keeps the first stop.
+    fn finish(&mut self, stop: ExplorationStop) {
+        self.stop.get_or_insert(stop);
+        self.emit_finished(stop.as_str());
     }
 
     /// Emit a Finished event.
@@ -574,7 +595,7 @@ impl Explorer {
                     );
                 } else {
                     info!("Frontier exhausted and corpus empty, stopping");
-                    self.emit_finished("frontier_exhausted");
+                    self.finish(ExplorationStop::FrontierExhausted);
                     break;
                 }
             }
@@ -586,28 +607,28 @@ impl Explorer {
                     "Coverage plateau: {} consecutive rounds with no new edges or bugs, stopping",
                     self.consecutive_stale_rounds
                 );
-                self.emit_finished("coverage_plateau");
+                self.finish(ExplorationStop::CoveragePlateau);
                 break;
             }
 
             // Optionally stop if we found bugs (for testing)
             if round_report.bugs_found > 0 && self.config.max_rounds < 10 {
                 info!("Bug found in short run, stopping");
-                self.emit_finished("bug_found");
+                self.finish(ExplorationStop::BugFound);
                 break;
             }
 
             // Check for graceful shutdown (Ctrl-C / SIGTERM).
             if crate::signal::shutdown_requested() {
                 info!("Shutdown requested, stopping after round {}", round + 1);
-                self.emit_finished("interrupted");
+                self.finish(ExplorationStop::Interrupted);
                 break;
             }
         }
 
         // Emit Finished if we completed all rounds (no early break).
         if self.rounds_completed >= self.config.max_rounds {
-            self.emit_finished("completed");
+            self.finish(ExplorationStop::Completed);
         }
 
         // Generate final report
@@ -1871,6 +1892,8 @@ impl Explorer {
             edges_per_second: 0.0,
             scenario_config: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
+            frontier_policy: self.config.frontier_policy,
+            stop: self.stop,
         }
     }
 
@@ -2098,6 +2121,7 @@ impl Explorer {
             havoc_after_stale: Some(self.config.havoc_after_stale),
             havoc_mutations: Some(self.config.havoc_mutations),
             scenario: self.config.scenario.clone(),
+            frontier_policy: self.config.frontier_policy,
         };
 
         let snapshot_store = crate::snapshot_store::FileSnapshotStore::new(output_dir);
@@ -2193,6 +2217,7 @@ impl Explorer {
             scenario: checkpoint.config.scenario.clone(),
             emit_metrics: false,
             metrics_file: None,
+            frontier_policy: checkpoint.config.frontier_policy,
         };
 
         let frontier = Frontier::new(config.max_frontier);
@@ -2235,6 +2260,7 @@ impl Explorer {
             marker_hits: BTreeMap::new(),
             scenario_summary: checkpoint.scenario_summary.clone(),
             metrics_sink: None,
+            stop: None,
         })
     }
 }
@@ -2399,6 +2425,10 @@ pub struct ExplorationReport {
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
     /// Materialized phase summary (if a scenario was used).
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    /// Frontier policy that selected every expansion.
+    pub frontier_policy: FrontierPolicy,
+    /// First stop of the run. Bounded sampling: see [`EXHAUSTIVE_SEARCH_NON_CLAIM`].
+    pub stop: Option<ExplorationStop>,
 }
 
 /// Summary of assertion coverage across all exploration branches.

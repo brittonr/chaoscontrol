@@ -12,6 +12,7 @@
 //! re-explore known territory.
 
 use crate::corpus::BugReport;
+use crate::explorer::FrontierPolicy;
 use crate::snapshot_store::{FileSnapshotStore, ReplayParentSnapshotRef, SnapshotStore};
 use chaoscontrol_fault::faults::{Fault, GpRegister};
 use chaoscontrol_fault::schedule::{FaultSchedule, ScheduledFault};
@@ -103,6 +104,10 @@ pub struct CheckpointConfig {
     /// Helical scenario config (if the run used one).
     #[serde(default)]
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Frontier policy of the run. Omitted for the legacy policy, so legacy
+    /// checkpoints keep their pre-policy shape and old checkpoints load as legacy.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    pub frontier_policy: FrontierPolicy,
 }
 
 fn default_bootstrap_budget() -> u64 {
@@ -1146,6 +1151,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: None,
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![1, 2, 3, 4, 5],
             bugs: vec![],
@@ -1197,6 +1203,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: None,
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![10, 20, 30],
             bugs: vec![],
@@ -1280,6 +1287,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: None,
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![],
             bugs: vec![],
@@ -1361,6 +1369,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: Some(sc_config.clone()),
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![],
             bugs: vec![SerializableBug {
@@ -1500,6 +1509,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: None,
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![],
             bugs,

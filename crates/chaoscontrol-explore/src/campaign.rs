@@ -972,6 +972,8 @@ mod tests {
             edges_per_second: 0.0,
             scenario_config: None,
             scenario_summary: None,
+            frontier_policy: crate::explorer::FrontierPolicy::default(),
+            stop: None,
         }
     }
 

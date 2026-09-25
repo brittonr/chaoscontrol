@@ -1079,6 +1079,7 @@ fn cmd_run(
         scenario: scenario_config.clone(),
         emit_metrics,
         metrics_file: metrics_file.clone().map(std::path::PathBuf::from),
+        frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -1423,6 +1424,7 @@ fn cmd_campaign(
         scenario: scenario_config,
         emit_metrics: false,
         metrics_file: None,
+        frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
     };
 
     let seed_list = match generate_seeds(seed, campaign_seeds, seeds.as_deref()) {
@@ -1781,6 +1783,8 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                 },
                 scenario_config: cp.scenario.clone(),
                 scenario_summary: cp.scenario_summary.clone(),
+                frontier_policy: cp.config.frontier_policy,
+                stop: None,
             };
             reports.push((*seed, report, summary.wall_clock_seconds));
         }

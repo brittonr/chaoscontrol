@@ -462,6 +462,7 @@ mod tests {
                 havoc_after_stale: None,
                 havoc_mutations: None,
                 scenario: None,
+                frontier_policy: crate::explorer::FrontierPolicy::default(),
             },
             global_coverage: vec![1, 2, 3],
             bugs: vec![SerializableBug {

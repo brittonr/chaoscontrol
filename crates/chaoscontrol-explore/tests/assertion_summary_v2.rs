@@ -163,6 +163,8 @@ fn legacy_u32_identity_is_rejected_by_exploration_and_campaign_summaries() {
         edges_per_second: 0.0,
         scenario_config: None,
         scenario_summary: None,
+        frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        stop: None,
     };
     assert!(AssertionSummaryV2::from_exploration(&exploration).is_err());
 }

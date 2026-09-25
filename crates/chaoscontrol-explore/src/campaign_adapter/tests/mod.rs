@@ -6,6 +6,7 @@
 //! applied with `apply_control_event`.
 
 mod candidates;
+mod conformance;
 mod eligibility;
 mod entropy;
 mod fence;

@@ -20,7 +20,13 @@
 //!
 //! # Resume with different kernel or more rounds
 //! chaoscontrol-explore resume --corpus results/ --kernel vmlinux.new --rounds 500
+//!
+//! # Select the Campaign-backed candidate frontier policy (default: legacy)
+//! chaoscontrol-explore run --kernel vmlinux --frontier-policy campaign-candidate
 //! ```
+//!
+//! `resume` and `campaign-resume` keep the policy recorded in the checkpoint or
+//! `campaign_progress.json` unless `--frontier-policy` is given explicitly.
 //!
 //! # Checkpointing
 //!
@@ -47,7 +53,7 @@ use chaoscontrol_explore::checkpoint::{
     export_checkpoint_bugs_with_filter, load_checkpoint, CheckpointBugExportFilter,
 };
 use chaoscontrol_explore::corpus::BugReport;
-use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
+use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig, FrontierPolicy};
 use chaoscontrol_explore::minimizer::{MinimizeConfig, Minimizer};
 use chaoscontrol_explore::mutator::MutationConfig;
 use chaoscontrol_explore::report::{
@@ -60,6 +66,7 @@ use chaoscontrol_vmm::vm::VmConfig;
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::Path;
+use std::str::FromStr;
 
 const EXIT_ERROR: i32 = 1;
 const ENABLED_SCHEDULE_MUTATION_RATIO: f64 = 1.0;
@@ -264,6 +271,10 @@ enum Commands {
         /// Write JSON metrics lines to this file instead of stderr.
         #[arg(long)]
         metrics_file: Option<String>,
+
+        /// Frontier policy: "legacy" (default) or "campaign-candidate".
+        #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
+        frontier_policy: FrontierPolicy,
     },
 
     /// Minimize a bug-triggering fault schedule.
@@ -539,6 +550,10 @@ enum Commands {
         /// Exits with status 3 after writing artifacts when any group is below the floor.
         #[arg(long, default_value = "0")]
         min_assertion_exercise: usize,
+
+        /// Frontier policy for every seed: "legacy" (default) or "campaign-candidate".
+        #[arg(long, default_value_t = FrontierPolicy::default(), value_parser = FrontierPolicy::from_str)]
+        frontier_policy: FrontierPolicy,
     },
 
     /// Resume a multi-seed campaign from checkpoint.
@@ -553,6 +568,12 @@ enum Commands {
         /// Override max rounds per seed.
         #[arg(short, long)]
         rounds: Option<u64>,
+
+        /// Frontier policy for the remaining seeds: "legacy" or "campaign-candidate".
+        /// An explicit value wins; otherwise the policy recorded in
+        /// campaign_progress.json is used (legacy for pre-policy progress files).
+        #[arg(long, value_parser = FrontierPolicy::from_str)]
+        frontier_policy: Option<FrontierPolicy>,
     },
 
     /// Resume from saved checkpoint.
@@ -586,6 +607,12 @@ enum Commands {
         /// on trusted networks.
         #[arg(long, default_value = "127.0.0.1")]
         dashboard_host: String,
+
+        /// Frontier policy for the resumed rounds: "legacy" or "campaign-candidate".
+        /// An explicit value wins; otherwise the checkpoint's recorded policy
+        /// is used (legacy for pre-policy checkpoints).
+        #[arg(long, value_parser = FrontierPolicy::from_str)]
+        frontier_policy: Option<FrontierPolicy>,
     },
 
     /// Export checkpoint-held bugs as standalone bug_N.json artifacts.
@@ -664,6 +691,7 @@ fn main() {
             min_assertion_exercise,
             emit_metrics,
             metrics_file,
+            frontier_policy,
         } => cmd_run(
             kernel,
             initrd,
@@ -702,6 +730,7 @@ fn main() {
             min_assertion_exercise,
             emit_metrics,
             metrics_file,
+            frontier_policy,
         ),
         Commands::Reproduce {
             kernel,
@@ -771,6 +800,7 @@ fn main() {
             scenario_phase_ticks,
             scenario_turns,
             min_assertion_exercise,
+            frontier_policy,
         } => cmd_campaign(
             kernel,
             initrd,
@@ -806,8 +836,13 @@ fn main() {
             scenario_phase_ticks,
             scenario_turns,
             min_assertion_exercise,
+            frontier_policy,
         ),
-        Commands::CampaignResume { corpus, rounds } => cmd_campaign_resume(corpus, rounds),
+        Commands::CampaignResume {
+            corpus,
+            rounds,
+            frontier_policy,
+        } => cmd_campaign_resume(corpus, rounds, frontier_policy),
         Commands::ExportBugs {
             checkpoint,
             output,
@@ -833,11 +868,15 @@ fn main() {
             dashboard,
             dashboard_port,
             dashboard_host,
+            frontier_policy,
         } => cmd_resume(
             corpus,
-            kernel,
-            initrd,
-            rounds,
+            ResumeOverrides {
+                kernel,
+                initrd,
+                rounds,
+                frontier_policy,
+            },
             dashboard,
             dashboard_port,
             dashboard_host,
@@ -955,6 +994,7 @@ fn cmd_run(
     min_assertion_exercise: usize,
     emit_metrics: bool,
     metrics_file: Option<String>,
+    frontier_policy: FrontierPolicy,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -1079,7 +1119,7 @@ fn cmd_run(
         scenario: scenario_config.clone(),
         emit_metrics,
         metrics_file: metrics_file.clone().map(std::path::PathBuf::from),
-        frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        frontier_policy,
     };
 
     eprintln!("═══════════════════════════════════════════════════════════════════════");
@@ -1101,6 +1141,7 @@ fn cmd_run(
     eprintln!("  Scheduling:     {}", scheduling);
     eprintln!("  Mode:           {}", mode);
     eprintln!("  Max frontier:   {}", max_frontier);
+    eprintln!("  Frontier policy: {}", frontier_policy);
     eprintln!("  Bootstrap:      {} ticks", bootstrap_budget);
     if let Some(ref disk_image_path) = disk_image {
         eprintln!("  Disk image:     {}", disk_image_path);
@@ -1289,6 +1330,7 @@ fn cmd_campaign(
     scenario_phase_ticks: u64,
     scenario_turns: usize,
     min_assertion_exercise: usize,
+    frontier_policy: FrontierPolicy,
 ) {
     // Parse scenario config
     let scenario_config = scenario.map(|name| {
@@ -1424,7 +1466,7 @@ fn cmd_campaign(
         scenario: scenario_config,
         emit_metrics: false,
         metrics_file: None,
-        frontier_policy: chaoscontrol_explore::explorer::FrontierPolicy::default(),
+        frontier_policy,
     };
 
     let seed_list = match generate_seeds(seed, campaign_seeds, seeds.as_deref()) {
@@ -1663,7 +1705,21 @@ fn persist_campaign_outputs(
     Ok(())
 }
 
-fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
+/// Frontier policy for a resumed run: an explicit `--frontier-policy` wins,
+/// otherwise the policy recorded in the checkpoint or campaign progress
+/// (legacy for files written before the policy existed).
+fn resume_frontier_policy(
+    explicit: Option<FrontierPolicy>,
+    recorded: FrontierPolicy,
+) -> FrontierPolicy {
+    explicit.unwrap_or(recorded)
+}
+
+fn cmd_campaign_resume(
+    corpus: String,
+    rounds_override: Option<u64>,
+    frontier_policy_override: Option<FrontierPolicy>,
+) {
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: campaign directory not found: {}", corpus);
         std::process::exit(1);
@@ -1689,6 +1745,9 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
 
     if remaining.is_empty() {
         eprintln!("All {} seeds already complete.", progress.seeds.len());
+        if frontier_policy_override.is_some() {
+            eprintln!("Note: --frontier-policy ignored; no seed remains to run.");
+        }
         // Aggregate existing results and write final report.
         let mut reports: Vec<(u64, chaoscontrol_explore::explorer::ExplorationReport, f64)> =
             Vec::new();
@@ -1784,7 +1843,7 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
                 scenario_config: cp.scenario.clone(),
                 scenario_summary: cp.scenario_summary.clone(),
                 frontier_policy: cp.config.frontier_policy,
-                stop: None,
+                stop: summary.stop,
             };
             reports.push((*seed, report, summary.wall_clock_seconds));
         }
@@ -1804,11 +1863,14 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
         return;
     }
 
+    let frontier_policy =
+        resume_frontier_policy(frontier_policy_override, progress.config.frontier_policy);
     eprintln!(
-        "Resuming campaign: {} of {} seeds remaining ({:?})",
+        "Resuming campaign: {} of {} seeds remaining ({:?}), frontier policy {}",
         remaining.len(),
         progress.seeds.len(),
         remaining,
+        frontier_policy,
     );
 
     // Reconstruct ExplorerConfig from checkpoint.
@@ -1840,6 +1902,7 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
         stale_round_limit: cfg.stale_round_limit,
         num_workers: 1,
         output_dir: None,
+        frontier_policy,
         ..ExplorerConfig::default()
     };
 
@@ -1875,15 +1938,27 @@ fn cmd_campaign_resume(corpus: String, rounds_override: Option<u64>) {
     }
 }
 
+/// Explicit `resume` overrides; each one wins over the checkpoint's value.
+struct ResumeOverrides {
+    kernel: Option<String>,
+    initrd: Option<String>,
+    rounds: Option<u64>,
+    frontier_policy: Option<FrontierPolicy>,
+}
+
 fn cmd_resume(
     corpus: String,
-    kernel_override: Option<String>,
-    initrd_override: Option<String>,
-    rounds_override: Option<u64>,
+    overrides: ResumeOverrides,
     dashboard: bool,
     dashboard_port: u16,
     dashboard_host: String,
 ) {
+    let ResumeOverrides {
+        kernel: kernel_override,
+        initrd: initrd_override,
+        rounds: rounds_override,
+        frontier_policy: frontier_policy_override,
+    } = overrides;
     // Validate corpus directory exists
     if !Path::new(&corpus).is_dir() {
         eprintln!("Error: corpus directory not found: {}", corpus);
@@ -1898,13 +1973,15 @@ fn cmd_resume(
         std::process::exit(1);
     }
 
-    let checkpoint = match load_checkpoint(&checkpoint_path) {
+    let mut checkpoint = match load_checkpoint(&checkpoint_path) {
         Ok(cp) => cp,
         Err(e) => {
             eprintln!("Error: failed to load checkpoint: {}", e);
             std::process::exit(1);
         }
     };
+    checkpoint.config.frontier_policy =
+        resume_frontier_policy(frontier_policy_override, checkpoint.config.frontier_policy);
 
     // Determine actual paths (overrides take precedence)
     let kernel_path = kernel_override
@@ -1968,6 +2045,7 @@ fn cmd_resume(
         checkpoint.config.ticks_per_branch
     );
     eprintln!("  Output:            {}", corpus);
+    eprintln!("  Frontier policy:   {}", checkpoint.config.frontier_policy);
     eprintln!();
     eprintln!("Resuming exploration...");
     eprintln!();
@@ -2806,5 +2884,108 @@ fn rollback_minimized_bugs(paths: &[std::path::PathBuf], reason: String) -> Resu
             "{reason}; rollback failed for {}",
             cleanup_failures.join(", ")
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BIN: &str = "chaoscontrol-explore";
+    const POLICY_FLAG: &str = "--frontier-policy";
+    const CANDIDATE: &str = "campaign-candidate";
+    const UNKNOWN_POLICIES: [&str; 3] = ["bogus", "campaign_candidate", "Legacy"];
+
+    fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once(BIN).chain(args.iter().copied()))
+    }
+
+    fn run_policy(args: &[&str]) -> FrontierPolicy {
+        match parse(args).expect("run parses").command {
+            Commands::Run {
+                frontier_policy, ..
+            } => frontier_policy,
+            _ => panic!("expected run"),
+        }
+    }
+
+    fn campaign_policy(args: &[&str]) -> FrontierPolicy {
+        match parse(args).expect("campaign parses").command {
+            Commands::Campaign {
+                frontier_policy, ..
+            } => frontier_policy,
+            _ => panic!("expected campaign"),
+        }
+    }
+
+    fn resume_policy(args: &[&str]) -> Option<FrontierPolicy> {
+        match parse(args).expect("resume parses").command {
+            Commands::Resume {
+                frontier_policy, ..
+            }
+            | Commands::CampaignResume {
+                frontier_policy, ..
+            } => frontier_policy,
+            _ => panic!("expected a resume command"),
+        }
+    }
+
+    #[test]
+    fn run_and_campaign_default_to_legacy_and_accept_campaign_candidate() {
+        assert_eq!(run_policy(&["run", "-k", "k"]), FrontierPolicy::Legacy);
+        assert_eq!(
+            run_policy(&["run", "-k", "k", POLICY_FLAG, CANDIDATE]),
+            FrontierPolicy::CampaignCandidate
+        );
+        assert_eq!(
+            campaign_policy(&["campaign", "-k", "k", "-o", "out"]),
+            FrontierPolicy::Legacy
+        );
+        assert_eq!(
+            campaign_policy(&["campaign", "-k", "k", "-o", "out", POLICY_FLAG, CANDIDATE]),
+            FrontierPolicy::CampaignCandidate
+        );
+    }
+
+    #[test]
+    fn resume_commands_record_only_an_explicit_policy() {
+        assert_eq!(resume_policy(&["resume", "-c", "dir"]), None);
+        assert_eq!(
+            resume_policy(&["resume", "-c", "dir", POLICY_FLAG, "legacy"]),
+            Some(FrontierPolicy::Legacy)
+        );
+        assert_eq!(resume_policy(&["campaign-resume", "-c", "dir"]), None);
+        assert_eq!(
+            resume_policy(&["campaign-resume", "-c", "dir", POLICY_FLAG, CANDIDATE]),
+            Some(FrontierPolicy::CampaignCandidate)
+        );
+    }
+
+    #[test]
+    fn unknown_frontier_policies_are_rejected_by_every_subcommand() {
+        for unknown in UNKNOWN_POLICIES {
+            for args in [
+                vec!["run", "-k", "k", POLICY_FLAG, unknown],
+                vec!["campaign", "-k", "k", "-o", "out", POLICY_FLAG, unknown],
+                vec!["resume", "-c", "dir", POLICY_FLAG, unknown],
+                vec!["campaign-resume", "-c", "dir", POLICY_FLAG, unknown],
+            ] {
+                let error = match parse(&args) {
+                    Ok(_) => panic!("{args:?} must be rejected"),
+                    Err(error) => error,
+                };
+                assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+            }
+        }
+    }
+
+    #[test]
+    fn an_explicit_resume_policy_wins_over_the_recorded_policy() {
+        for recorded in FrontierPolicy::ALL {
+            assert_eq!(resume_frontier_policy(None, recorded), recorded);
+            for explicit in FrontierPolicy::ALL {
+                assert_eq!(resume_frontier_policy(Some(explicit), recorded), explicit);
+            }
+        }
     }
 }

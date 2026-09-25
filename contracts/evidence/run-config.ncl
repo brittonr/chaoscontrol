@@ -26,6 +26,8 @@ let Exploration = {
   quantum | P.positive_u64,
   bootstrap_budget | P.positive_u64,
   stale_round_limit | P.u64,
+  # Absent means "legacy"; reviewed legacy profiles keep their exact shape.
+  frontier_policy | P.closed_enum ["legacy", "campaign-candidate"] | optional,
 } in
 let Coverage = {
   mode | P.closed_enum ["blind", "bitmap"],

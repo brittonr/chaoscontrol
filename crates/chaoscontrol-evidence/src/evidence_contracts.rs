@@ -65,6 +65,10 @@ const RECEIPT_REFERENCE_LISTS: [(ProductEvidenceClass, &str); 2] = [
     (ProductEvidenceClass::Finding, "bug_reports"),
 ];
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
+/// Optional run-config key naming the frontier policy; absent means legacy.
+pub(crate) const RUN_CONFIG_FRONTIER_POLICY_KEY: &str = "frontier_policy";
+/// Frontier policy names owned by `chaoscontrol_explore::explorer::FrontierPolicy`.
+const RUN_CONFIG_FRONTIER_POLICIES: [&str; 2] = ["legacy", "campaign-candidate"];
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
     let root = root.as_ref();
@@ -90,6 +94,9 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
 
     let valid = contracts.join("fixtures/valid");
     validate_run_config(&load_json(&valid.join("run-config.valid.json"))?)?;
+    validate_run_config(&load_json(
+        &valid.join("run-config.campaign-candidate.valid.json"),
+    )?)?;
     let simulator_profile = serde_json::from_value::<crate::simulator_profile::SimulatorProfile>(
         load_json(&valid.join("simulator-profile.valid.json"))?,
     )
@@ -145,6 +152,10 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     let invalid = contracts.join("fixtures/invalid");
     expect_invalid(
         &invalid.join("run-config.zero-vms.invalid.json"),
+        validate_run_config,
+    )?;
+    expect_invalid(
+        &invalid.join("run-config.unknown-frontier-policy.invalid.json"),
         validate_run_config,
     )?;
     expect_invalid(
@@ -295,6 +306,10 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
             "examples/typed-operator-command.ncl",
             "fixtures/valid/operator-command.valid.json",
         ),
+        (
+            "fixtures/valid/run-profile.campaign-candidate.valid.ncl",
+            "fixtures/valid/run-profile.campaign-candidate.valid.json",
+        ),
     ] {
         let output = Command::new(&command[0])
             .args(&command[1..])
@@ -336,6 +351,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/run-profile.zero-budget.invalid.ncl",
         "fixtures/invalid/run-profile.unsafe-reference.invalid.ncl",
         "fixtures/invalid/run-profile.implicit-blind-coverage.invalid.ncl",
+        "fixtures/invalid/run-profile.unknown-frontier-policy.invalid.ncl",
         "fixtures/invalid/simulator-profile.unsupported-rng.invalid.ncl",
         "fixtures/invalid/simulator-profile.empty-artifacts.invalid.ncl",
         "fixtures/invalid/simulator-profile.malformed-digest.invalid.ncl",
@@ -443,7 +459,19 @@ pub fn validate_run_config(value: &Value) -> EvidenceResult<()> {
     for key in ["seed", "coverage_gpa"] {
         require_num(value.get(key), &format!("run-config.{key}"))?;
     }
+    if let Some(policy) = value.get(RUN_CONFIG_FRONTIER_POLICY_KEY) {
+        validate_run_config_frontier_policy(policy)?;
+    }
     Ok(())
+}
+
+/// Checks a present run-config `frontier_policy` value; an absent key means legacy.
+pub(crate) fn validate_run_config_frontier_policy(policy: &Value) -> EvidenceResult<()> {
+    let policy = require_str(Some(policy), "run-config.frontier_policy")?;
+    ensure(
+        RUN_CONFIG_FRONTIER_POLICIES.contains(&policy),
+        format!("run-config.frontier_policy: unknown frontier policy {policy:?}"),
+    )
 }
 
 pub fn validate_artifact_hash(value: &Value) -> EvidenceResult<()> {

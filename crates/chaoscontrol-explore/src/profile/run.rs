@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{checked_usize, valid_identifier, ArtifactReference};
-use crate::explorer::{ExplorationMode, ExplorerConfig};
+use crate::explorer::{ExplorationMode, ExplorerConfig, FrontierPolicy};
 use crate::mutator::MutationConfig;
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
@@ -74,6 +74,10 @@ pub struct ExplorationProfile {
     pub quantum: u64,
     pub bootstrap_budget: u64,
     pub stale_round_limit: u64,
+    /// Frontier policy. Absent means legacy, so reviewed legacy profiles keep
+    /// their exact shape; unknown policy names are rejected.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    pub frontier_policy: FrontierPolicy,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -188,6 +192,7 @@ impl RunProfile {
             num_workers: 1,
             stale_round_limit: self.exploration.stale_round_limit,
             schedule_diversity: self.topology.scheduling.diversity,
+            frontier_policy: self.exploration.frontier_policy,
             ..ExplorerConfig::default()
         })
     }

@@ -1,4 +1,8 @@
 use super::{CampaignProfile, FaultScheduleProfile, RunProfile};
+use crate::explorer::{FrontierPolicy, CAMPAIGN_CANDIDATE_POLICY_NAME};
+
+const FRONTIER_POLICY_KEY: &str = "frontier_policy";
+const UNKNOWN_FRONTIER_POLICIES: [&str; 4] = ["bogus", "Legacy", "campaign_candidate", ""];
 
 const RUN: &str =
     include_str!("../../../../contracts/evidence/fixtures/valid/run-profile.valid.json");
@@ -80,6 +84,76 @@ fn finite_schedule_maps_closed_fault_descriptors() {
     assert_eq!(schedule.total(), 2);
     assert_eq!(schedule.faults()[0].time_ns, 1_000_000);
     assert_eq!(schedule.faults()[1].time_ns, 2_000_000);
+}
+
+#[test]
+fn run_profile_without_frontier_policy_projects_legacy_and_keeps_its_shape() {
+    let profile: RunProfile = serde_json::from_str(RUN).expect("run profile");
+    assert_eq!(profile.exploration.frontier_policy, FrontierPolicy::Legacy);
+    let serialized = serde_json::to_value(&profile).expect("profile JSON");
+    assert!(serialized["exploration"].get(FRONTIER_POLICY_KEY).is_none());
+
+    let config = profile
+        .try_into_explorer_config(47, None)
+        .expect("run conversion");
+    assert_eq!(config.frontier_policy, FrontierPolicy::Legacy);
+}
+
+#[test]
+fn run_profile_projects_an_explicit_campaign_candidate_policy() {
+    let mut value = serde_json::from_str::<serde_json::Value>(RUN).expect("run JSON");
+    value["exploration"][FRONTIER_POLICY_KEY] = serde_json::json!(CAMPAIGN_CANDIDATE_POLICY_NAME);
+    let profile: RunProfile = serde_json::from_value(value).expect("candidate profile");
+    let serialized = serde_json::to_value(&profile).expect("profile JSON");
+    assert_eq!(
+        serialized["exploration"][FRONTIER_POLICY_KEY],
+        serde_json::json!(CAMPAIGN_CANDIDATE_POLICY_NAME)
+    );
+
+    let config = profile
+        .try_into_explorer_config(47, None)
+        .expect("run conversion");
+    assert_eq!(config.frontier_policy, FrontierPolicy::CampaignCandidate);
+}
+
+#[test]
+fn run_profile_rejects_unknown_frontier_policies() {
+    for unknown in UNKNOWN_FRONTIER_POLICIES {
+        let mut value = serde_json::from_str::<serde_json::Value>(RUN).expect("run JSON");
+        value["exploration"][FRONTIER_POLICY_KEY] = serde_json::json!(unknown);
+        assert!(
+            serde_json::from_value::<RunProfile>(value).is_err(),
+            "policy {unknown:?} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn campaign_profile_carries_the_run_frontier_policy_into_the_base_config() {
+    let profile: CampaignProfile = serde_json::from_str(CAMPAIGN).expect("campaign profile");
+    let config = profile
+        .try_into_campaign_config(None)
+        .expect("campaign conversion");
+    assert_eq!(
+        config.base_explorer_config.frontier_policy,
+        FrontierPolicy::Legacy
+    );
+
+    let mut value = serde_json::from_str::<serde_json::Value>(CAMPAIGN).expect("campaign JSON");
+    value["run"]["exploration"][FRONTIER_POLICY_KEY] =
+        serde_json::json!(CAMPAIGN_CANDIDATE_POLICY_NAME);
+    let profile: CampaignProfile = serde_json::from_value(value).expect("candidate campaign");
+    let config = profile
+        .try_into_campaign_config(None)
+        .expect("campaign conversion");
+    assert_eq!(
+        config.base_explorer_config.frontier_policy,
+        FrontierPolicy::CampaignCandidate
+    );
+
+    let mut value = serde_json::from_str::<serde_json::Value>(CAMPAIGN).expect("campaign JSON");
+    value["run"]["exploration"][FRONTIER_POLICY_KEY] = serde_json::json!("bogus");
+    assert!(serde_json::from_value::<CampaignProfile>(value).is_err());
 }
 
 #[test]

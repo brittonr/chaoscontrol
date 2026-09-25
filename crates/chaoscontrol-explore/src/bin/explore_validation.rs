@@ -1,9 +1,14 @@
 //! Validation tests for parallel exploration determinism and stress.
 //!
 //! Usage:
-//!   cargo run --release --bin explore_validation -- KERNEL INITRD
+//!   cargo run --release --bin explore_validation -- KERNEL INITRD [FRONTIER_POLICY]
+//!
+//! FRONTIER_POLICY is `legacy` (default) or `campaign-candidate`; every run
+//! must report the selected policy.
 
-use chaoscontrol_explore::explorer::{ExplorationMode, Explorer, ExplorerConfig};
+use chaoscontrol_explore::explorer::{
+    ExplorationMode, ExplorationReport, Explorer, ExplorerConfig, FrontierPolicy,
+};
 use chaoscontrol_vmm::scheduler::SchedulingStrategy;
 use chaoscontrol_vmm::vm::VmConfig;
 use std::time::Instant;
@@ -12,16 +17,25 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 3 {
-        eprintln!("Usage: {} <kernel> <initrd>", args[0]);
+    if args.len() < 3 || args.len() > 4 {
+        eprintln!("Usage: {} <kernel> <initrd> [frontier-policy]", args[0]);
         std::process::exit(1);
     }
     let kernel = &args[1];
     let initrd = &args[2];
+    let frontier_policy = match args.get(3).map(|name| name.parse::<FrontierPolicy>()) {
+        None => FrontierPolicy::default(),
+        Some(Ok(policy)) => policy,
+        Some(Err(error)) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
 
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║     Exploration Validation Tests                        ║");
     println!("╚══════════════════════════════════════════════════════════╝");
+    println!("  Frontier policy: {frontier_policy}");
     println!();
 
     let mut passed = 0;
@@ -30,7 +44,7 @@ fn main() {
     // ── Task 7.2: Determinism under parallelism ───────────────────
     print!("  [1] Determinism: --workers 1 vs --workers 2 ... ");
     let t0 = Instant::now();
-    if test_parallel_determinism(kernel, initrd) {
+    if test_parallel_determinism(kernel, initrd, frontier_policy) {
         println!("✅ PASS ({:.1}s)", t0.elapsed().as_secs_f64());
         passed += 1;
     } else {
@@ -41,7 +55,7 @@ fn main() {
     // ── Task 7.4: Stress test ─────────────────────────────────────
     print!("  [2] Stress: 5 rounds × 4 branches × 2 workers ... ");
     let t0 = Instant::now();
-    if test_stress(kernel, initrd) {
+    if test_stress(kernel, initrd, frontier_policy) {
         println!("✅ PASS ({:.1}s)", t0.elapsed().as_secs_f64());
         passed += 1;
     } else {
@@ -58,7 +72,7 @@ fn main() {
 
 /// Task 7.2: Run the same seed with 1 worker and 2 workers.
 /// Coverage edges and bug counts must match.
-fn test_parallel_determinism(kernel: &str, initrd: &str) -> bool {
+fn test_parallel_determinism(kernel: &str, initrd: &str, frontier_policy: FrontierPolicy) -> bool {
     let make_config = |workers: usize| {
         // Use a minimal VM config with short budget.
         // Default cmdline uses panic=0 (halt, don't reboot), so
@@ -81,6 +95,7 @@ fn test_parallel_determinism(kernel: &str, initrd: &str) -> bool {
             exploration_mode: ExplorationMode::FaultSchedule,
             num_workers: workers,
             bootstrap_budget: 10_000,
+            frontier_policy,
             ..Default::default()
         }
     };
@@ -124,11 +139,26 @@ fn test_parallel_determinism(kernel: &str, initrd: &str) -> bool {
         report2.bugs.len()
     );
 
-    both_have_edges && both_completed
+    both_have_edges
+        && both_completed
+        && reports_policy(&report1, frontier_policy)
+        && reports_policy(&report2, frontier_policy)
+}
+
+/// The report must name the configured frontier policy.
+fn reports_policy(report: &ExplorationReport, frontier_policy: FrontierPolicy) -> bool {
+    if report.frontier_policy == frontier_policy {
+        return true;
+    }
+    eprintln!(
+        "\n    report policy {} does not match configured policy {}",
+        report.frontier_policy, frontier_policy
+    );
+    false
 }
 
 /// Task 7.4: Run a longer exploration to verify no crashes or leaks.
-fn test_stress(kernel: &str, initrd: &str) -> bool {
+fn test_stress(kernel: &str, initrd: &str, frontier_policy: FrontierPolicy) -> bool {
     // Default cmdline uses panic=0 (halt, don't reboot).
     let vm_config = VmConfig::default();
 
@@ -147,6 +177,7 @@ fn test_stress(kernel: &str, initrd: &str) -> bool {
         exploration_mode: ExplorationMode::FaultSchedule,
         num_workers: 2,
         bootstrap_budget: 10_000,
+        frontier_policy,
         ..Default::default()
     };
 
@@ -155,16 +186,17 @@ fn test_stress(kernel: &str, initrd: &str) -> bool {
         Ok(report) => {
             let rss = get_rss_kb();
             eprintln!(
-                "\n    rounds={} branches={} edges={} bugs={} RSS={}MB",
+                "\n    rounds={} branches={} edges={} bugs={} stop={} RSS={}MB",
                 report.rounds,
                 report.total_branches,
                 report.total_edges,
                 report.bugs.len(),
+                report.stop.map_or("none", |stop| stop.as_str()),
                 rss / 1024
             );
             // Should complete without panic. RSS < 4 GB.
             // Explorer may stop early when bugs found in short runs.
-            report.rounds >= 1 && rss < 4 * 1024 * 1024
+            report.rounds >= 1 && rss < 4 * 1024 * 1024 && reports_policy(&report, frontier_policy)
         }
         Err(e) => {
             eprintln!("\n    stress failed: {}", e);

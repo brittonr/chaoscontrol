@@ -8,7 +8,8 @@
 use crate::checkpoint::{BugSetIdentityError, SerializableBug};
 use crate::corpus::BugReport;
 use crate::explorer::{
-    AssertionDetail, AssertionStats, ExplorationReport, Explorer, ExplorerConfig,
+    AssertionDetail, AssertionStats, ExplorationReport, ExplorationStop, Explorer, ExplorerConfig,
+    FrontierPolicy, EXHAUSTIVE_SEARCH_NON_CLAIM,
 };
 use crate::report::format_campaign_report;
 use log::info;
@@ -49,6 +50,31 @@ pub struct SeedSummary {
     /// Materialized phase summary for this seed (if a scenario was used).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    /// Frontier policy of this seed's run. Omitted for legacy so existing
+    /// progress files keep their shape and load as legacy.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    pub frontier_policy: FrontierPolicy,
+    /// First product stop of this seed's run, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop: Option<ExplorationStop>,
+}
+
+impl SeedSummary {
+    /// Summarize one seed's exploration report.
+    #[must_use]
+    pub fn from_report(seed: u64, report: &ExplorationReport, wall_clock_seconds: f64) -> Self {
+        Self {
+            seed,
+            rounds: report.rounds,
+            total_branches: report.total_branches,
+            total_edges: report.total_edges,
+            bugs_found: report.bugs.len(),
+            wall_clock_seconds,
+            scenario_summary: report.scenario_summary.clone(),
+            frontier_policy: report.frontier_policy,
+            stop: report.stop,
+        }
+    }
 }
 
 /// A bug deduplicated across seeds.
@@ -102,10 +128,20 @@ pub struct CampaignReport {
     /// Helical scenario config used across all seeds (if any).
     #[serde(default)]
     pub scenario_config: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Frontier policy of the campaign (the first seed's; `per_seed` records each).
+    #[serde(default)]
+    pub frontier_policy: FrontierPolicy,
+    /// Report non-claim: no stop means every behavior was explored.
+    #[serde(default = "exhaustive_search_non_claim")]
+    pub exhaustive_search_non_claim: String,
 }
 
 fn pending_catalog_status() -> chaoscontrol_protocol::admission::CatalogValidationStatus {
     chaoscontrol_protocol::admission::CatalogValidationStatus::Pending
+}
+
+fn exhaustive_search_non_claim() -> String {
+    EXHAUSTIVE_SEARCH_NON_CLAIM.to_string()
 }
 
 pub fn campaign_bugs_for_minimization(
@@ -191,6 +227,10 @@ pub struct SerializableCampaignConfig {
     /// Helical scenario config (if the campaign used one).
     #[serde(default)]
     pub scenario: Option<chaoscontrol_fault::scenario::ScenarioConfig>,
+    /// Frontier policy of the campaign. Omitted for legacy so existing
+    /// progress files keep their shape and load as legacy.
+    #[serde(default, skip_serializing_if = "FrontierPolicy::is_legacy")]
+    pub frontier_policy: FrontierPolicy,
 }
 
 impl SerializableCampaignConfig {
@@ -214,6 +254,7 @@ impl SerializableCampaignConfig {
             stale_round_limit: cfg.stale_round_limit,
             num_vcpus: cfg.vm_config.num_vcpus,
             scenario: cfg.scenario.clone(),
+            frontier_policy: cfg.frontier_policy,
         }
     }
 }
@@ -367,6 +408,16 @@ impl CampaignRunner {
         Self { config }
     }
 
+    /// Explorer configuration for one seed: the base configuration (including
+    /// its frontier policy) with only the seed and per-seed output overridden.
+    fn seed_explorer_config(&self, seed: u64) -> ExplorerConfig {
+        let mut explorer_config = self.config.base_explorer_config.clone();
+        explorer_config.seed = seed;
+        // num_workers comes from ExplorerConfig (set by CLI --workers-per-seed).
+        explorer_config.output_dir = Some(format!("{}/seed_{}", self.config.output_dir, seed));
+        explorer_config
+    }
+
     /// Run all seeds in parallel, return the aggregated report.
     pub fn run(&self) -> Result<CampaignReport, crate::explorer::ExploreError> {
         validate_unique_seeds(&self.config.seeds).map_err(|message| {
@@ -411,11 +462,7 @@ impl CampaignRunner {
                 .seeds
                 .iter()
                 .map(|&seed| {
-                    let mut explorer_config = self.config.base_explorer_config.clone();
-                    explorer_config.seed = seed;
-                    // num_workers comes from ExplorerConfig (set by CLI --workers-per-seed).
-                    let seed_output = format!("{}/seed_{}", self.config.output_dir, seed);
-                    explorer_config.output_dir = Some(seed_output);
+                    let explorer_config = self.seed_explorer_config(seed);
 
                     s.spawn(move || -> SeedResult {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -494,15 +541,7 @@ impl CampaignRunner {
 
                     progress.completed.insert(
                         seed,
-                        SeedSummary {
-                            seed,
-                            rounds: report.rounds,
-                            total_branches: report.total_branches,
-                            total_edges: report.total_edges,
-                            bugs_found: report.bugs.len(),
-                            wall_clock_seconds,
-                            scenario_summary: report.scenario_summary.clone(),
-                        },
+                        SeedSummary::from_report(seed, &report, wall_clock_seconds),
                     );
                     reports.push((seed, report, wall_clock_seconds));
                 }
@@ -662,15 +701,7 @@ pub fn aggregate_reports(
             seeds_with_bugs.push(*seed);
         }
 
-        per_seed.push(SeedSummary {
-            seed: *seed,
-            rounds: report.rounds,
-            total_branches: report.total_branches,
-            total_edges: report.total_edges,
-            bugs_found: report.bugs.len(),
-            wall_clock_seconds: *elapsed,
-            scenario_summary: report.scenario_summary.clone(),
-        });
+        per_seed.push(SeedSummary::from_report(*seed, report, *elapsed));
 
         // Merge bugs by dedup_key.
         for bug in &report.bugs {
@@ -746,6 +777,10 @@ pub fn aggregate_reports(
     let scenario_config = seed_reports
         .first()
         .and_then(|(_, r, _)| r.scenario_config.clone());
+    // Every seed of one campaign run shares the base config's policy.
+    let frontier_policy = seed_reports
+        .first()
+        .map_or_else(FrontierPolicy::default, |(_, r, _)| r.frontier_policy);
 
     let recomputed_status =
         crate::assertion_summary::validate_assertion_details(&assertion_details)
@@ -785,6 +820,8 @@ pub fn aggregate_reports(
         wall_clock_seconds,
         failed_seeds: Vec::new(),
         scenario_config,
+        frontier_policy,
+        exhaustive_search_non_claim: exhaustive_search_non_claim(),
     }
 }
 
@@ -1470,6 +1507,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 23.4,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
                 SeedSummary {
                     seed: 43,
@@ -1479,6 +1518,8 @@ mod tests {
                     bugs_found: 0,
                     wall_clock_seconds: 21.1,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
             ],
             assertion_details: Vec::new(),
@@ -1490,6 +1531,8 @@ mod tests {
             wall_clock_seconds: 25.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
+            frontier_policy: FrontierPolicy::Legacy,
+            exhaustive_search_non_claim: exhaustive_search_non_claim(),
         };
 
         let json = serde_json::to_string_pretty(&report).unwrap();
@@ -1582,6 +1625,7 @@ mod tests {
                 stale_round_limit: 10,
                 num_vcpus: 1,
                 scenario: None,
+                frontier_policy: FrontierPolicy::Legacy,
             },
             output_dir: "results/".into(),
             completed: BTreeMap::from([(
@@ -1594,6 +1638,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 23.0,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
             )]),
             failed: BTreeMap::new(),
@@ -1634,6 +1680,7 @@ mod tests {
                 stale_round_limit: 5,
                 num_vcpus: 1,
                 scenario: None,
+                frontier_policy: FrontierPolicy::Legacy,
             },
             output_dir: dir.to_string_lossy().into_owned(),
             completed: BTreeMap::new(),
@@ -1661,5 +1708,160 @@ mod tests {
             symlink(&target, &path).expect("progress symlink");
             assert!(load_campaign_progress(&dir_text).is_err());
         }
+    }
+
+    // ── frontier policy ─────────────────────────────────────────────
+
+    const FRONTIER_POLICY_KEY: &str = "frontier_policy";
+
+    fn runner_with_policy(frontier_policy: FrontierPolicy) -> CampaignRunner {
+        CampaignRunner::new(CampaignConfig {
+            seeds: vec![FIRST_TEST_SEED, SECOND_TEST_SEED],
+            base_explorer_config: ExplorerConfig {
+                frontier_policy,
+                ..ExplorerConfig::default()
+            },
+            output_dir: "campaign-out".to_string(),
+        })
+    }
+
+    #[test]
+    fn seed_configs_inherit_the_base_frontier_policy() {
+        for policy in FrontierPolicy::ALL {
+            let runner = runner_with_policy(policy);
+            let config = runner.seed_explorer_config(SECOND_TEST_SEED);
+            assert_eq!(config.frontier_policy, policy);
+            assert_eq!(config.seed, SECOND_TEST_SEED);
+            assert_eq!(
+                config.output_dir.as_deref(),
+                Some(format!("campaign-out/seed_{SECOND_TEST_SEED}").as_str())
+            );
+        }
+    }
+
+    fn policy_progress(frontier_policy: FrontierPolicy, output_dir: &str) -> CampaignProgress {
+        let runner = runner_with_policy(frontier_policy);
+        let mut config =
+            SerializableCampaignConfig::from_explorer_config(&runner.config.base_explorer_config);
+        config.kernel_path = "k".to_string();
+        let mut report = make_report(Vec::new(), Vec::new());
+        report.frontier_policy = frontier_policy;
+        report.stop = Some(ExplorationStop::CoveragePlateau);
+        CampaignProgress {
+            seeds: vec![FIRST_TEST_SEED, SECOND_TEST_SEED],
+            config,
+            output_dir: output_dir.to_string(),
+            completed: BTreeMap::from([(
+                FIRST_TEST_SEED,
+                SeedSummary::from_report(FIRST_TEST_SEED, &report, SINGLE_REPORT_SECONDS),
+            )]),
+            failed: BTreeMap::new(),
+        }
+    }
+
+    // r[verify chaoscontrol.campaign_policy.progress.valid]
+    #[test]
+    fn campaign_progress_records_the_frontier_policy_and_keeps_legacy_shape() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let dir_text = temporary.path().to_string_lossy().into_owned();
+
+        let legacy = policy_progress(FrontierPolicy::Legacy, &dir_text);
+        let legacy_json = serde_json::to_value(&legacy).expect("legacy progress JSON");
+        assert!(legacy_json["config"].get(FRONTIER_POLICY_KEY).is_none());
+        let summary = &legacy_json["completed"][FIRST_TEST_SEED.to_string()];
+        assert!(summary.get(FRONTIER_POLICY_KEY).is_none());
+        assert_eq!(summary["stop"], serde_json::json!("coverage_plateau"));
+
+        let candidate = policy_progress(FrontierPolicy::CampaignCandidate, &dir_text);
+        save_campaign_progress(&candidate, &dir_text).expect("save candidate progress");
+        let loaded = load_campaign_progress(&dir_text).expect("load candidate progress");
+        assert_eq!(
+            loaded.config.frontier_policy,
+            FrontierPolicy::CampaignCandidate
+        );
+        let summary = &loaded.completed[&FIRST_TEST_SEED];
+        assert_eq!(summary.frontier_policy, FrontierPolicy::CampaignCandidate);
+        assert_eq!(summary.stop, Some(ExplorationStop::CoveragePlateau));
+    }
+
+    #[test]
+    fn campaign_progress_rejects_an_unknown_frontier_policy() {
+        let progress = policy_progress(FrontierPolicy::Legacy, "campaign-out");
+        let mut config_policy = serde_json::to_value(&progress).expect("progress JSON");
+        config_policy["config"][FRONTIER_POLICY_KEY] = serde_json::json!("bogus");
+        assert!(serde_json::from_value::<CampaignProgress>(config_policy).is_err());
+
+        let mut seed_policy = serde_json::to_value(&progress).expect("progress JSON");
+        seed_policy["completed"][FIRST_TEST_SEED.to_string()][FRONTIER_POLICY_KEY] =
+            serde_json::json!("campaign_candidate");
+        assert!(serde_json::from_value::<CampaignProgress>(seed_policy).is_err());
+    }
+
+    // r[verify chaoscontrol.campaign_policy.stop.invalid]
+    #[test]
+    fn aggregated_reports_carry_policy_stops_and_the_non_claim() {
+        let mut first = make_report(Vec::new(), Vec::new());
+        first.frontier_policy = FrontierPolicy::CampaignCandidate;
+        first.stop = Some(ExplorationStop::FrontierExhausted);
+        let mut second = make_report(Vec::new(), Vec::new());
+        second.frontier_policy = FrontierPolicy::CampaignCandidate;
+        second.stop = Some(ExplorationStop::Completed);
+        let campaign = aggregate_reports(
+            vec![
+                (FIRST_TEST_SEED, first, SINGLE_REPORT_SECONDS),
+                (SECOND_TEST_SEED, second, SINGLE_REPORT_SECONDS),
+            ],
+            TWO_REPORT_SECONDS,
+        );
+
+        assert_eq!(campaign.frontier_policy, FrontierPolicy::CampaignCandidate);
+        assert_eq!(
+            campaign.exhaustive_search_non_claim,
+            EXHAUSTIVE_SEARCH_NON_CLAIM
+        );
+        let stops: Vec<_> = campaign.per_seed.iter().map(|seed| seed.stop).collect();
+        assert_eq!(
+            stops,
+            vec![
+                Some(ExplorationStop::FrontierExhausted),
+                Some(ExplorationStop::Completed)
+            ]
+        );
+
+        let json = serde_json::to_value(&campaign).expect("campaign JSON");
+        assert_eq!(
+            json[FRONTIER_POLICY_KEY],
+            serde_json::json!(crate::explorer::CAMPAIGN_CANDIDATE_POLICY_NAME)
+        );
+        assert_eq!(
+            json["exhaustive_search_non_claim"],
+            serde_json::json!(EXHAUSTIVE_SEARCH_NON_CLAIM)
+        );
+    }
+
+    #[test]
+    fn campaign_report_without_policy_fields_loads_as_legacy_and_rejects_unknown_policy() {
+        let campaign = aggregate_reports(
+            vec![(
+                FIRST_TEST_SEED,
+                make_report(Vec::new(), Vec::new()),
+                SINGLE_REPORT_SECONDS,
+            )],
+            SINGLE_REPORT_SECONDS,
+        );
+        let mut old = serde_json::to_value(&campaign).expect("campaign JSON");
+        let object = old.as_object_mut().expect("campaign object");
+        object.remove(FRONTIER_POLICY_KEY);
+        object.remove("exhaustive_search_non_claim");
+        let loaded: CampaignReport = serde_json::from_value(old).expect("pre-policy report");
+        assert_eq!(loaded.frontier_policy, FrontierPolicy::Legacy);
+        assert_eq!(
+            loaded.exhaustive_search_non_claim,
+            EXHAUSTIVE_SEARCH_NON_CLAIM
+        );
+
+        let mut unknown = serde_json::to_value(&campaign).expect("campaign JSON");
+        unknown[FRONTIER_POLICY_KEY] = serde_json::json!("exhaustive");
+        assert!(serde_json::from_value::<CampaignReport>(unknown).is_err());
     }
 }

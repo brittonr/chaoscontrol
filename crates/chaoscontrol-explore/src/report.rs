@@ -2,8 +2,14 @@
 
 use crate::campaign::CampaignReport;
 use crate::corpus::BugReport;
-use crate::explorer::{AssertionDetail, ExplorationReport};
+use crate::explorer::{
+    AssertionDetail, ExplorationReport, ExplorationStop, FrontierPolicy,
+    EXHAUSTIVE_SEARCH_NON_CLAIM,
+};
 use std::collections::BTreeMap;
+
+/// Per-seed table cell for a seed whose stop was not recorded.
+const NO_STOP_RECORDED: &str = "—";
 
 #[derive(Default)]
 struct AssertionExerciseGroup {
@@ -61,6 +67,23 @@ fn append_assertion_exercise_summary(output: &mut String, details: &[AssertionDe
     output.push('\n');
 }
 
+// r[impl chaoscontrol.campaign_policy.stop.invalid]
+/// Frontier policy, first stop, and the exhaustive-search non-claim. Every
+/// report states the non-claim whatever the stop class.
+fn append_policy_summary(
+    output: &mut String,
+    frontier_policy: FrontierPolicy,
+    stop: Option<ExplorationStop>,
+) {
+    output.push_str(&format!("Frontier policy:        {frontier_policy}\n"));
+    if let Some(stop) = stop {
+        output.push_str(&format!("Stop:                   {stop}\n"));
+    }
+    output.push_str(&format!(
+        "Search non-claim:       {EXHAUSTIVE_SEARCH_NON_CLAIM}\n"
+    ));
+}
+
 /// Format an exploration report for human consumption.
 pub fn format_report(report: &ExplorationReport) -> String {
     let mut output = String::new();
@@ -83,6 +106,7 @@ pub fn format_report(report: &ExplorationReport) -> String {
             "Interleaving coverage:  no-bug output does not prove validated or exhaustive schedule coverage\n",
         );
     }
+    append_policy_summary(&mut output, report.frontier_policy, report.stop);
     if report.wall_clock_seconds > 0.0 {
         output.push_str(&format!(
             "Wall-clock time:        {}\n",
@@ -572,6 +596,8 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
         output.push_str(&format!(" ({})", names.join(", ")));
         output.push('\n');
     }
+    // Campaign-level stop is per seed; the per-seed table lists each one.
+    append_policy_summary(&mut output, report.frontier_policy, None);
     output.push('\n');
 
     // Scenario metadata (if helical scenario was used)
@@ -586,13 +612,26 @@ pub fn format_campaign_report(report: &CampaignReport) -> String {
 
     // Per-seed table
     output.push_str("─── Per-Seed Results ──────────────────────────────────────────────────\n");
-    output.push_str("  Seed   │ Rounds │ Branches │ Edges │ Bugs │ Time\n");
-    output.push_str("  ───────┼────────┼──────────┼───────┼──────┼──────\n");
+    output.push_str(
+        "  Seed   │ Rounds │ Branches │ Edges │ Bugs │    Time │ Policy             │ Stop\n",
+    );
+    output.push_str(
+        "  ───────┼────────┼──────────┼───────┼──────┼─────────┼────────────────────┼──────\n",
+    );
 
     for s in &report.per_seed {
+        let time = format!("{:.1}s", s.wall_clock_seconds);
+        let stop = s.stop.map_or(NO_STOP_RECORDED, ExplorationStop::as_str);
         output.push_str(&format!(
-            "  {:>6} │ {:>6} │ {:>8} │ {:>5} │ {:>4} │ {:.1}s\n",
-            s.seed, s.rounds, s.total_branches, s.total_edges, s.bugs_found, s.wall_clock_seconds,
+            "  {:>6} │ {:>6} │ {:>8} │ {:>5} │ {:>4} │ {:>7} │ {:<18} │ {}\n",
+            s.seed,
+            s.rounds,
+            s.total_branches,
+            s.total_edges,
+            s.bugs_found,
+            time,
+            s.frontier_policy.as_str(),
+            stop,
         ));
     }
 
@@ -1397,6 +1436,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 25.3,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
                 SeedSummary {
                     seed: 43,
@@ -1406,6 +1447,8 @@ mod tests {
                     bugs_found: 0,
                     wall_clock_seconds: 22.1,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
                 SeedSummary {
                     seed: 44,
@@ -1415,6 +1458,8 @@ mod tests {
                     bugs_found: 1,
                     wall_clock_seconds: 24.0,
                     scenario_summary: None,
+                    frontier_policy: FrontierPolicy::Legacy,
+                    stop: None,
                 },
             ],
             assertion_details: vec![
@@ -1458,6 +1503,8 @@ mod tests {
             wall_clock_seconds: 26.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
+            frontier_policy: FrontierPolicy::Legacy,
+            exhaustive_search_non_claim: EXHAUSTIVE_SEARCH_NON_CLAIM.to_string(),
         };
 
         let formatted = format_campaign_report(&report);
@@ -1502,10 +1549,101 @@ mod tests {
             wall_clock_seconds: 5.0,
             failed_seeds: Vec::new(),
             scenario_config: None,
+            frontier_policy: FrontierPolicy::Legacy,
+            exhaustive_search_non_claim: EXHAUSTIVE_SEARCH_NON_CLAIM.to_string(),
         };
 
         let formatted = format_campaign_report(&report);
         assert!(formatted.contains("No Bugs Found"));
         assert!(formatted.contains("Unique bugs found:      0"));
+    }
+
+    // ── frontier policy, stop, and search non-claim ─────────────────
+
+    const EVERY_STOP: [ExplorationStop; 5] = [
+        ExplorationStop::FrontierExhausted,
+        ExplorationStop::CoveragePlateau,
+        ExplorationStop::BugFound,
+        ExplorationStop::Interrupted,
+        ExplorationStop::Completed,
+    ];
+    const STOP_LABEL: &str = "Stop:                   ";
+
+    fn policy_report(
+        frontier_policy: FrontierPolicy,
+        stop: Option<ExplorationStop>,
+    ) -> ExplorationReport {
+        ExplorationReport {
+            rounds: 1,
+            total_branches: 1,
+            total_edges: 1,
+            bugs: Vec::new(),
+            corpus_size: 0,
+            coverage_stats: CoverageStats {
+                total_edges: 1,
+                total_runs: 1,
+                edges_per_run_avg: 1.0,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
+            round_history: Vec::new(),
+            wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
+            frontier_policy,
+            stop,
+        }
+    }
+
+    // r[verify chaoscontrol.campaign_policy.stop.invalid]
+    #[test]
+    fn every_policy_and_stop_class_reports_the_search_non_claim() {
+        for policy in FrontierPolicy::ALL {
+            for stop in EVERY_STOP {
+                let formatted = format_report(&policy_report(policy, Some(stop)));
+                assert!(
+                    formatted.contains(&format!("Frontier policy:        {}\n", policy.as_str()))
+                );
+                assert!(formatted.contains(&format!("{STOP_LABEL}{}\n", stop.as_str())));
+                assert!(formatted.contains(EXHAUSTIVE_SEARCH_NON_CLAIM));
+            }
+        }
+    }
+
+    #[test]
+    fn report_without_a_stop_omits_the_stop_line_but_keeps_the_non_claim() {
+        let formatted = format_report(&policy_report(FrontierPolicy::Legacy, None));
+        assert!(formatted.contains("Frontier policy:        legacy\n"));
+        assert!(!formatted.contains(STOP_LABEL));
+        assert!(formatted.contains(EXHAUSTIVE_SEARCH_NON_CLAIM));
+    }
+
+    #[test]
+    fn campaign_report_renders_policy_per_seed_stops_and_the_non_claim() {
+        let mut first = policy_report(FrontierPolicy::CampaignCandidate, None);
+        first.stop = Some(ExplorationStop::CoveragePlateau);
+        let second = policy_report(FrontierPolicy::CampaignCandidate, None);
+        let report =
+            crate::campaign::aggregate_reports(vec![(42, first, 1.0), (43, second, 1.0)], 2.0);
+
+        let formatted = format_campaign_report(&report);
+        assert!(formatted.contains("Frontier policy:        campaign-candidate\n"));
+        assert!(formatted.contains(EXHAUSTIVE_SEARCH_NON_CLAIM));
+        assert!(!formatted.contains(STOP_LABEL));
+        let seed_rows: Vec<&str> = formatted
+            .lines()
+            .filter(|line| line.contains("campaign-candidate") && line.contains('│'))
+            .collect();
+        assert_eq!(seed_rows.len(), 2);
+        assert!(seed_rows[0].trim_start().starts_with("42"));
+        assert!(seed_rows[0].ends_with("coverage_plateau"));
+        assert!(seed_rows[1].ends_with(NO_STOP_RECORDED));
     }
 }

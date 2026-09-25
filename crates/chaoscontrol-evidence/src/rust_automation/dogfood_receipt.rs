@@ -5,6 +5,10 @@
 
 use serde_json::{json, Value};
 
+use crate::evidence_contracts::{
+    validate_run_config_frontier_policy, RUN_CONFIG_FRONTIER_POLICY_KEY,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactFact {
     pub path: String,
@@ -39,7 +43,7 @@ pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, 
     } else {
         "fault-schedule"
     };
-    Ok(json!({
+    let mut run_config = json!({
         "schema_version": "1",
         "profile": output_name,
         "mode": mode,
@@ -55,7 +59,15 @@ pub fn build_run_config(output_name: &str, checkpoint: &Value) -> Result<Value, 
         "coverage_gpa": required(config, "coverage_gpa")?,
         "bootstrap_budget": required(config, "bootstrap_budget")?,
         "raw_log_policy": "debug-only-excluded-from-git",
-    }))
+    });
+    // Checkpoints omit the key for the legacy policy; any other recorded
+    // policy is carried so the run config never implies legacy for it.
+    if let Some(policy) = config.get(RUN_CONFIG_FRONTIER_POLICY_KEY) {
+        validate_run_config_frontier_policy(policy)
+            .map_err(|error| format!("checkpoint config {}", error.message()))?;
+        run_config[RUN_CONFIG_FRONTIER_POLICY_KEY] = policy.clone();
+    }
+    Ok(run_config)
 }
 
 pub fn encode_run_config_compat(config: &Value) -> Result<Vec<u8>, String> {
@@ -88,6 +100,14 @@ pub fn encode_run_config_compat(config: &Value) -> Result<Vec<u8>, String> {
             "  {}: {},",
             serde_json::to_string(field).map_err(|error| error.to_string())?,
             serde_json::to_string(value).map_err(|error| error.to_string())?,
+        ));
+    }
+    if let Some(frontier_policy) = object.get(RUN_CONFIG_FRONTIER_POLICY_KEY) {
+        lines.push(format!(
+            "  {}: {},",
+            serde_json::to_string(RUN_CONFIG_FRONTIER_POLICY_KEY)
+                .map_err(|error| error.to_string())?,
+            serde_json::to_string(frontier_policy).map_err(|error| error.to_string())?,
         ));
     }
     let policy = object
@@ -277,6 +297,44 @@ mod tests {
             receipt["bug_reports"][0]["replay_context"],
             "parent-snapshot-required-insufficient"
         );
+    }
+
+    #[test]
+    fn legacy_checkpoint_run_config_has_no_frontier_policy_key() {
+        let config = build_run_config("run", &checkpoint()).expect("config");
+        assert!(config.get("frontier_policy").is_none());
+        let encoded =
+            String::from_utf8(encode_run_config_compat(&config).expect("encoding")).expect("UTF-8");
+        assert!(!encoded.contains("frontier_policy"));
+    }
+
+    #[test]
+    fn candidate_checkpoint_run_config_records_and_validates_its_policy() {
+        let mut checkpoint = checkpoint();
+        checkpoint["config"]["frontier_policy"] = json!("campaign-candidate");
+        let config = build_run_config("run", &checkpoint).expect("config");
+        assert_eq!(config["frontier_policy"], "campaign-candidate");
+        let encoded = encode_run_config_compat(&config).expect("encoding");
+        let reparsed: serde_json::Value = serde_json::from_slice(&encoded).expect("encoded JSON");
+        assert_eq!(reparsed, config);
+        crate::validate_run_config(&reparsed).expect("candidate run config validates");
+    }
+
+    #[test]
+    fn unknown_or_malformed_checkpoint_frontier_policy_is_rejected() {
+        for policy in [
+            json!("exhaustive"),
+            json!("campaign_candidate"),
+            json!(""),
+            json!(1),
+        ] {
+            let mut checkpoint = checkpoint();
+            checkpoint["config"]["frontier_policy"] = policy.clone();
+            assert!(
+                build_run_config("run", &checkpoint).is_err(),
+                "policy {policy} must be rejected"
+            );
+        }
     }
 
     #[test]

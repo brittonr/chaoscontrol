@@ -38,7 +38,8 @@ pub const SEQUENTIAL_OUTSTANDING: u64 = 1;
 pub const ENTRIES_PER_BRANCH: u64 = MAX_MARKERS_PER_RUN as u64;
 /// Findings one branch can report: one per failed structured assertion.
 pub const FINDINGS_PER_BRANCH: u64 = MAX_ASSERTION_REPORT_ENTRIES as u64;
-/// Genesis control events: admission, root candidate batch, root guidance.
+/// Genesis control events besides root guidance: admission, root candidate
+/// batch, and the root prune to `max_frontier`.
 pub const GENESIS_CONTROL_EVENTS: u64 = 3;
 /// Per-round control events besides guidance: selection, result or closure,
 /// candidate batch, decay revision, prune, and an ineligibility retirement.
@@ -138,8 +139,10 @@ fn exploration_bounds(config: &ExplorerConfig) -> Result<ExplorationBounds, Adap
         return Err(AdapterError::BoundOverflow);
     }
     let per_round_events = checked_add(ROUND_CONTROL_EVENTS, branch_entries)?;
+    // Root guidance: one record per root proposal (one per bootstrap marker).
+    let genesis_events = checked_add(GENESIS_CONTROL_EVENTS, ENTRIES_PER_BRANCH)?;
     let max_control_events = checked_add(
-        checked_add(GENESIS_CONTROL_EVENTS, CLOSING_CONTROL_EVENTS)?,
+        checked_add(genesis_events, CLOSING_CONTROL_EVENTS)?,
         checked_mul(rounds, per_round_events)?,
     )?;
     let rank_dimensions =

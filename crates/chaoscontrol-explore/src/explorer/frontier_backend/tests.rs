@@ -705,6 +705,28 @@ fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
     assert_eq!(third.epoch(), 2);
 }
 
+#[test]
+fn a_genesis_prune_replays_on_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ExplorerConfig {
+        max_frontier: 1,
+        ..config(FrontierPolicy::CampaignCandidate, dir.path())
+    };
+    {
+        let mut frontier =
+            CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default())
+                .unwrap();
+        frontier.admit_root(root(Some(dummy_snapshot()))).unwrap();
+        // Legacy keeps the first of the equal root scores; so does the genesis prune.
+        let retained: Vec<u64> = frontier.retained().iter().map(|entry| entry.seq).collect();
+        assert_eq!(retained, [0]);
+    }
+    let reopened =
+        CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()).unwrap();
+    assert_eq!(reopened.recovery().recovered_epochs, 1);
+    assert_eq!(reopened.epoch(), 1);
+}
+
 // r[verify chaoscontrol.campaign_policy.history.invalid]
 #[test]
 fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {

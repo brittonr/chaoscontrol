@@ -535,7 +535,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
     }
 
     /// Stages one retention prune to `max_frontier` (rank order `[1, 2]`).
-    fn stage_prune(
+    pub(super) fn stage_prune(
         &self,
         staged: &mut ControlSession,
         records: &mut Vec<JournalRecord>,

@@ -5,7 +5,8 @@
 //! - closing segment of a recovered epoch: unobserved closure of every
 //!   outstanding selection plus a `resume-epoch-closed` stop;
 //! - genesis segment: epoch header, root moment, campaign admission, root
-//!   candidates, and their guidance;
+//!   candidates, their guidance, and a prune to `max_frontier` when the
+//!   bootstrap offered more proposals;
 //! - per round, the selection segment (selection facts + `SelectionPublished`),
 //!   committed before any expansion effect, then the settlement segment (child
 //!   moments, result, candidates, guidance, decay revision, prune, round facts),
@@ -579,6 +580,10 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
         let mut next_seq = self.next_seq;
         let admitted =
             self.stage_candidates(&mut staged, &mut records, &proposals, &mut next_seq)?;
+        // Legacy pushes root proposals through its bounded frontier, so more
+        // bootstrap markers than `max_frontier` are pruned at genesis too.
+        // r[impl chaoscontrol.campaign_policy.frontier_parity]
+        self.stage_prune(&mut staged, &mut records)?;
         self.commit(staged, &records)?;
         let context = SnapshotContext {
             base_set_id: root.base_set_id,
@@ -594,6 +599,7 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
         )?;
         self.snapshot_context = Some(context);
         self.adopt_entries(admitted, next_seq);
+        self.release_unretained();
         Ok(())
     }
 

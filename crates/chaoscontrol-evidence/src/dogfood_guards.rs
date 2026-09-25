@@ -74,6 +74,11 @@ pub fn validate_accepted_dogfood_config(
         .ok_or_else(|| EvidenceError::new("expectations: missing workloads object"))?;
     let mut errors = Vec::new();
     let mut diagnostic_only_workloads = 0_usize;
+    for proof in &manifest.proofs {
+        if let Err(refusal) = proof.validate_evidence_boundary() {
+            errors.push(format!("{}: {refusal}", proof.workload));
+        }
+    }
 
     let proof_workloads = manifest
         .proofs

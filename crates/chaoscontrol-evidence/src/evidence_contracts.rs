@@ -6,6 +6,9 @@ use std::process::{Command, Stdio};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::campaign_evidence_boundary::{
+    admit_product_artifact, admit_product_schema, ProductEvidenceClass, STRUCTURAL_EVIDENCE_REFUSAL,
+};
 use crate::{
     EvidenceError, EvidenceResult, SUPPORTED_SNAPSHOT_CODECS, SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS,
 };
@@ -33,6 +36,34 @@ const ACCEPTED_SNAPSHOT_CODEC: &str =
 const ACCEPTED_SNAPSHOT_SCHEMA_VERSION: u64 =
     chaoscontrol_replay_evidence_core::validate::CURRENT_SNAPSHOT_SCHEMA_VERSION as u64;
 const BYTES_PER_MIB: u64 = 1024 * 1024;
+/// Receipt fields that declare which schema the receipt claims to be.
+const RECEIPT_SCHEMA_FIELDS: [(&str, &str); 2] = [
+    ("schema_version", "receipt.schema_version"),
+    ("schema", "receipt.schema"),
+];
+/// Single receipt artifact references and the evidence class each claims.
+const RECEIPT_REFERENCES: [(ProductEvidenceClass, &str, &str); 3] = [
+    (
+        ProductEvidenceClass::Vm,
+        "/config/path",
+        "receipt.config.path",
+    ),
+    (
+        ProductEvidenceClass::Assertion,
+        "/assertion_coverage/summary_path",
+        "receipt.assertion_coverage.summary_path",
+    ),
+    (
+        ProductEvidenceClass::Vm,
+        "/checkpoint_reference/path",
+        "receipt.checkpoint_reference.path",
+    ),
+];
+/// Receipt lists whose entries bind a `path` and the evidence class each claims.
+const RECEIPT_REFERENCE_LISTS: [(ProductEvidenceClass, &str); 2] = [
+    (ProductEvidenceClass::Vm, "artifact_hashes"),
+    (ProductEvidenceClass::Finding, "bug_reports"),
+];
 const MAX_REPLAY_SNAPSHOT_ARTIFACT_BYTES: u64 = 256 * BYTES_PER_MIB;
 
 pub fn check_evidence_contracts(root: impl AsRef<Path>) -> EvidenceResult<&'static str> {
@@ -179,6 +210,18 @@ pub fn check_evidence_contract_fixtures(root: impl AsRef<Path>) -> EvidenceResul
     expect_invalid(
         &invalid.join("receipt.stale-artifact.invalid.json"),
         |value| validate_receipt_with_root(value, root, true),
+    )?;
+    // r[verify chaoscontrol.campaign_policy.evidence.invalid]
+    for fixture in [
+        "receipt.campaign-journal-promotion.invalid.json",
+        "receipt.frontier-trace-promotion.invalid.json",
+        "receipt.choregraph-schema-promotion.invalid.json",
+    ] {
+        expect_structural_refusal(&invalid.join(fixture), validate_receipt)?;
+    }
+    expect_structural_refusal(
+        &invalid.join("replay-verdict.frontier-trace-promotion.invalid.json"),
+        |value| validate_replay_verdict_with_options(value, true, false, root),
     )?;
 
     expect_invalid(
@@ -338,6 +381,9 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/assertions.nickel-uppercase-hex.invalid.ncl",
         "fixtures/invalid/assertions.nickel-verdict.invalid.ncl",
         "fixtures/invalid/assertions.nickel-wrong-logical-key.invalid.ncl",
+        "fixtures/invalid/receipt.campaign-journal-promotion.invalid.ncl",
+        "fixtures/invalid/receipt.frontier-trace-promotion.invalid.ncl",
+        "fixtures/invalid/receipt.choregraph-schema-promotion.invalid.ncl",
     ] {
         let status = Command::new(&command[0])
             .args(&command[1..])
@@ -452,6 +498,11 @@ pub fn validate_snapshot_ref_with_root(
         "snapshot-ref.schema_version: unsupported",
     )?;
     let path_value = require_str(value.get("path"), "snapshot-ref.path")?;
+    admit_product_artifact(
+        ProductEvidenceClass::Replay,
+        "snapshot-ref.path",
+        path_value,
+    )?;
     let path = Path::new(path_value);
     ensure(
         is_safe_snapshot_path(path),
@@ -744,12 +795,24 @@ pub fn validate_replay_verdict_with_options(
         .get("artifact_hashes")
         .and_then(Value::as_array)
         .ok_or_else(|| EvidenceError::new("replay-verdict.artifact_hashes: expected list"))?;
+    if let Some(bug_path) = value.get("bug_path").and_then(Value::as_str) {
+        admit_product_artifact(
+            ProductEvidenceClass::Finding,
+            "replay-verdict.bug_path",
+            bug_path,
+        )?;
+    }
     let mut artifact_paths = BTreeSet::new();
     for item in hashes {
         validate_artifact_hash(item)?;
         let artifact_path = item["path"]
             .as_str()
             .ok_or_else(|| EvidenceError::new("replay-verdict artifact path must be a string"))?;
+        admit_product_artifact(
+            ProductEvidenceClass::Replay,
+            "replay-verdict.artifact_hashes.path",
+            artifact_path,
+        )?;
         ensure(
             artifact_paths.insert(artifact_path),
             format!("replay-verdict duplicate artifact path: {artifact_path}"),
@@ -1072,6 +1135,7 @@ pub fn validate_receipt_with_root(
     check_files: bool,
 ) -> EvidenceResult<()> {
     ensure(value.is_object(), "receipt: expected object")?;
+    validate_receipt_evidence_boundary(value)?;
     for key in [
         "schema_version",
         "git_revision",
@@ -1216,6 +1280,37 @@ pub fn validate_receipt_with_root(
     Ok(())
 }
 
+/// Refuse Campaign/Choregraph structural artifacts anywhere a dogfood receipt
+/// binds product evidence: its schema, config, artifact hashes, assertion
+/// summary, bug reports, and checkpoint reference.
+// r[impl chaoscontrol.campaign_policy.evidence]
+pub fn validate_receipt_evidence_boundary(value: &Value) -> EvidenceResult<()> {
+    for (field, label) in RECEIPT_SCHEMA_FIELDS {
+        if let Some(schema) = value.get(field).and_then(Value::as_str) {
+            admit_product_schema(ProductEvidenceClass::Release, label, schema)?;
+        }
+    }
+    for (class, pointer, label) in RECEIPT_REFERENCES {
+        if let Some(path) = value.pointer(pointer).and_then(Value::as_str) {
+            admit_product_artifact(class, label, path)?;
+        }
+    }
+    for (class, key) in RECEIPT_REFERENCE_LISTS {
+        let items = value
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten();
+        for (idx, item) in items.enumerate() {
+            if let Some(path) = item.get("path").and_then(Value::as_str) {
+                admit_product_artifact(class, key, path)
+                    .map_err(|refusal| refusal.at(format!("receipt.{key}[{idx}].path")))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_markdown_receipt(data: &Value, dogfood: &Path) -> EvidenceResult<()> {
     let md_path = dogfood.join("receipt.md");
     let md = std::fs::read_to_string(&md_path).map_err(|err| {
@@ -1262,6 +1357,27 @@ fn expect_invalid(
             "negative fixture unexpectedly passed: {}",
             path.display()
         )))
+    }
+}
+
+/// A negative fixture must fail at the Campaign structural evidence boundary,
+/// not on some unrelated shape error.
+fn expect_structural_refusal(
+    path: &Path,
+    validator: impl FnOnce(&Value) -> EvidenceResult<()>,
+) -> EvidenceResult<()> {
+    let value = load_json(path)?;
+    match validator(&value) {
+        Err(error) if error.message().contains(STRUCTURAL_EVIDENCE_REFUSAL) => Ok(()),
+        Err(error) => Err(EvidenceError::new(format!(
+            "negative fixture failed outside the Campaign evidence boundary: {}: {}",
+            path.display(),
+            error.message()
+        ))),
+        Ok(()) => Err(EvidenceError::new(format!(
+            "negative fixture unexpectedly passed: {}",
+            path.display()
+        ))),
     }
 }
 

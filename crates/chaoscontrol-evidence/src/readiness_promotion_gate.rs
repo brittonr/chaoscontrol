@@ -483,6 +483,10 @@ fn manifest_workload_entries(
                 format!("{workload}: proof.{field} must be non-empty"),
             )?;
         }
+        crate::campaign_evidence_boundary::admit_accepted_proof_references(|field| {
+            proof.get(field).and_then(Value::as_str)
+        })
+        .map_err(|refusal| EvidenceError::new(format!("{workload}: {refusal}")))?;
         let has_fresh_receipt = proof
             .get("receipt")
             .and_then(Value::as_str)

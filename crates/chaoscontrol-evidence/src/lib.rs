@@ -19,6 +19,7 @@ mod assertion_evidence_carrier;
 mod assertion_summary_identity;
 mod assertion_summary_semantics;
 mod bounded_file;
+pub mod campaign_evidence_boundary;
 pub mod causality_shell;
 pub mod consistency_checker;
 pub mod contract_registry;
@@ -144,9 +145,10 @@ pub use evidence_contracts::{
     check_evidence_contract_fixtures, check_evidence_contracts, run_nickel_examples,
     validate_artifact_hash, validate_assertion_summary, validate_assertion_summary_for_promotion,
     validate_bug_report, validate_bug_report_for_replay, validate_checkpoint_reference,
-    validate_markdown_receipt, validate_receipt, validate_receipt_with_root,
-    validate_replay_verdict, validate_replay_verdict_with_options, validate_run_config,
-    validate_snapshot_ref, validate_snapshot_ref_with_root, EVIDENCE_CONTRACTS_SUCCESS,
+    validate_markdown_receipt, validate_receipt, validate_receipt_evidence_boundary,
+    validate_receipt_with_root, validate_replay_verdict, validate_replay_verdict_with_options,
+    validate_run_config, validate_snapshot_ref, validate_snapshot_ref_with_root,
+    EVIDENCE_CONTRACTS_SUCCESS,
 };
 pub use in_process_simulator::{
     compare_simulator_receipts, compare_simulator_vm_receipt_bridge, run_simulator_adapter,
@@ -2530,7 +2532,31 @@ impl AcceptedWorkloadProof {
         if let Some(receipt) = &self.receipt {
             ensure(!receipt.is_empty(), "proof receipt must be non-empty")?;
         }
+        self.validate_evidence_boundary()?;
         Ok(())
+    }
+
+    /// Refuse Campaign/Choregraph structural artifacts as this proof's evidence.
+    // r[impl chaoscontrol.campaign_policy.evidence]
+    pub fn validate_evidence_boundary(
+        &self,
+    ) -> Result<(), campaign_evidence_boundary::StructuralEvidenceRefusal> {
+        campaign_evidence_boundary::admit_accepted_proof_references(|field| {
+            self.evidence_reference(field)
+        })
+    }
+
+    /// Artifact reference named by an accepted-proof reference field.
+    fn evidence_reference(&self, field: &str) -> Option<&str> {
+        match field {
+            "evidence_dir" => Some(&self.evidence_dir),
+            "summary" => Some(&self.summary),
+            "bug" => Some(&self.bug),
+            "verdict" => Some(&self.verdict),
+            "snapshot" => Some(&self.snapshot),
+            "receipt" => self.receipt.as_deref(),
+            _ => None,
+        }
     }
 }
 

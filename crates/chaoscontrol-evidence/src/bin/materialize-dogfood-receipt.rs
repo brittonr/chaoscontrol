@@ -4,6 +4,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use chaoscontrol_evidence::validate_receipt_evidence_boundary;
 use chaoscontrol_evidence::rust_automation::dogfood_receipt::{
     build_receipt, build_run_config, encode_run_config_compat, ArtifactFact, MaterializeInput,
 };
@@ -108,10 +109,9 @@ fn run(args: Vec<String>) -> Result<(), String> {
         run_config_digest: sha256(&run_config_path)?,
         checkpoint_digest: sha256(&checkpoint_path)?,
     };
-    write_json(
-        &options.output.join("receipt.json"),
-        &build_receipt(&input)?,
-    )
+    let receipt = build_receipt(&input)?;
+    validate_receipt_evidence_boundary(&receipt).map_err(|error| error.to_string())?;
+    write_json(&options.output.join("receipt.json"), &receipt)
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {

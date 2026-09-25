@@ -106,6 +106,11 @@ impl<H> SnapshotTable<H> {
         self.entries.remove(&moment_id)
     }
 
+    /// Moments with a retained snapshot, in identity order.
+    pub fn moments(&self) -> impl Iterator<Item = Id> + '_ {
+        self.entries.keys().copied()
+    }
+
     /// Number of retained snapshots.
     #[must_use]
     pub fn len(&self) -> usize {

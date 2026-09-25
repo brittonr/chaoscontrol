@@ -1,11 +1,13 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
+use crate::campaign_adapter::BranchSlot;
+use crate::checkpoint::CampaignJournalBinding;
 use crate::checkpoint::{
     save_checkpoint, CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug,
 };
 use crate::corpus::{BugReport, Corpus, CorpusEntry};
 use crate::coverage::{CoverageBitmap, CoverageCollector, CoverageStats};
-use crate::frontier::{Frontier, FrontierEntry};
+use crate::frontier::FrontierEntry;
 use crate::input_tree;
 use crate::marker_branching::{
     frontier_metadata, marker_score, observations as marker_observations, update_hit_counts,
@@ -27,9 +29,22 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
 
+mod frontier_backend;
 mod frontier_policy;
 pub mod journal;
 mod journal_authority;
+
+use frontier_backend::digests::{
+    base_set_id, coverage_digest, oracle_digest, schedule_digest, variant_digest,
+};
+use frontier_backend::trace::{FrontierTrace, TraceJournal, TraceRecord};
+use frontier_backend::{
+    exploration_stop, product_stop, Authorization, AuthorizedRound, BranchDigests, BranchOutcome,
+    CampaignFrontier, CheckpointBinding, EntryProposal, FindingFacts, FrontierBackend,
+    LegacyFrontier, RetainedBranch, RootAdmission, RoundBegin, RoundContext, RoundMode,
+    RoundObservation,
+};
+pub use frontier_backend::{FrontierError, ReplayError, ReplayFailure};
 
 pub use frontier_policy::{
     ExplorationStop, FrontierPolicy, UnknownFrontierPolicy, CAMPAIGN_CANDIDATE_POLICY_NAME,
@@ -49,6 +64,12 @@ pub enum ExploreError {
 
     #[snafu(display("checkpoint persistence failed"), context(false))]
     Checkpoint { source: CheckpointError },
+
+    #[snafu(display("frontier policy failed: {source}"), context(false))]
+    Frontier { source: FrontierError },
+
+    #[snafu(display("frontier trace write failed"))]
+    Trace { source: std::io::Error },
 }
 
 /// How the explorer branches the execution tree.
@@ -212,6 +233,84 @@ impl Default for ExplorerConfig {
 
 const MINIMUM_SMP_VCPUS: usize = 2;
 
+/// Branch slot index of the `index`-th branch of a round.
+fn branch_slot_index(index: usize) -> Result<u32, ExploreError> {
+    u32::try_from(index).map_err(|_| ExploreError::Config {
+        message: "branch index exceeds the branch-slot encoding".to_string(),
+    })
+}
+
+/// Outcome of one round of the exploration loop.
+enum RoundRun {
+    /// The round ran (or was closed without execution).
+    Completed(RoundReport),
+    /// The frontier policy stopped before selecting.
+    Stopped(ExplorationStop),
+}
+
+/// The frontier backend of one explorer.
+enum ExplorerFrontier {
+    /// Legacy in-process frontier.
+    Legacy(LegacyFrontier),
+    /// Campaign policy before `run` opened the durable journal.
+    CampaignUnopened,
+    /// Campaign-backed frontier.
+    Campaign(Box<CampaignFrontier>),
+}
+
+impl ExplorerFrontier {
+    fn for_config(config: &ExplorerConfig) -> Self {
+        match config.frontier_policy {
+            FrontierPolicy::Legacy => Self::Legacy(LegacyFrontier::new(config.max_frontier)),
+            FrontierPolicy::CampaignCandidate => Self::CampaignUnopened,
+        }
+    }
+
+    fn backend(&mut self) -> Result<&mut dyn FrontierBackend, FrontierError> {
+        match self {
+            Self::Legacy(frontier) => Ok(frontier),
+            Self::Campaign(frontier) => Ok(frontier.as_mut()),
+            Self::CampaignUnopened => Err(FrontierError::Sequence(
+                "campaign frontier used before the journal was opened",
+            )),
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Legacy(frontier) => frontier.len(),
+            Self::Campaign(frontier) => frontier.len(),
+            Self::CampaignUnopened => 0,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Journal epoch this run writes (0 for the legacy policy).
+    fn epoch(&self) -> u32 {
+        match self {
+            Self::Campaign(frontier) => frontier.epoch(),
+            Self::Legacy(_) | Self::CampaignUnopened => 0,
+        }
+    }
+
+    /// Last committed journal segment, bound into `checkpoint.json`.
+    fn journal_binding(&self) -> Option<CampaignJournalBinding> {
+        match self {
+            Self::Campaign(frontier) => frontier.last_segment().map(|segment| {
+                CampaignJournalBinding::new(
+                    segment.epoch(),
+                    segment.seq(),
+                    *segment.digest().as_bytes(),
+                )
+            }),
+            Self::Legacy(_) | Self::CampaignUnopened => None,
+        }
+    }
+}
+
 const fn schedule_diversity_enabled(enabled: bool, num_vcpus: usize) -> bool {
     enabled && num_vcpus >= MINIMUM_SMP_VCPUS
 }
@@ -233,7 +332,7 @@ fn branch_work_from_variants(
 /// The exploration engine.
 pub struct Explorer {
     config: ExplorerConfig,
-    frontier: Frontier,
+    frontier: ExplorerFrontier,
     corpus: Corpus,
     mutator: ScheduleMutator,
     coverage: CoverageCollector,
@@ -269,6 +368,10 @@ pub struct Explorer {
     metrics_sink: Option<std::io::BufWriter<std::fs::File>>,
     /// First stop of the run, once one was reached.
     stop: Option<ExplorationStop>,
+    /// Product frontier decision trace (`output_dir/frontier-trace.jsonl`).
+    trace: Option<FrontierTrace>,
+    /// Journal position the resumed checkpoint was bound to.
+    resumed_journal: Option<CampaignJournalBinding>,
 }
 
 impl Explorer {
@@ -278,7 +381,7 @@ impl Explorer {
             warn!("ExplorerConfig has empty kernel_path — exploration will fail");
         }
 
-        let frontier = Frontier::new(config.max_frontier);
+        let frontier = ExplorerFrontier::for_config(&config);
         let corpus = Corpus::new();
         let mutator = ScheduleMutator::new(config.seed);
         let coverage = CoverageCollector::new(config.coverage_gpa);
@@ -305,6 +408,8 @@ impl Explorer {
             scenario_summary: None,
             metrics_sink: None,
             stop: None,
+            trace: None,
+            resumed_journal: None,
         }
     }
 
@@ -408,14 +513,18 @@ impl Explorer {
                 message: error.message().to_owned(),
             }
         })?;
+        let output_dir =
+            std::path::PathBuf::from(self.config.output_dir.clone().unwrap_or_default());
+        self.open_frontier(&output_dir)?;
         let run_start = Instant::now();
 
         info!(
-            "Starting exploration: {} rounds, {} branches/round, {} VMs, schedule_diversity={}",
+            "Starting exploration: {} rounds, {} branches/round, {} VMs, schedule_diversity={}, frontier_policy={}",
             self.config.max_rounds,
             self.config.branch_factor,
             self.config.num_vms,
-            self.config.schedule_diversity
+            self.config.schedule_diversity,
+            self.config.frontier_policy
         );
 
         // Bootstrap: boot kernel + guest init until setup_complete.
@@ -469,9 +578,7 @@ impl Explorer {
             FaultSchedule::new()
         };
 
-        if let Some(snapshot) = initial_result.snapshot.clone() {
-            self.add_to_frontier(snapshot, initial_result, initial_schedule, None, 0);
-        }
+        self.admit_frontier_root(initial_result, initial_schedule)?;
 
         // Create worker pool for parallel execution if configured.
         let effective_workers = match self.config.num_workers {
@@ -515,15 +622,16 @@ impl Explorer {
             info!("=== Round {}/{} ===", round + 1, self.config.max_rounds);
 
             let round_start = Instant::now();
-            let round_report = match self.config.exploration_mode {
-                ExplorationMode::FaultSchedule => self.explore_round()?,
-                ExplorationMode::InputTree => self.explore_input_tree_round()?,
-                ExplorationMode::Hybrid => {
-                    if round % 2 == 0 {
-                        self.explore_round()?
-                    } else {
-                        self.explore_input_tree_round()?
-                    }
+            let round_report = match self.run_round(round)? {
+                RoundRun::Completed(report) => report,
+                RoundRun::Stopped(stop) => {
+                    info!(
+                        "Frontier policy stopped before round {}: {}",
+                        round + 1,
+                        stop
+                    );
+                    self.conclude(stop)?;
+                    break;
                 }
             };
             let round_elapsed = round_start.elapsed().as_secs_f64();
@@ -573,6 +681,8 @@ impl Explorer {
             );
 
             // A configured checkpoint is authority-bearing output. Failure is fatal.
+            // The Campaign settlement segment was committed by `finish_round`, so the
+            // checkpoint never runs ahead of the journal.
             if let Some(ref output_dir) = self.config.output_dir {
                 self.save_checkpoint_to_dir(output_dir)?;
             }
@@ -586,8 +696,13 @@ impl Explorer {
 
             // Check for stopping conditions
             if self.frontier.is_empty() {
-                // Try recycling from corpus before giving up.
-                let recycled = self.recycle_frontier_from_corpus();
+                // Legacy tries recycling from corpus before giving up. The
+                // Campaign policy never recycles: roots exist only at admission.
+                let recycled = if matches!(self.frontier, ExplorerFrontier::Legacy(_)) {
+                    self.recycle_frontier_from_corpus()
+                } else {
+                    0
+                };
                 if recycled > 0 {
                     info!(
                         "Frontier exhausted — recycled {} entries from corpus",
@@ -595,7 +710,7 @@ impl Explorer {
                     );
                 } else {
                     info!("Frontier exhausted and corpus empty, stopping");
-                    self.finish(ExplorationStop::FrontierExhausted);
+                    self.conclude(ExplorationStop::FrontierExhausted)?;
                     break;
                 }
             }
@@ -607,28 +722,28 @@ impl Explorer {
                     "Coverage plateau: {} consecutive rounds with no new edges or bugs, stopping",
                     self.consecutive_stale_rounds
                 );
-                self.finish(ExplorationStop::CoveragePlateau);
+                self.conclude(ExplorationStop::CoveragePlateau)?;
                 break;
             }
 
             // Optionally stop if we found bugs (for testing)
             if round_report.bugs_found > 0 && self.config.max_rounds < 10 {
                 info!("Bug found in short run, stopping");
-                self.finish(ExplorationStop::BugFound);
+                self.conclude(ExplorationStop::BugFound)?;
                 break;
             }
 
             // Check for graceful shutdown (Ctrl-C / SIGTERM).
             if crate::signal::shutdown_requested() {
                 info!("Shutdown requested, stopping after round {}", round + 1);
-                self.finish(ExplorationStop::Interrupted);
+                self.conclude(ExplorationStop::Interrupted)?;
                 break;
             }
         }
 
         // Emit Finished if we completed all rounds (no early break).
         if self.rounds_completed >= self.config.max_rounds {
-            self.finish(ExplorationStop::Completed);
+            self.conclude(ExplorationStop::Completed)?;
         }
 
         // Generate final report
@@ -641,26 +756,275 @@ impl Explorer {
         Ok(report)
     }
 
-    /// Execute one exploration round:
-    /// 1. Select a frontier entry
-    /// 2. Generate N variant fault schedules
-    /// 3. For each variant: restore snapshot → apply schedule → run → collect coverage
-    /// 4. Score results, add interesting ones to frontier and corpus
-    /// 5. Record any bugs found
-    fn explore_round(&mut self) -> Result<RoundReport, ExploreError> {
-        // Select entry from frontier
-        let (snapshot, base_schedule, parent_id, parent_depth) =
-            if let Some(entry) = self.frontier.select(&mut self.rng) {
-                (
-                    Some(entry.snapshot.clone()),
-                    entry.schedule.clone(),
-                    Some(entry.id),
-                    entry.depth,
-                )
-            } else {
-                // No frontier entry, use clean slate
-                (None, FaultSchedule::new(), None, 0)
-            };
+    /// Opens the frontier backend and the frontier trace before any KVM work.
+    ///
+    /// The Campaign policy admits its configuration (degenerate legacy
+    /// configurations are rejected), then opens, recovers, and advances the
+    /// durable journal under `output_dir`.
+    fn open_frontier(&mut self, output_dir: &std::path::Path) -> Result<(), ExploreError> {
+        std::fs::create_dir_all(output_dir).map_err(|source| ExploreError::Trace { source })?;
+        let journal = match self.config.frontier_policy {
+            FrontierPolicy::Legacy => None,
+            FrontierPolicy::CampaignCandidate => {
+                let frontier = CampaignFrontier::open(
+                    &self.config,
+                    output_dir,
+                    self.resumed_journal.as_ref(),
+                )?;
+                let recovery = frontier.recovery();
+                if recovery.checkpoint_binding == CheckpointBinding::Mismatched {
+                    warn!(
+                        "checkpoint journal binding does not match the recovered journal; the journal wins"
+                    );
+                }
+                let facts = TraceJournal {
+                    epoch: frontier.epoch(),
+                    recovered_epochs: recovery.recovered_epochs,
+                    closed_selections: recovery.closed_selections,
+                };
+                self.frontier = ExplorerFrontier::Campaign(Box::new(frontier));
+                Some(facts)
+            }
+        };
+        let mut trace =
+            FrontierTrace::open(output_dir).map_err(|source| ExploreError::Trace { source })?;
+        trace
+            .write(&TraceRecord::header(&self.config, journal))
+            .map_err(|source| ExploreError::Trace { source })?;
+        self.trace = Some(trace);
+        Ok(())
+    }
+
+    /// Offers the bootstrap result to the frontier as its root.
+    fn admit_frontier_root(
+        &mut self,
+        initial_result: BranchResult,
+        initial_schedule: FaultSchedule,
+    ) -> Result<(), ExploreError> {
+        let proposals = match initial_result.snapshot {
+            Some(_) => self.entry_proposals(&initial_result, 0),
+            None => Vec::new(),
+        };
+        let digests = self.branch_digests(&initial_result, &initial_schedule)?;
+        let base_lengths: Vec<usize> = self.memory_bases.iter().map(|base| base.len()).collect();
+        let base_set_id = match &digests {
+            Some(digests) => base_set_id(
+                self.frontier.epoch(),
+                digests.total_ticks,
+                &digests.coverage,
+                &base_lengths,
+            )?,
+            None => [0; 32],
+        };
+        let root = RootAdmission {
+            snapshot: initial_result.snapshot,
+            coverage: initial_result.coverage,
+            schedule: initial_schedule,
+            proposals,
+            digests,
+            base_set_id,
+        };
+        self.frontier.backend()?.admit_root(root)?;
+        let retained = self.frontier.backend()?.retained();
+        self.write_trace(&TraceRecord::Root { retained })
+    }
+
+    /// Product digests a Campaign moment binds; `None` under the legacy policy.
+    fn branch_digests(
+        &self,
+        result: &BranchResult,
+        schedule: &FaultSchedule,
+    ) -> Result<Option<BranchDigests>, ExploreError> {
+        if self.config.frontier_policy.is_legacy() {
+            return Ok(None);
+        }
+        Ok(Some(BranchDigests {
+            schedule: schedule_digest(schedule)?,
+            variant: variant_digest(result.schedule_variant.as_ref())?,
+            coverage: coverage_digest(&result.coverage),
+            oracle: oracle_digest(&result.oracle_report)?,
+            total_ticks: result.total_ticks,
+        }))
+    }
+
+    fn write_trace(&mut self, record: &TraceRecord) -> Result<(), ExploreError> {
+        match self.trace.as_mut() {
+            Some(trace) => trace
+                .write(record)
+                .map_err(|source| ExploreError::Trace { source }),
+            None => Ok(()),
+        }
+    }
+
+    /// Records the run's stop: the first stop is published to the frontier
+    /// backend and the trace; every stop keeps the legacy dashboard emission.
+    fn conclude(&mut self, stop: ExplorationStop) -> Result<(), ExploreError> {
+        let first = self.stop.is_none();
+        self.finish(stop);
+        if !first {
+            return Ok(());
+        }
+        self.frontier.backend()?.record_stop(product_stop(stop))?;
+        let record = TraceRecord::Stop {
+            stop,
+            rounds_completed: self.rounds_completed,
+        };
+        match self.trace.as_mut() {
+            Some(trace) => trace
+                .finish(&record)
+                .map_err(|source| ExploreError::Trace { source }),
+            None => Ok(()),
+        }
+    }
+
+    /// One round: begin (draws + plan), authorize (publication fence), execute
+    /// (product effects), finish (settlement).
+    fn run_round(&mut self, round: u64) -> Result<RoundRun, ExploreError> {
+        let mode = match self.config.exploration_mode {
+            ExplorationMode::FaultSchedule => RoundMode::FaultSchedule,
+            ExplorationMode::InputTree => RoundMode::InputTree,
+            ExplorationMode::Hybrid if round.is_multiple_of(2) => RoundMode::FaultSchedule,
+            ExplorationMode::Hybrid => RoundMode::InputTree,
+        };
+        let context = RoundContext { round, mode };
+        let planned = match self
+            .frontier
+            .backend()?
+            .begin_round(&mut self.rng, context)?
+        {
+            RoundBegin::Planned(planned) => planned,
+            RoundBegin::Stop(stop) => return Ok(RoundRun::Stopped(exploration_stop(stop))),
+        };
+        let authorized = match self.frontier.backend()?.authorize(planned)? {
+            Authorization::Execute(authorized) => *authorized,
+            Authorization::Skipped(skipped) => {
+                warn!(
+                    "Round {}: selected entry {} has no restorable snapshot; closed unobserved",
+                    round + 1,
+                    skipped.seq
+                );
+                let retained = self.frontier.backend()?.retained();
+                self.write_trace(&TraceRecord::skipped(&skipped, retained))?;
+                return Ok(RoundRun::Completed(RoundReport {
+                    branches_run: 0,
+                    new_coverage_edges: 0,
+                    bugs_found: 0,
+                    frontier_size: self.frontier.len(),
+                    timings: BranchTimings::default(),
+                }));
+            }
+        };
+        let (mut report, observation) = match mode {
+            RoundMode::FaultSchedule => self.explore_round(&authorized)?,
+            RoundMode::InputTree => self.explore_input_tree_round(&authorized)?,
+        };
+        let context = authorized.context();
+        let draws = authorized.draws();
+        let selected = authorized.selected().cloned();
+        let settlement = self
+            .frontier
+            .backend()?
+            .finish_round(authorized, &observation)?;
+        report.frontier_size = self.frontier.len();
+        let retained = self.frontier.backend()?.retained();
+        self.write_trace(&TraceRecord::executed(
+            context,
+            draws,
+            selected.as_ref(),
+            &observation,
+            &settlement,
+            retained,
+        ))?;
+        Ok(RoundRun::Completed(report))
+    }
+
+    /// Frontier-entry proposals of one branch result (one per marker, else one).
+    ///
+    /// Scores against the current global coverage and advances marker hit
+    /// counts, so it runs at branch time, exactly where the legacy loop pushed.
+    fn entry_proposals(&mut self, result: &BranchResult, depth: u32) -> Vec<EntryProposal> {
+        let base_score = self.score_branch(result, depth);
+        let markers = marker_observations(&result.oracle_report).unwrap_or_default();
+        if markers.is_empty() {
+            return vec![EntryProposal {
+                score: base_score,
+                marker: None,
+            }];
+        }
+        markers
+            .into_iter()
+            .map(|observation| {
+                let prior_hits =
+                    update_hit_counts(&mut self.marker_hits, &observation.marker.identity);
+                EntryProposal {
+                    score: marker_score(base_score, prior_hits),
+                    marker: Some(frontier_metadata(&observation, result.total_ticks)),
+                }
+            })
+            .collect()
+    }
+
+    /// Product facts of one executed branch; retains it when it has new edges
+    /// and a snapshot.
+    fn branch_outcome(
+        &mut self,
+        slot: BranchSlot,
+        new_edges: usize,
+        bugs: &[BugReport],
+        enriched: Option<(&BranchResult, &FaultSchedule, u32)>,
+        snapshot_present: bool,
+    ) -> Result<BranchOutcome, ExploreError> {
+        let findings = bugs
+            .iter()
+            .map(|bug| FindingFacts {
+                dedup_key: bug.dedup_key,
+                assertion_fingerprint: bug.assertion_identity.fingerprint.0,
+            })
+            .collect();
+        let retained = match enriched {
+            Some((result, schedule, depth)) => match result.snapshot.clone() {
+                Some(snapshot) => {
+                    let proposals = self.entry_proposals(result, depth);
+                    Some(RetainedBranch {
+                        snapshot,
+                        coverage: result.coverage.clone(),
+                        schedule: schedule.clone(),
+                        depth,
+                        proposals,
+                        digests: self.branch_digests(result, schedule)?,
+                    })
+                }
+                None => None,
+            },
+            None => None,
+        };
+        Ok(BranchOutcome {
+            slot,
+            new_edges,
+            snapshot_present,
+            findings,
+            retained,
+        })
+    }
+
+    /// Execute one authorized exploration round:
+    /// 1. Generate N variant fault schedules from the selected entry
+    /// 2. For each variant: restore snapshot → apply schedule → run → collect coverage
+    /// 3. Score results; collect frontier proposals and add interesting ones to the corpus
+    /// 4. Record any bugs found
+    fn explore_round(
+        &mut self,
+        authorized: &AuthorizedRound,
+    ) -> Result<(RoundReport, RoundObservation), ExploreError> {
+        let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
+            Some(entry) => (
+                Some(entry.snapshot.clone()),
+                entry.schedule.clone(),
+                entry.depth,
+            ),
+            // Legacy only: no frontier entry, use clean slate.
+            None => (None, FaultSchedule::new(), 0),
+        };
 
         // Generate variant schedules. Pre-compute all variants before
         // dispatch so the RNG state advances identically regardless of
@@ -743,10 +1107,12 @@ impl Explorer {
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found: usize = 0;
+        let mut observation = RoundObservation::default();
 
         for (i, (result, schedule)) in results.into_iter().enumerate() {
             branches_run += 1;
             self.total_branches_run += 1;
+            let slot = BranchSlot::Variant(branch_slot_index(i)?);
 
             // Enrich coverage with assertion-state edges so branches
             // with new assertion patterns are "interesting" even after
@@ -769,44 +1135,54 @@ impl Explorer {
                 warn!("Branch {} found {} bugs!", i + 1, branch_bugs.len());
             }
 
-            if new_edges > 0 {
+            let outcome = if new_edges > 0 {
                 debug!("Branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
                 let mut enriched_result = result.clone();
                 enriched_result.coverage = enriched.clone();
 
+                let outcome = self.branch_outcome(
+                    slot,
+                    new_edges,
+                    &branch_bugs,
+                    Some((&enriched_result, &schedule, parent_depth + 1)),
+                    result.snapshot.is_some(),
+                )?;
                 self.add_to_corpus(
-                    enriched_result.clone(),
+                    enriched_result,
                     schedule.clone(),
                     new_edges,
                     branch_bugs,
                     parent_depth + 1,
                 );
-
-                if let Some(snap) = result.snapshot.clone() {
-                    self.add_to_frontier(
-                        snap,
-                        enriched_result,
-                        schedule.clone(),
-                        parent_id,
-                        parent_depth + 1,
-                    );
-                }
+                outcome
             } else {
+                let outcome = self.branch_outcome(
+                    slot,
+                    new_edges,
+                    &branch_bugs,
+                    None,
+                    result.snapshot.is_some(),
+                )?;
                 self.retain_standalone_bugs(branch_bugs)?;
-            }
+                outcome
+            };
+            observation.branches.push(outcome);
 
             self.coverage.update_global(&enriched);
         }
 
-        Ok(RoundReport {
-            branches_run,
-            new_coverage_edges,
-            bugs_found,
-            frontier_size: self.frontier.len(),
-            timings,
-        })
+        Ok((
+            RoundReport {
+                branches_run,
+                new_coverage_edges,
+                bugs_found,
+                frontier_size: 0,
+                timings,
+            },
+            observation,
+        ))
     }
 
     /// Run branches sequentially (original path).
@@ -824,33 +1200,33 @@ impl Explorer {
         Ok(results)
     }
 
-    /// Execute one input tree exploration round:
+    /// Execute one authorized input tree exploration round:
     ///
-    /// 1. Select a frontier entry (same as fault schedule mode)
-    /// 2. Run a "probe" branch from that snapshot — recording all random
-    ///    choices the guest makes
-    /// 3. Examine the choice history — select interesting decision points
-    /// 4. For each selected choice point, restore the snapshot, override
+    /// 1. Run a "probe" branch from the selected snapshot — recording all
+    ///    random choices the guest makes
+    /// 2. Examine the choice history — select interesting decision points
+    /// 3. For each selected choice point, restore the snapshot, override
     ///    that choice to an alternate value, and re-run
-    /// 5. Score results, add interesting ones to frontier and corpus
-    fn explore_input_tree_round(&mut self) -> Result<RoundReport, ExploreError> {
+    /// 4. Score results; collect frontier proposals and add interesting ones to the corpus
+    fn explore_input_tree_round(
+        &mut self,
+        authorized: &AuthorizedRound,
+    ) -> Result<(RoundReport, RoundObservation), ExploreError> {
         let mut branches_run = 0;
         let mut new_coverage_edges = 0;
         let mut bugs_found: usize = 0;
         let mut timings = BranchTimings::default();
+        let mut observation = RoundObservation::default();
 
-        // Select entry from frontier
-        let (snapshot, base_schedule, parent_id, parent_depth) =
-            if let Some(entry) = self.frontier.select(&mut self.rng) {
-                (
-                    Some(entry.snapshot.clone()),
-                    entry.schedule.clone(),
-                    Some(entry.id),
-                    entry.depth,
-                )
-            } else {
-                (None, FaultSchedule::new(), None, 0)
-            };
+        let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
+            Some(entry) => (
+                Some(entry.snapshot.clone()),
+                entry.schedule.clone(),
+                entry.depth,
+            ),
+            // Legacy only: no frontier entry, use clean slate.
+            None => (None, FaultSchedule::new(), 0),
+        };
 
         // Phase 1: Run a "probe" branch to discover choice points.
         // This uses the base schedule (no overrides) — same as the
@@ -887,29 +1263,37 @@ impl Explorer {
             probe_result.schedule_fingerprint,
         );
         let probe_new = probe_enriched.has_new_coverage(self.coverage.global_coverage());
-        if probe_new > 0 {
+        let probe_outcome = if probe_new > 0 {
             new_coverage_edges += probe_new;
             let mut enriched_probe = probe_result.clone();
             enriched_probe.coverage = probe_enriched.clone();
+            let outcome = self.branch_outcome(
+                BranchSlot::Probe,
+                probe_new,
+                &probe_bugs,
+                Some((&enriched_probe, &base_schedule, parent_depth + 1)),
+                probe_result.snapshot.is_some(),
+            )?;
             self.add_to_corpus(
-                enriched_probe.clone(),
+                enriched_probe,
                 base_schedule.clone(),
                 probe_new,
                 probe_bugs,
                 parent_depth + 1,
             );
-            if let Some(snap) = probe_result.snapshot.clone() {
-                self.add_to_frontier(
-                    snap,
-                    enriched_probe,
-                    base_schedule.clone(),
-                    parent_id,
-                    parent_depth + 1,
-                );
-            }
+            outcome
         } else {
+            let outcome = self.branch_outcome(
+                BranchSlot::Probe,
+                probe_new,
+                &probe_bugs,
+                None,
+                probe_result.snapshot.is_some(),
+            )?;
             self.retain_standalone_bugs(probe_bugs)?;
-        }
+            outcome
+        };
+        observation.branches.push(probe_outcome);
         self.coverage.update_global(&probe_enriched);
 
         // Phase 2: Drain choice histories from all VMs.
@@ -918,13 +1302,16 @@ impl Explorer {
 
         if histories.is_empty() {
             debug!("No random choices recorded — skipping input tree branching");
-            return Ok(RoundReport {
-                branches_run,
-                new_coverage_edges,
-                bugs_found,
-                frontier_size: self.frontier.len(),
-                timings,
-            });
+            return Ok((
+                RoundReport {
+                    branches_run,
+                    new_coverage_edges,
+                    bugs_found,
+                    frontier_size: 0,
+                    timings,
+                },
+                observation,
+            ));
         }
 
         let total_choices: usize = histories.iter().map(|(_, h)| h.len()).sum();
@@ -941,13 +1328,16 @@ impl Explorer {
 
         if alternatives.is_empty() {
             debug!("No viable alternatives found");
-            return Ok(RoundReport {
-                branches_run,
-                new_coverage_edges,
-                bugs_found,
-                frontier_size: self.frontier.len(),
-                timings,
-            });
+            return Ok((
+                RoundReport {
+                    branches_run,
+                    new_coverage_edges,
+                    bugs_found,
+                    frontier_size: 0,
+                    timings,
+                },
+                observation,
+            ));
         }
 
         let num_vms = self.config.num_vms;
@@ -968,6 +1358,7 @@ impl Explorer {
                 alternatives[i].sequence_id,
                 alternatives[i].alternative_value
             );
+            let slot = BranchSlot::Alternative(branch_slot_index(i)?);
 
             let result =
                 self.run_branch_with_overrides(&snapshot, base_schedule.clone(), per_vm_overrides)?;
@@ -1001,44 +1392,54 @@ impl Explorer {
                 );
             }
 
-            if new_edges > 0 {
+            let outcome = if new_edges > 0 {
                 debug!("Input tree branch {} found {} new edges", i + 1, new_edges);
                 new_coverage_edges += new_edges;
 
                 let mut enriched_result = result.clone();
                 enriched_result.coverage = enriched.clone();
 
+                let outcome = self.branch_outcome(
+                    slot,
+                    new_edges,
+                    &branch_bugs,
+                    Some((&enriched_result, &base_schedule, parent_depth + 1)),
+                    result.snapshot.is_some(),
+                )?;
                 self.add_to_corpus(
-                    enriched_result.clone(),
+                    enriched_result,
                     base_schedule.clone(),
                     new_edges,
                     branch_bugs,
                     parent_depth + 1,
                 );
-
-                if let Some(snap) = result.snapshot.clone() {
-                    self.add_to_frontier(
-                        snap,
-                        enriched_result,
-                        base_schedule.clone(),
-                        parent_id,
-                        parent_depth + 1,
-                    );
-                }
+                outcome
             } else {
+                let outcome = self.branch_outcome(
+                    slot,
+                    new_edges,
+                    &branch_bugs,
+                    None,
+                    result.snapshot.is_some(),
+                )?;
                 self.retain_standalone_bugs(branch_bugs)?;
-            }
+                outcome
+            };
+            observation.branches.push(outcome);
 
             self.coverage.update_global(&enriched);
         }
 
-        Ok(RoundReport {
-            branches_run,
-            new_coverage_edges,
-            bugs_found,
-            frontier_size: self.frontier.len(),
-            timings,
-        })
+        Ok((
+            RoundReport {
+                branches_run,
+                new_coverage_edges,
+                bugs_found,
+                frontier_size: 0,
+                timings,
+            },
+            observation,
+        ))
     }
 
     /// Ensure we have a controller ready (created once, reused across branches).
@@ -1586,7 +1987,9 @@ impl Explorer {
                 parent: None,
                 marker: None,
             };
-            self.frontier.push(frontier_entry);
+            if let ExplorerFrontier::Legacy(frontier) = &mut self.frontier {
+                frontier.push_recycled(frontier_entry);
+            }
             recycled += 1;
         }
 
@@ -1614,7 +2017,9 @@ impl Explorer {
                             parent: None,
                             marker: None,
                         };
-                        self.frontier.push(frontier_entry);
+                        if let ExplorerFrontier::Legacy(frontier) = &mut self.frontier {
+                            frontier.push_recycled(frontier_entry);
+                        }
                         recycled += 1;
                     }
                 }
@@ -1622,49 +2027,6 @@ impl Explorer {
         }
 
         recycled
-    }
-
-    /// Add a result to the frontier.
-    fn add_to_frontier(
-        &mut self,
-        snapshot: chaoscontrol_vmm::controller::SimulationSnapshot,
-        result: BranchResult,
-        schedule: FaultSchedule,
-        parent: Option<u64>,
-        depth: u32,
-    ) {
-        let base_score = self.score_branch(&result, depth);
-        let markers = marker_observations(&result.oracle_report).unwrap_or_default();
-        if markers.is_empty() {
-            self.frontier.push(FrontierEntry {
-                id: 0,
-                snapshot,
-                coverage: result.coverage,
-                score: base_score,
-                times_selected: 0,
-                depth,
-                schedule,
-                parent,
-                marker: None,
-            });
-            return;
-        }
-
-        for observation in markers {
-            let prior_hits = update_hit_counts(&mut self.marker_hits, &observation.marker.identity);
-            let metadata = frontier_metadata(&observation, result.total_ticks);
-            self.frontier.push(FrontierEntry {
-                id: 0,
-                snapshot: snapshot.clone(),
-                coverage: result.coverage.clone(),
-                score: marker_score(base_score, prior_hits),
-                times_selected: 0,
-                depth,
-                schedule: schedule.clone(),
-                parent,
-                marker: Some(metadata),
-            });
-        }
     }
 
     /// Add a result to the corpus.
@@ -2172,7 +2534,7 @@ impl Explorer {
             seen_dedup_keys: Some(self.seen_dedup_keys.iter().copied().collect()),
             scenario: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
-            campaign_journal: None,
+            campaign_journal: self.frontier.journal_binding(),
         })
     }
 
@@ -2221,7 +2583,7 @@ impl Explorer {
             frontier_policy: checkpoint.config.frontier_policy,
         };
 
-        let frontier = Frontier::new(config.max_frontier);
+        let frontier = ExplorerFrontier::for_config(&config);
         let corpus = Corpus::new();
         let mutator = ScheduleMutator::new(config.seed);
 
@@ -2262,6 +2624,8 @@ impl Explorer {
             scenario_summary: checkpoint.scenario_summary.clone(),
             metrics_sink: None,
             stop: None,
+            trace: None,
+            resumed_journal: checkpoint.campaign_journal.clone(),
         })
     }
 }
@@ -2531,11 +2895,91 @@ mod tests {
         }
     }
 
+    // r[verify chaoscontrol.campaign_policy.adapter.invalid]
+    #[test]
+    fn campaign_policy_rejects_degenerate_configs_before_kvm() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let base = ExplorerConfig {
+            output_dir: Some(directory.path().display().to_string()),
+            frontier_policy: FrontierPolicy::CampaignCandidate,
+            ..ExplorerConfig::default()
+        };
+        for config in [
+            ExplorerConfig {
+                max_frontier: 0,
+                ..base.clone()
+            },
+            ExplorerConfig {
+                rare_edge_weight: f64::NAN,
+                ..base.clone()
+            },
+        ] {
+            let mut explorer = Explorer::new(config);
+            match explorer.run() {
+                Err(ExploreError::Frontier {
+                    source:
+                        FrontierError::Adapter(crate::campaign_adapter::AdapterError::DegenerateConfig(
+                            _,
+                        )),
+                }) => {}
+                Err(other) => panic!("unexpected error {other:?}"),
+                Ok(_) => panic!("degenerate configuration explored"),
+            }
+            assert!(explorer.controller.is_none(), "no KVM work started");
+            assert!(!directory
+                .path()
+                .join(journal::JOURNAL_DIRECTORY_NAME)
+                .exists());
+        }
+        // The same configurations stay legacy behavior under the legacy policy.
+        let legacy = Explorer::new(ExplorerConfig {
+            max_frontier: 0,
+            frontier_policy: FrontierPolicy::Legacy,
+            ..base
+        });
+        assert!(matches!(legacy.frontier, ExplorerFrontier::Legacy(_)));
+    }
+
+    // r[verify chaoscontrol.campaign_policy.progress.valid]
+    #[test]
+    fn legacy_checkpoint_and_report_keep_their_product_shape() {
+        let directory = tempfile::tempdir().expect("test directory");
+        let output = directory.path().display().to_string();
+        let legacy = Explorer::new(ExplorerConfig::default());
+        let checkpoint = legacy
+            .create_checkpoint(&output)
+            .expect("legacy checkpoint");
+        let json = serde_json::to_value(&checkpoint).expect("checkpoint json");
+        assert!(json["config"].get("frontier_policy").is_none());
+        assert!(json.get("campaign_journal").is_none());
+        let report = legacy.generate_report();
+        assert_eq!(report.frontier_policy, FrontierPolicy::Legacy);
+        assert_eq!(report.stop, None);
+
+        // The Campaign policy changes only the declared policy field; product
+        // progress, coverage, and bugs keep their shape.
+        let campaign = Explorer::new(ExplorerConfig {
+            frontier_policy: FrontierPolicy::CampaignCandidate,
+            ..ExplorerConfig::default()
+        });
+        let campaign_json =
+            serde_json::to_value(campaign.create_checkpoint(&output).expect("checkpoint"))
+                .expect("checkpoint json");
+        assert_eq!(
+            campaign_json["config"]["frontier_policy"],
+            "campaign-candidate"
+        );
+        let mut without_policy = campaign_json.clone();
+        without_policy["config"]
+            .as_object_mut()
+            .expect("config object")
+            .remove("frontier_policy");
+        assert_eq!(without_policy, json);
+    }
+
     const TEST_ALIAS: u32 = 42;
     const TEST_VARIANT_SEED: u64 = 73;
     const TEST_BRANCH_COUNT: usize = 2;
-    const TEST_VM_COUNT: usize = 2;
-    const TEST_NETWORK_SEED: u64 = 42;
     const TEST_MARKER_TICK: u64 = 19;
 
     #[test]
@@ -2593,28 +3037,6 @@ mod tests {
         oracle.report()
     }
 
-    fn dummy_snapshot() -> SimulationSnapshot {
-        let engine = chaoscontrol_fault::engine::FaultEngine::new(
-            chaoscontrol_fault::engine::EngineConfig::default(),
-        );
-        SimulationSnapshot {
-            tick: 0,
-            vm_snapshots: Vec::new(),
-            network_state: chaoscontrol_vmm::controller::NetworkFabric::new(
-                TEST_VM_COUNT,
-                TEST_NETWORK_SEED,
-            ),
-            fault_engine_snapshot: engine.snapshot(),
-            vcpu_stall_until: Vec::new(),
-            clock_freeze: Vec::new(),
-            clock_jitter_bound: Vec::new(),
-            memory_pressure: Vec::new(),
-            process_fault_attempt: Vec::new(),
-            pending_process_observations: Default::default(),
-            fault_operation_sequence: 0,
-        }
-    }
-
     fn branch_result(oracle_report: OracleReport) -> BranchResult {
         BranchResult {
             coverage: CoverageBitmap::new(),
@@ -2654,21 +3076,13 @@ mod tests {
         oracle.end_run();
 
         let mut explorer = Explorer::new(ExplorerConfig::default());
-        explorer.add_to_frontier(
-            dummy_snapshot(),
-            branch_result(oracle.report()),
-            FaultSchedule::new(),
-            None,
-            0,
-        );
+        let proposals = explorer.entry_proposals(&branch_result(oracle.report()), 0);
 
-        assert_eq!(explorer.frontier.len(), 1);
-        let metadata = explorer.frontier.entries()[0].marker.as_ref().unwrap();
+        assert_eq!(proposals.len(), 1);
+        let metadata = proposals[0].marker.as_ref().unwrap();
         assert_eq!(metadata.marker_identity, expected_identity);
         assert_eq!(metadata.observed_tick, TEST_MARKER_TICK);
-        assert!(
-            explorer.frontier.entries()[0].score >= crate::marker_branching::MARKER_NOVELTY_BONUS
-        );
+        assert!(proposals[0].score >= crate::marker_branching::MARKER_NOVELTY_BONUS);
     }
 
     #[test]

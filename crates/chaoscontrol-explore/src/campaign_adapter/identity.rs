@@ -63,11 +63,13 @@ pub enum AdapterReason {
     SnapshotStaleEpoch,
     /// Outstanding selection closed because its snapshot state was lost.
     SnapshotStateLost,
+    /// A recovered epoch was closed before a new epoch started.
+    ResumeEpochClosed,
 }
 
 impl AdapterReason {
     /// Every reason in stable order.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::SelectionCountDecay,
         Self::RetentionPrune,
         Self::CoveragePlateau,
@@ -78,6 +80,7 @@ impl AdapterReason {
         Self::SnapshotStaleBaseSet,
         Self::SnapshotStaleEpoch,
         Self::SnapshotStateLost,
+        Self::ResumeEpochClosed,
     ];
 
     /// Stable reason label.
@@ -94,6 +97,7 @@ impl AdapterReason {
             Self::SnapshotStaleBaseSet => b"chaoscontrol.eligibility.stale-base-set.v1",
             Self::SnapshotStaleEpoch => b"chaoscontrol.eligibility.stale-epoch.v1",
             Self::SnapshotStateLost => b"chaoscontrol.closure.snapshot-state-lost.v1",
+            Self::ResumeEpochClosed => b"chaoscontrol.stop.resume-epoch-closed.v1",
         }
     }
 

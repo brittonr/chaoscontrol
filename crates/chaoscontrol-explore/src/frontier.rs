@@ -1,5 +1,6 @@
 //! Frontier — priority queue of interesting simulation states to explore.
 
+use crate::campaign_adapter::{legacy_explores, LegacyDraws};
 use crate::coverage::CoverageBitmap;
 use crate::marker_branching::MarkerFrontierMetadata;
 use chaoscontrol_fault::schedule::FaultSchedule;
@@ -27,6 +28,20 @@ pub struct FrontierEntry {
     pub parent: Option<u64>,
     /// Guest-declared marker that created this branch opportunity.
     pub marker: Option<MarkerFrontierMetadata>,
+}
+
+/// Draws one selection's epsilon-greedy randomness in the legacy order.
+///
+/// Draws nothing for an empty frontier; otherwise draws `u = gen::<f64>()` and,
+/// only when `u` explores, `gen_range(0..len)`. Both frontier policies draw through
+/// this function, so their `Explorer` RNG positions stay equal.
+pub fn draw_selection(rng: &mut impl Rng, len: usize) -> Option<LegacyDraws> {
+    if len == 0 {
+        return None;
+    }
+    let unit = rng.gen::<f64>();
+    let index = legacy_explores(unit).then(|| rng.gen_range(0..len));
+    Some(LegacyDraws { unit, index })
 }
 
 /// Priority queue of interesting simulation states to explore from.
@@ -72,29 +87,38 @@ impl Frontier {
     ///
     /// Uses epsilon-greedy: 90% take highest score, 10% random.
     pub fn select(&mut self, rng: &mut impl Rng) -> Option<&mut FrontierEntry> {
+        let draws = draw_selection(rng, self.entries.len())?;
+        let index = self.selection_index(draws)?;
+        self.select_index(index)
+    }
+
+    /// Vector position the recorded draws select, without mutating the frontier.
+    ///
+    /// Returns `None` for an empty frontier or an explore draw without an
+    /// in-range index.
+    pub fn selection_index(&self, draws: LegacyDraws) -> Option<usize> {
         if self.entries.is_empty() {
             return None;
         }
-
-        // Epsilon-greedy: 10% random, 90% best
-        let index = if rng.gen::<f64>() < 0.1 {
-            rng.gen_range(0..self.entries.len())
-        } else {
-            // Find best effective score (score / (1 + times_selected))
-            let mut best_idx = 0;
-            let mut best_effective_score = 0.0;
-
-            for (i, entry) in self.entries.iter().enumerate() {
-                let effective = entry.score / (1.0 + entry.times_selected as f64);
-                if effective > best_effective_score {
-                    best_effective_score = effective;
-                    best_idx = i;
-                }
+        if legacy_explores(draws.unit) {
+            return draws.index.filter(|index| *index < self.entries.len());
+        }
+        // Find best effective score (score / (1 + times_selected))
+        let mut best_idx = 0;
+        let mut best_effective_score = 0.0;
+        for (i, entry) in self.entries.iter().enumerate() {
+            let effective = entry.score / (1.0 + entry.times_selected as f64);
+            if effective > best_effective_score {
+                best_effective_score = effective;
+                best_idx = i;
             }
-            best_idx
-        };
+        }
+        Some(best_idx)
+    }
 
-        let entry = &mut self.entries[index];
+    /// Count one selection of the entry at `index` and return it.
+    pub fn select_index(&mut self, index: usize) -> Option<&mut FrontierEntry> {
+        let entry = self.entries.get_mut(index)?;
         entry.times_selected += 1;
         Some(entry)
     }

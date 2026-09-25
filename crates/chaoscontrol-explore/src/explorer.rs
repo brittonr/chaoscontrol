@@ -27,6 +27,7 @@ use std::sync::mpsc::SyncSender;
 use std::sync::Arc;
 use std::time::Instant;
 
+pub mod journal;
 mod journal_authority;
 
 /// Errors from the exploration engine.

@@ -132,10 +132,16 @@ The pure adapter lives in `campaign_adapter.rs` and `campaign_adapter/` (commit 
 - `identity.rs`: `AdapterIdentity::for_seed` derives the adapter, projection, control-domain, guidance, entropy, operation, cost, policy, and retention identities. Only the entropy source identity binds the seed.
 - `moments.rs`: retained moments become Choregraph drafts. Payload identities bind digests and ticks, never snapshot bytes.
 - `candidates.rs`: `candidate_record` binds one frontier entry to its parent moment, mode, entry sequence, marker digest, and operation-generation profile. Reusing a candidate yields distinct selection identities.
-- `wire.rs`: an authenticated serde mirror of every Campaign control event and moment draft. Decoding re-derives event and payload identities and rejects unknown fields and trailing bytes.
+- `wire.rs`: an authenticated serde mirror of every Campaign control event and moment draft. Decoding re-derives event and payload identities and rejects unknown fields, trailing bytes, and any non-canonical encoding (commit `0bbf309`: a payload digest followed by product bytes used to decode as its first 32 bytes).
 - `profile.rs`: `admit_config` rejects degenerate configurations before any journal or KVM work: `max_frontier` 0, non-finite or negative weights, no restorable root, and bound overflow. Legacy corpus recycling and the empty-frontier live-controller continuation are reachable only from those configurations, so the adapter does not model them.
 
 Commit `a0b1b3c` moved the pin to Campaign `c5e20cf2` (D41). Projections now advance by fast-forward through `fence::advance_projection`.
+
+Commit `ec1625e` moved Cargo and the Nix `campaign-src` input together to Campaign `260eb9ba` (D42 to D47):
+
+- Publication requires the held projection. `ControlPublicationRequest::previous` changed from `Option<&ValidatedControlProjection>` to `&ValidatedControlProjection`, and `frontier_backend/session.rs` passes its sealed projection.
+- `CacheValidationRequest` gained `previous: Option<&ValidatedControlProjection>`. `fence::validate_cache` passes the request through unchanged; the Explorer shell validates no caches (recovery replays the journal).
+- The conformance port's `ConsumerShell::load_history(&mut self, request)` became `load_history(&mut self, request, previous: Option<&ValidatedControlProjection>)`. The ChaosControl conformance adapter advances a held projection with `fence::advance_projection` and otherwise cold-starts with `fence::load_projection`, so its answers equal Campaign's on the enumerated load, cache, and gate matrices.
 
 ### Integer ranks and explicit division decay
 
@@ -228,6 +234,10 @@ The VM-free corpus in `explorer/frontier_backend/parity/` drives both backends w
 
 `chaoscontrol-evidence/src/campaign_evidence_boundary.rs` (commit `1c06a11`) classifies the Campaign journal, the frontier trace, and Campaign or Choregraph schemas as structural. Product evidence admission refuses them: receipts, snapshot references, replay verdicts, accepted proofs, readiness promotion, and dogfood admission. `fence::receipt_claims` returns `ReceiptClaims::no_claims()`.
 
+Commit `0bbf309` adds `chaoscontrol.frontier-parity-receipt.v1` (`FrontierParityReceipt`) to the refused structural schemas, mirrored in `contracts/evidence/dogfood-receipt.ncl`. `check-frontier-parity` takes its schema from the same constant. A parity receipt compares structural decisions only, so it never satisfies VM, fault, assertion, finding, replay, minimization, or release evidence.
+
+Product-type leakage is refused at the journal boundary (`frontier_backend/leakage_tests.rs`, commit `0bbf309`). Campaign-owned `MOMENT` and `CONTROL` records carry only opaque identities, digests of at most 32 bytes, integer ranks, counters and ticks, and closed-vocabulary names. Product values (snapshot bytes, coverage bitmaps, assertion reports, fault schedules, finding keys) reach Campaign only as digests. A record carrying one is refused by the closed wire schema or by identity re-derivation, both when decoded and during epoch recovery.
+
 ### Cutover and legacy-diagnostic rollback gates
 
 Commit `420cb05` makes `FrontierPolicy::Campaign` the default for the CLI, profiles, checkpoints, and campaign progress (`explorer/frontier_policy.rs`). The retired spellings `legacy` and `campaign-candidate` fail with a typed error that names the replacement.
@@ -263,12 +273,12 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current State and Remaining Blockers
 
-- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`.
+- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `260eb9ba` (commit `ec1625e`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
 - Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`.
-- **Blocker: final release pin.** Cargo pins Campaign development revision `c5e20cf2`, but the Nix `campaign-src` input still names `e23e3edf`. Both must move to the Campaign release revision. This needs the forge to serve that revision.
-- **Blocker: full gate.** The full `nix flake check -L` gate has not run. Nix builds that vendor `Cargo.lock` cannot acquire Campaign until the re-pin lands.
-- **Blocker: evidence fixture.** The `product-type leakage` fixture for `r[chaoscontrol.campaign_policy.evidence.invalid]` is missing. Today only the dependency direction enforces that boundary.
+- The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
+- **Blocker: final release pin.** `260eb9ba` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
+- **Blocker: full gate.** The full `nix flake check -L` gate has not run on the re-pinned tree.
 
 ## Non-Claims
 

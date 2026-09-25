@@ -41,7 +41,7 @@ The test suite will reject or expose:
 
 ## Evidence
 
-Every commit below is on `cairn/adopt-campaign-core-20260906`. The implementation head is `420cb05`. Command prefixes for the development shell and target directory are omitted. All cargo commands ran offline against the committed `Cargo.lock`.
+Every commit below is on `cairn/adopt-campaign-core-20260906`. The implementation head is `0bbf309` (Campaign `260eb9ba` re-pin `ec1625e`, evidence fixtures `0bbf309`); the counts in this subsection are from `420cb05` unless the re-pin subsection below says otherwise. Command prefixes for the development shell and target directory are omitted. All cargo commands ran offline against the committed `Cargo.lock`.
 
 ### Focused tests, lint, and static gates
 
@@ -84,18 +84,19 @@ Static and lint gates passed at `420cb05` unless noted:
 The adapter's conformance module is `campaign_adapter/tests/conformance.rs`.
 
 - **At `2da6277`** (Campaign `c7226084`): every catalog fixture passed, and the outcome count equals `fixture_names().len()`. The transcript digest equaled Campaign's reference digest `424ae98a1d0a747a4195830626db6fb2589a181fc4875602e652da53d860a890`.
-- **Since `a0b1b3c`** (Campaign `c5e20cf2`): `chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript` compares the adapter's transcript digest with the digest of Campaign's own reference pilot, `campaign_conformance::fixtures::animus_shaped::OpaqueCandidateAdapter`, run on the same profile. The digests are equal.
-- **Profile sensitivity**: `a_changed_profile_changes_the_transcript_digest` shows that another exploration and retention order still conforms but yields a different digest.
+- **From `a0b1b3c`** (Campaign `c5e20cf2`): `chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript` compares the adapter's transcript digest with the digest of Campaign's own reference pilot, `campaign_conformance::fixtures::animus_shaped::OpaqueCandidateAdapter`, run on the same profile. The digests are equal.
+- **Since `ec1625e`** (Campaign `260eb9ba`): all 71 fixtures pass, including the new `budgets.declared_dimensions` and `selection.second_level`. The transcript digest equals the pilot's and Campaign's announced reference digest `94f68aec45deae859800316bd96f399848744b60b124d19f2b535b3cf7548d70`, which the test now pins as a constant together with the fixture count.
+- **Profile sensitivity**: `a_changed_profile_changes_the_transcript_digest` shows that another exploration and retention order still conforms and yields a different digest. At `260eb9ba` it temporarily omits equality with the pilot under that profile: the suite's `receipts.non_selection_overclaim` retires the first retained candidate in adapter candidate-id order, so the two adapters retire different operations at transcript entry 820. Campaign owns the fix; the next re-pin restores the assertion.
 
-Broken-wrapper negative controls fail exactly their named fixtures:
+Broken-wrapper negative controls fail exactly their named fixtures (expectations as of `ec1625e`):
 
-- `ExecutionBeforePublication` fails `fencing.{unpublished_execution, non_durable_execution, stale_branch, foreign_selection, stale_state_selection}`.
+- `ExecutionBeforePublication` fails `fencing.{unpublished_execution, non_durable_execution, stale_branch, foreign_selection, stale_state_selection, gate_matrix_ranked, gate_matrix_exploratory}`; both gate matrices report "a selection executed without a publication or evidence".
 - `RoleCollapse` fails `roles.collapsed_identity`.
-- `StaleHistory` fails `caches.{stale, moved_binding}`.
-- `HistoryRewrite` fails `history.{rewritten_payload, altered_graph, ambiguous_lineage}`.
+- `StaleHistory` fails `caches.{stale, moved_binding, validation_matrix}`; the matrix reports "a cache of a stale state was used as current state".
+- `HistoryRewrite` fails `history.{rewritten_payload, altered_graph, ambiguous_lineage, load_matrix}`; the matrix reports "a rewound control branch was loaded as current history".
 - `CrossedIdentities` fails `results.crossed_selection`.
-- `BudgetMiscount` fails `budgets.overdraw`, and `budgets.reservation` reports a positive-fixture failure.
-- `ReceiptOverclaim` fails `receipts.{promotion_overclaim, non_selection_overclaim}`.
+- `BudgetMiscount` fails `budgets.overdraw`, and `budgets.reservation` and `budgets.declared_dimensions` report positive-fixture failures.
+- `ReceiptOverclaim` fails `receipts.{promotion_overclaim, non_selection_overclaim, planner_overclaim}`; the planner fixture reports "a frontier-exhausted stop receipt carried a promotion claim".
 
 ### Adapter, journal, and fence tests
 
@@ -119,6 +120,43 @@ Broken-wrapper negative controls fail exactly their named fixtures:
   - stops: `product_stops_record_structural_classes_only`, `an_outstanding_selection_is_a_wait_never_exhaustion`;
   - config admission: `degenerate_configurations_are_rejected_before_the_journal_opens`, `campaign_policy_rejects_degenerate_configs_before_kvm`.
 - **Evidence boundary** (`1c06a11`): the `campaign_evidence_boundary` unit and integration tests pass. Invalid fixtures `receipt.{campaign-journal,frontier-trace,choregraph-schema}-promotion.invalid.{json,ncl}` and `replay-verdict.frontier-trace-promotion.invalid.json` are refused.
+- **Product-type leakage** (`0bbf309`, `explorer/frontier_backend/leakage_tests.rs`). Both fixtures run the Campaign backend for 2 rounds over distinctive real product values: a `SimulationSnapshot`, a `CoverageBitmap` with a 16-counter pattern, an `OracleReport` with an assertion record and failure details, a `FaultSchedule`, and a finding key. Digests come from the shell's own `frontier_backend::digests`.
+  - Positive: `campaign_records_carry_only_opaque_identities_digests_ranks_and_ticks`. It checks every journaled `MOMENT` (5) and `CONTROL` record. Each one decodes and authenticates. Each carries only integers, flags, byte strings or integer arrays of at most 32 bytes, and names of at most 64 identifier characters, with no float and no free text. None contains a product sentinel: the coverage counters, assertion message and details, snapshot tick, fault time and latency, branch ticks, finding key, or the encoded product values. The same journal then recovers.
+  - Negative: `product_values_injected_into_campaign_records_are_refused`. Each of the four product values is injected five ways, and each injection is refused:
+    - beside a control event: `Decode`;
+    - beside a moment event: `Decode`;
+    - in place of the moment payload digest: `Decode`;
+    - appended to the honest payload digest: `Decode`;
+    - cut to digest shape: `IdentityMismatch`. This shape passes the record-shape check, so identity re-derivation is the boundary.
+  - Epoch recovery refuses a journal that persisted a leaked control record (`Wire(Decode)`), an appended-digest moment (`Wire(Decode)`), or a digest-shaped moment (`Wire(IdentityMismatch)`).
+  - Before `0bbf309`, the appended-digest case decoded `Ok` for all four values: `wire::from_cbor` read the first 32 bytes of a longer byte string as the digest. Decoding now requires the canonical re-encoding.
+- **Parity receipt classification** (`0bbf309`). `chaoscontrol.frontier-parity-receipt.v1` is refused for every product evidence class. It is covered by the unit tables, the integration schema list (`schema_version` and `schema`), and two new invalid fixtures, both refused at the boundary by `check-evidence-contracts`:
+  - `receipt.frontier-parity-schema-promotion.invalid.{json,ncl}`: a dogfood receipt that declares the parity schema.
+  - `receipt.frontier-parity-receipt-promotion.invalid.json`: the committed KVM parity receipt, verbatim.
+  - The Nickel negative fails with the contract mirror (`contract broken by the value of schema_version`). It exports cleanly without the mirror entry (checked in a scratch copy).
+
+### Re-pin to Campaign `260eb9ba` (`ec1625e`, `0bbf309`)
+
+API migrations:
+
+| API | Before (`c5e20cf2`) | After (`260eb9ba`) |
+| --- | --- | --- |
+| `ControlPublicationRequest::previous` | `Option<&ValidatedControlProjection>` | `&ValidatedControlProjection` (D45) |
+| `CacheValidationRequest` | no held projection | `previous: Option<&ValidatedControlProjection>` (D45) |
+| `ConsumerShell::load_history` | `(&mut self, request)` | `(&mut self, request, previous: Option<&ValidatedControlProjection>)` (D42/D43) |
+
+Gates run on the tree at `0bbf309`, offline, with the committed `Cargo.lock`:
+
+- `cargo test -p chaoscontrol-explore -p chaoscontrol-evidence`: 85 test binaries, 708 passed, 0 failed, 1 ignored (was 706 at `420cb05`). The `chaoscontrol-explore` library has 379 passed and 1 ignored (was 377); the two new tests are the leakage fixtures. The `chaoscontrol-evidence` library has 161 passed, and `tests/campaign_evidence_boundary.rs` has 7.
+- `cargo clippy -p chaoscontrol-explore -p chaoscontrol-evidence --all-targets -- -D warnings` and `cargo fmt -p chaoscontrol-explore -p chaoscontrol-evidence --check` pass.
+- `check-evidence-contracts --root .`, `check-contract-registry .`, and `check-architecture-boundaries .` exit 0.
+- `check-frontier-parity` on the committed fixtures:
+  - the valid pair exits 0 and writes a `chaoscontrol.frontier-parity-receipt.v1` receipt with `decision_fields_equal` and `cutover_ready` true;
+  - a flipped selection, prune, or stop exits 1 with `[SelectedEntry, ParentMoment]`, `[Pruned]`, and `[StopClass]`;
+  - an existing receipt exits 2.
+- Focused Octet, `cargo-octet check -p chaoscontrol-explore -- --lib` and `-p chaoscontrol-evidence -- --lib`: exit 0, no error-level findings. Only warn-level style findings remain.
+- Nix: `nix flake update campaign-src` locked `260eb9ba` from the local Nix Git cache while the forge answered HTTP 530, giving narHash `sha256-H0/tzc+oi+E0zNUNLccicfvZIenaX6TpQ8pDpHwhULU=` and revCount 41. `nix hash path` of the fetched source reproduces that narHash. `nix eval .#packages.x86_64-linux.default.drvPath` evaluates, and `nix-instantiate --parse flake.nix` passes. The full `nix flake check -L` did not run.
+- `cargo deny` is not in the development shell, so the `dependency-policy` check did not run locally.
 
 ### Model parity corpus
 
@@ -214,7 +252,8 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 | `publication_fence.invalid` | `fb9a221` fence tests; `2da6277` `ExecutionBeforePublication`; `a60cccd` durability classes; `3314e8b` failed, stale, and foreign publication tests |
 | `product_authority` | `3314e8b` product-computed proposals; `b6c9194` corpus (only ranks cross) |
 | `progress` | `31e6a40`, `1ba05d1`, and `420cb05` checkpoint, progress, and report tests |
-| `evidence` | `1c06a11` boundary; `2da6277` `ReceiptOverclaim` |
+| `evidence` | `1c06a11` boundary; `2da6277` `ReceiptOverclaim`; `0bbf309` parity receipt classification |
+| `evidence.invalid` | receipt promotion: `2da6277` `ReceiptOverclaim`, `1c06a11` promotion fixtures; stale cache: `StaleHistory`; missing snapshot: `3314e8b` `an_unrestorable_snapshot_after_publication_closes_and_retires`; false observation: `CrossedIdentities`; product-type leakage and parity receipt promotion: `0bbf309` |
 | `frontier_parity` (comparison) | `3b5cb62`, `b6c9194`, and `c6c81cc` corpus and checker |
 | `kvm_parity` | `d0719c5` smoke record and receipt |
 | `cutover` | `420cb05` default selection after the conformance, parity, and KVM evidence above |
@@ -226,10 +265,9 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 
 ## Current gaps
 
-- **Final Campaign release pin.** Cargo pins Campaign development revision `c5e20cf2`, while the Nix `campaign-src` input names `e23e3edf`. `r[chaoscontrol.campaign_policy.source_pins.valid]` requires one full Campaign revision everywhere. Until the re-pin lands, Nix builds that vendor `Cargo.lock` cannot acquire Campaign. The cutover evidence rests on the Cargo development pin.
+- **Final Campaign release pin.** Cargo and the Nix `campaign-src` input both pin Campaign development revision `260eb9ba` (`ec1625e`). It is not the release revision. The forge answered HTTP 530 at the re-pin, so fresh acquisition from the live endpoint has not been observed for it.
 - **Full gate.** `nix flake check -L` has not run for this change.
-- **Product-type leakage fixture.** No fixture rejects a ChaosControl product type at the Campaign boundary. `effects.invalid`, `product_authority.invalid`, and `boundary.invalid` rely on the dependency direction: the Campaign crates have no ChaosControl dependency.
-- **Parity receipt classification.** `campaign_evidence_boundary` does not yet list `chaoscontrol.frontier-parity-receipt.v1` among the refused structural schemas. The committed receipt is not submitted to any product admission gate.
+- **Changed-profile pilot equality.** At `260eb9ba`, `a_changed_profile_changes_the_transcript_digest` temporarily omits equality with Campaign's pilot. This is a Campaign conformance defect: `retire_retained` picks by adapter candidate-id order. The next re-pin restores the assertion.
 - **KVM smoke coverage.** The smoke did not exercise the following:
   - explore draws or pruning (the model corpus covers both);
   - input-tree or hybrid modes, `--workers` > 1, resume, or journal recovery;

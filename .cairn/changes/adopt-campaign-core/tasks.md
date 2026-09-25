@@ -3,7 +3,7 @@
 - [x] [serial] r[chaoscontrol.campaign_policy.baseline] Record exact `frontier.rs`, `input_tree.rs`, and `explorer.rs` positive and negative baseline results. See `verification-2026-09-07.md`.
 - [x] [serial] r[chaoscontrol.campaign_policy.boundary] Record why `campaign.rs` multi-seed execution and aggregation remain outside Campaign adoption. See `verification-2026-09-07.md`.
 - [x] [serial] r[chaoscontrol.campaign_policy.source_pins] Record the current Campaign and Choregraph publication blockers and required evidence. The historical blockers and the scoped client repair are recorded in `transport-review.md` and `public-acquisition-2026-09-07.md`.
-- [x] [depends:chaoscontrol.campaign_policy.source_pins] r[chaoscontrol.campaign_policy.source_pins] Add exact Cargo and Nix revisions after both compatible dependencies publish. Fresh locked acquisition, 211 library tests, and focused strict Clippy pass from frozen code `3cc7324c`. See `public-acquisition-2026-09-07.md`. Development re-pins since then move only Cargo (Campaign `c5e20cf2`, commit `a0b1b3c`); Nix still names `e23e3edf`, and the release re-pin is the open Phase 5 task.
+- [x] [depends:chaoscontrol.campaign_policy.source_pins] r[chaoscontrol.campaign_policy.source_pins] Add exact Cargo and Nix revisions after both compatible dependencies publish. Fresh locked acquisition, 211 library tests, and focused strict Clippy pass from frozen code `3cc7324c`. See `public-acquisition-2026-09-07.md`. Development re-pins since then: Cargo only to Campaign `c5e20cf2` (commit `a0b1b3c`); Cargo and Nix together to Campaign `260eb9ba` (commit `ec1625e`). The release re-pin is the open Phase 5 task.
 
 ## Phase 2: Pure product adapter
 
@@ -30,7 +30,7 @@
 - [x] [serial] r[chaoscontrol.campaign_policy.product_authority] Keep schedules, choice histories, snapshots, coverage, assertions, findings, replay, minimization, and evidence local. Commits `3314e8b`, `b6c9194`. See `verification.md`.
 - [x] [serial] r[chaoscontrol.campaign_policy.progress] Keep checkpoints, multi-seed progress, resume, aggregation, and report projection local. Commits `31e6a40`, `1ba05d1`, `420cb05`. See `verification.md`.
 - [x] [serial] r[chaoscontrol.campaign_policy.evidence] Reject Campaign and Choregraph structural receipts as VM, fault, assertion, finding, replay, or release evidence. Commits `2da6277`, `1c06a11`. See `verification.md`.
-- [ ] [parallel] r[chaoscontrol.campaign_policy.evidence.invalid] Add receipt-promotion, stale-cache, missing-snapshot, false-observation, and product-type leakage fixtures. The first four exist; the product-type leakage fixture is missing. See `verification.md`.
+- [x] [parallel] r[chaoscontrol.campaign_policy.evidence.invalid] Add receipt-promotion, stale-cache, missing-snapshot, false-observation, and product-type leakage fixtures. Product-type leakage and frontier parity receipt promotion fixtures: commit `0bbf309`. See `verification.md`.
 
 ## Phase 5: Parity and cutover
 

@@ -503,6 +503,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: None,
             scenario_summary: None,
+            campaign_journal: None,
         };
 
         let state = DashboardState::from_checkpoint(&checkpoint).expect("valid checkpoint");

@@ -112,7 +112,7 @@ pub use campaign::{
 };
 pub use checkpoint::{
     export_checkpoint_bugs, export_checkpoint_bugs_with_filter, load_checkpoint,
-    load_serializable_bug, load_serializable_bug_artifact, save_checkpoint,
+    load_serializable_bug, load_serializable_bug_artifact, save_checkpoint, CampaignJournalBinding,
     CheckpointBugExportError, CheckpointBugExportFilter, CheckpointBugExportSummary,
     CheckpointConfig, CheckpointError, ExplorationCheckpoint, SerializableBug, SerializableFault,
     SerializableSchedule, SerializableScheduledFault,

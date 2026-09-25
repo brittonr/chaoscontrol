@@ -27,6 +27,16 @@ const MAX_SERIALIZABLE_FAULTS: usize = 4_096;
 const MAX_CHECKPOINT_ROUND_HISTORY: usize = 1_000_000;
 const MAX_CHECKPOINT_DEDUP_KEYS: usize = 65_536;
 const DEFAULT_MEMORY_PRESSURE_DURATION_TICKS: u64 = 1;
+/// Bytes in a BLAKE3 campaign journal segment digest.
+pub const CAMPAIGN_JOURNAL_DIGEST_BYTES: usize = 32;
+const HEX_CHARS_PER_BYTE: usize = 2;
+/// Lowercase hex characters in an encoded campaign journal segment digest.
+pub const CAMPAIGN_JOURNAL_DIGEST_HEX_LEN: usize =
+    CAMPAIGN_JOURNAL_DIGEST_BYTES * HEX_CHARS_PER_BYTE;
+const LOWER_HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+const HEX_RADIX: u32 = 16;
+const BITS_PER_NIBBLE: u32 = 4;
+const LOW_NIBBLE_MASK: u8 = 0x0f;
 
 const fn default_memory_pressure_duration_ticks() -> u64 {
     DEFAULT_MEMORY_PRESSURE_DURATION_TICKS
@@ -62,6 +72,71 @@ pub enum CheckpointError {
         bug_id: u64,
         replay_parent_depth: u32,
     },
+
+    #[snafu(display("campaign journal segment digest is malformed: {reason}"))]
+    InvalidCampaignJournalDigest { reason: &'static str },
+}
+
+/// Binds a checkpoint to the last committed settlement segment of the
+/// Campaign selection journal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignJournalBinding {
+    /// Journal epoch.
+    pub epoch: u32,
+    /// Sequence number of the last committed settlement segment.
+    pub segment_seq: u64,
+    /// Lowercase hex BLAKE3 digest of that segment (64 characters).
+    pub segment_digest: String,
+}
+
+impl CampaignJournalBinding {
+    /// Bind a segment by its raw BLAKE3 digest.
+    #[must_use]
+    pub fn new(epoch: u32, segment_seq: u64, digest: [u8; CAMPAIGN_JOURNAL_DIGEST_BYTES]) -> Self {
+        let mut segment_digest = String::with_capacity(CAMPAIGN_JOURNAL_DIGEST_HEX_LEN);
+        for byte in digest {
+            let high = usize::from(byte >> BITS_PER_NIBBLE);
+            let low = usize::from(byte & LOW_NIBBLE_MASK);
+            segment_digest.push(char::from(LOWER_HEX_DIGITS[high]));
+            segment_digest.push(char::from(LOWER_HEX_DIGITS[low]));
+        }
+        Self {
+            epoch,
+            segment_seq,
+            segment_digest,
+        }
+    }
+
+    /// Decode the segment digest; rejects anything but 64 lowercase hex characters.
+    pub fn digest_bytes(&self) -> Result<[u8; CAMPAIGN_JOURNAL_DIGEST_BYTES], CheckpointError> {
+        let encoded = self.segment_digest.as_bytes();
+        if encoded.len() != CAMPAIGN_JOURNAL_DIGEST_HEX_LEN {
+            return Err(CheckpointError::InvalidCampaignJournalDigest {
+                reason: "expected 64 lowercase hex characters",
+            });
+        }
+        let mut digest = [0_u8; CAMPAIGN_JOURNAL_DIGEST_BYTES];
+        let (pairs, _) = encoded.as_chunks::<HEX_CHARS_PER_BYTE>();
+        for (byte, &[high, low]) in digest.iter_mut().zip(pairs) {
+            *byte = (lower_hex_value(high)? << BITS_PER_NIBBLE) | lower_hex_value(low)?;
+        }
+        Ok(digest)
+    }
+}
+
+fn lower_hex_value(character: u8) -> Result<u8, CheckpointError> {
+    if character.is_ascii_uppercase() {
+        return Err(CheckpointError::InvalidCampaignJournalDigest {
+            reason: "uppercase hex is not canonical",
+        });
+    }
+    char::from(character)
+        .to_digit(HEX_RADIX)
+        .and_then(|value| u8::try_from(value).ok())
+        .ok_or(CheckpointError::InvalidCampaignJournalDigest {
+            reason: "non-hex character",
+        })
 }
 
 /// Configuration subset needed to resume exploration.
@@ -788,6 +863,10 @@ pub struct ExplorationCheckpoint {
     /// Materialized phase summary (if a scenario was used).
     #[serde(default)]
     pub scenario_summary: Option<chaoscontrol_fault::scenario::PhaseSummary>,
+    /// Campaign journal segment this checkpoint was committed against.
+    /// Omitted when absent so legacy checkpoints stay byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub campaign_journal: Option<CampaignJournalBinding>,
 }
 
 /// Save a checkpoint to a JSON file.
@@ -878,6 +957,9 @@ fn validate_checkpoint(checkpoint: &ExplorationCheckpoint) -> Result<(), Checkpo
         )?;
     }
     validate_bug_set(&checkpoint.bugs, checkpoint.assertion_report.as_ref())?;
+    if let Some(binding) = checkpoint.campaign_journal.as_ref() {
+        binding.digest_bytes()?;
+    }
     Ok(())
 }
 
@@ -1164,6 +1246,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: None,
             scenario_summary: None,
+            campaign_journal: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1216,6 +1299,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: None,
             scenario_summary: None,
+            campaign_journal: None,
         };
 
         save_checkpoint(&path, &checkpoint).unwrap();
@@ -1300,6 +1384,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: None,
             scenario_summary: None,
+            campaign_journal: None,
         };
 
         let json = serde_json::to_string(&checkpoint).unwrap();
@@ -1396,6 +1481,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: Some(sc_config),
             scenario_summary: Some(materialized.summary),
+            campaign_journal: None,
         };
 
         let json = serde_json::to_string_pretty(&checkpoint).unwrap();
@@ -1446,6 +1532,176 @@ mod tests {
         assert!(checkpoint.scenario.is_none());
         assert!(checkpoint.scenario_summary.is_none());
         assert!(checkpoint.config.scenario.is_none());
+    }
+
+    const FRONTIER_POLICY_KEY: &str = "frontier_policy";
+
+    fn checkpoint_config_json(checkpoint: &ExplorationCheckpoint) -> serde_json::Value {
+        let value = serde_json::to_value(checkpoint).expect("checkpoint JSON");
+        value["config"].clone()
+    }
+
+    // r[verify chaoscontrol.campaign_policy.progress.valid]
+    #[test]
+    fn legacy_checkpoint_omits_the_frontier_policy_key() {
+        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        assert_eq!(checkpoint.config.frontier_policy, FrontierPolicy::Legacy);
+
+        let config = checkpoint_config_json(&checkpoint);
+        assert!(config.get(FRONTIER_POLICY_KEY).is_none());
+    }
+
+    #[test]
+    fn checkpoint_without_frontier_policy_loads_as_legacy() {
+        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        let json = serde_json::to_string(&checkpoint).expect("checkpoint JSON");
+        assert!(!json.contains(FRONTIER_POLICY_KEY));
+
+        let loaded: ExplorationCheckpoint = serde_json::from_str(&json).expect("legacy load");
+        assert_eq!(loaded.config.frontier_policy, FrontierPolicy::Legacy);
+    }
+
+    #[test]
+    fn campaign_candidate_checkpoint_round_trips_with_the_policy_key() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.config.frontier_policy = FrontierPolicy::CampaignCandidate;
+
+        let config = checkpoint_config_json(&checkpoint);
+        assert_eq!(
+            config[FRONTIER_POLICY_KEY],
+            serde_json::json!(crate::explorer::CAMPAIGN_CANDIDATE_POLICY_NAME)
+        );
+
+        save_checkpoint(&path, &checkpoint).expect("save");
+        let loaded = load_checkpoint(&path).expect("load");
+        assert_eq!(
+            loaded.config.frontier_policy,
+            FrontierPolicy::CampaignCandidate
+        );
+    }
+
+    #[test]
+    fn checkpoint_with_unknown_frontier_policy_is_rejected() {
+        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        let mut value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        for unknown in ["bogus", "Legacy", "campaign_candidate", ""] {
+            value["config"][FRONTIER_POLICY_KEY] = serde_json::json!(unknown);
+            assert!(
+                serde_json::from_value::<ExplorationCheckpoint>(value.clone()).is_err(),
+                "policy {unknown:?} must be rejected"
+            );
+        }
+    }
+
+    const CAMPAIGN_JOURNAL_KEY: &str = "campaign_journal";
+    const TEST_JOURNAL_EPOCH: u32 = 3;
+    const TEST_JOURNAL_SEGMENT: u64 = 17;
+
+    fn test_journal_digest() -> [u8; CAMPAIGN_JOURNAL_DIGEST_BYTES] {
+        *blake3::hash(b"settlement segment").as_bytes()
+    }
+
+    #[test]
+    fn journal_binding_encodes_lowercase_hex_and_decodes_back() {
+        let digest = test_journal_digest();
+        let binding = CampaignJournalBinding::new(TEST_JOURNAL_EPOCH, TEST_JOURNAL_SEGMENT, digest);
+        assert_eq!(
+            binding.segment_digest,
+            blake3::Hash::from(digest).to_hex().as_str()
+        );
+        assert_eq!(binding.digest_bytes().expect("digest decodes"), digest);
+
+        let boundary = CampaignJournalBinding::new(0, 0, [0xff; CAMPAIGN_JOURNAL_DIGEST_BYTES]);
+        assert_eq!(
+            boundary.segment_digest,
+            "f".repeat(CAMPAIGN_JOURNAL_DIGEST_HEX_LEN)
+        );
+        assert_eq!(
+            boundary.digest_bytes().expect("boundary decodes"),
+            [0xff; CAMPAIGN_JOURNAL_DIGEST_BYTES]
+        );
+    }
+
+    #[test]
+    fn checkpoint_without_journal_binding_keeps_its_legacy_shape() {
+        let checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        let value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        assert!(value.get(CAMPAIGN_JOURNAL_KEY).is_none());
+        let loaded: ExplorationCheckpoint = serde_json::from_value(value).expect("legacy load");
+        assert!(loaded.campaign_journal.is_none());
+    }
+
+    #[test]
+    fn checkpoint_journal_binding_round_trips_through_save_and_load() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        let binding = CampaignJournalBinding::new(
+            TEST_JOURNAL_EPOCH,
+            TEST_JOURNAL_SEGMENT,
+            test_journal_digest(),
+        );
+        checkpoint.campaign_journal = Some(binding.clone());
+
+        save_checkpoint(&path, &checkpoint).expect("save");
+        let loaded = load_checkpoint(&path).expect("load");
+        assert_eq!(loaded.campaign_journal, Some(binding));
+    }
+
+    #[test]
+    fn checkpoint_with_malformed_journal_digest_is_rejected() {
+        let valid = CampaignJournalBinding::new(
+            TEST_JOURNAL_EPOCH,
+            TEST_JOURNAL_SEGMENT,
+            test_journal_digest(),
+        )
+        .segment_digest;
+        let malformed = [
+            valid.to_ascii_uppercase(),
+            valid[..CAMPAIGN_JOURNAL_DIGEST_HEX_LEN - 1].to_string(),
+            format!("{valid}0"),
+            format!("{}g", &valid[..CAMPAIGN_JOURNAL_DIGEST_HEX_LEN - 1]),
+            String::new(),
+        ];
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("checkpoint.json");
+        for digest in malformed {
+            let binding = CampaignJournalBinding {
+                epoch: TEST_JOURNAL_EPOCH,
+                segment_seq: TEST_JOURNAL_SEGMENT,
+                segment_digest: digest.clone(),
+            };
+            assert!(
+                matches!(
+                    binding.digest_bytes(),
+                    Err(CheckpointError::InvalidCampaignJournalDigest { .. })
+                ),
+                "digest {digest:?} must be rejected"
+            );
+            let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+            checkpoint.campaign_journal = Some(binding);
+            assert!(save_checkpoint(&path, &checkpoint).is_err());
+            write_untrusted_checkpoint(&path, &checkpoint);
+            assert!(matches!(
+                load_checkpoint(&path),
+                Err(CheckpointError::InvalidCampaignJournalDigest { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn checkpoint_journal_binding_rejects_unknown_fields() {
+        let mut checkpoint = minimal_checkpoint_with_bugs(Vec::new());
+        checkpoint.campaign_journal = Some(CampaignJournalBinding::new(
+            TEST_JOURNAL_EPOCH,
+            TEST_JOURNAL_SEGMENT,
+            test_journal_digest(),
+        ));
+        let mut value = serde_json::to_value(&checkpoint).expect("checkpoint JSON");
+        value[CAMPAIGN_JOURNAL_KEY]["unreviewed"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<ExplorationCheckpoint>(value).is_err());
     }
 
     fn minimal_checkpoint_with_bugs(mut bugs: Vec<SerializableBug>) -> ExplorationCheckpoint {
@@ -1522,6 +1778,7 @@ mod tests {
             seen_dedup_keys: None,
             scenario: None,
             scenario_summary: None,
+            campaign_journal: None,
         }
     }
 

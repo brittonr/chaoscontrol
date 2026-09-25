@@ -2172,6 +2172,7 @@ impl Explorer {
             seen_dedup_keys: Some(self.seen_dedup_keys.iter().copied().collect()),
             scenario: self.config.scenario.clone(),
             scenario_summary: self.scenario_summary.clone(),
+            campaign_journal: None,
         })
     }
 

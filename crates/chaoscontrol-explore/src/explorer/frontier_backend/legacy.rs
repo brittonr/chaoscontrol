@@ -10,15 +10,20 @@
 use super::{
     Authorization, AuthorizedDetail, AuthorizedRound, FrontierBackend, FrontierError, PlanDetail,
     PlannedRound, RetainedEntry, RootAdmission, RoundBegin, RoundContext, RoundDraws,
-    RoundObservation, SelectedEntry, Settlement,
+    RoundObservation, SelectedEntry, SelectionUse, SelectionWork, Settlement,
 };
-use crate::campaign_adapter::{legacy_explores, ProductStop};
+use crate::campaign_adapter::{legacy_explores, LegacyDraws, ProductStop};
 use crate::coverage::CoverageBitmap;
 use crate::frontier::{draw_selection, Frontier, FrontierEntry};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
-use rand_chacha::ChaCha8Rng;
+use rand::RngCore;
 use std::collections::BTreeSet;
+
+/// Selection-budget units one legacy selection consumes (one round).
+const LEGACY_SELECTION_BUDGET_UNITS: u64 = 1;
+/// Entries the explore branch reads: the one at the drawn index.
+const EXPLORE_ENTRIES_READ: u64 = 1;
 
 /// Shared product state of the proposals of one retained branch.
 struct PushSource<'a> {
@@ -34,6 +39,8 @@ pub(crate) struct LegacyFrontier {
     frontier: Frontier,
     /// Sequence number the next push receives (mirrors the frontier's id counter).
     next_seq: u64,
+    /// Selections made so far.
+    selections: u64,
 }
 
 impl LegacyFrontier {
@@ -42,6 +49,7 @@ impl LegacyFrontier {
         Self {
             frontier: Frontier::new(max_frontier),
             next_seq: 0,
+            selections: 0,
         }
     }
 
@@ -105,10 +113,14 @@ impl FrontierBackend for LegacyFrontier {
 
     fn begin_round(
         &mut self,
-        rng: &mut ChaCha8Rng,
+        rng: &mut dyn RngCore,
         context: RoundContext,
     ) -> Result<RoundBegin, FrontierError> {
         let draws = draw_selection(rng, self.frontier.len());
+        let work = match draws {
+            None => SelectionWork::default(),
+            Some(draws) => selection_work(draws, self.frontier.len())?,
+        };
         let index = match draws {
             None => None,
             Some(draws) => Some(
@@ -120,6 +132,7 @@ impl FrontierBackend for LegacyFrontier {
         Ok(RoundBegin::Planned(PlannedRound {
             context,
             draws: RoundDraws { draws },
+            work,
             plan: PlanDetail::Legacy { index },
         }))
     }
@@ -139,6 +152,10 @@ impl FrontierBackend for LegacyFrontier {
                     .frontier
                     .select_index(index)
                     .ok_or(FrontierError::UnknownCandidate)?;
+                self.selections = self
+                    .selections
+                    .checked_add(1)
+                    .ok_or(FrontierError::BoundOverflow)?;
                 Some(SelectedEntry {
                     seq: entry.id,
                     snapshot: entry.snapshot.clone(),
@@ -151,6 +168,7 @@ impl FrontierBackend for LegacyFrontier {
         Ok(Authorization::Execute(Box::new(AuthorizedRound::new(
             planned.context,
             planned.draws,
+            planned.work,
             selected,
             AuthorizedDetail::Legacy,
         ))))
@@ -209,4 +227,28 @@ impl FrontierBackend for LegacyFrontier {
     fn len(&self) -> usize {
         self.frontier.len()
     }
+
+    fn selection_use(&self) -> SelectionUse {
+        SelectionUse {
+            selections: self.selections,
+            budget_units: self
+                .selections
+                .saturating_mul(LEGACY_SELECTION_BUDGET_UNITS),
+        }
+    }
+}
+
+/// Work of one legacy selection: the exploit branch computes the effective
+/// score of every entry; the explore branch reads the entry at the drawn index.
+fn selection_work(draws: LegacyDraws, len: usize) -> Result<SelectionWork, FrontierError> {
+    let eligible = u64::try_from(len).map_err(|_| FrontierError::BoundOverflow)?;
+    let examined = if legacy_explores(draws.unit) {
+        EXPLORE_ENTRIES_READ.min(eligible)
+    } else {
+        eligible
+    };
+    Ok(SelectionWork {
+        candidates_examined: examined,
+        eligible_candidates: eligible,
+    })
 }

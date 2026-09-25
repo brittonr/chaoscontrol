@@ -33,10 +33,12 @@ mod frontier_backend;
 mod frontier_policy;
 pub mod journal;
 mod journal_authority;
+mod round_stops;
 
 use frontier_backend::digests::{
     base_set_id, coverage_digest, oracle_digest, schedule_digest, variant_digest,
 };
+pub use frontier_backend::parity;
 use frontier_backend::trace::{FrontierTrace, TraceJournal, TraceRecord};
 use frontier_backend::{
     exploration_stop, product_stop, Authorization, AuthorizedRound, BranchDigests, BranchOutcome,
@@ -689,16 +691,15 @@ impl Explorer {
             }
 
             // Track stale rounds (no new edges, no new bugs).
-            if round_report.new_coverage_edges == 0 && round_report.bugs_found == 0 {
-                self.consecutive_stale_rounds += 1;
-            } else {
-                self.consecutive_stale_rounds = 0;
-            }
+            self.consecutive_stale_rounds = round_stops::next_stale_rounds(
+                self.consecutive_stale_rounds,
+                round_report.new_coverage_edges,
+                round_report.bugs_found,
+            );
 
-            // Check for stopping conditions
-            if self.frontier.is_empty() {
-                // Legacy tries recycling from corpus before giving up. The
-                // Campaign policy never recycles: roots exist only at admission.
+            // Legacy tries recycling from corpus before giving up. The
+            // Campaign policy never recycles: roots exist only at admission.
+            let frontier_exhausted = if self.frontier.is_empty() {
                 let recycled = if matches!(self.frontier, ExplorerFrontier::Legacy(_)) {
                     self.recycle_frontier_from_corpus()
                 } else {
@@ -709,41 +710,44 @@ impl Explorer {
                         "Frontier exhausted — recycled {} entries from corpus",
                         recycled
                     );
-                } else {
-                    info!("Frontier exhausted and corpus empty, stopping");
-                    self.conclude(ExplorationStop::FrontierExhausted)?;
-                    break;
                 }
-            }
+                recycled == 0
+            } else {
+                false
+            };
 
-            if self.config.stale_round_limit > 0
-                && self.consecutive_stale_rounds >= self.config.stale_round_limit
-            {
-                info!(
-                    "Coverage plateau: {} consecutive rounds with no new edges or bugs, stopping",
-                    self.consecutive_stale_rounds
-                );
-                self.conclude(ExplorationStop::CoveragePlateau)?;
-                break;
-            }
-
-            // Optionally stop if we found bugs (for testing)
-            if round_report.bugs_found > 0 && self.config.max_rounds < 10 {
-                info!("Bug found in short run, stopping");
-                self.conclude(ExplorationStop::BugFound)?;
-                break;
-            }
-
-            // Check for graceful shutdown (Ctrl-C / SIGTERM).
-            if crate::signal::shutdown_requested() {
-                info!("Shutdown requested, stopping after round {}", round + 1);
-                self.conclude(ExplorationStop::Interrupted)?;
+            // Check for stopping conditions, in legacy order.
+            let stop = round_stops::post_round_stop(round_stops::PostRoundFacts {
+                frontier_exhausted,
+                consecutive_stale_rounds: self.consecutive_stale_rounds,
+                stale_round_limit: self.config.stale_round_limit,
+                round_findings: round_report.bugs_found,
+                max_rounds: self.config.max_rounds,
+                // Graceful shutdown (Ctrl-C / SIGTERM).
+                shutdown_requested: crate::signal::shutdown_requested(),
+            });
+            if let Some(stop) = stop {
+                match stop {
+                    ExplorationStop::FrontierExhausted => {
+                        info!("Frontier exhausted and corpus empty, stopping");
+                    }
+                    ExplorationStop::CoveragePlateau => info!(
+                        "Coverage plateau: {} consecutive rounds with no new edges or bugs, stopping",
+                        self.consecutive_stale_rounds
+                    ),
+                    ExplorationStop::BugFound => info!("Bug found in short run, stopping"),
+                    ExplorationStop::Interrupted => {
+                        info!("Shutdown requested, stopping after round {}", round + 1);
+                    }
+                    ExplorationStop::Completed => {}
+                }
+                self.conclude(stop)?;
                 break;
             }
         }
 
         // Emit Finished if we completed all rounds (no early break).
-        if self.rounds_completed >= self.config.max_rounds {
+        if round_stops::completed_every_round(self.rounds_completed, self.config.max_rounds) {
             self.conclude(ExplorationStop::Completed)?;
         }
 
@@ -806,6 +810,7 @@ impl Explorer {
             Some(_) => self.entry_proposals(&initial_result, 0),
             None => Vec::new(),
         };
+        let trace_proposals = frontier_backend::trace::trace_proposals(&proposals);
         let digests = self.branch_digests(&initial_result, &initial_schedule)?;
         let base_lengths: Vec<usize> = self.memory_bases.iter().map(|base| base.len()).collect();
         let base_set_id = match &digests {
@@ -827,7 +832,10 @@ impl Explorer {
         };
         self.frontier.backend()?.admit_root(root)?;
         let retained = self.frontier.backend()?.retained();
-        self.write_trace(&TraceRecord::Root { retained })
+        self.write_trace(&TraceRecord::Root {
+            proposals: trace_proposals,
+            retained,
+        })
     }
 
     /// Product digests a Campaign moment binds; `None` under the legacy policy.
@@ -882,12 +890,7 @@ impl Explorer {
     /// One round: begin (draws + plan), authorize (publication fence), execute
     /// (product effects), finish (settlement).
     fn run_round(&mut self, round: u64) -> Result<RoundRun, ExploreError> {
-        let mode = match self.config.exploration_mode {
-            ExplorationMode::FaultSchedule => RoundMode::FaultSchedule,
-            ExplorationMode::InputTree => RoundMode::InputTree,
-            ExplorationMode::Hybrid if round.is_multiple_of(2) => RoundMode::FaultSchedule,
-            ExplorationMode::Hybrid => RoundMode::InputTree,
-        };
+        let mode = RoundMode::for_round(self.config.exploration_mode, round);
         let context = RoundContext { round, mode };
         let planned = match self
             .frontier
@@ -922,6 +925,7 @@ impl Explorer {
         };
         let context = authorized.context();
         let draws = authorized.draws();
+        let work = authorized.work();
         let selected = authorized.selected().cloned();
         let settlement = self
             .frontier
@@ -932,6 +936,7 @@ impl Explorer {
         self.write_trace(&TraceRecord::executed(
             context,
             draws,
+            work,
             selected.as_ref(),
             &observation,
             &settlement,

@@ -4,8 +4,8 @@ use rand_chacha::ChaCha8Rng;
 
 use super::{config, explore, Session, EXPLOIT, SEED};
 use crate::campaign_adapter::{
-    entropy_ticket, legacy_explores, AdapterError, AdapterIdentity, EntropyDraws, LegacyDraws,
-    RoundDecision, EXPLORATION_THRESHOLD_PARTS_PER_MILLION,
+    entropy_ticket, legacy_explores, ticket_explores, AdapterError, AdapterIdentity, EntropyDraws,
+    LegacyDraws, RoundDecision, EXPLORATION_THRESHOLD_PARTS_PER_MILLION,
 };
 
 /// `2^53`: rand 0.8 unit draws are `k * 2^-53`.
@@ -86,6 +86,39 @@ fn ticket_bytes_carry_both_draws_little_endian() {
     assert_eq!(ticket.explore_draw(), draws.explore_draw);
     assert_eq!(ticket.index_draw(), draws.index_draw);
     assert_eq!(ticket.source_id, identity.entropy_source_id);
+}
+
+#[test]
+fn the_ticket_decides_campaigns_explore_branch() {
+    let identity = AdapterIdentity::for_seed(SEED);
+    let session = Session::open(&config());
+    let mode = &session.profile.selection_profile.mode;
+    let ticket = |explore_draw| {
+        entropy_ticket(
+            &identity,
+            session.campaign_id(),
+            session.state.state_id,
+            session.profile.selection_profile.profile_id,
+            1,
+            EntropyDraws {
+                explore_draw,
+                index_draw: 0,
+            },
+        )
+        .unwrap()
+    };
+    let below = ticket(EXPLORATION_THRESHOLD_PARTS_PER_MILLION - 1);
+    let at = ticket(EXPLORATION_THRESHOLD_PARTS_PER_MILLION);
+    assert_eq!(ticket_explores(mode, Some(&below)), Ok(true));
+    assert_eq!(ticket_explores(mode, Some(&at)), Ok(false));
+    assert_eq!(
+        ticket_explores(mode, None),
+        Err(AdapterError::MissingEntropyTicket)
+    );
+    assert_eq!(
+        ticket_explores(&campaign_core::SelectionMode::Ranked, Some(&below)),
+        Ok(false)
+    );
 }
 
 // r[verify chaoscontrol.campaign_policy.entropy.invalid]

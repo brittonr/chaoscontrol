@@ -35,7 +35,7 @@ pub struct FrontierEntry {
 /// Draws nothing for an empty frontier; otherwise draws `u = gen::<f64>()` and,
 /// only when `u` explores, `gen_range(0..len)`. Both frontier policies draw through
 /// this function, so their `Explorer` RNG positions stay equal.
-pub fn draw_selection(rng: &mut impl Rng, len: usize) -> Option<LegacyDraws> {
+pub fn draw_selection<R: Rng + ?Sized>(rng: &mut R, len: usize) -> Option<LegacyDraws> {
     if len == 0 {
         return None;
     }

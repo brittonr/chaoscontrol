@@ -2,15 +2,16 @@
 //! both frontier policies so a later parity check can replay each run's
 //! recorded observations through the other policy.
 //!
-//! Records: `header` (policy, seed, bounds, journal epoch and recovery facts),
-//! `root` (retained entries after the bootstrap root), one `round` per round
-//! (recorded draws, selected entry and explore flag, branch facts with score
-//! bits, admitted and pruned entries, retained set with selection counts), and
-//! `stop`. The trace is a product decision log, not evidence of VM behavior.
+//! Records: `header` (policy, seed, bounds, stale-round limit, journal epoch and
+//! recovery facts), `root` (bootstrap proposals and the retained entries after
+//! them), one `round` per round (recorded draws, selected entry and explore
+//! flag, the selection's planning work, branch facts with score bits, admitted
+//! and pruned entries, retained set with selection counts), and `stop`. The
+//! trace is a product decision log, not evidence of VM behavior.
 
 use super::{
-    RetainedEntry, RoundContext, RoundDraws, RoundObservation, SelectedEntry, Settlement,
-    SkippedRound,
+    EntryProposal, RetainedEntry, RoundContext, RoundDraws, RoundObservation, SelectedEntry,
+    SelectionWork, Settlement, SkippedRound,
 };
 use crate::campaign_adapter::BranchSlot;
 use crate::explorer::{ExplorationMode, ExplorationStop, ExplorerConfig, FrontierPolicy};
@@ -99,6 +100,8 @@ pub(crate) struct TraceRound {
     pub(crate) draws: Option<TraceDraws>,
     /// Selected entry (`None` for the legacy clean-slate round).
     pub(crate) selection: Option<TraceSelection>,
+    /// Planning work of the selection (`None` when nothing was drawn).
+    pub(crate) work: Option<SelectionWork>,
     /// Executed branches.
     pub(crate) branches: Vec<TraceBranch>,
     /// Sequence numbers admitted.
@@ -127,13 +130,17 @@ pub(crate) enum TraceRecord {
         max_frontier: usize,
         /// Branches per round.
         branch_factor: usize,
+        /// Consecutive stale rounds that stop the run (0 disables the stop).
+        stale_round_limit: u64,
         /// Exploration mode.
         mode: String,
         /// Campaign journal facts (`None` for the legacy policy).
         journal: Option<TraceJournal>,
     },
-    /// Retained entries after the root admission.
+    /// Bootstrap proposals and the retained entries after the root admission.
     Root {
+        /// Root proposals in push order.
+        proposals: Vec<TraceProposal>,
         /// Retained entries.
         retained: Vec<RetainedEntry>,
     },
@@ -175,6 +182,7 @@ impl TraceRecord {
             max_rounds: config.max_rounds,
             max_frontier: config.max_frontier,
             branch_factor: config.branch_factor,
+            stale_round_limit: config.stale_round_limit,
             mode: mode_name(config.exploration_mode).to_owned(),
             journal,
         }
@@ -184,6 +192,7 @@ impl TraceRecord {
     pub(crate) fn executed(
         context: RoundContext,
         draws: RoundDraws,
+        work: SelectionWork,
         selected: Option<&SelectedEntry>,
         observation: &RoundObservation,
         settlement: &Settlement,
@@ -199,13 +208,8 @@ impl TraceRecord {
                 new_bugs: branch.findings.len(),
                 proposals: branch
                     .retained
-                    .iter()
-                    .flat_map(|retained| retained.proposals.iter())
-                    .map(|proposal| TraceProposal {
-                        score_bits: proposal.score.to_bits(),
-                        marker: proposal.marker.is_some(),
-                    })
-                    .collect(),
+                    .as_ref()
+                    .map_or_else(Vec::new, |retained| trace_proposals(&retained.proposals)),
             })
             .collect();
         Self::Round(TraceRound {
@@ -217,6 +221,7 @@ impl TraceRecord {
                 seq: selected.seq,
                 explore: selected.explored,
             }),
+            work: draws.draws.map(|_| work),
             branches,
             admitted: settlement.admitted.clone(),
             pruned: settlement.pruned.clone(),
@@ -226,10 +231,6 @@ impl TraceRecord {
 
     /// A published round closed without execution.
     pub(crate) fn skipped(skipped: &SkippedRound, retained: Vec<RetainedEntry>) -> Self {
-        let explore = skipped
-            .draws
-            .draws
-            .is_some_and(|draws| crate::campaign_adapter::legacy_explores(draws.unit));
         Self::Round(TraceRound {
             round: skipped.context.round,
             mode: skipped.context.mode.as_str().to_owned(),
@@ -237,8 +238,9 @@ impl TraceRecord {
             draws: trace_draws(skipped.draws),
             selection: Some(TraceSelection {
                 seq: skipped.seq,
-                explore,
+                explore: skipped.explored,
             }),
+            work: Some(skipped.work),
             branches: Vec::new(),
             admitted: Vec::new(),
             pruned: Vec::new(),
@@ -247,7 +249,18 @@ impl TraceRecord {
     }
 }
 
-fn trace_draws(draws: RoundDraws) -> Option<TraceDraws> {
+/// Trace form of frontier-entry proposals, in push order.
+pub(crate) fn trace_proposals(proposals: &[EntryProposal]) -> Vec<TraceProposal> {
+    proposals
+        .iter()
+        .map(|proposal| TraceProposal {
+            score_bits: proposal.score.to_bits(),
+            marker: proposal.marker.is_some(),
+        })
+        .collect()
+}
+
+pub(crate) fn trace_draws(draws: RoundDraws) -> Option<TraceDraws> {
     draws.draws.map(|draws| TraceDraws {
         unit_bits: draws.unit.to_bits(),
         index: draws.index.and_then(|index| u64::try_from(index).ok()),
@@ -283,11 +296,36 @@ impl FrontierTrace {
     }
 }
 
-/// Parses every line of a trace.
-#[cfg(test)]
-pub(crate) fn read_trace(path: &Path) -> io::Result<Vec<TraceRecord>> {
-    let text = std::fs::read_to_string(path)?;
+/// A trace line that is not one schema record.
+#[derive(Debug)]
+pub struct TraceParseError {
+    /// One-based line number.
+    pub line: usize,
+    /// Decoder failure.
+    pub source: serde_json::Error,
+}
+
+impl std::fmt::Display for TraceParseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "frontier trace line {}: {}",
+            self.line, self.source
+        )
+    }
+}
+
+impl std::error::Error for TraceParseError {}
+
+/// Parses every line of a trace; rejects unknown fields and record kinds.
+pub(crate) fn parse_trace(text: &str) -> Result<Vec<TraceRecord>, TraceParseError> {
     text.lines()
-        .map(|line| serde_json::from_str(line).map_err(io::Error::other))
+        .enumerate()
+        .map(|(index, line)| {
+            serde_json::from_str(line).map_err(|source| TraceParseError {
+                line: index.saturating_add(1),
+                source,
+            })
+        })
         .collect()
 }

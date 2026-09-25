@@ -30,6 +30,7 @@ use super::records::{
 use super::session::{history_limits, ControlSession};
 use super::{
     FrontierBackend, FrontierError, RetainedEntry, RootAdmission, RoundBegin, RoundContext,
+    SelectionUse,
 };
 use crate::campaign_adapter::{
     admit_config, admit_root_moment, campaign_admission, candidate_record, encode_control_event,
@@ -49,7 +50,7 @@ use campaign_choregraph::HistoryGraph;
 use campaign_core::{CampaignControlEvent, CandidateStatus, Id, StopReason};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
-use rand_chacha::ChaCha8Rng;
+use rand::RngCore;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -605,7 +606,7 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
 
     fn begin_round(
         &mut self,
-        rng: &mut ChaCha8Rng,
+        rng: &mut dyn RngCore,
         context: RoundContext,
     ) -> Result<RoundBegin, FrontierError> {
         self.begin(rng, context)
@@ -656,5 +657,22 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
 
     fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// Campaign's own counters: published selections and reserved budget.
+    fn selection_use(&self) -> SelectionUse {
+        let Some(session) = self.session.as_ref() else {
+            return SelectionUse::default();
+        };
+        let state = session.state();
+        SelectionUse {
+            selections: state.selection_count,
+            budget_units: state
+                .reserved_resources
+                .iter()
+                .filter(|reserved| reserved.dimension_id == self.identity.resource_dimension_id)
+                .map(|reserved| reserved.amount)
+                .fold(0, u64::saturating_add),
+        }
     }
 }

@@ -100,6 +100,27 @@ fn unit_draw_bits(unit: f64) -> Result<u64, AdapterError> {
     Ok(k)
 }
 
+/// Whether Campaign's exploratory selection takes the explore branch for one
+/// request: the ticket's explore draw is below the mode's threshold. Ranked
+/// selection never explores.
+///
+/// # Errors
+/// Returns `MissingEntropyTicket` for an exploratory request without a ticket.
+pub fn ticket_explores(
+    mode: &SelectionMode,
+    ticket: Option<&EntropyTicket>,
+) -> Result<bool, AdapterError> {
+    match mode {
+        SelectionMode::Ranked => Ok(false),
+        SelectionMode::Exploratory {
+            threshold_parts_per_million,
+            ..
+        } => ticket
+            .map(|ticket| ticket.explore_draw() < *threshold_parts_per_million)
+            .ok_or(AdapterError::MissingEntropyTicket),
+    }
+}
+
 /// Explicit exploratory selection mode bound to the seed's entropy source.
 #[must_use]
 pub fn selection_mode(identity: &AdapterIdentity) -> SelectionMode {

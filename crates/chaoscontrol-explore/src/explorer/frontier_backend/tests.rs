@@ -7,7 +7,7 @@
 
 use super::campaign::CheckpointBinding;
 use super::records::ReplayFailure;
-use super::trace::{read_trace, FrontierTrace, TraceJournal, TraceRecord};
+use super::trace::TraceRecord;
 use super::*;
 use crate::campaign_adapter::{AdapterIdentity, AdapterReason, BranchSlot, DegenerateConfig};
 use crate::checkpoint::CampaignJournalBinding;
@@ -18,6 +18,7 @@ use crate::explorer::journal::{
 use crate::explorer::{ExplorationMode, ExplorerConfig, FrontierPolicy};
 use campaign_core::{CandidateStatus, StopReason, WaitReason};
 use rand::{RngCore, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 use std::cell::RefCell;
 use std::io;
 use std::path::Path;
@@ -117,18 +118,6 @@ fn observation(depth: u32, branches: &[BranchScript]) -> RoundObservation {
                 }),
             })
             .collect(),
-    }
-}
-
-/// Deterministic round script with ties, zeros, and pruning pressure.
-fn round_script(round: u64) -> Vec<BranchScript> {
-    const SCORES: [f64; 7] = [3.0, 7.5, 7.5, 0.0, 12.25, 3.0, 9.0];
-    let pick = |offset: u64| SCORES[usize::try_from((round * 3 + offset) % 7).unwrap()];
-    match round % 4 {
-        0 => vec![Some(vec![pick(0)]), None],
-        1 => vec![Some(vec![pick(1), pick(2)]), Some(vec![pick(3)])],
-        2 => vec![None, None],
-        _ => vec![Some(vec![pick(4)]), Some(vec![pick(5)])],
     }
 }
 
@@ -758,146 +747,7 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
 }
 
 // ---------------------------------------------------------------------------
-// Parity and trace for both policies.
-
-/// Decision facts of one round, compared across policies.
-#[derive(Debug, PartialEq)]
-struct RoundFacts {
-    selected: Option<(u64, bool)>,
-    admitted: Vec<u64>,
-    pruned: Vec<u64>,
-    retained: Vec<RetainedEntry>,
-    rng_position: u64,
-}
-
-fn drive(
-    frontier: &mut dyn FrontierBackend,
-    config: &ExplorerConfig,
-    trace_dir: &Path,
-    journal: Option<TraceJournal>,
-) -> Vec<RoundFacts> {
-    let mut trace = FrontierTrace::open(trace_dir).unwrap();
-    trace.write(&TraceRecord::header(config, journal)).unwrap();
-    frontier.admit_root(root(Some(dummy_snapshot()))).unwrap();
-    trace
-        .write(&TraceRecord::Root {
-            retained: frontier.retained(),
-        })
-        .unwrap();
-    let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
-    let mut facts = Vec::new();
-    for round in 0..config.max_rounds {
-        let plan = planned(frontier, &mut rng, round);
-        let authorized = executable(frontier.authorize(plan).unwrap());
-        let depth = authorized.selected().map_or(0, |selected| selected.depth) + 1;
-        let observed = observation(depth, &round_script(round));
-        let selected = authorized.selected().cloned();
-        let draws = authorized.draws();
-        let settlement = frontier.finish_round(authorized, &observed).unwrap();
-        let retained = frontier.retained();
-        trace
-            .write(&TraceRecord::executed(
-                context(round),
-                draws,
-                selected.as_ref(),
-                &observed,
-                &settlement,
-                retained.clone(),
-            ))
-            .unwrap();
-        facts.push(RoundFacts {
-            selected: selected.map(|selected| (selected.seq, selected.explored)),
-            admitted: settlement.admitted,
-            pruned: settlement.pruned,
-            retained,
-            rng_position: rng.clone().next_u64(),
-        });
-    }
-    frontier
-        .record_stop(product_stop(ExplorationStop::Completed))
-        .unwrap();
-    trace
-        .finish(&TraceRecord::Stop {
-            stop: ExplorationStop::Completed,
-            rounds_completed: config.max_rounds,
-        })
-        .unwrap();
-    facts
-}
-
-// r[verify chaoscontrol.campaign_policy.frontier_parity.valid]
-// r[verify chaoscontrol.campaign_policy.ranks.valid]
-// r[verify chaoscontrol.campaign_policy.entropy.valid]
-// r[verify chaoscontrol.campaign_policy.product_authority.valid]
-// r[verify chaoscontrol.campaign_policy.observations.valid]
-#[test]
-fn both_policies_select_prune_and_trace_identically() {
-    let legacy_dir = tempfile::tempdir().unwrap();
-    let campaign_dir = tempfile::tempdir().unwrap();
-    let legacy_config = config(FrontierPolicy::Legacy, legacy_dir.path());
-    let campaign_config = config(FrontierPolicy::CampaignCandidate, campaign_dir.path());
-    let mut legacy = LegacyFrontier::new(MAX_FRONTIER);
-    let legacy_facts = drive(&mut legacy, &legacy_config, legacy_dir.path(), None);
-    let mut campaign = CampaignFrontier::open_with_io(
-        &campaign_config,
-        campaign_dir.path(),
-        None,
-        ScriptedIo::default(),
-    )
-    .unwrap();
-    let journal = TraceJournal {
-        epoch: campaign.epoch(),
-        recovered_epochs: 0,
-        closed_selections: 0,
-    };
-    let campaign_facts = drive(
-        &mut campaign,
-        &campaign_config,
-        campaign_dir.path(),
-        Some(journal),
-    );
-    assert_eq!(legacy_facts, campaign_facts);
-    assert!(
-        legacy_facts
-            .iter()
-            .any(|round| round.selected.is_some_and(|(_, explore)| explore)),
-        "the seed exercises the explore branch"
-    );
-    assert!(
-        legacy_facts.iter().any(|round| !round.pruned.is_empty()),
-        "the script exercises pruning"
-    );
-    assert!(legacy_facts
-        .iter()
-        .all(|round| round.retained.len() <= MAX_FRONTIER));
-
-    let legacy_trace = read_trace(&legacy_dir.path().join(trace::TRACE_FILE_NAME)).unwrap();
-    let campaign_trace = read_trace(&campaign_dir.path().join(trace::TRACE_FILE_NAME)).unwrap();
-    assert_eq!(legacy_trace.len(), 2 + usize::try_from(ROUNDS).unwrap() + 1);
-    assert_eq!(legacy_trace.len(), campaign_trace.len());
-    match (&legacy_trace[0], &campaign_trace[0]) {
-        (
-            TraceRecord::Header {
-                policy: FrontierPolicy::Legacy,
-                journal: None,
-                ..
-            },
-            TraceRecord::Header {
-                policy: FrontierPolicy::CampaignCandidate,
-                journal: Some(_),
-                ..
-            },
-        ) => {}
-        other => panic!("unexpected headers {other:?}"),
-    }
-    assert_eq!(legacy_trace[1..], campaign_trace[1..]);
-    // The Campaign run's journal holds genesis, 2 segments per round, and a stop.
-    assert_eq!(
-        segment_count(campaign_dir.path(), 0),
-        1 + 2 * usize::try_from(ROUNDS).unwrap() + 1
-    );
-    assert!(!legacy_dir.path().join(JOURNAL_DIRECTORY_NAME).exists());
-}
+// Trace schema. Legacy-versus-Campaign parity lives in `parity::tests`.
 
 #[test]
 fn a_campaign_trace_round_trips_through_its_schema() {

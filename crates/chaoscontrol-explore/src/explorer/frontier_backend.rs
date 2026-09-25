@@ -21,6 +21,7 @@
 pub(crate) mod campaign;
 pub(crate) mod digests;
 pub(crate) mod legacy;
+pub mod parity;
 mod records;
 mod session;
 #[cfg(test)]
@@ -34,7 +35,7 @@ use crate::explorer::ExplorationStop;
 use crate::marker_branching::MarkerFrontierMetadata;
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::SimulationSnapshot;
-use rand_chacha::ChaCha8Rng;
+use rand::RngCore;
 
 pub(crate) use campaign::{CampaignFrontier, CheckpointBinding};
 pub(crate) use legacy::LegacyFrontier;
@@ -55,6 +56,28 @@ impl RoundMode {
         match self {
             Self::FaultSchedule => "fault-schedule",
             Self::InputTree => "input-tree",
+        }
+    }
+
+    /// Sub-mode of loop round `round` under `mode`: hybrid runs fault-schedule
+    /// rounds at even indices and input-tree rounds at odd ones.
+    pub(crate) const fn for_round(mode: crate::explorer::ExplorationMode, round: u64) -> Self {
+        match mode {
+            crate::explorer::ExplorationMode::FaultSchedule => Self::FaultSchedule,
+            crate::explorer::ExplorationMode::InputTree => Self::InputTree,
+            crate::explorer::ExplorationMode::Hybrid if round.is_multiple_of(2) => {
+                Self::FaultSchedule
+            }
+            crate::explorer::ExplorationMode::Hybrid => Self::InputTree,
+        }
+    }
+
+    /// Parses a stable trace name.
+    pub(crate) fn from_trace_name(name: &str) -> Option<Self> {
+        match name {
+            "fault-schedule" => Some(Self::FaultSchedule),
+            "input-tree" => Some(Self::InputTree),
+            _ => None,
         }
     }
 }
@@ -165,6 +188,28 @@ pub(crate) struct RoundDraws {
     pub(crate) draws: Option<LegacyDraws>,
 }
 
+/// Semantic planning work of one selection, measured by the backend that
+/// planned it. Reported beside decision fields, never folded into them: equal
+/// decisions do not imply equal work.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SelectionWork {
+    /// Candidate records the planner inspected.
+    pub(crate) candidates_examined: u64,
+    /// Candidates eligible for the selection.
+    pub(crate) eligible_candidates: u64,
+}
+
+/// Selections and selection budget one backend has consumed so far.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SelectionUse {
+    /// Selections made (legacy) or published (Campaign).
+    pub(crate) selections: u64,
+    /// Selection-budget units consumed (legacy) or reserved (Campaign).
+    pub(crate) budget_units: u64,
+}
+
 /// Outcome of [`FrontierBackend::begin_round`].
 pub(crate) enum RoundBegin {
     /// A selection is planned and awaits authorization.
@@ -177,6 +222,7 @@ pub(crate) enum RoundBegin {
 pub(crate) struct PlannedRound {
     pub(super) context: RoundContext,
     pub(super) draws: RoundDraws,
+    pub(super) work: SelectionWork,
     pub(super) plan: PlanDetail,
 }
 
@@ -216,6 +262,7 @@ pub(crate) struct SelectedEntry {
 pub(crate) struct AuthorizedRound {
     context: RoundContext,
     draws: RoundDraws,
+    work: SelectionWork,
     selected: Option<SelectedEntry>,
     detail: AuthorizedDetail,
 }
@@ -232,12 +279,14 @@ impl AuthorizedRound {
     pub(super) const fn new(
         context: RoundContext,
         draws: RoundDraws,
+        work: SelectionWork,
         selected: Option<SelectedEntry>,
         detail: AuthorizedDetail,
     ) -> Self {
         Self {
             context,
             draws,
+            work,
             selected,
             detail,
         }
@@ -251,6 +300,11 @@ impl AuthorizedRound {
     /// Recorded selection draws.
     pub(crate) const fn draws(&self) -> RoundDraws {
         self.draws
+    }
+
+    /// Planning work of the round's selection.
+    pub(crate) const fn work(&self) -> SelectionWork {
+        self.work
     }
 
     /// The parent entry; `None` only for the legacy clean-slate round.
@@ -267,8 +321,12 @@ pub(crate) struct SkippedRound {
     pub(crate) context: RoundContext,
     /// Recorded selection draws.
     pub(crate) draws: RoundDraws,
+    /// Planning work of the published selection.
+    pub(crate) work: SelectionWork,
     /// Sequence number of the retired entry.
     pub(crate) seq: u64,
+    /// Whether Campaign's entropy ticket took the explore branch.
+    pub(crate) explored: bool,
 }
 
 /// Outcome of [`FrontierBackend::authorize`].
@@ -425,9 +483,12 @@ pub(crate) trait FrontierBackend {
     fn admit_root(&mut self, root: RootAdmission) -> Result<(), FrontierError>;
 
     /// Draws the round's selection randomness in legacy order and plans it.
+    ///
+    /// The Explorer passes its ChaCha8 stream; parity replay passes recorded
+    /// draws. Nothing else in the round draws from `rng` before `authorize`.
     fn begin_round(
         &mut self,
-        rng: &mut ChaCha8Rng,
+        rng: &mut dyn RngCore,
         context: RoundContext,
     ) -> Result<RoundBegin, FrontierError>;
 
@@ -449,4 +510,7 @@ pub(crate) trait FrontierBackend {
 
     /// Number of retained entries.
     fn len(&self) -> usize;
+
+    /// Selections and selection budget consumed so far.
+    fn selection_use(&self) -> SelectionUse;
 }

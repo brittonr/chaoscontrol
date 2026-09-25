@@ -4,10 +4,10 @@
 use super::{publish, CampaignEntry, CampaignFrontier, StagedProposal};
 use crate::campaign_adapter::{
     admit_child_moment, child_moment_draft, decay_revision, encode_moment, execution_authority,
-    finding_ref, ineligible_retirement, legacy_explores, result_observation,
-    retention_plan_request, round_decision, selection_request, unobserved_closure, AdapterError,
-    ChildMomentFacts, Eligibility, EntropyDraws, GuidanceFacts, IneligibleReason, LegacyDraws,
-    ProductStop, ResultFacts, RetainedChild, RoundDecision,
+    finding_ref, ineligible_retirement, result_observation, retention_plan_request, round_decision,
+    selection_request, ticket_explores, unobserved_closure, AdapterError, ChildMomentFacts,
+    Eligibility, EntropyDraws, GuidanceFacts, IneligibleReason, LegacyDraws, ProductStop,
+    ResultFacts, RetainedChild, RoundDecision, SelectionLimit,
 };
 use crate::explorer::frontier_backend::digests::round_manifest_digest;
 use crate::explorer::frontier_backend::records::{
@@ -16,8 +16,8 @@ use crate::explorer::frontier_backend::records::{
 use crate::explorer::frontier_backend::session::ControlSession;
 use crate::explorer::frontier_backend::{
     Authorization, AuthorizedDetail, AuthorizedRound, FrontierError, PlanDetail, PlannedRound,
-    RoundBegin, RoundContext, RoundDraws, RoundObservation, SelectedEntry, Settlement,
-    SkippedRound,
+    RoundBegin, RoundContext, RoundDraws, RoundObservation, SelectedEntry, SelectionWork,
+    Settlement, SkippedRound,
 };
 use crate::explorer::journal::{JournalError, JournalRecord, PublicationIo};
 use crate::frontier::draw_selection;
@@ -25,7 +25,7 @@ use campaign_choregraph::DurablePublicationEvidence;
 use campaign_core::{
     CampaignControlEvent, CandidateStatus, Id, SelectionDecision, SelectionEvent, SelectionRequest,
 };
-use rand_chacha::ChaCha8Rng;
+use rand::RngCore;
 
 /// Replans after a selection-segment sequence collision.
 const MAX_STALE_REPLANS: u32 = 1;
@@ -35,6 +35,8 @@ pub(crate) struct CampaignPlan {
     draws: LegacyDraws,
     request: SelectionRequest,
     selection: SelectionDecision,
+    /// Whether the planned request's entropy ticket takes Campaign's explore branch.
+    explored: bool,
 }
 
 /// A durably published and authorized selection.
@@ -46,12 +48,16 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
     /// Retires ineligible candidates, draws in legacy order, and plans.
     pub(super) fn begin(
         &mut self,
-        rng: &mut ChaCha8Rng,
+        rng: &mut dyn RngCore,
         context: RoundContext,
     ) -> Result<RoundBegin, FrontierError> {
         self.ensure_live()?;
         if self.session()?.state().stopped.is_some() {
             return Err(FrontierError::Sequence("round after the campaign stopped"));
+        }
+        // `max_rounds == 0` admits no selection: stop before drawing or planning.
+        if self.profile()?.selection_limit == SelectionLimit::NoSelection {
+            return Ok(RoundBegin::Stop(ProductStop::CompletedWithoutSelection));
         }
         self.retire_ineligible()?;
         let retained = self.retained_candidates()?;
@@ -83,18 +89,25 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         let request =
             selection_request(&self.identity, profile, session.state(), &binding, entropy)?;
         let plan = campaign_core::plan_next(session.state(), request.clone(), &binding)?;
+        let work = SelectionWork {
+            candidates_examined: plan.work.candidates_examined,
+            eligible_candidates: plan.work.eligible_candidates,
+        };
         match round_decision(&self.identity, plan, session.state().admission.campaign_id)? {
             RoundDecision::Execute(selection) => {
                 if !self.entries.contains_key(&selection.candidate_id) {
                     return Err(FrontierError::UnknownCandidate);
                 }
+                let explored = ticket_explores(&request.profile.mode, request.entropy.as_ref())?;
                 Ok(RoundBegin::Planned(PlannedRound {
                     context,
                     draws: RoundDraws { draws: Some(draws) },
+                    work,
                     plan: PlanDetail::Campaign(Box::new(CampaignPlan {
                         draws,
                         request,
                         selection: *selection,
+                        explored,
                     })),
                 }))
             }
@@ -116,6 +129,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             return Err(FrontierError::Sequence("legacy plan offered to campaign"));
         };
         let context = planned.context;
+        let work = planned.work;
         let mut plan = *plan;
         let mut replans = 0;
         let publication = loop {
@@ -149,7 +163,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             self.halted = true;
             return Err(FrontierError::ExecutionRefused);
         }
-        self.executable(context, plan)
+        self.executable(context, work, plan)
     }
 
     fn stage_selection(
@@ -239,6 +253,7 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
     fn executable(
         &mut self,
         context: RoundContext,
+        work: SelectionWork,
         plan: CampaignPlan,
     ) -> Result<Authorization, FrontierError> {
         let candidate_id = plan.selection.candidate_id;
@@ -265,11 +280,12 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                     snapshot: snapshot.handle.clone(),
                     schedule: entry.schedule.clone(),
                     depth: entry.depth,
-                    explored: legacy_explores(plan.draws.unit),
+                    explored: plan.explored,
                 };
                 Ok(Authorization::Execute(Box::new(AuthorizedRound::new(
                     context,
                     draws,
+                    work,
                     Some(selected),
                     AuthorizedDetail::Campaign(Box::new(PublishedSelection {
                         selection: plan.selection,
@@ -282,7 +298,9 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
                 Ok(Authorization::Skipped(SkippedRound {
                     context,
                     draws,
+                    work,
                     seq,
+                    explored: plan.explored,
                 }))
             }
             Err(error) => Err(error.into()),

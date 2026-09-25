@@ -1900,8 +1900,49 @@
                     echo "post-MVP negative profile unexpectedly passed" >&2
                     exit 1
                   fi
+                  # Admission denial controls against the pinned producer bundle.
+                  # Each stale value is the one admitted before the stable-evidence
+                  # producer repair; each control must fail at its named rule.
+                  expectAdmissionDenial() {
+                    label="$1"
+                    expected="$2"
+                    profile="$3"
+                    revision="$4"
+                    if chaoscontrol-wasm-differential \
+                      --profile "$profile" \
+                      --mantle-revision "$revision" \
+                      --bundle ${mantleSpacewasmBundle} \
+                      --wasmtime ${pkgs.wasmtime}/bin/wasmtime \
+                      --out "$TMPDIR/$label-report.json" \
+                      --artifacts "$TMPDIR/$label-modules" \
+                      2> "$TMPDIR/$label.stderr"; then
+                      echo "$label control unexpectedly passed admission" >&2
+                      exit 1
+                    fi
+                    if ! grep -F -- "$expected" "$TMPDIR/$label.stderr" > /dev/null; then
+                      echo "$label control failed for another reason:" >&2
+                      cat "$TMPDIR/$label.stderr" >&2
+                      exit 1
+                    fi
+                  }
+                  staleMantleRevision=a141fcbaafe41f9a413a81275a33fe915bfca370
+                  jq '.bundle_manifest_blake3 = "13058ea2d9913348a203cceff7b58d98b6446610ac80518dc3359b8d7ee57472"' \
+                    "$out/profile.json" > "$TMPDIR/stale-manifest-profile.json"
+                  jq '.bundle_identity_blake3 = "260f66f8df52b89f5673cbf3f2702d49d3413d45d47ab2baca994185d29e5cb3"' \
+                    "$out/profile.json" > "$TMPDIR/stale-identity-profile.json"
+                  jq '.spacewasm_runner_blake3 = "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221"' \
+                    "$out/profile.json" > "$TMPDIR/stale-runner-profile.json"
+                  expectAdmissionDenial wrong-pin "Mantle producer revision drift" \
+                    "$out/profile.json" "$staleMantleRevision"
+                  expectAdmissionDenial stale-manifest "bundle manifest digest mismatch" \
+                    "$TMPDIR/stale-manifest-profile.json" ${mantle.rev}
+                  expectAdmissionDenial stale-identity "Mantle bundle identity does not match the admitted profile" \
+                    "$TMPDIR/stale-identity-profile.json" ${mantle.rev}
+                  expectAdmissionDenial stale-runner "SpaceWasm runner identity drift" \
+                    "$TMPDIR/stale-runner-profile.json" ${mantle.rev}
                   chaoscontrol-wasm-differential \
                     --profile "$out/profile.json" \
+                    --mantle-revision ${mantle.rev} \
                     --bundle ${mantleSpacewasmBundle} \
                     --wasmtime ${pkgs.wasmtime}/bin/wasmtime \
                     --out "$out/report.json" \

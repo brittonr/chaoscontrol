@@ -13,6 +13,46 @@ pub const PROFILE_SCHEMA: &str = "chaoscontrol.spacewasm-mvp-differential-profil
 pub const REPORT_SCHEMA: &str = "chaoscontrol.spacewasm-mvp-differential-report.v1";
 pub const MANTLE_MANIFEST_SCHEMA: &str = "mantle-spacewasm-reference-bundle-v1";
 pub const MANTLE_RUNNER_REPORT_SCHEMA: &str = "mantle-spacewasm-runner-report-v1";
+/// Stable test-report schema emitted by the pinned Mantle producer (ADR 0079).
+pub const MANTLE_STABLE_REPORT_SCHEMA: &str = "mantle-spacewasm-stable-report-v1";
+/// Admitted libtest JSON grammar version of the stable report.
+pub const MANTLE_STABLE_REPORT_ENCODING_VERSION: u32 = 1;
+/// Mirrors Mantle `MAX_STABLE_TESTS`: the producer never admits more records.
+const MAXIMUM_STABLE_TESTS: usize = 4_096;
+/// Bundle role the producer assigns to test receipts and stable reports.
+const STABLE_EVIDENCE_ROLE: &str = "check-receipt";
+/// Receipt process status the producer writes after a passing test command.
+const STABLE_RECEIPT_STATUS_PASSED: &str = "passed";
+/// Mantle hashes the compact identity input as emitted by `jq -c`, which
+/// terminates the document with one line feed.
+const STABLE_IDENTITY_INPUT_TERMINATOR: &[u8] = b"\n";
+/// Raw run captures and run records belong to the separate Mantle run archive
+/// and must never be admitted as stable bundle members.
+const RAW_CAPTURE_PATH_SUFFIXES: [&str; 3] = ["stdout.txt", "stderr.txt", "run-record.json"];
+const RAW_CAPTURE_PATH_PREFIX: &str = "runs/";
+const RAW_CAPTURE_ROLES: [&str; 3] = ["raw-capture", "run-archive", "run-record"];
+
+/// One producer test suite whose stable report and receipt the bundle must carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StableEvidenceSuite {
+    pub suite: &'static str,
+    pub receipt_path: &'static str,
+    pub stable_report_path: &'static str,
+}
+
+/// Every stable test producer of the pinned Mantle bundle.
+pub const STABLE_EVIDENCE_SUITES: [StableEvidenceSuite; 2] = [
+    StableEvidenceSuite {
+        suite: "upstream-unit-tests",
+        receipt_path: "reports/checks/upstream-unit-tests.json",
+        stable_report_path: "reports/checks/upstream-unit-tests.stable-report.json",
+    },
+    StableEvidenceSuite {
+        suite: "upstream-spectest-address",
+        receipt_path: "reports/checks/upstream-spectest-address.json",
+        stable_report_path: "reports/checks/upstream-spectest-address.stable-report.json",
+    },
+];
 const GIT_REVISION_HEX_LENGTH: usize = 40;
 const BLAKE3_HEX_LENGTH: usize = 64;
 const MAXIMUM_IDENTIFIER_BYTES: usize = 128;
@@ -181,6 +221,52 @@ pub struct MantleFixtureResult {
     pub fixture_id: String,
     pub result_code: String,
     pub status: String,
+}
+
+/// Canonical Mantle stable test report (`mantle-spacewasm-stable-report-v1`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MantleStableReport {
+    pub schema: String,
+    pub suite: String,
+    pub command: String,
+    pub tests: Vec<MantleStableTest>,
+    pub encoding_version: u32,
+    pub stable_identity_blake3: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MantleStableTest {
+    pub name: String,
+    pub status: MantleStableTestStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MantleStableTestStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+/// Mantle test receipt that binds the command status to its stable report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MantleStableReceipt {
+    pub command: String,
+    pub status: String,
+    pub stable_report: MantleStableReport,
+}
+
+/// Identity input in the producer's field order; timing never enters it.
+#[derive(Serialize)]
+struct StableReportIdentityInput<'a> {
+    schema: &'a str,
+    suite: &'a str,
+    command: &'a str,
+    tests: &'a [MantleStableTest],
+    encoding_version: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -477,6 +563,12 @@ pub fn validate_bundle_manifest(
         if !paths.insert(member.path.as_str()) {
             return Err(format!("duplicate bundle member path: {}", member.path));
         }
+        if is_raw_capture_member(member) {
+            return Err(format!(
+                "Mantle bundle carries a raw run capture member: {}",
+                member.path
+            ));
+        }
         if member.size_bytes > profile.bounds.maximum_bundle_member_bytes {
             return Err(format!("bundle member exceeds byte bound: {}", member.path));
         }
@@ -506,7 +598,207 @@ pub fn validate_bundle_manifest(
             ));
         }
     }
+    for suite in STABLE_EVIDENCE_SUITES {
+        for required_path in [suite.receipt_path, suite.stable_report_path] {
+            let member = find_member(manifest, required_path).ok_or_else(|| {
+                format!("Mantle bundle is missing required stable evidence member: {required_path}")
+            })?;
+            if member.role != STABLE_EVIDENCE_ROLE {
+                return Err(format!(
+                    "Mantle stable evidence member has role {} instead of {STABLE_EVIDENCE_ROLE}: {required_path}",
+                    member.role
+                ));
+            }
+        }
+    }
     Ok(())
+}
+
+/// Binds the profile to the Mantle revision that actually produced the bundle.
+pub fn validate_producer_revision(
+    profile: &DifferentialProfile,
+    observed_mantle_revision: &str,
+) -> Result<(), String> {
+    validate_hex(
+        "observed Mantle revision",
+        observed_mantle_revision,
+        GIT_REVISION_HEX_LENGTH,
+    )?;
+    if observed_mantle_revision != profile.mantle_revision {
+        return Err(format!(
+            "Mantle producer revision drift: profile={} observed={observed_mantle_revision}",
+            profile.mantle_revision
+        ));
+    }
+    Ok(())
+}
+
+/// Admits the exact manifest bytes measured for this profile.
+pub fn validate_manifest_digest(
+    profile: &DifferentialProfile,
+    observed_manifest_blake3: &str,
+) -> Result<(), String> {
+    if observed_manifest_blake3 != profile.bundle_manifest_blake3 {
+        return Err(format!(
+            "bundle manifest digest mismatch: expected={} actual={observed_manifest_blake3}",
+            profile.bundle_manifest_blake3
+        ));
+    }
+    Ok(())
+}
+
+/// Admits one suite's stable report and receipt from their exact member bytes.
+///
+/// The bytes must be the manifest-bound members, the report must follow the
+/// pinned stable-report grammar with every required test passed, its identity
+/// must recompute from its admitted facts, and the receipt must bind the same
+/// report and command with a passing status.
+pub fn validate_stable_evidence(
+    manifest: &BundleManifest,
+    suite: &StableEvidenceSuite,
+    receipt_bytes: &[u8],
+    stable_report_bytes: &[u8],
+) -> Result<MantleStableReport, String> {
+    validate_member_bytes(manifest, suite.receipt_path, receipt_bytes)?;
+    validate_member_bytes(manifest, suite.stable_report_path, stable_report_bytes)?;
+    let report: MantleStableReport =
+        serde_json::from_slice(stable_report_bytes).map_err(|error| {
+            format!(
+                "stable report is outside the pinned grammar at {}: {error}",
+                suite.stable_report_path
+            )
+        })?;
+    let receipt: MantleStableReceipt = serde_json::from_slice(receipt_bytes).map_err(|error| {
+        format!(
+            "stable receipt is outside the pinned grammar at {}: {error}",
+            suite.receipt_path
+        )
+    })?;
+    validate_stable_report(suite, &report)?;
+    if receipt.status != STABLE_RECEIPT_STATUS_PASSED {
+        return Err(format!(
+            "stable receipt status is not passed for suite {}: {}",
+            suite.suite, receipt.status
+        ));
+    }
+    if receipt.command != report.command || receipt.stable_report != report {
+        return Err(format!(
+            "stable receipt and stable report disagree for suite {}",
+            suite.suite
+        ));
+    }
+    Ok(report)
+}
+
+fn validate_stable_report(
+    suite: &StableEvidenceSuite,
+    report: &MantleStableReport,
+) -> Result<(), String> {
+    if report.schema != MANTLE_STABLE_REPORT_SCHEMA {
+        return Err(format!(
+            "unsupported stable report schema: {}",
+            report.schema
+        ));
+    }
+    if report.encoding_version != MANTLE_STABLE_REPORT_ENCODING_VERSION {
+        return Err(format!(
+            "unsupported stable report encoding version: {}",
+            report.encoding_version
+        ));
+    }
+    if report.suite != suite.suite {
+        return Err(format!(
+            "stable report suite drift: expected={} actual={}",
+            suite.suite, report.suite
+        ));
+    }
+    if report.command.is_empty() {
+        return Err(format!(
+            "stable report command is empty for suite {}",
+            suite.suite
+        ));
+    }
+    if report.tests.is_empty() || report.tests.len() > MAXIMUM_STABLE_TESTS {
+        return Err(format!(
+            "stable report test count is outside the admitted bound for suite {}",
+            suite.suite
+        ));
+    }
+    let canonical_order = report
+        .tests
+        .windows(2)
+        .all(|pair| pair[0].name < pair[1].name);
+    if report.tests.iter().any(|test| test.name.is_empty()) || !canonical_order {
+        return Err(format!(
+            "stable report tests are not unique, named, and canonically ordered for suite {}",
+            suite.suite
+        ));
+    }
+    if let Some(test) = report
+        .tests
+        .iter()
+        .find(|test| test.status != MantleStableTestStatus::Passed)
+    {
+        return Err(format!(
+            "stable report records a non-passing test in suite {}: {} is {:?}",
+            suite.suite, test.name, test.status
+        ));
+    }
+    validate_hex(
+        "stable report identity",
+        &report.stable_identity_blake3,
+        BLAKE3_HEX_LENGTH,
+    )?;
+    let recomputed = stable_report_identity(report)?;
+    if recomputed != report.stable_identity_blake3 {
+        return Err(format!(
+            "stable report identity does not match its admitted facts for suite {}: recorded={} recomputed={recomputed}",
+            suite.suite, report.stable_identity_blake3
+        ));
+    }
+    Ok(())
+}
+
+fn stable_report_identity(report: &MantleStableReport) -> Result<String, String> {
+    let mut input = serde_json::to_vec(&StableReportIdentityInput {
+        schema: &report.schema,
+        suite: &report.suite,
+        command: &report.command,
+        tests: &report.tests,
+        encoding_version: report.encoding_version,
+    })
+    .map_err(|error| format!("stable report identity input cannot serialize: {error}"))?;
+    input.extend_from_slice(STABLE_IDENTITY_INPUT_TERMINATOR);
+    Ok(blake3::hash(&input).to_hex().to_string())
+}
+
+fn validate_member_bytes(
+    manifest: &BundleManifest,
+    path: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let member = find_member(manifest, path).ok_or_else(|| {
+        format!("Mantle bundle is missing required stable evidence member: {path}")
+    })?;
+    let size_matches = u64::try_from(bytes.len()).is_ok_and(|size| size == member.size_bytes);
+    if !size_matches || blake3::hash(bytes).to_hex().as_str() != member.digest_blake3 {
+        return Err(format!(
+            "stable evidence bytes do not match the bundle manifest: {path}"
+        ));
+    }
+    Ok(())
+}
+
+fn find_member<'a>(manifest: &'a BundleManifest, path: &str) -> Option<&'a BundleMember> {
+    manifest.members.iter().find(|member| member.path == path)
+}
+
+fn is_raw_capture_member(member: &BundleMember) -> bool {
+    RAW_CAPTURE_ROLES.contains(&member.role.as_str())
+        || member.path.starts_with(RAW_CAPTURE_PATH_PREFIX)
+        || RAW_CAPTURE_PATH_SUFFIXES
+            .iter()
+            .any(|suffix| member.path.ends_with(suffix))
 }
 
 pub fn generate_mvp_module(
@@ -1048,7 +1340,8 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    const MANTLE_REVISION: &str = "a141fcbaafe41f9a413a81275a33fe915bfca370";
+    const MANTLE_REVISION: &str = "57fa0f5c2f8fb1edeed6d6113b57d32357612e34";
+    const STALE_MANTLE_REVISION: &str = "a141fcbaafe41f9a413a81275a33fe915bfca370";
     const SPACEWASM_REVISION: &str = "e24cf09355a90497148eb5029fdb8e3400bd63e3";
     const MANIFEST_DIGEST: &str =
         "39e4790a7b9d0b14fcafffe5810e268cd8af342d38d7e952a6ede923e33882b2";
@@ -1056,7 +1349,25 @@ mod tests {
         "c4826bb63fa9eef1fa619e0f0c4c2c35dd10ca92a8d4999fec10c55e92b692b7";
     const STALE_BUNDLE_IDENTITY: &str =
         "cee7190f2f78321b07f3d1f493baaa5b2cb74d517eb4f229c7e7a6094b877342";
-    const RUNNER_DIGEST: &str = "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221";
+    const RUNNER_DIGEST: &str = "732da9b7276cb2c36dc0e5e308e8fd8e6bc88ddd665346c5afb1f351eda2a579";
+    const STALE_RUNNER_DIGEST: &str =
+        "be8aeb698afdecf6fb608910980292517ed952f122b6447705d4bdae485b0221";
+    const STALE_MANIFEST_DIGEST: &str =
+        "13058ea2d9913348a203cceff7b58d98b6446610ac80518dc3359b8d7ee57472";
+    /// Exact `reports/checks/upstream-spectest-address*.json` members of the
+    /// Mantle 57fa0f5c2 bundle measured for this consumer.
+    const PINNED_SPECTEST_RECEIPT: &[u8] = include_bytes!(
+        "../../../contracts/evidence/fixtures/valid/spacewasm-stable-receipt.upstream-spectest-address.valid.json"
+    );
+    const PINNED_SPECTEST_STABLE_REPORT: &[u8] = include_bytes!(
+        "../../../contracts/evidence/fixtures/valid/spacewasm-stable-report.upstream-spectest-address.valid.json"
+    );
+    const PINNED_SPECTEST_STABLE_IDENTITY: &str =
+        "46e88a64a9a2aca1e6eeca915a386c433fa97876e17b29fea81b1df2efad8097";
+    const SYNTHETIC_UNIT_TEST_COMMAND: &str =
+        "RUSTC_BOOTSTRAP=1 cargo test --locked --offline --no-default-features --lib -- --format json -Z unstable-options ";
+    const UNIT_SUITE: StableEvidenceSuite = STABLE_EVIDENCE_SUITES[0];
+    const SPECTEST_SUITE: StableEvidenceSuite = STABLE_EVIDENCE_SUITES[1];
     const MAX_INSTRUCTION_PAIRS: usize = 32;
     const MAX_GENERATED_MODULE_BYTES: usize = 256;
     const PROPERTY_CASE_INDEX_BOUND: usize = 1_000;
@@ -1220,41 +1531,137 @@ mod tests {
             .contains("unknown"));
     }
 
-    #[test]
-    fn bundle_drift_and_evidence_overclaim_are_rejected() {
-        let profile = profile();
-        let digest = String::from(MANIFEST_DIGEST);
-        let members = [
+    /// Stable evidence members keyed by bundle path.
+    type StableEvidence = Vec<(&'static str, Vec<u8>)>;
+    /// One targeted drift applied to an otherwise admitted stable report.
+    type ReportMutation = fn(&mut MantleStableReport);
+
+    fn synthetic_unit_evidence(mutate: impl FnOnce(&mut MantleStableReport)) -> (Vec<u8>, Vec<u8>) {
+        let mut report = MantleStableReport {
+            schema: String::from(MANTLE_STABLE_REPORT_SCHEMA),
+            suite: String::from(UNIT_SUITE.suite),
+            command: String::from(SYNTHETIC_UNIT_TEST_COMMAND),
+            tests: ["tests::alpha", "tests::bravo"]
+                .into_iter()
+                .map(|name| MantleStableTest {
+                    name: String::from(name),
+                    status: MantleStableTestStatus::Passed,
+                })
+                .collect(),
+            encoding_version: MANTLE_STABLE_REPORT_ENCODING_VERSION,
+            stable_identity_blake3: String::new(),
+        };
+        mutate(&mut report);
+        report.stable_identity_blake3 = stable_report_identity(&report).expect("identity");
+        let receipt = MantleStableReceipt {
+            command: report.command.clone(),
+            status: String::from(STABLE_RECEIPT_STATUS_PASSED),
+            stable_report: report.clone(),
+        };
+        (
+            serde_json::to_vec_pretty(&receipt).expect("receipt bytes"),
+            serde_json::to_vec_pretty(&report).expect("report bytes"),
+        )
+    }
+
+    fn stable_evidence_with_unit(unit: (Vec<u8>, Vec<u8>)) -> StableEvidence {
+        vec![
+            (UNIT_SUITE.receipt_path, unit.0),
+            (UNIT_SUITE.stable_report_path, unit.1),
             (
-                "binaries/host/mantle-spacewasm-diagnostic-runner",
-                "host-runner",
+                SPECTEST_SUITE.receipt_path,
+                PINNED_SPECTEST_RECEIPT.to_vec(),
             ),
-            ("fixtures/wasm/mvp-positive.wasm", "fixture-artifact"),
-            ("profile/profile.json", "profile-export"),
-            ("source/spacewasm.tar.gz", "source-archive"),
+            (
+                SPECTEST_SUITE.stable_report_path,
+                PINNED_SPECTEST_STABLE_REPORT.to_vec(),
+            ),
         ]
-        .into_iter()
-        .map(|(path, role)| BundleMember {
+    }
+
+    fn stable_evidence() -> StableEvidence {
+        stable_evidence_with_unit(synthetic_unit_evidence(|_| {}))
+    }
+
+    fn evidence_bytes<'a>(evidence: &'a StableEvidence, path: &str) -> &'a [u8] {
+        evidence
+            .iter()
+            .find(|(member_path, _)| *member_path == path)
+            .map(|(_, bytes)| bytes.as_slice())
+            .expect("stable evidence member")
+    }
+
+    fn replace_evidence(evidence: &mut StableEvidence, path: &str, bytes: Vec<u8>) {
+        let entry = evidence
+            .iter_mut()
+            .find(|(member_path, _)| *member_path == path)
+            .expect("stable evidence member");
+        entry.1 = bytes;
+    }
+
+    fn member(path: &str, role: &str, digest: &str) -> BundleMember {
+        BundleMember {
             path: String::from(path),
             role: String::from(role),
-            digest_blake3: if role == "host-runner" {
-                String::from(RUNNER_DIGEST)
-            } else {
-                digest.clone()
-            },
+            digest_blake3: String::from(digest),
             size_bytes: 1,
-        })
-        .collect();
-        let manifest = BundleManifest {
+        }
+    }
+
+    fn manifest(evidence: &StableEvidence) -> BundleManifest {
+        let mut members = vec![
+            member(
+                "binaries/host/mantle-spacewasm-diagnostic-runner",
+                "host-runner",
+                RUNNER_DIGEST,
+            ),
+            member(
+                "fixtures/wasm/mvp-positive.wasm",
+                "fixture-artifact",
+                MANIFEST_DIGEST,
+            ),
+            member("profile/profile.json", "profile-export", MANIFEST_DIGEST),
+            member("source/spacewasm.tar.gz", "source-archive", MANIFEST_DIGEST),
+        ];
+        members.extend(evidence.iter().map(|(path, bytes)| BundleMember {
+            path: String::from(*path),
+            role: String::from(STABLE_EVIDENCE_ROLE),
+            digest_blake3: blake3::hash(bytes).to_hex().to_string(),
+            size_bytes: u64::try_from(bytes.len()).expect("fixture size"),
+        }));
+        BundleManifest {
             schema: String::from(MANTLE_MANIFEST_SCHEMA),
             profile_id: String::from("nasa-spacewasm-e24cf093-reference-v1"),
-            profile_identity_blake3: digest.clone(),
-            cohort_identity_blake3: digest,
+            profile_identity_blake3: String::from(MANIFEST_DIGEST),
+            cohort_identity_blake3: String::from(MANIFEST_DIGEST),
             members,
             parent_edges: Vec::new(),
             non_claims: Vec::new(),
             bundle_identity_blake3: String::from(BUNDLE_IDENTITY),
-        };
+        }
+    }
+
+    fn admit_stable_evidence(
+        manifest: &BundleManifest,
+        evidence: &StableEvidence,
+    ) -> Result<Vec<MantleStableReport>, String> {
+        STABLE_EVIDENCE_SUITES
+            .iter()
+            .map(|suite| {
+                validate_stable_evidence(
+                    manifest,
+                    suite,
+                    evidence_bytes(evidence, suite.receipt_path),
+                    evidence_bytes(evidence, suite.stable_report_path),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn bundle_drift_and_evidence_overclaim_are_rejected() {
+        let profile = profile();
+        let manifest = manifest(&stable_evidence());
         assert_eq!(validate_bundle_manifest(&profile, &manifest), Ok(()));
 
         let mut stale_profile = profile.clone();
@@ -1276,6 +1683,229 @@ mod tests {
         assert!(validate_profile(&overclaim)
             .unwrap_err()
             .contains("non-claim"));
+    }
+
+    #[test]
+    fn pinned_producer_stable_evidence_is_admitted() {
+        let profile = profile();
+        let evidence = stable_evidence();
+        let manifest = manifest(&evidence);
+        assert_eq!(
+            validate_producer_revision(&profile, MANTLE_REVISION),
+            Ok(())
+        );
+        assert_eq!(validate_manifest_digest(&profile, MANIFEST_DIGEST), Ok(()));
+        assert_eq!(validate_bundle_manifest(&profile, &manifest), Ok(()));
+        let reports = admit_stable_evidence(&manifest, &evidence).expect("stable evidence");
+        let spectest = &reports[1];
+        assert_eq!(spectest.suite, SPECTEST_SUITE.suite);
+        assert_eq!(
+            spectest.stable_identity_blake3,
+            PINNED_SPECTEST_STABLE_IDENTITY
+        );
+        assert_eq!(
+            stable_report_identity(spectest).expect("identity"),
+            PINNED_SPECTEST_STABLE_IDENTITY
+        );
+        assert!(spectest
+            .tests
+            .iter()
+            .all(|test| test.status == MantleStableTestStatus::Passed));
+    }
+
+    #[test]
+    fn stale_producer_pin_and_profile_digests_are_rejected() {
+        let profile = profile();
+        let manifest = manifest(&stable_evidence());
+        assert!(validate_producer_revision(&profile, STALE_MANTLE_REVISION)
+            .unwrap_err()
+            .contains("Mantle producer revision drift"));
+        assert!(validate_producer_revision(&profile, &MANTLE_REVISION[..9])
+            .unwrap_err()
+            .contains("observed Mantle revision"));
+        assert!(validate_manifest_digest(&profile, STALE_MANIFEST_DIGEST)
+            .unwrap_err()
+            .contains("bundle manifest digest mismatch"));
+
+        let mut stale_identity = profile.clone();
+        stale_identity.bundle_identity_blake3 = String::from(STALE_BUNDLE_IDENTITY);
+        assert!(validate_bundle_manifest(&stale_identity, &manifest)
+            .unwrap_err()
+            .contains("Mantle bundle identity does not match"));
+
+        let mut stale_runner = profile;
+        stale_runner.spacewasm_runner_blake3 = String::from(STALE_RUNNER_DIGEST);
+        assert_eq!(
+            validate_bundle_manifest(&stale_runner, &manifest),
+            Err(String::from("SpaceWasm runner identity drift"))
+        );
+    }
+
+    #[test]
+    fn tampered_or_missing_stable_reports_are_rejected() {
+        let profile = profile();
+        let evidence = stable_evidence();
+        let admitted_manifest = manifest(&evidence);
+        let renamed = String::from_utf8(PINNED_SPECTEST_STABLE_REPORT.to_vec())
+            .expect("utf-8 report")
+            .replacen("\"address\"", "\"addresz\"", 1)
+            .into_bytes();
+        assert_ne!(renamed, PINNED_SPECTEST_STABLE_REPORT);
+        let mut tampered = evidence.clone();
+        replace_evidence(&mut tampered, SPECTEST_SUITE.stable_report_path, renamed);
+        assert!(admit_stable_evidence(&admitted_manifest, &tampered)
+            .unwrap_err()
+            .contains("stable evidence bytes do not match the bundle manifest"));
+        assert!(admit_stable_evidence(&manifest(&tampered), &tampered)
+            .unwrap_err()
+            .contains("stable report identity does not match its admitted facts"));
+
+        for suite in STABLE_EVIDENCE_SUITES {
+            for missing_path in [suite.receipt_path, suite.stable_report_path] {
+                let mut missing = admitted_manifest.clone();
+                missing.members.retain(|member| member.path != missing_path);
+                assert_eq!(
+                    validate_bundle_manifest(&profile, &missing),
+                    Err(format!(
+                        "Mantle bundle is missing required stable evidence member: {missing_path}"
+                    ))
+                );
+                assert!(validate_stable_evidence(
+                    &missing,
+                    &suite,
+                    evidence_bytes(&evidence, suite.receipt_path),
+                    evidence_bytes(&evidence, suite.stable_report_path),
+                )
+                .unwrap_err()
+                .contains("missing required stable evidence member"));
+            }
+        }
+
+        let mut wrong_role = admitted_manifest;
+        wrong_role
+            .members
+            .iter_mut()
+            .filter(|member| member.path == UNIT_SUITE.stable_report_path)
+            .for_each(|member| member.role = String::from("result-report"));
+        assert!(validate_bundle_manifest(&profile, &wrong_role)
+            .unwrap_err()
+            .contains("instead of check-receipt"));
+    }
+
+    #[test]
+    fn receipts_must_bind_the_same_passing_stable_report() {
+        let (_, report) = synthetic_unit_evidence(|_| {});
+        let admitted: MantleStableReport = serde_json::from_slice(&report).expect("report");
+        let failed_status = MantleStableReceipt {
+            command: admitted.command.clone(),
+            status: String::from("failed"),
+            stable_report: admitted.clone(),
+        };
+        let mut other_report = admitted.clone();
+        other_report.stable_identity_blake3 = String::from(PINNED_SPECTEST_STABLE_IDENTITY);
+        let crossed_report = MantleStableReceipt {
+            command: admitted.command.clone(),
+            status: String::from(STABLE_RECEIPT_STATUS_PASSED),
+            stable_report: other_report,
+        };
+        let crossed_command = MantleStableReceipt {
+            command: String::from("cargo test"),
+            status: String::from(STABLE_RECEIPT_STATUS_PASSED),
+            stable_report: admitted,
+        };
+        for (receipt, expected) in [
+            (failed_status, "stable receipt status is not passed"),
+            (crossed_report, "stable receipt and stable report disagree"),
+            (crossed_command, "stable receipt and stable report disagree"),
+        ] {
+            let evidence = stable_evidence_with_unit((
+                serde_json::to_vec_pretty(&receipt).expect("receipt bytes"),
+                report.clone(),
+            ));
+            assert!(admit_stable_evidence(&manifest(&evidence), &evidence)
+                .unwrap_err()
+                .contains(expected));
+        }
+    }
+
+    #[test]
+    fn raw_capture_members_are_rejected() {
+        let profile = profile();
+        for (path, role) in [
+            (
+                "reports/checks/upstream-unit-tests.stdout.txt",
+                "check-receipt",
+            ),
+            (
+                "reports/checks/upstream-spectest-address.stderr.txt",
+                "check-receipt",
+            ),
+            ("runs/upstream-unit-tests/run-record.json", "check-receipt"),
+            ("runs/upstream-unit-tests/stdout.txt", "check-receipt"),
+            ("reports/checks/unit-run.json", "run-record"),
+            ("reports/checks/unit-capture.json", "raw-capture"),
+        ] {
+            let mut raw = manifest(&stable_evidence());
+            raw.members.push(member(path, role, MANIFEST_DIGEST));
+            assert_eq!(
+                validate_bundle_manifest(&profile, &raw),
+                Err(format!(
+                    "Mantle bundle carries a raw run capture member: {path}"
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn failed_or_skipped_tests_are_rejected() {
+        for status in [
+            MantleStableTestStatus::Failed,
+            MantleStableTestStatus::Skipped,
+        ] {
+            let evidence = stable_evidence_with_unit(synthetic_unit_evidence(|report| {
+                report.tests[1].status = status;
+            }));
+            assert!(admit_stable_evidence(&manifest(&evidence), &evidence)
+                .unwrap_err()
+                .contains("non-passing test in suite upstream-unit-tests: tests::bravo"));
+        }
+    }
+
+    #[test]
+    fn stable_report_grammar_drift_is_rejected() {
+        let cases: [(ReportMutation, &str); 5] = [
+            (
+                |report| report.schema = String::from("mantle-spacewasm-stable-report-v2"),
+                "unsupported stable report schema",
+            ),
+            (
+                |report| report.encoding_version = MANTLE_STABLE_REPORT_ENCODING_VERSION + 1,
+                "unsupported stable report encoding version",
+            ),
+            (
+                |report| report.suite = String::from(SPECTEST_SUITE.suite),
+                "stable report suite drift",
+            ),
+            (|report| report.tests.reverse(), "canonically ordered"),
+            (|report| report.tests.clear(), "test count is outside"),
+        ];
+        for (mutate, expected) in cases {
+            let evidence = stable_evidence_with_unit(synthetic_unit_evidence(mutate));
+            assert!(admit_stable_evidence(&manifest(&evidence), &evidence)
+                .unwrap_err()
+                .contains(expected));
+        }
+
+        let (receipt, report) = synthetic_unit_evidence(|_| {});
+        let mut extended: serde_json::Value = serde_json::from_slice(&report).expect("report");
+        extended["elapsed_seconds"] = serde_json::Value::from(1);
+        let evidence = stable_evidence_with_unit((
+            receipt,
+            serde_json::to_vec_pretty(&extended).expect("report bytes"),
+        ));
+        assert!(admit_stable_evidence(&manifest(&evidence), &evidence)
+            .unwrap_err()
+            .contains("stable report is outside the pinned grammar"));
     }
 
     #[test]

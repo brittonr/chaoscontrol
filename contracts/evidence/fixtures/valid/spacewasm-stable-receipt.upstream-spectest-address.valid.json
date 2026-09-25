@@ -1,0 +1,17 @@
+{
+  "command": "RUSTC_BOOTSTRAP=1 cargo test --locked --offline --no-default-features --test core_integration address -- --format json -Z unstable-options --exact",
+  "stable_report": {
+    "command": "RUSTC_BOOTSTRAP=1 cargo test --locked --offline --no-default-features --test core_integration address -- --format json -Z unstable-options --exact",
+    "encoding_version": 1,
+    "schema": "mantle-spacewasm-stable-report-v1",
+    "stable_identity_blake3": "46e88a64a9a2aca1e6eeca915a386c433fa97876e17b29fea81b1df2efad8097",
+    "suite": "upstream-spectest-address",
+    "tests": [
+      {
+        "name": "address",
+        "status": "passed"
+      }
+    ]
+  },
+  "status": "passed"
+}

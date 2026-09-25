@@ -8,9 +8,11 @@ use std::time::Duration;
 use chaoscontrol_wasm_differential::{
     compare_case, encode_hex, finalize_report, generate_mvp_module, generated_shrink_candidates,
     malformed_magic, normalize_spacewasm, normalize_tool, profile_identity,
-    same_mismatch_predicate, validate_bundle_manifest, validate_profile, BundleManifest,
+    same_mismatch_predicate, validate_bundle_manifest, validate_manifest_digest,
+    validate_producer_revision, validate_profile, validate_stable_evidence, BundleManifest,
     CaseComparison, CaseKind, ComparisonVerdict, DifferentialProfile, DifferentialReport,
     MantleRunnerReport, MinimizationEvidence, ToolObservation, REPORT_SCHEMA,
+    STABLE_EVIDENCE_SUITES,
 };
 use tempfile::TempDir;
 use thiserror::Error;
@@ -117,6 +119,7 @@ enum GeneratedMutation {
 #[derive(Debug)]
 struct Arguments {
     profile: PathBuf,
+    mantle_revision: String,
     bundle: PathBuf,
     wasmtime: PathBuf,
     output: PathBuf,
@@ -165,6 +168,7 @@ fn run() -> Result<(), Error> {
     let arguments = parse_arguments(std::env::args().skip(1))?;
     let profile: DifferentialProfile = read_json(&arguments.profile, MAXIMUM_PROFILE_BYTES)?;
     validate_profile(&profile).map_err(Error::Invalid)?;
+    validate_producer_revision(&profile, &arguments.mantle_revision).map_err(Error::Invalid)?;
     let manifest = admit_bundle(&profile, &arguments.bundle)?;
     let wasmtime_version = read_wasmtime_version(&profile, &arguments.wasmtime)?;
     if wasmtime_version != profile.wasmtime_version {
@@ -227,6 +231,7 @@ fn run() -> Result<(), Error> {
 
 fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments, Error> {
     let mut profile = None;
+    let mut mantle_revision = None;
     let mut bundle = None;
     let mut wasmtime = None;
     let mut output = None;
@@ -238,6 +243,7 @@ fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments,
             .ok_or_else(|| Error::Arguments(format!("missing value after {argument}")))?;
         match argument.as_str() {
             "--profile" => profile = Some(PathBuf::from(value)),
+            "--mantle-revision" => mantle_revision = Some(value),
             "--bundle" => bundle = Some(PathBuf::from(value)),
             "--wasmtime" => wasmtime = Some(PathBuf::from(value)),
             "--out" => output = Some(PathBuf::from(value)),
@@ -247,6 +253,8 @@ fn parse_arguments(arguments: impl Iterator<Item = String>) -> Result<Arguments,
     }
     Ok(Arguments {
         profile: profile.ok_or_else(|| Error::Arguments(String::from("missing --profile")))?,
+        mantle_revision: mantle_revision
+            .ok_or_else(|| Error::Arguments(String::from("missing --mantle-revision")))?,
         bundle: bundle.ok_or_else(|| Error::Arguments(String::from("missing --bundle")))?,
         wasmtime: wasmtime.ok_or_else(|| Error::Arguments(String::from("missing --wasmtime")))?,
         output: output.ok_or_else(|| Error::Arguments(String::from("missing --out")))?,
@@ -276,12 +284,7 @@ fn admit_bundle(profile: &DifferentialProfile, bundle: &Path) -> Result<BundleMa
     ensure_regular_file(&manifest_path)?;
     let actual_manifest_digest =
         hash_file(&manifest_path, profile.bounds.maximum_bundle_member_bytes)?;
-    if actual_manifest_digest != profile.bundle_manifest_blake3 {
-        return Err(Error::Invalid(format!(
-            "bundle manifest digest mismatch: expected={} actual={actual_manifest_digest}",
-            profile.bundle_manifest_blake3
-        )));
-    }
+    validate_manifest_digest(profile, &actual_manifest_digest).map_err(Error::Invalid)?;
     let manifest: BundleManifest = read_json(&manifest_path, profile.bounds.maximum_output_bytes)?;
     validate_bundle_manifest(profile, &manifest).map_err(Error::Invalid)?;
     for member in &manifest.members {
@@ -303,6 +306,18 @@ fn admit_bundle(profile: &DifferentialProfile, bundle: &Path) -> Result<BundleMa
                 member.path, member.digest_blake3
             )));
         }
+    }
+    for suite in &STABLE_EVIDENCE_SUITES {
+        let receipt = read_bounded(
+            &bundle.join(suite.receipt_path),
+            profile.bounds.maximum_output_bytes,
+        )?;
+        let stable_report = read_bounded(
+            &bundle.join(suite.stable_report_path),
+            profile.bounds.maximum_output_bytes,
+        )?;
+        validate_stable_evidence(&manifest, suite, &receipt, &stable_report)
+            .map_err(Error::Invalid)?;
     }
     Ok(manifest)
 }

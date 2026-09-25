@@ -24,7 +24,7 @@
       flake = false;
     };
     mantle = {
-      url = "github:OnixResearch/mantle/57fa0f5c2";
+      url = "github:OnixResearch/mantle/57fa0f5c2f8fb1edeed6d6113b57d32357612e34";
       inputs.crane.follows = "crane";
       inputs.octet.follows = "octet";
       inputs.tigerstyle.follows = "octet";

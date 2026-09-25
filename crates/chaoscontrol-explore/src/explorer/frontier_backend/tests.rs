@@ -363,6 +363,7 @@ fn uncertain_durability_poisons_the_journal_and_stops_every_later_step() {
     ));
 }
 
+// r[verify chaoscontrol.campaign_policy.publication_fence.invalid]
 #[test]
 fn a_stale_selection_sequence_replans_once_with_the_same_draws() {
     let dir = tempfile::tempdir().unwrap();
@@ -558,6 +559,7 @@ fn an_unrestorable_snapshot_after_publication_closes_and_retires() {
 }
 
 // r[verify chaoscontrol.campaign_policy.snapshot_eligibility.valid]
+// r[verify chaoscontrol.campaign_policy.effects.valid]
 #[test]
 fn eligible_parents_restore_their_own_snapshot() {
     let dir = tempfile::tempdir().unwrap();
@@ -650,6 +652,7 @@ fn zero_rounds_complete_without_selection() {
 // ---------------------------------------------------------------------------
 // Recovery.
 
+// r[verify chaoscontrol.campaign_policy.history.valid]
 #[test]
 fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
     let dir = tempfile::tempdir().unwrap();
@@ -702,6 +705,7 @@ fn recovery_closes_the_outstanding_selection_and_starts_a_new_epoch() {
     assert_eq!(third.epoch(), 2);
 }
 
+// r[verify chaoscontrol.campaign_policy.history.invalid]
 #[test]
 fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
     let dir = tempfile::tempdir().unwrap();
@@ -800,6 +804,9 @@ fn drive(
 }
 
 // r[verify chaoscontrol.campaign_policy.frontier_parity.valid]
+// r[verify chaoscontrol.campaign_policy.ranks.valid]
+// r[verify chaoscontrol.campaign_policy.entropy.valid]
+// r[verify chaoscontrol.campaign_policy.product_authority.valid]
 // r[verify chaoscontrol.campaign_policy.observations.valid]
 #[test]
 fn both_policies_select_prune_and_trace_identically() {

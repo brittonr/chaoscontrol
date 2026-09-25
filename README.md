@@ -294,6 +294,12 @@ cargo run --release --bin chaoscontrol-explore -- run \
   --kernel <kernel-path> --initrd <initrd-path> \
   --mode input-tree --output results/
 
+# Campaign-backed frontier policy (pre-cutover; the default stays `legacy`).
+# Selections are durably journaled before any expansion effect.
+cargo run --release --bin chaoscontrol-explore -- run \
+  --kernel <kernel-path> --initrd <initrd-path> \
+  --frontier-policy campaign-candidate --output results/
+
 # Resume from checkpoint
 cargo run --release --bin chaoscontrol-explore -- resume \
   --corpus results/ --rounds 500
@@ -317,6 +323,10 @@ Output directory contains:
 - `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `materialize-dogfood-receipt`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
+- `frontier-trace.jsonl` — product frontier decision trace written by both policies (header, root, one record per round with recorded draws, selection, branch facts with score bits, admitted/pruned entries and the retained set, stop); input for parity replay, not VM evidence
+- `campaign-journal/` — `campaign-candidate` only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence
+
+The Campaign policy rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. Reports name the frontier policy and state that no stop claims exhaustive search.
 
 ### Assertion identity and migration
 

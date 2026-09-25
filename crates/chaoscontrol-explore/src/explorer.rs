@@ -296,6 +296,7 @@ impl ExplorerFrontier {
         }
     }
 
+    // r[impl chaoscontrol.campaign_policy.progress]
     /// Last committed journal segment, bound into `checkpoint.json`.
     fn journal_binding(&self) -> Option<CampaignJournalBinding> {
         match self {
@@ -877,6 +878,7 @@ impl Explorer {
         }
     }
 
+    // r[impl chaoscontrol.campaign_policy.effects]
     /// One round: begin (draws + plan), authorize (publication fence), execute
     /// (product effects), finish (settlement).
     fn run_round(&mut self, round: u64) -> Result<RoundRun, ExploreError> {
@@ -938,6 +940,7 @@ impl Explorer {
         Ok(RoundRun::Completed(report))
     }
 
+    // r[impl chaoscontrol.campaign_policy.product_authority]
     /// Frontier-entry proposals of one branch result (one per marker, else one).
     ///
     /// Scores against the current global coverage and advances marker hit

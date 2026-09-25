@@ -13,6 +13,10 @@ path = "src/bin/chaoscontrol-explore.rs"
 name = "check-profile-admission"
 path = "src/bin/check-profile-admission.rs"
 
+[[bin]]
+name = "check-frontier-parity"
+path = "src/bin/check-frontier-parity.rs"
+
 [features]
 default = []
 dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep:futures-core"]

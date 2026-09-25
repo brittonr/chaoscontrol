@@ -323,10 +323,21 @@ Output directory contains:
 - `snapshots/<sha256>.snapshot.bin` — bounded, hash-addressed, zstd-compressed CBOR v2 `SimulationSnapshot` artifacts; live replay rejects legacy codecs
 - `run-config.json` and `receipt.json` — contract-backed review inputs generated with `materialize-dogfood-receipt`
 - `replay-verdict.json` — optional Rust-owned machine-readable reproduce/smoke verdict emitted by `reproduce --verdict-output`
-- `frontier-trace.jsonl` — product frontier decision trace written by both policies (header, root, one record per round with recorded draws, selection, branch facts with score bits, admitted/pruned entries and the retained set, stop); input for parity replay, not VM evidence
+- `frontier-trace.jsonl` — product frontier decision trace written by both policies (header with the stale-round limit, root proposals and retained set, one record per round with recorded draws, selection, the selection's planning work, branch facts with score bits, admitted/pruned entries and the retained set, stop); input for parity replay, not VM evidence
 - `campaign-journal/` — `campaign-candidate` only: exclusive `LOCK` plus `epoch-NNNN/seg-NNNNNNNN.cbor` segments. Each round commits its selection segment before mutation, restore, dispatch, or KVM work, and its settlement segment before `checkpoint.json`; resume closes the previous epoch and starts a new one. Structural only: never product evidence
 
-The Campaign policy rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. Reports name the frontier policy and state that no stop claims exhaustive search.
+The Campaign policy rejects configurations it cannot represent before KVM work: `--max-frontier 0`, a non-finite or negative `--rare-edge-weight`, and a bootstrap without a restorable snapshot. With `--rounds 0` it plans no selection. Reports name the frontier policy and state that no stop claims exhaustive search.
+
+Frontier policy parity for two runs of the same seed and configuration:
+
+```bash
+cargo run --bin check-frontier-parity -- \
+  --legacy legacy-run/frontier-trace.jsonl \
+  --campaign campaign-run/frontier-trace.jsonl \
+  --receipt frontier-parity.json
+```
+
+Each run's recorded observations and selection draws are replayed through the other policy, and every structural decision (draws, selected entry, explore flag, parent moment, admitted and pruned entries, retained set with selection counts and scores, selection budget use, stop class) is compared after every round. The receipt (`chaoscontrol.frontier-parity-receipt.v1`) binds both trace digests and reports decision-field equality and semantic planning work (`candidates_examined`, `eligible_candidates`) as separate facts; time and memory are not measured. Exit status: 0 when every decision agrees, 1 on decision drift (receipt still written), 2 for input errors; an existing receipt is never replaced. Live coverage drift between the two runs is a recorded non-claim, and the receipt is structural only, never VM evidence.
 
 ### Assertion identity and migration
 

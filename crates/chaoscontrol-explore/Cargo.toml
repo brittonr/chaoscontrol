@@ -19,8 +19,8 @@ dashboard = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-stream", "dep
 profiling = ["dep:tracing", "chaoscontrol-vmm/profiling"]
 
 [dependencies]
-campaign-core = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c722608413bab1496df2c4a889c3e0b56d8f8db1" }
-campaign-choregraph = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c722608413bab1496df2c4a889c3e0b56d8f8db1" }
+campaign-core = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c5e20cf2f085d4397b8658fc9643c148990b06b4" }
+campaign-choregraph = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c5e20cf2f085d4397b8658fc9643c148990b06b4" }
 choregraph-history = { git = "https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git", rev = "b3e08e19750f53bdbcae970cdf58a47a791ed20b" }
 chaoscontrol-vmm = { path = "../chaoscontrol-vmm" }
 chaoscontrol-fault = { path = "../chaoscontrol-fault" }
@@ -52,4 +52,4 @@ async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", optional = true }
 
 [dev-dependencies]
-campaign-conformance = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c722608413bab1496df2c4a889c3e0b56d8f8db1" }
+campaign-conformance = { git = "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git", rev = "c5e20cf2f085d4397b8658fc9643c148990b06b4" }

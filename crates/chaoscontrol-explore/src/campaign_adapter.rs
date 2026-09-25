@@ -31,7 +31,9 @@ pub use entropy::{
     entropy_ticket, legacy_explores, selection_mode, ticket_counter, EntropyDraws, LegacyDraws,
     EXPLORATION_ORDER, EXPLORATION_THRESHOLD_PARTS_PER_MILLION, LEGACY_EXPLORATION_EPSILON,
 };
-pub use fence::{execution_authority, load_projection, receipt_claims, validate_cache};
+pub use fence::{
+    advance_projection, execution_authority, load_projection, receipt_claims, validate_cache,
+};
 pub use identity::{
     entropy_rule_id, entropy_source_id, AdapterIdentity, AdapterReason, RAND_CHACHA_VERSION,
     RAND_VERSION,

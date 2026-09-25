@@ -38,9 +38,6 @@ use crate::explorer::{ExplorationMode, ExplorerConfig};
 
 /// Seed of the conformance adapter's entropy source.
 const CONFORMANCE_SEED: u64 = 0x00c0_ffee;
-/// Campaign's reference transcript digest for its default profile (`consumer_pilots.valid`).
-const REFERENCE_TRANSCRIPT_DIGEST: &str =
-    "424ae98a1d0a747a4195830626db6fb2589a181fc4875602e652da53d860a890";
 /// Campaign default profile values (`campaign-profile` `default.json`).
 const DEFAULT_THRESHOLD_PARTS_PER_MILLION: u64 = 100_000;
 const DEFAULT_EXPLORATION_ORDER: [u32; 1] = [0];
@@ -411,10 +408,6 @@ impl ConsumerShell for ChaosControlConformanceAdapter {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 fn failures(report: &ConformanceReport) -> Vec<(&'static str, FixtureVerdict)> {
     report
         .failures()
@@ -442,7 +435,19 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
         .iter()
         .all(|outcome| outcome.verdict == FixtureVerdict::Passed));
     let digest = report.transcript.digest().unwrap();
-    assert_eq!(hex(&digest), REFERENCE_TRANSCRIPT_DIGEST);
+    assert_eq!(digest, reference_pilot_digest(&profile));
+}
+
+/// Transcript digest of Campaign's own conforming reference pilot on `profile`.
+///
+/// The pinned suite's Animus-shaped fixture adapter is the Campaign-side pilot
+/// (`campaign.consumer_pilots.valid`); comparing against its run keeps the
+/// assertion exact while the suite grows between pins.
+fn reference_pilot_digest(profile: &SuiteProfile) -> [u8; 32] {
+    let mut pilot = campaign_conformance::fixtures::animus_shaped::OpaqueCandidateAdapter::new();
+    let report = run_suite(&mut pilot, profile);
+    assert_eq!(failures(&report), Vec::new());
+    report.transcript.digest().unwrap()
 }
 
 #[test]
@@ -452,10 +457,9 @@ fn a_changed_profile_changes_the_transcript_digest() {
     profile.retention_rank_order = vec![1];
     let report = run_suite(&mut ChaosControlConformanceAdapter::new(), &profile);
     assert_eq!(failures(&report), Vec::new());
-    assert_ne!(
-        hex(&report.transcript.digest().unwrap()),
-        REFERENCE_TRANSCRIPT_DIGEST
-    );
+    let digest = report.transcript.digest().unwrap();
+    assert_eq!(digest, reference_pilot_digest(&profile));
+    assert_ne!(digest, reference_pilot_digest(&suite_profile()));
 }
 
 /// The one contract a wrapper breaks.

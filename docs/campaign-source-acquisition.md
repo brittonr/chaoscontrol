@@ -12,7 +12,7 @@ For a listed URL and a complete object ID, Cargo requests that object directly. 
 
 Unlisted URLs keep their previous behavior, including the GitHub fast path. Symbolic or abbreviated requests without a complete locked object ID keep stock resolution. An unlocked default-branch request still requires HEAD.
 
-Cargo pins Campaign development revision `c722608413bab1496df2c4a889c3e0b56d8f8db1` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. It uses the ordinary Campaign HTTPS endpoint. The Nix `campaign-src` input still names `e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b` until the forge serves the development revision; until then, Nix builds of the locked graph cannot acquire Campaign. No source reference, Radicle signature, node identity, or namespace HEAD changes.
+Cargo pins Campaign development revision `c5e20cf2f085d4397b8658fc9643c148990b06b4` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. It uses the ordinary Campaign HTTPS endpoint. The Nix `campaign-src` input still names `e23e3edf1dc6a8c612a4ea33a3b805bda1173e3b` until the forge serves the development revision; until then, Nix builds of the locked graph cannot acquire Campaign. No source reference, Radicle signature, node identity, or namespace HEAD changes.
 
 ## Why the stock fetch fails
 

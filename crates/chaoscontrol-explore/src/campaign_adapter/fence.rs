@@ -6,8 +6,9 @@
 
 use campaign_choregraph::{
     can_execute_selection_after_publication, validate_cache_against_history,
-    validate_control_projection, AdapterResult, CacheValidationRequest, ControlProjectionRequest,
-    ControlPublication, DurablePublicationEvidence, ValidatedControlProjection,
+    validate_control_advance, validate_control_projection, AdapterResult, CacheValidationRequest,
+    ControlProjectionRequest, ControlPublication, DurablePublicationEvidence,
+    ValidatedControlProjection,
 };
 use campaign_core::{CacheProjection, FrontierState, ReceiptClaims, SelectionDecision};
 
@@ -19,6 +20,21 @@ pub fn load_projection(
     request: &ControlProjectionRequest<'_>,
 ) -> AdapterResult<ValidatedControlProjection> {
     validate_control_projection(request)
+}
+
+/// Advances a previously validated control projection to the presented history.
+///
+/// Only the new lineage suffix is validated and applied; a rewound branch or a
+/// branch moved onto a fork is refused.
+///
+/// # Errors
+/// Returns the Choregraph adapter error of a non-fast-forward, stale, rewritten,
+/// or forged history.
+pub fn advance_projection(
+    previous: &ValidatedControlProjection,
+    request: &ControlProjectionRequest<'_>,
+) -> AdapterResult<ValidatedControlProjection> {
+    validate_control_advance(previous, request)
 }
 
 /// Validates a derived cache against authoritative history; the journal wins.

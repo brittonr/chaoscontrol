@@ -166,6 +166,7 @@ fn a_binding_from_before_a_moment_admission_is_stale() {
             expected_binding: stale_after_selection,
             payloads: &session.payloads,
         },
+        previous: None,
         control_event: event.clone(),
     });
     assert!(planned.is_err());

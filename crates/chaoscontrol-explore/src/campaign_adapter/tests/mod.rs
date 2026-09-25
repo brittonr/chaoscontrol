@@ -203,6 +203,7 @@ impl Session {
                 expected_binding: self.binding(),
                 payloads: &self.payloads,
             },
+            previous: None,
             control_event: event,
         })
         .unwrap()

@@ -1,69 +1,149 @@
-//! Pure product-side rank conversion for Campaign adoption.
+//! Pure ChaosControl adapter to Campaign policy and Choregraph history values.
 //!
-//! This module does not select candidates or authorize execution. Explorer
-//! remains on its legacy policy until publication and parity checks pass.
+//! Every function here maps explicit product facts to Campaign or Choregraph
+//! values, or maps Campaign decisions back to product meaning. Nothing here
+//! touches the filesystem, clocks, workers, snapshots, or KVM; the Explorer
+//! shell owns those effects and the durable journal. Campaign and Choregraph
+//! receipts stay structural and never satisfy VM, fault, assertion, finding,
+//! replay, minimization, or release evidence.
 
-use campaign_core::{derive_id, Id, IdKind, SelectionCountDecay};
+pub mod candidates;
+pub mod eligibility;
+pub mod entropy;
+pub mod fence;
+pub mod identity;
+pub mod moments;
+pub mod profile;
+pub mod ranks;
+pub mod results;
+pub mod stops;
+pub mod wire;
 
-/// Effective score, original score, then stable insertion order.
-pub const RANK_DIMENSIONS: usize = 3;
-const RANK_PROFILE_LABEL: &[u8] = b"chaoscontrol.frontier-ranks.ieee754.v1";
-const SIGN_BIT: u64 = 1_u64 << (u64::BITS - 1);
+pub use candidates::{
+    candidate_record, generation_profile_id, marker_digest, operation_profile_id,
+    validate_candidate, FrontierEntryFacts,
+};
+pub use eligibility::{
+    ineligible_retirement, unobserved_closure, Eligibility, IneligibleReason, SnapshotContext,
+    SnapshotEntry, SnapshotTable,
+};
+pub use entropy::{
+    entropy_ticket, legacy_explores, selection_mode, ticket_counter, EntropyDraws, LegacyDraws,
+    EXPLORATION_ORDER, EXPLORATION_THRESHOLD_PARTS_PER_MILLION, LEGACY_EXPLORATION_EPSILON,
+};
+pub use fence::{execution_authority, load_projection, receipt_claims, validate_cache};
+pub use identity::{
+    entropy_rule_id, entropy_source_id, AdapterIdentity, AdapterReason, RAND_CHACHA_VERSION,
+    RAND_VERSION,
+};
+pub use moments::{
+    admit_child_moment, admit_root_moment, child_moment_draft, child_moment_id, child_payload_id,
+    moment_schema, projection_binding, readmit_moment, root_control_branch, root_moment_draft,
+    root_moment_id, root_payload_id, AdmittedMoment, BranchSlot, ChildMomentFacts, RootMomentFacts,
+    CONTROL_BRANCH_NAME,
+};
+pub use profile::{
+    admit_config, campaign_admission, retention_plan_request, selection_request, BootstrapFacts,
+    CampaignProfile, DegenerateConfig, SelectionLimit, RETENTION_RANK_ORDER,
+};
+pub use ranks::{
+    decay_revision, frontier_ranks, guidance_record, insertion_rank, rank_profile_id, score_rank,
+    GuidanceFacts, RankError, MAX_RANK_MAGNITUDE, RANK_DIMENSIONS,
+};
+pub use results::{child_observation, finding_ref, result_observation, ResultFacts, RetainedChild};
+pub use stops::{product_stop, round_decision, stop_reason, ProductStop, RoundDecision};
+pub use wire::{
+    authenticate_control_event, decode_control_event, decode_moment, encode_control_event,
+    encode_moment, WireError,
+};
 
-/// Rejected product facts or an incompatible shared decay policy.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RankError {
-    /// Scores must be finite and nonnegative.
-    InvalidScore,
-    /// The next selection count cannot fit the product counter.
-    SelectionCountExhausted,
-    /// The adapter already applies the legacy division-based decay.
-    DoubleDecay,
-    /// The admitted score did not fit the signed rank representation.
-    RankOutOfRange,
+/// Typed failure of one pure adapter mapping. No mapping mutates product state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AdapterError {
+    /// Score-to-rank conversion rejected the product facts.
+    Rank(RankError),
+    /// Campaign rejected a derived value.
+    Campaign(campaign_core::CampaignError),
+    /// Campaign's Choregraph adapter rejected a projection or publication.
+    Choregraph(campaign_choregraph::AdapterError),
+    /// Choregraph history rejected a moment admission.
+    History(campaign_choregraph::HistoryError),
+    /// A value names another adapter, candidate, or moment than the one mapped.
+    CrossedIdentity,
+    /// A value names another campaign than the admitted one.
+    CrossedCampaign,
+    /// A decay revision does not advance the selection count by exactly one.
+    StaleGuidanceGeneration,
+    /// A recorded `gen::<f64>` draw is not an exact multiple of `2^-53` in `[0, 1)`.
+    NonCanonicalUnitDraw,
+    /// Product and Campaign explore predicates disagree for one draw.
+    ExploreDisagreement,
+    /// The explore branch ran without a recorded `gen_range` draw.
+    MissingIndexDraw,
+    /// The exploit branch carried a `gen_range` draw.
+    UnexpectedIndexDraw,
+    /// The recorded `gen_range` draw is outside the frontier.
+    IndexDrawOutOfRange,
+    /// An event or parent is not a ChaosControl exploration moment.
+    NotMoment,
+    /// A candidate names a parent moment Campaign does not know.
+    UnknownParentMoment,
+    /// A candidate record differs from the record its frontier entry maps to.
+    CandidateMismatch,
+    /// The candidate's parent moment has no current restorable snapshot.
+    Ineligible(IneligibleReason),
+    /// The snapshot table already holds this moment, or the key is not a moment.
+    InvalidSnapshotKey,
+    /// A result names a selection that is not outstanding.
+    UnknownSelection,
+    /// A result reports the same child moment twice.
+    DuplicateChild,
+    /// The legacy configuration has no Campaign representation.
+    DegenerateConfig(DegenerateConfig),
+    /// A derived bound overflowed `u64`.
+    BoundOverflow,
+    /// A Campaign stop has no ChaosControl meaning.
+    UnmappedStop,
+    /// The journal mirror failed to decode or authenticate.
+    Wire(WireError),
 }
 
-/// Identifies the exact rank conversion and tie-break rules.
-#[must_use]
-pub fn rank_profile_id() -> Id {
-    derive_id(IdKind::GuidanceProfile, RANK_PROFILE_LABEL, &[])
-}
-
-/// Converts legacy frontier ordering into lexicographic Campaign ranks.
-///
-/// Finite nonnegative IEEE-754 bit patterns preserve numeric order. Signed
-/// zero is normalized because the legacy comparison treats both zeros alike.
-/// Original score and insertion ID preserve the stable frontier tie break.
-/// The shared profile must not apply a second, subtractive decay.
-///
-/// # Errors
-/// Rejects invalid scores, exhausted counters, and nonzero shared decay.
-pub fn frontier_ranks(
-    score: f64,
-    times_selected: u32,
-    entry_id: u64,
-    shared_decay: &SelectionCountDecay,
-) -> Result<[i64; RANK_DIMENSIONS], RankError> {
-    if !score.is_finite() || score < 0.0 {
-        return Err(RankError::InvalidScore);
+impl std::fmt::Display for AdapterError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "campaign adapter: {self:?}")
     }
-    if shared_decay.penalty_per_selection != 0 {
-        return Err(RankError::DoubleDecay);
-    }
-    let successor = times_selected
-        .checked_add(1)
-        .ok_or(RankError::SelectionCountExhausted)?;
-    // Every u32 value has an exact f64 representation.
-    let effective_score = score / f64::from(successor);
-    let effective = score_rank(effective_score)?;
-    let original = score_rank(score)?;
-    let insertion_order = i64::from_be_bytes((!entry_id ^ SIGN_BIT).to_be_bytes());
-    Ok([effective, original, insertion_order])
 }
 
-fn score_rank(score: f64) -> Result<i64, RankError> {
-    let canonical_score = if score == 0.0 { 0.0 } else { score };
-    i64::try_from(canonical_score.to_bits()).map_err(|_| RankError::RankOutOfRange)
+impl std::error::Error for AdapterError {}
+
+impl From<RankError> for AdapterError {
+    fn from(error: RankError) -> Self {
+        Self::Rank(error)
+    }
+}
+
+impl From<campaign_core::CampaignError> for AdapterError {
+    fn from(error: campaign_core::CampaignError) -> Self {
+        Self::Campaign(error)
+    }
+}
+
+impl From<campaign_choregraph::AdapterError> for AdapterError {
+    fn from(error: campaign_choregraph::AdapterError) -> Self {
+        Self::Choregraph(error)
+    }
+}
+
+impl From<campaign_choregraph::HistoryError> for AdapterError {
+    fn from(error: campaign_choregraph::HistoryError) -> Self {
+        Self::History(error)
+    }
+}
+
+impl From<WireError> for AdapterError {
+    fn from(error: WireError) -> Self {
+        Self::Wire(error)
+    }
 }
 
 #[cfg(test)]

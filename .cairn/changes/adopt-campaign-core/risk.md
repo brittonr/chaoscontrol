@@ -50,7 +50,12 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 
 ## Current blockers
 
-The Choregraph history implementation and Campaign Rust implementation are not published. Product adapter implementation cannot start safely.
+Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, and cutover are implemented. These obligations remain:
+
+- Cargo pins Campaign development revision `c5e20cf2`, but the Nix `campaign-src` input still names `e23e3edf`. This is the mismatched-revision hazard above. Until Cargo and Nix select the same Campaign release revision, Nix builds that vendor `Cargo.lock` cannot acquire Campaign, and no release claim holds.
+- The full `nix flake check -L` gate has not run on the re-pinned tree.
+- No fixture rejects a ChaosControl product type leaking into the Campaign boundary. Only the dependency direction enforces it today.
+- Product evidence admission does not yet list `chaoscontrol.frontier-parity-receipt.v1` among the structural schemas it refuses. No gate consumes the committed receipt.
 
 ## Residual risks
 

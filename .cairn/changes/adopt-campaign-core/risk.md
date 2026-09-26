@@ -52,7 +52,7 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 
 Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. These obligations remain:
 
-- Cargo and the Nix `campaign-src` input both pin Campaign development revision `1f8e1a74` (commit `ccc6ff2`), which closes the mismatched-revision hazard for this revision. It is not the Campaign release revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `1f8e1a74` from the live endpoint has not been observed. No release claim holds until the release re-pin.
+- Cargo and the Nix `campaign-src` input both pin Campaign development revision `65eee6e7` (commit `f45a40f`), the revision under final review, which closes the mismatched-revision hazard for this revision. It is not yet the Campaign release revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `65eee6e7` from the live endpoint has not been observed. No release claim holds until the release re-pin.
 - The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Residual risks
@@ -71,5 +71,6 @@ Choregraph history and Campaign are published. The product adapter, durable jour
 - A structurally valid history can reference an unavailable snapshot.
 - Host timing and kernel behavior can differ across KVM runs.
 - Shared conformance does not prove useful exploration or correct product findings.
+- `history.state_coverage` covers a bounded 4-way combination of declared state features over 167 recipes with 3 candidates. Passing it does not prove every reachable state or longer lineages are handled; the adapter's own history, cache, and fence tests remain the evidence for those.
 
 ChaosControl maintainers own adapter mapping, KVM behavior, product policy, and evidence claims. Campaign owns shared frontier policy. Choregraph owns structural history.

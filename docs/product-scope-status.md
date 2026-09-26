@@ -4,7 +4,7 @@ Generated from `contracts/product-scope/registry.ncl` and named repository facts
 
 ## Architecture facts
 
-The Cargo workspace has 23 explicit crates. The source is `Cargo.toml`.
+The Cargo workspace has 24 explicit crates. The source is `Cargo.toml`.
 
 | Capability | State | Status label | Owner | Evidence | Boundary |
 | --- | --- | --- | --- | --- | --- |
@@ -36,6 +36,7 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
+| `add-property-campaign-rail` | `experimental` | `chaoscontrol-explore` | A typed property-campaign contract, seeded reruns, reducer-backed failure-mode-preserving minimization, bounded receipts, and positive and negative fixtures must pass. |
 | `add-protocol-observation-cohorts` | `experimental` | `chaoscontrol-evidence` | Typed cohort admission, independent oracle fixtures, loss accounting, stable novelty, bounds, and replay checks must pass. |
 | `adopt-campaign-core` | `experimental` | `chaoscontrol-explore` | Published exact dependencies, durable selection publication, product-adapter conformance, legacy parity, and bounded Campaign-backed KVM evidence must pass. |
 | `benchmark-bug-corpus` | `experimental` | `chaoscontrol-explore` | Versioned positive and negative corpus entries must match independent expected verdicts, measured rarity bounds, and exact replay receipts. |

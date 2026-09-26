@@ -266,6 +266,13 @@ let ProductScope = import "product-scope.ncl" in
   ],
   change_intents = [
     {
+      change = "add-property-campaign-rail",
+      owner = "chaoscontrol-explore",
+      target_state = "experimental",
+      evidence_prerequisite = "A typed property-campaign contract, seeded reruns, reducer-backed failure-mode-preserving minimization, bounded receipts, and positive and negative fixtures must pass.",
+      non_claims = ["Passing campaigns do not prove formal correctness or exhaustive input coverage.", "No VM replay proof, semantic equivalence, or release eligibility claim."],
+    },
+    {
       change = "add-protocol-observation-cohorts",
       owner = "chaoscontrol-evidence",
       target_state = "experimental",

@@ -179,6 +179,12 @@ Commit `905c2eb` moved Cargo and the Nix `campaign-src` input together to Campai
 - `SharedControlGraph` and `StaleGraph` are halting history errors, not capacity refusals: `is_capacity_refusal` is unchanged, and either would propagate as `FrontierError::Adapter(Choregraph(..))`. Neither is reachable from the Explorer.
 - Conformance adds `receipts.recorded_stop_overclaim` (79 fixtures) and presents the held matrix across every holder kind and length with the `SharedControlGraph` and `StaleGraph` denial classes. The adapter passes every fixture; `ReceiptOverclaim` also fails the new fixture, and every broken wrapper still fails.
 
+Commit `ccc6ff2` moved Cargo and the Nix `campaign-src` input together to Campaign `1f8e1a74` (D91 to D96):
+
+- Publication only on durably committed branch values (D91, `campaign.publication_fence.durable_base`). Campaign's recovery guarantees now cover only hosts that never plan or publish through a branch value whose compare-and-set is not durable; a pipelined chain of drafts is outside them. The Explorer's graph and branch exist only in its `ControlSession`: `ControlSession::publish` moves the branch to the planned value in the same call that admits the draft, so the graph never holds a draft whose branch update is pending and no draft is ever chained below another. Every publication stages on a clone of the committed session, and `commit` adopts the clone only after its journal segment is durable, so a segment's drafts and branch moves become durable together or not at all. A segment that fails to commit halts the backend (and unknown durability poisons the journal) before anything is planned or published over it, and recovery publishes only on the session replayed from committed segments. No code change was needed; the session module doc names the obligation, and `an_uncommitted_segment_leaves_no_draft_and_nothing_publishes_over_it` pins it.
+- Admission currency (D94). Campaign's state-currency check now re-derives and validates the admission, so a caller-built state with an edited admission is `StaleState`. The Explorer takes its first state from Campaign reconstruction (`load_projection` in `ControlSession::genesis`), advances it only with `apply_control_event`, and `seal` requires it to equal the state of the projection Campaign re-validates, so no Explorer path builds a state by hand and no change was needed.
+- Claims fixtures present every receipt of their session in every later state (D92). The adapter passes every fixture with the new digests; `ReceiptOverclaim` now fails its non-selection, planner, and recorded-stop fixtures at the admission receipt, and every broken wrapper still fails. Checker (D93) and wording (D95, D96) changes need no consumer change; both pinned conformance tests call `run_suite`.
+
 ### Integer ranks and explicit division decay
 
 `ranks.rs` emits three rank dimensions: effective score, original score, and `i64::MAX - entry_seq`. A finite nonnegative `f64` keeps its numeric order as its IEEE-754 bit pattern, so `score_rank` uses those bits. It normalizes signed zero and rejects non-finite or negative scores. Sequence numbers above `i64::MAX` are rejected.
@@ -332,11 +338,11 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current State and Remaining Blockers
 
-- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `9f1f33a6` (commit `905c2eb`); the forge answered HTTP 530, so its locks came from local caches.
+- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `1f8e1a74` (commit `ccc6ff2`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
 - Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`.
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
-- **Blocker: final release pin.** `9f1f33a6` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
+- **Blocker: final release pin.** `1f8e1a74` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
 - **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Non-Claims

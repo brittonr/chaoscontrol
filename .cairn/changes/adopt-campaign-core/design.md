@@ -170,6 +170,15 @@ Commit `f42381c` moved Cargo and the Nix `campaign-src` input together to Campai
 - Sorted lookups (D71, D79), infra-checker coverage (D66, D78), and spec wording (D70, D80) need no consumer change.
 - Conformance (D64, D65, D67, D68, D76, D77, D80). The catalog adds `closures.out_of_order`, `selection.middle_level`, `selection.level_order`, and `selection.interior_level` (78 fixtures) and presents forks over earlier history, exact ticket decoding, held-projection load and cache matrices, exploratory and same-batch claim receipts, binary64-crossing draws, and two finding-bearing results in one campaign. The adapter passes every fixture unchanged, and every broken wrapper fails exactly the fixtures it failed before.
 
+Commit `905c2eb` moved Cargo and the Nix `campaign-src` input together to Campaign `9f1f33a6` (D82 to D90):
+
+- One campaign per graph and envelope (D82). `admit_control_root` refuses with `SharedControlGraph { event_id }` when the graph holds any other Campaign control event under the envelope, and cold load, advance, and publication refuse a graph holding another control root. ChaosControl's envelope (projection schema, adapter, and control domain identities) is seed-independent, so the rule holds only because every campaign gets its own graph: each epoch's genesis admits the root moment into a fresh `HistoryGraph`, `admit_root` refuses a second admission before Campaign sees it, recovery replays each epoch into a fresh graph, and a resume opens a new epoch with its own graph. No code change was needed.
+- Occupancy reserve for every descending draft (D83). The reserve counts every Campaign control draft that descends from the branch head through control-parent links, each as its own event plus one settlement, republication counts the drafts chained below, and the planner checks the recorded reserve on every plan. The Explorer never leaves a draft (see D63 above), so its reserve is still the outstanding settlements plus the stop, and `HostCapacity::of` keeps reading the exposed accessors. A planner capacity error still means something outside Campaign publication consumed the reserve; it propagates.
+- Stale graph (D84). A held projection refuses to advance onto a graph with fewer events than it recorded, or one lacking a draft it recorded as pending (`StaleGraph`). `ControlSession::seal` always advances over the session's own graph, which only grows, so the Explorer always presents its current graph.
+- Nested keyed vectors (D90). Declared costs, reserved costs, and recorded stop dimensions must be strictly increasing. Every ChaosControl candidate declares one cost dimension, so no change was needed.
+- `SharedControlGraph` and `StaleGraph` are halting history errors, not capacity refusals: `is_capacity_refusal` is unchanged, and either would propagate as `FrontierError::Adapter(Choregraph(..))`. Neither is reachable from the Explorer.
+- Conformance adds `receipts.recorded_stop_overclaim` (79 fixtures) and presents the held matrix across every holder kind and length with the `SharedControlGraph` and `StaleGraph` denial classes. The adapter passes every fixture; `ReceiptOverclaim` also fails the new fixture, and every broken wrapper still fails.
+
 ### Integer ranks and explicit division decay
 
 `ranks.rs` emits three rank dimensions: effective score, original score, and `i64::MAX - entry_seq`. A finite nonnegative `f64` keeps its numeric order as its IEEE-754 bit pattern, so `score_rank` uses those bits. It normalizes signed zero and rejects non-finite or negative scores. Sequence numbers above `i64::MAX` are rejected.
@@ -263,7 +272,7 @@ Mapping of the host-capacity terms to Campaign's exposed values:
 | ChaosControl term | Campaign source |
 | --- | --- |
 | `HostCapacity::lineage` | `ValidatedControlProjection::control_events().len()` |
-| `HostCapacity::reserved_control_events` (the stop at round start; settlements and a pending draft when present) | `reserved_control_events()` |
+| `HostCapacity::reserved_control_events` (the stop at round start; settlements and every descending control draft when present) | `reserved_control_events()` |
 | `HostCapacity::maximum_events` | `maximum_events()` |
 | `HostCapacity::graph_room` | `graph_room()` = `graph_max_events() - graph_events() - reserved_graph_events()`, saturating |
 | `HostCapacity::admitted_generation` | `state().admission.projection.generation` |
@@ -323,11 +332,11 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current State and Remaining Blockers
 
-- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `3a182d5a` (commit `f42381c`); the forge answered HTTP 530, so its locks came from local caches.
+- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `9f1f33a6` (commit `905c2eb`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
 - Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`.
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
-- **Blocker: final release pin.** `3a182d5a` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
+- **Blocker: final release pin.** `9f1f33a6` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
 - **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Non-Claims

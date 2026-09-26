@@ -262,17 +262,17 @@
       "flake": false,
       "locked": {
         "allRefs": true,
-        "lastModified": 1790458477,
-        "narHash": "sha256-aLtsvKbWsr0d4+RId/wODF8mWQce7s0j/RJ5pNazV9w=",
+        "lastModified": 1790465060,
+        "narHash": "sha256-W04okwBSM7em9lgno8A7PQQs6h9rTvZfZ+3L32T1Fd0=",
         "ref": "refs/heads/main",
-        "rev": "65eee6e70a7151cad3032dde0f242f57bb03938b",
-        "revCount": 85,
+        "rev": "e7757a5134f631e1ed410df3cae57e57f887c468",
+        "revCount": 88,
         "type": "git",
         "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
       },
       "original": {
         "allRefs": true,
-        "rev": "65eee6e70a7151cad3032dde0f242f57bb03938b",
+        "rev": "e7757a5134f631e1ed410df3cae57e57f887c468",
         "type": "git",
         "url": "https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git"
       }

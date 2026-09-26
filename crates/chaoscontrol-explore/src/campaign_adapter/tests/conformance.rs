@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `65eee6e7`).
+/// Fixture count of the pinned Campaign conformance suite (Campaign `e7757a51`).
 const PINNED_FIXTURE_COUNT: usize = 80;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "cbad4c2a51cfe5514fdf115425496ce3b54eb8d29f5e4f275a40a0ee812e9835";
+    "28b873e9873c97b5b57194bbb499503e05fae0dc16633b9fe0ce844e0328b51b";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "199cef7e172250c274c478658adffe598ab707d9e93e80ef34ee4215c67f0889";
+    "37b9ff95d8c8d5b1b175be8e3e8445261d68daadddb3d903530b0186976c5bae";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -797,17 +797,17 @@ fn stale_history_and_history_rewrite_fail_the_named_fixtures() {
 fn crossed_identities_and_budget_miscount_fail_the_named_fixtures() {
     // The out-of-order settlement's crossed result names the other selection but
     // keeps the executed selection's reserved children, so Campaign refuses it
-    // with the typed reservation error: that negative fixture fails too.
+    // with the typed reservation error: that negative fixture fails too, as does
+    // the state-coverage fixture at its child-reporting fork heads.
     let mut crossed = let_through(&[(
         "results.crossed_selection",
         "a result settled a selection other than the executed one",
     )]);
-    crossed.push((
-        "results.out_of_order_settlement",
-        FixtureVerdict::NegativeFixtureFailed(ConformanceError::Campaign(
-            CampaignError::InvalidChildReservation,
-        )),
+    let refused = FixtureVerdict::NegativeFixtureFailed(ConformanceError::Campaign(
+        CampaignError::InvalidChildReservation,
     ));
+    crossed.push(("results.out_of_order_settlement", refused.clone()));
+    crossed.push(("history.state_coverage", refused));
     assert_eq!(broken_failures(Breakage::CrossedIdentities), crossed);
     let mut expected = vec![
         (

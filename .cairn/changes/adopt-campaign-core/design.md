@@ -345,14 +345,14 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 - Existing checkpoints omit complete frontier snapshots. Resume can require re-bootstrap and structural reconstruction.
 - The shared policy can make current selection behavior easier to inspect, but it does not prove better exploration.
 
-## Current State and Remaining Blockers
+## Current State and Residual Obligation
 
 - Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
 - Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. `kvm-smoke-2026-09-26.md` records the task-42 KVM smoke at the R5 head `73d8280` (parity receipt BLAKE3 `13abf29e…`). It supersedes the same-day smoke at `8ba46df` (R4).
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
-- **Blocker: fresh acquisition.** Fresh acquisition of `e7757a51` from the live endpoint has not been observed.
-- **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
+- The final gate (task 42) passed at the final head `ba3e8d3`, whose code is the R5 re-pin `351b59c`: focused tests, Clippy, rustdoc, Octet, Cairn, Campaign conformance, parity, the KVM smoke above, and `nix flake check -L`. See "Final gate" in `verification.md`.
+- **Residual: fresh acquisition.** Fresh acquisition of `e7757a51` from the live endpoint has not been observed; the forge also answered HTTP 530 during the final `nix flake check -L`, which used the cached source. No lifecycle task covers it, and until it is observed this change makes no release claim.
 
 ## Non-Claims
 

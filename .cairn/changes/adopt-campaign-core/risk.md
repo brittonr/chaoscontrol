@@ -48,12 +48,12 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 - KVM smoke evidence compares bounded structural and product observations.
 - Legacy selection becomes diagnostic-only after cutover and cannot satisfy release gates.
 
-## Current blockers
+## Current state
 
-Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. These obligations remain:
+Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. Every lifecycle task is complete, including the release re-pin (task 41) and the final gate (task 42). One obligation remains outside the lifecycle tasks:
 
 - Cargo and the Nix `campaign-src` input both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`), which closes the mismatched-revision hazard for this revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `e7757a51` from the live endpoint has not been observed. No release claim holds until it is.
-- The full `nix flake check -L` gate has not passed on the re-pinned tree.
+- The full `nix flake check -L` gate passed at the final head `ba3e8d3` (code `351b59c`), using the cached Campaign source while the forge answered HTTP 530. See "Final gate" in `verification.md`.
 
 ## Residual risks
 

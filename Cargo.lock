@@ -289,7 +289,7 @@ dependencies = [
 [[package]]
 name = "campaign-choregraph"
 version = "0.1.0"
-source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd#a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd"
+source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=3a182d5a980bce045090909f704fc472c024c3a6#3a182d5a980bce045090909f704fc472c024c3a6"
 dependencies = [
  "campaign-core",
  "choregraph-history",
@@ -298,7 +298,7 @@ dependencies = [
 [[package]]
 name = "campaign-conformance"
 version = "0.1.0"
-source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd#a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd"
+source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=3a182d5a980bce045090909f704fc472c024c3a6#3a182d5a980bce045090909f704fc472c024c3a6"
 dependencies = [
  "campaign-choregraph",
  "campaign-core",
@@ -307,7 +307,7 @@ dependencies = [
 [[package]]
 name = "campaign-core"
 version = "0.1.0"
-source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd#a75b5e3a829d47c86c9f0a2a5c7d1d42d58b67cd"
+source = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=3a182d5a980bce045090909f704fc472c024c3a6#3a182d5a980bce045090909f704fc472c024c3a6"
 dependencies = [
  "blake3",
 ]

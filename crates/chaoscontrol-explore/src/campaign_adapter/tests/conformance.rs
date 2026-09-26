@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `a75b5e3a`).
-const PINNED_FIXTURE_COUNT: usize = 74;
+/// Fixture count of the pinned Campaign conformance suite (Campaign `3a182d5a`).
+const PINNED_FIXTURE_COUNT: usize = 78;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "19446c4854e4a1679db4793a7b2dbf65e7da0acb0239c90ca069b99dccd2cb5c";
+    "77b07d8b1e9462658ce100e28300d300b6523c1f2caa6d35ba51283d02675379";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "bf04eddf8845c9cfc38e30cd49099fd1fbe95f9f65065794741b9078ac5f3564";
+    "5807991414f8669bcd4347d0cf1f2a126b3226075bbc205faa64460bdc33b550";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///

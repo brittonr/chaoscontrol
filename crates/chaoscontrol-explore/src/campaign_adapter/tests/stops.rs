@@ -318,42 +318,43 @@ fn an_outstanding_selection_without_capacity_waits_for_its_result() {
 }
 
 #[test]
-fn a_round_fits_only_with_room_for_its_settlement_and_the_stop() {
+fn a_round_fits_only_beside_the_exposed_reserve_and_within_the_graph_room() {
     const LINEAGE: u64 = 3;
-    const GRAPH: u64 = 5;
+    const RESERVED: u32 = 2;
     const ROUND: RoundDemand = RoundDemand {
         control_events: 10,
         history_events: 12,
     };
-    const EXACT: u32 = 14;
-    const EXACT_GRAPH: u32 = 18;
-    let capacity = |maximum_events, graph_max_events, admitted_generation| HostCapacity {
+    // Lineage, the reserve (settlement and stop), and the round.
+    const EXACT: u32 = 15;
+    const EXACT_ROOM: u32 = 12;
+    let capacity = |maximum_events, graph_room, admitted_generation| HostCapacity {
         lineage: LINEAGE,
-        graph_events: GRAPH,
+        reserved_control_events: RESERVED,
         maximum_events,
-        graph_max_events,
+        graph_room,
         admitted_generation,
     };
     assert_eq!(
-        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, 1), ROUND),
+        round_fits_capacity(&capacity(EXACT, EXACT_ROOM, 1), ROUND),
         Ok(true)
     );
     assert_eq!(
-        round_fits_capacity(&capacity(EXACT - 1, EXACT_GRAPH, 1), ROUND),
+        round_fits_capacity(&capacity(EXACT - 1, EXACT_ROOM, 1), ROUND),
         Ok(false)
     );
-    // The graph must also hold the round's child moments and the stop.
+    // Every graph append of the round, child moments included, must fit the room.
     assert_eq!(
-        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH - 1, 1), ROUND),
+        round_fits_capacity(&capacity(EXACT, EXACT_ROOM - 1, 1), ROUND),
         Ok(false)
     );
     let last_generation = u64::MAX - u64::from(EXACT);
     assert_eq!(
-        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, last_generation), ROUND),
+        round_fits_capacity(&capacity(EXACT, EXACT_ROOM, last_generation), ROUND),
         Ok(true)
     );
     assert_eq!(
-        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, last_generation + 1), ROUND),
+        round_fits_capacity(&capacity(EXACT, EXACT_ROOM, last_generation + 1), ROUND),
         Ok(false)
     );
     let unbounded = RoundDemand {
@@ -374,6 +375,102 @@ fn a_round_fits_only_with_room_for_its_settlement_and_the_stop() {
     ] {
         assert!(is_capacity_refusal(&AdapterError::Choregraph(refusal)));
     }
+}
+
+/// Graph event limit of [`host_capacity_takes_campaigns_exposed_reserve`].
+const RESERVE_GRAPH_MAX: u32 = 48;
+
+/// Asserts `projection`'s host capacity is Campaign's exposed reserve and room,
+/// and that a round fits exactly at that room and lineage and not one event past.
+fn assert_capacity_at_the_bound(
+    projection: &campaign_choregraph::ValidatedControlProjection,
+    reserved_control_events: u32,
+    reserved_graph_events: u32,
+) -> HostCapacity {
+    let capacity = HostCapacity::of(projection).unwrap();
+    assert_eq!(
+        projection.reserved_control_events(),
+        reserved_control_events
+    );
+    assert_eq!(projection.reserved_graph_events(), reserved_graph_events);
+    assert_eq!(capacity.reserved_control_events, reserved_control_events);
+    assert_eq!(
+        capacity.graph_room,
+        RESERVE_GRAPH_MAX - projection.graph_events() - reserved_graph_events
+    );
+    let control_room =
+        u64::from(capacity.maximum_events) - capacity.lineage - u64::from(reserved_control_events);
+    let fits = RoundDemand {
+        control_events: control_room,
+        history_events: u64::from(capacity.graph_room),
+    };
+    assert_eq!(round_fits_capacity(&capacity, fits), Ok(true));
+    let one_graph_event_more = RoundDemand {
+        history_events: fits.history_events + 1,
+        ..fits
+    };
+    assert_eq!(
+        round_fits_capacity(&capacity, one_graph_event_more),
+        Ok(false)
+    );
+    let one_control_event_more = RoundDemand {
+        control_events: fits.control_events + 1,
+        ..fits
+    };
+    assert_eq!(
+        round_fits_capacity(&capacity, one_control_event_more),
+        Ok(false)
+    );
+    capacity
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.valid]
+#[test]
+fn host_capacity_takes_campaigns_exposed_reserve() {
+    let mut session = Session::open_within_graph(&config(), RESERVE_GRAPH_MAX);
+    let root = session.root.moment_id;
+    session.admit_entries(root, &[2.0, 1.0]);
+    // Open with nothing outstanding: the reserve is the stop.
+    let idle = session.projection();
+    let idle_capacity = assert_capacity_at_the_bound(&idle, 1, 1);
+    assert_eq!(
+        idle_capacity.lineage,
+        u64::try_from(session.payloads.len()).unwrap()
+    );
+
+    // A selection admitted to the graph whose branch update has not committed is
+    // a pending draft, counted as a selection: its own event, its settlement, and
+    // the stop. The graph already holds the draft.
+    let request = session.request(EXPLOIT);
+    let plan =
+        campaign_core::plan_next(&session.state, request.clone(), &session.binding()).unwrap();
+    let RoundDecision::Execute(selection) =
+        round_decision(&session.identity, plan, session.campaign_id()).unwrap()
+    else {
+        panic!("expected a selection");
+    };
+    let event = CampaignControlEvent::SelectionPublished(
+        SelectionEvent::new(*selection, request.profile, request.entropy).unwrap(),
+    );
+    let committed_graph = session.graph.clone();
+    session.graph = session
+        .plan_publication(event.clone())
+        .graph_after_admission()
+        .clone();
+    let pending = session.projection();
+    assert_eq!(pending.graph_events(), idle.graph_events() + 1);
+    let pending_capacity = assert_capacity_at_the_bound(&pending, 3, 2);
+    assert_eq!(pending_capacity.lineage, idle_capacity.lineage);
+    assert_eq!(pending_capacity.graph_room, idle_capacity.graph_room - 2);
+
+    // Committed, the selection's settlement and the stop stay reserved: the room
+    // is the one the pending draft already exposed.
+    session.graph = committed_graph;
+    session.publish(event);
+    let outstanding = session.projection();
+    let outstanding_capacity = assert_capacity_at_the_bound(&outstanding, 2, 2);
+    assert_eq!(outstanding_capacity.lineage, idle_capacity.lineage + 1);
+    assert_eq!(outstanding_capacity.graph_room, pending_capacity.graph_room);
 }
 
 // r[verify chaoscontrol.campaign_policy.stop.valid]

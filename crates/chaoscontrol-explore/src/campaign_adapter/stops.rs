@@ -8,16 +8,19 @@
 //! Host control capacity: the Choregraph projection bound holds the control
 //! lineage, the control branch advances one generation per control event, and
 //! the shared Choregraph graph admits at most `max_events` events (child
-//! moments and control events). The adapter stops under Campaign's
-//! adapter-owned [`campaign_choregraph::control_capacity_reason_id`] when these
-//! bounds cannot hold one more round, its whole settlement (child moments
-//! included), and the stop, so an executed selection always settles in full.
+//! moments and control events). Every validated projection exposes the reserve
+//! its control history still owes (one settlement per outstanding selection, the
+//! stop of an open campaign, and a pending draft counted as a selection) and the
+//! graph room left beside it (D75). The adapter stops under Campaign's
+//! adapter-owned [`campaign_choregraph::control_capacity_reason_id`] when the
+//! lineage cannot hold one more round beside that reserve, or when the round's
+//! appends (control events and child moments) do not fit the exposed graph room,
+//! so an executed selection always settles in full and the stop still publishes.
 
 use campaign_choregraph::ValidatedControlProjection;
 use campaign_core::{DecisionPlan, NextDecision, SelectionDecision, StopReason, WaitReason};
 
 use super::identity::{AdapterIdentity, AdapterReason};
-use super::profile::CLOSING_CONTROL_EVENTS;
 use super::AdapterError;
 
 /// ChaosControl stop classes with a Campaign representation.
@@ -128,17 +131,22 @@ pub fn round_decision(
     }
 }
 
-/// Host control capacity of one validated control projection.
+/// Host control capacity of one validated control projection: the lineage and
+/// Campaign's exposed reserve and graph room (D75).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HostCapacity {
     /// Control lineage events the projection holds.
     pub lineage: u64,
-    /// Events of the shared Choregraph graph: moments and control events.
-    pub graph_events: u64,
+    /// Control events the projection's history still owes beyond its lineage
+    /// (`ValidatedControlProjection::reserved_control_events`): settlements of
+    /// outstanding selections, the stop of an open campaign, and a pending
+    /// draft's own event and settlement.
+    pub reserved_control_events: u32,
     /// Choregraph projection bound.
     pub maximum_events: u32,
-    /// Choregraph graph event limit.
-    pub graph_max_events: u32,
+    /// Graph events other appends may still make without consuming the reserve
+    /// (`ValidatedControlProjection::graph_room`).
+    pub graph_room: u32,
     /// Control branch generation of the admission's binding.
     pub admitted_generation: u64,
 }
@@ -152,9 +160,9 @@ impl HostCapacity {
         Ok(Self {
             lineage: u64::try_from(projection.control_events().len())
                 .map_err(|_| AdapterError::BoundOverflow)?,
-            graph_events: u64::from(projection.graph_events()),
+            reserved_control_events: projection.reserved_control_events(),
             maximum_events: projection.maximum_events(),
-            graph_max_events: projection.graph_max_events(),
+            graph_room: projection.graph_room(),
             admitted_generation: projection.state().admission.projection.generation,
         })
     }
@@ -171,10 +179,13 @@ pub struct RoundDemand {
 
 /// Whether the host control capacity still holds one more round.
 ///
-/// The lineage after the round plus the stop must fit both the Choregraph
+/// The lineage, Campaign's exposed control reserve (which already holds the
+/// stop), and the round's control events must fit both the Choregraph
 /// projection bound and the control branch generations left after the
-/// admission's binding; the graph after the round (child moments included) plus
-/// the stop must fit the graph event limit. Campaign's own planner reserves one
+/// admission's binding. Every graph append the round makes, its control events
+/// and its child moments alike, must fit the exposed graph room, so the round
+/// never consumes the reserve that keeps pending publications, outstanding
+/// settlements, and the stop publishable. Campaign's own planner reserves one
 /// settlement event per selection; a ChaosControl round settles with several
 /// control events and admits its child moments first, so the shell checks the
 /// whole round before it draws.
@@ -185,16 +196,14 @@ pub fn round_fits_capacity(
     capacity: &HostCapacity,
     round: RoundDemand,
 ) -> Result<bool, AdapterError> {
-    let closed = |held: u64, added: u64| {
-        held.checked_add(added)
-            .and_then(|events| events.checked_add(CLOSING_CONTROL_EVENTS))
-            .ok_or(AdapterError::BoundOverflow)
-    };
-    let lineage = closed(capacity.lineage, round.control_events)?;
-    let graph = closed(capacity.graph_events, round.history_events)?;
+    let lineage = capacity
+        .lineage
+        .checked_add(u64::from(capacity.reserved_control_events))
+        .and_then(|owed| owed.checked_add(round.control_events))
+        .ok_or(AdapterError::BoundOverflow)?;
     Ok(lineage <= u64::from(capacity.maximum_events)
         && capacity.admitted_generation.checked_add(lineage).is_some()
-        && graph <= u64::from(capacity.graph_max_events))
+        && round.history_events <= u64::from(capacity.graph_room))
 }
 
 /// Whether a Choregraph publication or plan was refused for host control

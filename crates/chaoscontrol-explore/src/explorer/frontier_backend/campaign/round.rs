@@ -87,7 +87,8 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
     }
 
     /// Whether the held projection's host capacity still holds a whole round
-    /// (child moments included), its settlement, and the stop.
+    /// (child moments included) beside Campaign's exposed reserve: the round's
+    /// graph appends stay within the projection's `graph_room`.
     fn round_fits_capacity(&self) -> Result<bool, FrontierError> {
         let capacity = HostCapacity::of(self.session()?.projection())?;
         Ok(round_fits_capacity(
@@ -120,7 +121,8 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         // capacity error means the stop reserve itself was consumed outside
         // Campaign publication; the stop would be refused too, so it is not
         // mapped to a stop and propagates. The whole-round check above keeps
-        // this shell's own moments inside the reserve, so it is not expected.
+        // this shell's own appends within Campaign's exposed graph room, so it
+        // is not expected.
         let plan = plan_next_from_published_projection(
             session.projection(),
             PublishedSelectionRequest {

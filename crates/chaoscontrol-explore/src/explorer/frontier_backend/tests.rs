@@ -790,21 +790,45 @@ fn one_round_graph_bound(dir: &Path) -> u64 {
     GENESIS_GRAPH + profile(dir).round_demand().unwrap().history_events + 1
 }
 
+/// Graph room Campaign exposes on the held projection (D75).
+fn graph_room(frontier: &CampaignFrontier<ScriptedIo>) -> u64 {
+    u64::from(frontier.projection().unwrap().graph_room())
+}
+
+/// Asserts the held projection's graph still holds Campaign's whole reserve:
+/// no append of the Explorer consumed it.
+fn assert_reserve_free(frontier: &CampaignFrontier<ScriptedIo>) {
+    let held = frontier.projection().unwrap();
+    assert!(
+        u64::from(held.graph_events()) + u64::from(held.reserved_graph_events())
+            <= u64::from(held.graph_max_events())
+    );
+}
+
 // r[verify chaoscontrol.campaign_policy.stop.valid]
 #[test]
 fn a_tight_graph_bound_ends_the_run_with_the_capacity_stop() {
     let dir = tempfile::tempdir().unwrap();
     let mut frontier = open_graph_bounded(dir.path(), one_round_graph_bound(dir.path())).unwrap();
     let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    // Campaign's exposed room holds exactly the round's appends: its control
+    // events and one child moment per branch.
+    let demand = profile(dir.path()).round_demand().unwrap();
+    assert_eq!(graph_room(&frontier), demand.history_events);
+    assert_eq!(frontier.projection().unwrap().reserved_graph_events(), 1);
     // The first round fits whole, child moments included, and settles in full.
     let plan = planned(&mut frontier, &mut rng, 0);
+    assert_reserve_free(&frontier);
     let round = executable(frontier.authorize(plan).unwrap());
+    assert_reserve_free(&frontier);
     frontier
         .finish_round(round, &observation(1, &[Some(vec![1.5]), Some(vec![0.5])]))
         .unwrap();
+    assert_reserve_free(&frontier);
     let state = frontier.state().unwrap();
     assert!(state.outstanding.is_empty());
     assert_eq!(state.selection_count, 1);
+    assert!(graph_room(&frontier) < demand.history_events);
     // The second does not fit the graph: the backend stops before drawing.
     let mut expected_rng = rng.clone();
     assert!(matches!(
@@ -818,6 +842,9 @@ fn a_tight_graph_bound_ends_the_run_with_the_capacity_stop() {
     let recorded = frontier.state().unwrap().stopped.clone().unwrap();
     assert_eq!(recorded.reason, capacity_reason());
     assert!(recorded.incomplete_search_acknowledged);
+    let held = frontier.projection().unwrap();
+    assert!(held.graph_events() <= held.graph_max_events());
+    assert_eq!(held.reserved_graph_events(), 0);
 }
 
 // r[verify chaoscontrol.campaign_policy.stop.invalid]
@@ -829,6 +856,11 @@ fn one_graph_event_short_of_a_whole_round_stops_before_the_first_selection() {
     let bound = one_round_graph_bound(dir.path()) - 1;
     assert!(GENESIS_GRAPH + 3 <= bound);
     let mut frontier = open_graph_bounded(dir.path(), bound).unwrap();
+    // The exposed room is one event short of the round's appends.
+    assert_eq!(
+        graph_room(&frontier) + 1,
+        profile(dir.path()).round_demand().unwrap().history_events
+    );
     let mut rng = ChaCha8Rng::seed_from_u64(SEED);
     let mut expected_rng = rng.clone();
     assert!(matches!(

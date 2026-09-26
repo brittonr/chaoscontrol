@@ -190,6 +190,10 @@ Commit `f45a40f` moved Cargo and the Nix `campaign-src` input together to Campai
 - Bounded 4-way state coverage (D97). The new negative fixture `history.state_coverage` (80 fixtures) replays 167 canonical recipes through the adapter and presents loads, caches, and claims at each reached state. The adapter passes it on both profiles with no code change; `StaleHistory`, `HistoryRewrite`, and `ReceiptOverclaim` also fail it, and every broken wrapper still fails.
 - Suite repairs (D98): self-consistent two-field evidence mutations and gate questions after the load in the gate matrices, a roles sample with a child and a finding, a revision after a coalesced update, and an entropy ticket counter that must equal the next selection ordinal. The adapter already derived tickets from the next ordinal (`EntropyContext::counter` in conformance, `ticket_counter` in the Explorer), so no change was needed.
 
+Commit `351b59c` moved Cargo and the Nix `campaign-src` input together to the final Campaign revision `e7757a51` (R5, D99), which repairs the round-12 findings and closes Campaign's review without a further round. Only `campaign-conformance` changed; `campaign-core` and `campaign-choregraph` are byte-identical to `65eee6e7`:
+
+- Presented-history coverage (D99). `history.state_coverage` (still 80 fixtures; covering table 176 classes) now also presents, through its table states, forks at depths 0 to 3 and the deepest admitted depth and forks with each of 20 head sub-kinds, each paired with every 3-way held-feature combination a table state carries, and a planner-stop plan receipt at states of every class. The adapter passes it on both profiles with no code change. `CrossedIdentities` now also fails it, refused with `InvalidChildReservation` at the child-reporting fork heads; the other wrappers fail exactly their previous fixtures, and every broken wrapper still fails.
+
 ### Integer ranks and explicit division decay
 
 `ranks.rs` emits three rank dimensions: effective score, original score, and `i64::MAX - entry_seq`. A finite nonnegative `f64` keeps its numeric order as its IEEE-754 bit pattern, so `score_rank` uses those bits. It normalizes signed zero and rejects non-finite or negative scores. Sequence numbers above `i64::MAX` are rejected.
@@ -343,11 +347,12 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current State and Remaining Blockers
 
-- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `65eee6e7` (commit `f45a40f`); the forge answered HTTP 530, so its locks came from local caches.
+- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
-- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. The task-42 KVM smoke at the final Campaign pin `65eee6e7` is recorded in `kvm-smoke-2026-09-26.md`.
+- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. `kvm-smoke-2026-09-26.md` records a task-42 KVM smoke at `8ba46df`, which pinned R4 (`65eee6e7`); a fresh smoke at the R5 head supersedes it for task 42.
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
-- **Blocker: final release pin.** `65eee6e7` is a development revision under final review. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
+- **Blocker: fresh acquisition.** Fresh acquisition of `e7757a51` from the live endpoint has not been observed.
+- **Blocker: KVM smoke at R5.** The task-42 KVM smoke must run again at the R5 head.
 - **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Non-Claims

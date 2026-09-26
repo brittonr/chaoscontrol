@@ -52,7 +52,8 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 
 Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. These obligations remain:
 
-- Cargo and the Nix `campaign-src` input both pin Campaign development revision `65eee6e7` (commit `f45a40f`), the revision under final review, which closes the mismatched-revision hazard for this revision. It is not yet the Campaign release revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `65eee6e7` from the live endpoint has not been observed. No release claim holds until the release re-pin.
+- Cargo and the Nix `campaign-src` input both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`), which closes the mismatched-revision hazard for this revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `e7757a51` from the live endpoint has not been observed. No release claim holds until it is.
+- The task-42 KVM smoke in `kvm-smoke-2026-09-26.md` ran at `8ba46df`, which pinned R4 (`65eee6e7`); a fresh smoke at the R5 head supersedes it.
 - The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Residual risks
@@ -71,6 +72,6 @@ Choregraph history and Campaign are published. The product adapter, durable jour
 - A structurally valid history can reference an unavailable snapshot.
 - Host timing and kernel behavior can differ across KVM runs.
 - Shared conformance does not prove useful exploration or correct product findings.
-- `history.state_coverage` covers a bounded 4-way combination of declared state features over 167 recipes with 3 candidates. Passing it does not prove every reachable state or longer lineages are handled; the adapter's own history, cache, and fence tests remain the evidence for those.
+- `history.state_coverage` covers a bounded 4-way combination of declared state features over 176 table classes with 3 candidates, and since Campaign `e7757a51` (D99) pairs each 3-way held-feature combination with presented forks at depths 0 to 3 and the deepest admitted depth and with 20 fork head sub-kinds. Passing it does not prove every reachable state, longer lineages, or dimensions the suite does not declare (such as execution-gate or cache timing against the held state) are handled; the adapter's own history, cache, and fence tests remain the evidence for those.
 
 ChaosControl maintainers own adapter mapping, KVM behavior, product policy, and evidence claims. Campaign owns shared frontier policy. Choregraph owns structural history.

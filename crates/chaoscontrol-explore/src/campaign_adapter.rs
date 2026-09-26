@@ -54,7 +54,10 @@ pub use ranks::{
     GuidanceFacts, RankError, MAX_RANK_MAGNITUDE, RANK_DIMENSIONS,
 };
 pub use results::{child_observation, finding_ref, result_observation, ResultFacts, RetainedChild};
-pub use stops::{product_stop, round_decision, stop_reason, ProductStop, RoundDecision};
+pub use stops::{
+    is_capacity_refusal, product_stop, round_decision, round_fits_capacity, stop_reason,
+    ProductStop, RoundDecision,
+};
 pub use wire::{
     authenticate_control_event, decode_control_event, decode_moment, encode_control_event,
     encode_moment, WireError,

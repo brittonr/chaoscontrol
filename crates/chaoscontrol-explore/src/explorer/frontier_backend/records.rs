@@ -24,7 +24,7 @@ use crate::campaign_adapter::{
     AdapterError, AdapterIdentity, AdmittedMoment, BranchSlot, WireError,
 };
 use crate::explorer::journal::{JournalRecord, RecordKind, RecoveredEpoch};
-use campaign_choregraph::{id_from_digest, HistoryGraph};
+use campaign_choregraph::{id_from_digest, HistoryGraph, HistoryLimits};
 use campaign_core::{CampaignControlEvent, Id, IdKind};
 use std::collections::BTreeMap;
 
@@ -280,6 +280,13 @@ pub(crate) fn replay_epoch(epoch: &RecoveredEpoch) -> Result<Option<ReplayedEpoc
     Ok(replayed)
 }
 
+/// History bounds of a recorded epoch. The genesis records the whole history
+/// bound, which is also the epoch's Choregraph projection bound.
+fn epoch_limits(genesis: &GenesisRecord) -> Result<HistoryLimits, ReplayFailure> {
+    history_limits(genesis.max_history_events, genesis.max_history_events)
+        .map_err(ReplayFailure::from)
+}
+
 fn step(
     cursor: Cursor,
     replayed: &mut Option<ReplayedEpoch>,
@@ -309,7 +316,7 @@ fn step(
             if !draft.parents.is_empty() {
                 return Err(ReplayFailure::OutOfOrder);
             }
-            let limits = history_limits(genesis.max_history_events).map_err(ReplayFailure::from)?;
+            let limits = epoch_limits(&genesis)?;
             let empty =
                 HistoryGraph::new(limits).map_err(|error| ReplayFailure::Adapter(error.into()))?;
             let payload_id = id_from_digest(IdKind::EventPayload, draft.payload_identity);
@@ -333,7 +340,7 @@ fn step(
                 return Err(ReplayFailure::OutOfOrder);
             }
             let identity = AdapterIdentity::for_seed(genesis.seed);
-            let limits = history_limits(genesis.max_history_events).map_err(ReplayFailure::from)?;
+            let limits = epoch_limits(&genesis)?;
             let session = ControlSession::genesis(identity.clone(), limits, &root, event)?;
             *replayed = Some(ReplayedEpoch {
                 identity,

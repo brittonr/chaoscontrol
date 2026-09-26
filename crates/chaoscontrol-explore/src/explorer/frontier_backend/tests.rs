@@ -638,6 +638,132 @@ fn zero_rounds_complete_without_selection() {
     assert_eq!(frontier.state().unwrap().selection_count, 0);
 }
 
+/// Genesis control lineage of [`open_campaign`]: admission, the root candidate
+/// batch, and one guidance record per root proposal (no prune below `MAX_FRONTIER`).
+const GENESIS_LINEAGE: u64 = 2 + ROOT_SCORES.len() as u64;
+
+/// Opens the Campaign backend with the Choregraph projection bound `bound`.
+fn open_bounded(dir: &Path, bound: u64) -> CampaignFrontier<ScriptedIo> {
+    let config = config(FrontierPolicy::Campaign, dir);
+    let mut frontier =
+        CampaignFrontier::open_with_io(&config, dir, None, ScriptedIo::default()).unwrap();
+    frontier.tighten_projection_bound(bound);
+    frontier.admit_root(root(Some(dummy_snapshot()))).unwrap();
+    frontier
+}
+
+/// Bound that holds the genesis, exactly one whole round, and the stop.
+fn one_round_bound(dir: &Path) -> u64 {
+    let profile = crate::campaign_adapter::admit_config(
+        &AdapterIdentity::for_seed(SEED),
+        &config(FrontierPolicy::Campaign, dir),
+        crate::campaign_adapter::BootstrapFacts {
+            restorable_root: true,
+        },
+    )
+    .unwrap();
+    GENESIS_LINEAGE + profile.round_control_events().unwrap() + 1
+}
+
+fn capacity_reason() -> StopReason {
+    StopReason::ConsumerRequested {
+        reason_id: campaign_choregraph::control_capacity_reason_id(),
+    }
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.valid]
+#[test]
+fn a_tight_projection_bound_ends_the_run_with_the_capacity_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_bounded(dir.path(), one_round_bound(dir.path()));
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    // The first round fits whole and settles in full.
+    let plan = planned(&mut frontier, &mut rng, 0);
+    let round = executable(frontier.authorize(plan).unwrap());
+    frontier
+        .finish_round(round, &observation(1, &[Some(vec![1.5]), None]))
+        .unwrap();
+    let state = frontier.state().unwrap();
+    assert!(state.outstanding.is_empty());
+    assert_eq!(state.selection_count, 1);
+    // The second does not: the backend stops before drawing or publishing.
+    let mut expected_rng = rng.clone();
+    let stop = match frontier.begin_round(&mut rng, context(1)).unwrap() {
+        RoundBegin::Stop(stop) => stop,
+        RoundBegin::Planned(_) => panic!("a round was planned beyond the host capacity"),
+    };
+    assert_eq!(stop, ProductStop::ControlCapacityExhausted);
+    assert_eq!(rng.next_u64(), expected_rng.next_u64());
+    let class = exploration_stop(stop);
+    assert_eq!(class, ExplorationStop::ControlCapacityExhausted);
+    assert_eq!(
+        serde_json::to_value(class).unwrap(),
+        serde_json::json!("control_capacity_exhausted")
+    );
+    frontier.record_stop(product_stop(class)).unwrap();
+    let recorded = frontier.state().unwrap().stopped.clone().unwrap();
+    assert_eq!(recorded.reason, capacity_reason());
+    assert!(recorded.incomplete_search_acknowledged);
+    assert_eq!(frontier.state().unwrap().selection_count, 1);
+    drop(frontier);
+
+    // The journal replays the stopped epoch: nothing to close.
+    let config = config(FrontierPolicy::Campaign, dir.path());
+    let reopened =
+        CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()).unwrap();
+    assert_eq!(reopened.recovery().recovered_epochs, 1);
+    assert_eq!(reopened.recovery().closed_selections, 0);
+    assert_eq!(reopened.recovery().closed_epoch, None);
+    assert_eq!(reopened.epoch(), 1);
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn one_event_short_of_a_whole_round_stops_before_the_first_selection() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_bounded(dir.path(), one_round_bound(dir.path()) - 1);
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    let mut expected_rng = rng.clone();
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(0)).unwrap(),
+        RoundBegin::Stop(ProductStop::ControlCapacityExhausted)
+    ));
+    assert_eq!(rng.next_u64(), expected_rng.next_u64());
+    frontier
+        .record_stop(ProductStop::ControlCapacityExhausted)
+        .unwrap();
+    let state = frontier.state().unwrap();
+    assert_eq!(state.selection_count, 0);
+    assert_eq!(state.stopped.as_ref().unwrap().reason, capacity_reason());
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn a_retirement_the_host_capacity_refuses_becomes_the_capacity_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    // Room for the genesis and the stop only.
+    let mut frontier = open_bounded(dir.path(), GENESIS_LINEAGE + 1);
+    frontier.forget_snapshots();
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(0)).unwrap(),
+        RoundBegin::Stop(ProductStop::ControlCapacityExhausted)
+    ));
+    // The refused retirement was never staged, and the backend stays live.
+    let state = frontier.state().unwrap();
+    assert!(state
+        .candidates
+        .iter()
+        .all(|candidate| candidate.status == CandidateStatus::Retained));
+    frontier
+        .record_stop(ProductStop::ControlCapacityExhausted)
+        .unwrap();
+    assert_eq!(
+        frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+        capacity_reason()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Recovery.
 

@@ -146,6 +146,9 @@ pub(crate) struct CampaignFrontier<Io: PublicationIo = SystemPublicationIo> {
     next_seq: u64,
     last_segment: Option<CommittedSegment>,
     halted: bool,
+    /// Test hook: a Choregraph projection bound below the derived one.
+    #[cfg(test)]
+    projection_bound: Option<u64>,
 }
 
 impl CampaignFrontier<SystemPublicationIo> {
@@ -199,6 +202,8 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             next_seq: 0,
             last_segment: None,
             halted: false,
+            #[cfg(test)]
+            projection_bound: None,
         };
         if let Some(last) = recovered.epochs().last() {
             frontier.previous_epoch_digest = last.final_digest().map(|digest| *digest.as_bytes());
@@ -451,6 +456,28 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         Ok(stop_reason(&self.identity, stop))
     }
 
+    /// Choregraph projection bound of the epoch: the whole history bound, which
+    /// holds every control event the profile budgets.
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    const fn projection_bound(&self, max_history_events: u64) -> u64 {
+        max_history_events
+    }
+
+    /// Choregraph projection bound of the epoch, tightened by the test hook.
+    #[cfg(test)]
+    fn projection_bound(&self, max_history_events: u64) -> u64 {
+        self.projection_bound
+            .map_or(max_history_events, |bound| bound.min(max_history_events))
+    }
+
+    /// Tightens the Choregraph projection bound of the next genesis (test hook
+    /// for the host control capacity stop).
+    #[cfg(test)]
+    pub(super) fn tighten_projection_bound(&mut self, bound: u64) {
+        self.projection_bound = Some(bound);
+    }
+
     #[cfg(test)]
     pub(super) fn journal(&self) -> &CampaignJournal<Io> {
         &self.journal
@@ -520,7 +547,10 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
             .checked_add(bounds.max_control_events)
             .and_then(|events| events.checked_add(moments))
             .ok_or(FrontierError::BoundOverflow)?;
-        let limits = history_limits(max_history_events)?;
+        let limits = history_limits(
+            max_history_events,
+            self.projection_bound(max_history_events),
+        )?;
         let epoch = u64::from(self.epoch);
         let digests = root
             .digests

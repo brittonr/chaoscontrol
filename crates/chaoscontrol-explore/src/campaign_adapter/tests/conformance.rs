@@ -445,12 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `260eb9ba`).
+/// Fixture count of the pinned Campaign conformance suite (Campaign `99f8eff3`).
 const PINNED_FIXTURE_COUNT: usize = 71;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "94f68aec45deae859800316bd96f399848744b60b124d19f2b535b3cf7548d70";
+    "bdf563a29c60ec71b3f508d5743eaf36d7a562196fa3d47b06e1d515f520e517";
+/// Campaign's announced reference transcript digest for the pinned suite under
+/// `exploration_order = [1]`, `retention_rank_order = [1]`.
+const PINNED_REORDERED_DIGEST: &str =
+    "7be1415ddfd115f2a9dacacdddec80e3c20eebd94cedfef6e99246aadf673273";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -472,14 +476,10 @@ fn a_changed_profile_changes_the_transcript_digest() {
     let report = run_suite(&mut ChaosControlConformanceAdapter::new(), &profile);
     assert_eq!(failures(&report), Vec::new());
     let digest = report.transcript.digest().unwrap();
-    // TEMPORARY (Campaign 260eb9ba): under this profile the suite's
-    // `receipts.non_selection_overclaim` retires the first retained candidate in
-    // candidate-id order (`catalog/evidence/claims::retire_retained`), which is
-    // adapter-specific, so this adapter and the Animus pilot retire different
-    // operations and their transcripts differ at one entry. Campaign will select by
-    // suite-level identity in its next repair round; restore
-    // `assert_eq!(digest, reference_pilot_digest(&profile))` at that re-pin.
+    assert_eq!(digest, reference_pilot_digest(&profile));
     assert_ne!(digest, reference_pilot_digest(&suite_profile()));
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    assert_eq!(hex, PINNED_REORDERED_DIGEST);
 }
 
 /// The one contract a wrapper breaks.

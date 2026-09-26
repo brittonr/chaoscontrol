@@ -224,6 +224,9 @@ pub enum ExplorationStop {
     Interrupted,
     /// Every configured round ran.
     Completed,
+    /// Campaign policy only: the host's Choregraph projection bound cannot hold
+    /// one more round, its settlement, and the stop. Search is incomplete.
+    ControlCapacityExhausted,
 }
 
 impl ExplorationStop {
@@ -236,6 +239,7 @@ impl ExplorationStop {
             Self::BugFound => "bug_found",
             Self::Interrupted => "interrupted",
             Self::Completed => "completed",
+            Self::ControlCapacityExhausted => "control_capacity_exhausted",
         }
     }
 }

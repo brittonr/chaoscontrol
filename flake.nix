@@ -12,7 +12,7 @@
     octet.url = "git+file:../octet?ref=refs/heads/main&rev=9c7ba87bef2934d2b7b144167e13c8d18eac8958";
     trellis.url = "git+file:../trellis?ref=refs/heads/main&rev=46ab2d92b9cfd2cfc4e631a56f3e667ee7263685";
     campaign-src = {
-      url = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=260eb9bade25aa29bb23b0f26588024605a8b2aa&allRefs=1";
+      url = "git+https://git.onix.computer/z2scC9MCm3pxk9mX4FEidRKabQ5LN.git?rev=99f8eff32519b481770c54d95dc980000f7f3141&allRefs=1";
       flake = false;
     };
     choregraph-history-src = {
@@ -51,7 +51,7 @@
       advisory-db,
     }:
     let
-      campaignRevision = "260eb9bade25aa29bb23b0f26588024605a8b2aa";
+      campaignRevision = "99f8eff32519b481770c54d95dc980000f7f3141";
       choregraphHistoryRevision = "b3e08e19750f53bdbcae970cdf58a47a791ed20b";
       supportedSystems =
         assert campaign-src.rev == campaignRevision;

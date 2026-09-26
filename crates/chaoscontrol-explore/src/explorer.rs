@@ -787,6 +787,9 @@ impl Explorer {
                         info!("Shutdown requested, stopping after round {}", round + 1);
                     }
                     ExplorationStop::Completed => {}
+                    ExplorationStop::ControlCapacityExhausted => {
+                        info!("Campaign control capacity exhausted, stopping");
+                    }
                 }
                 self.conclude(stop)?;
                 break;

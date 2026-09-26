@@ -463,6 +463,7 @@ pub(crate) const fn product_stop(stop: ExplorationStop) -> ProductStop {
         ExplorationStop::BugFound => ProductStop::ShortRunFinding,
         ExplorationStop::Interrupted => ProductStop::Interrupted,
         ExplorationStop::Completed => ProductStop::Completed,
+        ExplorationStop::ControlCapacityExhausted => ProductStop::ControlCapacityExhausted,
     }
 }
 
@@ -476,6 +477,7 @@ pub(crate) const fn exploration_stop(stop: ProductStop) -> ExplorationStop {
         ProductStop::Completed | ProductStop::CompletedWithoutSelection => {
             ExplorationStop::Completed
         }
+        ProductStop::ControlCapacityExhausted => ExplorationStop::ControlCapacityExhausted,
     }
 }
 

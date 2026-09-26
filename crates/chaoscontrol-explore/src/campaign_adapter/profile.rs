@@ -96,6 +96,18 @@ pub struct CampaignProfile {
     pub selection_limit: SelectionLimit,
 }
 
+impl CampaignProfile {
+    /// Most control events one round publishes: `ROUND_CONTROL_EVENTS` plus one
+    /// guidance record per entry of the largest candidate batch. The bounds budget
+    /// `max_control_events` with the same per-round figure.
+    ///
+    /// # Errors
+    /// Returns `BoundOverflow` when the count does not fit `u64`.
+    pub fn round_control_events(&self) -> Result<u64, AdapterError> {
+        checked_add(ROUND_CONTROL_EVENTS, self.bounds.max_candidate_batch)
+    }
+}
+
 fn checked_mul(left: u64, right: u64) -> Result<u64, AdapterError> {
     left.checked_mul(right).ok_or(AdapterError::BoundOverflow)
 }

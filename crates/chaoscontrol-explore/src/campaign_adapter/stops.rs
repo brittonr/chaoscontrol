@@ -4,10 +4,17 @@
 //! Plateau, finding, signal, and maximum-round meaning stays in ChaosControl, and a
 //! wait is never reported as frontier or budget exhaustion. No stop claims that all
 //! behavior was explored: every mapped Campaign stop acknowledges incomplete search.
+//!
+//! Host control capacity: the Choregraph projection bound holds the control
+//! lineage. The adapter stops under Campaign's adapter-owned
+//! [`campaign_choregraph::control_capacity_reason_id`] when that bound cannot
+//! hold one more round, its whole settlement, and the stop, so an executed
+//! selection always settles in full.
 
 use campaign_core::{DecisionPlan, NextDecision, SelectionDecision, StopReason, WaitReason};
 
 use super::identity::{AdapterIdentity, AdapterReason};
+use super::profile::CLOSING_CONTROL_EVENTS;
 use super::AdapterError;
 
 /// ChaosControl stop classes with a Campaign representation.
@@ -25,6 +32,10 @@ pub enum ProductStop {
     Completed,
     /// `max_rounds == 0`: the run completed without any selection.
     CompletedWithoutSelection,
+    /// The host's Choregraph projection bound (or the control branch generation
+    /// range) cannot hold one more round, its settlement, and the stop
+    /// (`control_capacity_exhausted`).
+    ControlCapacityExhausted,
 }
 
 /// Next step of one sequential exploration round.
@@ -54,6 +65,9 @@ pub fn stop_reason(identity: &AdapterIdentity, stop: ProductStop) -> StopReason 
         ProductStop::CompletedWithoutSelection => {
             consumer(AdapterReason::CompletedWithoutSelection)
         }
+        ProductStop::ControlCapacityExhausted => StopReason::ConsumerRequested {
+            reason_id: campaign_choregraph::control_capacity_reason_id(),
+        },
     }
 }
 
@@ -65,6 +79,11 @@ pub fn product_stop(reason: &StopReason) -> Result<ProductStop, AdapterError> {
     match reason {
         StopReason::FrontierExhausted => Ok(ProductStop::FrontierExhausted),
         StopReason::SelectionLimitReached => Ok(ProductStop::Completed),
+        StopReason::ConsumerRequested { reason_id }
+            if *reason_id == campaign_choregraph::control_capacity_reason_id() =>
+        {
+            Ok(ProductStop::ControlCapacityExhausted)
+        }
         StopReason::ConsumerRequested { reason_id } => match AdapterReason::from_id(*reason_id) {
             Some(AdapterReason::CoveragePlateau) => Ok(ProductStop::CoveragePlateau),
             Some(AdapterReason::ShortRunFinding) => Ok(ProductStop::ShortRunFinding),
@@ -104,4 +123,41 @@ pub fn round_decision(
             Ok(RoundDecision::Stop(product_stop(&stop.reason)?))
         }
     }
+}
+
+/// Whether the host control capacity still holds one more round.
+///
+/// The lineage after the round (`lineage + round_events`) plus the stop must fit
+/// both the Choregraph projection bound (`maximum_events`) and the control branch
+/// generations left after the admission's binding (`admitted_generation`).
+/// Campaign's own planner reserves one settlement event per selection; a
+/// ChaosControl round settles with up to `round_events - 1` events, so the
+/// shell checks the whole round before it draws.
+///
+/// # Errors
+/// Returns `BoundOverflow` when the demand does not fit `u64`.
+pub fn round_fits_capacity(
+    lineage: usize,
+    round_events: u64,
+    maximum_events: u32,
+    admitted_generation: u64,
+) -> Result<bool, AdapterError> {
+    let demand = u64::try_from(lineage)
+        .ok()
+        .and_then(|lineage| lineage.checked_add(round_events))
+        .and_then(|events| events.checked_add(CLOSING_CONTROL_EVENTS))
+        .ok_or(AdapterError::BoundOverflow)?;
+    Ok(demand <= u64::from(maximum_events) && admitted_generation.checked_add(demand).is_some())
+}
+
+/// Whether a Choregraph publication was refused for host control capacity.
+#[must_use]
+pub const fn is_capacity_refusal(error: &AdapterError) -> bool {
+    matches!(
+        error,
+        AdapterError::Choregraph(
+            campaign_choregraph::AdapterError::ProjectionCapacityExhausted
+                | campaign_choregraph::AdapterError::GenerationCapacityExhausted
+        )
+    )
 }

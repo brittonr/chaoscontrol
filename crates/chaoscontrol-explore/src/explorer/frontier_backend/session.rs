@@ -31,19 +31,25 @@ pub(super) const HISTORY_MAX_LABEL_BYTES: u32 = 64;
 /// Branch generation right after the campaign admission is published.
 const ADMITTED_GENERATION: u64 = 1;
 
-/// History bounds of one epoch.
+/// History bounds of one epoch: `max_events` history events, of which at most
+/// `max_projection_events` form the control lineage one projection holds.
 ///
 /// # Errors
-/// Returns `BoundOverflow` when the event bound does not fit `u32`, or the
-/// Choregraph error of an invalid policy.
-pub(super) fn history_limits(max_events: u64) -> Result<HistoryLimits, FrontierError> {
+/// Returns `BoundOverflow` when a bound does not fit `u32`, or the Choregraph
+/// error of an invalid policy.
+pub(super) fn history_limits(
+    max_events: u64,
+    max_projection_events: u64,
+) -> Result<HistoryLimits, FrontierError> {
     let max_events = u32::try_from(max_events).map_err(|_| FrontierError::BoundOverflow)?;
+    let max_projection_events =
+        u32::try_from(max_projection_events).map_err(|_| FrontierError::BoundOverflow)?;
     HistoryLimits::new(
         max_events,
         HISTORY_MAX_PARENTS,
         HISTORY_MAX_METADATA,
         HISTORY_MAX_LABEL_BYTES,
-        max_events,
+        max_projection_events,
     )
     .map_err(|error| FrontierError::Adapter(error.into()))
 }
@@ -114,6 +120,11 @@ impl ControlSession {
     /// Current Campaign state (applied incrementally).
     pub(super) const fn state(&self) -> &FrontierState {
         &self.state
+    }
+
+    /// Projection validated at the last committed segment.
+    pub(super) const fn projection(&self) -> &ValidatedControlProjection {
+        &self.projection
     }
 
     /// Current history graph.

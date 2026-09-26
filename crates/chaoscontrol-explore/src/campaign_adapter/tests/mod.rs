@@ -194,12 +194,18 @@ impl Session {
 
     /// Cold-start projection of the current history (`validate_control_projection`).
     pub fn projection(&self) -> ValidatedControlProjection {
+        self.projection_within(HISTORY_MAX_EVENTS)
+    }
+
+    /// Cold-start projection of the current history under the host projection
+    /// bound `maximum_events`.
+    pub fn projection_within(&self, maximum_events: u32) -> ValidatedControlProjection {
         let choices = ParentChoices::new();
         load_projection(&ControlProjectionRequest {
             graph: &self.graph,
             branch: &self.branch,
             parent_choices: &choices,
-            maximum_events: HISTORY_MAX_EVENTS,
+            maximum_events,
             expected_binding: self.binding(),
             payloads: &self.payloads,
         })
@@ -209,21 +215,29 @@ impl Session {
     /// Plans `event` through the cold-start projection of the current history: the
     /// session holds no projection, so it validates one and publishes through it.
     pub fn plan_publication(&self, event: CampaignControlEvent) -> ControlPublication {
+        self.publication_within(event, HISTORY_MAX_EVENTS).unwrap()
+    }
+
+    /// [`Session::plan_publication`] under the host projection bound `maximum_events`.
+    pub fn publication_within(
+        &self,
+        event: CampaignControlEvent,
+        maximum_events: u32,
+    ) -> campaign_choregraph::AdapterResult<ControlPublication> {
         let choices = ParentChoices::new();
-        let previous = self.projection();
+        let previous = self.projection_within(maximum_events);
         plan_control_event_publication(ControlPublicationRequest {
             current: ControlProjectionRequest {
                 graph: &self.graph,
                 branch: &self.branch,
                 parent_choices: &choices,
-                maximum_events: HISTORY_MAX_EVENTS,
+                maximum_events,
                 expected_binding: self.binding(),
                 payloads: &self.payloads,
             },
             previous: &previous,
             control_event: event,
         })
-        .unwrap()
     }
 
     pub fn publish(&mut self, event: CampaignControlEvent) -> ControlPublication {

@@ -4,10 +4,11 @@
 use super::{publish, CampaignEntry, CampaignFrontier, StagedProposal};
 use crate::campaign_adapter::{
     admit_child_moment, child_moment_draft, decay_revision, encode_moment, execution_authority,
-    finding_ref, ineligible_retirement, result_observation, retention_plan_request, round_decision,
-    selection_request, ticket_explores, unobserved_closure, AdapterError, ChildMomentFacts,
-    Eligibility, EntropyDraws, GuidanceFacts, IneligibleReason, LegacyDraws, ProductStop,
-    ResultFacts, RetainedChild, RoundDecision, SelectionLimit,
+    finding_ref, ineligible_retirement, is_capacity_refusal, result_observation,
+    retention_plan_request, round_decision, round_fits_capacity, selection_request,
+    ticket_explores, unobserved_closure, AdapterError, ChildMomentFacts, Eligibility, EntropyDraws,
+    GuidanceFacts, IneligibleReason, LegacyDraws, ProductStop, ResultFacts, RetainedChild,
+    RoundDecision, SelectionLimit,
 };
 use crate::explorer::frontier_backend::digests::round_manifest_digest;
 use crate::explorer::frontier_backend::records::{
@@ -21,7 +22,9 @@ use crate::explorer::frontier_backend::{
 };
 use crate::explorer::journal::{JournalError, JournalRecord, PublicationIo};
 use crate::frontier::draw_selection;
-use campaign_choregraph::DurablePublicationEvidence;
+use campaign_choregraph::{
+    plan_next_from_published_projection, DurablePublicationEvidence, PublishedSelectionRequest,
+};
 use campaign_core::{
     CampaignControlEvent, CandidateStatus, Id, SelectionDecision, SelectionEvent, SelectionRequest,
 };
@@ -45,7 +48,8 @@ pub(crate) struct PublishedSelection {
 }
 
 impl<Io: PublicationIo> CampaignFrontier<Io> {
-    /// Retires ineligible candidates, draws in legacy order, and plans.
+    /// Retires ineligible candidates, checks the host control capacity, draws in
+    /// legacy order, and plans.
     pub(super) fn begin(
         &mut self,
         rng: &mut dyn RngCore,
@@ -59,15 +63,39 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         if self.profile()?.selection_limit == SelectionLimit::NoSelection {
             return Ok(RoundBegin::Stop(ProductStop::CompletedWithoutSelection));
         }
-        self.retire_ineligible()?;
+        // A retirement the host capacity refuses was not staged; Campaign keeps
+        // the stop reserve, so the capacity stop still publishes.
+        match self.retire_ineligible() {
+            Err(FrontierError::Adapter(error)) if is_capacity_refusal(&error) => {
+                return Ok(RoundBegin::Stop(ProductStop::ControlCapacityExhausted));
+            }
+            result => result?,
+        }
         let retained = self.retained_candidates()?;
         if retained != self.entries.len() {
             return Err(FrontierError::StateDivergence);
+        }
+        // r[impl chaoscontrol.campaign_policy.stop]
+        if retained > 0 && !self.round_fits_capacity()? {
+            return Ok(RoundBegin::Stop(ProductStop::ControlCapacityExhausted));
         }
         let Some(draws) = draw_selection(rng, retained) else {
             return Ok(RoundBegin::Stop(ProductStop::FrontierExhausted));
         };
         self.plan(context, draws)
+    }
+
+    /// Whether the held projection's host capacity still holds a whole round,
+    /// its settlement, and the stop.
+    fn round_fits_capacity(&self) -> Result<bool, FrontierError> {
+        let session = self.session()?;
+        let projection = session.projection();
+        Ok(round_fits_capacity(
+            projection.control_events().len(),
+            self.profile()?.round_control_events()?,
+            projection.maximum_events(),
+            session.state().admission.projection.generation,
+        )?)
     }
 
     fn retained_candidates(&self) -> Result<usize, FrontierError> {
@@ -88,7 +116,15 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         let binding = session.binding()?;
         let request =
             selection_request(&self.identity, profile, session.state(), &binding, entropy)?;
-        let plan = campaign_core::plan_next(session.state(), request.clone(), &binding)?;
+        // Planning through the held projection keeps Campaign's own host
+        // capacity reserve: without room for one more selection, its settlement,
+        // and the stop, the plan is the capacity stop (or a result wait).
+        let plan = plan_next_from_published_projection(
+            session.projection(),
+            PublishedSelectionRequest {
+                request: request.clone(),
+            },
+        )?;
         let work = SelectionWork {
             candidates_examined: plan.work.candidates_examined,
             eligible_candidates: plan.work.eligible_candidates,

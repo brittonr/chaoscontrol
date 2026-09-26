@@ -1592,12 +1592,13 @@ mod tests {
 
     // ── frontier policy, stop, and search non-claim ─────────────────
 
-    const EVERY_STOP: [ExplorationStop; 5] = [
+    const EVERY_STOP: [ExplorationStop; 6] = [
         ExplorationStop::FrontierExhausted,
         ExplorationStop::CoveragePlateau,
         ExplorationStop::BugFound,
         ExplorationStop::Interrupted,
         ExplorationStop::Completed,
+        ExplorationStop::ControlCapacityExhausted,
     ];
     const STOP_LABEL: &str = "Stop:                   ";
 

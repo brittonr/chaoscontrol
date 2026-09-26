@@ -1040,6 +1040,131 @@ fn an_unknown_record_kind_fails_recovery_without_touching_the_journal() {
 }
 
 // ---------------------------------------------------------------------------
+// One campaign per graph; the current graph; no control drafts (Campaign D82-D84).
+
+/// Asserts the committed session presents its current graph and holds no
+/// Campaign control draft: the held projection covers exactly the session's
+/// graph (so `validate_control_advance` never sees an older graph), every
+/// control event of the graph is on the lineage, and Campaign's exposed
+/// reserve is only the settlements of outstanding selections and the stop.
+fn assert_current_graph_without_drafts(frontier: &CampaignFrontier<ScriptedIo>) {
+    let session = frontier.control_session().expect("genesis committed");
+    let projection = session.projection();
+    assert_eq!(session.graph().len(), projection.graph_events());
+    assert_eq!(projection.state(), session.state());
+    assert_eq!(projection.control_events().len(), session.payloads().len());
+    let state = projection.state();
+    let owed = u32::try_from(state.outstanding.len()).unwrap() + u32::from(state.stopped.is_none());
+    assert_eq!(projection.reserved_control_events(), owed);
+    assert_eq!(projection.reserved_graph_events(), owed);
+}
+
+/// Admits `admission` as a control root on `frontier`'s committed graph.
+fn admit_second_root(
+    frontier: &CampaignFrontier<ScriptedIo>,
+    admission: campaign_core::CampaignControlEvent,
+    seed: u64,
+) -> Option<campaign_choregraph::AdapterError> {
+    let identity = AdapterIdentity::for_seed(seed);
+    campaign_choregraph::admit_control_root(
+        frontier.control_session().unwrap().graph(),
+        admission,
+        identity.projection_schema_id,
+        identity.adapter_id,
+        identity.control_domain_id,
+    )
+    .err()
+}
+
+// r[verify chaoscontrol.campaign_policy.history.valid]
+#[test]
+fn every_commit_presents_the_current_graph_and_leaves_no_control_draft() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    assert_current_graph_without_drafts(&frontier);
+    for (round, branches) in [(0, [Some(vec![1.5]), None]), (1, [None, None])] {
+        let plan = planned(&mut frontier, &mut rng, round);
+        assert_current_graph_without_drafts(&frontier);
+        let authorized = executable(frontier.authorize(plan).unwrap());
+        assert_current_graph_without_drafts(&frontier);
+        assert_eq!(frontier.state().unwrap().outstanding.len(), 1);
+        frontier
+            .finish_round(authorized, &observation(1, &branches))
+            .unwrap();
+        assert_current_graph_without_drafts(&frontier);
+        assert!(frontier.state().unwrap().outstanding.is_empty());
+    }
+    let session = frontier.control_session().unwrap();
+    // Child moments are graph events outside the control lineage.
+    assert!(usize::try_from(session.graph().len()).unwrap() > session.payloads().len());
+}
+
+// r[verify chaoscontrol.campaign_policy.history.invalid]
+#[test]
+fn the_explorers_graph_admits_no_second_campaign_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_campaign(dir.path(), ScriptedIo::default());
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    let plan = planned(&mut frontier, &mut rng, 0);
+    let round = executable(frontier.authorize(plan).unwrap());
+    frontier
+        .finish_round(round, &observation(1, &[Some(vec![1.5]), None]))
+        .unwrap();
+    // The shell itself never drafts a second root: genesis refuses a second
+    // admission before Campaign sees it.
+    assert!(matches!(
+        frontier.admit_root(root(Some(dummy_snapshot()))),
+        Err(FrontierError::Sequence("campaign root admitted twice"))
+    ));
+    let lineage: Vec<_> = frontier
+        .control_session()
+        .unwrap()
+        .payloads()
+        .iter()
+        .map(|payload| payload.history_event_id)
+        .collect();
+    let own = frontier.control_session().unwrap().payloads()[0]
+        .control_event
+        .clone();
+    // Another campaign under the same envelope names the first event of this
+    // campaign's lineage in identity order.
+    let other_dir = tempfile::tempdir().unwrap();
+    let other_seed = SEED + 1;
+    let other_config = ExplorerConfig {
+        seed: other_seed,
+        ..config(FrontierPolicy::Campaign, other_dir.path())
+    };
+    let mut other = CampaignFrontier::open_with_io(
+        &other_config,
+        other_dir.path(),
+        None,
+        ScriptedIo::default(),
+    )
+    .unwrap();
+    other.admit_root(root(Some(dummy_snapshot()))).unwrap();
+    let foreign = other.control_session().unwrap().payloads()[0]
+        .control_event
+        .clone();
+    assert_ne!(foreign, own);
+    assert_eq!(
+        admit_second_root(&frontier, foreign, other_seed),
+        Some(campaign_choregraph::AdapterError::SharedControlGraph {
+            event_id: *lineage.iter().min().unwrap()
+        })
+    );
+    // Retrying this campaign's own root after later publications names the
+    // first later event.
+    assert_eq!(
+        admit_second_root(&frontier, own, SEED),
+        Some(campaign_choregraph::AdapterError::SharedControlGraph {
+            event_id: *lineage[1..].iter().min().unwrap()
+        })
+    );
+    assert_current_graph_without_drafts(&frontier);
+}
+
+// ---------------------------------------------------------------------------
 // Trace schema. Legacy-versus-Campaign parity lives in `parity::tests`.
 
 #[test]

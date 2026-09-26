@@ -1,8 +1,14 @@
-use campaign_choregraph::{ControlPublication, DurablePublicationEvidence};
+use campaign_choregraph::{
+    AdapterError, ControlProjectionRequest, ControlPublication, DurablePublicationEvidence,
+    HistoryGraph, ParentChoices,
+};
 use campaign_core::{CampaignControlEvent, SelectionEvent};
 
-use super::{config, Session, EXPLOIT};
-use crate::campaign_adapter::{execution_authority, round_decision, RoundDecision};
+use super::{config, root_facts, Session, EXPLOIT, HISTORY_MAX_EVENTS};
+use crate::campaign_adapter::{
+    admit_root_moment, advance_projection, execution_authority, load_projection,
+    projection_binding, round_decision, RootMomentFacts, RoundDecision,
+};
 
 fn evidence(
     publication: &ControlPublication,
@@ -75,4 +81,49 @@ fn selection_of(publication: &ControlPublication) -> campaign_core::SelectionDec
         panic!("a selection publication carries a selection event");
     };
     event.decision.clone()
+}
+
+/// Projection request over `graph` with the session's branch and payloads.
+fn request_over<'a>(
+    session: &'a Session,
+    graph: &'a HistoryGraph,
+    choices: &'a ParentChoices,
+) -> ControlProjectionRequest<'a> {
+    ControlProjectionRequest {
+        graph,
+        branch: &session.branch,
+        parent_choices: choices,
+        maximum_events: HISTORY_MAX_EVENTS,
+        expected_binding: projection_binding(&session.identity, graph, &session.branch).unwrap(),
+        payloads: &session.payloads,
+    }
+}
+
+// r[verify chaoscontrol.campaign_policy.history.invalid]
+#[test]
+fn advancing_onto_a_graph_older_than_the_held_projection_is_stale() {
+    let session = Session::open(&config());
+    let choices = ParentChoices::new();
+    let older = session.graph.clone();
+    let held = load_projection(&request_over(&session, &older, &choices)).unwrap();
+    // Another writer's event grows the graph without moving the control branch.
+    let foreign = admit_root_moment(
+        &older,
+        &session.identity,
+        &RootMomentFacts {
+            epoch: 1,
+            ..root_facts()
+        },
+    )
+    .unwrap();
+    let current =
+        advance_projection(&held, &request_over(&session, &foreign.graph, &choices)).unwrap();
+    assert_eq!(current.graph_events(), held.graph_events() + 1);
+    assert_eq!(
+        advance_projection(&current, &request_over(&session, &older, &choices)).err(),
+        Some(AdapterError::StaleGraph)
+    );
+    // A cold load of the older graph still validates; only a held projection
+    // refuses to go back in graph time.
+    assert!(load_projection(&request_over(&session, &older, &choices)).is_ok());
 }

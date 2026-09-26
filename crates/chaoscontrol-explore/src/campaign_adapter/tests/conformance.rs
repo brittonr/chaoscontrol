@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `3a182d5a`).
-const PINNED_FIXTURE_COUNT: usize = 78;
+/// Fixture count of the pinned Campaign conformance suite (Campaign `9f1f33a6`).
+const PINNED_FIXTURE_COUNT: usize = 79;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "77b07d8b1e9462658ce100e28300d300b6523c1f2caa6d35ba51283d02675379";
+    "31bf9eb2bcfc46317eab97d9f6b18143e6e695a3b1444c660f74380a7ba2730f";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "5807991414f8669bcd4347d0cf1f2a126b3226075bbc205faa64460bdc33b550";
+    "b3273e4fbaefb34f36c0e9e932e6447f6300152fc6a92c76bfda825f9ba16b6c";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -836,6 +836,10 @@ fn receipt_overclaim_fails_the_promotion_fixtures() {
             (
                 "receipts.planner_overclaim",
                 "a frontier-exhausted stop receipt carried a promotion claim",
+            ),
+            (
+                "receipts.recorded_stop_overclaim",
+                "a recorded frontier-exhausted stop receipt carried a promotion claim",
             ),
         ])
     );

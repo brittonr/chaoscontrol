@@ -533,6 +533,12 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
     pub(super) fn projection(&self) -> Option<&campaign_choregraph::ValidatedControlProjection> {
         self.session.as_ref().map(ControlSession::projection)
     }
+
+    /// Control session committed at the last segment.
+    #[cfg(test)]
+    pub(super) const fn control_session(&self) -> Option<&ControlSession> {
+        self.session.as_ref()
+    }
 }
 
 /// One proposal staged as a candidate below a moment.

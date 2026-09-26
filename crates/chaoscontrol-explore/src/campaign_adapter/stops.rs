@@ -132,20 +132,21 @@ pub fn round_decision(
 }
 
 /// Host control capacity of one validated control projection: the lineage and
-/// Campaign's exposed reserve and graph room (D75).
+/// Campaign's exposed reserve and graph room (D75, D83).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HostCapacity {
     /// Control lineage events the projection holds.
     pub lineage: u64,
     /// Control events the projection's history still owes beyond its lineage
     /// (`ValidatedControlProjection::reserved_control_events`): settlements of
-    /// outstanding selections, the stop of an open campaign, and a pending
-    /// draft's own event and settlement.
+    /// outstanding selections, the stop of an open campaign, and each control
+    /// draft descending from the branch head (its own event and settlement).
     pub reserved_control_events: u32,
     /// Choregraph projection bound.
     pub maximum_events: u32,
     /// Graph events other appends may still make without consuming the reserve
-    /// (`ValidatedControlProjection::graph_room`).
+    /// (`ValidatedControlProjection::graph_room`). Campaign holds one campaign
+    /// per graph and envelope (D82), so every other append is this shell's own.
     pub graph_room: u32,
     /// Control branch generation of the admission's binding.
     pub admitted_generation: u64,

@@ -365,9 +365,19 @@ fn a_round_fits_only_beside_the_exposed_reserve_and_within_the_graph_room() {
         round_fits_capacity(&capacity(u32::MAX, u32::MAX, 1), unbounded),
         Err(AdapterError::BoundOverflow)
     );
-    assert!(!is_capacity_refusal(&AdapterError::Choregraph(
-        campaign_choregraph::AdapterError::ProjectionBindingMismatch
-    )));
+    // A shared graph or a stale graph is a halting history error, never the
+    // capacity stop: the Explorer cannot reach either (its genesis graph is
+    // fresh per epoch and every seal presents its current graph).
+    let root_event = Session::open(&config()).payloads[0].history_event_id;
+    for halting in [
+        campaign_choregraph::AdapterError::ProjectionBindingMismatch,
+        campaign_choregraph::AdapterError::StaleGraph,
+        campaign_choregraph::AdapterError::SharedControlGraph {
+            event_id: root_event,
+        },
+    ] {
+        assert!(!is_capacity_refusal(&AdapterError::Choregraph(halting)));
+    }
     for refusal in [
         campaign_choregraph::AdapterError::ProjectionCapacityExhausted,
         campaign_choregraph::AdapterError::GenerationCapacityExhausted,

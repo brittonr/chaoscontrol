@@ -117,12 +117,13 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             selection_request(&self.identity, profile, session.state(), &binding, entropy)?;
         // Planning through the held projection keeps Campaign's own host
         // capacity reserve: without room for one more selection, its settlement,
-        // and the stop, the plan is the capacity stop (or a result wait). A typed
-        // capacity error means the stop reserve itself was consumed outside
-        // Campaign publication; the stop would be refused too, so it is not
-        // mapped to a stop and propagates. The whole-round check above keeps
-        // this shell's own appends within Campaign's exposed graph room, so it
-        // is not expected.
+        // and the stop, the plan is the capacity stop (or a result wait). Campaign
+        // checks the recorded reserve on every plan (D83), so a typed capacity
+        // error means the reserve itself no longer fits: something outside
+        // Campaign publication consumed it, the stop would be refused too, so it
+        // is not mapped to a stop and propagates. The whole-round check above
+        // keeps this shell's own appends within Campaign's exposed graph room,
+        // and the shell never leaves a control draft, so it is not expected.
         let plan = plan_next_from_published_projection(
             session.projection(),
             PublishedSelectionRequest {

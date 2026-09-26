@@ -1,7 +1,10 @@
 //! Validation tests for parallel exploration determinism and stress.
 //!
 //! Usage:
-//!   cargo run --release --bin explore_validation -- KERNEL INITRD [FRONTIER_POLICY]
+//!
+//! ```text
+//! cargo run --release --bin explore_validation -- KERNEL INITRD [FRONTIER_POLICY]
+//! ```
 //!
 //! FRONTIER_POLICY is `campaign` (default) or the explicit diagnostic rollback
 //! `legacy-diagnostic`; every run must report the selected policy and its

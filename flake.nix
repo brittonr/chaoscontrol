@@ -201,6 +201,7 @@
               isPropertyCoverageFixture = pkgs.lib.hasPrefix "contracts/property-coverage/" relPath;
               isKvmReleaseMatrix = relPath == "contracts/kvm-release/matrix.json";
               isAssertionReadinessFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-evidence/tests/fixtures/assertion-readiness/" relPath;
+              isFrontierParityFixture = pkgs.lib.hasPrefix "crates/chaoscontrol-explore/tests/fixtures/frontier-parity/" relPath;
               isDogfoodCheckpointFixture = pkgs.lib.hasPrefix "dogfood-results/raft-20260506-095025/" relPath;
               isDogfoodAssertionHarnessFixture = relPath == "dogfood-results/local-assertion-harnesses.json";
             in
@@ -210,6 +211,7 @@
             || isPropertyCoverageFixture
             || isKvmReleaseMatrix
             || isAssertionReadinessFixture
+            || isFrontierParityFixture
             || isDogfoodCheckpointFixture
             || isDogfoodAssertionHarnessFixture
             || (builtins.match ".*\\.bpf\\.c$" path != null)

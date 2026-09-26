@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `1f8e1a74`).
-const PINNED_FIXTURE_COUNT: usize = 79;
+/// Fixture count of the pinned Campaign conformance suite (Campaign `65eee6e7`).
+const PINNED_FIXTURE_COUNT: usize = 80;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "ffebdd683ae698d41f65b4b74670af41837d5e05d48b432eefae9c2bd7bd8ffc";
+    "cbad4c2a51cfe5514fdf115425496ce3b54eb8d29f5e4f275a40a0ee812e9835";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "b94eedaed98ba3373a8f2fdfe07623cedff587012ed0ecaa75e0089277c20e1c";
+    "199cef7e172250c274c478658adffe598ab707d9e93e80ef34ee4215c67f0889";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -755,6 +755,12 @@ fn stale_history_and_history_rewrite_fail_the_named_fixtures() {
                 "caches.validation_matrix",
                 "a cache of a stale state was used as current state",
             ),
+            // The state-coverage fixture first presents each held state's lineage
+            // on a graph older than its projection's; an unvalidated cache uses it.
+            (
+                "history.state_coverage",
+                "a cache of a held state's lineage on an older graph was used as current state",
+            ),
         ])
     );
     assert_eq!(
@@ -775,6 +781,12 @@ fn stale_history_and_history_rewrite_fail_the_named_fixtures() {
             (
                 "history.load_matrix",
                 "a rewound control branch was loaded as current history",
+            ),
+            // Campaign refuses the state-coverage fixture's load of a held state's
+            // lineage on an older graph as stale; a journal fallback loads it.
+            (
+                "history.state_coverage",
+                "a held state's lineage on an older graph was loaded as current",
             ),
         ])
     );
@@ -825,6 +837,12 @@ fn receipt_overclaim_fails_the_promotion_fixtures() {
     assert_eq!(
         broken_failures(Breakage::ReceiptOverclaim),
         let_through(&[
+            // The state-coverage fixture presents every receipt of each covered
+            // state's session, the admission's first.
+            (
+                "history.state_coverage",
+                "a campaign admission event receipt carried a promotion claim",
+            ),
             (
                 "receipts.promotion_overclaim",
                 "rank, selection, exit status, or a check reference became promotion authority",

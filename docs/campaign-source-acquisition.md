@@ -12,7 +12,7 @@ For a listed URL and a complete object ID, Cargo requests that object directly. 
 
 Unlisted URLs keep their previous behavior, including the GitHub fast path. Symbolic or abbreviated requests without a complete locked object ID keep stock resolution. An unlocked default-branch request still requires HEAD.
 
-Cargo and the Nix `campaign-src` input both pin Campaign development revision `1f8e1a74b7506900a01bbe68ecea5a5579f6c3db` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Both use the ordinary Campaign HTTPS endpoint. The forge answered HTTP 530 when this pin landed, so Cargo resolved the revision offline from its preloaded Git database and `nix flake update campaign-src` locked it from the local Nix Git cache; fresh acquisition from the live endpoint was not observed for this revision. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
+Cargo and the Nix `campaign-src` input both pin Campaign development revision `65eee6e70a7151cad3032dde0f242f57bb03938b` for `campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency. Both use the ordinary Campaign HTTPS endpoint. The forge answered HTTP 530 when this pin landed, so Cargo resolved the revision offline from its preloaded Git database and `nix flake update campaign-src` locked it from the local Nix Git cache; fresh acquisition from the live endpoint was not observed for this revision. This is not yet the Campaign release revision. No source reference, Radicle signature, node identity, or namespace HEAD changes.
 
 ## Why the stock fetch fails
 

@@ -6,6 +6,7 @@ package	crates/chaoscontrol-snapshot-descriptor/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-sim-core/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-smr/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-wasm-differential/Cargo.toml	AGPL-3.0-or-later
+package	crates/chaoscontrol-wasm-exploration-core/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-sdk/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-fault/Cargo.toml	AGPL-3.0-or-later
 package	crates/chaoscontrol-vmm/Cargo.toml	AGPL-3.0-or-later

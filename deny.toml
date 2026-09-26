@@ -126,6 +126,10 @@ crate = "chaoscontrol-wasm-differential"
 allow = ["AGPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+crate = "chaoscontrol-wasm-exploration-core"
+allow = ["AGPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 crate = "bounded-exec"
 allow = ["AGPL-3.0-or-later"]
 

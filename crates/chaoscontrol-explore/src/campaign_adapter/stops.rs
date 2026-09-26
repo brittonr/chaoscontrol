@@ -6,11 +6,14 @@
 //! behavior was explored: every mapped Campaign stop acknowledges incomplete search.
 //!
 //! Host control capacity: the Choregraph projection bound holds the control
-//! lineage. The adapter stops under Campaign's adapter-owned
-//! [`campaign_choregraph::control_capacity_reason_id`] when that bound cannot
-//! hold one more round, its whole settlement, and the stop, so an executed
-//! selection always settles in full.
+//! lineage, the control branch advances one generation per control event, and
+//! the shared Choregraph graph admits at most `max_events` events (child
+//! moments and control events). The adapter stops under Campaign's
+//! adapter-owned [`campaign_choregraph::control_capacity_reason_id`] when these
+//! bounds cannot hold one more round, its whole settlement (child moments
+//! included), and the stop, so an executed selection always settles in full.
 
+use campaign_choregraph::ValidatedControlProjection;
 use campaign_core::{DecisionPlan, NextDecision, SelectionDecision, StopReason, WaitReason};
 
 use super::identity::{AdapterIdentity, AdapterReason};
@@ -125,32 +128,78 @@ pub fn round_decision(
     }
 }
 
+/// Host control capacity of one validated control projection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostCapacity {
+    /// Control lineage events the projection holds.
+    pub lineage: u64,
+    /// Events of the shared Choregraph graph: moments and control events.
+    pub graph_events: u64,
+    /// Choregraph projection bound.
+    pub maximum_events: u32,
+    /// Choregraph graph event limit.
+    pub graph_max_events: u32,
+    /// Control branch generation of the admission's binding.
+    pub admitted_generation: u64,
+}
+
+impl HostCapacity {
+    /// Host control capacity of `projection`.
+    ///
+    /// # Errors
+    /// Returns `BoundOverflow` when the lineage length does not fit `u64`.
+    pub fn of(projection: &ValidatedControlProjection) -> Result<Self, AdapterError> {
+        Ok(Self {
+            lineage: u64::try_from(projection.control_events().len())
+                .map_err(|_| AdapterError::BoundOverflow)?,
+            graph_events: u64::from(projection.graph_events()),
+            maximum_events: projection.maximum_events(),
+            graph_max_events: projection.graph_max_events(),
+            admitted_generation: projection.state().admission.projection.generation,
+        })
+    }
+}
+
+/// Most history one round adds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RoundDemand {
+    /// Control events: the selection and its whole settlement.
+    pub control_events: u64,
+    /// Graph events: the control events plus the round's child moments.
+    pub history_events: u64,
+}
+
 /// Whether the host control capacity still holds one more round.
 ///
-/// The lineage after the round (`lineage + round_events`) plus the stop must fit
-/// both the Choregraph projection bound (`maximum_events`) and the control branch
-/// generations left after the admission's binding (`admitted_generation`).
-/// Campaign's own planner reserves one settlement event per selection; a
-/// ChaosControl round settles with up to `round_events - 1` events, so the
-/// shell checks the whole round before it draws.
+/// The lineage after the round plus the stop must fit both the Choregraph
+/// projection bound and the control branch generations left after the
+/// admission's binding; the graph after the round (child moments included) plus
+/// the stop must fit the graph event limit. Campaign's own planner reserves one
+/// settlement event per selection; a ChaosControl round settles with several
+/// control events and admits its child moments first, so the shell checks the
+/// whole round before it draws.
 ///
 /// # Errors
 /// Returns `BoundOverflow` when the demand does not fit `u64`.
 pub fn round_fits_capacity(
-    lineage: usize,
-    round_events: u64,
-    maximum_events: u32,
-    admitted_generation: u64,
+    capacity: &HostCapacity,
+    round: RoundDemand,
 ) -> Result<bool, AdapterError> {
-    let demand = u64::try_from(lineage)
-        .ok()
-        .and_then(|lineage| lineage.checked_add(round_events))
-        .and_then(|events| events.checked_add(CLOSING_CONTROL_EVENTS))
-        .ok_or(AdapterError::BoundOverflow)?;
-    Ok(demand <= u64::from(maximum_events) && admitted_generation.checked_add(demand).is_some())
+    let closed = |held: u64, added: u64| {
+        held.checked_add(added)
+            .and_then(|events| events.checked_add(CLOSING_CONTROL_EVENTS))
+            .ok_or(AdapterError::BoundOverflow)
+    };
+    let lineage = closed(capacity.lineage, round.control_events)?;
+    let graph = closed(capacity.graph_events, round.history_events)?;
+    Ok(lineage <= u64::from(capacity.maximum_events)
+        && capacity.admitted_generation.checked_add(lineage).is_some()
+        && graph <= u64::from(capacity.graph_max_events))
 }
 
-/// Whether a Choregraph publication was refused for host control capacity.
+/// Whether a Choregraph publication or plan was refused for host control
+/// capacity: the projection bound, the branch generation range, or the graph
+/// event limit.
 #[must_use]
 pub const fn is_capacity_refusal(error: &AdapterError) -> bool {
     matches!(
@@ -158,6 +207,7 @@ pub const fn is_capacity_refusal(error: &AdapterError) -> bool {
         AdapterError::Choregraph(
             campaign_choregraph::AdapterError::ProjectionCapacityExhausted
                 | campaign_choregraph::AdapterError::GenerationCapacityExhausted
+                | campaign_choregraph::AdapterError::GraphCapacityExhausted
         )
     )
 }

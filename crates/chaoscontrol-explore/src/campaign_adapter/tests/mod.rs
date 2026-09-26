@@ -48,7 +48,8 @@ pub(super) const ROUNDS: u64 = 4;
 pub(super) const MAX_FRONTIER: usize = 3;
 /// Test branch factor.
 pub(super) const BRANCHES: usize = 2;
-const HISTORY_MAX_EVENTS: u32 = 512;
+/// Test graph event limit and projection bound.
+pub(super) const HISTORY_MAX_EVENTS: u32 = 512;
 const HISTORY_MAX_PARENTS: u32 = 4;
 const HISTORY_MAX_METADATA: u32 = 4;
 const HISTORY_MAX_LABEL_BYTES: u32 = 64;
@@ -94,9 +95,15 @@ pub(super) fn root_facts() -> RootMomentFacts {
 }
 
 pub(super) fn empty_graph() -> HistoryGraph {
+    empty_graph_within(HISTORY_MAX_EVENTS)
+}
+
+/// Empty graph admitting at most `max_events` events; the projection bound stays
+/// [`HISTORY_MAX_EVENTS`].
+pub(super) fn empty_graph_within(max_events: u32) -> HistoryGraph {
     HistoryGraph::new(
         HistoryLimits::new(
-            HISTORY_MAX_EVENTS,
+            max_events,
             HISTORY_MAX_PARENTS,
             HISTORY_MAX_METADATA,
             HISTORY_MAX_LABEL_BYTES,
@@ -132,6 +139,11 @@ pub(super) struct Session {
 
 impl Session {
     pub fn open(config: &ExplorerConfig) -> Self {
+        Self::open_within_graph(config, HISTORY_MAX_EVENTS)
+    }
+
+    /// [`Session::open`] over a graph admitting at most `graph_max_events` events.
+    pub fn open_within_graph(config: &ExplorerConfig, graph_max_events: u32) -> Self {
         let identity = AdapterIdentity::for_seed(config.seed);
         let profile = admit_config(
             &identity,
@@ -141,7 +153,12 @@ impl Session {
             },
         )
         .unwrap();
-        let root = admit_root_moment(&empty_graph(), &identity, &root_facts()).unwrap();
+        let root = admit_root_moment(
+            &empty_graph_within(graph_max_events),
+            &identity,
+            &root_facts(),
+        )
+        .unwrap();
         let branch = root_control_branch(&root);
         let binding = projection_binding(&identity, &root.graph, &branch).unwrap();
         let admission =

@@ -1,11 +1,13 @@
-use campaign_core::{SelectionCountDecay, SelectionMode};
+use campaign_core::{CampaignError, SelectionCountDecay, SelectionMode};
 
-use super::{config, Session, MAX_FRONTIER, ROUNDS, SEED};
+use super::{config, Session, EXPLOIT, MAX_FRONTIER, ROUNDS, SEED};
 use crate::campaign_adapter::profile::ENTRIES_PER_BRANCH;
+use crate::campaign_adapter::ranks::ORIGINAL_SCORE_DIMENSION;
 use crate::campaign_adapter::{
     admit_config, retention_plan_request, stop_reason, AdapterError, AdapterIdentity,
     BootstrapFacts, DegenerateConfig, ProductStop, SelectionLimit, EXPLORATION_ORDER,
-    EXPLORATION_THRESHOLD_PARTS_PER_MILLION, MAX_RANK_MAGNITUDE, RETENTION_RANK_ORDER,
+    EXPLORATION_THRESHOLD_PARTS_PER_MILLION, MAX_RANK_MAGNITUDE, RANK_DIMENSIONS,
+    RETENTION_RANK_ORDER,
 };
 use crate::explorer::ExplorerConfig;
 
@@ -130,4 +132,51 @@ fn retention_drops_the_newest_of_equal_lowest_scores_like_legacy_truncation() {
     assert_eq!(pruned, vec![candidates[2], candidates[3]]);
     assert_eq!(session.retained(), 2);
     assert!(session.prune().is_empty());
+}
+
+// r[verify chaoscontrol.campaign_policy.ranks.invalid]
+#[test]
+fn rank_orders_beyond_the_fixed_rank_shape_are_config_errors_for_every_draw() {
+    let mut session = Session::open(&config());
+    let root = session.root.moment_id;
+    session.admit_entries(root, &[2.0, 1.0]);
+    let session = session;
+    let rank_dimensions = u32::try_from(RANK_DIMENSIONS).unwrap();
+    // ChaosControl's declared orders stay inside the rank shape its guidance fixes.
+    assert!(EXPLORATION_ORDER
+        .iter()
+        .chain(RETENTION_RANK_ORDER.iter())
+        .all(|dimension| *dimension < rank_dimensions));
+    // An order one past the shape is refused as configuration whatever the
+    // draw, never as a draw-dependent guidance-shape error; the declared order
+    // selects on the same draw.
+    for draws in [EXPLOIT, super::explore(1)] {
+        assert!(matches!(
+            crate::campaign_adapter::round_decision(
+                &session.identity,
+                session.plan(draws),
+                session.campaign_id()
+            ),
+            Ok(crate::campaign_adapter::RoundDecision::Execute(_))
+        ));
+        let mut request = session.request(draws);
+        let SelectionMode::Exploratory {
+            exploration_order, ..
+        } = &mut request.profile.mode
+        else {
+            panic!("ChaosControl plans exploratory selections");
+        };
+        *exploration_order = vec![rank_dimensions];
+        request.profile = request.profile.derive().unwrap();
+        assert_eq!(
+            campaign_core::plan_next(&session.state, request, &session.binding()),
+            Err(CampaignError::InvalidConfig)
+        );
+    }
+    let mut retention = retention_plan_request(&session.identity, &session.state);
+    retention.rank_order = vec![ORIGINAL_SCORE_DIMENSION, rank_dimensions];
+    assert_eq!(
+        campaign_core::plan_pruning(&session.state, retention),
+        Err(CampaignError::InvalidConfig)
+    );
 }

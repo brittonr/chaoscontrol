@@ -56,7 +56,7 @@ pub use ranks::{
 pub use results::{child_observation, finding_ref, result_observation, ResultFacts, RetainedChild};
 pub use stops::{
     is_capacity_refusal, product_stop, round_decision, round_fits_capacity, stop_reason,
-    ProductStop, RoundDecision,
+    HostCapacity, ProductStop, RoundDecision, RoundDemand,
 };
 pub use wire::{
     authenticate_control_event, decode_control_event, decode_moment, encode_control_event,

@@ -652,17 +652,20 @@ fn open_bounded(dir: &Path, bound: u64) -> CampaignFrontier<ScriptedIo> {
     frontier
 }
 
-/// Bound that holds the genesis, exactly one whole round, and the stop.
-fn one_round_bound(dir: &Path) -> u64 {
-    let profile = crate::campaign_adapter::admit_config(
+fn profile(dir: &Path) -> crate::campaign_adapter::CampaignProfile {
+    crate::campaign_adapter::admit_config(
         &AdapterIdentity::for_seed(SEED),
         &config(FrontierPolicy::Campaign, dir),
         crate::campaign_adapter::BootstrapFacts {
             restorable_root: true,
         },
     )
-    .unwrap();
-    GENESIS_LINEAGE + profile.round_control_events().unwrap() + 1
+    .unwrap()
+}
+
+/// Bound that holds the genesis, exactly one whole round, and the stop.
+fn one_round_bound(dir: &Path) -> u64 {
+    GENESIS_LINEAGE + profile(dir).round_control_events().unwrap() + 1
 }
 
 fn capacity_reason() -> StopReason {
@@ -762,6 +765,138 @@ fn a_retirement_the_host_capacity_refuses_becomes_the_capacity_stop() {
         frontier.state().unwrap().stopped.as_ref().unwrap().reason,
         capacity_reason()
     );
+}
+
+/// Genesis graph of [`open_campaign`]: the root moment and the genesis lineage.
+const GENESIS_GRAPH: u64 = 1 + GENESIS_LINEAGE;
+
+/// Opens the Campaign backend with the Choregraph graph event limit `bound`;
+/// the projection bound stays the derived one.
+fn open_graph_bounded(
+    dir: &Path,
+    bound: u64,
+) -> Result<CampaignFrontier<ScriptedIo>, FrontierError> {
+    let config = config(FrontierPolicy::Campaign, dir);
+    let mut frontier =
+        CampaignFrontier::open_with_io(&config, dir, None, ScriptedIo::default()).unwrap();
+    frontier.tighten_graph_bound(bound);
+    frontier.admit_root(root(Some(dummy_snapshot())))?;
+    Ok(frontier)
+}
+
+/// Graph event limit that holds the genesis, exactly one whole round with a
+/// child moment per branch, and the stop.
+fn one_round_graph_bound(dir: &Path) -> u64 {
+    GENESIS_GRAPH + profile(dir).round_demand().unwrap().history_events + 1
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.valid]
+#[test]
+fn a_tight_graph_bound_ends_the_run_with_the_capacity_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut frontier = open_graph_bounded(dir.path(), one_round_graph_bound(dir.path())).unwrap();
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    // The first round fits whole, child moments included, and settles in full.
+    let plan = planned(&mut frontier, &mut rng, 0);
+    let round = executable(frontier.authorize(plan).unwrap());
+    frontier
+        .finish_round(round, &observation(1, &[Some(vec![1.5]), Some(vec![0.5])]))
+        .unwrap();
+    let state = frontier.state().unwrap();
+    assert!(state.outstanding.is_empty());
+    assert_eq!(state.selection_count, 1);
+    // The second does not fit the graph: the backend stops before drawing.
+    let mut expected_rng = rng.clone();
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(1)).unwrap(),
+        RoundBegin::Stop(ProductStop::ControlCapacityExhausted)
+    ));
+    assert_eq!(rng.next_u64(), expected_rng.next_u64());
+    frontier
+        .record_stop(ProductStop::ControlCapacityExhausted)
+        .unwrap();
+    let recorded = frontier.state().unwrap().stopped.clone().unwrap();
+    assert_eq!(recorded.reason, capacity_reason());
+    assert!(recorded.incomplete_search_acknowledged);
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn one_graph_event_short_of_a_whole_round_stops_before_the_first_selection() {
+    let dir = tempfile::tempdir().unwrap();
+    // Campaign's own reserve (a selection, its result, and the stop) still fits;
+    // the round's child moments do not.
+    let bound = one_round_graph_bound(dir.path()) - 1;
+    assert!(GENESIS_GRAPH + 3 <= bound);
+    let mut frontier = open_graph_bounded(dir.path(), bound).unwrap();
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    let mut expected_rng = rng.clone();
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(0)).unwrap(),
+        RoundBegin::Stop(ProductStop::ControlCapacityExhausted)
+    ));
+    assert_eq!(rng.next_u64(), expected_rng.next_u64());
+    frontier
+        .record_stop(ProductStop::ControlCapacityExhausted)
+        .unwrap();
+    let state = frontier.state().unwrap();
+    assert_eq!(state.selection_count, 0);
+    assert_eq!(state.stopped.as_ref().unwrap().reason, capacity_reason());
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn a_retirement_the_graph_bound_refuses_becomes_the_capacity_stop() {
+    let dir = tempfile::tempdir().unwrap();
+    // Room for the genesis and the stop only.
+    let mut frontier = open_graph_bounded(dir.path(), GENESIS_GRAPH + 1).unwrap();
+    frontier.forget_snapshots();
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(0)).unwrap(),
+        RoundBegin::Stop(ProductStop::ControlCapacityExhausted)
+    ));
+    let state = frontier.state().unwrap();
+    assert!(state
+        .candidates
+        .iter()
+        .all(|candidate| candidate.status == CandidateStatus::Retained));
+    frontier
+        .record_stop(ProductStop::ControlCapacityExhausted)
+        .unwrap();
+    assert_eq!(
+        frontier.state().unwrap().stopped.as_ref().unwrap().reason,
+        capacity_reason()
+    );
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn a_genesis_without_room_for_its_stop_is_refused_before_the_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    // The root moment and the admission leave no graph room for the stop.
+    let Err(error) = open_graph_bounded(dir.path(), 2) else {
+        panic!("a control root without room for its stop was admitted");
+    };
+    assert!(matches!(
+        error,
+        FrontierError::Adapter(AdapterError::Choregraph(
+            campaign_choregraph::AdapterError::GraphCapacityExhausted
+        ))
+    ));
+    // A projection bound of one holds the admission but not its stop.
+    let config = config(FrontierPolicy::Campaign, dir.path());
+    let mut frontier =
+        CampaignFrontier::open_with_io(&config, dir.path(), None, ScriptedIo::default()).unwrap();
+    frontier.tighten_projection_bound(1);
+    assert!(matches!(
+        frontier.admit_root(root(Some(dummy_snapshot()))),
+        Err(FrontierError::Adapter(AdapterError::Choregraph(
+            campaign_choregraph::AdapterError::ProjectionCapacityExhausted
+        )))
+    ));
+    assert_eq!(frontier.last_segment(), None);
+    assert!(frontier.state().is_none());
 }
 
 // ---------------------------------------------------------------------------

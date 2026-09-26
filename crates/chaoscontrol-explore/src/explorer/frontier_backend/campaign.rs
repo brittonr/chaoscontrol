@@ -149,6 +149,9 @@ pub(crate) struct CampaignFrontier<Io: PublicationIo = SystemPublicationIo> {
     /// Test hook: a Choregraph projection bound below the derived one.
     #[cfg(test)]
     projection_bound: Option<u64>,
+    /// Test hook: a Choregraph graph event limit below the derived one.
+    #[cfg(test)]
+    graph_bound: Option<u64>,
 }
 
 impl CampaignFrontier<SystemPublicationIo> {
@@ -204,6 +207,8 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             halted: false,
             #[cfg(test)]
             projection_bound: None,
+            #[cfg(test)]
+            graph_bound: None,
         };
         if let Some(last) = recovered.epochs().last() {
             frontier.previous_epoch_digest = last.final_digest().map(|digest| *digest.as_bytes());
@@ -471,11 +476,32 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             .map_or(max_history_events, |bound| bound.min(max_history_events))
     }
 
+    /// Choregraph graph event limit of the epoch: the whole history bound.
+    #[cfg(not(test))]
+    #[allow(clippy::unused_self)]
+    const fn graph_bound(&self, max_history_events: u64) -> u64 {
+        max_history_events
+    }
+
+    /// Choregraph graph event limit of the epoch, tightened by the test hook.
+    #[cfg(test)]
+    fn graph_bound(&self, max_history_events: u64) -> u64 {
+        self.graph_bound
+            .map_or(max_history_events, |bound| bound.min(max_history_events))
+    }
+
     /// Tightens the Choregraph projection bound of the next genesis (test hook
     /// for the host control capacity stop).
     #[cfg(test)]
     pub(super) fn tighten_projection_bound(&mut self, bound: u64) {
         self.projection_bound = Some(bound);
+    }
+
+    /// Tightens the Choregraph graph event limit of the next genesis (test hook
+    /// for the host control capacity stop at the graph bound).
+    #[cfg(test)]
+    pub(super) fn tighten_graph_bound(&mut self, bound: u64) {
+        self.graph_bound = Some(bound);
     }
 
     #[cfg(test)]
@@ -548,7 +574,7 @@ impl<Io: PublicationIo> FrontierBackend for CampaignFrontier<Io> {
             .and_then(|events| events.checked_add(moments))
             .ok_or(FrontierError::BoundOverflow)?;
         let limits = history_limits(
-            max_history_events,
+            self.graph_bound(max_history_events),
             self.projection_bound(max_history_events),
         )?;
         let epoch = u64::from(self.epoch);

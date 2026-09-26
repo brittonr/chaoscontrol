@@ -7,8 +7,8 @@ use crate::campaign_adapter::{
     finding_ref, ineligible_retirement, is_capacity_refusal, result_observation,
     retention_plan_request, round_decision, round_fits_capacity, selection_request,
     ticket_explores, unobserved_closure, AdapterError, ChildMomentFacts, Eligibility, EntropyDraws,
-    GuidanceFacts, IneligibleReason, LegacyDraws, ProductStop, ResultFacts, RetainedChild,
-    RoundDecision, SelectionLimit,
+    GuidanceFacts, HostCapacity, IneligibleReason, LegacyDraws, ProductStop, ResultFacts,
+    RetainedChild, RoundDecision, SelectionLimit,
 };
 use crate::explorer::frontier_backend::digests::round_manifest_digest;
 use crate::explorer::frontier_backend::records::{
@@ -63,8 +63,9 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         if self.profile()?.selection_limit == SelectionLimit::NoSelection {
             return Ok(RoundBegin::Stop(ProductStop::CompletedWithoutSelection));
         }
-        // A retirement the host capacity refuses was not staged; Campaign keeps
-        // the stop reserve, so the capacity stop still publishes.
+        // A retirement the host capacity (projection, generation, or graph
+        // bound) refuses was not staged; Campaign keeps the stop reserve, so the
+        // capacity stop still publishes.
         match self.retire_ineligible() {
             Err(FrontierError::Adapter(error)) if is_capacity_refusal(&error) => {
                 return Ok(RoundBegin::Stop(ProductStop::ControlCapacityExhausted));
@@ -85,16 +86,13 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
         self.plan(context, draws)
     }
 
-    /// Whether the held projection's host capacity still holds a whole round,
-    /// its settlement, and the stop.
+    /// Whether the held projection's host capacity still holds a whole round
+    /// (child moments included), its settlement, and the stop.
     fn round_fits_capacity(&self) -> Result<bool, FrontierError> {
-        let session = self.session()?;
-        let projection = session.projection();
+        let capacity = HostCapacity::of(self.session()?.projection())?;
         Ok(round_fits_capacity(
-            projection.control_events().len(),
-            self.profile()?.round_control_events()?,
-            projection.maximum_events(),
-            session.state().admission.projection.generation,
+            &capacity,
+            self.profile()?.round_demand()?,
         )?)
     }
 
@@ -118,7 +116,11 @@ impl<Io: PublicationIo> CampaignFrontier<Io> {
             selection_request(&self.identity, profile, session.state(), &binding, entropy)?;
         // Planning through the held projection keeps Campaign's own host
         // capacity reserve: without room for one more selection, its settlement,
-        // and the stop, the plan is the capacity stop (or a result wait).
+        // and the stop, the plan is the capacity stop (or a result wait). A typed
+        // capacity error means the stop reserve itself was consumed outside
+        // Campaign publication; the stop would be refused too, so it is not
+        // mapped to a stop and propagates. The whole-round check above keeps
+        // this shell's own moments inside the reserve, so it is not expected.
         let plan = plan_next_from_published_projection(
             session.projection(),
             PublishedSelectionRequest {

@@ -25,6 +25,7 @@ use super::moments::AdmittedMoment;
 use super::ranks::{
     INSERTION_ORDER_DIMENSION, MAX_RANK_MAGNITUDE, ORIGINAL_SCORE_DIMENSION, RANK_DIMENSIONS,
 };
+use super::stops::RoundDemand;
 use super::AdapterError;
 use crate::explorer::ExplorerConfig;
 
@@ -105,6 +106,20 @@ impl CampaignProfile {
     /// Returns `BoundOverflow` when the count does not fit `u64`.
     pub fn round_control_events(&self) -> Result<u64, AdapterError> {
         checked_add(ROUND_CONTROL_EVENTS, self.bounds.max_candidate_batch)
+    }
+
+    /// Most history one round adds: [`CampaignProfile::round_control_events`]
+    /// control events, plus one child moment per branch (`max_child_moments`)
+    /// in the shared graph.
+    ///
+    /// # Errors
+    /// Returns `BoundOverflow` when a count does not fit `u64`.
+    pub fn round_demand(&self) -> Result<RoundDemand, AdapterError> {
+        let control_events = self.round_control_events()?;
+        Ok(RoundDemand {
+            control_events,
+            history_events: checked_add(control_events, self.bounds.max_child_moments)?,
+        })
     }
 }
 

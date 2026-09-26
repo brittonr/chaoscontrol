@@ -5,10 +5,11 @@ use campaign_core::{
     CampaignControlEvent, Id, IdKind, NextDecision, SelectionEvent, StopReason, WaitReason,
 };
 
-use super::{config, digest, Session, EXPLOIT};
+use super::{config, digest, Session, EXPLOIT, HISTORY_MAX_EVENTS};
 use crate::campaign_adapter::{
     ineligible_retirement, is_capacity_refusal, product_stop, round_decision, round_fits_capacity,
-    stop_reason, AdapterError, IneligibleReason, ProductStop, RoundDecision,
+    stop_reason, AdapterError, HostCapacity, IneligibleReason, ProductStop, RoundDecision,
+    RoundDemand,
 };
 use crate::explorer::ExplorerConfig;
 
@@ -145,6 +146,149 @@ fn the_host_capacity_stop_maps_to_its_own_product_class() {
         .is_ok());
 }
 
+/// The root moment plus the one-entry lineage.
+const ONE_ENTRY_GRAPH: u32 = 1 + ONE_ENTRY_LINEAGE;
+
+/// A session over a graph of `graph_max_events` events holding one candidate.
+fn one_entry_within_graph(graph_max_events: u32) -> Session {
+    let mut session = Session::open_within_graph(&config(), graph_max_events);
+    let root = session.root.moment_id;
+    session.admit_entries(root, &[1.0]);
+    assert_eq!(session.graph.len(), ONE_ENTRY_GRAPH);
+    session
+}
+
+/// Admits one foreign root moment per epoch of `epochs` into the session's
+/// graph (another writer of the shared history).
+fn admit_foreign_moments(session: &mut Session, epochs: std::ops::RangeInclusive<u64>) {
+    for epoch in epochs {
+        let facts = crate::campaign_adapter::RootMomentFacts {
+            epoch,
+            ..super::root_facts()
+        };
+        session.graph =
+            crate::campaign_adapter::admit_root_moment(&session.graph, &session.identity, &facts)
+                .unwrap()
+                .graph;
+    }
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.valid]
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn the_graph_event_limit_plans_and_publishes_the_capacity_stop() {
+    let fits = ONE_ENTRY_GRAPH + SELECTION_RESERVE;
+    let tight = fits - 1;
+    // The projection bound stays wide: only the graph event limit binds.
+    let session = one_entry_within_graph(tight);
+    assert_eq!(
+        round_decision(
+            &session.identity,
+            plan_within(&session, HISTORY_MAX_EVENTS),
+            session.campaign_id()
+        ),
+        Ok(RoundDecision::Stop(ProductStop::ControlCapacityExhausted))
+    );
+    // Publishing the selection core alone would plan is refused with the typed
+    // graph error, which is a host capacity refusal.
+    let request = session.request(EXPLOIT);
+    let RoundDecision::Execute(selection) = round_decision(
+        &session.identity,
+        session.plan(EXPLOIT),
+        session.campaign_id(),
+    )
+    .unwrap() else {
+        panic!("core alone plans a selection");
+    };
+    let event = SelectionEvent::new(*selection, request.profile, request.entropy).unwrap();
+    let refused = session
+        .publication_within(
+            CampaignControlEvent::SelectionPublished(event.clone()),
+            HISTORY_MAX_EVENTS,
+        )
+        .unwrap_err();
+    assert_eq!(
+        refused,
+        campaign_choregraph::AdapterError::GraphCapacityExhausted
+    );
+    assert!(is_capacity_refusal(&AdapterError::Choregraph(refused)));
+    // The capacity stop publishes at the graph bound and reloads cold.
+    let mut stopped = one_entry_within_graph(tight);
+    let stop = campaign_core::admit_stop(
+        &stopped.state,
+        stop_reason(&stopped.identity, ProductStop::ControlCapacityExhausted),
+    )
+    .unwrap();
+    stopped.publish(stop);
+    assert_eq!(stopped.graph.len(), ONE_ENTRY_GRAPH + 1);
+    let reloaded = stopped.projection();
+    assert_eq!(
+        product_stop(&reloaded.state().stopped.as_ref().unwrap().reason),
+        Ok(ProductStop::ControlCapacityExhausted)
+    );
+
+    // With room for the selection, its settlement, and the stop, it plans and
+    // publishes.
+    let roomy = one_entry_within_graph(fits);
+    assert!(matches!(
+        round_decision(
+            &roomy.identity,
+            plan_within(&roomy, HISTORY_MAX_EVENTS),
+            roomy.campaign_id()
+        ),
+        Ok(RoundDecision::Execute(_))
+    ));
+    assert!(roomy
+        .publication_within(
+            CampaignControlEvent::SelectionPublished(event),
+            HISTORY_MAX_EVENTS
+        )
+        .is_ok());
+}
+
+// r[verify chaoscontrol.campaign_policy.stop.invalid]
+#[test]
+fn a_graph_without_room_for_the_stop_refuses_planning_with_the_typed_error() {
+    let tight = ONE_ENTRY_GRAPH + SELECTION_RESERVE - 1;
+    // Another writer takes one event: the stop still fits and is planned.
+    let mut session = one_entry_within_graph(tight);
+    admit_foreign_moments(&mut session, 1..=1);
+    assert_eq!(
+        round_decision(
+            &session.identity,
+            plan_within(&session, HISTORY_MAX_EVENTS),
+            session.campaign_id()
+        ),
+        Ok(RoundDecision::Stop(ProductStop::ControlCapacityExhausted))
+    );
+    // It takes the stop's room too (the graph is full): the planner returns the
+    // typed capacity error instead of a stop publication would refuse, and the
+    // stop itself is refused.
+    admit_foreign_moments(&mut session, 2..=2);
+    assert_eq!(session.graph.len(), tight);
+    let refused = plan_next_from_published_projection(
+        &session.projection(),
+        PublishedSelectionRequest {
+            request: session.request(EXPLOIT),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        refused,
+        campaign_choregraph::AdapterError::GraphCapacityExhausted
+    );
+    assert!(is_capacity_refusal(&AdapterError::Choregraph(refused)));
+    let stop = campaign_core::admit_stop(
+        &session.state,
+        stop_reason(&session.identity, ProductStop::ControlCapacityExhausted),
+    )
+    .unwrap();
+    assert_eq!(
+        session.publication_within(stop, HISTORY_MAX_EVENTS),
+        Err(campaign_choregraph::AdapterError::GraphCapacityExhausted)
+    );
+}
+
 // r[verify chaoscontrol.campaign_policy.stop.wait]
 #[test]
 fn an_outstanding_selection_without_capacity_waits_for_its_result() {
@@ -175,36 +319,61 @@ fn an_outstanding_selection_without_capacity_waits_for_its_result() {
 
 #[test]
 fn a_round_fits_only_with_room_for_its_settlement_and_the_stop() {
-    const LINEAGE: usize = 3;
-    const ROUND_EVENTS: u64 = 10;
+    const LINEAGE: u64 = 3;
+    const GRAPH: u64 = 5;
+    const ROUND: RoundDemand = RoundDemand {
+        control_events: 10,
+        history_events: 12,
+    };
     const EXACT: u32 = 14;
+    const EXACT_GRAPH: u32 = 18;
+    let capacity = |maximum_events, graph_max_events, admitted_generation| HostCapacity {
+        lineage: LINEAGE,
+        graph_events: GRAPH,
+        maximum_events,
+        graph_max_events,
+        admitted_generation,
+    };
     assert_eq!(
-        round_fits_capacity(LINEAGE, ROUND_EVENTS, EXACT, 1),
+        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, 1), ROUND),
         Ok(true)
     );
     assert_eq!(
-        round_fits_capacity(LINEAGE, ROUND_EVENTS, EXACT - 1, 1),
+        round_fits_capacity(&capacity(EXACT - 1, EXACT_GRAPH, 1), ROUND),
+        Ok(false)
+    );
+    // The graph must also hold the round's child moments and the stop.
+    assert_eq!(
+        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH - 1, 1), ROUND),
         Ok(false)
     );
     let last_generation = u64::MAX - u64::from(EXACT);
     assert_eq!(
-        round_fits_capacity(LINEAGE, ROUND_EVENTS, EXACT, last_generation),
+        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, last_generation), ROUND),
         Ok(true)
     );
     assert_eq!(
-        round_fits_capacity(LINEAGE, ROUND_EVENTS, EXACT, last_generation + 1),
+        round_fits_capacity(&capacity(EXACT, EXACT_GRAPH, last_generation + 1), ROUND),
         Ok(false)
     );
+    let unbounded = RoundDemand {
+        control_events: u64::MAX,
+        history_events: u64::MAX,
+    };
     assert_eq!(
-        round_fits_capacity(LINEAGE, u64::MAX, u32::MAX, 1),
+        round_fits_capacity(&capacity(u32::MAX, u32::MAX, 1), unbounded),
         Err(AdapterError::BoundOverflow)
     );
     assert!(!is_capacity_refusal(&AdapterError::Choregraph(
         campaign_choregraph::AdapterError::ProjectionBindingMismatch
     )));
-    assert!(is_capacity_refusal(&AdapterError::Choregraph(
-        campaign_choregraph::AdapterError::GenerationCapacityExhausted
-    )));
+    for refusal in [
+        campaign_choregraph::AdapterError::ProjectionCapacityExhausted,
+        campaign_choregraph::AdapterError::GenerationCapacityExhausted,
+        campaign_choregraph::AdapterError::GraphCapacityExhausted,
+    ] {
+        assert!(is_capacity_refusal(&AdapterError::Choregraph(refusal)));
+    }
 }
 
 // r[verify chaoscontrol.campaign_policy.stop.valid]

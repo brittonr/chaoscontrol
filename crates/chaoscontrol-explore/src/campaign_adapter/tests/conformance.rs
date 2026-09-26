@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `99f8eff3`).
-const PINNED_FIXTURE_COUNT: usize = 71;
+/// Fixture count of the pinned Campaign conformance suite (Campaign `a75b5e3a`).
+const PINNED_FIXTURE_COUNT: usize = 74;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "bdf563a29c60ec71b3f508d5743eaf36d7a562196fa3d47b06e1d515f520e517";
+    "19446c4854e4a1679db4793a7b2dbf65e7da0acb0239c90ca069b99dccd2cb5c";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "7be1415ddfd115f2a9dacacdddec80e3c20eebd94cedfef6e99246aadf673273";
+    "bf04eddf8845c9cfc38e30cd49099fd1fbe95f9f65065794741b9078ac5f3564";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -783,13 +783,20 @@ fn stale_history_and_history_rewrite_fail_the_named_fixtures() {
 // r[verify chaoscontrol.campaign_policy.observations.invalid]
 #[test]
 fn crossed_identities_and_budget_miscount_fail_the_named_fixtures() {
-    assert_eq!(
-        broken_failures(Breakage::CrossedIdentities),
-        let_through(&[(
-            "results.crossed_selection",
-            "a result settled a selection other than the executed one",
-        )])
-    );
+    // The out-of-order settlement's crossed result names the other selection but
+    // keeps the executed selection's reserved children, so Campaign refuses it
+    // with the typed reservation error: that negative fixture fails too.
+    let mut crossed = let_through(&[(
+        "results.crossed_selection",
+        "a result settled a selection other than the executed one",
+    )]);
+    crossed.push((
+        "results.out_of_order_settlement",
+        FixtureVerdict::NegativeFixtureFailed(ConformanceError::Campaign(
+            CampaignError::InvalidChildReservation,
+        )),
+    ));
+    assert_eq!(broken_failures(Breakage::CrossedIdentities), crossed);
     let mut expected = vec![
         (
             "budgets.reservation",

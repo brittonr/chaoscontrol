@@ -41,7 +41,7 @@ The test suite will reject or expose:
 
 ## Evidence
 
-Every commit below is on `cairn/adopt-campaign-core-20260906`. The implementation head is `0bbf309` (Campaign `260eb9ba` re-pin `ec1625e`, evidence fixtures `0bbf309`); the counts in this subsection are from `420cb05` unless the re-pin subsection below says otherwise. Command prefixes for the development shell and target directory are omitted. All cargo commands ran offline against the committed `Cargo.lock`.
+Every commit below is on `cairn/adopt-campaign-core-20260906`. The implementation head is `43042fa` (Campaign `99f8eff3` re-pin and host control capacity stop; earlier: Campaign `260eb9ba` re-pin `ec1625e`, evidence fixtures `0bbf309`); the counts in this subsection are from `420cb05` unless a re-pin subsection below says otherwise. Command prefixes for the development shell and target directory are omitted. All cargo commands ran offline against the committed `Cargo.lock`.
 
 ### Focused tests, lint, and static gates
 
@@ -85,10 +85,11 @@ The adapter's conformance module is `campaign_adapter/tests/conformance.rs`.
 
 - **At `2da6277`** (Campaign `c7226084`): every catalog fixture passed, and the outcome count equals `fixture_names().len()`. The transcript digest equaled Campaign's reference digest `424ae98a1d0a747a4195830626db6fb2589a181fc4875602e652da53d860a890`.
 - **From `a0b1b3c`** (Campaign `c5e20cf2`): `chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript` compares the adapter's transcript digest with the digest of Campaign's own reference pilot, `campaign_conformance::fixtures::animus_shaped::OpaqueCandidateAdapter`, run on the same profile. The digests are equal.
-- **Since `ec1625e`** (Campaign `260eb9ba`): all 71 fixtures pass, including the new `budgets.declared_dimensions` and `selection.second_level`. The transcript digest equals the pilot's and Campaign's announced reference digest `94f68aec45deae859800316bd96f399848744b60b124d19f2b535b3cf7548d70`, which the test now pins as a constant together with the fixture count.
-- **Profile sensitivity**: `a_changed_profile_changes_the_transcript_digest` shows that another exploration and retention order still conforms and yields a different digest. At `260eb9ba` it temporarily omits equality with the pilot under that profile: the suite's `receipts.non_selection_overclaim` retires the first retained candidate in adapter candidate-id order, so the two adapters retire different operations at transcript entry 820. Campaign owns the fix; the next re-pin restores the assertion.
+- **From `ec1625e`** (Campaign `260eb9ba`): all 71 fixtures pass, including the new `budgets.declared_dimensions` and `selection.second_level`. The transcript digest equaled the pilot's and Campaign's announced reference digest `94f68aec45deae859800316bd96f399848744b60b124d19f2b535b3cf7548d70`.
+- **Since `43042fa`** (Campaign `99f8eff3`): all 71 fixtures pass, including the D53 additions (non-selection publications in both gate matrices, forks at depths 1 to 3 that drop the held head, projection-bound, two-parent, replayed, and foreign-root history classes, cost units above `2^53`, and draws above `u32::MAX`). The default-profile transcript digest equals the pilot's and Campaign's announced reference digest `bdf563a29c60ec71b3f508d5743eaf36d7a562196fa3d47b06e1d515f520e517` (1092 entries). The test pins it as a constant together with the fixture count.
+- **Profile sensitivity**: `a_changed_profile_changes_the_transcript_digest` runs `exploration_order = [1]` and `retention_rank_order = [1]`. Every fixture passes. The digest differs from the default profile's and equals both the pilot's and Campaign's announced reordered digest `7be1415ddfd115f2a9dacacdddec80e3c20eebd94cedfef6e99246aadf673273`, pinned in the test. This strict equality was relaxed at `260eb9ba`, where the suite's `retire_retained` picked by adapter candidate-id order. Campaign fixed that in D53g (it now picks in suite order), and this re-pin restored the assertion.
 
-Broken-wrapper negative controls fail exactly their named fixtures (expectations as of `ec1625e`):
+Broken-wrapper negative controls fail exactly their named fixtures. The expectations set at `ec1625e` hold unchanged at `99f8eff3`, and every wrapper still fails:
 
 - `ExecutionBeforePublication` fails `fencing.{unpublished_execution, non_durable_execution, stale_branch, foreign_selection, stale_state_selection, gate_matrix_ranked, gate_matrix_exploratory}`; both gate matrices report "a selection executed without a publication or evidence".
 - `RoleCollapse` fails `roles.collapsed_identity`.
@@ -107,7 +108,7 @@ Broken-wrapper negative controls fail exactly their named fixtures (expectations
   - entropy: `k` boundaries, agreement on 20,000 seeded ChaCha8 draws, and missing, crossed, or stale tickets;
   - eligibility: `NotRetained`, `StaleBaseSet`, `StaleEpoch`;
   - results: `DuplicateChild`, `CrossedCampaign`, `UnknownSelection`;
-  - stops: `UnmappedStop`, `CrossedIdentity`, and wait handling;
+  - stops: `UnmappedStop`, `CrossedIdentity`, wait handling, and the host control capacity stop (`the_host_capacity_stop_maps_to_its_own_product_class`, `an_outstanding_selection_without_capacity_waits_for_its_result`, `a_round_fits_only_with_room_for_its_settlement_and_the_stop`);
   - profile degenerate configurations: `ZeroMaxFrontier`, NaN or negative weight, `MissingRestorableRoot`, `BoundOverflow`.
 - **Journal** (`a60cccd`, `explorer/journal/tests.rs`):
   - Fault injection covers every publication phase: `pre_rename_faults_are_not_committed_and_leave_nothing_visible`, `rename_uncertainty_poisons_and_recovery_admits_the_visible_segment`, `directory_sync_failure_poisons_the_journal`, and `sequence_collision_marks_the_writer_stale_until_resynchronized`.
@@ -117,7 +118,7 @@ Broken-wrapper negative controls fail exactly their named fixtures (expectations
   - fence: `the_selection_segment_commits_before_the_round_can_execute`, `every_failed_selection_publication_blocks_the_round`, `uncertain_durability_poisons_the_journal_and_stops_every_later_step`, `a_stale_selection_sequence_replans_once_with_the_same_draws`, `a_foreign_segment_at_the_selection_sequence_is_a_stale_branch`;
   - eligibility: `eligible_parents_restore_their_own_snapshot`, `an_unrestorable_snapshot_after_publication_closes_and_retires`;
   - recovery: `recovery_closes_the_outstanding_selection_and_starts_a_new_epoch`, `an_unknown_record_kind_fails_recovery_without_touching_the_journal`, and `a_genesis_prune_replays_on_recovery` (`3b5cb62`);
-  - stops: `product_stops_record_structural_classes_only`, `an_outstanding_selection_is_a_wait_never_exhaustion`;
+  - stops: `product_stops_record_structural_classes_only`, `an_outstanding_selection_is_a_wait_never_exhaustion`, and the capacity stop (`a_tight_projection_bound_ends_the_run_with_the_capacity_stop`, `one_event_short_of_a_whole_round_stops_before_the_first_selection`, `a_retirement_the_host_capacity_refuses_becomes_the_capacity_stop`);
   - config admission: `degenerate_configurations_are_rejected_before_the_journal_opens`, `campaign_policy_rejects_degenerate_configs_before_kvm`.
 - **Evidence boundary** (`1c06a11`): the `campaign_evidence_boundary` unit and integration tests pass. Invalid fixtures `receipt.{campaign-journal,frontier-trace,choregraph-schema}-promotion.invalid.{json,ncl}` and `replay-verdict.frontier-trace-promotion.invalid.json` are refused.
 - **Product-type leakage** (`0bbf309`, `explorer/frontier_backend/leakage_tests.rs`). Both fixtures run the Campaign backend for 2 rounds over distinctive real product values: a `SimulationSnapshot`, a `CoverageBitmap` with a 16-counter pattern, an `OracleReport` with an assertion record and failure details, a `FaultSchedule`, and a finding key. Digests come from the shell's own `frontier_backend::digests`.
@@ -157,6 +158,39 @@ Gates run on the tree at `0bbf309`, offline, with the committed `Cargo.lock`:
 - Focused Octet, `cargo-octet check -p chaoscontrol-explore -- --lib` and `-p chaoscontrol-evidence -- --lib`: exit 0, no error-level findings. Only warn-level style findings remain.
 - Nix: `nix flake update campaign-src` locked `260eb9ba` from the local Nix Git cache while the forge answered HTTP 530, giving narHash `sha256-H0/tzc+oi+E0zNUNLccicfvZIenaX6TpQ8pDpHwhULU=` and revCount 41. `nix hash path` of the fetched source reproduces that narHash. `nix eval .#packages.x86_64-linux.default.drvPath` evaluates, and `nix-instantiate --parse flake.nix` passes. The full `nix flake check -L` did not run.
 - `cargo deny` is not in the development shell, so the `dependency-policy` check did not run locally.
+
+### Re-pin to Campaign `99f8eff3` (`43042fa`)
+
+Cargo (`campaign-core`, `campaign-choregraph`, and the `campaign-conformance` dev-dependency) and the Nix `campaign-src` input moved together from `260eb9ba` to `99f8eff32519b481770c54d95dc980000f7f3141`. `Cargo.lock` changed only the three package source lines.
+
+API and behaviour migrations:
+
+| Change (Campaign decision) | ChaosControl migration |
+| --- | --- |
+| One guidance rank shape per campaign (D48) | None: the adapter always emits three rank dimensions. |
+| `project_event_receipt` binds the event's own profile, ticket, guidance, and cost reservation; every receipt projection requires the current binding (D51) | None: ChaosControl projects no Campaign receipts. |
+| `plan_next_from_published_projection` can return `Wait(AwaitingResults)` or `Stop(ConsumerRequested{control_capacity_reason_id()})`; publication can refuse with `AdapterError::{ProjectionCapacityExhausted, GenerationCapacityExhausted}` (D49) | `round.rs` plans through the held projection (new `ControlSession::projection`). `begin_round` checks the whole round against the host capacity (`stops::round_fits_capacity`, `CampaignProfile::round_control_events`) and maps a refused retirement (`stops::is_capacity_refusal`) to the stop. The new class is `ProductStop::ControlCapacityExhausted` / `ExplorationStop::ControlCapacityExhausted`. `history_limits` takes the projection bound separately; the derived bound is unchanged. See `design.md`, "Host control capacity stop". |
+| Crossed envelope identities give `Campaign(CrossedIdentity)` on every path (D50) | None: the shell publishes only under its own identities, and the conformance port passes Campaign's answer through. |
+| Conformance catalog additions and `retire_retained` in suite order (D53) | New pinned digests; the strict changed-profile equality is restored. Broken-wrapper expectations are unchanged. |
+
+Capacity-stop evidence:
+
+- `a_tight_projection_bound_ends_the_run_with_the_capacity_stop`: with a projection bound of genesis lineage + one round + the stop, round 0 plans, executes, and settles in full. Round 1 stops with `ControlCapacityExhausted` before drawing (the RNG position is unchanged). The stop is recorded as `ConsumerRequested{control_capacity_reason_id()}` with incomplete search acknowledged, serializes as `control_capacity_exhausted`, and the reopened journal replays the stopped epoch with nothing to close.
+- `one_event_short_of_a_whole_round_stops_before_the_first_selection`: one event less stops at round 0 with zero selections.
+- `a_retirement_the_host_capacity_refuses_becomes_the_capacity_stop`: with room for the genesis and the stop only, the pre-round retirement is refused and not staged, the backend stays live, and the capacity stop records.
+- Adapter tests: Campaign's own capacity stop maps to the same class one event below `lineage + 3`, and the selection publication there is refused with `ProjectionCapacityExhausted`. The stop publishes and reloads within that bound. With a selection outstanding, the plan becomes `Wait(AwaitingResults)` one event below the bound and stays `Wait(AwaitingCapacity)` at it.
+- Mutation check (reverted): disabling the whole-round check fails `a_tight_projection_bound_ends_the_run_with_the_capacity_stop` ("a round was planned beyond the host capacity"), because Campaign's one-settlement reserve alone lets round 1 select.
+
+Gates run on the tree at `43042fa`, offline, with the committed `Cargo.lock`:
+
+- `cargo test -p chaoscontrol-explore -p chaoscontrol-evidence` (all targets plus doctests): 85 test binaries, 714 passed, 0 failed, 1 ignored (was 708 at `0bbf309`). The `chaoscontrol-explore` library has 385 passed and 1 ignored (was 379); the six new tests are the capacity-stop tests above. The `chaoscontrol-evidence` library has 161 passed.
+- Campaign conformance: all 71 fixtures pass; default digest `bdf563a2…e517` and reordered digest `7be1415d…3273` equal the pilot's and Campaign's announced values; all 7 broken wrappers fail their named fixtures.
+- `cargo clippy -p chaoscontrol-explore -p chaoscontrol-evidence --all-targets -- -D warnings` and `cargo fmt -p chaoscontrol-explore -p chaoscontrol-evidence --check` pass.
+- `check-evidence-contracts --root .`, `check-contract-registry .`, and `check-architecture-boundaries .` exit 0.
+- `check-frontier-parity` on the committed fixtures: the valid pair exits 0 with `decision_fields_equal` and `cutover_ready` true; a flipped selection, prune, or stop exits 1 with `[SelectedEntry, ParentMoment]`, `[Pruned]`, and `[StopClass]`; an existing receipt exits 2. The VM-free parity corpus (`frontier_backend::parity`, 26 tests) passes with the Campaign backend planning through the held projection.
+- Focused Octet, `cargo-octet check -p chaoscontrol-explore -- --lib` and `-p chaoscontrol-evidence -- --lib`: exit 0, `Errors: 0`. Only warn-level style findings remain (1154 and 888).
+- `cairn validate` with the installed policy reports only the stale assurance review (`assurance-review is blocked`, `assurance-plan-review` not approved).
+- Nix: `nix flake update campaign-src` locked `99f8eff3` from the local Nix Git cache while the forge answered HTTP 530, giving narHash `sha256-7p0NdJMZvrxEg8/1cX95qNg4s8nYlNNqFh7TyhwYKCY=`, revCount 45, and lastModified 1790379434. `nix hash path` of the fetched source reproduces the narHash. The first `nix eval .#packages.x86_64-linux.default.drvPath` failed because the shallow fetch of the locked input could not find `99f8eff3` on the cached `refs/heads/main`; `nix flake prefetch` of the locked URL put the same narHash into the store, after which the evaluation succeeds. `nix-instantiate --parse flake.nix` passes. The full `nix flake check -L` did not run on this tree.
 
 ### Model parity corpus
 
@@ -248,7 +282,7 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 | `publication_fence` | `a60cccd` journal; `3314e8b` fence tests; `d0719c5` live segment order |
 | `effects` | `3314e8b` `AuthorizedRound` is the only source of the parent snapshot; `d0719c5` live run |
 | `observations` | `fb9a221` results tests; `3314e8b` settlement |
-| `stop` | `fb9a221` stops; `a8d2716` product stop classes; `3314e8b` `record_stop`; `b6c9194` `every_reachable_stop_class_agrees` |
+| `stop` | `fb9a221` stops; `a8d2716` product stop classes; `3314e8b` `record_stop`; `b6c9194` `every_reachable_stop_class_agrees`; `43042fa` host control capacity stop |
 | `publication_fence.invalid` | `fb9a221` fence tests; `2da6277` `ExecutionBeforePublication`; `a60cccd` durability classes; `3314e8b` failed, stale, and foreign publication tests |
 | `product_authority` | `3314e8b` product-computed proposals; `b6c9194` corpus (only ranks cross) |
 | `progress` | `31e6a40`, `1ba05d1`, and `420cb05` checkpoint, progress, and report tests |
@@ -265,9 +299,9 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 
 ## Current gaps
 
-- **Final Campaign release pin.** Cargo and the Nix `campaign-src` input both pin Campaign development revision `260eb9ba` (`ec1625e`). It is not the release revision. The forge answered HTTP 530 at the re-pin, so fresh acquisition from the live endpoint has not been observed for it.
-- **Full gate.** `nix flake check -L` has not run for this change.
-- **Changed-profile pilot equality.** At `260eb9ba`, `a_changed_profile_changes_the_transcript_digest` temporarily omits equality with Campaign's pilot. This is a Campaign conformance defect: `retire_retained` picks by adapter candidate-id order. The next re-pin restores the assertion.
+- **Final Campaign release pin.** Cargo and the Nix `campaign-src` input both pin Campaign development revision `99f8eff3` (`43042fa`). It is not the release revision. The forge answered HTTP 530 at the re-pin, so fresh acquisition from the live endpoint has not been observed for it.
+- **Full gate.** `nix flake check -L` has not passed for this change.
+- **Capacity stop reachability.** The host control capacity stop is unreachable with the derived bounds. The tests reach it through a test-only tighter projection bound; no product configuration sets one.
 - **KVM smoke coverage.** The smoke did not exercise the following:
   - explore draws or pruning (the model corpus covers both);
   - input-tree or hybrid modes, `--workers` > 1, resume, or journal recovery;

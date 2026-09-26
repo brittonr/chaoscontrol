@@ -52,13 +52,14 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 
 Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. These obligations remain:
 
-- Cargo and the Nix `campaign-src` input both pin Campaign development revision `260eb9ba` (commit `ec1625e`), which closes the mismatched-revision hazard for this revision. It is not the Campaign release revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `260eb9ba` from the live endpoint has not been observed. No release claim holds until the release re-pin.
-- The full `nix flake check -L` gate has not run on the re-pinned tree.
-- The pinned conformance suite (`260eb9ba`) makes one fixture choice by adapter candidate-id order (`receipts.non_selection_overclaim` `retire_retained`). Under a non-default exploration and retention order, the ChaosControl transcript therefore differs from Campaign's Animus pilot at one retirement, although every fixture passes. `a_changed_profile_changes_the_transcript_digest` temporarily omits that pilot equality. Campaign will fix the fixture, and the next re-pin restores the assertion.
+- Cargo and the Nix `campaign-src` input both pin Campaign development revision `99f8eff3` (commit `43042fa`), which closes the mismatched-revision hazard for this revision. It is not the Campaign release revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `99f8eff3` from the live endpoint has not been observed. No release claim holds until the release re-pin.
+- The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Residual risks
 
 - The leakage record-shape check cannot tell a small integer-only product value from a counter or tick. Closed record schemas (`deny_unknown_fields`, canonical re-encoding) and identity re-derivation, not the shape check, keep such values out of Campaign records.
+- The host control capacity stop (`control_capacity_exhausted`) is unreachable with the derived bounds and is exercised only through a test-only tighter projection bound. The genesis record stores the whole history bound, and replay uses it as the projection bound, so a journal written under a tighter bound replays under the derived one. That is harmless for a stopped epoch, but only the derived bound is a supported configuration.
+- The Explorer's whole-round reserve assumes `ROUND_CONTROL_EVENTS` and the largest candidate batch bound every round's control events. The pre-round retirement sweep is not part of that reserve: a sweep that no longer fits is refused by publication, none of it is staged, and the round becomes the capacity stop rather than an error.
 - Integer conversion can differ from floating-point order at selected boundaries.
 - A bounded corpus cannot prove all entropy streams or frontier shapes equivalent.
 - A structurally valid history can reference an unavailable snapshot.

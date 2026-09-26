@@ -143,6 +143,14 @@ Commit `ec1625e` moved Cargo and the Nix `campaign-src` input together to Campai
 - `CacheValidationRequest` gained `previous: Option<&ValidatedControlProjection>`. `fence::validate_cache` passes the request through unchanged; the Explorer shell validates no caches (recovery replays the journal).
 - The conformance port's `ConsumerShell::load_history(&mut self, request)` became `load_history(&mut self, request, previous: Option<&ValidatedControlProjection>)`. The ChaosControl conformance adapter advances a held projection with `fence::advance_projection` and otherwise cold-starts with `fence::load_projection`, so its answers equal Campaign's on the enumerated load, cache, and gate matrices.
 
+Commit `43042fa` moved Cargo and the Nix `campaign-src` input together to Campaign `99f8eff3` (D48 to D53):
+
+- One guidance rank shape per campaign (D48). The adapter always emits three rank dimensions, so no change was needed.
+- Receipts bind the event's own profile, ticket, guidance, and cost reservation, and every receipt projection requires the current binding (D51). ChaosControl projects no Campaign receipts; the conformance port's receipt claims are unchanged.
+- Host control capacity (D49). Planning goes through `plan_next_from_published_projection` over the session's held projection, and publication can refuse with `ProjectionCapacityExhausted` or `GenerationCapacityExhausted`. See the capacity stop under "Stop mapping".
+- Crossed envelope identities give `Campaign(CrossedIdentity)` on cold load, advance, publication, and cache (D50). The Explorer shell always publishes under its own identities; the conformance suite covers the crossed cases.
+- The conformance suite presents non-selection publications to the gate matrices, deeper forks, wide cost units and draws, projection-bound histories, and foreign control roots, and `retire_retained` now picks in suite order (D53). The adapter passes all of them unchanged, and the changed-profile pilot equality is restored.
+
 ### Integer ranks and explicit division decay
 
 `ranks.rs` emits three rank dimensions: effective score, original score, and `i64::MAX - entry_seq`. A finite nonnegative `f64` keeps its numeric order as its IEEE-754 bit pattern, so `score_rank` uses those bits. It normalizes signed zero and rejects non-finite or negative scores. Sequence numbers above `i64::MAX` are rejected.
@@ -219,8 +227,19 @@ On open, the journal verifies every epoch's segment chain, and `records.rs` `rep
 | `completed` | `SelectionLimitReached` |
 | `completed` with `max_rounds` 0 | `ConsumerRequested{completed-without-selection}` |
 | `frontier_exhausted` | `FrontierExhausted` |
+| `control_capacity_exhausted` (Campaign policy only) | `ConsumerRequested{campaign_choregraph::control_capacity_reason_id()}` |
 
 A Campaign wait in the sequential Explorer is the typed `FrontierError::UnexpectedWait`, never exhaustion. Reports print an exhaustive-search non-claim for every stop class. The post-round stop order is shared by `Explorer::run` and the parity driver through `explorer/round_stops.rs`.
+
+#### Host control capacity stop
+
+The Choregraph projection bound caps the control lineage (Campaign D49). Campaign's planner reserves room for one selection, one settlement event, and the stop. A ChaosControl round settles with up to `ROUND_CONTROL_EVENTS - 1 + max_candidate_batch` events (result, candidate batch, one guidance record per entry, decay revision, prune), so that reserve alone could strand an executed selection whose settlement no longer fits. The Explorer therefore handles capacity in three places, all mapped to one product class:
+
+- `begin_round` stops with `ProductStop::ControlCapacityExhausted` before drawing when the held projection cannot hold `CampaignProfile::round_control_events()` more events plus the stop (`stops::round_fits_capacity`, which also checks the branch generation range). An executed selection therefore always settles in full.
+- A retirement that publication refuses with `ProjectionCapacityExhausted` or `GenerationCapacityExhausted` (`stops::is_capacity_refusal`) is not staged, and the round becomes the same stop. Campaign keeps the stop reserve, so the stop still publishes.
+- `round_decision` maps Campaign's own capacity stop, `ConsumerRequested{control_capacity_reason_id()}`, to the same product class. `Wait(AwaitingResults)` stays the typed `FrontierError::UnexpectedWait`, because the sequential shell settles every round before it plans.
+
+The product class is `ExplorationStop::ControlCapacityExhausted` (`control_capacity_exhausted`). It is recorded in the Campaign journal, the frontier trace, the exploration report, and multi-seed progress like every other stop, acknowledges incomplete search, and carries no exhaustive or frontier claim. Like the other stop classes, it leaves release eligibility to the frontier policy. With the derived bounds the class is unreachable: the projection bound is the whole history bound, root plus `max_control_events` plus child moments, and `max_control_events` already budgets every round, the genesis, and the stop. It is exercised through a test-only tighter projection bound. The stop uses Campaign's adapter-owned reason, not `ControlEventLimitReached`, because Campaign core replays that reason only from `max_control_events` and cannot see the host bound.
 
 ### Frontier trace and replay parity
 
@@ -273,12 +292,12 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 ## Current State and Remaining Blockers
 
-- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `260eb9ba` (commit `ec1625e`); the forge answered HTTP 530, so its locks came from local caches.
+- Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `99f8eff3` (commit `43042fa`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
 - Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`.
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
-- **Blocker: final release pin.** `260eb9ba` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
-- **Blocker: full gate.** The full `nix flake check -L` gate has not run on the re-pinned tree.
+- **Blocker: final release pin.** `99f8eff3` is a development revision. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
+- **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Non-Claims
 

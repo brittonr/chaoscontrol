@@ -8,6 +8,14 @@
 //! with `validate_control_advance` and requires it to equal the applied state.
 //! Callers stage a clone, seal it, commit the journal segment, and only then
 //! adopt the staged session, so uncommitted state is always dropped.
+//!
+//! Campaign's no-pipelining host obligation (`publication_fence.durable_base`):
+//! the session is the only store of its graph and branch, and `publish` moves
+//! the branch to the planned value in the same call that admits the draft, so
+//! the graph never holds a draft whose branch update is pending. A journal
+//! segment makes its drafts and branch moves durable together or not at all,
+//! and a segment that fails to commit halts the backend before anything is
+//! planned or published over it.
 
 use super::FrontierError;
 use crate::campaign_adapter::{

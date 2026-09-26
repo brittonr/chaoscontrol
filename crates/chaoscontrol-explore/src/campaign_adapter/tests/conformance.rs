@@ -445,16 +445,16 @@ fn chaoscontrol_adapter_passes_every_fixture_with_the_reference_transcript() {
     assert_eq!(hex, PINNED_REFERENCE_DIGEST);
 }
 
-/// Fixture count of the pinned Campaign conformance suite (Campaign `9f1f33a6`).
+/// Fixture count of the pinned Campaign conformance suite (Campaign `1f8e1a74`).
 const PINNED_FIXTURE_COUNT: usize = 79;
 /// Campaign's announced reference transcript digest for the pinned suite on the
 /// default profile; both Campaign pilots produce it.
 const PINNED_REFERENCE_DIGEST: &str =
-    "31bf9eb2bcfc46317eab97d9f6b18143e6e695a3b1444c660f74380a7ba2730f";
+    "ffebdd683ae698d41f65b4b74670af41837d5e05d48b432eefae9c2bd7bd8ffc";
 /// Campaign's announced reference transcript digest for the pinned suite under
 /// `exploration_order = [1]`, `retention_rank_order = [1]`.
 const PINNED_REORDERED_DIGEST: &str =
-    "b3273e4fbaefb34f36c0e9e932e6447f6300152fc6a92c76bfda825f9ba16b6c";
+    "b94eedaed98ba3373a8f2fdfe07623cedff587012ed0ecaa75e0089277c20e1c";
 
 /// Transcript digest of Campaign's own conforming reference pilot on `profile`.
 ///
@@ -829,17 +829,19 @@ fn receipt_overclaim_fails_the_promotion_fixtures() {
                 "receipts.promotion_overclaim",
                 "rank, selection, exit status, or a check reference became promotion authority",
             ),
+            // Every claims fixture presents every receipt of its session, the
+            // admission's first, so an overclaiming shell fails there first.
             (
                 "receipts.non_selection_overclaim",
-                "an event receipt carried a promotion claim",
+                "a campaign admission event receipt carried a promotion claim",
             ),
             (
                 "receipts.planner_overclaim",
-                "a frontier-exhausted stop receipt carried a promotion claim",
+                "a campaign admission event receipt carried a promotion claim",
             ),
             (
                 "receipts.recorded_stop_overclaim",
-                "a recorded frontier-exhausted stop receipt carried a promotion claim",
+                "a campaign admission event receipt carried a promotion claim",
             ),
         ])
     );

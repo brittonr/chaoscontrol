@@ -1165,6 +1165,49 @@ fn the_explorers_graph_admits_no_second_campaign_root() {
 }
 
 // ---------------------------------------------------------------------------
+// Publication only on durably committed branch values (Campaign D91).
+
+// r[verify chaoscontrol.campaign_policy.publication_fence.invalid]
+#[test]
+fn an_uncommitted_segment_leaves_no_draft_and_nothing_publishes_over_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let io = ScriptedIo::default();
+    let mut frontier = open_campaign(dir.path(), io.clone());
+    let mut rng = ChaCha8Rng::seed_from_u64(SEED);
+    let plan = planned(&mut frontier, &mut rng, 0);
+    let round = executable(frontier.authorize(plan).unwrap());
+    let session = frontier.control_session().unwrap();
+    let graph_events = session.graph().len();
+    let lineage = session.payloads().len();
+    let state = session.state().clone();
+    io.arm(PublicationPhase::WritePayload, io::ErrorKind::Other, 1);
+    // The settlement segment stages several publications (result, candidate,
+    // guidance), each on the branch value the one before it planned; none of
+    // them is durable until the segment commits.
+    let error = frontier
+        .finish_round(round, &observation(1, &[Some(vec![1.5]), None]))
+        .expect_err("uncommitted settlement segment");
+    assert!(matches!(error, FrontierError::Journal(_)), "{error}");
+    assert!(!frontier.journal().is_poisoned());
+    // Their graph events and branch moves are dropped together: the committed
+    // session holds no draft whose branch update did not become durable.
+    let session = frontier.control_session().unwrap();
+    assert_eq!(session.graph().len(), graph_events);
+    assert_eq!(session.payloads().len(), lineage);
+    assert_eq!(session.state(), &state);
+    assert_current_graph_without_drafts(&frontier);
+    // Nothing is planned or published over the lost branch values.
+    assert!(matches!(
+        frontier.begin_round(&mut rng, context(1)),
+        Err(FrontierError::Halted)
+    ));
+    assert!(matches!(
+        frontier.record_stop(ProductStop::Interrupted),
+        Err(FrontierError::Halted)
+    ));
+}
+
+// ---------------------------------------------------------------------------
 // Trace schema. Legacy-versus-Campaign parity lives in `parity::tests`.
 
 #[test]

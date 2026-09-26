@@ -420,6 +420,15 @@ Negative cases block cutover readiness:
 - Flipping round 3's selection in a copy of the live Campaign trace exits 1 with 3 drifts.
 - The traces use the pre-cutover policy names `legacy` and `campaign-candidate`. Commit `420cb05` renamed them, and the committed receipt is historical.
 
+### Adaptive KVM smoke at the final Campaign pin
+
+`kvm-smoke-2026-09-26.md` records the task-42 KVM smoke at the final Campaign pin `65eee6e7` (R4). The runs used source `8ba46df`, a fresh `.#initrd-rust-workload` build, and a fresh Cargo build of the explorer, with the same bounds as above. The 2026-09-25 record remains as history.
+
+- Both runs (`legacy-diagnostic`, pueue 259; `campaign`, pueue 260) exited 0 and stopped `completed`, with no explore draw, no prune, 0 bugs, and 5 of 6 assertions passed. First attempts with the retired names `legacy` and `campaign-candidate` were refused with exit 2 before VM work.
+- The Campaign journal has 12 chained segments with final digest `344147288c3ba5e8c0d791fa5891e690ea4ae62d0d763e5d3ba4841171f90866`. `checkpoint.json` binds seg 10. The stop is recorded as `StopAccepted{SelectionLimitReached}`. Every round's selection segment precedes its first logged effect and its settlement segment; in round 2 the clocks do not resolve whether the last VM effect preceded the settlement ctime (0.95 ms, within resolution).
+- The parity receipt is `evidence/kvm-smoke-2026-09-26-frontier-parity-receipt.json`, BLAKE3 `4d6807dc344a21c038a9331adeb87c5885c8fbd3a8717e8d4b7a9e11e298c7d8`, SHA-256 `0dfd1e9bf91605d842ce3dc8b77659eb7e92a3726f9c1c7c6b09e9519f3ca6c9`. It uses the current policy names. Both replay directions compared 5 rounds on 17 decision fields with 0 drifts, and measured work is equal (9/9 and 24/24). The receipt records `decision_fields_equal: true` and `cutover_ready: true`.
+- Live observations diverged from bootstrap (tick 1220 against 1218; round-0 edges 40 against 33), as the 2026-09-25 repeats predict.
+
 ### Cutover and diagnostic rollback
 
 Commits `be95656` and `420cb05` add these tests, all passing in the `420cb05` run above:
@@ -457,7 +466,7 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 | `evidence` | `1c06a11` boundary; `2da6277` `ReceiptOverclaim`; `0bbf309` parity receipt classification |
 | `evidence.invalid` | receipt promotion: `2da6277` `ReceiptOverclaim`, `1c06a11` promotion fixtures; stale cache: `StaleHistory`; missing snapshot: `3314e8b` `an_unrestorable_snapshot_after_publication_closes_and_retires`; false observation: `CrossedIdentities`; product-type leakage and parity receipt promotion: `0bbf309` |
 | `frontier_parity` (comparison) | `3b5cb62`, `b6c9194`, and `c6c81cc` corpus and checker |
-| `kvm_parity` | `d0719c5` smoke record and receipt |
+| `kvm_parity` | `d0719c5` smoke record and receipt; `kvm-smoke-2026-09-26.md` final-pin smoke and receipt |
 | `cutover` | `420cb05` default selection after the conformance, parity, and KVM evidence above |
 | `rollback` | `be95656` gates; `420cb05` diagnostic policy |
 
@@ -470,7 +479,7 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 - **Final Campaign release pin.** Cargo and the Nix `campaign-src` input both pin Campaign development revision `65eee6e7` (`f45a40f`), the revision under Campaign's round-12 review. It is not the release revision. The forge answered HTTP 530 at the re-pin, so fresh acquisition from the live endpoint has not been observed for it.
 - **Full gate.** `nix flake check -L` has not passed for this change.
 - **Capacity stop reachability.** The host control capacity stop is unreachable with the derived bounds. The tests reach it through test-only tighter projection and graph bounds; no product configuration sets either.
-- **KVM smoke coverage.** The smoke did not exercise the following:
+- **KVM smoke coverage.** Neither smoke exercised the following:
   - explore draws or pruning (the model corpus covers both);
   - input-tree or hybrid modes, `--workers` > 1, resume, or journal recovery;
   - fault injection under KVM.

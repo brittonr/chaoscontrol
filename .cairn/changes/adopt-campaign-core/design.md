@@ -345,7 +345,7 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 - Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin Campaign development revision `65eee6e7` (commit `f45a40f`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
-- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`.
+- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. The task-42 KVM smoke at the final Campaign pin `65eee6e7` is recorded in `kvm-smoke-2026-09-26.md`.
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
 - **Blocker: final release pin.** `65eee6e7` is a development revision under final review. Cargo and Nix must move together to the Campaign release revision, and fresh acquisition from the live endpoint must be observed.
 - **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.

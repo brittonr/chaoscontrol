@@ -53,7 +53,6 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. These obligations remain:
 
 - Cargo and the Nix `campaign-src` input both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`), which closes the mismatched-revision hazard for this revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `e7757a51` from the live endpoint has not been observed. No release claim holds until it is.
-- The task-42 KVM smoke in `kvm-smoke-2026-09-26.md` ran at `8ba46df`, which pinned R4 (`65eee6e7`); a fresh smoke at the R5 head supersedes it.
 - The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Residual risks

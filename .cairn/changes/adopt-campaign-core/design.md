@@ -349,10 +349,9 @@ No dependency points from Campaign or Choregraph to ChaosControl.
 
 - Dependency publication and fresh consumer acquisition pass for Campaign `e23e3edf` and Choregraph history `b3e08e19`. See `public-acquisition-2026-09-07.md`. Cargo and Nix now both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`); the forge answered HTTP 530, so its locks came from local caches.
 - Journal authority: runs without explicit journal authority are rejected before KVM work (`durable-storage-decision.md`). The durable journal, the Campaign adapter, and the publication fence are implemented. See the implementation decisions above and `verification.md`.
-- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. `kvm-smoke-2026-09-26.md` records a task-42 KVM smoke at `8ba46df`, which pinned R4 (`65eee6e7`); a fresh smoke at the R5 head supersedes it for task 42.
+- Model parity, the adaptive KVM smoke, and the cutover with legacy-diagnostic rollback are committed. See `verification.md` and `kvm-smoke-2026-09-25.md`. `kvm-smoke-2026-09-26.md` records the task-42 KVM smoke at the R5 head `73d8280` (parity receipt BLAKE3 `13abf29e…`). It supersedes the same-day smoke at `8ba46df` (R4).
 - The product-type leakage fixtures and parity receipt classification for `r[chaoscontrol.campaign_policy.evidence.invalid]` are committed (`0bbf309`).
 - **Blocker: fresh acquisition.** Fresh acquisition of `e7757a51` from the live endpoint has not been observed.
-- **Blocker: KVM smoke at R5.** The task-42 KVM smoke must run again at the R5 head.
 - **Blocker: full gate.** The full `nix flake check -L` gate has not passed on the re-pinned tree.
 
 ## Non-Claims

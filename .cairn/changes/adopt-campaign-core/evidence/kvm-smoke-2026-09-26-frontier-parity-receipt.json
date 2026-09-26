@@ -4,14 +4,14 @@
     {
       "role": "legacy",
       "path": "legacy-diagnostic/frontier-trace.jsonl",
-      "blake3": "106c5373c6989e34ba8125f9ccc826c3267a9a999c14de5413ec36e5ca0de6a3",
+      "blake3": "058b9c4802d7947d3d657b38f8875e8c74dfb8ff22648c8ebb7328978388c5af",
       "records": 8,
       "policy": "legacy-diagnostic"
     },
     {
       "role": "campaign",
       "path": "campaign/frontier-trace.jsonl",
-      "blake3": "9445bd5a2363218dba0977575d42d78311db5408bab90594ea213214eee89ab2",
+      "blake3": "ba1e8af8105be6012bdf1c838cbd99ef27a2eade675b9ecbfd18c2a763c95deb",
       "records": 8,
       "policy": "campaign"
     }
@@ -72,8 +72,8 @@
           "facts": [
             {
               "quantity": "candidates_examined",
-              "left_total": 9,
-              "right_total": 9,
+              "left_total": 12,
+              "right_total": 12,
               "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
@@ -81,8 +81,8 @@
             },
             {
               "quantity": "eligible_candidates",
-              "left_total": 9,
-              "right_total": 9,
+              "left_total": 12,
+              "right_total": 12,
               "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
@@ -145,8 +145,8 @@
           "facts": [
             {
               "quantity": "candidates_examined",
-              "left_total": 24,
-              "right_total": 24,
+              "left_total": 15,
+              "right_total": 15,
               "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,
@@ -154,8 +154,8 @@
             },
             {
               "quantity": "eligible_candidates",
-              "left_total": 24,
-              "right_total": 24,
+              "left_total": 15,
+              "right_total": 15,
               "rounds_measured": 5,
               "differing_rounds": 0,
               "first_differing_round": null,

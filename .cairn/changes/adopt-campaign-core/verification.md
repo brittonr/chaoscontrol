@@ -382,7 +382,7 @@ Gates run on the tree at `351b59c`, offline, with the committed `Cargo.lock`:
 - Focused Octet, `cargo-octet check -p chaoscontrol-explore -- --lib` and `-p chaoscontrol-evidence -- --lib`: exit 0, `Errors: 0`. Only warn-level style findings remain (1156 and 888).
 - Cairn (build `f4d97a5`, which loads the vendored policy): `validate --root .` reports only the stale assurance review (`assurance-review is blocked`, `assurance-plan-review` not approved). `gate proposal` and `gate design` pass; `gate tasks` fails on the same stale review. Tasks 41 (release re-pin) and 42 (final gate) stay open.
 - Nix: `nix flake update campaign-src` locked `e7757a51` from the local Nix Git cache while the forge answered HTTP 530 (warning: using expired cached ref `refs/heads/main`). The lock has narHash `sha256-W04okwBSM7em9lgno8A7PQQs6h9rTvZfZ+3L32T1Fd0=`, revCount 88, and lastModified 1790465060. `nix flake prefetch` of the locked URL gives the same hash (store path `sl867ab9ss7j1y9wdl412rrsvp1hvzmn-source`), as does `nix hash path` over `git archive e7757a51` of the local Campaign checkout. The first `nix eval .#packages.x86_64-linux.default.drvPath` failed to fetch the Campaign repository over the 530; after the prefetch it succeeds, repeatably (`24vm22v89r4s2q65hbk48ns57db9jc6c-chaoscontrol-0.1.0.drv`), and `nix-instantiate --parse flake.nix` passes. The full `nix flake check -L` did not run on this tree.
-- KVM: no smoke ran at this head. The task-42 smoke in `kvm-smoke-2026-09-26.md` ran at `8ba46df` (R4); a fresh smoke at the R5 head supersedes it.
+- KVM: the task-42 smoke ran at this head (`73d8280`, the record commit on top of `351b59c`); see "Adaptive KVM smoke at the final Campaign pin" below.
 
 ### Model parity corpus
 
@@ -446,12 +446,12 @@ Negative cases block cutover readiness:
 
 ### Adaptive KVM smoke at the final Campaign pin
 
-`kvm-smoke-2026-09-26.md` records the task-42 KVM smoke at Campaign `65eee6e7` (R4), then the final pin. The runs used source `8ba46df`, a fresh `.#initrd-rust-workload` build, and a fresh Cargo build of the explorer, with the same bounds as above. The 2026-09-25 record remains as history. Since `351b59c` moved the pin to R5 (`e7757a51`), a fresh smoke at the R5 head supersedes this record for task 42; the R4 record remains as history.
+`kvm-smoke-2026-09-26.md` records the task-42 KVM smoke at the final Campaign pin `e7757a51` (R5). The runs used source `73d8280`, a fresh `.#initrd-rust-workload` build, and a fresh Cargo build of the explorer, with the same bounds as above. The 2026-09-25 record remains as history. A same-day smoke at `8ba46df` (R4, `/tmp/cc-kvm/p6`, recorded in `afa59c0`, receipt BLAKE3 `4d6807dc344a21c038a9331adeb87c5885c8fbd3a8717e8d4b7a9e11e298c7d8`) is superseded by this one.
 
-- Both runs (`legacy-diagnostic`, pueue 259; `campaign`, pueue 260) exited 0 and stopped `completed`, with no explore draw, no prune, 0 bugs, and 5 of 6 assertions passed. First attempts with the retired names `legacy` and `campaign-candidate` were refused with exit 2 before VM work.
-- The Campaign journal has 12 chained segments with final digest `344147288c3ba5e8c0d791fa5891e690ea4ae62d0d763e5d3ba4841171f90866`. `checkpoint.json` binds seg 10. The stop is recorded as `StopAccepted{SelectionLimitReached}`. Every round's selection segment precedes its first logged effect and its settlement segment; in round 2 the clocks do not resolve whether the last VM effect preceded the settlement ctime (0.95 ms, within resolution).
-- The parity receipt is `evidence/kvm-smoke-2026-09-26-frontier-parity-receipt.json`, BLAKE3 `4d6807dc344a21c038a9331adeb87c5885c8fbd3a8717e8d4b7a9e11e298c7d8`, SHA-256 `0dfd1e9bf91605d842ce3dc8b77659eb7e92a3726f9c1c7c6b09e9519f3ca6c9`. It uses the current policy names. Both replay directions compared 5 rounds on 17 decision fields with 0 drifts, and measured work is equal (9/9 and 24/24). The receipt records `decision_fields_equal: true` and `cutover_ready: true`.
-- Live observations diverged from bootstrap (tick 1220 against 1218; round-0 edges 40 against 33), as the 2026-09-25 repeats predict.
+- Both runs (`legacy-diagnostic`, pueue 256; `campaign`, pueue 257; labels `p7-*`) exited 0 and stopped `completed`. Neither drew an explore selection or pruned, and both found 0 bugs. Assertions passed: 4 of 6 (legacy-diagnostic) and 3 of 6 (campaign).
+- The Campaign journal has 12 chained segments with final digest `54049d34e165c7f70a8bf33600ce53d1f2aed86f815c1fcdea2b8f1f1bbfd00d`. `checkpoint.json` binds seg 10. The stop is recorded as `StopAccepted{SelectionLimitReached}`. Every round's selection segment precedes its first logged effect and its settlement segment. In rounds 2 and 3 the clocks cannot tell whether the last VM effect came before the settlement ctime (stamped 0.04 ms and 1.05 ms after it, within the ctime tick and read latency).
+- The parity receipt is `evidence/kvm-smoke-2026-09-26-frontier-parity-receipt.json`, with BLAKE3 `13abf29e4d717aaabeffd8a61eb8aca4ed89884ec08a4a7e901c265adfe91c03` and SHA-256 `4016663624fa13b7af98ec6cdc1a0774bdebea5f373039b3ca2e2d885453aa2e`. It uses the current policy names. Both replay directions compared 5 rounds on 17 decision fields with 0 drifts, and measured work is equal (12/12 and 15/15). The receipt records `decision_fields_equal: true` and `cutover_ready: true`.
+- Both runs reached `setup_complete` at tick 1217, but their live observations diverged from round 0 (round-0 edges 33 against 32), as the 2026-09-25 repeats predict.
 
 ### Cutover and diagnostic rollback
 
@@ -501,7 +501,6 @@ The cutover slice also ran a CLI smoke of the diagnostic policy:
 ## Current gaps
 
 - **Final Campaign pin acquisition.** Cargo and the Nix `campaign-src` input both pin the final Campaign revision `e7757a51` (R5, `351b59c`). The forge answered HTTP 530 at the re-pin, so fresh acquisition from the live endpoint has not been observed for it.
-- **KVM smoke at R5.** The task-42 KVM smoke (`kvm-smoke-2026-09-26.md`) ran at `8ba46df`, which pinned R4; a fresh smoke at the R5 head supersedes it.
 - **Full gate.** `nix flake check -L` has not passed for this change.
 - **Capacity stop reachability.** The host control capacity stop is unreachable with the derived bounds. The tests reach it through test-only tighter projection and graph bounds; no product configuration sets either.
 - **KVM smoke coverage.** Neither smoke exercised the following:

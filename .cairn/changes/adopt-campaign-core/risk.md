@@ -50,13 +50,15 @@ Hazards include sibling-path dependencies, mismatched Cargo and Nix revisions, u
 
 ## Current state
 
-Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. Every lifecycle task is complete, including the release re-pin (task 41) and the final gate (task 42). One obligation remains outside the lifecycle tasks:
+Choregraph history and Campaign are published. The product adapter, durable journal, publication fence, parity evidence, cutover, product-type leakage fixtures, and parity receipt classification are implemented. Every lifecycle task is complete, including the final re-pin (task 41) and the final gate (task 42). One obligation remains outside the lifecycle tasks:
 
 - Cargo and the Nix `campaign-src` input both pin the final Campaign revision `e7757a51` (R5, commit `351b59c`), which closes the mismatched-revision hazard for this revision. The forge answered HTTP 530 at the re-pin, so both locks were resolved from local caches, and fresh acquisition of `e7757a51` from the live endpoint has not been observed. No release claim holds until it is.
 - The full `nix flake check -L` gate passed at the final head `ba3e8d3` (code `351b59c`), using the cached Campaign source while the forge answered HTTP 530. See "Final gate" in `verification.md`.
 
 ## Residual risks
 
+- `e7757a51` is a development pin, not a published Campaign release revision: Campaign has designated no release revision, and fresh acquisition of `e7757a51` from the live endpoint has not been observed, so this change makes no release claim (owner: ChaosControl maintainers).
+- No check enforces `r[chaoscontrol.campaign_policy.source_pins.invalid]` for Campaign: `flake.nix` compares `campaign-src` only with its own constant, and nothing compares it with the Campaign revisions in `Cargo.toml` and `Cargo.lock` or rejects a branch or tag Campaign dependency, so Cargo and Nix disagreed from `fb9a221` to `ec1625e` unchecked; agreement at `e7757a51` rests on the re-pin record (owner: ChaosControl maintainers).
 - The leakage record-shape check cannot tell a small integer-only product value from a counter or tick. Closed record schemas (`deny_unknown_fields`, canonical re-encoding) and identity re-derivation, not the shape check, keep such values out of Campaign records.
 - The host control capacity stop (`control_capacity_exhausted`) is unreachable with the derived bounds and is exercised only through test-only tighter projection and graph bounds. The genesis record stores the whole history bound, and replay uses it as both the graph and the projection bound, so a journal written under a tighter bound replays under the derived one. That is harmless for a stopped epoch, but only the derived bounds are a supported configuration.
 - The Explorer's whole-round reserve assumes `ROUND_CONTROL_EVENTS` and the largest candidate batch bound every round's control events, and that `max_child_moments` (the branch factor) bounds its child moments. The pre-round retirement sweep is not part of that reserve: a sweep that no longer fits is refused by publication, none of it is staged, and the round becomes the capacity stop rather than an error.

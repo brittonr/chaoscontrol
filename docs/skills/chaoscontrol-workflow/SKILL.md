@@ -14,8 +14,9 @@ Goal: use the existing ChaosControl rails without importing Antithesis product a
 
 1. Read `AGENTS.md` and `README.md` in the target repository.
 2. Locate the ChaosControl source from an explicit path, the current repository, or a sibling checkout.
-3. Read the ChaosControl `AGENTS.md`, `README.md`, and the stage-specific documentation.
-4. Select one stage from the table and read only its reference file.
+3. If both roots are ChaosControl, read each shared source once. Otherwise, read the ChaosControl `AGENTS.md` and `README.md`.
+4. Select one stage from the table.
+5. Read its reference file and stage-specific documentation.
 
 | Stage | Reference |
 | --- | --- |
@@ -74,4 +75,7 @@ Report:
 
 ## Self-review
 
-Before completion, read the selected reference again. Make sure that every claim points to a command result, receipt, or exact source artifact.
+Before completion, verify the result against the selected reference's known requirements.
+If the source or scope changed, reread the relevant passages.
+If questions remain open, reread the passages that can resolve them.
+Verify that every claim points to a current command result, receipt, or exact source artifact.

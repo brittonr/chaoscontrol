@@ -296,6 +296,7 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "examples/raft-smr-workload-profile.ncl",
         "examples/kvm-ebpf-trace-capture-profile.ncl",
         "examples/spacewasm-mvp-differential-profile.ncl",
+        "examples/wasm-component-exploration-profile.ncl",
         "examples/typed-operator-command.ncl",
     ] {
         let status = Command::new(&command[0])
@@ -385,6 +386,10 @@ pub fn run_nickel_examples(root: impl AsRef<Path>) -> EvidenceResult<()> {
         "fixtures/invalid/smr-workload-profile.unbounded.invalid.ncl",
         "fixtures/invalid/ebpf-trace-capture-profile.multi-producer-exact.invalid.ncl",
         "fixtures/invalid/spacewasm-mvp-differential-profile.post-mvp.invalid.ncl",
+        "fixtures/invalid/wasm-component-exploration-profile.cohort-drift.invalid.ncl",
+        "fixtures/invalid/wasm-component-exploration-profile.bound-inversion.invalid.ncl",
+        "fixtures/invalid/wasm-component-exploration-profile.missing-non-claim.invalid.ncl",
+        "fixtures/invalid/wasm-component-exploration-profile.premature-admission.invalid.ncl",
         "fixtures/invalid/operator-command.free-form.invalid.ncl",
         "fixtures/invalid/operator-command.traversal.invalid.ncl",
         "fixtures/invalid/fault-schedule.out-of-range-target.invalid.ncl",

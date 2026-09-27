@@ -728,6 +728,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chaoscontrol-wasm-exploration-core"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "choregraph-history"
 version = "0.1.0"
 source = "git+https://git.onix.computer/zL2ncTUeASVYwcoGkEXv9JKgGbAF.git?rev=b3e08e19750f53bdbcae970cdf58a47a791ed20b#b3e08e19750f53bdbcae970cdf58a47a791ed20b"

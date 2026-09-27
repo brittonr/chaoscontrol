@@ -5,7 +5,7 @@
   "reviewed_inputs": [
     {
       "path": "proposal.md",
-      "hash": "c925e83fe5639eeed19bdd8f71719b76bd12ac054545d4d7133e331f9015f1e9"
+      "hash": "1d32dc36eb683aef9b65215598ae053bb720138c96fdd3f89222428a3359ff4d"
     },
     {
       "path": "specs/campaign-core-adoption/spec.md",
@@ -13,24 +13,24 @@
     },
     {
       "path": "design.md",
-      "hash": "97f636e10db6ec3109b88c2a9063272fdc770f755c3136bd9c3e46cdc8ae1c92"
+      "hash": "c32e92e6380f6c4aaf8ff57489689bf9598c6a798d225d7f82184ff0724277ef"
     },
     {
       "path": "risk.md",
-      "hash": "765895ae38a00691bf13858ad947d96249d0236444b9f5f1b859a170f0510493"
+      "hash": "1bdbd6ec871aa6d01b7a4b4e1ee8667a61889ca8afa858ddbc8806322ff51cfa"
     },
     {
       "path": "tasks.md",
-      "hash": "2af721b52542813a55add746248b0ab90d70f4dcd9ae23d11ba723113026ebba"
+      "hash": "8a2267e9cb9d4062fc489c2353f338f3810c973de48594575f95ea1ae161fa59"
     },
     {
       "path": "verification.md",
-      "hash": "26444c0ea50c2953c83b4934046b6a5dcbc05120ec65dbceb172e268c5b19882"
+      "hash": "2c961536906e42c41ab11b5a91dbd3af3a8a7aeb27a5c71a4682be6b3d5e66cf"
     }
   ],
   "reviewer": {
     "source": "agentic",
-    "id": "pi-chaoscontrol-campaign-policy-plan-review"
+    "id": "chaoscontrol-adopt-campaign-core-plan-review-20260926"
   },
   "findings": []
 }

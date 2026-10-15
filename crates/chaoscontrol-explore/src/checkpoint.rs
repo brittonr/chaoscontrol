@@ -1360,6 +1360,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             },
             RoundHistory {
                 round: 2,
@@ -1375,6 +1377,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             },
         ];
 
@@ -1424,6 +1428,36 @@ mod tests {
         assert_eq!(restored[0].round, 1);
         assert_eq!(restored[0].new_edges, 42);
         assert_eq!(restored[1].cumulative_bugs, 1);
+    }
+
+    #[test]
+    fn test_round_history_without_watchdog_fields_defaults_to_zero() {
+        use crate::explorer::RoundHistory;
+
+        let json = r#"{
+            "round": 3,
+            "branches_run": 8,
+            "new_edges": 1,
+            "cumulative_edges": 10,
+            "bugs_found": 0,
+            "cumulative_bugs": 0,
+            "frontier_size": 2,
+            "corpus_size": 2
+        }"#;
+        let history: RoundHistory = serde_json::from_str(json).expect("old round history");
+        assert_eq!(history.host_watchdog_timeouts, 0);
+        assert_eq!(history.host_watchdog_discarded_branches, 0);
+
+        let recorded = RoundHistory {
+            host_watchdog_timeouts: 3,
+            host_watchdog_discarded_branches: 1,
+            ..history
+        };
+        let reparsed: RoundHistory =
+            serde_json::from_str(&serde_json::to_string(&recorded).expect("serialize"))
+                .expect("reparse");
+        assert_eq!(reparsed.host_watchdog_timeouts, 3);
+        assert_eq!(reparsed.host_watchdog_discarded_branches, 1);
     }
 
     #[test]

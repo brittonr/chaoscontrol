@@ -127,6 +127,28 @@ pub fn format_report(report: &ExplorationReport) -> String {
             format_duration(report.wall_clock_seconds)
         ));
     }
+    let watchdog_firings: usize = report
+        .round_history
+        .iter()
+        .map(|h| h.host_watchdog_timeouts)
+        .sum();
+    let watchdog_discards: usize = report
+        .round_history
+        .iter()
+        .map(|h| h.host_watchdog_discarded_branches)
+        .sum();
+    if watchdog_firings > 0 {
+        output.push_str(&format!(
+            "Host watchdog firings:  {} (operational timeouts, not guest verdicts)\n",
+            watchdog_firings
+        ));
+        output.push_str(&format!("Discarded branches:     {}\n", watchdog_discards));
+        if watchdog_discards > 0 {
+            output.push_str(
+                "  Discarded branches mean the exploration trajectory depended on host timing.\n",
+            );
+        }
+    }
     output.push('\n');
 
     let total_restore_ms: f64 = report.round_history.iter().map(|h| h.restore_ms).sum();
@@ -1022,6 +1044,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             },
             RoundHistory {
                 round: 2,
@@ -1037,6 +1061,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             },
             RoundHistory {
                 round: 3,
@@ -1052,6 +1078,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             },
         ];
 
@@ -1129,6 +1157,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             })
             .collect();
 
@@ -1169,6 +1199,80 @@ mod tests {
         // First and last rounds should appear
         assert!(formatted.contains("     1"));
         assert!(formatted.contains("    25"));
+    }
+
+    fn watchdog_report(firings: usize, discards: usize) -> ExplorationReport {
+        use crate::explorer::RoundHistory;
+
+        ExplorationReport {
+            rounds: 1,
+            total_branches: 7,
+            total_edges: 10,
+            bugs: Vec::new(),
+            corpus_size: 1,
+            coverage_stats: CoverageStats {
+                total_edges: 10,
+                total_runs: 7,
+                edges_per_run_avg: 1.0,
+            },
+            network_stats: Default::default(),
+            assertion_stats: Default::default(),
+            assertion_details: Vec::new(),
+            assertion_catalog_status:
+                chaoscontrol_protocol::admission::CatalogValidationStatus::Pending,
+            collision_safe_assertion_evidence: false,
+            assertion_identity_conflicts: Vec::new(),
+            round_history: vec![RoundHistory {
+                round: 1,
+                branches_run: 7,
+                new_edges: 10,
+                cumulative_edges: 10,
+                bugs_found: 0,
+                cumulative_bugs: 0,
+                frontier_size: 1,
+                corpus_size: 1,
+                restore_ms: 0.0,
+                run_ms: 0.0,
+                snapshot_ms: 0.0,
+                coverage_ms: 0.0,
+                wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: firings,
+                host_watchdog_discarded_branches: discards,
+            }],
+            wall_clock_seconds: 0.0,
+            branches_per_second: 0.0,
+            edges_per_second: 0.0,
+            scenario_config: None,
+            scenario_summary: None,
+            frontier_policy: crate::explorer::FrontierPolicy::default(),
+            release_eligible: true,
+            stop: None,
+        }
+    }
+
+    #[test]
+    fn test_format_report_states_watchdog_discards_as_host_timing() {
+        let formatted = format_report(&watchdog_report(4, 1));
+
+        assert!(formatted.contains("Host watchdog firings:  4 (operational timeouts"));
+        assert!(formatted.contains("Discarded branches:     1"));
+        assert!(formatted.contains("trajectory depended on host timing"));
+    }
+
+    #[test]
+    fn test_format_report_recovered_watchdog_has_no_trajectory_warning() {
+        let formatted = format_report(&watchdog_report(2, 0));
+
+        assert!(formatted.contains("Host watchdog firings:  2"));
+        assert!(!formatted.contains("trajectory depended on host timing"));
+    }
+
+    #[test]
+    fn test_format_report_omits_watchdog_section_without_firings() {
+        let formatted = format_report(&watchdog_report(0, 0));
+
+        assert!(!formatted.contains("Host watchdog firings"));
+        assert!(!formatted.contains("Discarded branches"));
     }
 
     #[test]

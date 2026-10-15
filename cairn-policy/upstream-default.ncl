@@ -659,6 +659,8 @@ let WorkflowRequiredNonClaims = [
       { id = "parallel", token = "[parallel]", kind = "literal" },
       { id = "serial", token = "[serial]", kind = "literal" },
       { id = "depends", token = "[depends:<task-or-id>]", kind = "depends-prefix" },
+      { id = "task", token = "[task:<id>]", kind = "task-id-prefix" },
+      { id = "after", token = "[after:<task-id>]", kind = "task-predecessor-prefix" },
     ],
   },
 
@@ -1099,6 +1101,8 @@ let WorkflowRequiredNonClaims = [
           { root = "tools", source_kind = "tool_source", extensions = ["rs", "ncl"] },
         ],
         marker_verbs = ["impl", "verify", "depends", "related"],
+        assurance_level = "declared",
+        anchor_kind = "exact_marker_bytes",
       },
       {
         id = "trellis-rust",
@@ -1110,6 +1114,8 @@ let WorkflowRequiredNonClaims = [
           { root = "tests", source_kind = "rust_source", extensions = ["rs"] },
         ],
         marker_verbs = ["impl", "verify", "depends", "related"],
+        assurance_level = "declared",
+        anchor_kind = "exact_marker_bytes",
       },
     ],
   },
@@ -1254,7 +1260,7 @@ let WorkflowRequiredNonClaims = [
     },
     {
       command = "gate",
-      top_level_keys = ["change", "evidence_summary", "input_hash", "issues", "layout", "policy", "policy_hash", "probe_evidence", "receipt_hash", "stage", "substance", "valid", "verdict"],
+      top_level_keys = ["change", "evidence_summary", "input_hash", "issues", "layout", "policy", "policy_hash", "probe_evidence", "receipt_hash", "stage", "substance", "task_ordering", "valid", "verdict"],
       issue_keys = ["code", "message", "promoted", "scope"],
       hash_fields = ["input_hash", "policy_hash", "receipt_hash"],
     },

@@ -79,6 +79,7 @@ pub mod assertion_summary;
 mod assertion_summary_validation;
 pub mod assertion_summary_writer;
 mod bounded_json;
+pub mod branch_recovery;
 pub mod bug;
 pub mod campaign;
 pub mod campaign_adapter;

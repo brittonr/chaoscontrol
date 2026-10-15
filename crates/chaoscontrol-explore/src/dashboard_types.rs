@@ -336,6 +336,9 @@ impl DashboardState {
             snapshot_ms: 0.0,
             coverage_ms: 0.0,
             wall_clock_seconds: 0.0,
+            // Dashboard events do not carry watchdog counts; checkpoints and reports do.
+            host_watchdog_timeouts: 0,
+            host_watchdog_discarded_branches: 0,
         });
     }
 
@@ -499,6 +502,8 @@ mod tests {
                 snapshot_ms: 0.0,
                 coverage_ms: 0.0,
                 wall_clock_seconds: 0.0,
+                host_watchdog_timeouts: 0,
+                host_watchdog_discarded_branches: 0,
             }]),
             seen_dedup_keys: None,
             scenario: None,

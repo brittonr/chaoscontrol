@@ -11,6 +11,8 @@ let ChaosControlTraceabilityProfile = {
     { root = "cairn-policy", source_kind = "nickel_source", extensions = ["ncl"] },
   ],
   marker_verbs = ["impl", "verify", "depends", "related"],
+  assurance_level = "declared",
+  anchor_kind = "exact_marker_bytes",
 } in
 Upstream & {
   name | force = "chaoscontrol-default",

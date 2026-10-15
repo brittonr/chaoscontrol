@@ -4,11 +4,16 @@
 //! file descriptors. Workers are bootstrapped once (kernel boot +
 //! `setup_complete`), then reused across rounds via snapshot restore.
 
+use crate::branch_recovery::{
+    decide_after_watchdog, host_watchdog_vcpu, BranchOutcome, RecoverySnapshot, WatchdogDecision,
+    MAX_BRANCH_WATCHDOG_ATTEMPTS,
+};
 use crate::coverage::{CoverageBitmap, CoverageCollector};
 use crate::explorer::{BranchResult, BranchTimings, ExplorerConfig};
 use chaoscontrol_fault::schedule::FaultSchedule;
 use chaoscontrol_vmm::controller::{SimulationConfig, SimulationController, SimulationSnapshot};
 use chaoscontrol_vmm::scheduler::ScheduleVariant;
+use chaoscontrol_vmm::vm::VmError;
 use log::{debug, info};
 use std::sync::Arc;
 
@@ -42,6 +47,10 @@ pub struct WorkerPool {
     ticks_per_branch: u64,
     /// Per-VM base memory images for incremental snapshots.
     memory_bases: Vec<Arc<Vec<u8>>>,
+    /// Simulation configuration each worker controller was built from.
+    sim_config: SimulationConfig,
+    /// Bootstrap state used to replace a controller poisoned by a branch watchdog.
+    recovery: Option<RecoverySnapshot>,
 }
 
 impl WorkerPool {
@@ -62,35 +71,21 @@ impl WorkerPool {
             num_workers
         );
 
+        let sim_config = worker_simulation_config(config);
+
         // Build controllers in parallel using scoped threads.
         // Each thread creates + bootstraps its own controller.
         let raw_handles: Vec<_> = std::thread::scope(|s| {
             let handles: Vec<_> = (0..num_workers)
                 .map(|worker_id| {
-                    let config = config.clone();
+                    let sim_config = sim_config.clone();
+                    let bootstrap_budget = config.bootstrap_budget;
                     s.spawn(
                         move || -> Result<SimulationController, chaoscontrol_vmm::vm::VmError> {
-                            let mut vm_config = config.vm_config.clone();
-                            vm_config.scheduling_strategy = config.scheduling_strategy;
-
-                            let sim_config = SimulationConfig {
-                                num_vms: config.num_vms,
-                                vm_config,
-                                kernel_path: config.kernel_path.clone(),
-                                initrd_path: config.initrd_path.clone(),
-                                seed: config.seed,
-                                quantum: config.quantum,
-                                schedule: FaultSchedule::new(),
-                                disk_image_path: config.disk_image_path.clone(),
-                                base_core: None,
-                                dlog_dir: None,
-                                bootstrap_budget: None,
-                            };
-
                             let mut ctrl = SimulationController::new(sim_config)?;
                             ctrl.set_schedule(FaultSchedule::new())?;
                             ctrl.clear_all_coverage();
-                            ctrl.run_until_setup_complete(config.bootstrap_budget)?;
+                            ctrl.run_until_setup_complete(bootstrap_budget)?;
 
                             info!("Worker {} bootstrapped", worker_id);
                             Ok(ctrl)
@@ -138,6 +133,8 @@ impl WorkerPool {
             coverage_gpa: config.coverage_gpa,
             ticks_per_branch: config.ticks_per_branch,
             memory_bases: Vec::new(),
+            sim_config,
+            recovery: None,
         })
     }
 
@@ -151,11 +148,16 @@ impl WorkerPool {
         self.memory_bases = bases;
     }
 
+    /// Retain bootstrap state so workers can replace watchdog-poisoned controllers.
+    pub fn set_recovery(&mut self, recovery: RecoverySnapshot) {
+        self.recovery = Some(recovery);
+    }
+
     /// Run a batch of branches in parallel across workers.
     ///
     /// Each worker restores the snapshot, applies its assigned schedule,
     /// runs for `ticks_per_branch` ticks, captures a snapshot, and
-    /// returns a `BranchResult`.
+    /// returns a [`BranchOutcome`].
     ///
     /// Results are returned in branch-index order (deterministic
     /// regardless of which worker finishes first).
@@ -163,7 +165,7 @@ impl WorkerPool {
         &mut self,
         snapshot: &SimulationSnapshot,
         work: Vec<BranchWork>,
-    ) -> Result<Vec<BranchResult>, chaoscontrol_vmm::vm::VmError> {
+    ) -> Result<Vec<BranchOutcome>, chaoscontrol_vmm::vm::VmError> {
         if work.is_empty() {
             return Ok(Vec::new());
         }
@@ -189,22 +191,31 @@ impl WorkerPool {
             .map(|c| c.to_vec())
             .collect();
 
-        let coverage_gpa = self.coverage_gpa;
-        let ticks_per_branch = self.ticks_per_branch;
+        let params = BranchRunParams {
+            snapshot,
+            coverage_gpa: self.coverage_gpa,
+            ticks_per_branch: self.ticks_per_branch,
+            use_incremental: !self.memory_bases.is_empty(),
+        };
+        let recovery = WorkerRecovery {
+            snapshot: self.recovery.as_ref(),
+            sim_config: &self.sim_config,
+        };
         let memory_bases = &self.memory_bases;
 
         // Run all chunks in parallel.
-        let chunk_results: Vec<Result<(SimulationController, Vec<BranchResult>), _>> =
+        let chunk_results: Vec<Result<(SimulationController, Vec<BranchOutcome>), _>> =
             std::thread::scope(|s| {
                 let handles: Vec<_> = work_chunks
                     .into_iter()
                     .enumerate()
                     .map(|(worker_idx, chunk)| {
                         let mut ctrl = taken[worker_idx].take().expect("controller already taken");
-                        let snap_ref = snapshot;
+                        let params = &params;
+                        let recovery = &recovery;
                         let bases = memory_bases;
 
-                        s.spawn(move || -> Result<(SimulationController, Vec<BranchResult>), chaoscontrol_vmm::vm::VmError> {
+                        s.spawn(move || -> Result<(SimulationController, Vec<BranchOutcome>), chaoscontrol_vmm::vm::VmError> {
                             // Initialize per-thread POSIX timers so the
                             // single-vCPU watchdog SIGALRM targets this
                             // thread, not the process.
@@ -215,49 +226,21 @@ impl WorkerPool {
                                 ctrl.set_memory_bases(bases.clone());
                             }
 
-                            let mut results = Vec::with_capacity(chunk.len());
+                            let mut outcomes = Vec::with_capacity(chunk.len());
 
                             for (branch_offset, item) in chunk.iter().enumerate() {
-                                // Catch panics per-branch so one bad branch
-                                // doesn't kill the whole worker chunk.
-                                let branch_result = std::panic::catch_unwind(
-                                    std::panic::AssertUnwindSafe(|| {
-                                        run_single_branch(
-                                            &mut ctrl,
-                                            snap_ref,
-                                            item.schedule.clone(),
-                                            item.schedule_variant.as_ref(),
-                                            coverage_gpa,
-                                            ticks_per_branch,
-                                            !bases.is_empty(),
-                                        )
-                                    }),
-                                );
-
-                                match branch_result {
-                                    Ok(Ok(result)) => results.push(result),
-                                    Ok(Err(error)) if item.schedule_variant.is_some() => {
-                                        return Err(error);
-                                    }
-                                    Ok(Err(error)) => {
-                                        log::error!(
-                                            "Worker {} branch {} failed: {}",
-                                            worker_idx, branch_offset, error
-                                        );
-                                        results.push(empty_branch_result(item));
-                                    }
-                                    Err(panic_payload) => {
-                                        let msg = panic_message(&panic_payload);
-                                        log::error!(
-                                            "Worker {} branch {} panicked: {}",
-                                            worker_idx, branch_offset, msg
-                                        );
-                                        results.push(empty_branch_result(item));
-                                    }
-                                }
+                                let outcome = run_branch_with_recovery(
+                                    &mut ctrl,
+                                    item,
+                                    params,
+                                    recovery,
+                                    worker_idx,
+                                    branch_offset,
+                                )?;
+                                outcomes.push(outcome);
                             }
 
-                            Ok((ctrl, results))
+                            Ok((ctrl, outcomes))
                         })
                     })
                     .collect();
@@ -269,7 +252,7 @@ impl WorkerPool {
             });
 
         // Put controllers back and collect results.
-        let mut all_results: Vec<(usize, BranchResult)> = Vec::with_capacity(num_branches);
+        let mut all_results: Vec<(usize, BranchOutcome)> = Vec::with_capacity(num_branches);
         let mut branch_offset = 0;
 
         for (worker_idx, chunk_result) in chunk_results.into_iter().enumerate() {
@@ -287,6 +270,131 @@ impl WorkerPool {
         let results = all_results.into_iter().map(|(_, r)| r).collect();
 
         Ok(results)
+    }
+}
+
+/// Branch inputs shared by every branch in one pool dispatch.
+struct BranchRunParams<'a> {
+    snapshot: &'a SimulationSnapshot,
+    coverage_gpa: u64,
+    ticks_per_branch: u64,
+    use_incremental: bool,
+}
+
+/// What a worker needs to replace a watchdog-poisoned controller.
+struct WorkerRecovery<'a> {
+    snapshot: Option<&'a RecoverySnapshot>,
+    sim_config: &'a SimulationConfig,
+}
+
+/// Simulation configuration for worker controllers.
+fn worker_simulation_config(config: &ExplorerConfig) -> SimulationConfig {
+    let mut vm_config = config.vm_config.clone();
+    vm_config.scheduling_strategy = config.scheduling_strategy;
+
+    SimulationConfig {
+        num_vms: config.num_vms,
+        vm_config,
+        kernel_path: config.kernel_path.clone(),
+        initrd_path: config.initrd_path.clone(),
+        seed: config.seed,
+        quantum: config.quantum,
+        schedule: FaultSchedule::new(),
+        disk_image_path: config.disk_image_path.clone(),
+        base_core: None,
+        dlog_dir: None,
+        bootstrap_budget: None,
+    }
+}
+
+/// Run one branch, replacing the worker controller after host watchdog timeouts.
+///
+/// Watchdog timeouts retry or discard the branch. Other errors and panics keep
+/// the zero-coverage placeholder result.
+fn run_branch_with_recovery(
+    ctrl: &mut SimulationController,
+    item: &BranchWork,
+    params: &BranchRunParams<'_>,
+    recovery: &WorkerRecovery<'_>,
+    worker_idx: usize,
+    branch_offset: usize,
+) -> Result<BranchOutcome, VmError> {
+    let mut watchdog_firings: u32 = 0;
+    loop {
+        let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_single_branch(
+                ctrl,
+                params.snapshot,
+                item.schedule.clone(),
+                item.schedule_variant.as_ref(),
+                params.coverage_gpa,
+                params.ticks_per_branch,
+                params.use_incremental,
+            )
+        }));
+        let error = match attempt {
+            Ok(Ok(result)) => {
+                return Ok(BranchOutcome::Completed {
+                    result,
+                    watchdog_firings,
+                })
+            }
+            Ok(Err(error)) => error,
+            Err(panic_payload) => {
+                let msg = panic_message(&panic_payload);
+                log::error!(
+                    "Worker {} branch {} panicked: {}",
+                    worker_idx,
+                    branch_offset,
+                    msg
+                );
+                return Ok(BranchOutcome::Completed {
+                    result: empty_branch_result(item),
+                    watchdog_firings,
+                });
+            }
+        };
+        let Some(vcpu) = host_watchdog_vcpu(&error) else {
+            if item.schedule_variant.is_some() {
+                return Err(error);
+            }
+            log::error!(
+                "Worker {} branch {} failed: {}",
+                worker_idx,
+                branch_offset,
+                error
+            );
+            return Ok(BranchOutcome::Completed {
+                result: empty_branch_result(item),
+                watchdog_firings,
+            });
+        };
+        watchdog_firings = watchdog_firings.saturating_add(1);
+        let Some(snapshot) = recovery.snapshot else {
+            // Without retained bootstrap state the poisoned controller cannot be replaced.
+            return Ok(BranchOutcome::Discarded {
+                vcpu,
+                watchdog_firings,
+            });
+        };
+        let decision = decide_after_watchdog(watchdog_firings, true);
+        log::warn!(
+            "Worker {} branch {}: host watchdog interrupted vCPU {} (attempt {}/{}); replacing controller, {:?}",
+            worker_idx,
+            branch_offset,
+            vcpu,
+            watchdog_firings,
+            MAX_BRANCH_WATCHDOG_ATTEMPTS,
+            decision
+        );
+        *ctrl = snapshot.rebuild_controller(recovery.sim_config.clone())?;
+        ctrl.init_thread_timers()?;
+        if decision == WatchdogDecision::Discard {
+            return Ok(BranchOutcome::Discarded {
+                vcpu,
+                watchdog_firings,
+            });
+        }
     }
 }
 

@@ -105,14 +105,20 @@ for bug in "${BUGS[@]}"; do
     END_TIME=$(date +%s)
     ELAPSED=$((END_TIME - START_TIME))
 
-    # Count bugs found (exit code 1 = bugs found)
-    if [ $EXIT_CODE -eq 1 ]; then
-        BUG_COUNT=$(grep -c "BUG #" "$OUTDIR/stdout.txt" 2>/dev/null || echo "?")
-        RESULTS[$bug]="FOUND ($BUG_COUNT bugs)"
+    # The explorer exits 1 both when it reports bugs and when it fails.
+    # Only a completed run writes report.txt, so an exit of 1 without a
+    # report is an explorer error, not a found bug.
+    if [ $EXIT_CODE -eq 1 ] && [ -f "$OUTDIR/report.txt" ]; then
+        BUG_COUNT=$(grep -m1 "Bugs discovered:" "$OUTDIR/report.txt" | awk '{print $NF}')
+        RESULTS[$bug]="FOUND (${BUG_COUNT:-?} bugs)"
     elif [ $EXIT_CODE -eq 0 ]; then
         RESULTS[$bug]="NOT FOUND"
     else
+        FAILURE=$(grep -m1 "Exploration failed:" "$OUTDIR/stderr.txt" 2>/dev/null || true)
         RESULTS[$bug]="ERROR (exit=$EXIT_CODE)"
+        if [ -n "$FAILURE" ]; then
+            echo "  $FAILURE"
+        fi
     fi
     TIMES[$bug]="${ELAPSED}s"
 

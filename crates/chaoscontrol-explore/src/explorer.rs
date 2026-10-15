@@ -1,5 +1,9 @@
 //! The main exploration loop — coverage-guided fault schedule search.
 
+use crate::branch_recovery::{
+    decide_after_watchdog, explore_error_watchdog_vcpu, BranchOutcome as RecoveredBranchOutcome,
+    RecoverySnapshot, RoundWatchdogLedger, WatchdogDecision, MAX_BRANCH_WATCHDOG_ATTEMPTS,
+};
 use crate::campaign_adapter::BranchSlot;
 use crate::checkpoint::CampaignJournalBinding;
 use crate::checkpoint::{
@@ -408,6 +412,8 @@ pub struct Explorer {
     /// The resumed checkpoint carried rounds from a legacy-diagnostic run, so
     /// no later output of this run is release eligible whatever its policy.
     inherits_diagnostic_rounds: bool,
+    /// Bootstrap state used to replace a controller poisoned by a branch watchdog.
+    recovery: Option<RecoverySnapshot>,
 }
 
 impl Explorer {
@@ -447,6 +453,7 @@ impl Explorer {
             trace: None,
             resumed_journal: None,
             inherits_diagnostic_rounds: false,
+            recovery: None,
         }
     }
 
@@ -502,10 +509,10 @@ impl Explorer {
         });
     }
 
-    fn phase_totals_for(results: &[(BranchResult, FaultSchedule)]) -> BranchTimings {
+    fn phase_totals_for(results: &[(usize, BranchResult, FaultSchedule)]) -> BranchTimings {
         results
             .iter()
-            .fold(BranchTimings::default(), |mut total, (result, _)| {
+            .fold(BranchTimings::default(), |mut total, (_, result, _)| {
                 total.restore_ms += result.timings.restore_ms;
                 total.run_ms += result.timings.run_ms;
                 total.snapshot_ms += result.timings.snapshot_ms;
@@ -628,6 +635,10 @@ impl Explorer {
             FaultSchedule::new()
         };
 
+        self.recovery = initial_result
+            .snapshot
+            .as_ref()
+            .map(|snapshot| RecoverySnapshot::new(snapshot, self.memory_bases.clone()));
         self.admit_frontier_root(initial_result, initial_schedule)?;
 
         // Create worker pool for parallel execution if configured.
@@ -655,6 +666,9 @@ impl Explorer {
                 Ok(mut pool) => {
                     if !self.memory_bases.is_empty() {
                         pool.set_memory_bases(self.memory_bases.clone());
+                    }
+                    if let Some(recovery) = &self.recovery {
+                        pool.set_recovery(recovery.clone());
                     }
                     self.worker_pool = Some(pool);
                 }
@@ -702,6 +716,8 @@ impl Explorer {
                 snapshot_ms: round_report.timings.snapshot_ms,
                 coverage_ms: round_report.timings.coverage_ms,
                 wall_clock_seconds: round_elapsed,
+                host_watchdog_timeouts: round_report.watchdog.watchdog_firings,
+                host_watchdog_discarded_branches: round_report.watchdog.discarded_branches,
             };
             self.round_history.push(history_entry.clone());
             self.emit_metrics_line(&MetricsLine::from_history(&history_entry));
@@ -729,6 +745,14 @@ impl Explorer {
                 round_report.bugs_found,
                 round_report.frontier_size
             );
+            if round_report.watchdog.watchdog_firings > 0 {
+                warn!(
+                    "Round {}: host watchdog fired {} times, {} branches discarded; operational timeouts, not guest verdicts",
+                    round + 1,
+                    round_report.watchdog.watchdog_firings,
+                    round_report.watchdog.discarded_branches
+                );
+            }
 
             // A configured checkpoint is authority-bearing output. Failure is fatal.
             // The Campaign settlement segment was committed by `finish_round`, so the
@@ -969,6 +993,7 @@ impl Explorer {
                     bugs_found: 0,
                     frontier_size: self.frontier.len(),
                     timings: BranchTimings::default(),
+                    watchdog: RoundWatchdogLedger::default(),
                 }));
             }
         };
@@ -1150,18 +1175,32 @@ impl Explorer {
         debug!("Generated {} variant schedules", variants.len());
 
         // Execute branches — parallel if pool available, sequential otherwise.
-        let results = match (&mut self.worker_pool, &snapshot) {
-            (Some(pool), Some(snap)) => {
-                let work = branch_work_from_variants(&variants);
+        let outcomes: Vec<(RecoveredBranchOutcome, FaultSchedule)> =
+            match (&mut self.worker_pool, &snapshot) {
+                (Some(pool), Some(snap)) => {
+                    let work = branch_work_from_variants(&variants);
 
-                let branch_results = pool.run_branches(snap, work)?;
-                branch_results
-                    .into_iter()
-                    .zip(variants.into_iter().map(|(schedule, _variant)| schedule))
-                    .collect()
-            }
-            _ => self.run_branches_sequential(&snapshot, variants)?,
-        };
+                    let branch_outcomes = pool.run_branches(snap, work)?;
+                    branch_outcomes
+                        .into_iter()
+                        .zip(variants.into_iter().map(|(schedule, _variant)| schedule))
+                        .collect()
+                }
+                _ => self.run_branches_sequential(&snapshot, variants)?,
+            };
+
+        // Discarded branches contribute no coverage, bugs, or frontier entries.
+        let mut watchdog = RoundWatchdogLedger::default();
+        let results: Vec<(usize, BranchResult, FaultSchedule)> = outcomes
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, (outcome, schedule))| {
+                watchdog
+                    .admit(outcome)
+                    .map(|result| (index, result, schedule))
+            })
+            .collect();
+        watchdog.ensure_admissible()?;
 
         // Process results in deterministic order (by branch index).
         let timings = Self::phase_totals_for(&results);
@@ -1170,7 +1209,7 @@ impl Explorer {
         let mut bugs_found: usize = 0;
         let mut observation = RoundObservation::default();
 
-        for (i, (result, schedule)) in results.into_iter().enumerate() {
+        for (i, result, schedule) in results {
             branches_run += 1;
             self.total_branches_run += 1;
             let slot = BranchSlot::Variant(branch_slot_index(i)?);
@@ -1241,6 +1280,7 @@ impl Explorer {
                 bugs_found,
                 frontier_size: 0,
                 timings,
+                watchdog,
             },
             observation,
         ))
@@ -1251,14 +1291,15 @@ impl Explorer {
         &mut self,
         snapshot: &Option<SimulationSnapshot>,
         variants: Vec<(FaultSchedule, Option<ScheduleVariant>)>,
-    ) -> Result<Vec<(BranchResult, FaultSchedule)>, ExploreError> {
-        let mut results = Vec::with_capacity(variants.len());
+    ) -> Result<Vec<(RecoveredBranchOutcome, FaultSchedule)>, ExploreError> {
+        let mut outcomes = Vec::with_capacity(variants.len());
         for (i, (schedule, schedule_variant)) in variants.into_iter().enumerate() {
             debug!("Running branch {}/{}", i + 1, self.config.branch_factor);
-            let result = self.run_branch(snapshot, schedule.clone(), schedule_variant.as_ref())?;
-            results.push((result, schedule));
+            let outcome =
+                self.run_branch_recovering(snapshot, &schedule, schedule_variant.as_ref(), None)?;
+            outcomes.push((outcome, schedule));
         }
-        Ok(results)
+        Ok(outcomes)
     }
 
     /// Execute one authorized input tree exploration round:
@@ -1278,6 +1319,7 @@ impl Explorer {
         let mut bugs_found: usize = 0;
         let mut timings = BranchTimings::default();
         let mut observation = RoundObservation::default();
+        let mut watchdog = RoundWatchdogLedger::default();
 
         let (snapshot, base_schedule, parent_depth) = match authorized.selected() {
             Some(entry) => (
@@ -1292,7 +1334,22 @@ impl Explorer {
         // Phase 1: Run a "probe" branch to discover choice points.
         // This uses the base schedule (no overrides) — same as the
         // parent run, but we record the choice history.
-        let probe_result = self.run_branch(&snapshot, base_schedule.clone(), None)?;
+        let probe_outcome = self.run_branch_recovering(&snapshot, &base_schedule, None, None)?;
+        let Some(probe_result) = watchdog.admit(probe_outcome) else {
+            // The probe supplies the choice history; without it no alternatives exist.
+            watchdog.ensure_admissible()?;
+            return Ok((
+                RoundReport {
+                    branches_run,
+                    new_coverage_edges,
+                    bugs_found,
+                    frontier_size: 0,
+                    timings,
+                    watchdog,
+                },
+                observation,
+            ));
+        };
         timings.restore_ms += probe_result.timings.restore_ms;
         timings.run_ms += probe_result.timings.run_ms;
         timings.snapshot_ms += probe_result.timings.snapshot_ms;
@@ -1370,6 +1427,7 @@ impl Explorer {
                     bugs_found,
                     frontier_size: 0,
                     timings,
+                    watchdog,
                 },
                 observation,
             ));
@@ -1396,6 +1454,7 @@ impl Explorer {
                     bugs_found,
                     frontier_size: 0,
                     timings,
+                    watchdog,
                 },
                 observation,
             ));
@@ -1421,8 +1480,16 @@ impl Explorer {
             );
             let slot = BranchSlot::Alternative(branch_slot_index(i)?);
 
-            let result =
-                self.run_branch_with_overrides(&snapshot, base_schedule.clone(), per_vm_overrides)?;
+            let outcome = self.run_branch_recovering(
+                &snapshot,
+                &base_schedule,
+                None,
+                Some(per_vm_overrides),
+            )?;
+            let Some(result) = watchdog.admit(outcome) else {
+                debug!("Input tree branch {} discarded after host watchdog", i + 1);
+                continue;
+            };
             timings.restore_ms += result.timings.restore_ms;
             timings.run_ms += result.timings.run_ms;
             timings.snapshot_ms += result.timings.snapshot_ms;
@@ -1498,21 +1565,18 @@ impl Explorer {
                 bugs_found,
                 frontier_size: 0,
                 timings,
+                watchdog,
             },
             observation,
         ))
     }
 
-    /// Ensure we have a controller ready (created once, reused across branches).
-    fn ensure_controller(&mut self) -> Result<(), ExploreError> {
-        if self.controller.is_some() {
-            return Ok(());
-        }
-
+    /// Simulation configuration for explorer-owned controllers.
+    fn simulation_config(&self) -> SimulationConfig {
         let mut vm_config = self.config.vm_config.clone();
         vm_config.scheduling_strategy = self.config.scheduling_strategy;
 
-        let sim_config = SimulationConfig {
+        SimulationConfig {
             num_vms: self.config.num_vms,
             vm_config,
             kernel_path: self.config.kernel_path.clone(),
@@ -1524,10 +1588,68 @@ impl Explorer {
             base_core: None,
             bootstrap_budget: Some(self.config.bootstrap_budget),
             dlog_dir: self.config.dlog_dir.clone(),
-        };
+        }
+    }
 
-        self.controller = Some(SimulationController::new(sim_config)?);
+    /// Ensure we have a controller ready (created once, reused across branches).
+    fn ensure_controller(&mut self) -> Result<(), ExploreError> {
+        if self.controller.is_some() {
+            return Ok(());
+        }
+
+        self.controller = Some(SimulationController::new(self.simulation_config())?);
         Ok(())
+    }
+
+    /// Run one branch, replacing the controller after each host watchdog timeout.
+    ///
+    /// A watchdog timeout permanently poisons the controller, so every firing
+    /// installs a replacement before the branch is retried or discarded. Other
+    /// errors propagate unchanged.
+    fn run_branch_recovering(
+        &mut self,
+        snapshot: &Option<SimulationSnapshot>,
+        schedule: &FaultSchedule,
+        schedule_variant: Option<&ScheduleVariant>,
+        overrides: Option<&[BTreeMap<u64, u64>]>,
+    ) -> Result<RecoveredBranchOutcome, ExploreError> {
+        let mut watchdog_firings: u32 = 0;
+        loop {
+            let attempt = match overrides {
+                Some(per_vm) => self.run_branch_with_overrides(snapshot, schedule.clone(), per_vm),
+                None => self.run_branch(snapshot, schedule.clone(), schedule_variant),
+            };
+            let error = match attempt {
+                Ok(result) => {
+                    return Ok(RecoveredBranchOutcome::Completed {
+                        result,
+                        watchdog_firings,
+                    })
+                }
+                Err(error) => error,
+            };
+            let Some(vcpu) = explore_error_watchdog_vcpu(&error) else {
+                return Err(error);
+            };
+            let config = self.simulation_config();
+            let Some(recovery) = self.recovery.as_ref() else {
+                return Err(error);
+            };
+            watchdog_firings = watchdog_firings.saturating_add(1);
+            let decision = decide_after_watchdog(watchdog_firings, snapshot.is_some());
+            warn!(
+                "Host watchdog interrupted vCPU {} (attempt {}/{}); replacing controller, {:?}",
+                vcpu, watchdog_firings, MAX_BRANCH_WATCHDOG_ATTEMPTS, decision
+            );
+            let replacement = recovery.rebuild_controller(config)?;
+            self.controller = Some(replacement);
+            if decision == WatchdogDecision::Discard {
+                return Ok(RecoveredBranchOutcome::Discarded {
+                    vcpu,
+                    watchdog_firings,
+                });
+            }
+        }
     }
 
     /// Bootstrap: boot kernel + run guest until `setup_complete`.
@@ -2690,6 +2812,7 @@ impl Explorer {
             trace: None,
             resumed_journal: checkpoint.campaign_journal.clone(),
             inherits_diagnostic_rounds: !checkpoint.release_eligible,
+            recovery: None,
         })
     }
 }
@@ -2719,6 +2842,8 @@ pub struct MetricsLine {
     pub snapshot_ms: f64,
     pub coverage_ms: f64,
     pub wall_ms: f64,
+    pub host_watchdog_timeouts: usize,
+    pub host_watchdog_discarded_branches: usize,
 }
 
 impl MetricsLine {
@@ -2734,6 +2859,8 @@ impl MetricsLine {
             snapshot_ms: history.snapshot_ms,
             coverage_ms: history.coverage_ms,
             wall_ms: history.wall_clock_seconds * 1000.0,
+            host_watchdog_timeouts: history.host_watchdog_timeouts,
+            host_watchdog_discarded_branches: history.host_watchdog_discarded_branches,
         }
     }
 }
@@ -2782,6 +2909,8 @@ pub struct RoundReport {
     pub bugs_found: usize,
     pub frontier_size: usize,
     pub timings: BranchTimings,
+    /// Host watchdog accounting for this round.
+    pub watchdog: RoundWatchdogLedger,
 }
 
 /// Per-round snapshot of exploration progress.
@@ -2821,6 +2950,14 @@ pub struct RoundHistory {
     /// Wall-clock time for this round (seconds). 0.0 for old checkpoints.
     #[serde(default)]
     pub wall_clock_seconds: f64,
+    /// Host watchdog firings this round, including firings recovered by retry.
+    /// Operational evidence only; 0 for old checkpoints.
+    #[serde(default)]
+    pub host_watchdog_timeouts: usize,
+    /// Branches discarded after exhausting host watchdog attempts this round.
+    /// A nonzero value means the exploration trajectory depended on host timing.
+    #[serde(default)]
+    pub host_watchdog_discarded_branches: usize,
 }
 
 /// Final exploration report.

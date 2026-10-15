@@ -1,0 +1,202 @@
+{
+  "authenticated_release_gate": {
+    "boundary": "Authenticated readiness proves measured-byte linkage, configured producer authorization, and lifecycle-policy conformance only; it does not prove source correctness, verifier soundness, build correctness, semantic equivalence, runtime authority, or universal release fitness",
+    "issues": [],
+    "passed": true,
+    "required": false
+  },
+  "cairn_validation_hash": "4b4478edca1c6805fae5d1b410614f120f5e7c044aff642e0a7b9d8f47c28b85",
+  "checks": [
+    {
+      "name": "cairn_validate",
+      "passed": true,
+      "receipt_hash": "4b4478edca1c6805fae5d1b410614f120f5e7c044aff642e0a7b9d8f47c28b85",
+      "source": "cairn validate --root <root>"
+    },
+    {
+      "name": "traceability_coverage",
+      "passed": false,
+      "receipt_hash": "f3f366194f23d72261898d4bc86e9d84e1fc90375256f1c0bb2b48c874d52654",
+      "source": "cairn traceability coverage --root <root>"
+    },
+    {
+      "issue": "No such file or directory (os error 2)",
+      "name": "mcp_agent_smoke",
+      "passed": false,
+      "source": "cairn agent-receipt smoke-mcp --root <root>"
+    },
+    {
+      "name": "determinism_coverage_audit",
+      "passed": true,
+      "receipt_hash": "cf1727f1b6a09ddfb274f2e71d455db36d88349ed9419c4aa9e7adb60ca62d03",
+      "source": "cairn determinism coverage-audit --root <root>"
+    },
+    {
+      "name": "release_evidence_index_freshness",
+      "passed": true,
+      "receipt_hash": "52878cd62bf8458a68c3ec89dd1497977de491d9a1c075e5e3a69e24fc489d94",
+      "skipped": true,
+      "source": "cairn release-evidence check-index --root <root> --index docs/release-evidence-current-head.md"
+    },
+    {
+      "name": "preserves_corpus_freshness",
+      "passed": false,
+      "receipt_hash": "0451445b37f5bb6873ab804c55c3cd371c72137e15b41c2361e1b918f491a875",
+      "source": "cairn preserves-corpus update --path fixtures/preserves-canonicalization/corpus.json"
+    },
+    {
+      "name": "semantic_review_ledger",
+      "passed": true,
+      "receipt_hash": "257a82dfa9cca553c40dcfc39e00c22b27e66debf2d36ca4eccf688c9e0f80bf",
+      "skipped": true,
+      "source": "cairn release-readiness --root <root> --review-ledger <review-ledger.json>"
+    },
+    {
+      "disposition": "absent",
+      "name": "stack_provenance",
+      "passed": true,
+      "receipt_hash": "eecb0fe04069e8e597684fe29014da551f9bf2d5d9b3ae789d653703755f7caa",
+      "skipped": true,
+      "source": "cairn release-readiness --root <root> --stack-provenance <valence-receipt.json> --stack-provenance-graph <graph-summary.json>"
+    },
+    {
+      "disposition": "absent",
+      "name": "function_address",
+      "passed": true,
+      "receipt_hash": "351e24f284980bdd3a25a78b4ced95b67becc3bb9214da2115713a98edd82bef",
+      "skipped": true,
+      "source": "cairn release-readiness --root <root> --function-address-valence <valence-receipt.json> --function-address-mantle <mantle-binding.json> --function-address-kamacite <kamacite-receipt.json> --function-address-graph <graph-summary.json>"
+    },
+    {
+      "name": "stack-provenance_authentication",
+      "passed": true,
+      "skipped": true,
+      "source": "authentication manifest not supplied"
+    },
+    {
+      "name": "function-address_authentication",
+      "passed": true,
+      "skipped": true,
+      "source": "authentication manifest not supplied"
+    },
+    {
+      "name": "authenticated_evidence_release_profile",
+      "passed": true,
+      "required": false,
+      "source": "cairn authenticated evidence policy"
+    },
+    {
+      "disposition": "disabled",
+      "name": "workspace_contract_matrix",
+      "passed": true,
+      "receipt_hash": "c54edfa6882b1bcc2a324dacb362b73251844af7a934b580a3c755bceb99b81b",
+      "skipped": true,
+      "source": "cairn release-readiness --root <root> --workspace-contract-matrix-receipt <receipt.json>"
+    },
+    {
+      "evidence_hash": "216802afc678ef77798bb0a0746f479f13ba98d3aaf48619f1a48daf754c7401",
+      "name": "repository_gate_policy_listed",
+      "passed": true,
+      "required_external_commands": [
+        "cargo fmt --check",
+        "cargo test --workspace",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        "nix build .#checks.x86_64-linux.slotcar --no-link -L",
+        "nix flake check path:$PWD -L"
+      ],
+      "source": "maintained local policy"
+    }
+  ],
+  "command": "release-readiness",
+  "coverage_audit_receipt_hash": "cf1727f1b6a09ddfb274f2e71d455db36d88349ed9419c4aa9e7adb60ca62d03",
+  "coverage_audit_valid": true,
+  "cross_repo_dependencies": [],
+  "cross_repo_evidence_issues": [],
+  "determinism_replay": {
+    "command": "determinism replay --root <root>",
+    "included": false,
+    "reason": "workspace replay may copy fixtures and is an explicit operator/CI preflight",
+    "required": true
+  },
+  "function_address": {
+    "boundary": "Cairn consumed Valence, Mantle, and Kamacite function-address evidence for lifecycle/release policy conformance only; it did not prove Rust semantic correctness, compiler correctness, whole-program safety, verifier soundness, or release eligibility",
+    "canonical_preserves_receipt_hash": null,
+    "claim_scope": null,
+    "disposition": "absent",
+    "evidence_chain_hash": null,
+    "graph_summary": null,
+    "issues": [],
+    "json_projection_authority": null,
+    "kamacite_receipt_hash": null,
+    "mantle_binding_hash": null,
+    "mode": "optional",
+    "name": "function_address_evidence",
+    "passed": true,
+    "required": false,
+    "skipped": true,
+    "valence_receipt_hash": null
+  },
+  "function_address_authentication": {
+    "evidence_kind": "function-address",
+    "passed": true,
+    "skipped": true
+  },
+  "function_address_hash": "351e24f284980bdd3a25a78b4ced95b67becc3bb9214da2115713a98edd82bef",
+  "mcp": {
+    "destructive": false,
+    "read_only": true
+  },
+  "mcp_smoke_receipt_hash": "",
+  "onix_release_ready": false,
+  "preserves_content_hash": "1ff0d23b3256fd76688677826c866139ba68886ab2c948ec15bf16b7e8c402fc",
+  "preserves_corpus_freshness_hash": "0451445b37f5bb6873ab804c55c3cd371c72137e15b41c2361e1b918f491a875",
+  "receipt_hash": "d59134847fc62dd2989cc5fe76b2de44ff4da6d270e0f8b927f6e7e291963b7d",
+  "release_evidence_index_check_hash": "52878cd62bf8458a68c3ec89dd1497977de491d9a1c075e5e3a69e24fc489d94",
+  "repository_gate_summary": {
+    "note": "The bundle records the maintained release gate policy; operators still run heavyweight repository gates outside this local receipt command. The maintained traceability gate is Cairn-owned and does not require the external Tracey binary.",
+    "policy": "maintained-local-gates",
+    "required_commands": [
+      "cargo fmt --check",
+      "cargo test --workspace",
+      "cargo clippy --workspace --all-targets -- -D warnings",
+      "nix build .#checks.x86_64-linux.slotcar --no-link -L",
+      "nix flake check path:$PWD -L"
+    ]
+  },
+  "root": ".",
+  "semantic_review_ledger_hash": "257a82dfa9cca553c40dcfc39e00c22b27e66debf2d36ca4eccf688c9e0f80bf",
+  "stack_provenance": {
+    "boundary": "Cairn consumed Valence and Mantle stack provenance receipts for lifecycle/release policy conformance only; it did not prove source-code correctness, Valence verifier soundness, Mantle build correctness, or Trellis/Octet proof validity",
+    "claim_scope": null,
+    "disposition": "absent",
+    "graph_summary": null,
+    "issues": [],
+    "mode": "optional",
+    "name": "stack_provenance",
+    "passed": true,
+    "required": false,
+    "skipped": true,
+    "valence_receipt_hash": null
+  },
+  "stack_provenance_authentication": {
+    "evidence_kind": "stack-provenance",
+    "passed": true,
+    "skipped": true
+  },
+  "stack_provenance_hash": "eecb0fe04069e8e597684fe29014da551f9bf2d5d9b3ae789d653703755f7caa",
+  "traceability_coverage_hash": "f3f366194f23d72261898d4bc86e9d84e1fc90375256f1c0bb2b48c874d52654",
+  "valid": false,
+  "verdict": "fail",
+  "verification_role_boundary": "verification_role_summary counts only property artifacts as verified; recorded_only and boundary artifacts prove nothing",
+  "workspace_contract_matrix": {
+    "boundary": "workspace contract matrix validation proves declared edge health only; it does not prove provider correctness, does not prove consumer behavioral correctness, does not prove verifier soundness, or does not prove release eligibility",
+    "disposition": "disabled",
+    "issues": [],
+    "mode": "disabled",
+    "passed": true,
+    "receipt_hash": null,
+    "required": false,
+    "skipped": true
+  },
+  "workspace_contract_matrix_hash": "c54edfa6882b1bcc2a324dacb362b73251844af7a934b580a3c755bceb99b81b"
+}

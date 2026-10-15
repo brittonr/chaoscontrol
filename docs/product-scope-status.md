@@ -35,19 +35,29 @@ The selected Cargo command owns the test inventory. This projection does not cop
 | Change | Target state | Owner | Evidence prerequisite |
 | --- | --- | --- | --- |
 | `add-adversarial-wasm-component-rail` | `experimental` | `chaoscontrol-wasm-differential` | A Mantle-materialized fixed-seed corpus and bounded differential receipt must pass. |
+| `add-counterfactual-replay-witnesses` | `experimental` | `chaoscontrol-evidence` | An exact common-prefix replay pair with one schedule-entry omission, independently validated outcomes, bounded search, and adversarial binding fixtures must pass. |
 | `add-identity-aware-connectivity-campaign` | `blocked` | `chaoscontrol-sim-core` | An immutable published OnixOS network-policy contract must exist. |
+| `add-persisted-debugger-replay` | `experimental` | `chaoscontrol-replay` | Fresh-process session reload, exact checkpoint continuation and CLI navigation, shared replay validation, and corrupt or incomplete session rejection must pass. |
 | `add-property-campaign-rail` | `experimental` | `chaoscontrol-explore` | A typed property-campaign contract, seeded reruns, reducer-backed failure-mode-preserving minimization, bounded receipts, and positive and negative fixtures must pass. |
 | `add-protocol-observation-cohorts` | `experimental` | `chaoscontrol-evidence` | Typed cohort admission, independent oracle fixtures, loss accounting, stable novelty, bounds, and replay checks must pass. |
 | `benchmark-bug-corpus` | `experimental` | `chaoscontrol-explore` | Versioned positive and negative corpus entries must match independent expected verdicts, measured rarity bounds, and exact replay receipts. |
+| `distinguish-explorer-failure-outcomes` | `experimental` | `chaoscontrol-explore` | Distinct failure exit status, full error chains, failed-branch exclusion, and operator-script outcome classification must pass without changing reproduce semantics. |
 | `establish-bounded-input-repository` | `experimental` | `chaoscontrol-evidence` | A published bounded-input contract and positive and negative parity for capability-relative reads, JSON limits, and bounded decompression must pass. |
 | `establish-deterministic-simulation-core` | `experimental` | `chaoscontrol-sim-core` | An Aspen comparison, published shared contract, versioned algorithms, and exact clock, entropy, scheduling, and replay parity must pass. |
+| `evaluate-page-addressed-snapshots` | `experimental` | `chaoscontrol-vmm` | A bounded paired evaluation must establish independent full-state and continuation equivalence before measurements, reject corrupt references, and retain an adopt, defer, or reject decision. |
+| `evaluate-sometimes-assertions-campaign-wide` | `experimental` | `chaoscontrol-explore` | Safety-only per-branch findings, campaign-wide liveness coverage gaps, distinct assertion counts, and unchanged safety replay contracts must pass. |
 | `exercise-projected-role-protocol-faults` | `experimental` | `chaoscontrol-evidence` | Published Choregraph projections and a frozen Lattice runtime cohort must pass independent role, transfer, fault, recovery, and snapshot replay fixtures. |
 | `export-kamacite-execution-evidence` | `experimental` | `chaoscontrol-evidence` | An exact Kamacite profile, explicit effect mappings, positive and negative export fixtures, and bounded KVM producer evidence must pass. |
 | `externalize-large-dogfood-artifacts` | `deferred` | `chaoscontrol-evidence` | A reviewed storage adapter and complete dual-materialization migration must pass. |
 | `extract-assertion-semantics-core` | `experimental` | `chaoscontrol-fault` | The license prerequisite, published assertion-semantics contract, and exact canonical identity, catalog, oracle, and report parity must pass. |
 | `extract-deterministic-block-model` | `experimental` | `chaoscontrol-vmm` | Shared simulation publication, complete snapshots, explicit fault outcomes, and byte and transition parity for the deterministic-block adapter must pass. |
 | `extract-failure-reducer-core` | `experimental` | `chaoscontrol-explore` | A published failure-reducer contract must preserve bounded candidate generation, indeterminate outcomes, exact assertion targets, and replay predicate parity. |
+| `harden-pmu-transition-evidence` | `experimental` | `chaoscontrol-vmm` | Exact host and perf admission, privilege-transition CONTROL comparisons, serialized correction replay, and required bounded PMU matrix evidence must pass before PMU support promotion. |
+| `isolate-branch-watchdog-timeouts` | `experimental` | `chaoscontrol-explore` | All explorer paths must replace poisoned controllers, retry the same parent within a named bound, exclude discarded branches, and expose operational timeout evidence. |
 | `model-guest-storage-flush-failures` | `experimental` | `chaoscontrol-vmm` | Guest-visible flush outcomes, cache and reboot profiles, persistent guest disks, independent recovery oracles, and exact cohort receipts must pass. |
+| `refresh-vendored-cairn-policy` | `experimental` | `chaoscontrol-evidence` | The repository-owned import process must bind one pinned upstream policy closure, regenerate the projection, and validate all active changes with the matching Cairn cohort. |
+| `repair-incremental-snapshot-lineage` | `experimental` | `chaoscontrol-vmm` | Bounded pure page planning, inherited-page capture, sibling-write reversion, fresh-controller equivalence, and deep persisted Raft continuation must pass with exact source and artifact bindings. |
+| `restore-explorer-seed-repeatability` | `experimental` | `chaoscontrol-explore` | After lineage repair, paired runs must match per-branch and per-round digests, frontier selections, and bug identities for one exact workload cohort without operational exclusions. |
 
 ## Roadmap by scope state
 

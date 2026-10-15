@@ -810,10 +810,11 @@ pub struct DeterministicVm {
     dlog_register_interval: u64,
     dlog_memory_hash: bool,
 
-    /// Page indices dirtied by the most recent incremental restore.
-    /// Used by `restore_incremental` to revert only the previous
-    /// branch's dirty pages before applying the new overlay.
-    last_dirty_page_indices: Vec<usize>,
+    /// Bitmap of restored overlay pages and guest writes retained since the base.
+    /// KVM dirty-log reads are destructive, so captures must keep their union.
+    pages_differing_from_base: Vec<u64>,
+    /// A full image needs comparison with the next supplied incremental base.
+    incremental_base_needs_reconcile: bool,
 }
 
 impl DeterministicVm {
@@ -1260,7 +1261,8 @@ impl DeterministicVm {
             dlog,
             dlog_register_interval: config.dlog_register_interval,
             dlog_memory_hash: config.dlog_memory_hash,
-            last_dirty_page_indices: Vec::new(),
+            pages_differing_from_base: Vec::new(),
+            incremental_base_needs_reconcile: false,
         })
     }
 
@@ -2020,10 +2022,24 @@ impl DeterministicVm {
     /// is packed as `Vec<u64>` — bit 0 of element 0 covers page 0, bit
     /// 63 of element 0 covers page 63, bit 0 of element 1 covers page
     /// 64, and so on.
+    /// Observed pages remain tracked for later incremental capture and restore.
     ///
     /// Requires `KVM_MEM_LOG_DIRTY_PAGES` on the memory slot (enabled
     /// by default at VM creation).
-    pub fn get_dirty_bitmap(&self) -> Result<Vec<u64>, VmError> {
+    pub fn get_dirty_bitmap(&mut self) -> Result<Vec<u64>, VmError> {
+        let bitmap = self.read_guest_dirty_bitmap()?;
+        crate::vm_core::merge_dirty_pages(
+            &mut self.pages_differing_from_base,
+            &bitmap,
+            self.memory.size().div_ceil(crate::snapshot::PAGE_SIZE),
+        )
+        .map_err(|error| VmError::Snapshot {
+            message: format!("retain observed dirty pages: {error:?}"),
+        })?;
+        Ok(bitmap)
+    }
+
+    fn read_guest_dirty_bitmap(&self) -> Result<Vec<u64>, VmError> {
         self.vm
             .get_dirty_log(0, self.memory.size())
             .context(GetDirtyLogSnafu)
@@ -2741,12 +2757,39 @@ impl DeterministicVm {
         result
     }
 
+    fn reconcile_incremental_base(&mut self, base: &[u8]) -> Result<(), VmError> {
+        if !self.incremental_base_needs_reconcile {
+            return Ok(());
+        }
+        let page_count = base.len().div_ceil(crate::snapshot::PAGE_SIZE);
+        self.pages_differing_from_base
+            .resize(page_count.div_ceil(u64::BITS as usize), 0);
+        self.pages_differing_from_base.fill(0);
+        let mut page = [0u8; crate::snapshot::PAGE_SIZE];
+        for (index, base_page) in base.chunks(crate::snapshot::PAGE_SIZE).enumerate() {
+            self.memory
+                .inner()
+                .read_slice(
+                    &mut page[..base_page.len()],
+                    GuestAddress((index * crate::snapshot::PAGE_SIZE) as u64),
+                )
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("compare restored memory with incremental base: {error}"),
+                })?;
+            if page[..base_page.len()] != *base_page {
+                self.pages_differing_from_base[index / u64::BITS as usize] |=
+                    1u64 << (index % u64::BITS as usize);
+            }
+        }
+        self.incremental_base_needs_reconcile = false;
+        Ok(())
+    }
+
     /// Take an incremental snapshot using KVM dirty page tracking.
     ///
-    /// Instead of copying all guest memory, queries the KVM dirty log
-    /// to find which pages changed since the last query, then builds
-    /// an overlay snapshot that references the shared `base` and stores
-    /// only the dirty pages.
+    /// Captures the union of inherited overlay pages and guest writes since
+    /// the last dirty-log query. Every overlay is complete relative to the
+    /// retained bootstrap `base`, independent of its lineage depth.
     ///
     /// Returns the snapshot and the number of dirty pages captured.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
@@ -2764,12 +2807,18 @@ impl DeterministicVm {
             });
         }
 
-        let dirty_bitmap = self.get_dirty_bitmap()?;
-        let memory = SnapshotMemory::from_dirty(base, &dirty_bitmap, self.memory.inner());
-        let dirty_count = memory.dirty_page_count();
-
+        if base.len() != self.memory.size() {
+            return Err(VmError::Snapshot {
+                message: "incremental snapshot base size differs from guest memory".to_string(),
+            });
+        }
         let topology = self.snapshot_topology()?;
         self.complete_pending_kvm_exits_for_snapshot()?;
+        self.reconcile_incremental_base(base)?;
+        let _ = self.get_dirty_bitmap()?;
+        let memory =
+            SnapshotMemory::from_dirty(base, &self.pages_differing_from_base, self.memory.inner());
+        let dirty_count = memory.dirty_page_count();
         let virtio_snapshots = self.capture_virtio_snapshots()?;
 
         let params = CaptureParams {
@@ -3022,6 +3071,21 @@ impl DeterministicVm {
 
     fn restore_validated(&mut self, snapshot: &crate::snapshot::VmSnapshot) -> Result<(), VmError> {
         self.complete_pending_kvm_exits_for_snapshot()?;
+        let overlay_pages = match &snapshot.memory {
+            crate::snapshot::SnapshotMemory::Overlay { dirty_pages, base } => Some(
+                crate::vm_core::overlay_page_bitmap(
+                    std::mem::take(&mut self.pages_differing_from_base),
+                    dirty_pages.keys().copied(),
+                    base.len().div_ceil(crate::snapshot::PAGE_SIZE),
+                )
+                .map_err(|error| VmError::Snapshot {
+                    message: format!("full overlay restore page plan: {error:?}"),
+                })?,
+            ),
+            crate::snapshot::SnapshotMemory::Full(_) => None,
+        };
+        // Drain guest writes before the full host-side memory replacement.
+        let _ = self.read_guest_dirty_bitmap()?;
         snapshot
             .restore(&self.vcpus, &self.vm, self.memory.inner())
             .map_err(|e| {
@@ -3111,21 +3175,24 @@ impl DeterministicVm {
 
         info!("VM restored from snapshot (BSP RIP={:#x})", snapshot.rip());
 
-        // Full restore overwrites all memory, so no dirty tracking needed.
-        self.last_dirty_page_indices.clear();
+        if let Some(pages) = overlay_pages {
+            self.pages_differing_from_base = pages;
+            self.incremental_base_needs_reconcile = false;
+        } else {
+            // Full images do not identify the retained incremental base.
+            self.pages_differing_from_base.clear();
+            self.incremental_base_needs_reconcile = true;
+        }
 
         Ok(())
     }
 
-    /// Incremental restore: only revert pages that changed since the
-    /// last restore, then apply the new overlay's dirty pages.
+    /// Revert inherited overlay pages and all intervening guest writes, then
+    /// apply the target overlay. No capture between sibling restores is needed.
     ///
-    /// On a 256 MB VM with ~9 dirty pages per branch, this replaces
-    /// a 256 MB memcpy (~75 ms) with ~18 page writes (~0.07 ms).
-    ///
-    /// **Precondition:** guest memory must contain the base image.
-    /// Call a full `restore()` first, or use this only after a prior
-    /// `restore_incremental` on the same VM.
+    /// **Precondition:** `base` is the retained bootstrap image. Establish it
+    /// with a full `restore()` before the first incremental restore, or follow
+    /// a prior incremental restore on the same VM and base.
     #[cfg_attr(feature = "profiling", tracing::instrument(skip_all))]
     pub fn restore_incremental(
         &mut self,
@@ -3133,6 +3200,11 @@ impl DeterministicVm {
         base: &[u8],
     ) -> Result<(), VmError> {
         self.validate_fault_engine_snapshot(snapshot)?;
+        if base.len() != self.memory.size() {
+            return Err(VmError::Snapshot {
+                message: "incremental restore base size differs from guest memory".to_string(),
+            });
+        }
         match self.restore_incremental_validated(snapshot, base) {
             Ok(()) => Ok(()),
             Err(error) => Err(self.latch_schedule_execution_poison(
@@ -3150,52 +3222,40 @@ impl DeterministicVm {
         use crate::snapshot::SnapshotMemory;
 
         self.complete_pending_kvm_exits_for_snapshot()?;
+        self.reconcile_incremental_base(base)?;
 
-        // Step 1: Revert previously-dirtied pages back to base values.
-        if !self.last_dirty_page_indices.is_empty() {
-            SnapshotMemory::revert_pages_from_base(
-                base,
-                self.last_dirty_page_indices.iter().copied(),
-                self.memory.inner(),
-            )
-            .map_err(|e| {
-                SnapshotSnafu {
-                    message: format!("revert dirty pages: {e}"),
-                }
-                .build()
+        let dirty_bitmap = self.read_guest_dirty_bitmap()?;
+        let overlay_pages = match &snapshot.memory {
+            SnapshotMemory::Overlay { dirty_pages, .. } => Some(dirty_pages),
+            SnapshotMemory::Full(_) => None,
+        };
+        let page_plan = crate::vm_core::plan_incremental_restore(
+            std::mem::take(&mut self.pages_differing_from_base),
+            dirty_bitmap,
+            overlay_pages
+                .into_iter()
+                .flat_map(|pages| pages.keys().copied()),
+            base.len().div_ceil(crate::snapshot::PAGE_SIZE),
+        )
+        .map_err(|error| VmError::Snapshot {
+            message: format!("incremental restore page plan: {error:?}"),
+        })?;
+        SnapshotMemory::revert_pages_from_base(
+            base,
+            crate::vm_core::dirty_page_indices(&page_plan.revert),
+            self.memory.inner(),
+        )
+        .map_err(|error| VmError::Snapshot {
+            message: format!("revert dirty pages: {error}"),
+        })?;
+        snapshot
+            .memory
+            .write_to_guest(self.memory.inner())
+            .map_err(|error| VmError::Snapshot {
+                message: format!("write incremental snapshot memory: {error}"),
             })?;
-        }
-
-        // Step 2: Apply the new snapshot's dirty pages (if overlay)
-        // and record which pages are now dirty.
-        match &snapshot.memory {
-            SnapshotMemory::Overlay { dirty_pages, .. } => {
-                // Write only the dirty pages.
-                snapshot
-                    .memory
-                    .write_to_guest(self.memory.inner())
-                    .map_err(|e| {
-                        SnapshotSnafu {
-                            message: format!("write overlay pages: {e}"),
-                        }
-                        .build()
-                    })?;
-                self.last_dirty_page_indices = dirty_pages.keys().copied().collect();
-            }
-            SnapshotMemory::Full(_) => {
-                // Full snapshot — write everything, no dirty tracking.
-                snapshot
-                    .memory
-                    .write_to_guest(self.memory.inner())
-                    .map_err(|e| {
-                        SnapshotSnafu {
-                            message: format!("write full memory: {e}"),
-                        }
-                        .build()
-                    })?;
-                self.last_dirty_page_indices.clear();
-            }
-        }
+        self.pages_differing_from_base = page_plan.next;
+        self.incremental_base_needs_reconcile = matches!(snapshot.memory, SnapshotMemory::Full(_));
 
         // Step 3: Restore KVM device state (registers, IRQ chips, etc.)
         // Same as VmSnapshot::restore minus the memory write.
@@ -4817,6 +4877,10 @@ impl Drop for DeterministicVm {
 }
 
 #[cfg(test)]
+#[path = "vm/incremental_lineage.rs"]
+mod incremental_lineage;
+
+#[cfg(test)]
 #[path = "vm/configuration.rs"]
 mod configuration;
 
@@ -5329,36 +5393,6 @@ mod tests {
         let config = VmConfig::default();
         let vm = DeterministicVm::new(config).unwrap();
         assert!(vm.dirty_log_enabled());
-    }
-
-    #[test]
-    fn test_get_dirty_bitmap_returns_nonzero_after_memory_write() {
-        let config = VmConfig::default();
-        let mem_size = config.memory_size;
-        let vm = DeterministicVm::new(config).unwrap();
-
-        // First call clears all dirty bits accumulated since slot creation
-        // (KVM marks all pages dirty when the slot is first created with
-        // dirty logging enabled).
-        let _ = vm.get_dirty_bitmap().unwrap();
-
-        // Write to a known page in guest memory (page 256 = offset 1 MB).
-        let data = [0xABu8; 64];
-        vm.memory()
-            .inner()
-            .write_slice(&data, vm_memory::GuestAddress(256 * 4096))
-            .unwrap();
-
-        // KVM tracks hardware-level dirty bits. Host-side write_slice
-        // writes through the mmap, but KVM's dirty log tracks guest
-        // writes via EPT/NPT, not host writes through the mmap. So
-        // after host-only writes, the dirty bitmap may be empty.
-        // This test verifies the API works — integration tests with
-        // actual guest execution test real dirty tracking.
-        let bitmap = vm.get_dirty_bitmap().unwrap();
-        // Bitmap should have correct length: ceil(memory_size / page_size / 64)
-        let expected_len = mem_size.div_ceil(4096) / 64;
-        assert_eq!(bitmap.len(), expected_len);
     }
 
     // ─── Panic detection ────────────────────────────────────────

@@ -128,6 +128,107 @@ pub(crate) fn sanitize_serial_for_terminal(bytes: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+const DIRTY_WORD_BITS: usize = u64::BITS as usize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IncrementalPageError {
+    BitmapLength { expected: usize, found: usize },
+    PageOutOfRange { page: usize, page_count: usize },
+}
+
+fn validate_dirty_bitmap(bitmap: &[u64], page_count: usize) -> Result<(), IncrementalPageError> {
+    let expected = page_count.div_ceil(DIRTY_WORD_BITS);
+    if bitmap.len() != expected {
+        return Err(IncrementalPageError::BitmapLength {
+            expected,
+            found: bitmap.len(),
+        });
+    }
+    let trailing_pages = page_count % DIRTY_WORD_BITS;
+    if trailing_pages != 0 {
+        let last_word = bitmap[expected - 1];
+        let excess = last_word & (u64::MAX << trailing_pages);
+        if excess != 0 {
+            return Err(IncrementalPageError::PageOutOfRange {
+                page: (expected - 1) * DIRTY_WORD_BITS + excess.trailing_zeros() as usize,
+                page_count,
+            });
+        }
+    }
+    Ok(())
+}
+
+// r[impl chaoscontrol.deterministic_snapshots.incremental_core]
+pub(crate) fn merge_dirty_pages(
+    current: &mut Vec<u64>,
+    incoming: &[u64],
+    page_count: usize,
+) -> Result<(), IncrementalPageError> {
+    validate_dirty_bitmap(incoming, page_count)?;
+    if !current.is_empty() {
+        validate_dirty_bitmap(current, page_count)?;
+    }
+    current.resize(incoming.len(), 0);
+    for (retained, dirty) in current.iter_mut().zip(incoming) {
+        *retained |= dirty;
+    }
+    Ok(())
+}
+
+pub(crate) struct IncrementalPagePlan {
+    pub(crate) revert: Vec<u64>,
+    pub(crate) next: Vec<u64>,
+}
+
+pub(crate) fn overlay_page_bitmap(
+    mut retained: Vec<u64>,
+    overlay_pages: impl Iterator<Item = usize>,
+    page_count: usize,
+) -> Result<Vec<u64>, IncrementalPageError> {
+    retained.resize(page_count.div_ceil(DIRTY_WORD_BITS), 0);
+    retained.fill(0);
+    for page in overlay_pages {
+        if page >= page_count {
+            return Err(IncrementalPageError::PageOutOfRange { page, page_count });
+        }
+        retained[page / DIRTY_WORD_BITS] |= 1 << (page % DIRTY_WORD_BITS);
+    }
+    Ok(retained)
+}
+
+/// Reuse the retained and KVM-provided bitmaps; no per-page allocation.
+// r[impl chaoscontrol.deterministic_snapshots.incremental_core]
+pub(crate) fn plan_incremental_restore(
+    current: Vec<u64>,
+    mut dirty: Vec<u64>,
+    overlay_pages: impl Iterator<Item = usize>,
+    page_count: usize,
+) -> Result<IncrementalPagePlan, IncrementalPageError> {
+    validate_dirty_bitmap(&dirty, page_count)?;
+    if !current.is_empty() {
+        merge_dirty_pages(&mut dirty, &current, page_count)?;
+    }
+    let next = overlay_page_bitmap(current, overlay_pages, page_count)?;
+    Ok(IncrementalPagePlan {
+        revert: dirty,
+        next,
+    })
+}
+
+pub(crate) fn dirty_page_indices(bitmap: &[u64]) -> impl Iterator<Item = usize> + '_ {
+    bitmap.iter().enumerate().flat_map(|(index, &word)| {
+        let mut remaining = word;
+        std::iter::from_fn(move || {
+            if remaining == 0 {
+                return None;
+            }
+            let page = index * DIRTY_WORD_BITS + remaining.trailing_zeros() as usize;
+            remaining &= remaining - 1;
+            Some(page)
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +285,59 @@ mod tests {
         assert_eq!(capture_serial_bounded(&mut retained, raw), 0);
         assert_eq!(retained, raw);
         assert_eq!(sanitize_serial_for_terminal(raw), b"ok.[2J.");
+    }
+
+    // r[verify chaoscontrol.deterministic_snapshots.incremental_core]
+    #[test]
+    fn incremental_plan_reverts_inherited_and_guest_pages_then_tracks_only_target() {
+        let plan =
+            plan_incremental_restore(vec![1 << 1, 1], vec![1 << 3, 0], [5, 66].into_iter(), 67)
+                .expect("plan valid page sets");
+        assert_eq!(
+            dirty_page_indices(&plan.revert).collect::<Vec<_>>(),
+            [1, 3, 64]
+        );
+        assert_eq!(dirty_page_indices(&plan.next).collect::<Vec<_>>(), [5, 66]);
+    }
+
+    #[test]
+    fn invalid_dirty_bitmap_leaves_retained_pages_unchanged() {
+        let mut current = vec![1 << 2, 0];
+        assert_eq!(
+            merge_dirty_pages(&mut current, &[0, 1 << 3], 67),
+            Err(IncrementalPageError::PageOutOfRange {
+                page: 67,
+                page_count: 67
+            })
+        );
+        assert_eq!(current, [1 << 2, 0]);
+        assert_eq!(
+            merge_dirty_pages(&mut current, &[0], 67),
+            Err(IncrementalPageError::BitmapLength {
+                expected: 2,
+                found: 1
+            })
+        );
+        assert_eq!(current, [1 << 2, 0]);
+    }
+
+    #[test]
+    fn incremental_plan_rejects_out_of_range_overlay_before_any_shell_effect() {
+        assert!(matches!(
+            plan_incremental_restore(vec![0, 0], vec![0, 0], [67].into_iter(), 67),
+            Err(IncrementalPageError::PageOutOfRange {
+                page: 67,
+                page_count: 67
+            })
+        ));
+    }
+
+    #[test]
+    fn incremental_capture_keeps_pages_across_consumed_dirty_logs() {
+        let mut retained = Vec::new();
+        merge_dirty_pages(&mut retained, &[1 << 63, 0], 65).expect("initial capture");
+        merge_dirty_pages(&mut retained, &[0, 1], 65).expect("child capture");
+        merge_dirty_pages(&mut retained, &[0, 0], 65).expect("unchanged child capture");
+        assert_eq!(dirty_page_indices(&retained).collect::<Vec<_>>(), [63, 64]);
     }
 }

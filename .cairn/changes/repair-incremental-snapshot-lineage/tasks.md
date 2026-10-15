@@ -1,9 +1,16 @@
 ## Tasks
 
 - [x] [serial] Confirm the overlay capture and revert gaps and record the 2026-09-25 depth-three replay failure. r[chaoscontrol.deterministic_snapshots.incremental_lineage]
-- [ ] [depends:snapshot-lineage-baseline] Add a failing KVM regression that compares a depth-three incremental lineage with a full snapshot. r[chaoscontrol.deterministic_snapshots.incremental_validation]
-- [ ] [depends:snapshot-lineage-regression] Add pure page-set planning with bounds checks and positive and negative unit tests. r[chaoscontrol.deterministic_snapshots.incremental_core]
-- [ ] [depends:snapshot-lineage-core] Route incremental capture and restore through the page set and drain the dirty log around host writes. r[chaoscontrol.deterministic_snapshots.incremental_lineage] r[chaoscontrol.deterministic_snapshots.incremental_revert]
+- [x] [depends:snapshot-lineage-baseline] Add a failing KVM regression that compares a depth-three incremental lineage with a full snapshot. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+- [x] [depends:snapshot-lineage-regression] Add pure page-set planning with bounds checks and positive and negative unit tests. r[chaoscontrol.deterministic_snapshots.incremental_core]
+- [x] [depends:snapshot-lineage-core] Route incremental capture and restore through the page set and drain the dirty log around host writes. r[chaoscontrol.deterministic_snapshots.incremental_lineage] r[chaoscontrol.deterministic_snapshots.incremental_revert]
 - [ ] [depends:snapshot-lineage-shell] Compare fresh and long-lived controller branch results from the same parent, including the watchdog replacement path. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 - [ ] [depends:snapshot-lineage-shell] Rerun the Raft control and planted-bug campaigns, replay every safety finding at depth three or more, and record overlay sizes per depth. r[chaoscontrol.deterministic_snapshots.incremental_validation]
 - [ ] [depends:snapshot-lineage-campaign] Mark pre-change deep findings diagnostic-only in replay and readiness docs, then run workspace tests, KVM smoke tests, and Cairn validation. r[chaoscontrol.deterministic_snapshots.incremental_validation]
+
+## Implementation evidence
+
+`dogfood-results/production-readiness-20261015/attempts.ncl` records the failing-before and passing-after KVM regressions for inherited pages, uncaptured sibling writes, full-overlay restore on a fresh VM, full-image/base handoffs, and public dirty-log observation. Final Pueue task 32 passed workspace all-target tests, Clippy with warnings denied, and formatting. Task 31 passed the real Raft depth-one-through-four full-memory comparisons, persisted-parent continuation in long-lived and fresh controllers, and immediate incremental recapture after full restore. Both 500-tick continuations observed one attributed CPU stall and matched strict execution digests, round observations, and every admitted assertion outcome. Safety invariants held; four bounded sometimes assertions failed identically and 33 catalog sites remained unexercised. A real watchdog replacement event and replay of a deep exploration finding remain unverified, so the corresponding tasks stay open. The enclosing Nickel receipt records the campaign results and release-gate blockers.
+
+The ten-round control and planted campaigns (`cc-production-raft-control-ten-round` and `cc-production-raft-planted-ten-round`) each hit the unchanged 600-second operational bound. Both emitted metrics through round three; their last valid checkpoints retain two rounds and three branches, with eight depth-one sometimes records and no retained safety finding. `campaign-observations.json` retains the exact commands, profiles, checkpoint hashes, records, and limitations. These partial runs do not close the depth-four control or deep-finding replay requirements; no lifecycle sync, archive, or promotion was performed.
+

@@ -1112,7 +1112,12 @@ impl VmSnapshot {
             .fail();
         }
 
-        // Restore guest memory (handles both Full and Overlay)
+        if let SnapshotMemory::Overlay { base, .. } = &self.memory {
+            guest_memory
+                .write_slice(base, GuestAddress(0))
+                .map_err(|_| WriteMemorySnafu.build())?;
+        }
+        // Full restore establishes the base as well as the overlay pages.
         self.memory.write_to_guest(guest_memory)?;
 
         // Restore KVM devices and vCPU registers

@@ -1,0 +1,53 @@
+{
+  "acceptance_ids": [],
+  "change": "repair-incremental-snapshot-lineage",
+  "evidence_summary": {
+    "docs_only": 0,
+    "fixture": 0,
+    "formal": 0,
+    "mode": "advisory",
+    "model": 0,
+    "probe": 0,
+    "property": 0
+  },
+  "input_hash": "d6073f203c41a0fb2f7f6b191e1eff721dddd3a7c01400b0de2c388aafdcf343",
+  "issues": [],
+  "layout": "cairn",
+  "non_claims": [
+    "workflow state proves only the selected policy graph and observed structural artifact facts",
+    "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+    "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+    "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+  ],
+  "policy": "chaoscontrol-default",
+  "policy_hash": "0e65fe24216177125699c0b618fe50bf68031c6d13807269b0adaca29995eb14",
+  "probe_evidence": null,
+  "profile_identity_hash": "c23b6d4aa61212ddeb8ad6c5c52abcf061d9467b9443a01a9bcf71f0483418ff",
+  "receipt_hash": "b457175791bcdb16061491a7328c76bda95362f2464af1cce120eec451e0e481",
+  "review_receipt_hashes": [],
+  "spec_effect": "delta",
+  "stage": "proposal",
+  "substance": [
+    {
+      "checkbox_tasks": 0,
+      "kind": "proposal",
+      "malformed_dependency_markers": 0,
+      "path": "./.cairn/changes/repair-incremental-snapshot-lineage/proposal.md",
+      "requirement_blocks": 0,
+      "scenario_blocks": 0,
+      "substantive_lines": 14,
+      "substantive_requirement_blocks": 0,
+      "substantive_tasks": 0,
+      "task_done": 0,
+      "task_in_progress": 0,
+      "task_todo": 0
+    }
+  ],
+  "task_ordering": null,
+  "valid": true,
+  "verdict": "PASS",
+  "workflow_profile": "spec-driven",
+  "workflow_profile_compatibility_fallback": false,
+  "workflow_profile_source": "change_create",
+  "workflow_profile_version": 1
+}

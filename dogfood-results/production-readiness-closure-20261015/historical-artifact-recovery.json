@@ -1,0 +1,248 @@
+{
+  "schema": "chaoscontrol.retained-artifact-recovery-observations.v1",
+  "source_revision_tested": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "historical_initrd": {
+    "original_path": "/nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft",
+    "expected_digest": "blake3:82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e",
+    "available": false,
+    "replacement_with_different_identity_accepted": false
+  },
+  "supported_store_recovery": {
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix-store",
+        "--realise",
+        "/nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft",
+        "--add-root",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-watchdog17-initrd",
+        "--indirect",
+        "--option",
+        "builders",
+        "",
+        "--option",
+        "secret-key-files",
+        ""
+      ],
+      "display_command": "nix-store --realise /nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft --add-root /tmp/chaoscontrol-production-readiness-closure-20261015/retained-watchdog17-initrd --indirect --option builders '' --option secret-key-files ''",
+      "timeout_seconds": 300,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T05:51:24.109686+00:00",
+      "finished": "2026-10-16T05:51:24.825405+00:00",
+      "elapsed_seconds": 0.7157309340036591,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-initrd-recovery/stdout.log",
+          "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "bytes": 0
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/retained-initrd-recovery/stderr.log",
+          "digest": "blake3:5029b7f794b54f7be2e0f9bc385c97b1ea250b00573c034f435e093fa46ad870",
+          "bytes": 250
+        }
+      ]
+    },
+    "diagnostic": "don't know how to build these paths:\n  /nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft\nerror: path '/nix/store/vxl9fvbh9mii71ngf1q8sk0gpmcfnh62-chaoscontrol-initrd-raft' is required, but there is no substituter that can build it"
+  },
+  "retained_derivations_inspected": [
+    {
+      "derivation": "/nix/store/h7qqjh9q4xn8710h1761nqapz48jb4yg-chaoscontrol-initrd-raft.drv",
+      "output": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft"
+    },
+    {
+      "derivation": "/nix/store/qb22xava04h4g3mkl5ny2x6b3xsqvnh1-chaoscontrol-initrd-raft.drv",
+      "output": "/nix/store/d37s9di5xnzc3jwv38lp4x9gc56ipyip-chaoscontrol-initrd-raft"
+    }
+  ],
+  "recorded_producer_source_resolution": {
+    "observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "eval",
+        "--raw",
+        "--no-update-lock-file",
+        "git+file:///tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol?rev=c6e51c072840caf2679e5c6936dcba8e444f73a3#initrd-raft.outPath"
+      ],
+      "display_command": "nix eval --raw --no-update-lock-file 'git+file:///tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol?rev=c6e51c072840caf2679e5c6936dcba8e444f73a3#initrd-raft.outPath'",
+      "timeout_seconds": 120,
+      "operational_timeout": false,
+      "exit_code": 0,
+      "started": "2026-10-16T06:01:11.905391+00:00",
+      "finished": "2026-10-16T06:01:17.578124+00:00",
+      "elapsed_seconds": 5.672739219997311,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/selected-proof-source-initrd-resolution/stdout.log",
+          "digest": "blake3:f059b4016a87460f6e3b3ae0fa003a681f80de09b969ecbaf5de385a732c0edc",
+          "bytes": 68
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/selected-proof-source-initrd-resolution/stderr.log",
+          "digest": "blake3:8df2b0ffde15e64bfee9d8c5628d8e15aac32e199555d6f34ebd2c2e3427e241",
+          "bytes": 165
+        }
+      ]
+    },
+    "observed_output": "/nix/store/4bqvrdjrx04gs0s4lffjsrvylxjyzn76-chaoscontrol-initrd-raft",
+    "matches_missing_locator": false,
+    "boundary": "The serialized producer source revision alone does not reconstruct this uncommitted historical artifact cohort."
+  },
+  "bounded_raw_memory_inspection": {
+    "source": "Identity-checked retained continuation_mismatch_memory files; read-only mmap",
+    "gzip_candidates": [
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_0.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_1.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/long-lived-incremental/vm_2.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_0.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_1.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/watchdog-replacement-incremental/vm_2.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_0.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_1.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      },
+      {
+        "memory_artifact": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-proof17/fresh-full/vm_2.memory.bin",
+        "offset": 35969064,
+        "compressed_bytes": 74870,
+        "decompressed_bytes": 313413,
+        "digest": "blake3:e23b8227edacf1018fc700a5e30afcc46f3c4a842c3660148dbc41a23ee06dd8"
+      }
+    ],
+    "maximum_header_candidates_per_memory_file": 256,
+    "maximum_compressed_candidate_bytes": 2097152,
+    "maximum_decompressed_candidate_bytes": 67108864,
+    "matching_expected_blake3_found": false
+  },
+  "new_exact_source_proof": {
+    "command_observation": {
+      "schema": "chaoscontrol.local-command-observation.v1",
+      "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+      "command": [
+        "nix",
+        "--option",
+        "builders",
+        "",
+        "--option",
+        "secret-key-files",
+        "",
+        "--option",
+        "max-jobs",
+        "1",
+        "develop",
+        "--no-update-lock-file",
+        "-c",
+        "env",
+        "CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor",
+        "CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target",
+        "cargo",
+        "run",
+        "--release",
+        "--offline",
+        "--locked",
+        "-p",
+        "chaoscontrol-explore",
+        "--example",
+        "raft_lineage_proof",
+        "--",
+        "--kernel",
+        "/nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux",
+        "--initrd",
+        "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-current-artifacts"
+      ],
+      "display_command": "nix --option builders '' --option secret-key-files '' --option max-jobs 1 develop --no-update-lock-file -c env CARGO_HOME=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-home-vendor CARGO_TARGET_DIR=/tmp/chaoscontrol-production-readiness-closure-20261015/cargo-target cargo run --release --offline --locked -p chaoscontrol-explore --example raft_lineage_proof -- --kernel /nix/store/8ki40sdb3cb8zyg7zsvjlmybgir46z6b-chaoscontrol-vmlinux/vmlinux --initrd /nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft --output /tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-current-artifacts",
+      "timeout_seconds": 600,
+      "operational_timeout": false,
+      "exit_code": 1,
+      "started": "2026-10-16T05:51:24.109651+00:00",
+      "finished": "2026-10-16T05:53:20.879375+00:00",
+      "elapsed_seconds": 116.76973173599981,
+      "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+      "artifacts": [
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-current-artifacts-command/stdout.log",
+          "digest": "blake3:0cc00338bc08297e54918352cb65d9cf15dcc4b311f0cca454dc729511869690",
+          "bytes": 186813
+        },
+        {
+          "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-current-artifacts-command/stderr.log",
+          "digest": "blake3:39c251acec1480bc835c78b043aedfdd603b4f1e97246846819995c0350f742b",
+          "bytes": 531
+        }
+      ]
+    },
+    "kernel": {
+      "path": "/nix/store/cag982m78l51rxccpw8qfz7vb66kxy1i-linux-6.19-dev/vmlinux",
+      "digest": "blake3:b21d78e8169b34eb776d37d0f3ba15c2d0e58063423823a35a3424fca6e17fc2",
+      "bytes": 410778784
+    },
+    "initrd": {
+      "path": "/nix/store/mk5j30m6xn8irij2pgbn4hwfl8b6sdq1-chaoscontrol-initrd-raft",
+      "digest": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3",
+      "bytes": 466387
+    },
+    "observation_record": {
+      "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/watchdog-current-artifacts-observations.json",
+      "digest": "blake3:261b8a10d7f4aa2ada67ac3d59e6750daa967f7bd49e30569dbd3a83625162f2",
+      "bytes": 1245619
+    },
+    "passed": false
+  },
+  "counting_boundary": "Artifact lookup, realization/rooting and verification only. No product source, dependency pin, declared bound or strict comparison changed; no corrective implementation attempt 21.",
+  "remaining_prerequisite": "Restore the exact historical initrd bytes with BLAKE3 82b2ef606827644e8d10ca98142344e9fe5bae06cc3c11f837f5734654bf646e, or its exact producer derivation/source closure. The different current initrd is not a substitute for replaying the retained cohort17 proof.",
+  "non_claim": "The selected historical planted proof remains an observed prior snapshot_backed_reproduced result, not currently repeatable acceptance on the clean source. The newly exercised strict watchdog proof uses its own fully retained current artifacts and remains non-passing."
+}

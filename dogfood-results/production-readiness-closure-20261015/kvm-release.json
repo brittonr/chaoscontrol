@@ -1,0 +1,885 @@
+{
+  "schema_version": 1,
+  "matrix_profile": "required-kvm-release-v1",
+  "matrix_identity": "blake3:e9c5ff6dd088cc59159aaa057e78de5cb9cd73d0e220ea6c80e956db6a86d9e0",
+  "source": {
+    "revision": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+    "dirty": false
+  },
+  "runner_revision": "chaoscontrol-evidence-0.1.0@62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "worker": {
+    "architecture": "x86_64",
+    "kernel_release": "6.18.50",
+    "kvm_api_version": 12,
+    "capabilities": [
+      "kvm",
+      "x86_64-linux"
+    ]
+  },
+  "started_unix_seconds": 1792129402,
+  "finished_unix_seconds": 1792129477,
+  "rows": [
+    {
+      "id": "build-release-binaries",
+      "kind": "cohort-binary-build",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "nix",
+        "args": [
+          "build",
+          ".#default",
+          "--out-link",
+          "%ROW_OUT%/chaoscontrol"
+        ]
+      },
+      "executed_argv": [
+        "nix",
+        "build",
+        ".#default",
+        "--out-link",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/kvm-release-clean/build-release-binaries/chaoscontrol"
+      ],
+      "command_identity": "blake3:246ecdbd69c4797bf33ea25eca0cf1dc587894e37e40d05f87e132d12c7a6568",
+      "started_unix_seconds": 1792129402,
+      "finished_unix_seconds": 1792129405,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "chaoscontrol/bin/accepted-snapshot-verdict-dogfood",
+          "bytes": 1537520,
+          "blake3": "blake3:338db5ff3d06dd4915bcf37406b5fc6d597228c5e23a4b2afc1f7cbf343a563d"
+        },
+        {
+          "path": "chaoscontrol/bin/boot",
+          "bytes": 3816152,
+          "blake3": "blake3:e40b23671a007e18d21d54fd2a59ed237652e7e0c528ff7cb832e8dd36b144b3"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-dashboard",
+          "bytes": 6475160,
+          "blake3": "blake3:eee27939ed3da651fc33687f43b78cde84944ab5c4b2162f831027305067acf7"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-explore",
+          "bytes": 16995888,
+          "blake3": "blake3:2e3885a934c96a30d977b707d50ffee74384bcde7bd5da757fb9597a90dbea0f"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-guest",
+          "bytes": 947288,
+          "blake3": "blake3:3787790e5ffa4c63c1b850b15cac9d8e613e36564eedcc30378d167112ee2413"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-guest-determinism-probe",
+          "bytes": 488368,
+          "blake3": "blake3:64d7dc5f7a811b81a52beeae833e16eb81fc41f37de2d6e69afab5603e8f20e8"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-guest-supervisor",
+          "bytes": 1269128,
+          "blake3": "blake3:9d3b50f10250dac26f05f176929f46b83be3b8a160109aa625aebd6a35f920fe"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-net-guest",
+          "bytes": 1048512,
+          "blake3": "blake3:65aa11b0ec181545c7922cdc91e9a66390759656edd75e09a1ebcf73a0a78648"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-raft-guest",
+          "bytes": 1199368,
+          "blake3": "blake3:f9196f98a092c70fa17077659fde3a9b3b543532dee25b58a61f3a5c0705d6aa"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-redb-guest",
+          "bytes": 2076072,
+          "blake3": "blake3:38fc24c43ef2db3646a85c76049510df1460d5db0a7ad561b3f7791258d01c55"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-replay",
+          "bytes": 6392040,
+          "blake3": "blake3:c007c794802a6070bdf69fbe9cd96930526297aacc1e88f5a0d4fe89f9857af9"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-rust-workload-guest",
+          "bytes": 975992,
+          "blake3": "blake3:52e5265999d974d107bafce261eb79e88577a8121906584515553b68e0bc9cb5"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-trace",
+          "bytes": 5091136,
+          "blake3": "blake3:b0521f019b0306e0ebd7ea28d0785213676dec169a2704d7c9ace9196cd9f8af"
+        },
+        {
+          "path": "chaoscontrol/bin/chaoscontrol-wasm-differential",
+          "bytes": 1194632,
+          "blake3": "blake3:4ac75f9066a403481772d581f5048c98da8d162ffd1c930f18fa7aaffe663b26"
+        },
+        {
+          "path": "chaoscontrol/bin/check-accepted-dogfood-config",
+          "bytes": 1450112,
+          "blake3": "blake3:54264694aba45231e651ced4d5ccd7d01c300a124b80ffb38297afd0749e4e2c"
+        },
+        {
+          "path": "chaoscontrol/bin/check-architecture-boundaries",
+          "bytes": 768424,
+          "blake3": "blake3:3b20aaf3fde31b2e51d81d2923a280eebf6cc3d250f5684ce908de04bd599fb7"
+        },
+        {
+          "path": "chaoscontrol/bin/check-assertion-readiness-boundary",
+          "bytes": 1511896,
+          "blake3": "blake3:c78dfa4ed4d5796fa7910aff4b11f1a8a9f9d3e64b6273b818fa19af5e85962e"
+        },
+        {
+          "path": "chaoscontrol/bin/check-assertion-readiness-promotion-gate",
+          "bytes": 1525176,
+          "blake3": "blake3:086aa035d298b8061cdc7728bb7ec749f143f20e6f7f51eb03c5eecdcf3f29fc"
+        },
+        {
+          "path": "chaoscontrol/bin/check-cargo-audit-report",
+          "bytes": 986312,
+          "blake3": "blake3:d1d3d947c5a6884ddf2b85559218c2c91074e3371741fa9f48d7dce91ad84e00"
+        },
+        {
+          "path": "chaoscontrol/bin/check-causality-analysis",
+          "bytes": 1235272,
+          "blake3": "blake3:aa7689dd7bef9f4be2243d01b9f92f3cd5c934404b2b84fcfc813ccd5aedb8a4"
+        },
+        {
+          "path": "chaoscontrol/bin/check-consistency-fixtures",
+          "bytes": 1464696,
+          "blake3": "blake3:84ad4f13dc3138b0367bf2bebf6b0e3a4bed07545cf26dfc9d31948b7faaf702"
+        },
+        {
+          "path": "chaoscontrol/bin/check-consistency-history",
+          "bytes": 1090064,
+          "blake3": "blake3:14a425ffa8463cd024145c212016b3a43f1aa776988f09820e78290a9afc2ff4"
+        },
+        {
+          "path": "chaoscontrol/bin/check-contract-registry",
+          "bytes": 994328,
+          "blake3": "blake3:395299e73a6cd3b038210a4c7497149a5810e7c683a1d39dc212cfe78b51f73a"
+        },
+        {
+          "path": "chaoscontrol/bin/check-dogfood-artifact-sizes",
+          "bytes": 779232,
+          "blake3": "blake3:73dacaec855024809cc166d5986f46d48b87f22db6745b5264c31553ac6bab8e"
+        },
+        {
+          "path": "chaoscontrol/bin/check-evidence-contracts",
+          "bytes": 2647360,
+          "blake3": "blake3:14be60e9127759e2fcb4d4bf9b823261f6cfcd06b0b8935298d1d5d33635e05d"
+        },
+        {
+          "path": "chaoscontrol/bin/check-findability",
+          "bytes": 1153416,
+          "blake3": "blake3:c82857281cef907e7837c7cd361c20fb6f325a56e60148974a56995ae156db7c"
+        },
+        {
+          "path": "chaoscontrol/bin/check-frontier-parity",
+          "bytes": 4035360,
+          "blake3": "blake3:fa97e0cb78d657253c40195b62c414a5751001ab20678262b0d3a7e49e3c68d3"
+        },
+        {
+          "path": "chaoscontrol/bin/check-history-phenomena",
+          "bytes": 1564560,
+          "blake3": "blake3:cec3cc2c7c00f7d7e70bfb9c47087d445a434c75a70f1579e13acb41479c103c"
+        },
+        {
+          "path": "chaoscontrol/bin/check-kvm-release-matrix",
+          "bytes": 1365264,
+          "blake3": "blake3:1a64af9219c07f98e31853554d2932d19ba75d54d2561d8b02d851aea81cd9f9"
+        },
+        {
+          "path": "chaoscontrol/bin/check-product-scope",
+          "bytes": 1150048,
+          "blake3": "blake3:dddaf1adfaf3aaa170b1d046da789aff0ba8061d5a03a8029cbc68f7f6eb4895"
+        },
+        {
+          "path": "chaoscontrol/bin/check-profile-admission",
+          "bytes": 1784248,
+          "blake3": "blake3:be256854dd298b7410bd47c02f6571ffe531e6a956ac336f42fc9f5883d3c7c4"
+        },
+        {
+          "path": "chaoscontrol/bin/check-profile-projections",
+          "bytes": 1109408,
+          "blake3": "blake3:db5a98497d265f1e44d87ee483e75f14b9556033a5bea7ffa8af7f7d76c32da1"
+        },
+        {
+          "path": "chaoscontrol/bin/check-readiness-promotion-gate",
+          "bytes": 1045416,
+          "blake3": "blake3:0dd3f2281d01638cd4e97398b0292187ab4f2ef03c75b94e8d9ed5cdbceefd9d"
+        },
+        {
+          "path": "chaoscontrol/bin/check-readiness-surface-drift",
+          "bytes": 1316456,
+          "blake3": "blake3:903716eb53cf7a253c8ae04dd660254f5b992ccd3ed552f737782f5b51fa408c"
+        },
+        {
+          "path": "chaoscontrol/bin/check-replay-proof-coverage",
+          "bytes": 1703848,
+          "blake3": "blake3:3ddba489836aab8f7ea7e0a1774833bca3f56f56c619c9fbae89d36990b52a4a"
+        },
+        {
+          "path": "chaoscontrol/bin/check-replay-verdict-artifact",
+          "bytes": 1573560,
+          "blake3": "blake3:63474439215947f72a928ef3050abf5fbcea2f657ed178cf7f76fc4539c35c3b"
+        },
+        {
+          "path": "chaoscontrol/bin/check-rust-product-automation-source",
+          "bytes": 787896,
+          "blake3": "blake3:db35a6bccd5f6544f45449439ae88426a8628d116468eb3439fef7373bb23b24"
+        },
+        {
+          "path": "chaoscontrol/bin/check-sdk-assertion-quality",
+          "bytes": 1620288,
+          "blake3": "blake3:f7204c419109bfb34b9e86dffe619ad1db5c5834074276e699061f3204489319"
+        },
+        {
+          "path": "chaoscontrol/bin/check-sdk-local-report-tracks",
+          "bytes": 1566904,
+          "blake3": "blake3:8a1778282286c02d5b74858f24734943eede605742f5be148345961b1ca9e245"
+        },
+        {
+          "path": "chaoscontrol/bin/check-sim-core-purity",
+          "bytes": 506784,
+          "blake3": "blake3:3f7aa00439e8998942ad71c67963ab5a18bde93b9fafa1428f8218037d96e64a"
+        },
+        {
+          "path": "chaoscontrol/bin/check-smr-chain-fixtures",
+          "bytes": 644096,
+          "blake3": "blake3:b5929c509a81ed8fa54c54c634a2b8d06d58908aec9ff02a159f16244611c709"
+        },
+        {
+          "path": "chaoscontrol/bin/check-snapshot-descriptor-contracts",
+          "bytes": 1518640,
+          "blake3": "blake3:ef1bcecda0fe5937ead0195726bc577a4f8fd3d3d64a46ad185015e0040fbbb2"
+        },
+        {
+          "path": "chaoscontrol/bin/check-vm-determinism-drift-receipt",
+          "bytes": 909512,
+          "blake3": "blake3:39c9a9ac2f607cb84abda38d5ef55d6cc81abc5b78ee96095ccd5325aca08eac"
+        },
+        {
+          "path": "chaoscontrol/bin/determinism_stress",
+          "bytes": 4631568,
+          "blake3": "blake3:077da1a8083afb857759b1bcd419b3570b683431cf4c7c16be7b4ba6aafc21cc"
+        },
+        {
+          "path": "chaoscontrol/bin/ebpf-trace-evidence-selftest",
+          "bytes": 1985488,
+          "blake3": "blake3:460e8acd500fa384f08742a1f2ea1648bfc3e2bef2d5b5883198709ef9c82905"
+        },
+        {
+          "path": "chaoscontrol/bin/explore_validation",
+          "bytes": 9198152,
+          "blake3": "blake3:a29122633d8ea3def3375021ab188c2156e14020b3771dca9b83c1b582ef1c49"
+        },
+        {
+          "path": "chaoscontrol/bin/generate-assertion-readiness-report",
+          "bytes": 1457728,
+          "blake3": "blake3:141814d1788d3719828fe1a9c09f8b966532f440bf054404967a2acdfaae14bf"
+        },
+        {
+          "path": "chaoscontrol/bin/generate-replay-readiness-report",
+          "bytes": 1797880,
+          "blake3": "blake3:3c59d2b54ecb32b07ed2b266ac74ae62a40df2a51af2dd206063f4b23cb95de3"
+        },
+        {
+          "path": "chaoscontrol/bin/guest-determinism-gate",
+          "bytes": 2015000,
+          "blake3": "blake3:722036b9d557833f51b4aa600d159845a6a764e255ccf33b810ab86de686425b"
+        },
+        {
+          "path": "chaoscontrol/bin/in-process-simulator-receipt",
+          "bytes": 1150104,
+          "blake3": "blake3:b8f483834f6d6e0f94a1e8f8b6921827dd2e3843867f90b025396a7f9c7afb49"
+        },
+        {
+          "path": "chaoscontrol/bin/integration_test",
+          "bytes": 4864256,
+          "blake3": "blake3:7de93f8c44f8776dd3061d9ec942f332950a1d2c3ca4b1b8a73631133742d8ff"
+        },
+        {
+          "path": "chaoscontrol/bin/kcov_test",
+          "bytes": 1429848,
+          "blake3": "blake3:f6122072affe915e398f09892fdd619905966879df9a12438f33946a71884784"
+        },
+        {
+          "path": "chaoscontrol/bin/kernel-bundle-delete-module",
+          "bytes": 466080,
+          "blake3": "blake3:5cf3f98875917b1992253224b68a82915af85c6b21002dcef3935c6a0a7fa58a"
+        },
+        {
+          "path": "chaoscontrol/bin/kernel-bundle-vm-compat-smoke",
+          "bytes": 2371688,
+          "blake3": "blake3:fe8b14595e2fa9d6536af7a1de9547df86aab5ef0969b0290968d5f945203f74"
+        },
+        {
+          "path": "chaoscontrol/bin/local-multi-hypervisor-kvm-smoke",
+          "bytes": 1390152,
+          "blake3": "blake3:4d6fa7de8c7a9a90032b171244710175d47d0a9ab7ce8f5125ea4c189a643f9e"
+        },
+        {
+          "path": "chaoscontrol/bin/materialize-dogfood-receipt",
+          "bytes": 1131080,
+          "blake3": "blake3:ff00d3f3a592dc9d21108072cd8a3cf143fdf156c354db97061ec27dab441157"
+        },
+        {
+          "path": "chaoscontrol/bin/materialize-replay-readiness-receipt",
+          "bytes": 965840,
+          "blake3": "blake3:f077f2658e0446becc987ebbe7117a9e840d60efc93056a8ff98324b1c920bf9"
+        },
+        {
+          "path": "chaoscontrol/bin/materialize-snapshot-chunks",
+          "bytes": 1013744,
+          "blake3": "blake3:2893e5ac6aa43abd1bc98b3ae7a4f34f34e8e699057f456683e9670ee5aa4275"
+        },
+        {
+          "path": "chaoscontrol/bin/net_test",
+          "bytes": 4521296,
+          "blake3": "blake3:014c43bf765bd4151ea71be5f45ff08ef24c942c1da814e1bae16d9c6654ec41"
+        },
+        {
+          "path": "chaoscontrol/bin/oci-intake",
+          "bytes": 1566856,
+          "blake3": "blake3:052983fb3cd4e11e791c91e8fd43f3f4b81c503a8973b6267f3086b38df99ea6"
+        },
+        {
+          "path": "chaoscontrol/bin/perf_bench",
+          "bytes": 4609488,
+          "blake3": "blake3:ef560aabce2af9b7d1fea027255e4e8b7362fd191d7f9e05c75fae1856800650"
+        },
+        {
+          "path": "chaoscontrol/bin/pmu_accuracy",
+          "bytes": 3817928,
+          "blake3": "blake3:f2a0261c11321bae80f6c11af9394cbf13616d82ab9d87cb8139920ef4326fef"
+        },
+        {
+          "path": "chaoscontrol/bin/pmu_kvm_test",
+          "bytes": 1774256,
+          "blake3": "blake3:ef20ba4ee2b2ee6c505f217e5229ac531a920697f5550fd75b537cf9f27ae641"
+        },
+        {
+          "path": "chaoscontrol/bin/pmu_test",
+          "bytes": 556240,
+          "blake3": "blake3:3418a56a277fb53edcce3706800979aa173988935d433752418c6494ae64352c"
+        },
+        {
+          "path": "chaoscontrol/bin/render-vm-determinism-matrix-summary",
+          "bytes": 911200,
+          "blake3": "blake3:23eac0757fb4d5ed0d7a06865757e2ee4d7b0cb6a752660515287d158413d825"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-dashboard",
+          "bytes": 929552,
+          "blake3": "blake3:3360551ff3448ddcb617c14c4869c55a2849c2e249159a3e1ff6bb90251e9b30"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-decision-receipt",
+          "bytes": 938376,
+          "blake3": "blake3:59f1d0630f87f70506de29a7e8e1dc9bb1cd92fdf5277ddff7f21ae5d3aba32d"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-fleet-index",
+          "bytes": 963672,
+          "blake3": "blake3:d33ef6991602f10822d48c9fc455b509bcfdf7856ea567135aa2855bf2c2df29"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-readme-status",
+          "bytes": 889464,
+          "blake3": "blake3:58f0e2fe6031998896266870037bbb4874ee91cd072712ce4c3ff0ffd0a6c9c6"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-scheduler-receipt",
+          "bytes": 2111984,
+          "blake3": "blake3:3d0f6b553cc281a0f5e2b24bb442b0cf211c9fb1ae1552dd011f4eb726f39228"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-summary",
+          "bytes": 881608,
+          "blake3": "blake3:3eaa8b9d809f8be865a6e82e51900a467eb4b7dab6086a37468c77108ac71602"
+        },
+        {
+          "path": "chaoscontrol/bin/replay-readiness-triage",
+          "bytes": 1865016,
+          "blake3": "blake3:e5a0536a57aceb26fcefacdfbbb0db54cc5be7154e2dfe0c1535bd0106d4adf3"
+        },
+        {
+          "path": "chaoscontrol/bin/run-kvm-release-matrix",
+          "bytes": 1311400,
+          "blake3": "blake3:50133ddd96031d4ac15fef20e79d9304fd95f8dd5a61224f29597cf51fbf1696"
+        },
+        {
+          "path": "chaoscontrol/bin/run-property-lane",
+          "bytes": 1860640,
+          "blake3": "blake3:af1acf6eb686f39ed6136d0c4902d3cc3adb4690c728f27cf703fa63f4c263a8"
+        },
+        {
+          "path": "chaoscontrol/bin/scaffold-rust-workload",
+          "bytes": 860160,
+          "blake3": "blake3:053dc7e9d5722b86c5375cccce7eece49aef9ad1023626d1b31062ed5936836e"
+        },
+        {
+          "path": "chaoscontrol/bin/sdk_guest_test",
+          "bytes": 3908648,
+          "blake3": "blake3:9405782d229c63193c8ca27331f98d0d58bea8958d36c0f8c9cb2b053fce33e5"
+        },
+        {
+          "path": "chaoscontrol/bin/smp4_test",
+          "bytes": 3838568,
+          "blake3": "blake3:8bf9a4b0012dd039742cf20a76278e6eff837ee5f830b3a956e5939b1fdafea7"
+        },
+        {
+          "path": "chaoscontrol/bin/smp_test",
+          "bytes": 3869904,
+          "blake3": "blake3:27d1f62e8f22db83b493664b5b63a31486c8f5c57b00fccf9787f4b5c7a84524"
+        },
+        {
+          "path": "chaoscontrol/bin/snapshot-descriptor-fixture",
+          "bytes": 1412912,
+          "blake3": "blake3:b797f32a46e1443c3d42dec5df6681b67bc9b425921831826197cd6886f1bfd0"
+        },
+        {
+          "path": "chaoscontrol/bin/snapshot_demo",
+          "bytes": 4168696,
+          "blake3": "blake3:3f14eae3f0e2dc2b50e084a98d739351dd1eb3905f19005a6e77792232e5f281"
+        },
+        {
+          "path": "chaoscontrol/bin/summarize-accepted-dogfood-output",
+          "bytes": 952952,
+          "blake3": "blake3:dc250da99a5dce7ad8bc4900986b98ae183db5235d1fdb5dd6b0916890f9b834"
+        },
+        {
+          "path": "chaoscontrol/bin/summarize-sdk-local-output",
+          "bytes": 1566584,
+          "blake3": "blake3:98a1a66cebfb3e4cef7b35a8096a32428aa032ada27518790995a707399b233a"
+        },
+        {
+          "path": "stderr.log",
+          "bytes": 244,
+          "blake3": "blake3:3b415defca2babb2f40ea066088cb6eb83d14c1e39310a1ee8aaf2ce86018dc0"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 0,
+          "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        }
+      ],
+      "artifact_set_identity": "blake3:5fed4a60d33fc5ccc487e61d778c22b3b73db18c972298eb31e91dddf94ea617",
+      "notes": []
+    },
+    {
+      "id": "build-raft-guest",
+      "kind": "cohort-guest-build",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "nix",
+        "args": [
+          "build",
+          ".#initrd-raft",
+          "--out-link",
+          "%ROW_OUT%/initrd-raft"
+        ]
+      },
+      "executed_argv": [
+        "nix",
+        "build",
+        ".#initrd-raft",
+        "--out-link",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/kvm-release-clean/build-raft-guest/initrd-raft"
+      ],
+      "command_identity": "blake3:208aa832269fb3b1ee713827a00e73138eb5bb08194a90f4305f12fab9dc235d",
+      "started_unix_seconds": 1792129405,
+      "finished_unix_seconds": 1792129407,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "initrd-raft",
+          "bytes": 466387,
+          "blake3": "blake3:af7e9608d2a7a77ce535f04b54b1410913ca9bea5e8c43b938134c6fc9259cf3"
+        },
+        {
+          "path": "stderr.log",
+          "bytes": 244,
+          "blake3": "blake3:3b415defca2babb2f40ea066088cb6eb83d14c1e39310a1ee8aaf2ce86018dc0"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 0,
+          "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        }
+      ],
+      "artifact_set_identity": "blake3:1c0242c6d8a0d5fd43340dae58d041aa308aa3e61d0baeeb52b6501255fcc07c",
+      "notes": []
+    },
+    {
+      "id": "deterministic-smp",
+      "kind": "deterministic-smp",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "cargo",
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "deterministic_smp_kvm"
+        ]
+      },
+      "executed_argv": [
+        "cargo",
+        "test",
+        "-p",
+        "chaoscontrol-vmm",
+        "--test",
+        "deterministic_smp_kvm"
+      ],
+      "command_identity": "blake3:cc65d089fc1e4fc8b5a735fe27e797e00f98374351099e5c256a6a5b1c7116ac",
+      "started_unix_seconds": 1792129407,
+      "finished_unix_seconds": 1792129411,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "stderr.log",
+          "bytes": 370,
+          "blake3": "blake3:2b9e6c9e7ab2bfefd8e8e5caaed62d3e735ff9b204d481928f41786e6a48e333"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 339,
+          "blake3": "blake3:c02d790799c73d4f31e6ea39d8de6a4ca73d5b1749e25ff25129fe1fd0335b89"
+        }
+      ],
+      "artifact_set_identity": "blake3:5a5cb07b9940dcf1f741d9a3b6c31f904df30371d08a5d4da3730b534379c965",
+      "notes": []
+    },
+    {
+      "id": "serialized-snapshot-replay",
+      "kind": "serialized-snapshot-replay",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "cargo",
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "exact_snapshot_kvm"
+        ]
+      },
+      "executed_argv": [
+        "cargo",
+        "test",
+        "-p",
+        "chaoscontrol-vmm",
+        "--test",
+        "exact_snapshot_kvm"
+      ],
+      "command_identity": "blake3:0758db17baad94f711089936e5686f5e0a6e90fee0f3df0b5bc5645409d9e909",
+      "started_unix_seconds": 1792129411,
+      "finished_unix_seconds": 1792129412,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "stderr.log",
+          "bytes": 364,
+          "blake3": "blake3:bc796293ec218291b0fac8179f8e4defad45582c24a1553887a499ac4e30a81b"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 199,
+          "blake3": "blake3:a8874ef17a0df501e5e61e3a5404b851b1e02dd8bef73259a7e74e745f05803f"
+        }
+      ],
+      "artifact_set_identity": "blake3:355fca1995e0effd35e77f21c3ac566afe23868ab2d797ebdeb1a7604c080c6f",
+      "notes": []
+    },
+    {
+      "id": "virtio-malformed-input",
+      "kind": "virtio-malformed-input",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "cargo",
+        "args": [
+          "test",
+          "-p",
+          "chaoscontrol-vmm",
+          "--test",
+          "virtio_kvm_smoke",
+          "--",
+          "--ignored"
+        ]
+      },
+      "executed_argv": [
+        "cargo",
+        "test",
+        "-p",
+        "chaoscontrol-vmm",
+        "--test",
+        "virtio_kvm_smoke",
+        "--",
+        "--ignored"
+      ],
+      "command_identity": "blake3:a2be7bc2ccc018d2221292347c0d85a536fe3c8c6b34ca3fa1bc36cd460db7fd",
+      "started_unix_seconds": 1792129412,
+      "finished_unix_seconds": 1792129412,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "stderr.log",
+          "bytes": 360,
+          "blake3": "blake3:ecc5b1035f507fa57f890e5933ffc22c88dd7d303205626b7243c794f8cd9794"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 197,
+          "blake3": "blake3:c52d78de24d7936cd2e49972b98b577621b5198f3300438dc0667b9d4b8191aa"
+        }
+      ],
+      "artifact_set_identity": "blake3:c1c89ccd38d9af2789f2bb740cfc10e6f6f00b9bdb8f83430580515316aa362f",
+      "notes": []
+    },
+    {
+      "id": "admitted-drift",
+      "kind": "admitted-drift",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "nix",
+        "args": [
+          "run",
+          ".#vm-determinism-drift",
+          "--",
+          "--out",
+          "%ROW_OUT%/drift",
+          "--runs",
+          "2",
+          "--",
+          "--case",
+          "controller-3vm-2vcpu"
+        ]
+      },
+      "executed_argv": [
+        "nix",
+        "run",
+        ".#vm-determinism-drift",
+        "--",
+        "--out",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/kvm-release-clean/admitted-drift/drift",
+        "--runs",
+        "2",
+        "--",
+        "--case",
+        "controller-3vm-2vcpu"
+      ],
+      "command_identity": "blake3:8aa3dfc1614052336fa89878e7612af8d424e2532f52c5861d883fc7da3d9f45",
+      "started_unix_seconds": 1792129412,
+      "finished_unix_seconds": 1792129421,
+      "status": "passed",
+      "exit_code": 0,
+      "artifacts": [
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-1/vm_0.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:dad854e81a94f4cec6a1800d16497a9cd9af9ca0f17fbd13afaaa1cc63334861"
+        },
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-1/vm_1.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:87c01997e55631211d2da5d9d350368744c9f3b8ca36a5142e95d321e31e4b4f"
+        },
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-1/vm_2.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:9d22b1c8ceea78def14389feaeb99d17b88c0931297b2aa031ffcece09e4dfb0"
+        },
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-2/vm_0.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:dad854e81a94f4cec6a1800d16497a9cd9af9ca0f17fbd13afaaa1cc63334861"
+        },
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-2/vm_1.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:87c01997e55631211d2da5d9d350368744c9f3b8ca36a5142e95d321e31e4b4f"
+        },
+        {
+          "path": "drift/dlogs/controller-3vm-2vcpu-run-2/vm_2.dlog",
+          "bytes": 6432640,
+          "blake3": "blake3:9d22b1c8ceea78def14389feaeb99d17b88c0931297b2aa031ffcece09e4dfb0"
+        },
+        {
+          "path": "drift/receipt.json",
+          "bytes": 2195,
+          "blake3": "blake3:825398ec2aba554ae89575e54c94a80ff7af62e4d169f78eeb5b33b2d2f4b534"
+        },
+        {
+          "path": "stderr.log",
+          "bytes": 429,
+          "blake3": "blake3:d5916dc3334de2a592a8eaf96cf7bfab91a314af9b2fefd7219f99bb96507b65"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 46100,
+          "blake3": "blake3:4271f8ebceb9c385a0139b70487d6c1e09ec5e3af44a5ae53fa6789360dbd38c"
+        }
+      ],
+      "artifact_set_identity": "blake3:97294db276c89e088565e1310511e2943b2e04f4180117218bd86281d162b447",
+      "notes": []
+    },
+    {
+      "id": "fresh-workload-replay",
+      "kind": "fresh-workload-replay",
+      "required_capabilities": [
+        "kvm",
+        "x86_64-linux"
+      ],
+      "command": {
+        "program": "nix",
+        "args": [
+          "run",
+          ".#raft-accepted-verdict-dogfood",
+          "--",
+          "--output",
+          "%ROW_OUT%/fresh",
+          "--max-attempts",
+          "1",
+          "--start-seed",
+          "0"
+        ]
+      },
+      "executed_argv": [
+        "nix",
+        "run",
+        ".#raft-accepted-verdict-dogfood",
+        "--",
+        "--output",
+        "/tmp/chaoscontrol-production-readiness-closure-20261015/kvm-release-clean/fresh-workload-replay/fresh",
+        "--max-attempts",
+        "1",
+        "--start-seed",
+        "0"
+      ],
+      "command_identity": "blake3:fa364537ff1b194dc46564e542cbc8198cef636e1687487314598b9f56a57826",
+      "started_unix_seconds": 1792129421,
+      "finished_unix_seconds": 1792129477,
+      "status": "failed",
+      "exit_code": 2,
+      "artifacts": [
+        {
+          "path": "fresh/attempts-summary.json",
+          "bytes": 274,
+          "blake3": "blake3:e8840ef56b05bea867a9b3dcb02d410c0eec6d016f2967b68cd4808d0e169c9e"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/LOCK",
+          "bytes": 0,
+          "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000000.cbor",
+          "bytes": 6121,
+          "blake3": "blake3:f7a6f5cfd6e0c93125e428f713a20166abf9b0e7098dec483948beca924a9440"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000001.cbor",
+          "bytes": 3387,
+          "blake3": "blake3:8a30b589ec5f722df09854ba8727a523e6e57460ad61901be8d51284a633c590"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000002.cbor",
+          "bytes": 6921,
+          "blake3": "blake3:a55ac8dbbf86f98b4b7f584dbb63eb553413f4b52a5369de2e963d518dcbf870"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000003.cbor",
+          "bytes": 3379,
+          "blake3": "blake3:a5708ec02e962868c67be1d57e92148f9bd6e15329618a9aee819ff56d994123"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000004.cbor",
+          "bytes": 6912,
+          "blake3": "blake3:089dc161916dea6088083c630e2071b9f9bc54d3997503cd9787c0d5bba42204"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000005.cbor",
+          "bytes": 3395,
+          "blake3": "blake3:e3db4937aeb1f7ea75d2e35ef2088a61cd83f018b049bc445d93bc71934bd2bf"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000006.cbor",
+          "bytes": 2867,
+          "blake3": "blake3:f5bc0ca0d913f83f09b19df0a4a93a76f1bb3a6e555d59333c423594573262cc"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/campaign-journal/epoch-0000/seg-00000007.cbor",
+          "bytes": 930,
+          "blake3": "blake3:6ed04d279808ab90e372ba32cd3c6802b17949431d6b6b66fde66f8583507e9e"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/checkpoint.json",
+          "bytes": 461190,
+          "blake3": "blake3:b50c8038dd1c0e4025be628f58db17c8840b21d3a28d4d85aa04b87786c262bd"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/export-bugs.log",
+          "bytes": 184,
+          "blake3": "blake3:f741f41e6e98b0bf0254495235e8bdda22e944919ea5bfb1b876e3547192a131"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/frontier-trace.jsonl",
+          "bytes": 2344,
+          "blake3": "blake3:a874b4a458b6da28650194292631892f99479f3fd8250e6157e7a990239499bf"
+        },
+        {
+          "path": "fresh/attempts/attempt-01/run.log",
+          "bytes": 281072,
+          "blake3": "blake3:e9df971ec986c2a2ce4cada5e76febbec94dba55325ee57f64d997161fd0b508"
+        },
+        {
+          "path": "stderr.log",
+          "bytes": 475,
+          "blake3": "blake3:17da50b0d688b9fd315d57f8377132a4dd1e9e038099b16843406d97b1dbde25"
+        },
+        {
+          "path": "stdout.log",
+          "bytes": 0,
+          "blake3": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        }
+      ],
+      "artifact_set_identity": "blake3:c5eee6e9fab15d643cf8ad3e846676ed6b70df17fa8aad8cccd823c2b223ae90",
+      "notes": []
+    }
+  ],
+  "bounded_claim": "This receipt establishes that the exact source revision passed the required matrix on the recorded admitted worker with the recorded commands, bounds, and artifact identities.",
+  "non_claims": [
+    "The receipt does not prove worker integrity.",
+    "The receipt does not prove all-host equivalence.",
+    "The receipt does not prove universal determinism.",
+    "The receipt does not prove workload correctness.",
+    "The receipt does not prove production availability."
+  ],
+  "terminal_class": "blocked"
+}

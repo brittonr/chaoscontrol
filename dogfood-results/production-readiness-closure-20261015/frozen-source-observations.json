@@ -1,0 +1,397 @@
+{
+  "schema": "chaoscontrol.frozen-source-observations.v1",
+  "starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "frozen_revision": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "archive": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/source-62f97f8.tar",
+    "digest": "blake3:2daad81171746c6332178cd9564f222c4ce3cbed78ee7021baa81335dffeab01",
+    "bytes": 790149120
+  },
+  "source_boundary": "The source archive is the exact committed tree. Clean-source release and runtime verdicts are separate observations, not inferred from a commit or archive hash.",
+  "structural_native_gates": [
+    {
+      "stage": "proposal",
+      "command_observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+          "gate",
+          "proposal",
+          "repair-incremental-snapshot-lineage",
+          "--root",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+          "--policy",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json"
+        ],
+        "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn gate proposal repair-incremental-snapshot-lineage --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T04:49:47.456133+00:00",
+        "finished": "2026-10-16T04:49:47.463664+00:00",
+        "elapsed_seconds": 0.007528747999458574,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-proposal/stdout.log",
+            "digest": "blake3:46bfa5709435b5fb9ed9e650feab1b51d7698bde95cf1a3ed7dfa62ad3b9f4ed",
+            "bytes": 1942
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-proposal/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "report": {
+        "acceptance_ids": [],
+        "change": "repair-incremental-snapshot-lineage",
+        "evidence_summary": {
+          "docs_only": 0,
+          "fixture": 0,
+          "formal": 0,
+          "mode": "advisory",
+          "model": 0,
+          "probe": 0,
+          "property": 0
+        },
+        "input_hash": "47b966c35abc82b39ce87979686ec09f54f5c92f07f2db11e9d36b00bfed6afd",
+        "issues": [],
+        "layout": "cairn",
+        "non_claims": [
+          "workflow state proves only the selected policy graph and observed structural artifact facts",
+          "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+          "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+          "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+        ],
+        "policy": "chaoscontrol-default",
+        "policy_hash": "0e65fe24216177125699c0b618fe50bf68031c6d13807269b0adaca29995eb14",
+        "probe_evidence": null,
+        "profile_identity_hash": "4aae234f215736a181447d877ccc1b9a92069571bebd253c4b95799439fccaab",
+        "receipt_hash": "9e072fb589eb6243b5296548f1ddc5a99e6b8327136581a0c9992912d9470b4d",
+        "review_receipt_hashes": [],
+        "spec_effect": "delta",
+        "stage": "proposal",
+        "substance": [
+          {
+            "checkbox_tasks": 0,
+            "kind": "proposal",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/proposal.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 14,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          }
+        ],
+        "task_ordering": null,
+        "valid": true,
+        "verdict": "PASS",
+        "workflow_profile": "spec-driven",
+        "workflow_profile_compatibility_fallback": false,
+        "workflow_profile_source": "change_create",
+        "workflow_profile_version": 1
+      },
+      "report_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-proposal/stdout.log",
+        "digest": "blake3:46bfa5709435b5fb9ed9e650feab1b51d7698bde95cf1a3ed7dfa62ad3b9f4ed",
+        "bytes": 1942
+      },
+      "passed": true
+    },
+    {
+      "stage": "design",
+      "command_observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+          "gate",
+          "design",
+          "repair-incremental-snapshot-lineage",
+          "--root",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+          "--policy",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json"
+        ],
+        "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn gate design repair-incremental-snapshot-lineage --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T04:49:47.438330+00:00",
+        "finished": "2026-10-16T04:49:47.470077+00:00",
+        "elapsed_seconds": 0.03174552400014363,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-design/stdout.log",
+            "digest": "blake3:c0dd73194f412eb4bf9e524c8d8b64558a7580ed6a3ffa81d8d68ec8e1a0205f",
+            "bytes": 2946
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-design/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "report": {
+        "acceptance_ids": [],
+        "change": "repair-incremental-snapshot-lineage",
+        "evidence_summary": {
+          "docs_only": 0,
+          "fixture": 0,
+          "formal": 0,
+          "mode": "advisory",
+          "model": 0,
+          "probe": 0,
+          "property": 0
+        },
+        "input_hash": "6018cdc51242a9dc745c76b06ee125008f787a4cfd55956b45381a9346cb8d57",
+        "issues": [],
+        "layout": "cairn",
+        "non_claims": [
+          "workflow state proves only the selected policy graph and observed structural artifact facts",
+          "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+          "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+          "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+        ],
+        "policy": "chaoscontrol-default",
+        "policy_hash": "0e65fe24216177125699c0b618fe50bf68031c6d13807269b0adaca29995eb14",
+        "probe_evidence": null,
+        "profile_identity_hash": "4aae234f215736a181447d877ccc1b9a92069571bebd253c4b95799439fccaab",
+        "receipt_hash": "f3f573cae0c812ed23aec39026d5d17a1eb80e3aa417360b59ad9a0ba1639d58",
+        "review_receipt_hashes": [],
+        "spec_effect": "delta",
+        "stage": "design",
+        "substance": [
+          {
+            "checkbox_tasks": 0,
+            "kind": "design",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/design.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 26,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          },
+          {
+            "checkbox_tasks": 0,
+            "kind": "proposal",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/proposal.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 14,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          },
+          {
+            "checkbox_tasks": 0,
+            "kind": "delta_spec",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/specs/deterministic-snapshots/spec.md",
+            "requirement_blocks": 4,
+            "scenario_blocks": 5,
+            "substantive_lines": 20,
+            "substantive_requirement_blocks": 4,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          }
+        ],
+        "task_ordering": null,
+        "valid": true,
+        "verdict": "PASS",
+        "workflow_profile": "spec-driven",
+        "workflow_profile_compatibility_fallback": false,
+        "workflow_profile_source": "change_create",
+        "workflow_profile_version": 1
+      },
+      "report_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-design/stdout.log",
+        "digest": "blake3:c0dd73194f412eb4bf9e524c8d8b64558a7580ed6a3ffa81d8d68ec8e1a0205f",
+        "bytes": 2946
+      },
+      "passed": true
+    },
+    {
+      "stage": "tasks",
+      "command_observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn",
+          "gate",
+          "tasks",
+          "repair-incremental-snapshot-lineage",
+          "--root",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+          "--policy",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json"
+        ],
+        "display_command": "/tmp/chaoscontrol-production-readiness-closure-20261015/result-cairn/bin/cairn gate tasks repair-incremental-snapshot-lineage --root /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol --policy /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/cairn-policy/generated/cairn-policy.json",
+        "timeout_seconds": 300,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T04:49:47.474894+00:00",
+        "finished": "2026-10-16T04:49:47.490500+00:00",
+        "elapsed_seconds": 0.015610383998136967,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-tasks/stdout.log",
+            "digest": "blake3:34037011a8021f9339ceda0969659c825db969c622f7d9b7d8325ac6ae52142a",
+            "bytes": 3615
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-tasks/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "report": {
+        "acceptance_ids": [],
+        "change": "repair-incremental-snapshot-lineage",
+        "evidence_summary": {
+          "docs_only": 0,
+          "fixture": 0,
+          "formal": 0,
+          "mode": "advisory",
+          "model": 0,
+          "probe": 0,
+          "property": 0
+        },
+        "input_hash": "4a8e6e3a5f223437861198ecee0413fa87f65f39137a6d99bb0968eac955566e",
+        "issues": [],
+        "layout": "cairn",
+        "non_claims": [
+          "workflow state proves only the selected policy graph and observed structural artifact facts",
+          "workflow instructions do not prove artifact truth, review quality, or implementation correctness",
+          "workflow state does not satisfy proposal, design, tasks, sync, archive, evidence, or release gates",
+          "workflow commands are read-only and do not create, edit, delete, or approve lifecycle artifacts"
+        ],
+        "policy": "chaoscontrol-default",
+        "policy_hash": "0e65fe24216177125699c0b618fe50bf68031c6d13807269b0adaca29995eb14",
+        "probe_evidence": {
+          "declarations_present": false,
+          "probes": []
+        },
+        "profile_identity_hash": "4aae234f215736a181447d877ccc1b9a92069571bebd253c4b95799439fccaab",
+        "receipt_hash": "599c4c9c658db96540d49475925642a4dd016c05dd7b87a27ab9818a89c76006",
+        "review_receipt_hashes": [],
+        "spec_effect": "delta",
+        "stage": "tasks",
+        "substance": [
+          {
+            "checkbox_tasks": 0,
+            "kind": "design",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/design.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 26,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          },
+          {
+            "checkbox_tasks": 0,
+            "kind": "proposal",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/proposal.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 14,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          },
+          {
+            "checkbox_tasks": 0,
+            "kind": "delta_spec",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/specs/deterministic-snapshots/spec.md",
+            "requirement_blocks": 4,
+            "scenario_blocks": 5,
+            "substantive_lines": 20,
+            "substantive_requirement_blocks": 4,
+            "substantive_tasks": 0,
+            "task_done": 0,
+            "task_in_progress": 0,
+            "task_todo": 0
+          },
+          {
+            "checkbox_tasks": 7,
+            "kind": "tasks",
+            "malformed_dependency_markers": 0,
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol/.cairn/changes/repair-incremental-snapshot-lineage/tasks.md",
+            "requirement_blocks": 0,
+            "scenario_blocks": 0,
+            "substantive_lines": 13,
+            "substantive_requirement_blocks": 0,
+            "substantive_tasks": 7,
+            "task_done": 4,
+            "task_in_progress": 0,
+            "task_todo": 3
+          }
+        ],
+        "task_ordering": {
+          "active": false,
+          "edges": [],
+          "issues": [],
+          "nodes": [],
+          "order": [],
+          "ready_tasks": [],
+          "valid": true
+        },
+        "valid": true,
+        "verdict": "PASS",
+        "workflow_profile": "spec-driven",
+        "workflow_profile_compatibility_fallback": false,
+        "workflow_profile_source": "change_create",
+        "workflow_profile_version": 1
+      },
+      "report_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/clean-lineage-tasks/stdout.log",
+        "digest": "blake3:34037011a8021f9339ceda0969659c825db969c622f7d9b7d8325ac6ae52142a",
+        "bytes": 3615
+      },
+      "passed": true
+    }
+  ],
+  "canonical_checkout_update": {
+    "command": "git fetch --no-tags /tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol main && git merge --ff-only FETCH_HEAD",
+    "cwd": "/home/brittonr/git/OnixResearch/chaoscontrol",
+    "exit_code": 1,
+    "observation": "Fast-forward aborted because an existing tracked raft_lineage_proof.rs modification and an untracked closure attempts.ncl would be overwritten.",
+    "preserved_paths": [
+      "crates/chaoscontrol-explore/examples/raft_lineage_proof.rs",
+      "dogfood-results/production-readiness-closure-20261015/attempts.ncl"
+    ],
+    "decision": "Leave the canonical working tree untouched; exercise the exact clean revision and deliver commits from the isolated repository."
+  },
+  "non_claims": [
+    "Structural native gates passing does not complete the unchecked implementation tasks or replace native release readiness.",
+    "Existing changes in the canonical checkout are not source inputs to this isolated clean-revision validation."
+  ]
+}

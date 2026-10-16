@@ -1,0 +1,180 @@
+{
+  "schema": "chaoscontrol.current-cairn-upstream-audit.v1",
+  "consumer_starting_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "consumer_frozen_revision": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "upstream_revision": "d2c1dd7867350b787cfffe0e311fd20115238339",
+  "read_only_source_retrieval": true,
+  "retrieval_route": "git@github.com:OnixResearch/cairn.git with the existing SSH agent; BatchMode=yes; no manual credential access",
+  "source_archive": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-d2c1dd7.tar",
+    "digest": "blake3:5d88018bcd48dae0a1c1a34577b8710f876baae6677ba0f5aae84c2a9e660f25",
+    "bytes": 2529280
+  },
+  "commands": [
+    {
+      "id": "cairn-upstream-ssh-retrieval",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "env",
+          "GIT_SSH_COMMAND=ssh -o BatchMode=yes",
+          "git",
+          "ls-remote",
+          "git@github.com:OnixResearch/cairn.git",
+          "HEAD",
+          "refs/heads/main"
+        ],
+        "display_command": "env 'GIT_SSH_COMMAND=ssh -o BatchMode=yes' git ls-remote git@github.com:OnixResearch/cairn.git HEAD refs/heads/main",
+        "timeout_seconds": 120,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T05:24:46.831581+00:00",
+        "finished": "2026-10-16T05:24:47.396303+00:00",
+        "elapsed_seconds": 0.5647311189968605,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-ssh-retrieval/stdout.log",
+            "digest": "blake3:bf1e986446d1bdbf60d02b5796bcf371f943c1798bf9c0fa79651f181fa00546",
+            "bytes": 103
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-ssh-retrieval/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "observation_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-ssh-retrieval/execution.json",
+        "digest": "blake3:6fa7da69e4172dd489df090636bd2d7408fa13b1ff3b2bc38952d32cf6b3067a",
+        "bytes": 1257
+      }
+    },
+    {
+      "id": "cairn-upstream-source-retrieval",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+        "command": [
+          "env",
+          "GIT_SSH_COMMAND=ssh -o BatchMode=yes",
+          "git",
+          "clone",
+          "--bare",
+          "--filter=blob:none",
+          "--depth",
+          "1",
+          "git@github.com:OnixResearch/cairn.git",
+          "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-readonly.git"
+        ],
+        "display_command": "env 'GIT_SSH_COMMAND=ssh -o BatchMode=yes' git clone --bare --filter=blob:none --depth 1 git@github.com:OnixResearch/cairn.git /tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-readonly.git",
+        "timeout_seconds": 120,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T05:25:49.417662+00:00",
+        "finished": "2026-10-16T05:25:50.082612+00:00",
+        "elapsed_seconds": 0.6649571249945438,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-retrieval/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-retrieval/stderr.log",
+            "digest": "blake3:8df56d47c268de4b8d9a7f4ce7df996b14b81dbcc7fd211d3c18e432269ddfed",
+            "bytes": 118
+          }
+        ]
+      },
+      "observation_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-retrieval/execution.json",
+        "digest": "blake3:b728ee95f253660cbe55db8d6bc5d1ea3b5c85020e2da1355c1e00364950b0f3",
+        "bytes": 1474
+      }
+    },
+    {
+      "id": "cairn-upstream-source-archive",
+      "observation": {
+        "schema": "chaoscontrol.local-command-observation.v1",
+        "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-readonly.git",
+        "command": [
+          "env",
+          "GIT_SSH_COMMAND=ssh -o BatchMode=yes",
+          "git",
+          "archive",
+          "--format=tar",
+          "--output=/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-d2c1dd7.tar",
+          "d2c1dd7867350b787cfffe0e311fd20115238339",
+          "README.md",
+          "crates/cairn-cli/src",
+          "cairn-policy",
+          "docs/consumer-bootstrap-preview.md"
+        ],
+        "display_command": "env 'GIT_SSH_COMMAND=ssh -o BatchMode=yes' git archive --format=tar --output=/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-d2c1dd7.tar d2c1dd7867350b787cfffe0e311fd20115238339 README.md crates/cairn-cli/src cairn-policy docs/consumer-bootstrap-preview.md",
+        "timeout_seconds": 120,
+        "operational_timeout": false,
+        "exit_code": 0,
+        "started": "2026-10-16T05:26:31.297119+00:00",
+        "finished": "2026-10-16T05:26:32.663054+00:00",
+        "elapsed_seconds": 1.3659426819940563,
+        "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+        "artifacts": [
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-archive/stdout.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          },
+          {
+            "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-archive/stderr.log",
+            "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            "bytes": 0
+          }
+        ]
+      },
+      "observation_artifact": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/cairn-upstream-source-archive/execution.json",
+        "digest": "blake3:f3853130d053e10c8db22217cf1e9900db8f1eb16e20417f9e8982da1afd9a8c",
+        "bytes": 1628
+      }
+    }
+  ],
+  "readiness_module": {
+    "archive_member": "crates/cairn-cli/src/release_readiness.rs",
+    "digest": "blake3:a336e94f95ae2689bfa629beb85b20f880b2f2d677cf008d04ec5fc031ecbfe6",
+    "bytes": 27770,
+    "identical_to_retained_and_newer_installed_sources": true,
+    "evidence_ranges": [
+      "147-166",
+      "244-265",
+      "472-478"
+    ]
+  },
+  "observed_applicability": {
+    "mcp_agent_smoke": "Unconditionally included in readiness checks and invoked with the consumer root. Retained implementation reads fixtures/agent-completion/{contract,results}.json.",
+    "preserves_corpus_freshness": "Unconditionally included in readiness checks; fixtures/preserves-canonicalization/corpus.json is resolved beneath the consumer root.",
+    "explicit_downstream_selector_found_in_inspected_readiness_implementation": false
+  },
+  "bootstrap_documentation": {
+    "archive_member": "docs/consumer-bootstrap-preview.md",
+    "ranges": [
+      "6-105"
+    ],
+    "requires_exact_cli_and_pinned_bundle": true,
+    "upgrade_from_must_name_installed_cohort": true,
+    "does_not_migrate_consumer_owned_policy": true,
+    "fixture_identities_are_not_installation_identities": true,
+    "saved_export_fixture_observations_are_not_evaluator_execution_evidence": true
+  },
+  "upstream_prerequisite": "A matching immutable CLI/policy integration cohort and documented consumer-policy migration, with explicit receipt-visible applicability for these two self-checks or maintained downstream inputs and corresponding producer validation. No such downstream integration was established by the inspected source and bootstrap contract.",
+  "retrievability_correction": "The earlier public HTTPS endpoint failures remain historical observations only. Current main was successfully retrieved over the existing SSH route; source access is not the remaining blocker.",
+  "upstream_update_applied": false,
+  "non_claims": [
+    "The upstream source was inspected read-only; no sibling repository was edited.",
+    "Source retrieval and byte identity are not a built or validated newer CLI/policy migration.",
+    "No copied Cairn self-fixtures, check suppression, required-check skip, dependency-pin substitution, or passing-readiness inference was used."
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "schema": "chaoscontrol.closure-receipt-validation-observations.v1",
+  "source_revision_tested": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "validation_command": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "nix",
+      "shell",
+      "github:nickel-lang/nickel/1320a983e6c3d1e2fb53dd2464b084b4903b1426",
+      "--command",
+      "nickel",
+      "export",
+      "--format",
+      "json",
+      "dogfood-results/production-readiness-closure-20261015/receipt.ncl"
+    ],
+    "display_command": "nix shell github:nickel-lang/nickel/1320a983e6c3d1e2fb53dd2464b084b4903b1426 --command nickel export --format json dogfood-results/production-readiness-closure-20261015/receipt.ncl",
+    "timeout_seconds": 180,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T06:13:46.016942+00:00",
+    "finished": "2026-10-16T06:13:47.633570+00:00",
+    "elapsed_seconds": 1.616636724997079,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/closure-receipt-export/stdout.log",
+        "digest": "blake3:1d09f8b43a8c61f85a66899204e9acb6d3710133ea8eee132864f1fbb366aae9",
+        "bytes": 304789
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/closure-receipt-export/stderr.log",
+        "digest": "blake3:979d905ff3e396ca52d908a4b1e3fd372421ef0311e0685e44baf1ec71d84375",
+        "bytes": 298
+      }
+    ]
+  },
+  "validated_receipt": {
+    "path": "dogfood-results/production-readiness-closure-20261015/receipt.json",
+    "digest": "blake3:1d09f8b43a8c61f85a66899204e9acb6d3710133ea8eee132864f1fbb366aae9",
+    "bytes": 304789
+  },
+  "input_artifacts": [
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/receipt.ncl",
+      "digest": "blake3:eda66fe8ecb27d9b5b3191900a96ce8be0b99c60455e511d78e07e21acb434a0",
+      "bytes": 8274
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/release-observations.json",
+      "digest": "blake3:5b80abeb37ba95b9fbab616248081d370e27e5b08f088ce85930f77c3ea1c2e7",
+      "bytes": 315954
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/attempts.ncl",
+      "digest": "blake3:e55d81c659888d178061c0db9938d7a534307057dcbd6badd110ebd1c8b82bb6",
+      "bytes": 11950
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/campaign-observations.json",
+      "digest": "blake3:dd81f86b9924b138d1a306b4d0f2ced708771a47ee6b383360c92a8a81798296",
+      "bytes": 85637
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/watchdog-current-artifacts-observations.json",
+      "digest": "blake3:261b8a10d7f4aa2ada67ac3d59e6750daa967f7bd49e30569dbd3a83625162f2",
+      "bytes": 1245619
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/cairn-current-upstream-audit.json",
+      "digest": "blake3:91302aad2009c1c4de6b838ce04275929cf3ebe1bfa2c166020d46e1c9235172",
+      "bytes": 8991
+    },
+    {
+      "path": "dogfood-results/production-readiness-closure-20261015/historical-preservation.json",
+      "digest": "blake3:e2437eb2ff5b040bb60cf8fa53c18732b1904e0ec175baada7d391b7f6b73425",
+      "bytes": 7080
+    }
+  ],
+  "nickel_export_passed": true,
+  "production_ready": false,
+  "required_criteria": [
+    {
+      "id": "native-cairn-readiness",
+      "passed": false
+    },
+    {
+      "id": "deep-raft-campaign-and-replay",
+      "passed": false
+    },
+    {
+      "id": "strict-watchdog-continuation",
+      "passed": false
+    },
+    {
+      "id": "fresh-release-gates",
+      "passed": false
+    },
+    {
+      "id": "reproducible-evidence-retention",
+      "passed": false
+    }
+  ],
+  "evidence_delivery_checks": {
+    "retained_manifest_files": 80,
+    "all_retained_manifest_identities_matched": true,
+    "artifact_size_check": {
+      "passed": true,
+      "command_observation": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/closure-artifact-size-check/execution.json",
+        "digest": "blake3:13f2b3cd69dd31074459e5ee8a3f3c5f06e27e3aaee5e76e62b0eae3b6013d28",
+        "bytes": 1191
+      },
+      "output": {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/closure-artifact-size-check/stdout.log",
+        "digest": "blake3:b7fe3bc097912925a6c344ae54569acf9d0a6116ff0f531f9a122fa7a8cfcdad",
+        "bytes": 80
+      },
+      "scope": "Evidence-only delivery check; this does not rerun or supersede the failed source release gates."
+    }
+  },
+  "boundary": "A successful typed export proves this evidence record evaluates under its contracts; it does not turn its blocked gate verdicts into production readiness or repair the missing historical input."
+}

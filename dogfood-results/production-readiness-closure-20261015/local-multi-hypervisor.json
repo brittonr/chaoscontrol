@@ -1,0 +1,314 @@
+{
+  "anti_claims": [
+    "This is bounded local multi-hypervisor campaign evidence only, not a hosted service.",
+    "This is not a shared remote queue or cross-machine scheduler.",
+    "This is not universal fleet-scale throughput or a full Antithesis-style product replacement.",
+    "This receipt links hypervisor workers, leases, queue entries, run receipts, and queue state without raw-log scraping.",
+    "Fault coverage is limited to listed deterministic fault classes and workloads; it is not exhaustive validation of all possible failures."
+  ],
+  "artifact_index": {
+    "entries": [
+      {
+        "artifact_id": "artifact-kvm-mh-run-0001",
+        "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-1",
+        "bug_artifacts": [],
+        "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "follow_up_receipts": [],
+        "hypervisor_worker_id": "local-kvm-hv-1",
+        "queue_entry_id": "kvm-mhq-0001",
+        "receipt_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/01-raft-replay-readiness.json",
+        "retention": {
+          "gc_status": "retained",
+          "policy": "bounded-local"
+        },
+        "run_id": "kvm-mh-run-0001"
+      },
+      {
+        "artifact_id": "artifact-kvm-mh-run-0002",
+        "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-2",
+        "bug_artifacts": [],
+        "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "follow_up_receipts": [],
+        "hypervisor_worker_id": "local-kvm-hv-2",
+        "queue_entry_id": "kvm-mhq-0002",
+        "receipt_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/02-rust-workload-replay-readiness.json",
+        "retention": {
+          "gc_status": "retained",
+          "policy": "bounded-local"
+        },
+        "run_id": "kvm-mh-run-0002"
+      }
+    ],
+    "index_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/artifact-index.json",
+    "schema_version": 1
+  },
+  "campaign_id": "local-kvm-smoke-0001",
+  "command": "replay-readiness-local-multi-hypervisor-campaign",
+  "control_plane": {
+    "artifact_index_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/artifact-index.json",
+    "follow_up_policy": {
+      "enabled": false,
+      "minimize": false,
+      "reproduce": false
+    },
+    "kind": "single-machine-local",
+    "max_hypervisors": 2
+  },
+  "fault_coverage": {
+    "by_workload": [
+      {
+        "affected_run_ids": [
+          "mh-run-raft-0001"
+        ],
+        "configured_fault_classes": [
+          "network",
+          "timer",
+          "scheduler"
+        ],
+        "injection_attempts": 3,
+        "not_observed_fault_classes": [
+          "scheduler"
+        ],
+        "observed_injections": 2,
+        "unsupported_fault_classes": [
+          "process"
+        ],
+        "workload": "raft"
+      },
+      {
+        "affected_run_ids": [
+          "mh-run-redb-0001"
+        ],
+        "configured_fault_classes": [
+          "block"
+        ],
+        "injection_attempts": 1,
+        "not_observed_fault_classes": [],
+        "observed_injections": 1,
+        "unsupported_fault_classes": [],
+        "workload": "redb"
+      }
+    ],
+    "schema_version": 1,
+    "scope": "listed deterministic fault classes and workloads only; not exhaustive validation of all possible failures"
+  },
+  "follow_up_jobs": [],
+  "generated_at": "unix:1792129396",
+  "hypervisors": [
+    {
+      "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-1",
+      "hypervisor_worker_id": "local-kvm-hv-1",
+      "node_id": "local-kvm-node-1",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    },
+    {
+      "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-2",
+      "hypervisor_worker_id": "local-kvm-hv-2",
+      "node_id": "local-kvm-node-2",
+      "resource_budget": {
+        "memory_mib": 1024,
+        "vcpus": 2
+      }
+    }
+  ],
+  "operator_decisions": [
+    "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/operator-decision-receipt.json"
+  ],
+  "plan_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/campaign-plan.json",
+  "queue": {
+    "entries": [
+      {
+        "hypervisor_worker_id": "local-kvm-hv-1",
+        "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0001",
+        "queue_entry_id": "kvm-mhq-0001",
+        "run_id": "kvm-mh-run-0001",
+        "state": "failed",
+        "workload": "raft"
+      },
+      {
+        "hypervisor_worker_id": "local-kvm-hv-2",
+        "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0002",
+        "queue_entry_id": "kvm-mhq-0002",
+        "run_id": "kvm-mh-run-0002",
+        "state": "failed",
+        "workload": "rust-workload"
+      }
+    ]
+  },
+  "queue_state": {
+    "completed_before_start": 0,
+    "kind": "durable-local-file",
+    "loaded_existing_state": false,
+    "persisted_after_each_run": true,
+    "state_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/campaign-state.json"
+  },
+  "raw_log_scraping": false,
+  "runs": [
+    {
+      "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-1",
+      "campaign_id": "local-kvm-smoke-0001",
+      "command": "/nix/store/1mbkbwm2r2dldb3flix4rmvzp39biixh-replay-readiness/bin/replay-readiness --receipt /nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/01-raft-replay-readiness.json --dogfood raft -- --output /nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/dogfood/01-raft",
+      "command_observation": {
+        "cancellation": "not-requested",
+        "command_identity_blake3": "a9d7b55d3e08328d09fda022fa267fc1336fe69a5d557f7be54eba431d882ef1",
+        "completion": "timed-out",
+        "disposition": "timed-out",
+        "executable_blake3": "d851df0ec281254f72db244ca7477d50d1b57d7edffc386cc7e1ec4245ecaac8",
+        "exit_code": null,
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "schema": "chaoscontrol.typed-command-observation.v1",
+        "signal": 9,
+        "stderr": {
+          "observed_bytes": 0,
+          "retained_blake3": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+          "retained_bytes": 0,
+          "truncated": false
+        },
+        "stdout": {
+          "observed_bytes": 3137,
+          "retained_blake3": "ab91e0800a4813518bbb0afe17aabbb966827c8753ef78cb253b3136187db79e",
+          "retained_bytes": 3137,
+          "truncated": false
+        },
+        "teardown": "completed"
+      },
+      "command_plan": {
+        "accepted_exit_codes": [
+          0
+        ],
+        "args": [
+          "--receipt",
+          "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/01-raft-replay-readiness.json",
+          "--dogfood",
+          "raft",
+          "--",
+          "--output",
+          "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/dogfood/01-raft"
+        ],
+        "environment": {
+          "entries": [],
+          "mode": "clear"
+        },
+        "evidence_eligible": true,
+        "executable": {
+          "blake3": "d851df0ec281254f72db244ca7477d50d1b57d7edffc386cc7e1ec4245ecaac8",
+          "maximum_bytes": 1073741824,
+          "path": "/nix/store/1mbkbwm2r2dldb3flix4rmvzp39biixh-replay-readiness/bin/replay-readiness"
+        },
+        "limits": {
+          "poll_interval_ms": 10,
+          "stderr_max_bytes": 8388608,
+          "stdin_max_bytes": 1024,
+          "stdout_max_bytes": 8388608,
+          "teardown_timeout_ms": 1000,
+          "timeout_ms": 30000
+        },
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "reject_stderr_truncation": true,
+        "reject_stdout_truncation": true,
+        "schema": "chaoscontrol.typed-command-plan.v1",
+        "stdin": {
+          "mode": "null"
+        },
+        "termination_scope": "process-group",
+        "working_directory": "."
+      },
+      "exit_code": 125,
+      "follow_up_jobs": [],
+      "hypervisor_worker_id": "local-kvm-hv-1",
+      "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0001",
+      "queue_entry_id": "kvm-mhq-0001",
+      "receipt_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/01-raft-replay-readiness.json",
+      "receipt_summary": null,
+      "run_id": "kvm-mh-run-0001",
+      "status": "failed",
+      "workload": "raft"
+    },
+    {
+      "artifact_root": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/hypervisors/local-kvm-hv-2",
+      "campaign_id": "local-kvm-smoke-0001",
+      "command": "/nix/store/1mbkbwm2r2dldb3flix4rmvzp39biixh-replay-readiness/bin/replay-readiness --receipt /nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/02-rust-workload-replay-readiness.json --dogfood rust-workload -- --output /nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/dogfood/02-rust-workload",
+      "command_observation": {
+        "cancellation": "not-requested",
+        "command_identity_blake3": "00687b0cc1076cfdb4358afc9ac77f6e069152b73848f5637166e7f4ca6986b9",
+        "completion": "exited",
+        "disposition": "exit-failed",
+        "executable_blake3": "d851df0ec281254f72db244ca7477d50d1b57d7edffc386cc7e1ec4245ecaac8",
+        "exit_code": 2,
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "schema": "chaoscontrol.typed-command-observation.v1",
+        "signal": null,
+        "stderr": {
+          "observed_bytes": 482,
+          "retained_blake3": "c310e30757c36b4ee13c592def0953edad187fed9094a2ba4f566f125e69acd8",
+          "retained_bytes": 482,
+          "truncated": false
+        },
+        "stdout": {
+          "observed_bytes": 3408,
+          "retained_blake3": "ff8575686c2f467d047f391049b1ecf1f91b50395e795d5a8d0fd33992416753",
+          "retained_bytes": 3408,
+          "truncated": false
+        },
+        "teardown": "completed"
+      },
+      "command_plan": {
+        "accepted_exit_codes": [
+          0
+        ],
+        "args": [
+          "--receipt",
+          "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/02-rust-workload-replay-readiness.json",
+          "--dogfood",
+          "rust-workload",
+          "--",
+          "--output",
+          "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/dogfood/02-rust-workload"
+        ],
+        "environment": {
+          "entries": [],
+          "mode": "clear"
+        },
+        "evidence_eligible": true,
+        "executable": {
+          "blake3": "d851df0ec281254f72db244ca7477d50d1b57d7edffc386cc7e1ec4245ecaac8",
+          "maximum_bytes": 1073741824,
+          "path": "/nix/store/1mbkbwm2r2dldb3flix4rmvzp39biixh-replay-readiness/bin/replay-readiness"
+        },
+        "limits": {
+          "poll_interval_ms": 10,
+          "stderr_max_bytes": 8388608,
+          "stdin_max_bytes": 1024,
+          "stdout_max_bytes": 8388608,
+          "teardown_timeout_ms": 1000,
+          "timeout_ms": 30000
+        },
+        "mechanism_revision": "29dac88ecded94457572db3fdfaaaab95fa91525",
+        "reject_stderr_truncation": true,
+        "reject_stdout_truncation": true,
+        "schema": "chaoscontrol.typed-command-plan.v1",
+        "stdin": {
+          "mode": "null"
+        },
+        "termination_scope": "process-group",
+        "working_directory": "."
+      },
+      "exit_code": 2,
+      "follow_up_jobs": [],
+      "hypervisor_worker_id": "local-kvm-hv-2",
+      "lease_id": "lease-local-kvm-smoke-0001-kvm-mhq-0002",
+      "queue_entry_id": "kvm-mhq-0002",
+      "receipt_path": "/nix/store/1921jg5dyl1yj67a7vq5wpmfw1q092ql-local-multi-hypervisor-kvm-smoke-check/run-receipts/02-rust-workload-replay-readiness.json",
+      "receipt_summary": null,
+      "run_id": "kvm-mh-run-0002",
+      "status": "failed",
+      "workload": "rust-workload"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "bounded local multi-hypervisor campaign receipt with one durable local queue/state file; not a hosted service, not a shared remote queue, not cross-machine scheduling, not universal fleet-scale throughput, and not a full Antithesis-style product replacement",
+  "status": "failed"
+}

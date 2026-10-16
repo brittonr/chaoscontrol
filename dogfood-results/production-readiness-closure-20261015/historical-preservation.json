@@ -1,0 +1,145 @@
+{
+  "schema": "chaoscontrol.historical-receipt-preservation.v1",
+  "baseline_revision": "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+  "retained_source_revision": "62f97f8244fedcbb83f1d06eaea72c7dbb37e6bd",
+  "historical_scope": "dogfood-results/production-readiness-20261015/",
+  "baseline_archive": {
+    "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/historical-receipts-a154ddd.tar",
+    "digest": "blake3:fe80822c3b30d329fa4c1817f16b25f54c1e7d71508daa4504ad08318be9736f",
+    "bytes": 1607680
+  },
+  "command_observation": {
+    "schema": "chaoscontrol.local-command-observation.v1",
+    "cwd": "/tmp/chaoscontrol-production-readiness-closure-20261015/chaoscontrol",
+    "command": [
+      "git",
+      "archive",
+      "--format=tar",
+      "--output=/tmp/chaoscontrol-production-readiness-closure-20261015/historical-receipts-a154ddd.tar",
+      "a154ddd1320129a133bb84b8e13ad3df7e55a55f",
+      "dogfood-results/production-readiness-20261015"
+    ],
+    "display_command": "git archive --format=tar --output=/tmp/chaoscontrol-production-readiness-closure-20261015/historical-receipts-a154ddd.tar a154ddd1320129a133bb84b8e13ad3df7e55a55f dogfood-results/production-readiness-20261015",
+    "timeout_seconds": 120,
+    "operational_timeout": false,
+    "exit_code": 0,
+    "started": "2026-10-16T05:33:27.570969+00:00",
+    "finished": "2026-10-16T05:33:27.602787+00:00",
+    "elapsed_seconds": 0.03181677300017327,
+    "non_claim": "Exit status is not a guest-bug verdict or a report-verdict decision.",
+    "artifacts": [
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/historical-receipt-baseline/stdout.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      },
+      {
+        "path": "/tmp/chaoscontrol-production-readiness-closure-20261015/historical-receipt-baseline/stderr.log",
+        "digest": "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+        "bytes": 0
+      }
+    ]
+  },
+  "members": [
+    {
+      "path": "dogfood-results/production-readiness-20261015/attempts.ncl",
+      "bytes": 10053,
+      "baseline_digest": "blake3:405bb89ef7179d705f297fe6d22947fe8978538db201078aa98b90e87d562bdf",
+      "retained_digest": "blake3:405bb89ef7179d705f297fe6d22947fe8978538db201078aa98b90e87d562bdf",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/campaign-initial-observations.json",
+      "bytes": 108030,
+      "baseline_digest": "blake3:cb7e190edfbcf08d2698ddccedf4f5aeeafa25434fdd80b6b73ef02adf38f70f",
+      "retained_digest": "blake3:cb7e190edfbcf08d2698ddccedf4f5aeeafa25434fdd80b6b73ef02adf38f70f",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/campaign-observations.json",
+      "bytes": 112753,
+      "baseline_digest": "blake3:54f0ece1c7f3c17ff1b6c25a0d0465a03ecb820a0011060ce2f3e8a4f0b7ab0a",
+      "retained_digest": "blake3:54f0ece1c7f3c17ff1b6c25a0d0465a03ecb820a0011060ce2f3e8a4f0b7ab0a",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/kvm-release.json",
+      "bytes": 36484,
+      "baseline_digest": "blake3:f997c55dcb6fdde152d22cb8bf8f9bd69cee238ca59069c57b6f69e65adafaad",
+      "retained_digest": "blake3:f997c55dcb6fdde152d22cb8bf8f9bd69cee238ca59069c57b6f69e65adafaad",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/lineage-design-gate.json",
+      "bytes": 2745,
+      "baseline_digest": "blake3:d74fba70dddd9ef909e855aa2db1c51d7099360524d374f8cfebd36b70854387",
+      "retained_digest": "blake3:d74fba70dddd9ef909e855aa2db1c51d7099360524d374f8cfebd36b70854387",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/lineage-proposal-gate.json",
+      "bytes": 1875,
+      "baseline_digest": "blake3:45608306866ba592f6a5f30ccc2001dafe9426828d6918635577808c553d699c",
+      "retained_digest": "blake3:45608306866ba592f6a5f30ccc2001dafe9426828d6918635577808c553d699c",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/lineage-tasks-gate.json",
+      "bytes": 3346,
+      "baseline_digest": "blake3:cd1a480839bbedad2002c522eea241d778e3ecd7c2fee15d6078e3be5fc49982",
+      "retained_digest": "blake3:cd1a480839bbedad2002c522eea241d778e3ecd7c2fee15d6078e3be5fc49982",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/native-readiness.json",
+      "bytes": 8608,
+      "baseline_digest": "blake3:523dafec996cfd2a30fd29b76f96a44df314af8fc5ba4d6e682e30af27feda27",
+      "retained_digest": "blake3:523dafec996cfd2a30fd29b76f96a44df314af8fc5ba4d6e682e30af27feda27",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/native-validation.json",
+      "bytes": 66416,
+      "baseline_digest": "blake3:15c4ecb557b989c7c5d4dc26e618f5d2ce00a49ea660bff71b0c517a52dfe1b7",
+      "retained_digest": "blake3:15c4ecb557b989c7c5d4dc26e618f5d2ce00a49ea660bff71b0c517a52dfe1b7",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/raft-campaigns.ncl",
+      "bytes": 1944,
+      "baseline_digest": "blake3:3f08fe7ea64281c7a10cb0d65dee658bd9da70f6d4690bd618d66c0802951ef9",
+      "retained_digest": "blake3:3f08fe7ea64281c7a10cb0d65dee658bd9da70f6d4690bd618d66c0802951ef9",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/receipt.ncl",
+      "bytes": 15971,
+      "baseline_digest": "blake3:46297e89793a1ce19f9492df12f010a5b926606c7e077b3b01ccdf77e35f0ea1",
+      "retained_digest": "blake3:46297e89793a1ce19f9492df12f010a5b926606c7e077b3b01ccdf77e35f0ea1",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/runtime-summary.json",
+      "bytes": 1203529,
+      "baseline_digest": "blake3:4869734c7b397e56f14b9b134ed2b5e74bf26a572257c3435810b84d1fa1a109",
+      "retained_digest": "blake3:4869734c7b397e56f14b9b134ed2b5e74bf26a572257c3435810b84d1fa1a109",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/traceability.json",
+      "bytes": 13352,
+      "baseline_digest": "blake3:8d7d7c2e2ed878eca43233886d47a270c47595143bfa5b19c450d29e36ce50a1",
+      "retained_digest": "blake3:8d7d7c2e2ed878eca43233886d47a270c47595143bfa5b19c450d29e36ce50a1",
+      "unchanged": true
+    },
+    {
+      "path": "dogfood-results/production-readiness-20261015/working-tree-source.ncl",
+      "bytes": 2786,
+      "baseline_digest": "blake3:87792d9bde33b99823e9b20986f41da9c8f7b0550869031bf1ed08df43b15bbb",
+      "retained_digest": "blake3:87792d9bde33b99823e9b20986f41da9c8f7b0550869031bf1ed08df43b15bbb",
+      "unchanged": true
+    }
+  ],
+  "all_historical_files_unchanged": true,
+  "non_claim": "The historical dirty-source receipt remains historical and non-passing; byte preservation does not promote it to clean-source release evidence."
+}
